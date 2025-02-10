@@ -38,4 +38,6 @@ repos:
     rev: v1.8.0
     hooks:
     -   id: mypy
-        additional_dependencies: [types-all] 
+        additional_dependencies: [
+            'types-requests',  # Add specific type stubs as needed
+        ]

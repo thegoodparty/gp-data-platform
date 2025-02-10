@@ -30,6 +30,11 @@ The project structure will be added here as it
 
 ## Development Practices
 
+### Using python locally
+
+To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation). This ensures consistent Python versions across development environments.
+
+
 ### Pre-commit Hooks
 
 This project uses pre-commit hooks to ensure code quality and consistency. The hooks include:
