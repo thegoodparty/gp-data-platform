@@ -1,0 +1,17 @@
+# code editors
+.idea
+.vscode
+.DS_Store
+*/.idea/
+*/.vscode/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Airflow development files
+airflow/logs
