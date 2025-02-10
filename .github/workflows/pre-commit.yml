@@ -14,8 +14,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: '3.11'  # must match version in prod airflow
 
       - name: Install pre-commit
         run: |
@@ -29,4 +28,4 @@ jobs:
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
 
       - name: Run pre-commit
-        run: pre-commit run --all-files --show-diff-on-failure 
+        run: pre-commit run --all-files --show-diff-on-failure
