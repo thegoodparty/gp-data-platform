@@ -26,7 +26,7 @@ A comprehensive data platform that handles data ingestion, transformation, orche
 
 ## Project Structure
 
-The project structure will be added here as it
+The project structure will be added here as it evolves
 
 ## Development Practices
 
@@ -39,10 +39,7 @@ To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pye
 
 This project uses pre-commit hooks to ensure code quality and consistency. The hooks include:
 - General file linting (trailing whitespace, file endings, YAML checks)
-- Python code formatting (black)
-- Python import sorting (isort)
-- Python code linting (flake8)
-- Python type checking (mypy)
+- Python code formatting, linting and type checking (black, isort, flake8, mypy)
 
 To set up pre-commit:
 
@@ -66,5 +63,3 @@ The pre-commit hooks will run automatically on `git commit`. If any hooks fail, 
 The pre-commit checks are also run automatically via GitHub Actions:
 - On all pull requests
 - On all pushes to main/master branches
-
-This ensures that all code changes adhere to the project's quality standards, even if contributors haven't set up pre-commit locally.
