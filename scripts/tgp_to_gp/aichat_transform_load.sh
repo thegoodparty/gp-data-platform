@@ -107,6 +107,14 @@ psql \
   -d "$db_name" \
   -c "$sql_command"
 
+## drop the staging table
+psql \
+  -h "$db_host" \
+  -p "$db_port" \
+  -U "$db_user" \
+  -d "$db_name" \
+  -c "DROP TABLE staging.aichat;"
+
 ## end timer
 end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
