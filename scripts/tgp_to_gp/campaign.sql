@@ -1,18 +1,21 @@
--- rename the following columns
-ALTER TABLE campaign RENAME COLUMN "createdAt" to created_at;
-ALTER TABLE campaign RENAME COLUMN "updatedAt" to updated_at;
-ALTER TABLE campaign RENAME COLUMN "dateVerified" to date_verified;
-ALTER TABLE campaign RENAME COLUMN "isActive" TO is_active;
-ALTER TABLE campaign RENAME COLUMN "isVerified" TO is_verified;
-ALTER TABLE campaign RENAME COLUMN "isPro" TO is_pro;
-ALTER TABLE campaign RENAME COLUMN "didWin" TO did_win;
-ALTER TABLE campaign RENAME COLUMN "dateVerified" TO date_verified;
-ALTER TABLE campaign RENAME COLUMN "dataCopy" TO data_copy;
-ALTER TABLE campaign RENAME COLUMN "pathToVictory" TO path_to_victory;
-ALTER TABLE campaign RENAME COLUMN "aiContent" TO ai_content;
-ALTER TABLE campaign RENAME COLUMN "ballotCandidate" TO ballot_candidate;
-ALTER TABLE campaign RENAME COLUMN "isDemo" TO is_demo;
-ALTER TABLE campaign RENAME COLUMN "vendorTsData" TO vendor_ts_data;
+-- convert CamelCase names to snake_case
+
+DO $$
+DECLARE
+    stmt TEXT;
+BEGIN
+    FOR stmt IN
+        SELECT format(
+            'ALTER TABLE campaign RENAME COLUMN "%I" TO %I;',
+            column_name,
+            regexp_replace(column_name, '([a-z0-9])([A-Z])', '\1_\2', 'g')::text
+        )
+    FROM information_schema.columns
+    WHERE table_name = 'campaign'
+    LOOP
+        EXECUTE stmt;
+    END LOOP;
+END $$;
 
 -- convert the following columns to timestamp
 ALTER TABLE campaign ALTER COLUMN created_at TYPE timestamp USING (created_at/1000)::timestamp;

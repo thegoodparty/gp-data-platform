@@ -20,6 +20,18 @@ ALTER TABLE ai_chat DROP COLUMN updatedAt;
 ALTER TABLE ai_chat RENAME COLUMN created_at TO createdAt;
 ALTER TABLE ai_chat RENAME COLUMN updated_at TO updatedAt;
 
--- drop unused columns
-ALTER TABLE ai_chat
-DROP COLUMN IF EXISTS created_at, updated_at;
+-- drop unlisted columns
+DO $$
+DECLARE
+    col_name text;
+    allowed_columns text[] := ARRAY['thread_id', 'data', 'user_id', 'campaign_id', 'created_at', 'updated_at'];
+BEGIN
+    FOR col_name IN
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'ai_chat'
+        AND column_name != ALL(allowed_columns)
+    LOOP
+        EXECUTE format('ALTER TABLE ai_chat DROP COLUMN IF EXISTS %I', col_name);
+    END LOOP;
+END $$;

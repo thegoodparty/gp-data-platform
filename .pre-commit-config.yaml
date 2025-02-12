@@ -42,9 +42,9 @@ repos:
             'types-requests',  # Add specific type stubs as needed
         ]
 
--   repo: https://github.com/tconbeer/sqlfmt
-    rev: v0.26.0
-    hooks:
-    -   id: sqlfmt
-        language_version: python
-        additional_dependencies: ['.[jinjafmt]']
+# -   repo: https://github.com/tconbeer/sqlfmt
+#     rev: v0.26.0
+#     hooks:
+#     -   id: sqlfmt
+#         language_version: python
+#         additional_dependencies: ['.[jinjafmt]']
