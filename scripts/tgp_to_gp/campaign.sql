@@ -14,7 +14,6 @@ ALTER TABLE campaign RENAME COLUMN "ballotCandidate" TO ballot_candidate;
 ALTER TABLE campaign RENAME COLUMN "isDemo" TO is_demo;
 ALTER TABLE campaign RENAME COLUMN "vendorTsData" TO vendor_ts_data;
 
-
 -- convert the following columns to timestamp
 ALTER TABLE campaign ALTER COLUMN created_at TYPE timestamp USING (created_at/1000)::timestamp;
 ALTER TABLE campaign ALTER COLUMN updated_at TYPE timestamp USING (updated_at/1000)::timestamp;
