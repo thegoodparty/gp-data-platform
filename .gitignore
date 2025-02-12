@@ -15,3 +15,6 @@ __pycache__/
 
 # Airflow development files
 airflow/logs
+
+# tmp data
+tmp_data/
