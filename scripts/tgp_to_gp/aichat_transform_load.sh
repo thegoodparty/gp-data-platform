@@ -49,19 +49,25 @@ start_time=$(date +%s)
 echo "Timer started."
 
 # create staging table schema
-CREATE TABLE IF NOT EXISTS
-  staging.aichat (
-    "createdAt" bigint NULL,
-    "updatedAt" bigint NULL,
+psql \
+  -h "$db_host" \
+  -p "$db_port" \
+  -U "$db_user" \
+  -d "$db_name" \
+  -c "CREATE SCHEMA IF NOT EXISTS staging;
+  DROP TABLE IF EXISTS staging.aichat;
+  CREATE TABLE staging.aichat (
+    \"createdAt\" bigint NULL,
+    \"updatedAt\" bigint NULL,
     id serial NOT NULL,
     assistant text NULL,
     thread text NULL,
     data json NULL,
-    "user" integer NULL,
+    \"user\" integer NULL,
     campaign integer NULL
-  );
+  );"
 
-## upload the data to a staging table
+# upload the data to a staging table
 psql \
   -h "$db_host" \
   -p "$db_port" \
@@ -82,8 +88,8 @@ sql_command="
         campaign
     )
     SELECT
-        \"createdAt\",
-        \"updatedAt\",
+        to_timestamp(\"createdAt\"::double precision/1000),
+        to_timestamp(\"updatedAt\"::double precision/1000),
         id,
         assistant,
         thread,
@@ -92,8 +98,8 @@ sql_command="
         campaign
     FROM staging.aichat
     ON CONFLICT (id) DO UPDATE SET
-        created_at = EXCLUDED.\"createdAt\",
-        updated_at = EXCLUDED.\"updatedAt\",
+        created_at = to_timestamp(EXCLUDED.createdAt::double precision/1000),
+        updated_at = to_timestamp(EXCLUDED.updatedAt::double precision/1000),
         assistant = EXCLUDED.assistant,
         thread = EXCLUDED.thread,
         data = EXCLUDED.data,

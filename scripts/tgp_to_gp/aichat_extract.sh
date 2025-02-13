@@ -71,8 +71,9 @@ else
     ) TO STDOUT WITH CSV HEADER"
 fi
 
-# Create tmp_data directory if it doesn't exist
+# Create tmp_data directory if it doesn't exist, remove existing aichat.csv if it exists
 mkdir -p ./tmp_data
+rm -f ./tmp_data/aichat.csv
 
 psql \
   -h "$db_host" \
