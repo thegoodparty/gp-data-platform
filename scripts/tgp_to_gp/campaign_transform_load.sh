@@ -1,4 +1,6 @@
 #!/bin/bash
+set +e  # Don't exit on error
+trap 'read -p "Command failed. Press enter to continue..."' ERR
 
 # Parse command line arguments
 db_host=""
@@ -52,9 +54,7 @@ fi
 # Set PGPASSWORD for this script's duration
 export PGPASSWORD="${GP_PGPASSWORD}"
 
-## switch VPNs and load the data
-
-# Start the timer
+# Start the overall timer
 start_time=$(date +%s)
 echo "Timer started."
 
@@ -67,16 +67,27 @@ psql \
   -U "$db_user" \
   -d "$db_name" \
   -c "CREATE SCHEMA IF NOT EXISTS staging;
-  DROP TABLE IF EXISTS staging.aichat;
-  CREATE TABLE staging.aichat (
+  DROP TABLE IF EXISTS staging.campaign;
+  CREATE TABLE staging.campaign (
     \"createdAt\" bigint NULL,
     \"updatedAt\" bigint NULL,
     id serial NOT NULL,
-    assistant text NULL,
-    thread text NULL,
+    slug text NULL,
+    \"isActive\" boolean NULL,
     data json NULL,
     \"user\" integer NULL,
-    campaign integer NULL
+    \"isVerified\" boolean NULL,
+    \"isPro\" boolean NULL,
+    \"didWin\" boolean NULL,
+    tier text NULL,
+    \"dateVerified\" date NULL,
+    \"dataCopy\" json NULL,
+    details jsonb NULL,
+    \"pathToVictory\" integer NULL,
+    \"aiContent\" jsonb NULL,
+    \"ballotCandidate\" integer NULL,
+    \"isDemo\" boolean NULL DEFAULT false,
+    \"vendorTsData\" jsonb NULL DEFAULT '{}'::jsonb
   );"
 schema_end=$(date +%s)
 schema_time=$((schema_end - schema_start))
@@ -85,50 +96,76 @@ printf "Schema creation completed in %02d:%02d:%02d\n" $((schema_time/3600)) $((
 # Start the timer for data upload
 echo "Uploading data to staging table..."
 upload_start=$(date +%s)
+export PGSSLMODE=require
+export PGCONNECT_TIMEOUT=90
 psql \
   -h "$db_host" \
   -p "$db_port" \
   -U "$db_user" \
   -d "$db_name" \
-  -c "\COPY staging.aichat FROM './tmp_data/aichat.csv' WITH CSV HEADER"
+  -c "\COPY staging.campaign FROM './tmp_data/campaign.csv' WITH CSV HEADER"
 upload_end=$(date +%s)
 upload_time=$((upload_end - upload_start))
 printf "Data upload completed in %02d:%02d:%02d\n" $((upload_time/3600)) $((upload_time/60%60)) $((upload_time%60))
 
-## upsert with transforms into destination table
+# Start the timer for upserting data
 echo "Upserting data into destination table..."
 upsert_start=$(date +%s)
 sql_command="
-    INSERT INTO public.ai_chat (
+    INSERT INTO public.campaign (
+        id,
         created_at,
         updated_at,
-        id,
-        assistant,
-        thread_id,
+        slug,
+        is_active,
+        is_verified,
+        is_pro,
+        is_demo,
+        did_win,
+        date_verified,
+        tier,
         data,
-        user_id,
-        campaign_id
+        details,
+        ai_content,
+        vendor_ts_data,
+        user_id
     )
     SELECT
+        id,
         to_timestamp(\"createdAt\"::double precision/1000),
         to_timestamp(\"updatedAt\"::double precision/1000),
-        id,
-        assistant,
-        thread,
-        data,
-        \"user\",
-        campaign
-    FROM staging.aichat
-    WHERE campaign in (select id from public.campaign)
+        slug,
+        \"isActive\",
+        \"isVerified\",
+        \"isPro\",
+        \"isDemo\",
+        \"didWin\",
+        \"dateVerified\",
+        tier::\"CampaignTier\",
+        COALESCE(data::jsonb, '{}'::jsonb),
+        COALESCE(details, '{}'::jsonb),
+        COALESCE(\"aiContent\", '{}'::jsonb),
+        COALESCE(\"vendorTsData\", '{}'::jsonb),
+        \"user\"
+    FROM staging.campaign
+    WHERE \"user\" IN (SELECT id FROM public.user)
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
-        assistant = EXCLUDED.assistant,
-        thread_id = EXCLUDED.thread_id,
+        slug = EXCLUDED.slug,
+        is_active = EXCLUDED.is_active,
+        is_verified = EXCLUDED.is_verified,
+        is_pro = EXCLUDED.is_pro,
+        is_demo = EXCLUDED.is_demo,
+        did_win = EXCLUDED.did_win,
+        date_verified = EXCLUDED.date_verified,
+        tier = EXCLUDED.tier,
         data = EXCLUDED.data,
-        user_id = EXCLUDED.user_id,
-        campaign_id = EXCLUDED.campaign_id;"
-
+        details = EXCLUDED.details,
+        ai_content = EXCLUDED.ai_content,
+        vendor_ts_data = EXCLUDED.vendor_ts_data,
+        user_id = EXCLUDED.user_id;
+"
 psql \
   -h "$db_host" \
   -p "$db_port" \
@@ -139,7 +176,7 @@ upsert_end=$(date +%s)
 upsert_time=$((upsert_end - upsert_start))
 printf "Upsert completed in %02d:%02d:%02d\n" $((upsert_time/3600)) $((upsert_time/60%60)) $((upsert_time%60))
 
-## drop the staging table
+# Start the timer for dropping the staging table
 echo "Dropping staging table..."
 drop_start=$(date +%s)
 psql \
@@ -147,7 +184,7 @@ psql \
   -p "$db_port" \
   -U "$db_user" \
   -d "$db_name" \
-  -c "DROP TABLE staging.aichat;"
+  -c "DROP TABLE staging.campaign;"
 drop_end=$(date +%s)
 drop_time=$((drop_end - drop_start))
 printf "Staging table drop completed in %02d:%02d:%02d\n" $((drop_time/3600)) $((drop_time/60%60)) $((drop_time%60))
@@ -155,7 +192,7 @@ printf "Staging table drop completed in %02d:%02d:%02d\n" $((drop_time/3600)) $(
 # Unset PGPASSWORD for security
 unset PGPASSWORD
 
-## end timer
+# End the overall timer
 end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
 echo "Timer stopped."

@@ -1,19 +1,16 @@
 # TGP to GP Data Migration Scripts
 
-This directory contains the data transformation scripts for migrating data from the legacy `tgp-api` PostgreSQL database to the new `gp-api` PostgreSQL database. These scripts focus on data transformation rather than direct data movement.
+This directory contains the data transformation scripts for migrating data from the legacy `tgp-api` PostgreSQL database to the new `gp-api` PostgreSQL database.
 
 ## Overview
 
-These scripts handle the data transformation process as part of the larger API migration from `tgp-api` to `gp-api`. Rather than simply moving data, these scripts perform necessary transformations to ensure the data matches the new schema and requirements of the `gp-api`. Both source and destination are PostgreSQL databases, but they have different schemas and data structures.
+The migration process is orchestrated by the `main.sh` script, which serves as the entry point. This script ensures that all necessary steps are executed in the correct order to facilitate a smooth transition of data.
 
-## Script Naming Convention
+### main.sh
 
-The SQL scripts are named according to the source table names from the `tgp-api` database. Since the new `gp-api` database may use different table names or structures, the script names reflect the original source tables. For example:
+The `main.sh` script is responsible for coordinating the entire migration process. It performs the following tasks:
 
-- `table_name.sql` - Transforms data from the `table_name` in `tgp-api` into the format required by the corresponding `gp-api` table
-
-## Usage
-
-Each script should be executed in the context of the migration process, ensuring that:
-1. The destination tables have been properly created with the correct schema
-2. The transformation logic correctly maps the old data structure to the new requirements
+1. **Data Export**: Extracts data from the `tgp-api` PostgreSQL database.
+2. **Data Transformation**: Processes and transforms the exported data to fit the schema of the `gp-api` database.
+3. **Data Import**: Loads the transformed data into the `gp-api` PostgreSQL database.
+4. **Logging and Error Handling**: Logs the migration process and handles any errors that may occur.

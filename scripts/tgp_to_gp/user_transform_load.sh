@@ -1,4 +1,7 @@
 #!/bin/bash
+set +e  # Don't exit on error
+trap 'read -p "Command failed. Press enter to continue..."' ERR
+
 
 # Parse command line arguments
 db_host=""
@@ -52,8 +55,6 @@ fi
 # Set PGPASSWORD for this script's duration
 export PGPASSWORD="${GP_PGPASSWORD}"
 
-## switch VPNs and load the data
-
 # Start the timer
 start_time=$(date +%s)
 echo "Timer started."
@@ -67,16 +68,57 @@ psql \
   -U "$db_user" \
   -d "$db_name" \
   -c "CREATE SCHEMA IF NOT EXISTS staging;
-  DROP TABLE IF EXISTS staging.aichat;
-  CREATE TABLE staging.aichat (
-    \"createdAt\" bigint NULL,
-    \"updatedAt\" bigint NULL,
+  DROP TABLE IF EXISTS staging.user;
+  CREATE TABLE staging.user (
+    created_at bigint NULL,
+    updated_at bigint NULL,
     id serial NOT NULL,
-    assistant text NULL,
-    thread text NULL,
-    data json NULL,
-    \"user\" integer NULL,
-    campaign integer NULL
+    phone text NULL,
+    email text NULL,
+    uuid text NULL,
+    name text NULL,
+    feedback text NULL,
+    social_id text NULL,
+    social_provider text NULL,
+    display_address text NULL,
+    address_components text NULL,
+    normalized_address text NULL,
+    is_phone_verified boolean NULL,
+    is_email_verified boolean NULL,
+    avatar text NULL,
+    email_conf_token text NULL,
+    email_conf_token_date_created text NULL,
+    presidential_rank text NULL,
+    senate_rank text NULL,
+    house_rank text NULL,
+    short_state text NULL,
+    district_number real NULL,
+    guest_referrer text NULL,
+    role text NULL,
+    cong_district integer NULL,
+    house_district integer NULL,
+    senate_district integer NULL,
+    zip_code integer NULL,
+    referrer integer NULL,
+    is_admin boolean NULL,
+    crew_count real NOT NULL DEFAULT 0,
+    password text NOT NULL DEFAULT ''::text,
+    password_reset_token text NOT NULL DEFAULT ''::text,
+    password_reset_token_expires_at real NOT NULL DEFAULT 0,
+    has_password boolean NOT NULL DEFAULT false,
+    vote_status text NOT NULL DEFAULT ''::text,
+    first_name text NOT NULL DEFAULT ''::text,
+    middle_name text NOT NULL DEFAULT ''::text,
+    last_name text NOT NULL DEFAULT ''::text,
+    suffix text NOT NULL DEFAULT ''::text,
+    dob text NOT NULL DEFAULT ''::text,
+    address text NOT NULL DEFAULT ''::text,
+    city text NOT NULL DEFAULT ''::text,
+    meta_data text NULL,
+    candidate integer NULL,
+    zip text NOT NULL DEFAULT ''::text,
+    display_name text NOT NULL DEFAULT ''::text,
+    pronouns text NOT NULL DEFAULT ''::text
   );"
 schema_end=$(date +%s)
 schema_time=$((schema_end - schema_start))
@@ -90,7 +132,7 @@ psql \
   -p "$db_port" \
   -U "$db_user" \
   -d "$db_name" \
-  -c "\COPY staging.aichat FROM './tmp_data/aichat.csv' WITH CSV HEADER"
+  -c "\COPY staging.user FROM './tmp_data/user.csv' WITH CSV HEADER"
 upload_end=$(date +%s)
 upload_time=$((upload_end - upload_start))
 printf "Data upload completed in %02d:%02d:%02d\n" $((upload_time/3600)) $((upload_time/60%60)) $((upload_time%60))
@@ -99,36 +141,62 @@ printf "Data upload completed in %02d:%02d:%02d\n" $((upload_time/3600)) $((uplo
 echo "Upserting data into destination table..."
 upsert_start=$(date +%s)
 sql_command="
-    INSERT INTO public.ai_chat (
+    INSERT INTO public.user (
+        id,
         created_at,
         updated_at,
-        id,
-        assistant,
-        thread_id,
-        data,
-        user_id,
-        campaign_id
+        first_name,
+        last_name,
+        name,
+        password,
+        email,
+        phone,
+        zip,
+        meta_data,
+        roles,
+        password_reset_token,
+        avatar,
+        has_password
     )
     SELECT
-        to_timestamp(\"createdAt\"::double precision/1000),
-        to_timestamp(\"updatedAt\"::double precision/1000),
         id,
-        assistant,
-        thread,
-        data,
-        \"user\",
-        campaign
-    FROM staging.aichat
-    WHERE campaign in (select id from public.campaign)
+        to_timestamp(created_at::double precision/1000),
+        to_timestamp(updated_at::double precision/1000),
+        first_name,
+        last_name,
+        NULL,
+        password,
+        email,
+        phone,
+        zip,
+        CASE
+            WHEN meta_data = '' THEN '{}'
+            ELSE meta_data
+        END::jsonb as meta_data,
+        CASE
+            WHEN role = 'campaign' THEN ARRAY['candidate'::\"UserRole\"]
+            ELSE ARRAY[role::\"UserRole\"]
+        END as roles,
+        password_reset_token,
+        avatar,
+        has_password
+    FROM staging.user
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
-        assistant = EXCLUDED.assistant,
-        thread_id = EXCLUDED.thread_id,
-        data = EXCLUDED.data,
-        user_id = EXCLUDED.user_id,
-        campaign_id = EXCLUDED.campaign_id;"
-
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        name = EXCLUDED.name,
+        password = EXCLUDED.password,
+        email = EXCLUDED.email,
+        phone = EXCLUDED.phone,
+        zip = EXCLUDED.zip,
+        meta_data = EXCLUDED.meta_data,
+        roles = EXCLUDED.roles,
+        password_reset_token = EXCLUDED.password_reset_token,
+        avatar = EXCLUDED.avatar,
+        has_password = EXCLUDED.has_password;
+"
 psql \
   -h "$db_host" \
   -p "$db_port" \
@@ -147,7 +215,7 @@ psql \
   -p "$db_port" \
   -U "$db_user" \
   -d "$db_name" \
-  -c "DROP TABLE staging.aichat;"
+  -c "DROP TABLE staging.user;"
 drop_end=$(date +%s)
 drop_time=$((drop_end - drop_start))
 printf "Staging table drop completed in %02d:%02d:%02d\n" $((drop_time/3600)) $((drop_time/60%60)) $((drop_time%60))
