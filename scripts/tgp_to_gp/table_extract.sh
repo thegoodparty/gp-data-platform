@@ -105,7 +105,7 @@ elapsed_time=$((end_time - start_time))
 # Calculate and print the elapsed time
 total_minutes=$((elapsed_time / 60))
 
-printf "Elapsed time for %s: %02d minutes\n" "$table_name" $total_minutes
+printf "Time download table %s: %02d minutes (%02d seconds)\n" "$table_name" $total_minutes $elapsed_time
 
 # Cleanup
 unset PGPASSWORD

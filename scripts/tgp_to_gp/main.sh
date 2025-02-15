@@ -6,13 +6,10 @@ set -E
 tables_in_tgp=(
     "aichat"
     "campaignupdatehistory"
-
     "candidateposition"
     "censusentity"
     "county"
-    "municipality"
     "pathtovictory"
-    "ballotrace"
     "topissue"
     "position"
 )
@@ -27,26 +24,26 @@ slow_tables_in_tgp=(
 # )
 
 # download data from tgp-api dbs in parallel
-for table in "${tables_in_tgp[@]}"; do
-    ./table_extract.sh \
-        --db_host "$DB_HOST_TGP" \
-        --db_port "$DB_PORT_TGP" \
-        --db_user "$DB_USER_TGP" \
-        --db_name "$DB_NAME_TGP" \
-        --table_name "$table" \
-        --cutoff_date "2025-02-14 00:00:00" \
-        --is_incremental "$IS_INCREMENTAL" &
-done
+# for table in "${tables_in_tgp[@]}"; do
+#     ./table_extract.sh \
+#         --db_host "$DB_HOST_TGP" \
+#         --db_port "$DB_PORT_TGP" \
+#         --db_user "$DB_USER_TGP" \
+#         --db_name "$DB_NAME_TGP" \
+#         --table_name "$table" \
+#         --cutoff_date "2025-02-14 00:00:00" \
+#         --is_incremental "$IS_INCREMENTAL" &
+# done
 
-# download full user data to assist with foreign key constraints
-./table_extract.sh \
-    --db_host "$DB_HOST_TGP" \
-    --db_port "$DB_PORT_TGP" \
-    --db_user "$DB_USER_TGP" \
-    --db_name "$DB_NAME_TGP" \
-    --table_name "user" \
-    --cutoff_date "2030-01-01 00:00:00" \
-    --is_incremental false &
+# # download full user data to assist with foreign key constraints
+# ./table_extract.sh \
+#     --db_host "$DB_HOST_TGP" \
+#     --db_port "$DB_PORT_TGP" \
+#     --db_user "$DB_USER_TGP" \
+#     --db_name "$DB_NAME_TGP" \
+#     --table_name "user" \
+#     --cutoff_date "2030-01-01 00:00:00" \
+#     --is_incremental false &
 
 
 # commend out large table downloads for dev work
@@ -64,30 +61,41 @@ done
 
 ## need to add many-to-many mapping tables (full table replications, may need to have these created in prisma for prod env)
 
+
+# let parallel downloads finish
 wait
-echo "Stopping the script as per instructions."
-exit 0
 
+# wait for user to switch to GP network before continuing
+read -p "Switch to GP network to continue with data loading. Press enter to continue..."
+
+# load query strings
 source ./transform_load_queries.sh
-transform_load_queries = (
-    "aichat" "$aichat_create_staging" "$aichat_upsert"
-)
-
-tuples=(
-  (apple red)
-  (banana yellow)
-  (grape purple)
-)
 
 # the order of the scripts is important to abide by foreign key constraints
-# psql to create schema
+transform_load_queries=(
+    "aichat|$aichat_create_staging|$aichat_upsert"
+)
 
 
-./user_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./campaign_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./aichat_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./campaignplanversion_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./topissue_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./position_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./candidateposition_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
-./campaignupdatehistory_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# load from csv to gp db
+for queries in "${transform_load_queries[@]}"; do
+    queries=$(echo "$queries" | tr '\n' ' ')
+    IFS='|' read -r original_table_name staging_query upsert_query <<< "$queries"
+    ./transform_load_executor.sh \
+        --db_host "$DB_HOST_GP" \
+        --db_port "$DB_PORT_GP" \
+        --db_user "$DB_USER_GP" \
+        --db_name "$DB_NAME_GP" \
+        --original_table_name "$original_table_name" \
+        --staging_query "$staging_query" \
+        --upsert_query "$upsert_query"
+done
+
+# ./user_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./campaign_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./aichat_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./campaignplanversion_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./topissue_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./position_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./candidateposition_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
+# ./campaignupdatehistory_transform_load.sh --db_host "$DB_HOST_GP" --db_port "$DB_PORT_GP" --db_user "$DB_USER_GP" --db_name "$DB_NAME_GP"
