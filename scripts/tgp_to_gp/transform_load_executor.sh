@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Parse command line arguments
 db_host=""
@@ -69,10 +70,8 @@ export PGPASSWORD="${GP_PGPASSWORD}"
 
 # Start the timer
 start_time=$(date +%s)
-echo "Timer started."
 
 # Start the timer for schema creation
-echo "Creating staging table schema..."
 schema_start=$(date +%s)
 
 # Execute the staging_query
@@ -86,10 +85,8 @@ psql \
 # End the timer and calculate the duration
 schema_end=$(date +%s)
 schema_time=$((schema_end - schema_start))
-printf "Schema creation completed in %02d:%02d:%02d\n" $((schema_time/3600)) $((schema_time/60%60)) $((schema_time%60))
 
 # Start the timer for data upload
-echo "Uploading data to staging table..."
 upload_start=$(date +%s)
 psql \
   -h "$db_host" \
@@ -99,10 +96,8 @@ psql \
   -c "\COPY staging.${original_table_name} FROM './tmp_data/${original_table_name}.csv' WITH CSV HEADER"
 upload_end=$(date +%s)
 upload_time=$((upload_end - upload_start))
-printf "Data upload completed in %02d:%02d:%02d\n" $((upload_time/3600)) $((upload_time/60%60)) $((upload_time%60))
 
 ## upsert with transforms into destination table
-echo "Upserting data into destination table..."
 upsert_start=$(date +%s)
 psql \
   -h "$db_host" \
@@ -112,10 +107,8 @@ psql \
   -c "$upsert_query"
 upsert_end=$(date +%s)
 upsert_time=$((upsert_end - upsert_start))
-printf "Upsert completed in %02d:%02d:%02d\n" $((upsert_time/3600)) $((upsert_time/60%60)) $((upsert_time%60))
 
 ## drop the staging table
-echo "Dropping staging table..."
 drop_start=$(date +%s)
 psql \
   -h "$db_host" \
@@ -125,7 +118,6 @@ psql \
   -c "DROP TABLE staging.${original_table_name};"
 drop_end=$(date +%s)
 drop_time=$((drop_end - drop_start))
-printf "Staging table drop completed in %d seconds\n" "$drop_time"
 
 # Unset PGPASSWORD for security
 unset PGPASSWORD
@@ -134,4 +126,4 @@ unset PGPASSWORD
 end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
 
-printf "Elapsed time: %d seconds\n" "$elapsed_time"
+printf "Elapsed time for table %s: %d seconds\n" "$original_table_name" "$elapsed_time"
