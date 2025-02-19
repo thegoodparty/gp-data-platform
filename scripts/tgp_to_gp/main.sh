@@ -5,7 +5,6 @@ set -euo pipefail
 
 tables_in_tgp=(
     "aichat"
-    "campaignplanversion" # 2-6 minutes, 57mb on disk
     "campaignupdatehistory"
     "candidateposition"
     "censusentity"
@@ -16,14 +15,15 @@ tables_in_tgp=(
 )
 
 slow_tables_in_tgp=(
-    "municipality" # 7-25 minutes, 264MB
-    "campaign" # 8-40 minutes, 382 MB
+    "campaignplanversion" # 2-23 minutes, 57mb on disk
+    "municipality" # 7-70 minutes, 264MB
+    "campaign" # 8-72 minutes, 382 MB
 )
 # many_to_many_tables=(
 # )
 
 # download data from tgp-api dbs in parallel
-# latest run on 2025-02-18 18:00:00 ET
+# latest run on 2025-02-19 6:00:00 ET
 for table in "${tables_in_tgp[@]}"; do
     ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -36,7 +36,7 @@ for table in "${tables_in_tgp[@]}"; do
 done
 
 # download full user data to assist with foreign key constraints
-# latest run on 2025-02-18 18:00:00 ET
+# latest run on 2025-02-19 6:00:00 ET
 ./table_extract.sh \
     --db_host "$DB_HOST_TGP" \
     --db_port "$DB_PORT_TGP" \
@@ -48,7 +48,7 @@ done
 
 
 # comment out large table downloads for dev work
-# latest run on 2025-02-18 18:00:00 ET
+# latest run on 2025-02-19 6:00:00 ET
 for table in "${slow_tables_in_tgp[@]}"; do
     caffeinate ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
