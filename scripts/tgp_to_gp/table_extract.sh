@@ -98,6 +98,19 @@ psql \
   -c "$sql_command" \
   > ./tmp_data/$table_name.csv
 
+# Get the row count for the destination table
+row_count=$(
+  psql \
+    -h "$db_host" \
+    -p "$db_port" \
+    -U "$db_user" \
+    -d "$db_name" \
+    -t -c "
+        SELECT COUNT(*)
+        FROM public.$table_name
+    "
+)
+
 ## end timer
 end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
@@ -105,7 +118,11 @@ elapsed_time=$((end_time - start_time))
 # Calculate and print the elapsed time
 total_minutes=$((elapsed_time / 60))
 
-printf "Time download table %s: %02d minutes (%02d seconds)\n" "$table_name" $total_minutes $elapsed_time
+printf "Time download table %s (row count: %d): %02d minutes (%02d seconds)\n" \
+  "$table_name" \
+  "$row_count" \
+  "$total_minutes" \
+  "$elapsed_time"
 
 # Cleanup
 unset PGPASSWORD

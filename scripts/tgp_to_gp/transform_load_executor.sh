@@ -125,5 +125,10 @@ unset PGPASSWORD
 ## end timer
 end_time=$(date +%s)
 elapsed_time=$((end_time - start_time))
+total_minutes=$((elapsed_time / 60))
 
-printf "Elapsed time for table %s: %d seconds\n" "$original_table_name" "$elapsed_time"
+## print elapsed time and row count
+printf "Elapsed time for table %s: %02d minutes (%02d seconds)\n" \
+  "$original_table_name" \
+  "$total_minutes" \
+  "$elapsed_time"
