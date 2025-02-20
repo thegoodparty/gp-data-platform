@@ -93,7 +93,7 @@ psql \
   -p "$db_port" \
   -U "$db_user" \
   -d "$db_name" \
-  -c "\COPY staging.${original_table_name} FROM './tmp_data/${original_table_name}.csv' WITH CSV HEADER"
+  -c "\COPY staging.\"${original_table_name}\" FROM './tmp_data/${original_table_name}.csv' WITH CSV HEADER"
 upload_end=$(date +%s)
 upload_time=$((upload_end - upload_start))
 
@@ -115,7 +115,7 @@ psql \
   -p "$db_port" \
   -U "$db_user" \
   -d "$db_name" \
-  -c "DROP TABLE staging.${original_table_name};"
+  -c "DROP TABLE staging.\"${original_table_name}\";"
 drop_end=$(date +%s)
 drop_time=$((drop_end - drop_start))
 

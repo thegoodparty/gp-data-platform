@@ -98,18 +98,34 @@ psql \
   -c "$sql_command" \
   > ./tmp_data/$table_name.csv
 
-# Get the row count for the destination table
-row_count=$(
-  psql \
-    -h "$db_host" \
-    -p "$db_port" \
-    -U "$db_user" \
-    -d "$db_name" \
-    -t -c "
-        SELECT COUNT(*)
-        FROM public.$table_name
-    "
-)
+# Get the row count pulled from the source table
+if [ "$is_incremental" = "true" ]; then
+    row_count=$(
+        psql \
+            -h "$db_host" \
+            -p "$db_port" \
+            -U "$db_user" \
+            -d "$db_name" \
+            -t -c "
+                SELECT COUNT(*)
+                FROM public.$table_name
+                WHERE \"updatedAt\" >= EXTRACT(EPOCH FROM timestamp '$cutoff_date')*1000
+            "
+    )
+else
+    row_count=$(
+        psql \
+            -h "$db_host" \
+            -p "$db_port" \
+            -U "$db_user" \
+            -d "$db_name" \
+            -t -c "
+                SELECT COUNT(*)
+                FROM public.$table_name
+                WHERE \"updatedAt\" < EXTRACT(EPOCH FROM timestamp '$cutoff_date')*1000
+            "
+    )
+fi
 
 ## end timer
 end_time=$(date +%s)

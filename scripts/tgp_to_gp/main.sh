@@ -15,15 +15,13 @@ tables_in_tgp=(
 )
 
 slow_tables_in_tgp=(
-    "campaignplanversion" # 2-23 minutes, 57mb on disk
+    "campaignplanversion" # 2-23 minutes, 58mb on disk
     "municipality" # 7-70 minutes, 264MB
     "campaign" # 8-72 minutes, 382 MB
 )
-# many_to_many_tables=(
-# )
 
-# download data from tgp-api dbs in parallel
-# latest run on 2025-02-19 6:00:00 ET
+## download data from tgp-api dbs in parallel
+## latest run on 2025-02-19 17:00:00 ET
 for table in "${tables_in_tgp[@]}"; do
     ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -31,12 +29,12 @@ for table in "${tables_in_tgp[@]}"; do
         --db_user "$DB_USER_TGP" \
         --db_name "$DB_NAME_TGP" \
         --table_name "$table" \
-        --cutoff_date "2026-02-14 00:00:00" \
+        --cutoff_date "2026-02-19 17:00:00" \
         --is_incremental "$IS_INCREMENTAL" &
 done
 
-# download full user data to assist with foreign key constraints
-# latest run on 2025-02-19 6:00:00 ET
+## download full user data to assist with foreign key constraints
+## latest run on 2025-02-19 17:00:00 ET
 ./table_extract.sh \
     --db_host "$DB_HOST_TGP" \
     --db_port "$DB_PORT_TGP" \
@@ -47,8 +45,8 @@ done
     --is_incremental false &
 
 
-# comment out large table downloads for dev work
-# latest run on 2025-02-19 6:00:00 ET
+## comment out large table downloads for dev work
+## latest run on 2025-02-19 17:00:00 ET
 for table in "${slow_tables_in_tgp[@]}"; do
     caffeinate ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -56,15 +54,29 @@ for table in "${slow_tables_in_tgp[@]}"; do
         --db_user "$DB_USER_TGP" \
         --db_name "$DB_NAME_TGP" \
         --table_name "$table" \
-        --cutoff_date "2026-02-14 00:00:00" \
+        --cutoff_date "2026-02-19 17:00:00" \
         --is_incremental "$IS_INCREMENTAL" &
 done
 
+## there's only one many-to-many table and it lacks an `updatedAt` column
+## so we'll just download the full table
+download_start=$(date +%s)
+psql \
+    -h "$DB_HOST_TGP" \
+    -p "$DB_PORT_TGP" \
+    -U "$DB_USER_TGP" \
+    -d "$DB_NAME_TGP" \
+    -c "COPY (
+        SELECT *
+        FROM public.\"campaign_topIssues__topissue_campaigns\"
+    ) TO STDOUT WITH CSV HEADER" \
+    > ./tmp_data/campaign_topIssues__topissue_campaigns.csv
+download_end=$(date +%s)
+download_time=$((download_end-download_start))
+printf "Time to download table campaign_topIssues__topissue_campaigns: %d seconds\n" "$download_time"
 
-## need to add many-to-many mapping tables (full table replications, may need to have these created in prisma for prod env)
 
-
-# let parallel downloads finish
+#let parallel downloads finish
 wait
 
 # prompt user to switch to GP network before continuing
@@ -80,6 +92,7 @@ transform_load_queries=(
     "aichat|$aichat_create_staging|$aichat_upsert"  # 8 seconds
     "campaignplanversion|$campaignplanversion_create_staging|$campaignplanversion_upsert"  # 30 seconds
     "topissue|$topissue_create_staging|$topissue_upsert"  # 6 seconds
+    "campaign_topIssues__topissue_campaigns|$campaign_topIssues__topissue_campaigns_create_staging|$campaign_topIssues__topissue_campaigns_upsert"
     "position|$position_create_staging|$position_upsert"  # 6 seconds
     "candidateposition|$candidateposition_create_staging|$candidateposition_upsert"  # 10 seconds
     "censusentity|$censusentity_create_staging|$censusentity_upsert"  # 15 seconds

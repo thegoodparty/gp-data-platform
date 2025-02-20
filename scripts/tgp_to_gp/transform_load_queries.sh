@@ -211,36 +211,36 @@ aichat_create_staging="
     campaign integer NULL
   );"
 
-  aichat_upsert="
-    INSERT INTO public.ai_chat (
-        created_at,
-        updated_at,
-        id,
-        assistant,
-        thread_id,
-        data,
-        user_id,
-        campaign_id
-    )
-    SELECT
-        to_timestamp(\"createdAt\"::double precision/1000),
-        to_timestamp(\"updatedAt\"::double precision/1000),
-        id,
-        assistant,
-        thread,
-        data,
-        \"user\",
-        campaign
-    FROM staging.aichat
-    WHERE campaign in (select id from public.campaign)
-    ON CONFLICT (id) DO UPDATE SET
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        assistant = EXCLUDED.assistant,
-        thread_id = EXCLUDED.thread_id,
-        data = EXCLUDED.data,
-        user_id = EXCLUDED.user_id,
-        campaign_id = EXCLUDED.campaign_id
+aichat_upsert="
+  INSERT INTO public.ai_chat (
+      created_at,
+      updated_at,
+      id,
+      assistant,
+      thread_id,
+      data,
+      user_id,
+      campaign_id
+  )
+  SELECT
+      to_timestamp(\"createdAt\"::double precision/1000),
+      to_timestamp(\"updatedAt\"::double precision/1000),
+      id,
+      assistant,
+      thread,
+      data,
+      \"user\",
+      campaign
+  FROM staging.aichat
+  WHERE campaign in (select id from public.campaign)
+  ON CONFLICT (id) DO UPDATE SET
+      created_at = EXCLUDED.created_at,
+      updated_at = EXCLUDED.updated_at,
+      assistant = EXCLUDED.assistant,
+      thread_id = EXCLUDED.thread_id,
+      data = EXCLUDED.data,
+      user_id = EXCLUDED.user_id,
+      campaign_id = EXCLUDED.campaign_id
 ;"
 
 
@@ -309,6 +309,32 @@ topissue_upsert="
     created_at = EXCLUDED.created_at,
     updated_at = EXCLUDED.updated_at;
 "
+
+
+## campaign_topIssues__topissue_campaigns
+campaign_topIssues__topissue_campaigns_create_staging="
+  CREATE SCHEMA IF NOT EXISTS staging;
+  DROP TABLE IF EXISTS staging.\"campaign_topIssues__topissue_campaigns\";
+  CREATE TABLE staging.\"campaign_topIssues__topissue_campaigns\" (
+    id serial NOT NULL,
+    \"campaign_topIssues\" integer NULL,
+    \"topissue_campaigns\" integer NULL
+  );"
+
+campaign_topIssues__topissue_campaigns_upsert="
+  INSERT INTO public.\"_CampaignToTopIssue\" (
+    \"A\",
+    \"B\"
+  )
+  SELECT
+    \"campaign_topIssues\",
+    \"topissue_campaigns\"
+  FROM staging.\"campaign_topIssues__topissue_campaigns\"
+  WHERE 1=1
+    AND \"campaign_topIssues\" IN (SELECT id FROM public.campaign)
+    AND \"topissue_campaigns\" IN (SELECT id FROM public.top_issue)
+  ON CONFLICT (\"A\", \"B\") DO NOTHING
+;"
 
 
 ## position
