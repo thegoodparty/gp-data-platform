@@ -7,6 +7,7 @@ db_port=""
 db_user=""
 db_name=""
 original_table_name=""
+new_table_name=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,6 +31,10 @@ while [[ $# -gt 0 ]]; do
             original_table_name="$2"
             shift 2
             ;;
+        --new_table_name)
+            new_table_name="$2"
+            shift 2
+            ;;
         --staging_query)
             staging_query="$2"
             shift 2
@@ -39,7 +44,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --help)
-            echo "Usage: $0 --db_host hostname --db_port port --db_user username --db_name dbname --original_table_name table_name --staging_query staging_query --upsert_query upsert_query"
+            echo "Usage: $0 --db_host hostname --db_port port --db_user username --db_name dbname --original_table_name table_name --new_table_name new_table_name --staging_query staging_query --upsert_query upsert_query"
             exit 0
             ;;
         *)
@@ -50,8 +55,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required parameters
-if [ -z "$db_host" ] || [ -z "$db_port" ] || [ -z "$db_user" ] || [ -z "$db_name" ] || [ -z "$original_table_name" ] || [ -z "$staging_query" ] || [ -z "$upsert_query" ]; then
-    echo "Error: Missing required database connection parameters or original_table_name"
+if [ -z "$db_host" ] || [ -z "$db_port" ] || [ -z "$db_user" ] || [ -z "$db_name" ] || [ -z "$original_table_name" ] || [ -z "$new_table_name" ] || [ -z "$staging_query" ] || [ -z "$upsert_query" ]; then
+    echo "Error: Missing required database connection parameters, original_table_name, or new_table_name"
     echo "Use --help for usage information"
     exit 1
 fi
@@ -107,6 +112,22 @@ psql \
   -c "$upsert_query"
 upsert_end=$(date +%s)
 upsert_time=$((upsert_end - upsert_start))
+
+
+# Reset the sequence for the table to avoid id conflicts upon auto-serial insert
+if [ "$new_table_name" != "_CampaignToTopIssue" ]; then
+  psql \
+    -h "$db_host" \
+    -p "$db_port" \
+    -U "$db_user" \
+    -d "$db_name" \
+    -c "SELECT setval(
+      pg_get_serial_sequence('${new_table_name}', 'id'),
+      (SELECT max(id) from \"${new_table_name}\") + 100,
+      true
+    );"
+fi
+
 
 ## drop the staging table
 drop_start=$(date +%s)
