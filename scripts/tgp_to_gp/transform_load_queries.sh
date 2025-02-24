@@ -85,14 +85,16 @@ user_upsert="
       email,
       phone,
       zip,
-      CASE
-          WHEN meta_data = '' THEN '{}'
-          ELSE meta_data
-      END::jsonb as meta_data,
-      CASE
-          WHEN role = 'campaign' THEN ARRAY['candidate'::\"UserRole\"]
-          ELSE ARRAY[role::\"UserRole\"]
-      END as roles,
+      case
+        when meta_data = '' then '{}'
+        else meta_data
+      end::jsonb as meta_data,
+      case
+        when role = 'campaign' and is_admin is true then array['candidate'::\"UserRole\", 'admin'::\"UserRole\"]
+        when role = 'campaign' and is_admin is false then array['candidate'::\"UserRole\"]
+        when is_admin is true then array[role::\"UserRole\", 'admin'::\"UserRole\"]
+        else array[role::\"UserRole\"]
+      end as roles,
       password_reset_token,
       avatar,
       has_password
