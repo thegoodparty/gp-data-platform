@@ -1,0 +1,46 @@
+{
+    "path_count": 177,
+    "parsed_path_count": 177,
+    "static_analysis_path_count": 0,
+    "static_analysis_parsed_path_count": 0,
+    "is_partial_parse_enabled": true,
+    "is_static_analysis_enabled": true,
+    "read_files_elapsed": 0.015998720191419125,
+    "load_macros_elapsed": 0.8800608003512025,
+    "parse_project_elapsed": 0.0036569032818078995,
+    "patch_sources_elapsed": 6.770715117454529e-06,
+    "process_manifest_elapsed": 0.01931897457689047,
+    "load_all_elapsed": 0.9361698674038053,
+    "projects": [
+        {
+            "project_name": "my_new_project",
+            "elapsed": 0.0012150006368756294,
+            "parsers": [],
+            "parsed_path_count": 0
+        },
+        {
+            "project_name": "dbt_databricks",
+            "elapsed": 0.0007032426074147224,
+            "parsers": [],
+            "parsed_path_count": 0
+        },
+        {
+            "project_name": "dbt_spark",
+            "elapsed": 0.0007929522544145584,
+            "parsers": [],
+            "parsed_path_count": 0
+        },
+        {
+            "project_name": "dbt",
+            "elapsed": 0.0008927267044782639,
+            "parsers": [
+                {
+                    "parser": "doc",
+                    "elapsed": 0.00019096583127975464,
+                    "parsed_path_count": 1
+                }
+            ],
+            "parsed_path_count": 1
+        }
+    ]
+}
