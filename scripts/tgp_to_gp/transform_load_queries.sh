@@ -92,8 +92,10 @@ user_upsert="
       case
         when role = 'campaign' and is_admin is true then array['candidate'::\"UserRole\", 'admin'::\"UserRole\"]
         when role = 'campaign' and is_admin is false then array['candidate'::\"UserRole\"]
-        when is_admin is true then array[role::\"UserRole\", 'admin'::\"UserRole\"]
-        else array[role::\"UserRole\"]
+        when role is not null and is_admin is true then array[role::\"UserRole\", 'admin'::\"UserRole\"]
+        when role is not null and is_admin is false then array[role::\"UserRole\"]
+        when role is null and is_admin is true then array['admin'::\"UserRole\"]
+        when role is null and is_admin is false then NULL
       end as roles,
       password_reset_token,
       avatar,
