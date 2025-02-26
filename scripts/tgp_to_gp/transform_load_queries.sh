@@ -646,3 +646,42 @@ municipality_upsert="
     created_at = EXCLUDED.created_at,
     updated_at = EXCLUDED.updated_at;
 "
+
+
+## election_type
+electiontype_create_staging="
+  CREATE SCHEMA IF NOT EXISTS staging;
+  DROP TABLE IF EXISTS staging.electiontype;
+  CREATE TABLE staging.electiontype (
+    \"createdAt\" bigint NULL,
+    \"updatedAt\" bigint NULL,
+    id serial NOT NULL,
+    name text NULL,
+    state text NULL,
+    category text NULL
+  );"
+
+electiontype_upsert="
+  INSERT INTO public.election_type (
+    id,
+    created_at,
+    updated_at,
+    name,
+    state,
+    category
+  )
+  SELECT
+    id,
+    to_timestamp(\"createdAt\"::double precision/1000),
+    to_timestamp(\"updatedAt\"::double precision/1000),
+    name,
+    state,
+    category
+  FROM staging.electiontype
+  ON CONFLICT (id) DO UPDATE SET
+    created_at = EXCLUDED.created_at,
+    updated_at = EXCLUDED.updated_at,
+    name = EXCLUDED.name,
+    state = EXCLUDED.state,
+    category = EXCLUDED.category;
+"

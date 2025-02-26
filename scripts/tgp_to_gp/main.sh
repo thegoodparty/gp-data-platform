@@ -12,6 +12,7 @@ tables_in_tgp=(
     "pathtovictory"
     "topissue"
     "position"
+    "electiontype"
 )
 
 slow_tables_in_tgp=(
@@ -21,7 +22,7 @@ slow_tables_in_tgp=(
 )
 
 ## download data from tgp-api dbs in parallel
-## latest run on 2025-02-19 17:00:00 ET
+## latest run on 2025-02-26 13:00:00 ET
 for table in "${tables_in_tgp[@]}"; do
     ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -29,12 +30,12 @@ for table in "${tables_in_tgp[@]}"; do
         --db_user "$DB_USER_TGP" \
         --db_name "$DB_NAME_TGP" \
         --table_name "$table" \
-        --cutoff_date "2026-02-19 17:00:00" \
+        --cutoff_date "2026-02-26 00:00:00" \
         --is_incremental "$IS_INCREMENTAL" &
 done
 
 ## download full user data to assist with foreign key constraints
-## latest run on 2025-02-19 17:00:00 ET
+## latest run on 2025-02-26 13:00:00 ET
 ./table_extract.sh \
     --db_host "$DB_HOST_TGP" \
     --db_port "$DB_PORT_TGP" \
@@ -46,7 +47,7 @@ done
 
 
 ## comment out large table downloads for dev work
-## latest run on 2025-02-19 17:00:00 ET
+## latest run on 2025-02-26 13:00:00 ET
 for table in "${slow_tables_in_tgp[@]}"; do
     caffeinate ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -54,7 +55,7 @@ for table in "${slow_tables_in_tgp[@]}"; do
         --db_user "$DB_USER_TGP" \
         --db_name "$DB_NAME_TGP" \
         --table_name "$table" \
-        --cutoff_date "2026-02-19 17:00:00" \
+        --cutoff_date "2026-02-26 00:00:00" \
         --is_incremental "$IS_INCREMENTAL" &
 done
 
@@ -100,6 +101,7 @@ transform_load_queries=(
     "campaignupdatehistory|campaign_update_history|$campaignupdatehistory_create_staging|$campaignupdatehistory_upsert"  # 8 seconds
     "pathtovictory|path_to_victory|$pathtovictory_create_staging|$pathtovictory_upsert"  # 72 seconds
     "municipality|municipality|$municipality_create_staging|$municipality_upsert"  # 2-8 minutes
+    "electiontype|election_type|$electiontype_create_staging|$electiontype_upsert"  # 2-8 minutes
 )
 
 
