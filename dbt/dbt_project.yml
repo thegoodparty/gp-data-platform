@@ -32,6 +32,6 @@ clean-targets: # directories to be removed by `dbt clean`
 
 models:
   goodparty_data_catalog:
-    # Applies to all files under models/example/
+    # Applies to all files under models/mart/
     mart:
       +materialized: table

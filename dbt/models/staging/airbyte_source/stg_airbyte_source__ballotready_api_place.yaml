@@ -1,0 +1,14 @@
+models:
+  - name: stg_airbyte_source__ballotready_api_place
+    description: Place data scan from [`places` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/places)
+    columns:
+      - name: databaseId
+        description: Identifies the primary key from the database.
+        data_tests:
+          - not_null
+          - unique
+      - name: id
+        description: Identifies the primary key from the database.
+        data_tests:
+          - not_null
+          - unique
