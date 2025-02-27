@@ -3,6 +3,7 @@ from base64 import b64encode
 
 import pandas as pd
 import requests
+from pyspark.sql import DataFrame
 
 
 def _base64_encode_id(candidacy_id: str) -> str:
@@ -22,7 +23,7 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance_ids(encoded_candidacy_id: str) -> pd.DataFrame:
+def _get_stance(candidacy_id: str) -> pd.DataFrame:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
@@ -32,6 +33,8 @@ def _get_stance_ids(encoded_candidacy_id: str) -> pd.DataFrame:
     Returns:
         DataFrame containing stance IDs
     """
+    encoded_candidacy_id = _base64_encode_id(candidacy_id)
+
     # GraphQL endpoint
     url = "https://bpi.civicengine.com/graphql"
 
@@ -43,7 +46,12 @@ def _get_stance_ids(encoded_candidacy_id: str) -> pd.DataFrame:
                 ... on Candidacy {
                     stances {
                         nodes {
+                            databaseId
                             id
+                            issue
+                            locale
+                            referenceUrl
+                            statement
                         }
                     }
                 }
@@ -67,31 +75,75 @@ def _get_stance_ids(encoded_candidacy_id: str) -> pd.DataFrame:
     # Parse response
     data = response.json()
 
-    # Extract stance IDs and convert to DataFrame
+    # Extract all stance data and convert to DataFrame
     try:
         stances = data["data"]["node"]["stances"]["nodes"]
-        stance_ids = [stance["id"] for stance in stances]
-        return pd.DataFrame({"stance_id": stance_ids})
+
+        # if no stances, return empty dataframe
+        if not stances:
+            return pd.DataFrame(
+                columns=[
+                    "databaseId",
+                    "id",
+                    "issue",
+                    "locale",
+                    "referenceUrl",
+                    "statement",
+                    "candidacy_id",
+                    "encoded_candidacy_id",
+                ]
+            )
+
+        # Add candidacy_id and encoded_candidacy_id to each stance
+        for stance in stances:
+            stance["candidacy_id"] = candidacy_id
+            stance["encoded_candidacy_id"] = encoded_candidacy_id
+        return pd.DataFrame(stances)
+
     except (KeyError, TypeError):
         # Return empty DataFrame if no stances found
-        return pd.DataFrame(columns=["stance_id"])
+        return pd.DataFrame(
+            columns=[
+                "databaseId",
+                "id",
+                "issue",
+                "locale",
+                "referenceUrl",
+                "statement",
+                "candidacy_id",
+                "encoded_candidacy_id",
+            ]
+        )
 
 
 def model(dbt, session):
-    # configure the model
     dbt.config(materialized="incremental")
-
-    # Get upstream data using ref
-    candidacies = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
-    candidacies = candidacies.to_pandas_on_spark()
-
-    # transform candidacy ids
-    candidacies["encoded_candidacy_id"] = candidacies["candidacy_id"].apply(
-        _base64_encode_id
+    # get candidacies and ids
+    candidacies: DataFrame = dbt.ref(
+        "stg_airbyte_source__ballotready_s3_candidacies_v3"
     )
 
-    # get stances
-    # stances = candidacies["encoded_candidacy_id"].apply(get_stance_ids)
+    # get ids from candidacies
+    ids_from_candidacies = session.sql(
+        f"select distinct(candidacy_id) from {candidacies}"
+    ).collect()[0]
+    ids_from_this = session.sql(
+        f"select distinct(candidacy_id) from {dbt.this}"
+    ).collect()[0]
 
-    # stance = stance.to_spark()
-    # return stance
+    # get ids from candidacies that are not in the current table
+    ids_to_get = [
+        candidacy_id
+        for candidacy_id in ids_from_candidacies
+        if candidacy_id not in ids_from_this
+    ]
+
+    # filter candidacies to only include ids that need to be fetched
+    candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
+
+    # get stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
+    candidacies = candidacies.to_pandas_on_spark()
+    stance = candidacies["candidacy_id"].apply(_get_stance)
+
+    stance = stance.to_spark()
+    return stance
