@@ -1,7 +1,7 @@
-import datetime
 import hashlib
 import os
 from base64 import b64encode
+from datetime import datetime
 
 import pandas as pd
 import requests
@@ -172,7 +172,8 @@ def model(dbt, session):
     stance["id"] = stance.apply(_generate_hash, axis=1)
 
     # Add a timestamp for when this record was processed
-    stance["updated_at"] = datetime.datetime.now()
+    stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # convert to spark
     stance = stance.to_spark()
     return stance
