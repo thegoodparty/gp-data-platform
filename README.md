@@ -34,6 +34,9 @@ The project structure will be added here as it evolves
 
 To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation). This ensures consistent Python versions across development environments.
 
+The environment is managed by [`poetry`](https://python-poetry.org/docs/#installing-with-pipx), which is installed via [`pipx`](https://pipx.pypa.io/stable/installation/). To create subdirectories to store the virtual environment, run `poetry config virtualenvs.in-project true`.
+
+Enter the subdirectory of development and run `poetry install` where there is a `pyproject.toml` to install dependencies. To [activate the environment](https://python-poetry.org/docs/managing-environments/#bash-csh-zsh), run `eval $(poetry env activate)` and `deactivate` to deactivate. Dependencies can be added with `poetry add <package>`.
 
 ### Pre-commit Hooks
 
