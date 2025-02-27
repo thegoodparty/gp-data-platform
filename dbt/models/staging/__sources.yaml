@@ -4,10 +4,11 @@ sources:
   - name: airbyte_source
     schema: airbyte_source
     description: Raw data loaded from Airbyte
-    freshness:
-      warn_after:
-        count: 24
-        period: hour
+    freshness: # default freshness
+      warn_after: {count: 10, period: day}
+      error_after: {count: 31, period: day}
+      loaded_at_field: _airbyte_extracted_at
+
     tables:
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
