@@ -1,3 +1,5 @@
+import datetime
+import hashlib
 import os
 from base64 import b64encode
 
@@ -116,26 +118,46 @@ def _get_stance(candidacy_id: str) -> pd.DataFrame:
         )
 
 
+def _generate_hash(row):
+    # Combine relevant columns with null handling
+    columns_to_hash = ["stance_id", "candidacy_id"]
+    combined_value = ""
+
+    for col in columns_to_hash:
+        val = row.get(col, None)
+        if val is None:
+            combined_value += "_this_used_to_be_null_"
+        else:
+            combined_value += str(val)
+
+    # Generate MD5 hash
+    return hashlib.md5(combined_value.encode()).hexdigest()
+
+
 def model(dbt, session):
-    dbt.config(materialized="incremental")
+    dbt.config(
+        materialized="incremental", incremental_strategy="merge", unique_key="id"
+    )
+
     # get candidacies and ids
     candidacies: DataFrame = dbt.ref(
         "stg_airbyte_source__ballotready_s3_candidacies_v3"
     )
+    ids_from_candidacies = candidacies.select("candidacy_id").distinct().collect()
+    ids_from_candidacies = [row.candidacy_id for row in ids_from_candidacies]
 
-    # get ids from candidacies
-    ids_from_candidacies = session.sql(
-        f"select distinct(candidacy_id) from {candidacies}"
-    ).collect()[0]
-    ids_from_this = session.sql(
-        f"select distinct(candidacy_id) from {dbt.this}"
-    ).collect()[0]
+    if dbt.is_incremental:
+        existing_candidacy_ids = session.sql(
+            f"select distinct(candidacy_id) from {dbt.this}"
+        ).collect()[0]
+    else:
+        existing_candidacy_ids = []
 
     # get ids from candidacies that are not in the current table
     ids_to_get = [
         candidacy_id
         for candidacy_id in ids_from_candidacies
-        if candidacy_id not in ids_from_this
+        if candidacy_id not in existing_candidacy_ids
     ]
 
     # filter candidacies to only include ids that need to be fetched
@@ -144,6 +166,13 @@ def model(dbt, session):
     # get stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
     candidacies = candidacies.to_pandas_on_spark()
     stance = candidacies["candidacy_id"].apply(_get_stance)
+
+    # rename id -> stance_id and generate a surrogate key with dbt macros
+    stance = stance.rename(columns={"id": "stance_id"})
+    stance["id"] = stance.apply(_generate_hash, axis=1)
+
+    # Add a timestamp for when this record was processed
+    stance["updated_at"] = datetime.datetime.now()
 
     stance = stance.to_spark()
     return stance
