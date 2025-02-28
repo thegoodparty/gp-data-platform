@@ -188,3 +188,7 @@ def model(dbt, session) -> pd.DataFrame:
     stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     display(stance)
     return stance
+
+
+# This part is user provided model code
+# you will need to copy the next section to run the code
