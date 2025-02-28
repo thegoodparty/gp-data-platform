@@ -1,0 +1,7 @@
+version: 2
+
+models:
+  - name: int__ballotready_stance
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
