@@ -2,6 +2,7 @@ import hashlib
 import os
 from base64 import b64encode
 from datetime import datetime
+from functools import partial
 
 import pandas as pd
 import requests
@@ -25,7 +26,7 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance(candidacy_id: str) -> pd.Series:
+def _get_stance(candidacy_id: str, dbt) -> pd.Series:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
@@ -67,7 +68,7 @@ def _get_stance(candidacy_id: str) -> pd.Series:
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Authorization": f"Bearer {os.environ['DBT_ENV_SECRET_CIVICENGINE_API_TOKEN']}",
+        "Authorization": f"Bearer {dbt.config.get('ce_api_token')}",
     }
 
     # Make the request
@@ -161,9 +162,12 @@ def model(dbt, session) -> pd.DataFrame:
     # filter candidacies to only include ids that need to be fetched
     candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
 
+    # for development
+    candidacies = candidacies.limit(10)
+
     # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
     candidacies_pd = candidacies.toPandas()
-    stance = candidacies_pd["candidacy_id"].apply(_get_stance)
+    stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
 
     # Convert the result to a DataFrame
     stance = session.createDataFrame(stance)
