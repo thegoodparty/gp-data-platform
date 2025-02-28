@@ -25,7 +25,7 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance(candidacy_id: str) -> pd.DataFrame:
+def _get_stance_from_candidacies(row: pd.Series) -> pd.DataFrame:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
@@ -35,7 +35,7 @@ def _get_stance(candidacy_id: str) -> pd.DataFrame:
     Returns:
         DataFrame containing stance IDs
     """
-    encoded_candidacy_id = _base64_encode_id(candidacy_id)
+    encoded_candidacy_id = _base64_encode_id(row["candidacy_id"])
 
     # GraphQL endpoint
     url = "https://bpi.civicengine.com/graphql"
@@ -98,7 +98,7 @@ def _get_stance(candidacy_id: str) -> pd.DataFrame:
 
         # Add candidacy_id and encoded_candidacy_id to each stance
         for stance in stances:
-            stance["candidacy_id"] = candidacy_id
+            stance["candidacy_id"] = row["candidacy_id"]
             stance["encoded_candidacy_id"] = encoded_candidacy_id
         return pd.DataFrame(stances)
 
@@ -163,9 +163,11 @@ def model(dbt, session):
     # filter candidacies to only include ids that need to be fetched
     candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
 
-    # get stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
-    candidacies = candidacies.to_pandas_on_spark()
-    stance = candidacies["candidacy_id"].apply(_get_stance)
+    # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
+    stance = candidacies.apply(_get_stance_from_candidacies, axis=1)
+
+    # Convert the result to a DataFrame
+    stance = session.createDataFrame(stance)
 
     # rename id -> stance_id and generate a surrogate key with dbt macros
     stance = stance.rename(columns={"id": "stance_id"})
