@@ -1,5 +1,6 @@
+  
+    
 import hashlib
-import os
 from base64 import b64encode
 from datetime import datetime
 from functools import partial
@@ -48,14 +49,15 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
             node(id: $id) {
                 ... on Candidacy {
                     stances {
-                        nodes {
+                        databaseId
+                        id
+                        issue {
                             databaseId
                             id
-                            issue
-                            locale
-                            referenceUrl
-                            statement
                         }
+                        locale
+                        referenceUrl
+                        statement
                     }
                 }
             }
@@ -78,28 +80,29 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
 
     # Extract all stance data and convert to DataFrame
     try:
-        stances = data["data"]["node"]["stances"]["nodes"]
+        stances = data["data"]["node"]["stances"]
 
         # if no stances, return empty dataframe
         if not stances:
             return pd.DataFrame(
-                {
-                    "databaseId": None,
-                    "id": None,
-                    "issue": None,
-                    "locale": None,
-                    "referenceUrl": None,
-                    "statement": None,
-                    "candidacy_id": candidacy_id,
-                    "encoded_candidacy_id": encoded_candidacy_id,
-                }
+                columns=[
+                    "databaseId",
+                    "id",
+                    "issue",
+                    "locale",
+                    "referenceUrl",
+                    "statement",
+                    "candidacy_id",
+                    "encoded_candidacy_id",
+                ]
             )
 
         # Add candidacy_id and encoded_candidacy_id to each stance
         for stance in stances:
             stance["candidacy_id"] = candidacy_id
             stance["encoded_candidacy_id"] = encoded_candidacy_id
-        return pd.DataFrame(stances)
+        data = pd.DataFrame(stances)
+        return data
 
     except (KeyError, TypeError):
         # Return empty DataFrame if no stances found
@@ -163,14 +166,19 @@ def model(dbt, session) -> pd.DataFrame:
     candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
 
     # for development
-    candidacies = candidacies.limit(10)
+    candidacies = candidacies.sample(False, 0.01).limit(3)
+
 
     # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
     candidacies_pd = candidacies.toPandas()
     stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
+    display("\nStance Data:")
+    display(stance.to_string(index=True))
 
-    # Convert the result to a DataFrame
-    stance = session.createDataFrame(stance)
+    # stance = session.createDataFrame(stance)
+
+    # Convert the resulting pd.Series to a DataFrame
+    stance = pd.DataFrame(stance)
 
     # rename id -> stance_id and generate a surrogate key with dbt macros
     stance = stance.rename(columns={"id": "stance_id"})
@@ -178,5 +186,5 @@ def model(dbt, session) -> pd.DataFrame:
 
     # Add a timestamp for when this record was processed
     stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    display(stance)
     return stance
