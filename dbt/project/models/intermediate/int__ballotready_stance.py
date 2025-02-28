@@ -176,6 +176,7 @@ def model(dbt, session) -> pd.DataFrame:
     stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
     ## TODO: `_get_stance` works as expected.
     ## need to fix returns so that output is ultimately a single, coherent dataframe
+    ## drop cases when the id is None (these are cases where there were no stances)
 
     display("Stance Data:")
     display(type(stance))
