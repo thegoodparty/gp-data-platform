@@ -35,3 +35,7 @@ models:
     # Applies to all files under models/mart/
     mart:
       +materialized: table
+    intermediate:
+      # set defaults for all .py models defined in this subfolder
+      +submission_method: serverless_cluster
+      +create_notebook: True
