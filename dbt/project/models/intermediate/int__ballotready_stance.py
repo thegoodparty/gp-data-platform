@@ -1,5 +1,3 @@
-  
-    
 import hashlib
 from base64 import b64encode
 from datetime import datetime
@@ -84,7 +82,8 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
 
         # if no stances, return empty dataframe
         if not stances:
-            return pd.DataFrame(
+            display("no stances found")
+            empty_df = pd.DataFrame(
                 columns=[
                     "databaseId",
                     "id",
@@ -96,12 +95,15 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
                     "encoded_candidacy_id",
                 ]
             )
+            return empty_df
 
         # Add candidacy_id and encoded_candidacy_id to each stance
         for stance in stances:
             stance["candidacy_id"] = candidacy_id
             stance["encoded_candidacy_id"] = encoded_candidacy_id
         data = pd.DataFrame(stances)
+        display("found data:")
+        display(data)
         return data
 
     except (KeyError, TypeError):
@@ -166,14 +168,18 @@ def model(dbt, session) -> pd.DataFrame:
     candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
 
     # for development
-    candidacies = candidacies.sample(False, 0.01).limit(3)
+    candidacies = candidacies.sample(False, 0.01).limit(100)
 
 
     # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
     candidacies_pd = candidacies.toPandas()
     stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
-    display("\nStance Data:")
-    display(stance.to_string(index=True))
+    ## TODO: `_get_stance` works as expected.
+    ## need to fix returns so that output is ultimately a single, coherent dataframe
+
+    display("Stance Data:")
+    display(type(stance))
+    display(stance)
 
     # stance = session.createDataFrame(stance)
 
