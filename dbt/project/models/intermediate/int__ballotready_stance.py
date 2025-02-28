@@ -25,20 +25,20 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance_from_candidacies(row: pd.Series) -> pd.DataFrame:
+def _get_stance(candidacy_id: str) -> pd.Series:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
     Args:
-        encoded_candidacy_id: The base64 encoded candidacy ID
+        candidacy_id: the candidacy id to get the stance for
 
     Returns:
         DataFrame containing stance IDs
     """
-    encoded_candidacy_id = _base64_encode_id(row["candidacy_id"])
-
     # GraphQL endpoint
     url = "https://bpi.civicengine.com/graphql"
+
+    encoded_candidacy_id = _base64_encode_id(candidacy_id)
 
     # Construct the payload
     payload = {
@@ -73,8 +73,6 @@ def _get_stance_from_candidacies(row: pd.Series) -> pd.DataFrame:
     # Make the request
     response = requests.post(url, json=payload, headers=headers)
     response.raise_for_status()
-
-    # Parse response
     data = response.json()
 
     # Extract all stance data and convert to DataFrame
@@ -84,21 +82,21 @@ def _get_stance_from_candidacies(row: pd.Series) -> pd.DataFrame:
         # if no stances, return empty dataframe
         if not stances:
             return pd.DataFrame(
-                columns=[
-                    "databaseId",
-                    "id",
-                    "issue",
-                    "locale",
-                    "referenceUrl",
-                    "statement",
-                    "candidacy_id",
-                    "encoded_candidacy_id",
-                ]
+                {
+                    "databaseId": None,
+                    "id": None,
+                    "issue": None,
+                    "locale": None,
+                    "referenceUrl": None,
+                    "statement": None,
+                    "candidacy_id": candidacy_id,
+                    "encoded_candidacy_id": encoded_candidacy_id,
+                }
             )
 
         # Add candidacy_id and encoded_candidacy_id to each stance
         for stance in stances:
-            stance["candidacy_id"] = row["candidacy_id"]
+            stance["candidacy_id"] = candidacy_id
             stance["encoded_candidacy_id"] = encoded_candidacy_id
         return pd.DataFrame(stances)
 
@@ -134,7 +132,7 @@ def _generate_hash(row):
     return hashlib.md5(combined_value.encode()).hexdigest()
 
 
-def model(dbt, session):
+def model(dbt, session) -> pd.DataFrame:
     dbt.config(
         materialized="incremental", incremental_strategy="merge", unique_key="id"
     )
@@ -164,7 +162,8 @@ def model(dbt, session):
     candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
 
     # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
-    stance = candidacies.apply(_get_stance_from_candidacies, axis=1)
+    candidacies_pd = candidacies.toPandas()
+    stance = candidacies_pd["candidacy_id"].apply(_get_stance)
 
     # Convert the result to a DataFrame
     stance = session.createDataFrame(stance)
@@ -176,6 +175,4 @@ def model(dbt, session):
     # Add a timestamp for when this record was processed
     stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # convert to spark
-    stance = stance.to_spark()
     return stance
