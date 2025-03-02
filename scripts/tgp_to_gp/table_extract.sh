@@ -82,7 +82,6 @@ else
     sql_command="COPY (
         SELECT *
         FROM public.$table_name
-        WHERE \"updatedAt\" < EXTRACT(EPOCH FROM timestamp '$cutoff_date')*1000
     ) TO STDOUT WITH CSV HEADER"
 fi
 
