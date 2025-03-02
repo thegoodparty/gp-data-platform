@@ -26,7 +26,7 @@ A comprehensive data platform that handles data ingestion, transformation, orche
 
 ## Project Structure
 
-The project structure will be added here as it
+The project structure will be added here as it evolves
 
 ## Development Practices
 
@@ -34,15 +34,15 @@ The project structure will be added here as it
 
 To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation). This ensures consistent Python versions across development environments.
 
+The environment is managed by [`poetry`](https://python-poetry.org/docs/#installing-with-pipx), which is installed via [`pipx`](https://pipx.pypa.io/stable/installation/). To create subdirectories to store the virtual environment, run `poetry config virtualenvs.in-project true`.
+
+Enter the subdirectory of development and run `poetry install` where there is a `pyproject.toml` to install dependencies. To [activate the environment](https://python-poetry.org/docs/managing-environments/#bash-csh-zsh), run `eval $(poetry env activate)` and `deactivate` to deactivate. Dependencies can be added with `poetry add <package>`.
 
 ### Pre-commit Hooks
 
 This project uses pre-commit hooks to ensure code quality and consistency. The hooks include:
 - General file linting (trailing whitespace, file endings, YAML checks)
-- Python code formatting (black)
-- Python import sorting (isort)
-- Python code linting (flake8)
-- Python type checking (mypy)
+- Python code formatting, linting and type checking (black, isort, flake8, mypy)
 
 To set up pre-commit:
 
@@ -66,5 +66,3 @@ The pre-commit hooks will run automatically on `git commit`. If any hooks fail, 
 The pre-commit checks are also run automatically via GitHub Actions:
 - On all pull requests
 - On all pushes to main/master branches
-
-This ensures that all code changes adhere to the project's quality standards, even if contributors haven't set up pre-commit locally.
