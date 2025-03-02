@@ -22,7 +22,7 @@ slow_tables_in_tgp=(
 )
 
 ## download data from tgp-api dbs in parallel
-## latest run on 2025-03-02 02:00:00 ET
+## latest run on 2025-03-02 15:00:00 ET
 for table in "${tables_in_tgp[@]}"; do
     ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -30,12 +30,12 @@ for table in "${tables_in_tgp[@]}"; do
         --db_user "$DB_USER_TGP" \
         --db_name "$DB_NAME_TGP" \
         --table_name "$table" \
-        --cutoff_date "2025-03-01 00:00:00" \
+        --cutoff_date "2025-03-02 11:00:00" \
         --is_incremental "$IS_INCREMENTAL" &
 done
 
 ## download full user data to assist with foreign key constraints
-## latest run on 2025-02-26 13:00:00 ET
+## latest run on 2025-03-02 15:00:00 ET
 ./table_extract.sh \
     --db_host "$DB_HOST_TGP" \
     --db_port "$DB_PORT_TGP" \
@@ -47,7 +47,7 @@ done
 
 
 ## comment out large table downloads for dev work
-## latest run on 2025-02-26 13:00:00 ET
+## latest run on 2025-03-02 15:00:00 ET
 for table in "${slow_tables_in_tgp[@]}"; do
     caffeinate ./table_extract.sh \
         --db_host "$DB_HOST_TGP" \
@@ -55,7 +55,7 @@ for table in "${slow_tables_in_tgp[@]}"; do
         --db_user "$DB_USER_TGP" \
         --db_name "$DB_NAME_TGP" \
         --table_name "$table" \
-        --cutoff_date "2025-03-01 00:00:00" \
+        --cutoff_date "2025-03-02 11:00:00" \
         --is_incremental "$IS_INCREMENTAL" &
 done
 
