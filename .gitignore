@@ -23,3 +23,9 @@ dbt/target/
 dbt/dbt_packages/
 dbt/logs/
 # end dbt Cloud content
+
+# ignore .venv
+.venv/
+
+# ignore tmp_data
+tmp_data/
