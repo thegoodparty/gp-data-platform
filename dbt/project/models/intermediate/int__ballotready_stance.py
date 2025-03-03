@@ -170,8 +170,10 @@ def model(dbt, session) -> pd.DataFrame:
     # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
     candidacies_pd = candidacies.toPandas()
     stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
+    print("\nStance Data:")
+    print(stance.to_string(index=True))
 
-    stance = session.createDataFrame(stance)
+    # stance = session.createDataFrame(stance)
 
     # Convert the resulting pd.Series to a DataFrame
     stance = pd.DataFrame(stance)
@@ -184,7 +186,3 @@ def model(dbt, session) -> pd.DataFrame:
     stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return stance
-
-
-# This part is user provided model code
-# you will need to copy the next section to run the code
