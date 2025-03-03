@@ -73,10 +73,8 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
 
     # Make the request
     response = requests.post(url, json=payload, headers=headers)
-    print(response)
     response.raise_for_status()
     data = response.json()
-    print(data)
 
     # Extract all stance data and convert to DataFrame
     try:
@@ -84,7 +82,8 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
 
         # if no stances, return empty dataframe
         if not stances:
-            return pd.DataFrame(
+            print("no stances found")
+            empty_df = pd.DataFrame(
                 columns=[
                     "databaseId",
                     "id",
@@ -96,12 +95,16 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
                     "encoded_candidacy_id",
                 ]
             )
+            return empty_df
 
         # Add candidacy_id and encoded_candidacy_id to each stance
         for stance in stances:
             stance["candidacy_id"] = candidacy_id
             stance["encoded_candidacy_id"] = encoded_candidacy_id
-        return pd.DataFrame(stances)
+        data = pd.DataFrame(stances)
+        print("found data:")
+        print(data)
+        return data
 
     except (KeyError, TypeError):
         # Return empty DataFrame if no stances found
@@ -165,13 +168,18 @@ def model(dbt, session) -> pd.DataFrame:
     candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
 
     # for development
-    candidacies = candidacies.limit(3)
+    candidacies = candidacies.sample(False, 0.01).limit(100)
 
     # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
     candidacies_pd = candidacies.toPandas()
     stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
-    print("\nStance Data:")
-    print(stance.to_string(index=True))
+    # TODO: `_get_stance` works as expected.
+    # need to fix returns so that output is ultimately a single, coherent dataframe
+    # drop cases when the id is None (these are cases where there were no stances)
+
+    print("Stance Data:")
+    print(type(stance))
+    print(stance)
 
     # stance = session.createDataFrame(stance)
 
@@ -184,5 +192,5 @@ def model(dbt, session) -> pd.DataFrame:
 
     # Add a timestamp for when this record was processed
     stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    print(stance)
     return stance
