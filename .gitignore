@@ -26,3 +26,6 @@ dbt/logs/
 
 # ignore .venv
 .venv/
+
+# ignore tmp_data
+tmp_data/
