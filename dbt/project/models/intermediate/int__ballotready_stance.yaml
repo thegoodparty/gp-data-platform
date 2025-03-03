@@ -5,3 +5,12 @@ models:
     config:
       materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
+    columns:
+      - name: candidacy_id
+        description: "The id of the candidacy"
+        tests:
+          - dbt_constraints.expect_column_values_to_be_unique
+      - name: stances
+        description: "The stances of the candidacy as a json with a list of json objects"
+      - name: updated_at
+        description: "The date and time the record was updated"

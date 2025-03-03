@@ -1,11 +1,18 @@
-import hashlib
 from base64 import b64encode
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import partial
 
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import lit, udf
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 
 def _base64_encode_id(candidacy_id: str) -> str:
@@ -122,22 +129,6 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
         )
 
 
-def _generate_hash(row):
-    # Combine relevant columns with null handling
-    columns_to_hash = ["stance_id", "candidacy_id"]
-    combined_value = ""
-
-    for col in columns_to_hash:
-        val = row.get(col, None)
-        if val is None:
-            combined_value += "_this_used_to_be_null_"
-        else:
-            combined_value += str(val)
-
-    # Generate MD5 hash
-    return hashlib.md5(combined_value.encode()).hexdigest()
-
-
 def model(dbt, session) -> pd.DataFrame:
     dbt.config(
         materialized="incremental", incremental_strategy="merge", unique_key="id"
@@ -151,46 +142,78 @@ def model(dbt, session) -> pd.DataFrame:
     ids_from_candidacies = [row.candidacy_id for row in ids_from_candidacies]
 
     if dbt.is_incremental:
+        # get existing candidacy ids in this table
         existing_candidacy_ids = session.sql(
             f"select distinct(candidacy_id) from {dbt.this}"
         ).collect()[0]
+
+        # only include records updated in the last 30 days
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        candidacies = candidacies.filter(candidacies["updated_at"] >= thirty_days_ago)
+
     else:
         existing_candidacy_ids = []
 
     # get ids from candidacies that are not in the current table
-    ids_to_get = [
+    candidacy_ids_to_get = [
         candidacy_id
         for candidacy_id in ids_from_candidacies
         if candidacy_id not in existing_candidacy_ids
     ]
 
     # filter candidacies to only include ids that need to be fetched
-    candidacies = candidacies.filter(candidacies["candidacy_id"].isin(ids_to_get))
+    candidacies = candidacies.filter(
+        candidacies["candidacy_id"].isin(candidacy_ids_to_get)
+    )
 
-    # for development
-    candidacies = candidacies.sample(False, 0.01).limit(100)
+    # for development take a 1% sample and limit to 10
+    candidacies = candidacies.sample(False, 0.01).limit(10)
 
-    # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to
-    candidacies_pd = candidacies.toPandas()
-    stance = candidacies_pd["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
-    # TODO: `_get_stance` works as expected.
-    # need to fix returns so that output is ultimately a single, coherent dataframe
-    # drop cases when the id is None (these are cases where there were no stances)
+    # wrapper for _get_stance here since it requires `dbt` as an argument
+    _get_stance_udf = udf(
+        partial(_get_stance, dbt=dbt),
+        returnType=ArrayType(
+            StructType(
+                [
+                    StructField("databaseId", IntegerType()),
+                    StructField("id", StringType()),
+                    StructField("issue", StringType()),
+                    StructField("locale", StringType()),
+                    StructField("referenceUrl", StringType()),
+                    StructField("statement", StringType()),
+                    StructField("candidacy_id", StringType()),
+                    StructField("encoded_candidacy_id", StringType()),
+                ]
+            )
+        ),
+    )
 
-    print("Stance Data:")
-    print(type(stance))
-    print(stance)
+    # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to get all stances for all candidacies in dataframe.
+    # stance = candidacies["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
+    stance = candidacies.withColumn(
+        "stances", _get_stance_udf(candidacies["candidacy_id"])
+    )
+    stance = stance.select("candidacy_id", "stances")
+    stance.show()
 
-    # stance = session.createDataFrame(stance)
+    # Add created_at column - only for new records
+    # Get current timestamp in UTC for created_at and updated_at
+    current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    if dbt.is_incremental:
+        # For existing records, keep their original created_at
+        # For new records, set to current time
+        stance = stance.withColumn(
+            "created_at",
+            lit(current_time_utc).where(
+                ~stance["candidacy_id"].isin(existing_candidacy_ids)
+            ),
+        )
+    else:
+        # For initial load, set created_at for all records
+        stance = stance.withColumn("created_at", lit(current_time_utc))
+    stance = stance.withColumn("updated_at", lit(current_time_utc))
 
-    # Convert the resulting pd.Series to a DataFrame
-    stance = pd.DataFrame(stance)
+    # Show the DataFrame with the new columns
+    stance.show()
 
-    # rename id -> stance_id and generate a surrogate key with dbt macros
-    stance = stance.rename(columns={"id": "stance_id"})
-    stance["id"] = stance.apply(_generate_hash, axis=1)
-
-    # Add a timestamp for when this record was processed
-    stance["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(stance)
     return stance
