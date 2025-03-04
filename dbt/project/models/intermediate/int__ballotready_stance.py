@@ -3,11 +3,16 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Dict, List
 
-import pandas as pd
 import requests
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit, udf
-from pyspark.sql.types import ArrayType, IntegerType, StructField, StructType
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 
 def _base64_encode_id(candidacy_id: str) -> str:
@@ -79,32 +84,25 @@ def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, int]]:
     response.raise_for_status()
     data = response.json()
 
-    # empty_stances = []
-    empty_stances = [{"databaseId": 24601}]
     # Extract all stance data and convert to DataFrame
     try:
         stances = data["data"]["node"]["stances"]
 
-        # if no stances, return empty dataframe
+        # if no stances, return empty list
         if not stances:
-            return empty_stances
-            # return json.dumps(empty_stances)
+            return []
 
         # Add candidacy_id and encoded_candidacy_id to each stance
-        new_stances = []
         for stance in stances:
-            stance["candidacy_id"] = candidacy_id
+            stance["candidacy_id"] = int(candidacy_id)
             stance["encoded_candidacy_id"] = encoded_candidacy_id
-            new_stances.append({"databaseId": stance["databaseId"]})
-        # return json.dumps(new_stances)
-        return new_stances
-        # return json.dumps(stances)
+        return stances
 
     except (KeyError, TypeError):
-        return empty_stances
+        return []
 
 
-def model(dbt, session) -> pd.DataFrame:
+def model(dbt, session) -> DataFrame:
     dbt.config(
         materialized="incremental", incremental_strategy="merge", unique_key="id"
     )
@@ -156,21 +154,25 @@ def model(dbt, session) -> pd.DataFrame:
                     StructField(
                         name="databaseId", dataType=IntegerType(), nullable=False
                     ),
-                    #             StructField("id", StringType()),
-                    # #             StructField("issue", StringType()),
-                    #             StructField("locale", StringType()),
-                    #             StructField("referenceUrl", StringType()),
-                    #             StructField("statement", StringType()),
-                    # StructField("candidacy_id", IntegerType()),
-                    #             StructField("encoded_candidacy_id", StringType()),
+                    StructField("id", StringType()),
+                    StructField(
+                        "issue",
+                        StructType(
+                            [
+                                StructField("databaseId", IntegerType()),
+                                StructField("id", StringType()),
+                            ]
+                        ),
+                    ),
+                    StructField("locale", StringType()),
+                    StructField("referenceUrl", StringType()),
+                    StructField("statement", StringType()),
+                    StructField("candidacy_id", IntegerType()),
+                    StructField("encoded_candidacy_id", StringType()),
                 ]
             )
         ),
     )
-
-    """
-    {"databaseId": integer, "id": "string=", "issue": {"databaseId": integer, "id": "string"}, "locale": "string", "referenceUrl": "string", "statement": "string", "candidacy_id": integer (or string?), "encoded_candidacy_id": "string"},
-    """
 
     # Get stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to get all stances for all candidacies in dataframe.
     stance = candidacies.withColumn("stances", _get_stance_udf("candidacy_id"))
@@ -192,8 +194,5 @@ def model(dbt, session) -> pd.DataFrame:
         # For initial load, set created_at for all records
         stance = stance.withColumn("created_at", lit(current_time_utc))
     stance = stance.withColumn("updated_at", lit(current_time_utc))
-
-    # Show the DataFrame with the new columns
-    display(stance)  # type: ignore
 
     return stance
