@@ -1,13 +1,13 @@
-import json
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from typing import Dict, List
 
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit, udf
-from pyspark.sql.types import StringType
+from pyspark.sql.types import ArrayType, IntegerType, StructField, StructType
 
 
 def _base64_encode_id(candidacy_id: str) -> str:
@@ -27,7 +27,7 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance(candidacy_id: str, ce_api_token: str) -> str:
+def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, int]]:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
@@ -79,40 +79,29 @@ def _get_stance(candidacy_id: str, ce_api_token: str) -> str:
     response.raise_for_status()
     data = response.json()
 
+    # empty_stances = []
+    empty_stances = [{"databaseId": 24601}]
     # Extract all stance data and convert to DataFrame
     try:
         stances = data["data"]["node"]["stances"]
 
         # if no stances, return empty dataframe
         if not stances:
-            print("no stances found")
-            # empty_df = pd.DataFrame(
-            #     columns=[
-            #         "databaseId",
-            #         "id",
-            #         "issue",
-            #         "locale",
-            #         "referenceUrl",
-            #         "statement",
-            #         "candidacy_id",
-            #         "encoded_candidacy_id",
-            #     ]
-            # )
-            # return empty_df
-            return json.dumps(stances)
+            return empty_stances
+            # return json.dumps(empty_stances)
 
         # Add candidacy_id and encoded_candidacy_id to each stance
+        new_stances = []
         for stance in stances:
             stance["candidacy_id"] = candidacy_id
             stance["encoded_candidacy_id"] = encoded_candidacy_id
-        # data = pd.DataFrame(stances)
-        print("found data:")
-        print(stances)
-        return json.dumps(stances)
+            new_stances.append({"databaseId": stance["databaseId"]})
+        # return json.dumps(new_stances)
+        return new_stances
+        # return json.dumps(stances)
 
     except (KeyError, TypeError):
-        # Return empty DataFrame if no stances found
-        return json.dumps([])
+        return empty_stances
 
 
 def model(dbt, session) -> pd.DataFrame:
@@ -155,43 +144,37 @@ def model(dbt, session) -> pd.DataFrame:
     )
 
     # for development take a 1% sample and limit to 10
-    candidacies = candidacies.sample(False, 0.01).limit(10)
-    display(candidacies)  # type: ignore
+    candidacies = candidacies.sample(False, 0.01).limit(20)
 
     # wrapper for _get_stance here since it requires `dbt` as an argument
     _get_stance_udf = udf(
         f=partial(_get_stance, ce_api_token=ce_api_token),
-        # returnType=ArrayType(
-        #     StructType(
-        #         [
-        #             StructField("databaseId", IntegerType()),
-        #             StructField("id", StringType()),
-        #             StructField("issue", StringType()),
-        #             StructField("locale", StringType()),
-        #             StructField("referenceUrl", StringType()),
-        #             StructField("statement", StringType()),
-        #             StructField("candidacy_id", StringType()),
-        #             StructField("encoded_candidacy_id", StringType()),
-        #         ]
-        #     )
-        # ),
-        returnType=StringType(),
+        # returnType=StringType(),
+        returnType=ArrayType(
+            StructType(
+                [
+                    StructField(
+                        name="databaseId", dataType=IntegerType(), nullable=False
+                    ),
+                    #             StructField("id", StringType()),
+                    # #             StructField("issue", StringType()),
+                    #             StructField("locale", StringType()),
+                    #             StructField("referenceUrl", StringType()),
+                    #             StructField("statement", StringType()),
+                    # StructField("candidacy_id", IntegerType()),
+                    #             StructField("encoded_candidacy_id", StringType()),
+                ]
+            )
+        ),
     )
 
+    """
+    {"databaseId": integer, "id": "string=", "issue": {"databaseId": integer, "id": "string"}, "locale": "string", "referenceUrl": "string", "statement": "string", "candidacy_id": integer (or string?), "encoded_candidacy_id": "string"},
+    """
+
     # Get stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to get all stances for all candidacies in dataframe.
-    print("Calling UDF...")
     stance = candidacies.withColumn("stances", _get_stance_udf("candidacy_id"))
-
-    # def simple_function(x: str, token: str): return "hello world"
-    # simple_function_token = partial(simple_function, token=ce_api_token)
-    # simple_function_udf = udf(f=simple_function_token, returnType=StringType())
-    # simple_function_udf = udf(f=simple_function, returnType=StringType())
-    # stance = candidacies.withColumn(
-    # "stances", simple_function_udf("candidacy_id")
-    # )
-
     stance = stance.select("candidacy_id", "stances")
-    display(stance)  # type: ignore
 
     # Add created_at column - only for new records
     # Get current timestamp in UTC for created_at and updated_at
