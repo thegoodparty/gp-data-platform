@@ -37,15 +37,13 @@ def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, Any]]:
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
     Args:
-        candidacy_id: the candidacy id to get the stance for
+        candidacy_id: The candidacy ID to get the stance for
+        ce_api_token: Authentication token for the CivicEngine API
 
     Returns:
-        DataFrame containing stance IDs
+        List of stance dictionaries containing stance data and metadata
     """
-    # GraphQL endpoint
     url = "https://bpi.civicengine.com/graphql"
-    print(f"candidacy_id is type: {type(candidacy_id)}")
-
     encoded_candidacy_id = _base64_encode_id(candidacy_id)
 
     # Construct the payload
@@ -79,16 +77,16 @@ def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, Any]]:
         "Authorization": f"Bearer {ce_api_token}",
     }
 
-    # Make the request
-    response = requests.post(url, json=payload, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-
-    # Extract all stance data and convert to DataFrame
     try:
-        stances = data["data"]["node"]["stances"]
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
-        # if no stances, return empty list
+        # If the response is empty or has an unexpected structure, kill the job
+        if not data or not isinstance(data, dict) or "data" not in data:
+            raise ValueError("Invalid response from CivicEngine API")
+
+        stances = data.get("data", {}).get("node", {}).get("stances", [])
         if not stances:
             return []
 
@@ -125,7 +123,6 @@ def model(dbt, session) -> DataFrame:
         # only include records updated in the last 30 days
         thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
         candidacies = candidacies.filter(candidacies["updated_at"] >= thirty_days_ago)
-
     else:
         existing_candidacy_ids = []
 
@@ -142,7 +139,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # for development take a 1% sample and limit to 10
-    candidacies = candidacies.sample(False, 0.01).limit(20)
+    # candidacies = candidacies.sample(False, 0.01).limit(20)
 
     # wrapper for _get_stance here since it requires `dbt` as an argument
     _get_stance_udf = udf(
