@@ -1,7 +1,7 @@
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from functools import partial
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import requests
 from pyspark.sql import DataFrame
@@ -32,7 +32,7 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, int]]:
+def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, Any]]:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
