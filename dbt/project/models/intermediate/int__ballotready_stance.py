@@ -1,3 +1,4 @@
+import json
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from functools import partial
@@ -6,13 +7,7 @@ import pandas as pd
 import requests
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit, udf
-from pyspark.sql.types import (
-    ArrayType,
-    IntegerType,
-    StringType,
-    StructField,
-    StructType,
-)
+from pyspark.sql.types import StringType
 
 
 def _base64_encode_id(candidacy_id: str) -> str:
@@ -32,7 +27,7 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance(candidacy_id: str, dbt) -> pd.Series:
+def _get_stance(candidacy_id: str, ce_api_token: str) -> str:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
@@ -44,6 +39,7 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
     """
     # GraphQL endpoint
     url = "https://bpi.civicengine.com/graphql"
+    print(f"candidacy_id is type: {type(candidacy_id)}")
 
     encoded_candidacy_id = _base64_encode_id(candidacy_id)
 
@@ -75,7 +71,7 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Authorization": f"Bearer {dbt.config.get('ce_api_token')}",
+        "Authorization": f"Bearer {ce_api_token}",
     }
 
     # Make the request
@@ -90,49 +86,41 @@ def _get_stance(candidacy_id: str, dbt) -> pd.Series:
         # if no stances, return empty dataframe
         if not stances:
             print("no stances found")
-            empty_df = pd.DataFrame(
-                columns=[
-                    "databaseId",
-                    "id",
-                    "issue",
-                    "locale",
-                    "referenceUrl",
-                    "statement",
-                    "candidacy_id",
-                    "encoded_candidacy_id",
-                ]
-            )
-            return empty_df
+            # empty_df = pd.DataFrame(
+            #     columns=[
+            #         "databaseId",
+            #         "id",
+            #         "issue",
+            #         "locale",
+            #         "referenceUrl",
+            #         "statement",
+            #         "candidacy_id",
+            #         "encoded_candidacy_id",
+            #     ]
+            # )
+            # return empty_df
+            return json.dumps(stances)
 
         # Add candidacy_id and encoded_candidacy_id to each stance
         for stance in stances:
             stance["candidacy_id"] = candidacy_id
             stance["encoded_candidacy_id"] = encoded_candidacy_id
-        data = pd.DataFrame(stances)
+        # data = pd.DataFrame(stances)
         print("found data:")
-        print(data)
-        return data
+        print(stances)
+        return json.dumps(stances)
 
     except (KeyError, TypeError):
         # Return empty DataFrame if no stances found
-        return pd.DataFrame(
-            columns=[
-                "databaseId",
-                "id",
-                "issue",
-                "locale",
-                "referenceUrl",
-                "statement",
-                "candidacy_id",
-                "encoded_candidacy_id",
-            ]
-        )
+        return json.dumps([])
 
 
 def model(dbt, session) -> pd.DataFrame:
     dbt.config(
         materialized="incremental", incremental_strategy="merge", unique_key="id"
     )
+
+    ce_api_token = dbt.config.get("ce_api_token")
 
     # get candidacies and ids
     candidacies: DataFrame = dbt.ref(
@@ -168,33 +156,42 @@ def model(dbt, session) -> pd.DataFrame:
 
     # for development take a 1% sample and limit to 10
     candidacies = candidacies.sample(False, 0.01).limit(10)
+    display(candidacies)  # type: ignore
 
     # wrapper for _get_stance here since it requires `dbt` as an argument
     _get_stance_udf = udf(
-        partial(_get_stance, dbt=dbt),
-        returnType=ArrayType(
-            StructType(
-                [
-                    StructField("databaseId", IntegerType()),
-                    StructField("id", StringType()),
-                    StructField("issue", StringType()),
-                    StructField("locale", StringType()),
-                    StructField("referenceUrl", StringType()),
-                    StructField("statement", StringType()),
-                    StructField("candidacy_id", StringType()),
-                    StructField("encoded_candidacy_id", StringType()),
-                ]
-            )
-        ),
+        f=partial(_get_stance, ce_api_token=ce_api_token),
+        # returnType=ArrayType(
+        #     StructType(
+        #         [
+        #             StructField("databaseId", IntegerType()),
+        #             StructField("id", StringType()),
+        #             StructField("issue", StringType()),
+        #             StructField("locale", StringType()),
+        #             StructField("referenceUrl", StringType()),
+        #             StructField("statement", StringType()),
+        #             StructField("candidacy_id", StringType()),
+        #             StructField("encoded_candidacy_id", StringType()),
+        #         ]
+        #     )
+        # ),
+        returnType=StringType(),
     )
 
-    # Fet stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to get all stances for all candidacies in dataframe.
-    # stance = candidacies["candidacy_id"].apply(partial(_get_stance, dbt=dbt))
-    stance = candidacies.withColumn(
-        "stances", _get_stance_udf(candidacies["candidacy_id"])
-    )
+    # Get stance. note that stance does not have an updated_at field so there is no need to use the incremental strategy. This will be a full data refresh everytime since we need to get all stances for all candidacies in dataframe.
+    print("Calling UDF...")
+    stance = candidacies.withColumn("stances", _get_stance_udf("candidacy_id"))
+
+    # def simple_function(x: str, token: str): return "hello world"
+    # simple_function_token = partial(simple_function, token=ce_api_token)
+    # simple_function_udf = udf(f=simple_function_token, returnType=StringType())
+    # simple_function_udf = udf(f=simple_function, returnType=StringType())
+    # stance = candidacies.withColumn(
+    # "stances", simple_function_udf("candidacy_id")
+    # )
+
     stance = stance.select("candidacy_id", "stances")
-    stance.show()
+    display(stance)  # type: ignore
 
     # Add created_at column - only for new records
     # Get current timestamp in UTC for created_at and updated_at
@@ -214,6 +211,6 @@ def model(dbt, session) -> pd.DataFrame:
     stance = stance.withColumn("updated_at", lit(current_time_utc))
 
     # Show the DataFrame with the new columns
-    stance.show()
+    display(stance)  # type: ignore
 
     return stance
