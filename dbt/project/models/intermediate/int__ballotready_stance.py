@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import lit, udf
+from pyspark.sql.functions import coalesce, col, lit, udf
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
@@ -104,7 +104,10 @@ def _get_stance(
         if not data or not isinstance(data, dict) or "data" not in data:
             raise ValueError("Invalid response from CivicEngine API")
 
-        stances = data.get("data", {}).get("node", {}).get("stances", [])
+        # Safely navigate through the response, handling None values at any level
+        data_dict = data.get("data") or {}
+        node_dict = data_dict.get("node") or {}
+        stances = node_dict.get("stances", [])
         if not stances:
             return []
 
@@ -175,9 +178,14 @@ def model(dbt, session) -> DataFrame:
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
         # Get existing candidacy ids in this table
-        existing_candidacy_ids = session.sql(
-            f"select distinct(candidacy_id) from {dbt.this}"
-        ).collect()[0]
+        existing_table = session.table(f"{dbt.this}")
+        existing_candidacy_ids = [
+            row.candidacy_id
+            for row in existing_table.select("candidacy_id").distinct().collect()
+        ]
+        existing_timestamps = existing_table.select(
+            "candidacy_id", "created_at"
+        ).distinct()
 
         # Only include records updated in the last 30 days
         thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -242,13 +250,15 @@ def model(dbt, session) -> DataFrame:
     current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
-        # For existing records, keep their original created_at
-        # For new records, set to current time
+        # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values
+        existing_created_at_lookup = existing_timestamps
+
+        # Left join with this lookup to preserve original created_at values for existing records
+        stance = stance.join(existing_created_at_lookup, on="candidacy_id", how="left")
+
+        # Use coalesce to keep original created_at for existing records, and set current time for new ones
         stance = stance.withColumn(
-            "created_at",
-            lit(current_time_utc).where(
-                ~stance["candidacy_id"].isin(existing_candidacy_ids)
-            ),
+            "created_at", coalesce(col("created_at"), lit(current_time_utc))
         )
     else:
         # For initial load, set created_at for all records
