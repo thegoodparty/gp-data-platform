@@ -1,4 +1,6 @@
 import logging
+import random
+import time
 from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from functools import partial
@@ -33,13 +35,20 @@ def _base64_encode_id(candidacy_id: str) -> str:
     return encoded_id
 
 
-def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, Any]]:
+def _get_stance(
+    candidacy_id: str,
+    ce_api_token: str,
+    base_sleep: float = 0.1,
+    jitter_factor: float = 0.1,
+) -> List[Dict[str, Any]]:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for a given candidacy.
 
     Args:
         candidacy_id: The candidacy ID to get the stance for
         ce_api_token: Authentication token for the CivicEngine API
+        base_sleep: Base number of seconds to sleep after making an API call
+        jitter_factor: Random factor to apply to sleep time (0.5 means ±50% of base_sleep)
 
     Returns:
         List of stance dictionaries containing stance data and metadata
@@ -83,6 +92,11 @@ def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, Any]]:
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
+
+        # Calculate sleep time with jitter to avoid synchronized API calls
+        jitter = random.uniform(-jitter_factor, jitter_factor) * base_sleep
+        sleep_time = max(0.05, base_sleep + jitter)  # Ensure minimum sleep of 0.05s
+        time.sleep(sleep_time)
         response.raise_for_status()
         data = response.json()
 
@@ -100,7 +114,13 @@ def _get_stance(candidacy_id: str, ce_api_token: str) -> List[Dict[str, Any]]:
             stance["encoded_candidacy_id"] = encoded_candidacy_id
         return stances
 
-    except (KeyError, TypeError):
+    except (KeyError, TypeError) as e:
+        logging.warning(
+            f"Error processing stance for candidacy {candidacy_id}: {str(e)}"
+        )
+        return []
+    except requests.exceptions.RequestException as e:
+        logging.error(f"API request failed for candidacy {candidacy_id}: {str(e)}")
         return []
 
 
@@ -180,7 +200,7 @@ def model(dbt, session) -> DataFrame:
         candidacies["candidacy_id"].isin(candidacy_ids_to_get)
     )
     # Dev: take a random sample of 10 rows from stance
-    candidacies = candidacies.sample(False, 0.1).limit(100)
+    # candidacies = candidacies.sample(False, 0.1).limit(100)
 
     # Define the return type for the UDF to ensure proper data structure
     stance_schema = ArrayType(
@@ -206,14 +226,15 @@ def model(dbt, session) -> DataFrame:
         )
     )
 
-    # Wrapper for _get_stance here since it requires ce_api_token
+    # Create UDF with sleep parameter
     _get_stance_udf = udf(
-        f=partial(_get_stance, ce_api_token=ce_api_token),
+        f=partial(
+            _get_stance, ce_api_token=ce_api_token
+        ),  # Adjust base_sleep and jitter_factor as needed
         returnType=stance_schema,
     )
 
-    # Get stance data for each candidacy
-    logging.info(f"INFO: Fetching stance data for {candidacies.count()} candidacies")
+    # Apply the UDF to get stance data for each candidacy
     stance = candidacies.withColumn("stances", _get_stance_udf("candidacy_id"))
     stance = stance.select("candidacy_id", "stances")
 
