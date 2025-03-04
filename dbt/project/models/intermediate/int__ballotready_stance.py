@@ -179,6 +179,8 @@ def model(dbt, session) -> DataFrame:
     candidacies = candidacies.filter(
         candidacies["candidacy_id"].isin(candidacy_ids_to_get)
     )
+    # Dev: take a random sample of 10 rows from stance
+    candidacies = candidacies.sample(False, 0.1).limit(100)
 
     # Define the return type for the UDF to ensure proper data structure
     stance_schema = ArrayType(
