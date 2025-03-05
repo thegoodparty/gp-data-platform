@@ -3,3 +3,5 @@ packages:
     version: 1.3.0
   - package: calogica/dbt_expectations
     version: 0.10.1
+  - package: Snowflake-Labs/dbt_constraints
+    version: 1.0.4
