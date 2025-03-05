@@ -12,7 +12,7 @@ exploded_stances as (
         candidacy_id,
         stance
     from stance_data
-    cross join unnest(stances) as stance
+    lateral view explode(stances) as stance
 ),
 
 invalid_stances as (

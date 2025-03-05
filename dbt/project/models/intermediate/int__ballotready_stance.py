@@ -189,7 +189,9 @@ def model(dbt, session) -> DataFrame:
 
         # Only include records updated in the last 30 days
         thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        candidacies = candidacies.filter(candidacies["updated_at"] >= thirty_days_ago)
+        candidacies = candidacies.filter(
+            candidacies["candidacy_updated_at"] >= thirty_days_ago
+        )
         logging.info(f"INFO: Filtered to candidacies updated since {thirty_days_ago}")
     else:
         logging.info("INFO: Running in full refresh mode")
@@ -207,7 +209,7 @@ def model(dbt, session) -> DataFrame:
     candidacies = candidacies.filter(
         candidacies["candidacy_id"].isin(candidacy_ids_to_get)
     )
-    # Dev: take a random sample of 10 rows from stance
+    # Dev: take a random sample of 100 rows from stance
     # candidacies = candidacies.sample(False, 0.1).limit(100)
 
     # Define the return type for the UDF to ensure proper data structure
@@ -215,7 +217,7 @@ def model(dbt, session) -> DataFrame:
         StructType(
             [
                 StructField(name="databaseId", dataType=IntegerType(), nullable=False),
-                StructField("id", StringType()),
+                StructField("id", StringType(), False),
                 StructField(
                     "issue",
                     StructType(
@@ -244,7 +246,9 @@ def model(dbt, session) -> DataFrame:
 
     # Apply the UDF to get stance data for each candidacy
     stance = candidacies.withColumn("stances", _get_stance_udf("candidacy_id"))
-    stance = stance.select("candidacy_id", "stances")
+    stance = stance.select(
+        col("candidacy_id").cast("integer").alias("candidacy_id"), "stances"
+    )
 
     # Add timestamp metadata
     current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
