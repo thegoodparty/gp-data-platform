@@ -136,7 +136,7 @@ def _get_stances_batch(
 
             # Add candidacy_id and encoded_candidacy_id to each stance
             for stance in stances:
-                stance["candidacy_id"] = candidacy_db_id
+                stance["candidacy_id"] = int(candidacy_db_id)
                 stance["encoded_candidacy_id"] = encoded_candidacy_id
                 all_stances.append(stance)
 

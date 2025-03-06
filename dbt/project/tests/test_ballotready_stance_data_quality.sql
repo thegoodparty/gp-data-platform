@@ -24,9 +24,7 @@ invalid_stances as (
     where
         -- Check for stances without a valid issue ID
         stance.issue.databaseId is null or
-        stance.issue.id is null or
-        -- Check for stances without a statement (or empty statement)
-        stance.statement is null or trim(stance.statement) = ''
+        stance.issue.id is null
 )
 
 select * from invalid_stances
