@@ -19,13 +19,16 @@ airflow/logs
 # Default .gitignore content added by dbt Cloud
 # you shouldn't commit these into source control
 # these are the default directory names, adjust/add to fit your needs
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
+dbt/*/target/
+dbt/*/dbt_packages/
+dbt/*/logs/
 # end dbt Cloud content
 
 # ignore .venv
 .venv/
+
+# Environment variables
+.env
 
 # ignore tmp_data
 tmp_data/
