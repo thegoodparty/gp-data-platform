@@ -26,5 +26,9 @@ dbt/*/logs/
 
 # ignore .venv
 .venv/
+
 # Environment variables
 .env
+
+# ignore tmp_data
+tmp_data/

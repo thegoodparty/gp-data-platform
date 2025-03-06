@@ -24,3 +24,11 @@ sources:
         description: raw data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races)
       - name: ballotready_s3_candidacies_v3
         description: raw data load from s3 data dump sent from ballotready
+      - name: hubspot_api_companies
+        description: raw data load from HubSpot data model
+      - name: hubspot_api_contacts
+        description: raw data load from HubSpot data model
+      - name: hubspot_api_deals
+        description: raw data load from HubSpot data model
+      - name: hubspot_api_tickets
+        description: raw data load from HubSpot data model

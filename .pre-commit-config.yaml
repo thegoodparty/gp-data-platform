@@ -1,6 +1,6 @@
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
@@ -11,20 +11,20 @@ repos:
     -   id: detect-private-key
 
 -   repo: https://github.com/psf/black
-    rev: 24.2.0
+    rev: 25.1.0
     hooks:
     -   id: black
         language_version: python3
         args: ["--line-length=88"]
 
 -   repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 6.0.0
     hooks:
     -   id: isort
         args: ["--profile", "black", "--line-length=88"]
 
 -   repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
+    rev: 7.1.1
     hooks:
     -   id: flake8
         args: ['--extend-ignore=D100,D103,D200,D205,D400,D401,E203,E501,F821,W503', '--max-line-length=88']
@@ -35,9 +35,16 @@ repos:
         ]
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    rev: v1.15.0
     hooks:
     -   id: mypy
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
         ]
+
+-   repo: https://github.com/tconbeer/sqlfmt
+    rev: v0.26.0
+    hooks:
+    -   id: sqlfmt
+        language_version: python
+        additional_dependencies: ['.[jinjafmt]']

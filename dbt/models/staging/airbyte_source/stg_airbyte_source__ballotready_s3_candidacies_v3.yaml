@@ -1,0 +1,12 @@
+models:
+  - name: stg_airbyte_source__ballotready_s3_candidacies_v3
+    description: Candidacies data load from ballotready csvs in s3 bucket
+    columns:
+      - name: candidacy_id
+        data_tests:
+          - not_null
+          - unique
+      - name: id
+        data_tests:
+          - not_null
+          - unique
