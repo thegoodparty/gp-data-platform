@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: airbyte_source
+    schema: airbyte_source
+    description: Raw data loaded from Airbyte
+    freshness:
+      warn_after:
+        count: 24
+        period: hour
+    tables:
+      - name: ballotready_api_election
+        description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
+      - name: ballotready_api_position
+        description: raw data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
+      - name: ballotready_api_race
+        description: raw data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races)
+      - name: ballotready_s3_candidacies_v3
+        description: raw data load from s3 data dump sent from ballotready
