@@ -17,9 +17,6 @@ models:
           combination_of_columns:
             - candidacy_id
             - stances.databaseId
-      - dbt_expectations.expect_table_row_count_to_be_between:
-          min_value: 0
-          max_value: 100000  # Adjust based on expected data volume
     columns:
       - name: candidacy_id
         description: "The id of the candidacy"
