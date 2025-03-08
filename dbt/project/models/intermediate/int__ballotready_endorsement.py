@@ -324,15 +324,12 @@ def model(dbt, session) -> DataFrame:
     # Handle incremental loading
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
-        existing_table = dbt.this(session)
-
-        # Get existing candidacy IDs to avoid refetching
-        existing_candidacy_ids = {
-            row["candidacy_id"]
+        # Get existing candidacy ids in this table
+        existing_table = session.table(f"{dbt.this}")
+        existing_candidacy_ids = [
+            row.candidacy_id
             for row in existing_table.select("candidacy_id").distinct().collect()
-        }
-
-        # Get timestamps for existing records
+        ]
         existing_timestamps = existing_table.select(
             "candidacy_id", "created_at"
         ).distinct()
@@ -343,19 +340,17 @@ def model(dbt, session) -> DataFrame:
             candidacies["candidacy_updated_at"] >= thirty_days_ago
         )
         logging.info(f"INFO: Filtered to candidacies updated since {thirty_days_ago}")
+
     else:
         logging.info("INFO: Running in full refresh mode")
-        existing_candidacy_ids = set()
+        existing_candidacy_ids = []
 
-    # Get all possible candidacy IDs
-    all_candidacy_ids = {
-        row["candidacy_id"]
-        for row in candidacies.select("candidacy_id").distinct().collect()
-    }
-    logging.info(f"INFO: Found {len(all_candidacy_ids)} total candidacy IDs")
-
-    # Determine which candidacy IDs need to be fetched
-    candidacy_ids_to_get = all_candidacy_ids - existing_candidacy_ids
+    # Get ids from candidacies that are not in the current table
+    candidacy_ids_to_get = [
+        candidacy_id
+        for candidacy_id in ids_from_candidacies
+        if candidacy_id not in existing_candidacy_ids
+    ]
     logging.info(f"INFO: Need to fetch {len(candidacy_ids_to_get)} new candidacy IDs")
 
     # If no new candidacies to process, return early with existing data
