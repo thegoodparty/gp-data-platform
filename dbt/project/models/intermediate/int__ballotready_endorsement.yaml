@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: int__ballotready_endorsement
+    description: >
+      This model retrieves and processes candidate endorsement data from the CivicEngine API.
+      It contains endorsement information for political candidates, including their endorsements
+      from various organizations.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
