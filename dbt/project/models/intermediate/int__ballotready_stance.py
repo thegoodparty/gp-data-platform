@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import PandasUDFType, coalesce, col, lit, pandas_udf
+from pyspark.sql.functions import coalesce, col, lit, pandas_udf
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
@@ -163,16 +163,17 @@ stance_schema = ArrayType(
                 "issue",
                 StructType(
                     [
-                        StructField("databaseId", IntegerType()),
-                        StructField("id", StringType()),
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
                     ]
                 ),
+                True,
             ),
-            StructField("locale", StringType()),
-            StructField("referenceUrl", StringType()),
-            StructField("statement", StringType()),
-            StructField("candidacy_id", IntegerType()),
-            StructField("encoded_candidacy_id", StringType()),
+            StructField("locale", StringType(), True),
+            StructField("referenceUrl", StringType(), True),
+            StructField("statement", StringType(), True),
+            StructField("candidacy_id", IntegerType(), True),
+            StructField("encoded_candidacy_id", StringType(), True),
         ]
     )
 )
@@ -181,7 +182,7 @@ stance_schema = ArrayType(
 def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
     """Wraps the token in a pandas UDF for proper order of operations."""
 
-    @pandas_udf(returnType=stance_schema, functionType=PandasUDFType.SCALAR)
+    @pandas_udf(returnType=stance_schema)
     def get_candidacy_stances(candidacy_ids: pd.Series) -> pd.Series:
         """
         Pandas UDF that processes batches of candidacy IDs and returns their stances.
@@ -267,7 +268,7 @@ def model(dbt, session) -> DataFrame:
     if not ce_api_token:
         raise ValueError("Missing required config parameter: ce_api_token")
 
-    # Get candidacies and ids
+    # Get candidacies
     candidacies: DataFrame = dbt.ref(
         "stg_airbyte_source__ballotready_s3_candidacies_v3"
     )
@@ -297,43 +298,51 @@ def model(dbt, session) -> DataFrame:
     # Handle incremental loading
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
-        # Get existing candidacy ids in this table
         existing_table = session.table(f"{dbt.this}")
-        existing_candidacy_ids = [
-            row.candidacy_id
-            for row in existing_table.select("candidacy_id").distinct().collect()
-        ]
         existing_timestamps = existing_table.select(
             "candidacy_id", "created_at"
         ).distinct()
 
-        # Only include records updated in the last 30 days
-        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        candidacies = candidacies.filter(
-            candidacies["candidacy_updated_at"] >= thirty_days_ago
-        )
-        logging.info(f"INFO: Filtered to candidacies updated since {thirty_days_ago}")
+        # Get maximum updated_at from existing table
+        max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
+        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+
+        if max_updated_at:
+            # Filter source to only process records updated since last run
+            candidacies = candidacies.filter(
+                candidacies["candidacy_updated_at"] >= max_updated_at
+            )
+            logging.info(
+                f"INFO: Filtered to candidacies updated since {max_updated_at}"
+            )
+        else:
+            # Fallback to 30-day window if no max_updated_at found
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            candidacies = candidacies.filter(
+                candidacies["candidacy_updated_at"] >= thirty_days_ago
+            )
+            logging.info(
+                f"INFO: No max updated_at found. Filtered to candidacies updated since {thirty_days_ago}"
+            )
     else:
         logging.info("INFO: Running in full refresh mode")
-        existing_candidacy_ids = []
 
-    # Get ids from candidacies that are not in the current table
-    candidacy_ids_to_get = [
-        candidacy_id
-        for candidacy_id in ids_from_candidacies
-        if candidacy_id not in existing_candidacy_ids
-    ]
-    logging.info(f"INFO: Need to fetch {len(candidacy_ids_to_get)} new candidacy IDs")
-
-    # If no new candidacies to process, return early with existing data
-    if len(candidacy_ids_to_get) == 0 and dbt.is_incremental:
-        logging.info("INFO: No new candidacies to process, returning existing data")
-        return existing_table
-
-    # Filter candidacies to only include ids that need to be fetched
-    candidacies = candidacies.filter(
-        candidacies["candidacy_id"].isin(candidacy_ids_to_get)
-    )
+    # If no records to process after filtering, return early
+    if candidacies.count() == 0 and dbt.is_incremental:
+        logging.info("INFO: No new or updated candidacies to process")
+        # Return empty DataFrame with correct schema
+        empty_df = session.createDataFrame(
+            [],
+            StructType(
+                [
+                    StructField("candidacy_id", IntegerType(), nullable=False),
+                    StructField("stances", stance_schema, True),
+                    StructField("created_at", TimestampType(), False),
+                    StructField("updated_at", TimestampType(), False),
+                ]
+            ),
+        )
+        return empty_df
 
     # For development/testing purposes (commented out by default)
     # candidacies = candidacies.sample(False, 0.1).limit(1000)
@@ -363,13 +372,18 @@ def model(dbt, session) -> DataFrame:
 
         # Use coalesce to keep original created_at for existing records, and set current time for new ones
         stance = stance.withColumn(
-            "created_at", coalesce(col("created_at"), lit(current_time_utc))
+            "created_at",
+            coalesce(col("created_at"), lit(current_time_utc).cast(TimestampType())),
         )
     else:
         # For initial load, set created_at for all records
-        stance = stance.withColumn("created_at", lit(current_time_utc))
+        stance = stance.withColumn(
+            "created_at", lit(current_time_utc).cast(TimestampType())
+        )
 
-    stance = stance.withColumn("updated_at", lit(current_time_utc))
+    stance = stance.withColumn(
+        "updated_at", lit(current_time_utc).cast(TimestampType())
+    )
 
     # Count and log the final row count
     row_count = stance.count()
