@@ -335,7 +335,7 @@ def model(dbt, session) -> DataFrame:
             [],
             StructType(
                 [
-                    StructField("candidacy_id", IntegerType(), False),
+                    StructField("candidacy_id", IntegerType(), nullable=False),
                     StructField("stances", stance_schema, True),
                     StructField("created_at", TimestampType(), False),
                     StructField("updated_at", TimestampType(), False),
