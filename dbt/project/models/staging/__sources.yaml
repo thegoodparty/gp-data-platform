@@ -16,6 +16,8 @@ sources:
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue
         description: raw data scan from [`issues` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/issues)
+      - name: ballotready_api_mtfcc
+        description: raw data scan from [`mtfcc` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/mtfcc). Note that the documentation is incorrect and `createdAt` nor `updatedAt` are not present in the data.
       - name: ballotready_api_place
         description: raw data scan from [`places` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/places)
       - name: ballotready_api_position
