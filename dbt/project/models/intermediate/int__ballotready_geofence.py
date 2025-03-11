@@ -190,7 +190,7 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
         # Create a list of dictionaries for each geofence in order of input
         result_data: List[Dict[str, Any]] = []
         for geofence_id in geofence_ids:
-            geofence: Dict[str, Any] = geofences_by_geofence_id.get(int(geofence_id), {})  # type: ignore
+            geofence = geofences_by_geofence_id.get(int(geofence_id), {})  # type: ignore
             if geofence:
                 result_data.append(
                     {
