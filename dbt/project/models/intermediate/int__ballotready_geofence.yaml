@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: int__ballotready_geofence
+    description: >
+      This model retrieves and processes geofence data from the CivicEngine API.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: createdAt
+        description: "Timestamp when the geofence was created in the CivicEngine system"
+        tests:
+          - not_null
+      - name: databaseId
+        description: "Unique identifier for the geofence in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the geofence in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
+      - name: updatedAt
+        description: "Timestamp when the geofence was last updated"
+        tests:
+          - not_null
