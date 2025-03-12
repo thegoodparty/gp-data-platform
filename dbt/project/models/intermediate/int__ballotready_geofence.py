@@ -190,42 +190,62 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
         # Create a list of dictionaries for each geofence in order of input
         result_data: List[Dict[str, Any]] = []
         for geofence_id in geofence_ids:
-            geofence = geofences_by_geofence_id.get(int(geofence_id), {})  # type: ignore
-            if geofence:
+            try:
+                geofence = geofences_by_geofence_id.get(int(geofence_id), {})  # type: ignore
+                if geofence:
+                    result_data.append(
+                        {
+                            "createdAt": pd.to_datetime(geofence["createdAt"]),
+                            "databaseId": geofence["databaseId"],
+                            "geoId": geofence["geoId"],
+                            "id": geofence["id"],
+                            "mtfcc": geofence["mtfcc"],
+                            "updatedAt": pd.to_datetime(geofence["updatedAt"]),
+                            "validFrom": (
+                                pd.to_datetime(geofence["validFrom"]).date()
+                                if geofence["validFrom"]
+                                else None
+                            ),
+                            "validTo": (
+                                pd.to_datetime(geofence["validTo"]).date()
+                                if geofence["validTo"]
+                                else None
+                            ),
+                        }
+                    )
+                else:
+                    # Raise error for missing geofences since they are required
+                    encoded_id = _base64_encode_id(str(geofence_id))
+                    raise ValueError(
+                        f"No geofence data found for geofence_id: {geofence_id}, encoded_id: {encoded_id}"
+                    )
+            except Exception as e:
+                encoded_id = _base64_encode_id(str(geofence_id))
+                logging.error(
+                    f"Failed to process geofence_id: {geofence_id}, encoded_id: {encoded_id}. Error: {str(e)}"
+                )
+                # Append a row with nulls instead of raising an error
                 result_data.append(
                     {
-                        "createdAt": pd.to_datetime(geofence["createdAt"]),
-                        "databaseId": geofence["databaseId"],
-                        "geoId": geofence["geoId"],
-                        "id": geofence["id"],
-                        "mtfcc": geofence["mtfcc"],
-                        "updatedAt": pd.to_datetime(geofence["updatedAt"]),
-                        "validFrom": (
-                            pd.to_datetime(geofence["validFrom"]).date()
-                            if geofence["validFrom"]
-                            else None
-                        ),
-                        "validTo": (
-                            pd.to_datetime(geofence["validTo"]).date()
-                            if geofence["validTo"]
-                            else None
-                        ),
+                        "createdAt": None,
+                        "databaseId": -1,  # Use -1 directly for failed records
+                        "geoId": None,
+                        "id": None,
+                        "mtfcc": None,
+                        "updatedAt": None,
+                        "validFrom": None,
+                        "validTo": None,
                     }
-                )
-            else:
-                # Raise error for missing geofences since they are required
-                raise ValueError(
-                    f"No geofence data found for geofence_id: {geofence_id}"
                 )
 
         # Convert to DataFrame with the correct schema
         result_df = pd.DataFrame(result_data)
 
-        # Ensure correct types and non-nullable fields
-        result_df["createdAt"] = result_df["createdAt"].astype("datetime64[ns]")
+        # Convert columns to appropriate types
+        result_df["createdAt"] = pd.to_datetime(result_df["createdAt"])
         result_df["databaseId"] = result_df["databaseId"].astype("int32")
         result_df["id"] = result_df["id"].astype("string")
-        result_df["updatedAt"] = result_df["updatedAt"].astype("datetime64[ns]")
+        result_df["updatedAt"] = pd.to_datetime(result_df["updatedAt"])
 
         return result_df
 
@@ -280,11 +300,13 @@ def model(dbt, session) -> DataFrame:
         ]
 
         # get all unique geo id after the latest updated_at date
-        geofence = candidacy_df.select("geofence_id", "candidacy_updated_at").filter(
-            col("candidacy_updated_at") > latest_updated_at
+        geofence = (
+            candidacy_df.select("geofence_id", "candidacy_updated_at")
+            .filter(col("candidacy_updated_at") > latest_updated_at)
+            .dropDuplicates(["geofence_id"])
         )
     else:
-        geofence = candidacy_df.select("geofence_id")
+        geofence = candidacy_df.select("geofence_id").dropDuplicates(["geofence_id"])
 
     # if geofence_id is empty, return empty DataFrame
     if geofence.count() == 0:
@@ -309,4 +331,7 @@ def model(dbt, session) -> DataFrame:
         col("geofence_data.validFrom").alias("validFrom"),
         col("geofence_data.validTo").alias("validTo"),
     )
+
+    # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
+    result = result.filter(col("databaseId") >= 0)
     return result
