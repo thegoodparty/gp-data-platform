@@ -234,14 +234,14 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
 
 geofence_schema = StructType(
     [
-        StructField(name="createdAt", dataType=TimestampType(), nullable=True),  # f
-        StructField("databaseId", IntegerType(), True),  # f
-        StructField("geoId", StringType(), True),
-        StructField("id", StringType(), True),  # f
-        StructField("mtfcc", StringType(), True),
-        StructField("updatedAt", TimestampType(), True),  # f
-        StructField("validFrom", DateType(), True),
-        StructField("validTo", DateType(), True),
+        StructField(name="createdAt", dataType=TimestampType()),
+        StructField("databaseId", IntegerType()),
+        StructField("geoId", StringType()),
+        StructField("id", StringType()),
+        StructField("mtfcc", StringType()),
+        StructField("updatedAt", TimestampType()),
+        StructField("validFrom", DateType()),
+        StructField("validTo", DateType()),
     ]
 )
 
@@ -251,7 +251,7 @@ def model(dbt, session) -> DataFrame:
     dbt.config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="candidacy_id",
+        unique_key="id",
         on_schema_change="fail",
         tags=["ballotready", "geofence", "api", "pandas_udf"],
     )
@@ -297,10 +297,8 @@ def model(dbt, session) -> DataFrame:
     # get geofence data from API
     get_geofence = _get_geofence_token(ce_api_token)
 
-    # First get the geofence data as a struct
+    # First get the geofence data as a struct, then extract each field into its own column
     geofence = geofence.withColumn("geofence_data", get_geofence(col("geofence_id")))
-
-    # Then extract each field into its own column
     result = geofence.select(
         col("geofence_data.createdAt").alias("createdAt"),
         col("geofence_data.databaseId").alias("databaseId"),
