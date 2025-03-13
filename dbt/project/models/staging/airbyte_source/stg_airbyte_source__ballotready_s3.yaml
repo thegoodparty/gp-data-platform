@@ -10,3 +10,31 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__ballotready_s3_uscities_v1_77_short
+    description: US Cities data load from ballotready csvs in s3 bucket
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__ballotready_s3_uscities_v1_77
+    description: US Cities data load from ballotready csvs in s3 bucket
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__ballotready_s3_uscounties_v1_73_short
+    description: US Counties data load from ballotready csvs in s3 bucket
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__ballotready_s3_uscounties_v1_73
+    description: US Counties data load from ballotready csvs in s3 bucket
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
