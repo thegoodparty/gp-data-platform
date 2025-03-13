@@ -291,11 +291,11 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
         existing_timestamps = existing_table.select(
-            "geofence_id", "created_at"
+            "databaseId", "createdAt", "updatedAt"
         ).distinct()
 
         # get the latest updated_at date
-        latest_updated_at = existing_timestamps.agg({"updated_at": "max"}).collect()[0][
+        latest_updated_at = existing_timestamps.agg({"updatedAt": "max"}).collect()[0][
             0
         ]
 
