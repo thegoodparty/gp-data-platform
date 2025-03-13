@@ -1,8 +1,0 @@
-models:
-  - name: stg_airbyte_source__hubspot_api_deals
-    description: Deals data load from HubSpot API
-    columns:
-      - name: id
-        data_tests:
-          - not_null
-          - unique
