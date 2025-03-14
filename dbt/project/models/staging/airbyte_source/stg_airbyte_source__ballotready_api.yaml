@@ -2,7 +2,7 @@ models:
   - name: stg_airbyte_source__ballotready_api_election
     description: Election data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
     columns:
-      - name: databaseId
+      - name: database_id
         description: Identifies the primary key from the database.
         data_tests:
           - not_null
@@ -54,7 +54,7 @@ models:
   - name: stg_airbyte_source__ballotready_api_position
     description: Position data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
     columns:
-      - name: databaseId
+      - name: database_id
         description: Identifies the primary key from the database.
         data_tests:
           - not_null

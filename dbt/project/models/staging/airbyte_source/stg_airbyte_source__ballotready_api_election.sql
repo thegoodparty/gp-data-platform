@@ -18,17 +18,26 @@ with
             slug,
             state,
             timezone,
-            createdat,
-            racecount,
-            updatedat,
-            databaseid,
-            milestones,
-            electionday,
-            vipelections,
-            defaulttimezone,
-            originalelectiondate,
-            votinginformationpublishedat,
-            candidateinformationpublishedat
+            to_timestamp(createdat) as created_at_utc,
+            cast(racecount as int) as race_count,
+            to_timestamp(updatedat) as updated_at_utc,
+            cast(databaseid as int) as database_id,
+            from_json(
+                milestones,
+                'ARRAY<STRUCT<category:STRING, channel:STRING, date:DATE, datetime:TIMESTAMP, features:ARRAY<STRUCT<type:STRING>>, type:STRING>>'
+            ) as milestones,
+            cast(electionday as date) as election_day,
+            from_json(
+                vipelections, 'ARRAY<STRUCT<party:STRING, vipId:INT>>'
+            ) as vipelections,
+            defaulttimezone as default_timezone,
+            cast(originalelectiondate as date) as original_election_date,
+            to_timestamp(
+                votinginformationpublishedat
+            ) as voting_information_published_at_utc,
+            to_timestamp(
+                candidateinformationpublishedat
+            ) as candidate_information_published_at_utc
 
         from source
 
