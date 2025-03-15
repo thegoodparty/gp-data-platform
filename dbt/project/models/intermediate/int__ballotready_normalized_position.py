@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import pandas_udf
+from pyspark.sql.functions import col, pandas_udf
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
@@ -32,6 +32,11 @@ def _base64_encode_id(geofence_id: str) -> str:
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
     return encoded_id
+
+
+@pandas_udf(returnType=StringType())
+def _base64encode_id_udf(position_ids: pd.Series) -> pd.Series:
+    return position_ids.astype(str).apply(_base64_encode_id)
 
 
 def _get_normalized_positions_batch(
@@ -59,20 +64,21 @@ def _get_normalized_positions_batch(
     # Construct the payload with the nodes query
     payload = {
         "query": """
-        query GetPositionsBatch($ids: [ID!]!) {
-            nodes(ids: $ids) {
-                ... on Position {
-                    databaseId
-                    normalizedPosition {
+            query GetPositionsBatch($ids: [ID!]!) {
+                nodes(ids: $ids) {
+                    ... on Position {
                         databaseId
-                        description
-                        id
-                        issues {
+                        normalizedPosition {
                             databaseId
+                            description
                             id
+                            issues {
+                                databaseId
+                                id
+                            }
+                            mtfcc
+                            name
                         }
-                        mtfcc
-                        name
                     }
                 }
             }
@@ -102,6 +108,7 @@ def _get_normalized_positions_batch(
         """
         """
         data = response.json()
+        logging.info((f"output response {data}"))
         positions: List[Dict[str, Any]] = data.get("data", {}).get("nodes", [])
         return positions
 
@@ -171,6 +178,21 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                 )
                 """
                 sample data:
+                [
+                    {
+                        "databaseId": 100884,
+                        "normalizedPosition":{
+                            "databaseId": 1520,
+                            "description": "The City Legislature is the municipality's governing body, responsible for voting on ordinances and policies, and often is in charge of hiring a city manager.",
+                            "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvTm9ybWFsaXplZFBvc2l0aW9uLzE1MjA=",
+                            "mtfcc": null,
+                            "name": "City Legislature",
+                            "issues": [{
+                                "databaseId": 4, "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvSXNzdWUvNA=="},
+                                ...]
+                    },
+                    ...
+                ]
                 """
 
                 for normalized_position in batch_normalized_positions:
@@ -183,9 +205,12 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                 logging.error(f"Error processing batch {i}: {e}")
                 raise e
 
+        import json
+
         result = pd.Series(
             [
-                normalized_positions_by_position_id.get(position_id, {})
+                json.dumps(normalized_positions_by_position_id.get(position_id, {}))
+                # json.dumps(batch_normalized_positions)
                 for position_id in position_ids
             ]
         )
@@ -237,11 +262,19 @@ def model(dbt, session) -> DataFrame:
         return empty_df
 
     # For development/testing purposes (commented out by default)
-    positions = positions.sample(False, 0.1).limit(1000)
+    positions = positions.sample(False, 0.1).limit(2)
 
-    get_normalized_position = _get_normalized_position_token(ce_api_token)
-    normalized_positions = positions.withColumn(
-        "normalized_position", get_normalized_position(positions["database_id"])
+    normalized_positions = positions.select(
+        col("database_id").alias("position_database_id")
     )
 
+    get_normalized_position = _get_normalized_position_token(ce_api_token)
+    normalized_positions = normalized_positions.withColumn(
+        "normalized_position", get_normalized_position(col("position_database_id"))
+    )
+
+    normalized_positions = normalized_positions.withColumn(
+        "encoded_position_id", _base64encode_id_udf(col("position_database_id"))
+    )
+    # handle inserted_at and updated_at as well
     return normalized_positions
