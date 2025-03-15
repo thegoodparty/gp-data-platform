@@ -260,7 +260,7 @@ def model(dbt, session) -> DataFrame:
         max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
 
         if max_updated_at:
-            positions = positions.filter(positions.updated_at > max_updated_at)
+            positions = positions.filter(positions.updated_at_utc > max_updated_at)
             logging.info(f"INFO: Filtered to positions updated since {max_updated_at}")
         else:
             logging.info("INFO: No max updated_at found. Processing all positions.")
@@ -271,7 +271,7 @@ def model(dbt, session) -> DataFrame:
     # Validate source data
     if positions.count() == 0:
         logging.warning("No positions found in source table")
-        empty_df = session.createDataFrame(
+        empty_df: DataFrame = session.createDataFrame(
             [],
             normalized_position_schema.add(
                 StructField("position_database_id", IntegerType())
@@ -280,6 +280,7 @@ def model(dbt, session) -> DataFrame:
             .add(StructField("created_at", TimestampType()))
             .add(StructField("updated_at", TimestampType())),
         )
+        empty_df = empty_df.withColumnRenamed("databaseId", "database_id")
         return empty_df
 
     # For development/testing purposes (commented out by default)
