@@ -1,3 +1,5 @@
+# TODO:
+# - add and handle created_at and updated_at
 import logging
 import random
 import time
@@ -7,13 +9,14 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import coalesce, col, current_timestamp, pandas_udf
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
     StringType,
     StructField,
     StructType,
+    TimestampType,
 )
 
 
@@ -119,23 +122,22 @@ def _get_normalized_positions_batch(
 
 normalized_position_schema = StructType(
     [
-        StructField("databaseId", IntegerType(), nullable=False),
-        StructField("description", StringType(), True),
-        StructField("id", StringType(), nullable=False),
+        StructField("databaseId", IntegerType()),
+        StructField("description", StringType()),
+        StructField("id", StringType()),
         StructField(
             "issues",
             ArrayType(
                 StructType(
                     [
-                        StructField("databaseId", IntegerType(), False),
-                        StructField("id", StringType(), False),
+                        StructField("databaseId", IntegerType()),
+                        StructField("id", StringType()),
                     ]
                 ),
-                False,
             ),
         ),
-        StructField("mtfcc", StringType(), True),
-        StructField("name", StringType(), False),
+        StructField("mtfcc", StringType()),
+        StructField("name", StringType()),
     ]
 )
 
@@ -151,9 +153,8 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
         A pandas UDF function
     """
 
-    @pandas_udf(returnType=StringType())
-    # @pandas_udf(returnType=normalized_position_schema)
-    def _get_normalized_position(position_ids: pd.Series) -> pd.Series:
+    @pandas_udf(returnType=normalized_position_schema)
+    def _get_normalized_position(position_ids: pd.Series) -> pd.DataFrame:
         """
         Pandas UDF that processes batches of position IDs and returns their normalized positions.
         """
@@ -205,16 +206,28 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                 logging.error(f"Error processing batch {i}: {e}")
                 raise e
 
-        import json
+        # Create a list of dictionaries for each normalized_position in order of input
+        result_data: List[Dict[str, Any]] = []
+        for position_id in position_ids:
+            try:
+                normalized_position = normalized_positions_by_position_id.get(position_id, {})  # type: ignore
+                if normalized_position:
+                    result_data.append(
+                        {
+                            "databaseId": normalized_position["databaseId"],
+                            "description": normalized_position["description"],
+                            "id": normalized_position["id"],
+                            "mtfcc": normalized_position["mtfcc"],
+                            "name": normalized_position["name"],
+                            "issues": normalized_position["issues"],
+                        }
+                    )
+            except Exception as e:
+                logging.error(f"Error processing position {position_id}: {e}")
+                raise e
 
-        result = pd.Series(
-            [
-                json.dumps(normalized_positions_by_position_id.get(position_id, {}))
-                # json.dumps(batch_normalized_positions)
-                for position_id in position_ids
-            ]
-        )
-        return result
+        result_data = pd.DataFrame(result_data)
+        return result_data
 
     return _get_normalized_position
 
@@ -258,14 +271,27 @@ def model(dbt, session) -> DataFrame:
     # Validate source data
     if positions.count() == 0:
         logging.warning("No positions found in source table")
-        empty_df = session.createDataFrame([], normalized_position_schema)
+        empty_df = session.createDataFrame(
+            [],
+            normalized_position_schema.add(
+                StructField("position_database_id", IntegerType())
+            )
+            .add(StructField("encoded_position_database_id", StringType()))
+            .add(StructField("created_at", TimestampType()))
+            .add(StructField("updated_at", TimestampType())),
+        )
         return empty_df
 
     # For development/testing purposes (commented out by default)
-    positions = positions.sample(False, 0.1).limit(2)
+    positions = positions.sample(False, 0.1).limit(200)
 
     normalized_positions = positions.select(
         col("database_id").alias("position_database_id")
+    )
+
+    normalized_positions = normalized_positions.withColumn(
+        "encoded_position_database_id",
+        _base64encode_id_udf(col("position_database_id")),
     )
 
     get_normalized_position = _get_normalized_position_token(ce_api_token)
@@ -273,8 +299,43 @@ def model(dbt, session) -> DataFrame:
         "normalized_position", get_normalized_position(col("position_database_id"))
     )
 
-    normalized_positions = normalized_positions.withColumn(
-        "encoded_position_id", _base64encode_id_udf(col("position_database_id"))
+    # Explode the normalized_position column into individual fields
+    normalized_positions = normalized_positions.selectExpr(
+        "position_database_id",
+        "encoded_position_database_id",
+        "normalized_position.databaseId as database_id",
+        "normalized_position.description as description",
+        "normalized_position.id as id",
+        "normalized_position.issues as issues",
+        "normalized_position.mtfcc as mtfcc",
+        "normalized_position.name as name",
     )
-    # handle inserted_at and updated_at as well
+
+    # Add created_at and updated_at timestamps
+    # If this is an incremental run, we need to preserve created_at for existing records
+    if dbt.is_incremental:
+        existing_table = session.table(f"{dbt.this}")
+
+        # Join with existing table to get created_at for existing records
+        normalized_positions = normalized_positions.join(
+            existing_table.select("id", "created_at"),
+            normalized_positions.id == existing_table.id,
+            "left",
+        ).drop(existing_table.id)
+
+        # For new records (where created_at is null), set current timestamp
+        normalized_positions = normalized_positions.withColumn(
+            "created_at", coalesce(col("created_at"), current_timestamp())
+        )
+    else:
+        # For initial load, all records get current timestamp
+        normalized_positions = normalized_positions.withColumn(
+            "created_at", current_timestamp()
+        )
+
+    # updated_at is always set to current timestamp
+    normalized_positions = normalized_positions.withColumn(
+        "updated_at", current_timestamp()
+    )
+
     return normalized_positions
