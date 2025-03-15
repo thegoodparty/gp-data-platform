@@ -284,7 +284,7 @@ def model(dbt, session) -> DataFrame:
         return empty_df
 
     # For development/testing purposes (commented out by default)
-    positions = positions.sample(False, 0.1).limit(200)
+    # positions = positions.sample(False, 0.1).limit(200)
 
     normalized_positions = positions.select(
         col("database_id").alias("position_database_id")
