@@ -53,7 +53,6 @@ models:
       owner: "Data Engineering Team"
       contains_pii: false
 
-
   - name: int__ballotready_party
     description: >
       This model retrieves and processes candidate endorsement data from the CivicEngine API.
