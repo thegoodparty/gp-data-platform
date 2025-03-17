@@ -1,0 +1,117 @@
+version: 2
+
+models:
+  - name: int__ballotready_endorsement
+    description: >
+      This model retrieves and processes candidate endorsement data from the CivicEngine API.
+      It contains endorsement information for political candidates, including their endorsements
+      from various organizations.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+
+  - name: int__ballotready_geofence
+    description: >
+      This model retrieves and processes geofence data from the CivicEngine API.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: createdAt
+        description: "Timestamp when the geofence was created in the CivicEngine system"
+        tests:
+          - not_null
+      - name: databaseId
+        description: "Unique identifier for the geofence in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the geofence in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
+      - name: updatedAt
+        description: "Timestamp when the geofence was last updated"
+        tests:
+          - not_null
+
+  - name: int__ballotready_normalized_position
+    description: >
+      This model retrieves normalized position data from the CivicEngine API. It uses the `position_id` from the position table
+      to retrieve ids on which to query the normalized position data.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: database_id
+        description: "Unique identifier for the normalized position in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the normalized position in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
+
+  - name: int__ballotready_party
+    description: >
+      This model retrieves and processes candidate endorsement data from the CivicEngine API.
+      It contains endorsement information for political candidates, including their endorsements
+      from various organizations.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+
+  - name: int__ballotready_stance
+    description: >
+      This model retrieves and processes candidate stance data from the CivicEngine API.
+      It contains stance information for political candidates, including their positions
+      on various issues.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - candidacy_id
+            - stances.databaseId
+    columns:
+      - name: candidacy_id
+        description: "The id of the candidacy"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              column_type: int
+      - name: stances
+        description: "The stances of the candidacy as a json with a list of json objects"
+        tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp when the record was first created"
+        tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the record was last updated"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: "'2020-01-01'"  # Adjust based on expected data range
+              max_value: "{{ dbt.current_timestamp() }}"
