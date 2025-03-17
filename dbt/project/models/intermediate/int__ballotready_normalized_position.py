@@ -28,7 +28,7 @@ def _base64_encode_id(geofence_id: str) -> str:
     Returns:
         The base64-encoded ID string with the proper prefix.
     """
-    id_prefix = "gid://ballot-factory/Position/"
+    id_prefix = "gid://ballot-factory/NormalizedPosition/"
     prefixed_id = f"{id_prefix}{geofence_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
@@ -101,12 +101,7 @@ def _get_normalized_positions_batch(
         time.sleep(sleep_time)
 
         response.raise_for_status()
-
-        # Parse the response
-        """
-        """
         data = response.json()
-        logging.info((f"output response {data}"))
         positions: List[Dict[str, Any]] = data.get("data", {}).get("nodes", [])
         return positions
 
@@ -193,7 +188,7 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                     if normalized_position:
                         normalized_position_id = normalized_position["databaseId"]
                         normalized_positions_by_database_id[normalized_position_id] = (
-                            normalized_position["normalizedPosition"]
+                            normalized_position
                         )
 
             except Exception as e:
@@ -293,23 +288,21 @@ def model(dbt, session) -> DataFrame:
         return empty_df
 
     # For development/testing purposes (commented out by default)
-    normalized_positions = normalized_positions.sample(False, 0.1).limit(200)
+    # normalized_positions = normalized_positions.sample(False, 0.1).limit(5)
 
     get_normalized_position = _get_normalized_position_token(ce_api_token)
     normalized_positions = normalized_positions.withColumn(
-        "normalized_position", get_normalized_position(col("position_database_id"))
+        "normalized_position_data", get_normalized_position(col("database_id"))
     )
 
     # Explode the normalized_position column into individual fields
     normalized_positions = normalized_positions.selectExpr(
-        "position_database_id",
-        "encoded_position_database_id",
-        "normalized_position.databaseId as database_id",
-        "normalized_position.description as description",
-        "normalized_position.id as id",
-        "normalized_position.issues as issues",
-        "normalized_position.mtfcc as mtfcc",
-        "normalized_position.name as name",
+        "normalized_position_data.databaseId as database_id",
+        "normalized_position_data.description as description",
+        "normalized_position_data.id as id",
+        "normalized_position_data.issues as issues",
+        "normalized_position_data.mtfcc as mtfcc",
+        "normalized_position_data.name as name",
     )
 
     # Add created_at and updated_at timestamps
