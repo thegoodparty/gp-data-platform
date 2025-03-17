@@ -18,9 +18,9 @@ with
             slug,
             state,
             timezone,
-            to_timestamp(createdat) as created_at_utc,
+            to_timestamp(createdat) as created_at,
             cast(racecount as int) as race_count,
-            to_timestamp(updatedat) as updated_at_utc,
+            to_timestamp(updatedat) as updated_at,
             cast(databaseid as int) as database_id,
             from_json(
                 milestones,
@@ -34,10 +34,10 @@ with
             cast(originalelectiondate as date) as original_election_date,
             to_timestamp(
                 votinginformationpublishedat
-            ) as voting_information_published_at_utc,
+            ) as voting_information_published_at,
             to_timestamp(
                 candidateinformationpublishedat
-            ) as candidate_information_published_at_utc
+            ) as candidate_information_published_at
 
         from source
 
