@@ -52,6 +52,17 @@ models:
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
+    columns:
+      - name: database_id
+        description: "Unique identifier for the normalized position in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the normalized position in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
 
   - name: int__ballotready_party
     description: >
