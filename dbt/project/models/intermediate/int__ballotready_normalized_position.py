@@ -1,5 +1,3 @@
-# TODO:
-# - add and handle created_at and updated_at
 import logging
 import random
 import time
@@ -67,21 +65,18 @@ def _get_normalized_positions_batch(
     # Construct the payload with the nodes query
     payload = {
         "query": """
-            query GetPositionsBatch($ids: [ID!]!) {
+            query GetNormalizedPositionsBatch($ids: [ID!]!) {
                 nodes(ids: $ids) {
-                    ... on Position {
+                    ... on NormalizedPosition {
                         databaseId
-                        normalizedPosition {
+                        description
+                        id
+                        issues {
                             databaseId
-                            description
                             id
-                            issues {
-                                databaseId
-                                id
-                            }
-                            mtfcc
-                            name
                         }
+                        mtfcc
+                        name
                     }
                 }
             }
@@ -154,23 +149,23 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
     """
 
     @pandas_udf(returnType=normalized_position_schema)
-    def _get_normalized_position(position_ids: pd.Series) -> pd.DataFrame:
+    def _get_normalized_position(normalized_position_ids: pd.Series) -> pd.DataFrame:
         """
-        Pandas UDF that processes batches of position IDs and returns their normalized positions.
+        Pandas UDF that processes batches of Normalized Position IDs and returns their normalized positions.
         """
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        normalized_positions_by_position_id: Dict[int, Dict[str, Any] | None] = {}
+        normalized_positions_by_database_id: Dict[int, Dict[str, Any] | None] = {}
 
         # Set batch size for API calls
         batch_size = 100
 
         # Process position IDs in batches
-        for i in range(0, len(position_ids), batch_size):
-            batch = position_ids[i : i + batch_size]
-            batch_size_info = f"Batch {i//batch_size + 1}/{(len(position_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
+        for i in range(0, len(normalized_position_ids), batch_size):
+            batch = normalized_position_ids[i : i + batch_size]
+            batch_size_info = f"Batch {i//batch_size + 1}/{(len(normalized_position_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
             try:
@@ -181,26 +176,25 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                 sample data:
                 [
                     {
-                        "databaseId": 100884,
-                        "normalizedPosition":{
-                            "databaseId": 1520,
-                            "description": "The City Legislature is the municipality's governing body, responsible for voting on ordinances and policies, and often is in charge of hiring a city manager.",
-                            "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvTm9ybWFsaXplZFBvc2l0aW9uLzE1MjA=",
-                            "mtfcc": null,
-                            "name": "City Legislature",
-                            "issues": [{
-                                "databaseId": 4, "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvSXNzdWUvNA=="},
-                                ...]
+                        "databaseId": 1520,
+                        "description": "The City Legislature is the municipality's governing body, responsible for voting on ordinances and policies, and often is in charge of hiring a city manager.",
+                        "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvTm9ybWFsaXplZFBvc2l0aW9uLzE1MjA=",
+                        "mtfcc": null,
+                        "name": "City Legislature",
+                        "issues": [{
+                            "databaseId": 4, "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvSXNzdWUvNA=="},
+                            ...]
                     },
                     ...
                 ]
                 """
 
                 for normalized_position in batch_normalized_positions:
-                    position_id = normalized_position["databaseId"]
-                    normalized_positions_by_position_id[position_id] = (
-                        normalized_position["normalizedPosition"]
-                    )
+                    if normalized_position:
+                        normalized_position_id = normalized_position["databaseId"]
+                        normalized_positions_by_database_id[normalized_position_id] = (
+                            normalized_position["normalizedPosition"]
+                        )
 
             except Exception as e:
                 logging.error(f"Error processing batch {i}: {e}")
@@ -208,13 +202,13 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
 
         # Create a list of dictionaries for each normalized_position in order of input
         result_data: List[Dict[str, Any]] = []
-        for position_id in position_ids:
+        for database_id in normalized_position_ids:
             try:
-                normalized_position = normalized_positions_by_position_id.get(position_id, {})  # type: ignore
+                normalized_position = normalized_positions_by_database_id.get(database_id, {})  # type: ignore
                 if normalized_position:
                     result_data.append(
                         {
-                            "databaseId": normalized_position["databaseId"],
+                            "databaseId": normalized_position.get("databaseId"),
                             "description": normalized_position["description"],
                             "id": normalized_position["id"],
                             "mtfcc": normalized_position["mtfcc"],
@@ -222,8 +216,19 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                             "issues": normalized_position["issues"],
                         }
                     )
+                else:
+                    result_data.append(
+                        {
+                            "databaseId": -1,
+                            "description": None,
+                            "id": None,
+                            "mtfcc": None,
+                            "name": None,
+                            "issues": None,
+                        }
+                    )
             except Exception as e:
-                logging.error(f"Error processing position {position_id}: {e}")
+                logging.error(f"Error processing position {database_id}: {e}")
                 raise e
 
         result_data = pd.DataFrame(result_data)
@@ -259,41 +264,36 @@ def model(dbt, session) -> DataFrame:
         max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
         max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
 
+        # For development/testing purposes (commented out by default)
+        # max_updated_at = "2023-03-15 00:00:00"
+
         if max_updated_at:
-            positions = positions.filter(positions.updated_at_utc > max_updated_at)
+            positions = positions.filter(positions.updated_at > max_updated_at)
             logging.info(f"INFO: Filtered to positions updated since {max_updated_at}")
         else:
             logging.info("INFO: No max updated_at found. Processing all positions.")
 
     # deduplicate and only get the position ids
-    positions = positions.select("database_id").dropDuplicates(["database_id"])
+    normalized_positions = (
+        positions.select("normalized_position.databaseId")
+        .dropDuplicates(["databaseId"])
+        .withColumnRenamed("databaseId", "database_id")
+    )
 
     # Validate source data
-    if positions.count() == 0:
+    if normalized_positions.count() == 0:
         logging.warning("No positions found in source table")
         empty_df: DataFrame = session.createDataFrame(
             [],
             normalized_position_schema.add(
-                StructField("position_database_id", IntegerType())
-            )
-            .add(StructField("encoded_position_database_id", StringType()))
-            .add(StructField("created_at", TimestampType()))
-            .add(StructField("updated_at", TimestampType())),
+                StructField("created_at", TimestampType())
+            ).add(StructField("updated_at", TimestampType())),
         )
         empty_df = empty_df.withColumnRenamed("databaseId", "database_id")
         return empty_df
 
     # For development/testing purposes (commented out by default)
-    # positions = positions.sample(False, 0.1).limit(200)
-
-    normalized_positions = positions.select(
-        col("database_id").alias("position_database_id")
-    )
-
-    normalized_positions = normalized_positions.withColumn(
-        "encoded_position_database_id",
-        _base64encode_id_udf(col("position_database_id")),
-    )
+    normalized_positions = normalized_positions.sample(False, 0.1).limit(200)
 
     get_normalized_position = _get_normalized_position_token(ce_api_token)
     normalized_positions = normalized_positions.withColumn(
@@ -334,9 +334,15 @@ def model(dbt, session) -> DataFrame:
             "created_at", current_timestamp()
         )
 
+    # deduplicate
+    normalized_positions = normalized_positions.dropDuplicates(["id"])
+
     # updated_at is always set to current timestamp
     normalized_positions = normalized_positions.withColumn(
         "updated_at", current_timestamp()
     )
+
+    # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
+    normalized_positions = normalized_positions.filter(col("database_id") >= 0)
 
     return normalized_positions
