@@ -1,22 +1,7 @@
 version: 2
 
 models:
-  - name: int__ballotready_position_election_frequency
-    description: >
-      This model retrieves and processes position election frequency data from the CivicEngine API.
-      See https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency
-    config:
-      materialized: table
-      ce_api_token: "{{ env_var('DBT_CE') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
-    columns:
-      - name: database_id
-        description: "Unique identifier for the position election frequency in the CivicEngine database"
-        tests:
-          - not_null
-          - unique
+
   - name: int__ballotready_endorsement
     description: >
       This model retrieves and processes candidate endorsement data from the CivicEngine API.
@@ -91,6 +76,23 @@ models:
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
+
+  - name: int__ballotready_position_election_frequency
+    description: >
+      This model retrieves and processes position election frequency data from the CivicEngine API.
+      See https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: database_id
+        description: "Unique identifier for the position election frequency in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
 
   - name: int__ballotready_stance
     description: >
