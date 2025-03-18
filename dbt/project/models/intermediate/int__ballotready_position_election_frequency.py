@@ -258,9 +258,9 @@ def model(dbt, session) -> DataFrame:
         return empty_df
 
     # for development/testing purposes (commented out by default)
-    position_election_frequency = position_election_frequency.sample(False, 0.1).limit(
-        200
-    )
+    # position_election_frequency = position_election_frequency.sample(False, 0.1).limit(
+    # 200
+    # )
 
     get_position_election_frequency = _get_position_election_frequency_token(
         ce_api_token
