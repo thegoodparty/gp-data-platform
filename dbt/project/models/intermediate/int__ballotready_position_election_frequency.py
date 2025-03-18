@@ -185,7 +185,25 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
                         position_election_frequency["validTo"]
                     )
 
-        return pd.DataFrame(position_election_frequency_by_database_id.values())
+        # order according to position_database_ids and handle missing values
+        empty_dictionary = {
+            "databaseId": -1,
+            "frequency": None,
+            "id": None,
+            "referenceYear": None,
+            "seats": None,
+            "validFrom": None,
+            "validTo": None,
+        }
+
+        position_election_frequency_by_database_id = [
+            position_election_frequency_by_database_id.get(
+                position_database_id, empty_dictionary
+            )
+            for position_database_id in position_database_ids
+        ]  # type: ignore
+
+        return pd.DataFrame(position_election_frequency_by_database_id)
 
     return _get_position_election_frequency
 
@@ -279,4 +297,9 @@ def model(dbt, session) -> DataFrame:
         col("api_data.validTo").alias("valid_to"),
     )
 
+    # Filter out placeholder records with negative database_id values which were placeholders
+    # in pandas UDF
+    position_election_frequency = position_election_frequency.filter(
+        col("database_id") >= 0
+    )
     return position_election_frequency
