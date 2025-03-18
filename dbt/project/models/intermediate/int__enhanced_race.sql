@@ -22,7 +22,7 @@ model Race {
 }
 */
 with
-    base_race as (
+    enhnced_race as (
         select
             uuid(md5(concat("ballotready", "-", tbl_race.id))) as id,
             tbl_race.id as br_hash_id,
@@ -33,7 +33,7 @@ with
             tbl_position.slug as position_slug,
             concat(tbl_position.state, "-", tbl_position.slug) as state_slug,
             tbl_position.state as `state`,
-            tbl_position.level as position_level
+            tbl_position.level as position_level,
             tbl_normalized_position.name as normalized_position_name,
             tbl_position.name as position_name,
             tbl_position.description as position_description,
@@ -55,9 +55,9 @@ with
             on tbl_race.position_id = tbl_position.id
         left join
             {{ ref("int__ballotready_normalized_position") }} as tbl_normalized_position
-            on tbl_position.normalized_position.`databaseid`
+            on tbl_position.normalized_position.`databaseId`
             = tbl_normalized_position.database_id
     )
 
 select *
-from base_race
+from enhanced_race
