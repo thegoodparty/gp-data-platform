@@ -260,3 +260,15 @@ def model(dbt, session) -> DataFrame:
     position_election_frequency = position_election_frequency.withColumn(
         "api_data", get_position_election_frequency(col("database_id"))
     )
+
+    position_election_frequency = position_election_frequency.select(
+        col("api_data.databaseId").alias("database_id"),
+        col("api_data.frequency").alias("frequency"),
+        col("api_data.id").alias("id"),
+        col("api_data.referenceYear").alias("reference_year"),
+        col("api_data.seats").alias("seats"),
+        col("api_data.validFrom").alias("valid_from"),
+        col("api_data.validTo").alias("valid_to"),
+    )
+
+    return position_election_frequency
