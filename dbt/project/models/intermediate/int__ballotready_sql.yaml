@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int__ballotready_position_to_place
+    description: "Intermediate model that maps positions to places from the BallotReady API"
+    columns:
+      - name: position_database_id
+        description: "Database ID of the position from the source system"
+        tests:
+          - not_null
+
+      - name: place_database_id
+        description: "Database ID of the place associated with the position"
+        tests:
+          - relationships:
+              to: ref('stg_airbyte_source__ballotready_api_place')
+              field: databaseid
+
+      - name: position_created_at
+        description: "Timestamp when the position was created"
+
+      - name: position_updated_at
+        description: "Timestamp when the position was last updated"
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["position_database_id", "place_database_id"]
