@@ -22,6 +22,8 @@ sources:
         description: raw data scan from [`places` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/places)
       - name: ballotready_api_position
         description: raw data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
+      - name: ballotready_api_position_to_place
+        description: raw data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
       - name: ballotready_api_race
         description: raw data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races)
       - name: ballotready_s3_candidacies_v3

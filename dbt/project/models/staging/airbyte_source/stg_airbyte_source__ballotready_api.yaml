@@ -64,6 +64,19 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__ballotready_api_position_to_place
+    description: Position data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
+    columns:
+      - name: database_id
+        description: Identifies the primary key from the database.
+        data_tests:
+          - not_null
+          - unique
+      - name: id
+        description: Identifies the primary key from the database.
+        data_tests:
+          - not_null
+          - unique
   - name: stg_airbyte_source__ballotready_api_race
     description: Race data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races)
     columns:
