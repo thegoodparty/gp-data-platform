@@ -119,8 +119,8 @@ position_election_frequency_schema = StructType(
         StructField("id", StringType(), True),
         StructField("referenceYear", IntegerType(), True),
         StructField("seats", ArrayType(IntegerType()), True),
-        StructField("valid_from", TimestampType(), True),
-        StructField("valid_to", TimestampType(), True),
+        StructField("validFrom", TimestampType(), True),
+        StructField("validTo", TimestampType(), True),
     ]
 )
 
@@ -177,6 +177,14 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
                         position_election_frequency_id
                     ] = position_election_frequency
 
+                    # handle timestamp columns
+                    position_election_frequency["validFrom"] = pd.to_datetime(
+                        position_election_frequency["validFrom"]
+                    )
+                    position_election_frequency["validTo"] = pd.to_datetime(
+                        position_election_frequency["validTo"]
+                    )
+
         return pd.DataFrame(position_election_frequency_by_database_id.values())
 
     return _get_position_election_frequency
@@ -217,7 +225,7 @@ def model(dbt, session) -> DataFrame:
     if dbt.is_incremental:
 
         # Get existing database_ids from the incremental table
-        existing_records = dbt.this()
+        existing_records = session.table(f"{dbt.this}")
 
         # Filter out database_ids that already exist in the table
         position_election_frequency = position_election_frequency.join(

@@ -34,13 +34,13 @@ clean-targets: # directories to be removed by `dbt clean`
 models:
   goodparty_data_catalog:
     # Applies to all files under models/mart/
-    mart:
-      +materialized: table
+    # mart:
+      # +materialized: table
+    # Applies to all files under models/intermediate/
     intermediate:
       # set defaults for all .py models defined in this subfolder
       +submission_method: serverless_cluster
       +create_notebook: True
-      +schema: "dbt_intermediate"
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
