@@ -17,7 +17,7 @@ with
             name,
             slug,
             cast(tier as int) as tier,
-            cast(geoid as bigint) as geoid,
+            cast(geoid as string) as geoid,
             level,
             mtfcc,
             cast(seats as int) as seats,
