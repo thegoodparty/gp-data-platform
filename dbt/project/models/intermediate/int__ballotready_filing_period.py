@@ -201,10 +201,10 @@ def model(dbt, session) -> DataFrame:
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
-        existing_table = existing_table.select("updatedAt")
+        existing_table = existing_table.select("updated_at")
 
         # get the latest updated_at date from the existing table
-        latest_updated_at = existing_table.agg({"updatedAt": "max"}).collect()[0][0]
+        latest_updated_at = existing_table.agg({"updated_at": "max"}).collect()[0][0]
 
         # filter the race dataframe to only include rows with an updated_at date after the latest updated_at date
         race = race.filter(col("updated_at") > latest_updated_at)
