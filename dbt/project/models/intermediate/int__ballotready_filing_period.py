@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import col, explode, pandas_udf
 from pyspark.sql.types import (
     DateType,
     IntegerType,
@@ -135,9 +135,21 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
 
             try:
                 batch_filing_periods = _get_filing_periods_batch(batch, ce_api_token)
-                # organize filing periods by filing period id
+                # process and organize filing periods by filing period id
                 for filing_period in batch_filing_periods:
-                    filing_period_id = int(filing_period["databaseId"])
+                    # process ints and timestamps
+                    filing_period["databaseId"] = int(filing_period["databaseId"])
+                    filing_period["createdAt"] = pd.Timestamp(
+                        filing_period["createdAt"]
+                    )
+                    filing_period["endOn"] = pd.Timestamp(filing_period["endOn"])
+                    filing_period["startOn"] = pd.Timestamp(filing_period["startOn"])
+                    filing_period["updatedAt"] = pd.Timestamp(
+                        filing_period["updatedAt"]
+                    )
+
+                    # organize by database id
+                    filing_period_id = filing_period["databaseId"]
                     filing_periods_by_filing_period_id[filing_period_id] = filing_period
             except Exception as e:
                 logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
@@ -184,7 +196,7 @@ def model(dbt, session) -> DataFrame:
         raise ValueError("Missing required config parameter: ce_api_token")
 
     # get unique filing period ids from race
-    race: DataFrame = dbt.ref("stg_airbyte_source__ballotready_race")
+    race: DataFrame = dbt.ref("stg_airbyte_source__ballotready_api_race")
 
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
@@ -197,12 +209,12 @@ def model(dbt, session) -> DataFrame:
         # filter the race dataframe to only include rows with an updated_at date after the latest updated_at date
         race = race.filter(col("updated_at") > latest_updated_at)
 
-    filing_periods: DataFrame = race.select("filing_periods").explode("filing_periods")
-    filing_periods = (
-        filing_periods.select("filing_periods.databaseId")
-        .alias("database_id")
-        .distinct()
+    filing_periods: DataFrame = race.select("filing_periods").withColumn(
+        "filing_periods", explode("filing_periods")
     )
+    filing_periods = (
+        filing_periods.select("filing_periods.databaseId").distinct()
+    ).withColumnRenamed("databaseId", "database_id")
 
     # if filing_periods is empty, return an empty dataframe
     if filing_periods.count() == 0:
@@ -215,6 +227,9 @@ def model(dbt, session) -> DataFrame:
             .withColumnRenamed("startOn", "start_on")
             .withColumnRenamed("updatedAt", "updated_at"),
         )
+
+    # For development/testing purposes (commented out by default)
+    # filing_periods = filing_periods.sample(False, 0.1).limit(1000)
 
     # get filing period data from API
     get_filing_period = _get_filing_period_token(ce_api_token)
