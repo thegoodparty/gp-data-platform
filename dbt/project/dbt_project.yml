@@ -33,9 +33,7 @@ clean-targets: # directories to be removed by `dbt clean`
 
 models:
   goodparty_data_catalog:
-    # Applies to all files under models/mart/
-    mart:
-      +materialized: table
+    # Applies to all files under models/intermediate/
     intermediate:
       # set defaults for all .py models defined in this subfolder
       +submission_method: serverless_cluster
