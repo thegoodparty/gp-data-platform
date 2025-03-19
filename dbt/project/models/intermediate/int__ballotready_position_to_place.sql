@@ -2,7 +2,6 @@
     config(
         materialized="view",
         tags=["intermediate", "ballotready", "position_place_mapping"],
-        schema="intermediate",
     )
 }}
 
