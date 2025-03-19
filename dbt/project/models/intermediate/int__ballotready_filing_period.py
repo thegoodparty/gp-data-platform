@@ -126,7 +126,7 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
 
         filing_periods_by_filing_period_id: Dict[int, Dict[str, Any] | None] = {}
 
-        batch_size = 100
+        batch_size = 200
 
         for i in range(0, len(filing_period_ids), batch_size):
             batch = filing_period_ids[i : i + batch_size]
@@ -229,7 +229,8 @@ def model(dbt, session) -> DataFrame:
         )
 
     # For development/testing purposes (commented out by default)
-    # filing_periods = filing_periods.sample(False, 0.1).limit(1000)
+    # filing_periods = filing_periods.sample(False, 0.1).limit(100000)
+    # logging.info(f"filing_periods.count: {filing_periods.count()}")
 
     # get filing period data from API
     get_filing_period = _get_filing_period_token(ce_api_token)
@@ -250,5 +251,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
-    result = result.filter(col("database_id") >= 0)
+    result = result.filter(
+        col("database_id") >= 0 & col("database_id").isNotNull() & col("id").isNotNull()
+    )
     return result
