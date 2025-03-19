@@ -24,3 +24,11 @@ models:
     tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["position_database_id", "place_database_id"]
+  - name: int__geo_id_attributes
+    description: "Intermediate model that maps geo_id attributes using geo_ids from BallotReady place"
+    columns:
+      - name: geo_id
+        description: "Database ID of the filing period from the source system"
+        tests:
+          - not_null
+          - unique

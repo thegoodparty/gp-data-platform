@@ -14,7 +14,7 @@ with
             slug,
             urls,
             forms,
-            geoid,
+            geoid as geo_id,
             mtfcc,
             state,
             contacts,
