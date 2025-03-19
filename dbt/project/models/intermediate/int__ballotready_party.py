@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, pandas_udf
+from pyspark.sql.functions import coalesce, col, lit, pandas_udf
 from pyspark.sql.types import (
     ArrayType,
     IntegerType,
@@ -339,9 +339,7 @@ def model(dbt, session) -> DataFrame:
         # Use coalesce to keep original created_at for existing records, and set current time for new ones
         party = party.withColumn(
             "created_at",
-            col("created_at")
-            .cast("string")
-            .otherwise(lit(current_time_utc).cast(TimestampType())),
+            coalesce(col("created_at"), lit(current_time_utc).cast(TimestampType())),
         )
     else:
         # For full refresh, set created_at to current time for all records
