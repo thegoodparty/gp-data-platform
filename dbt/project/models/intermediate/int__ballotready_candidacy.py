@@ -27,12 +27,14 @@ CANDIDACY_SCHEMA = StructType(
         StructField(
             "endorsements",
             ArrayType(
-                [
-                    StructField("databaseId", IntegerType(), True),
-                    StructField("id", StringType(), True),
-                ]
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                    ]
+                ),
+                True,
             ),
-            True,
         ),
         StructField("id", StringType(), True),
         StructField("is_certified", BooleanType(), True),
@@ -40,12 +42,14 @@ CANDIDACY_SCHEMA = StructType(
         StructField(
             "parties",
             ArrayType(
-                [
-                    StructField("databaseId", IntegerType(), True),
-                    StructField("id", StringType(), True),
-                ]
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                    ]
+                ),
+                True,
             ),
-            True,
         ),
         StructField("position_database_id", IntegerType(), True),
         StructField("race_database_id", IntegerType(), True),
@@ -53,12 +57,14 @@ CANDIDACY_SCHEMA = StructType(
         StructField(
             "stances",
             ArrayType(
-                [
-                    StructField("databaseId", IntegerType(), True),
-                    StructField("id", StringType(), True),
-                ]
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                    ]
+                ),
+                True,
             ),
-            True,
         ),
         StructField("updated_at", TimestampType(), True),
         StructField("withdrawn", BooleanType(), True),
@@ -265,7 +271,7 @@ def model(dbt, session) -> DataFrame:
 
     # get candidacies
     candidacies_s3: DataFrame = dbt.ref(
-        "stg_airbyte_source__ballotready_s3_candidacy_v3"
+        "stg_airbyte_source__ballotready_s3_candidacies_v3"
     )
 
     if dbt.is_incremental:

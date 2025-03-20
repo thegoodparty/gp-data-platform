@@ -2,7 +2,7 @@ version: 2
 
 models:
 
-  - name: int__ballotready_candidacies
+  - name: int__ballotready_candidacy
     description: >
       This model retrieves and processes candidate data from the CivicEngine API since the source
       candidacies_v3 csv file does not contain all the fields needed.
