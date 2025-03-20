@@ -24,3 +24,14 @@ models:
     tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["position_database_id", "place_database_id"]
+
+  - name: int__enhanced_race
+    description: "Intermediate model that enhances the race data from the BallotReady API"
+    columns:
+      - name: id
+        description: "UUID of the race"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              column_type: uuid
