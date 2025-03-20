@@ -38,8 +38,8 @@ with
             tbl_race.is_runoff,
             tbl_race.created_at,
             tbl_race.updated_at,
-            to_timestamp(tbl_election.election_day) as election_date
-        -- tbl_position.slug as position_slug
+            to_timestamp(tbl_election.election_day) as election_date,
+            tbl_position.slug as position_slug
         -- tbl_position.state as `state`,
         -- tbl_position.level as position_level,
         -- tbl_normalized_position.name as normalized_position_name,
@@ -60,9 +60,9 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
             on tbl_race.election.databaseid = tbl_election.database_id
-    -- left join
-    -- {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
-    -- on tbl_race.position.databaseId = tbl_position.database_id
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
+            on tbl_race.position.databaseid = tbl_position.database_id
     -- left join
     -- {{ ref("int__ballotready_normalized_position") }} as tbl_normalized_position
     -- on tbl_position.normalized_position.`databaseId`
