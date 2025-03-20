@@ -13,6 +13,36 @@ models:
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
+    columns:
+      - name: candidacy_id
+        description: "Unique identifier for the candidacy in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+
+  - name: int__ballotready_filing_period
+    description: >
+      This model retrieves and processes filing period data from the CivicEngine API.
+      It contains filing period information for political candidates, including their endorsements
+      from various organizations.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: database_id
+        description: "Unique identifier for the normalized position in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the normalized position in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
 
   - name: int__ballotready_geofence
     description: >
