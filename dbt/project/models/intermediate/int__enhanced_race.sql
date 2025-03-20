@@ -1,17 +1,19 @@
-{{ config(materialized="view") }}
+{{
+    config(
+        materialized="table",
+        incremental_strategy="merge",
+        unique_key="id",
+        tags=["intermediate", "ballotready", "enhanced_race"],
+    )
+}}
 
 /*
 schema to build:
 model Race {
-  electionDate            DateTime      @map("election_date")
-  electionDay             String        @map("election_day")
-  // Position
-  locationName            String?       @map("location_name")
-  filingDateStart         String?       @map("filing_date_start")
-  filingDateEnd           String?       @map("filing_date_end")
-  // PositionElection
-  Place                   Place?        @relation(fields: [placeId], references: [id])
-  placeId                 String?       @db.Uuid
+    filingDateStart         String?       @map("filing_date_start")
+    filingDateEnd           String?       @map("filing_date_end")
+    Place                   Place?        @relation(fields: [placeId], references: [id])
+    placeId                 String?       @db.Uuid
 }
 */
 with
@@ -38,7 +40,7 @@ with
             tbl_race.is_runoff,
             tbl_race.created_at,
             tbl_race.updated_at,
-            to_timestamp(tbl_election.election_day) as election_date,  -- or to_date()
+            to_timestamp(tbl_election.election_day) as election_date,
             tbl_position.slug as position_slug,
             tbl_position.state as `state`,
             tbl_position.level as position_level,
@@ -79,6 +81,9 @@ with
         left join
             election_frequency as tbl_election_frequency
             on tbl_position.database_id = tbl_election_frequency.position_database_id
+        {% if is_incremental() %}
+            where tbl_race.updated_at > (select max(updated_at) from {{ this }})
+        {% endif %}
     )
 
 select *
