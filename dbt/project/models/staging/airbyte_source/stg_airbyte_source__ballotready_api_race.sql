@@ -11,21 +11,23 @@ with
             _airbyte_generation_id,
             id,
             cast(seats as int) as seats,
-            from_json(election, 'STRUCT<databaseId:INT, id:STRING>') as election,
-            isrecall as is_recall,
-            isrunoff as is_runoff,
-            from_json(position, 'STRUCT<databaseId:INT, id:STRING>') as position,
+            from_json(election, 'struct<databaseId:int,id:string>') as election,
+            cast(isrecall as boolean) as is_recall,
+            cast(isrunoff as boolean) as is_runoff,
+            from_json(position, 'struct<databaseId:int,id:string>') as position,
             to_timestamp(createdat) as created_at,
-            isprimary as is_primary,
+            cast(isprimary as boolean) as is_primary,
             to_timestamp(updatedat) as updated_at,
             cast(databaseid as int) as database_id,
-            isdisabled as is_disabled,
-            ispartisan as is_partisan,
+            cast(isdisabled as boolean) as is_disabled,
+            cast(ispartisan as boolean) as is_partisan,
             from_json(
-                candidacies, 'ARRAY<STRUCT<databaseId:INT, id:STRING>>'
+                candidacies, 'array<struct<databaseId:int,id:string>>'
             ) as candidacies,
-            isunexpired as is_unexpired,
-            filingperiods
+            cast(isunexpired as boolean) as is_unexpired,
+            from_json(
+                filingperiods, 'array<struct<databaseId:int,id:string>>'
+            ) as filing_periods
 
         from source
 
