@@ -33,9 +33,14 @@ with
     filing_period_ids as (
         select
             tbl_race.database_id as race_database_id,
-            fp.databaseid as filing_period_database_id
+            /*
+            Take the filing period. Of the 1MM races, only 10k have more than 1 filing period.
+            In these cases, the last value is the latest filing period.
+            */
+            last(fp.databaseid) as filing_period_database_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         lateral view explode(filing_periods) as fp
+        group by race_database_id
     ),
     enhanced_race as (
         select
@@ -64,9 +69,9 @@ with
             tbl_position.salary,
             tbl_position.sub_area_name,
             tbl_position.sub_area_value,
-            tbl_election_frequency.frequency
-        -- tbl_filing_period.start_on as filing_date_start,
-        -- tbl_filing_period.end_on as filing_date_end
+            tbl_election_frequency.frequency,
+            tbl_filing_period.start_on as filing_date_start,
+            tbl_filing_period.end_on as filing_date_end
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
@@ -81,13 +86,12 @@ with
         left join
             election_frequency as tbl_election_frequency
             on tbl_position.database_id = tbl_election_frequency.position_database_id
-        -- debug in databricks console
-        -- left join
-        -- filing_period_ids as tbl_filing_period
-        -- on tbl_race.database_id = tbl_filing_period.race_database_id
-        -- left join
-        -- {{ ref("int__ballotready_filing_period") }} as tbl_filing_period
-        -- on tbl_filing_period.database_id = tbl_filing_period.database_id
+        left join
+            filing_period_ids as tbl_fp
+            on tbl_race.database_id = tbl_fp.race_database_id
+        left join
+            {{ ref("int__ballotready_filing_period") }} as tbl_filing_period
+            on tbl_fp.filing_period_database_id = tbl_filing_period.database_id
         {% if is_incremental() %}
             where tbl_race.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
