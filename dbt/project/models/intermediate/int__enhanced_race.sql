@@ -7,15 +7,6 @@
     )
 }}
 
-/*
-schema to build:
-model Race {
-    filingDateStart         String?       @map("filing_date_start")
-    filingDateEnd           String?       @map("filing_date_end")
-    Place                   Place?        @relation(fields: [placeId], references: [id])
-    placeId                 String?       @db.Uuid
-}
-*/
 with
     election_frequencies as (
         select tbl_pos.database_id, e.databaseid as pe_frequency_database_id
@@ -54,6 +45,7 @@ with
             tbl_race.updated_at,
             to_timestamp(tbl_election.election_day) as election_date,
             tbl_position.slug as position_slug,
+            concat(tbl_position.state, '-', tbl_position.slug) as state_slug,
             tbl_position.state as `state`,
             tbl_position.level as position_level,
             tbl_normalized_position.name as normalized_position_name,
@@ -72,6 +64,8 @@ with
             tbl_election_frequency.frequency,
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end
+        -- need to add field `place` (how to represent object?)
+        -- need to add int `place_id` (database_id?)
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
