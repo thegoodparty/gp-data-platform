@@ -20,7 +20,7 @@ from pyspark.sql.types import (
 
 CANDIDACY_SCHEMA = StructType(
     [
-        StructField("candidate_person_database_id", IntegerType(), True),
+        StructField("candidate_database_id", IntegerType(), True),
         StructField("created_at", TimestampType(), True),
         StructField("database_id", IntegerType(), True),
         StructField("election_database_id", IntegerType(), True),
@@ -94,7 +94,7 @@ def _get_candidacy_batch(
     This function handles pagination and rate limiting to efficiently retrieve
     candidacy data for a list of IDs.
     """
-    url = "https://api.ballotready.org/graphql"
+    url = "https://bpi.civicengine.com/graphql"
 
     encoded_ids = [_base64_encode_id(candidacy_id) for candidacy_id in candidacy_ids]
 
@@ -104,7 +104,7 @@ def _get_candidacy_batch(
         query GetCandidaciesBatch($ids: [ID!]!) {
             nodes(ids: $ids) {
                 ... on Candidacy {
-                    Person {
+                    candidate {
                         databaseId
                     }
                     createdAt
@@ -165,8 +165,8 @@ def _get_candidacy_batch(
 
         # process each entry (rename, handle timestamps)
         for candidacy in candidacies:
-            candidacy["candidate_person_database_id"] = int(
-                candidacy["Person"]["databaseId"]
+            candidacy["candidate_database_id"] = int(
+                candidacy["candidate"]["databaseId"]
             )
             candidacy["created_at"] = pd.to_datetime(candidacy["createdAt"])
             candidacy["database_id"] = int(candidacy["databaseId"])
@@ -232,7 +232,7 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
             else:
                 result_data.append(
                     {
-                        "candidate_person_database_id": None,
+                        "candidate_database_id": None,
                         "created_at": None,
                         "database_id": -1,
                         "election_database_id": None,
@@ -294,7 +294,7 @@ def model(dbt, session) -> DataFrame:
         return session.createDataFrame([], CANDIDACY_SCHEMA)
 
     # downsample in dev for quicker testing
-    if dbt.get_config("dbt_environment") != "prod":
+    if dbt.config.get("dbt_environment") != "prod":
         candidacies_s3 = candidacies_s3.sample(False, 0.1).limit(1000)
 
     # get candidacy data from API
@@ -304,9 +304,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     candidacies = candidacies.select(
-        col("candidacy.candidate_person_database_id").alias(
-            "candidate_person_database_id"
-        ),
+        col("candidacy.candidate_database_id").alias("candidate_database_id"),
         col("candidacy.created_at").alias("created_at"),
         col("candidacy.database_id").alias("database_id"),
         col("candidacy.election_database_id").alias("election_database_id"),
