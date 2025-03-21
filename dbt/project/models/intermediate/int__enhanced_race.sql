@@ -1,6 +1,6 @@
 {{
     config(
-        materialized="table",
+        materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
         tags=["intermediate", "ballotready", "enhanced_race"],
