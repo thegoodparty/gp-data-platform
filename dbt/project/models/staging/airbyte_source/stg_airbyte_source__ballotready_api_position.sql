@@ -58,9 +58,7 @@ with
             hasmajorityvoteprimary as has_majority_vote_primary,
             hasrankedchoicegeneral as has_ranked_choice_general,
             hasrankedchoiceprimary as has_ranked_choice_primary,
-            from_json(
-                eligibilityrequirements, 'ARRAY<STRUCT<databaseId:INT, id:STRING>>'
-            ) as eligibility_requirements,
+            eligibilityrequirements as eligibility_requirements,
             cast(rankedchoicemaxvotesgeneral as int) as ranked_choice_max_votes_general,
             cast(rankedchoicemaxvotesprimary as int) as ranked_choice_max_votes_primary,
             musthaveprofessionalexperience as must_have_professional_experience

@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: m_election_api__candidacy
+    description: "Intermediate model that maps positions to places from the BallotReady API"
+    columns:
+      - name: id
+        description: "UUID of the candidacy"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+      - name: br_hash_id
+        description: "Hash ID of the candidacy"
+        tests:
+          - relationships:
+              to: ref('int__ballotready_candidacy')
+              field: id
+
+  - name: m_election_api__race
+    description: "Intermediate model that enhances the race data from the BallotReady API"
+    columns:
+      - name: id
+        description: "UUID of the race"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
