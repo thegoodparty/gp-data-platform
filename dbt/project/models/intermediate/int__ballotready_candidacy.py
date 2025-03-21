@@ -81,6 +81,11 @@ def _base64_encode_id(candidacy_id: int) -> str:
     return encoded_id
 
 
+@pandas_udf(StringType())
+def _base64_encode_id_udf(candidacy_id: pd.Series) -> pd.Series:
+    return pd.Series([_base64_encode_id(x) for x in candidacy_id])
+
+
 def _get_candidacy_batch(
     candidacy_ids: List[int],
     ce_api_token: str,
@@ -180,7 +185,11 @@ def _get_candidacy_batch(
 
     except (KeyError, TypeError) as e:
         logging.error(f"Error processing candidacy batch: {str(e)}")
-        raise ValueError(f"Failed to parse candidacy data from API response: {str(e)}")
+        raise ValueError(
+            f"Failed to parse candidacy data from API response: {str(e)}"
+            f"payload sent: {payload}"
+            f"data received: {data}"
+        )
     except requests.exceptions.RequestException as e:
         logging.error(f"API request failed for candidacy batch: {str(e)}")
         raise RuntimeError(f"Failed to fetch candidacy data from API: {str(e)}")
