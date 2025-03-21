@@ -257,7 +257,7 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
 def model(dbt, session) -> DataFrame:
     # configure the model
     dbt.config(
-        materialized="table",
+        materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
         on_schema_change="fail",
@@ -285,21 +285,19 @@ def model(dbt, session) -> DataFrame:
             )
 
     # get distinct candidacy IDs
-    ids_from_candidacies = candidacies_s3.select("candidacy_id").distinct().collect()
-    ids_from_candidacies = [row.candidacy_id for row in ids_from_candidacies]
-    logging.info(f"INFO: Found {len(ids_from_candidacies)} distinct candidacy IDs")
+    candidacy_ids = candidacies_s3.select("candidacy_id").distinct()
 
-    if len(ids_from_candidacies) == 0:
+    if candidacy_ids.count() == 0:
         logging.info("INFO: No new or updated candidacies to process")
         return session.createDataFrame([], CANDIDACY_SCHEMA)
 
     # downsample in dev for quicker testing
     if dbt.config.get("dbt_environment") != "prod":
-        candidacies_s3 = candidacies_s3.sample(False, 0.1).limit(1000)
+        candidacy_ids = candidacy_ids.sample(False, 0.1).limit(1000)
 
     # get candidacy data from API
     get_candidacy = _get_candidacy_token(ce_api_token)
-    candidacies = candidacies_s3.withColumn(
+    candidacies = candidacy_ids.withColumn(
         "candidacy", get_candidacy(col("candidacy_id"))
     )
 
