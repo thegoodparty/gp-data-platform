@@ -170,17 +170,22 @@ def _get_candidacy_batch(
 
         # process each entry (rename, handle timestamps)
         for candidacy in candidacies:
-            candidacy["candidate_database_id"] = int(
-                candidacy["candidate"]["databaseId"]
-            )
-            candidacy["created_at"] = pd.to_datetime(candidacy["createdAt"])
-            candidacy["database_id"] = int(candidacy["databaseId"])
-            candidacy["election_database_id"] = int(candidacy["election"]["databaseId"])
-            candidacy["is_certified"] = candidacy["isCertified"]
-            candidacy["is_hidden"] = candidacy["isHidden"]
-            candidacy["position_database_id"] = int(candidacy["position"]["databaseId"])
-            candidacy["race_database_id"] = int(candidacy["race"]["databaseId"])
-            candidacy["updated_at"] = pd.to_datetime(candidacy["updatedAt"])
+            if candidacy:
+                candidacy["candidate_database_id"] = int(
+                    candidacy["candidate"]["databaseId"]
+                )
+                candidacy["created_at"] = pd.to_datetime(candidacy["createdAt"])
+                candidacy["database_id"] = int(candidacy["databaseId"])
+                candidacy["election_database_id"] = int(
+                    candidacy["election"]["databaseId"]
+                )
+                candidacy["is_certified"] = candidacy["isCertified"]
+                candidacy["is_hidden"] = candidacy["isHidden"]
+                candidacy["position_database_id"] = int(
+                    candidacy["position"]["databaseId"]
+                )
+                candidacy["race_database_id"] = int(candidacy["race"]["databaseId"])
+                candidacy["updated_at"] = pd.to_datetime(candidacy["updatedAt"])
         return candidacies
 
     except (KeyError, TypeError) as e:
@@ -226,7 +231,8 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
                 batch_candidacies = _get_candidacy_batch(batch, ce_api_token)
                 # process and organize candidacies by candidacy id
                 for candidacy in batch_candidacies:
-                    candidacies_by_candidacy_id[candidacy["databaseId"]] = candidacy
+                    if candidacy:
+                        candidacies_by_candidacy_id[candidacy["databaseId"]] = candidacy
 
             except Exception as e:
                 logging.error(f"Error processing candidacy batch: {e}")
