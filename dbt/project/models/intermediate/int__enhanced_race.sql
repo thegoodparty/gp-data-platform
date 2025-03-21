@@ -65,7 +65,8 @@ with
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end
         -- need to add field `place` (how to represent object?)
-        -- need to add int `place_id` (database_id?)
+        -- need to add int `place_id` (database_id?, possibly use geo_id to match
+        -- position to a single place)
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
