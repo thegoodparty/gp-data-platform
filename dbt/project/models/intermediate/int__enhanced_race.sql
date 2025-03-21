@@ -63,8 +63,8 @@ with
             tbl_position.eligibility_requirements,
             tbl_position.salary,
             tbl_position.sub_area_name,
-            tbl_position.sub_area_value
-        -- tbl_election_frequency.frequency,
+            tbl_position.sub_area_value,
+            tbl_election_frequency.frequency
         -- tbl_filing_period.start_on as filing_date_start,
         -- tbl_filing_period.end_on as filing_date_end
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
@@ -78,18 +78,10 @@ with
             {{ ref("int__ballotready_normalized_position") }} as tbl_normalized_position
             on tbl_position.normalized_position.`databaseId`
             = tbl_normalized_position.database_id
-        -- left join
-        -- {{ ref("int__ballotready_position_election_frequency") }} as tbl_frequency
-        -- on case
-        -- when size(tbl_position.election_frequencies) > 0
-        -- then
-        -- tbl_position.election_frequencies[0].databaseid
-        -- = tbl_frequency.database_id
-        -- else false
-        -- end
-        -- left join
-        -- election_frequency as tbl_election_frequency
-        -- on tbl_position.database_id = tbl_election_frequency.position_database_id
+        left join
+            election_frequency as tbl_election_frequency
+            on tbl_position.database_id = tbl_election_frequency.position_database_id
+        -- debug in databricks console
         -- left join
         -- filing_period_ids as tbl_filing_period
         -- on tbl_race.database_id = tbl_filing_period.race_database_id
