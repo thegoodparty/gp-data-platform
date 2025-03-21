@@ -2,6 +2,29 @@ version: 2
 
 models:
 
+  - name: int__ballotready_candidacy
+    description: >
+      This model retrieves and processes candidate data from the CivicEngine API since the source
+      candidacies_v3 csv file does not contain all the fields needed.
+    config:
+      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: true
+    columns:
+      - name: database_id
+        description: "Unique identifier for the candidacy in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the candidacy in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
+
   - name: int__ballotready_endorsement
     description: >
       This model retrieves and processes candidate endorsement data from the CivicEngine API.
