@@ -69,25 +69,25 @@ def _get_endorsements_batch(
     # Build the GraphQL query
     query = """
     query GetCandidacyEndorsements($ids: [ID!]!) {
-      nodes(ids: $ids) {
-        ... on Candidacy {
-          id
-          databaseId
-          endorsements {
-            databaseId
-            id
-            createdAt
-            endorser
-            recommendation
-            status
-            updatedAt
-            organization {
-                databaseId
+        nodes(ids: $ids) {
+            ... on Candidacy {
                 id
+                databaseId
+                endorsements {
+                    databaseId
+                    id
+                    createdAt
+                    endorser
+                    recommendation
+                    status
+                    updatedAt
+                    organization {
+                        databaseId
+                        id
+                    }
+                }
             }
-          }
         }
-      }
     }
     """
     variables = {"ids": encoded_ids}

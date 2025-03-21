@@ -185,7 +185,7 @@ def model(dbt, session) -> DataFrame:
     dbt.config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="id",
+        unique_key="database_id",
         on_schema_change="fail",
         tags=["ballotready", "filing_period", "api", "pandas_udf"],
     )
