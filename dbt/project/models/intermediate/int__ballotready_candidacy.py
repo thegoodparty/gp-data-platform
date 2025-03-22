@@ -276,7 +276,7 @@ def model(dbt, session) -> DataFrame:
         incremental_strategy="merge",
         unique_key="database_id",
         on_schema_change="fail",
-        tags=["ballotready", "candidacies", "api", "pandas_udf"],
+        tags=["ballotready", "candidacy", "api", "pandas_udf"],
     )
 
     # get api token from environment variables
@@ -296,7 +296,7 @@ def model(dbt, session) -> DataFrame:
 
         if max_updated_at:
             candidacies_s3 = candidacies_s3.filter(
-                candidacies_s3["updated_at"] >= max_updated_at
+                candidacies_s3["candidacy_updated_at"] >= max_updated_at
             )
 
     # get distinct candidacy IDs
