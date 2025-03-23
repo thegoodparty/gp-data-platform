@@ -276,7 +276,7 @@ def model(dbt, session) -> DataFrame:
         incremental_strategy="merge",
         unique_key="database_id",
         on_schema_change="fail",
-        tags=["ballotready", "candidacies", "api", "pandas_udf"],
+        tags=["ballotready", "candidacy", "api", "pandas_udf"],
     )
 
     # get api token from environment variables
@@ -296,7 +296,7 @@ def model(dbt, session) -> DataFrame:
 
         if max_updated_at:
             candidacies_s3 = candidacies_s3.filter(
-                candidacies_s3["updated_at"] >= max_updated_at
+                candidacies_s3["candidacy_updated_at"] >= max_updated_at
             )
 
     # get distinct candidacy IDs
@@ -306,11 +306,9 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: No new or updated candidacies to process")
         return session.createDataFrame([], CANDIDACY_SCHEMA)
 
-    # downsample in dev for quicker testing
-    if dbt.config.get("dbt_environment") != "prod":
-        candidacy_ids = candidacy_ids.sample(False, 0.1).limit(1000)
-
     # get candidacy data from API
+    # this is a slow operation; it helps to downsample during development with
+    # dataframe.sample(False, 0.1).limit(1000)
     get_candidacy = _get_candidacy_token(ce_api_token)
     candidacies = candidacy_ids.withColumn(
         "candidacy", get_candidacy(col("candidacy_id"))
