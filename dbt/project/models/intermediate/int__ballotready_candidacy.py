@@ -306,11 +306,9 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: No new or updated candidacies to process")
         return session.createDataFrame([], CANDIDACY_SCHEMA)
 
-    # downsample in dev for quicker testing
-    if dbt.config.get("dbt_environment") != "prod":
-        candidacy_ids = candidacy_ids.sample(False, 0.1).limit(1000)
-
     # get candidacy data from API
+    # this is a slow operation; it helps to downsample during development with
+    # dataframe.sample(False, 0.1).limit(1000)
     get_candidacy = _get_candidacy_token(ce_api_token)
     candidacies = candidacy_ids.withColumn(
         "candidacy", get_candidacy(col("candidacy_id"))
