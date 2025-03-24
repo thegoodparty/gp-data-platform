@@ -113,5 +113,20 @@ with
         from deduped_matched_by_string
     )
 
-select *
+select
+    database_id,
+    geo_id,
+    name,
+    slug,
+    state,
+    county_name,
+    county_fips,
+    city,
+    zips,
+    csa_name,
+    population,
+    density,
+    home_value,
+    unemployment_rate,
+    income_household_median
 from final
