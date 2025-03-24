@@ -3,26 +3,26 @@
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
-        tags=["intermediate", "ballotready", "enhanced_place"],
+        tags=["intermediate", "ballotready", "enhanced_position"],
     )
 }}
 
 
 with
 
-    enhanced_place as (
+    enhanced_position as (
         select
-            {{ generate_salted_uuid(fields=["tbl_place.id"], salt="ballotready") }}
+            {{ generate_salted_uuid(fields=["tbl_position.id"], salt="ballotready") }}
             as id,
-            tbl_place.created_at,
-            tbl_place.updated_at,
+            tbl_position.created_at,
+            tbl_position.updated_at,
             -- id as br_hash_id, # should be added to API data model
-            tbl_place.database_id as br_database_id,
-            tbl_place.`name`,
-            tbl_place.slug,
-            tbl_place.geo_id,
-            tbl_place.mtfcc,
-            tbl_place.`state`,
+            tbl_position.database_id as br_database_id,
+            tbl_position.`name`,
+            tbl_position.slug,
+            tbl_position.geo_id,
+            tbl_position.mtfcc,
+            tbl_position.`state`,
             tbl_fun_facts.city as city_largest,
             tbl_fun_facts.county_name as county_name,
             tbl_fun_facts.population as population,
@@ -38,10 +38,10 @@ with
                 parent   Place?  @relation("PlaceHierarchy", fields: [parentId], references: [id])
                 parentId String? @db.Uuid
         */
-        from {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place
+        from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
-            {{ ref("int__place_fun_facts") }} as tbl_fun_facts
-            on tbl_place.database_id = tbl_fun_facts.database_id
+            {{ ref("int__position_fun_facts") }} as tbl_fun_facts
+            on tbl_position.database_id = tbl_fun_facts.database_id
         {% if is_incremental() %}
             where updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
@@ -64,4 +64,4 @@ select
     income_household_median,
     unemployment_rate,
     home_value
-from enhanced_place
+from enhanced_position
