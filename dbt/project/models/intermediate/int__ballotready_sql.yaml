@@ -44,3 +44,12 @@ models:
         tests:
           - not_null
           - unique
+
+  - name: int__position_fun_facts
+    description: "Intermediate model that adds fun facts to positions"
+    columns:
+      - name: database_id
+        description: "Database ID of the position"
+        tests:
+          - not_null
+          - unique
