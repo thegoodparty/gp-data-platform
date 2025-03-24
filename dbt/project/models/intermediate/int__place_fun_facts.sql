@@ -10,7 +10,7 @@
 with
     joined_by_geo_id as (
         select
-            cast(tbl_place.database_id as int) as database_id,
+            tbl_place.database_id,
             tbl_place.geo_id,
             tbl_place.name,
             tbl_place.slug,
