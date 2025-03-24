@@ -14,7 +14,7 @@ with
             slug,
             from_json(urls, 'array<struct<databaseId:int,id:string>>') as urls,
             forms,
-            geoid,
+            geoid as geo_id,
             mtfcc,
             state,
             from_json(
