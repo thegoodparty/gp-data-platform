@@ -63,10 +63,12 @@ with
             tbl_position.sub_area_value,
             tbl_election_frequency.frequency,
             tbl_filing_period.start_on as filing_date_start,
-            tbl_filing_period.end_on as filing_date_end
-        -- need to add field `place` (how to represent object?)
-        -- need to add int `place_id` (database_id?, possibly use geo_id to match
-        -- position to a single place)
+            tbl_filing_period.end_on as filing_date_end,
+            -- need to add field `place` (how to represent object?)
+            -- need to add int `place_id` (database_id?, possibly use geo_id to match
+            -- position to a single place)
+            -- try position first
+            tbl_position.database_id as position_database_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
@@ -120,7 +122,8 @@ select
     sub_area_value,
     frequency,
     filing_date_start,
-    filing_date_end
--- need to add field `place` (how to represent object?)
--- need to add int `place_id` (database_id?)
+    filing_date_end,
+    -- need to add field `place` (how to represent object?)
+    -- need to add int `place_id` (database_id?)
+    position_database_id
 from enhanced_race

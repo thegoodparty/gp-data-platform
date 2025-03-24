@@ -36,9 +36,20 @@ select
     sub_area_value,
     frequency,
     filing_date_start,
-    filing_date_end
--- need to add field `place` (how to represent object?)
--- need to add int `place_id` (database_id?)
+    filing_date_end,
+    -- need to add field `place` (how to represent object?)
+    -- need to add int `place_id` (database_id?)
+    /* try position first. join to fun facts with
+    select
+        tbl_race.br_database_id,
+        tbl_race.position_name,
+        tbl_pos_ff.city
+    from dbt_hugh.m_election_api__race as tbl_race
+    left join dbt_hugh.int__position_fun_facts as tbl_pos_ff
+        on tbl_pos_ff.database_id = tbl_race.position_database_id
+;
+    */
+    position_database_id
 from {{ ref("int__enhanced_race") }}
 {% if is_incremental() %}
     where updated_at > (select max(updated_at) from {{ this }})
