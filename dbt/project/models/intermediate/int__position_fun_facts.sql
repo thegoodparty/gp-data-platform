@@ -2,7 +2,7 @@
     config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="id",
+        unique_key="database_id",
         tags=["intermediate", "ballotready", "position_fun_facts"],
     )
 }}
@@ -28,6 +28,7 @@ with
             tbl_position.name,
             tbl_position.slug,
             tbl_position.state,
+            tbl_position.updated_at,
             tbl_cities.county_name,
             tbl_cities.county_fips,
             tbl_cities.city,
@@ -55,6 +56,7 @@ with
             tbl_unmatched.name,
             tbl_unmatched.slug,
             tbl_unmatched.state,
+            tbl_unmatched.updated_at,
             coalesce(tbl_unmatched.county_name, tbl_cities.county_name) as county_name,
             coalesce(tbl_unmatched.county_fips, tbl_cities.county_fips) as county_fips,
             coalesce(tbl_unmatched.city, tbl_cities.city) as city,
@@ -83,6 +85,7 @@ with
             name,
             slug,
             state,
+            updated_at,
             county_name,
             county_fips,
             city,
@@ -119,6 +122,7 @@ select
     name,
     slug,
     state,
+    updated_at,
     county_name,
     county_fips,
     city,
