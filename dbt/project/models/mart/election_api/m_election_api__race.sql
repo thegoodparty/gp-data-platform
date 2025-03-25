@@ -43,10 +43,10 @@ select
     select
         tbl_race.br_database_id,
         tbl_race.position_name,
-        tbl_pos_ff.city
+        tbl_pos.city
     from dbt_hugh.m_election_api__race as tbl_race
-    left join dbt_hugh.int__position_fun_facts as tbl_pos_ff
-        on tbl_pos_ff.database_id = tbl_race.position_database_id
+    left join dbt_hugh.m_election_api__position as tbl_pos
+        on tbl_pos.database_id = tbl_race.position_database_id
 ;
     */
     position_database_id
