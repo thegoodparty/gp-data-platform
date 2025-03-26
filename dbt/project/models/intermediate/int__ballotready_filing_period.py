@@ -30,9 +30,9 @@ def _base64_encode_id(filing_period_id: int) -> str:
 def _get_filing_periods_batch(
     filing_period_ids: List[int],
     ce_api_token: str,
-    base_sleep: float = 0.1,
-    jitter_factor: float = 0.1,
-    timeout: int = 30,
+    base_sleep: float = 0.05,
+    jitter_factor: float = 0.05,
+    timeout: int = 5,
 ) -> List[Dict[str, Any]]:
     """Fetches filing periods for a batch of filing period IDs using the CivicEngine API."""
     url = "https://bpi.civicengine.com/graphql"
@@ -261,9 +261,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
-    result = (
-        result.filter(col("database_id") >= 0)
-        .filter(col("database_id").isNotNull())
-        .filter(col("id").isNotNull())
-    )
+    result = result.filter(col("database_id") >= 0)
+    result = result.filter(col("database_id").isNotNull())
+    result = result.filter(col("id").isNotNull())
     return result
