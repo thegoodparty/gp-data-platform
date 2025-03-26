@@ -209,12 +209,14 @@ def model(dbt, session) -> DataFrame:
         # filter the race dataframe to only include rows with an updated_at date after the latest updated_at date
         race = race.filter(col("updated_at") > latest_updated_at)
 
+    # explode the filing_periods column, deduplicate, rename to database_id and drop nulls
     filing_periods: DataFrame = race.select("filing_periods").withColumn(
         "filing_periods", explode("filing_periods")
     )
     filing_periods = (
         filing_periods.select("filing_periods.databaseId").distinct()
     ).withColumnRenamed("databaseId", "database_id")
+    filing_periods = filing_periods.filter(col("database_id").isNotNull())
 
     # if filing_periods is empty, return an empty dataframe
     if filing_periods.count() == 0:
