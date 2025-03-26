@@ -237,12 +237,8 @@ def model(dbt, session) -> DataFrame:
             ),
         )
 
-    # downsample in dev for quicker testing
-    if dbt.config.get("dbt_environment") != "prod":
-        filing_periods = filing_periods.sample(False, 0.1).limit(10000)
-        logging.info(f"filing_periods.count: {filing_periods.count()}")
-
-    # get filing period data from API
+    # get filing period data from API. This is a long operation,
+    # downsample with `.sample(False, 0.1).limit(10000)` if needed
     get_filing_period = _get_filing_period_token(ce_api_token)
 
     # First get the filing period data as a struct, then extract each field into its own column
