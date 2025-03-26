@@ -43,7 +43,7 @@ with
             {{ ref("int__position_fun_facts") }} as tbl_fun_facts
             on tbl_position.database_id = tbl_fun_facts.database_id
         {% if is_incremental() %}
-            where updated_at > (select max(updated_at) from {{ this }})
+            where tbl_position.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
     )
 
