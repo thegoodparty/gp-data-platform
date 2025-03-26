@@ -14,7 +14,7 @@ models:
         tests:
           - relationships:
               to: ref('stg_airbyte_source__ballotready_api_place')
-              field: databaseid
+              field: database_id
 
       - name: position_created_at
         description: "Timestamp when the position was created"

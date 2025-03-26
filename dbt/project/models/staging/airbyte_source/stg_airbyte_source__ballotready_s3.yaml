@@ -10,6 +10,11 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: election_result
+        accepted_values:
+          - WON
+          - LOST
+          - RUNOFF
   - name: stg_airbyte_source__ballotready_s3_uscities_v1_77
     description: US Cities data load from ballotready csvs in s3 bucket
     columns:

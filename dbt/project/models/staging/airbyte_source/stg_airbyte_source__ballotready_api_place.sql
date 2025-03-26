@@ -12,24 +12,35 @@ with
             id,
             name,
             slug,
-            urls,
+            from_json(urls, 'array<struct<databaseId:int,id:string>>') as urls,
             forms,
-            geoid,
+            geoid as geo_id,
             mtfcc,
             state,
-            contacts,
+            from_json(
+                contacts,
+                'array<struct<email:string,fax:string,phone:string,type:string>>'
+            ) as contacts,
             timezone,
-            addresses,
-            createdat,
-            dissolved,
-            updatedat,
-            databaseid,
-            primarytype,
-            hasvotebymail,
-            isprintingenabled,
-            registrationoptions,
-            isreceiverofvotebymailrequests,
-            canvoteinprimarywhen18bygeneral
+            from_json(
+                addresses, 'array<struct<databaseId:int,id:string>>'
+            ) as addresses,
+            to_timestamp(createdat) as created_at,
+            cast(dissolved as boolean) as dissolved,
+            to_timestamp(updatedat) as updated_at,
+            cast(databaseid as int) as database_id,
+            primarytype as primary_type,
+            cast(hasvotebymail as boolean) as has_vote_by_mail,
+            cast(isprintingenabled as boolean) as is_printing_enabled,
+            from_json(
+                registrationoptions, 'array<struct<databaseId:int,id:string>>'
+            ) as registration_options,
+            cast(
+                isreceiverofvotebymailrequests as boolean
+            ) as is_receiver_of_vote_by_mail_requests,
+            cast(
+                canvoteinprimarywhen18bygeneral as boolean
+            ) as can_vote_in_primary_when_18_by_general
 
         from source
 
