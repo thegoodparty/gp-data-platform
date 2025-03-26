@@ -223,11 +223,18 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: No new or updated filing periods to process")
         return session.createDataFrame(
             [],
-            filing_period_schema.withColumnRenamed("createdAt", "created_at")
-            .withColumnRenamed("databaseId", "database_id")
-            .withColumnRenamed("endOn", "end_on")
-            .withColumnRenamed("startOn", "start_on")
-            .withColumnRenamed("updatedAt", "updated_at"),
+            StructType(
+                [
+                    StructField("created_at", TimestampType(), True),
+                    StructField("database_id", IntegerType(), True),
+                    StructField("end_on", DateType(), True),
+                    StructField("id", StringType(), True),
+                    StructField("notes", StringType(), True),
+                    StructField("start_on", DateType(), True),
+                    StructField("type", StringType(), True),
+                    StructField("updated_at", TimestampType(), True),
+                ]
+            ),
         )
 
     # downsample in dev for quicker testing
