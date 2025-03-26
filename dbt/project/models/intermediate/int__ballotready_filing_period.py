@@ -32,7 +32,7 @@ def _get_filing_periods_batch(
     ce_api_token: str,
     base_sleep: float = 0.05,
     jitter_factor: float = 0.05,
-    timeout: int = 5,
+    timeout: int = 30,
 ) -> List[Dict[str, Any]]:
     """Fetches filing periods for a batch of filing period IDs using the CivicEngine API."""
     url = "https://bpi.civicengine.com/graphql"
