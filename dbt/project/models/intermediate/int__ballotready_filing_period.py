@@ -30,8 +30,8 @@ def _base64_encode_id(filing_period_id: int) -> str:
 def _get_filing_periods_batch(
     filing_period_ids: List[int],
     ce_api_token: str,
-    base_sleep: float = 0.1,
-    jitter_factor: float = 0.1,
+    base_sleep: float = 0.05,
+    jitter_factor: float = 0.05,
     timeout: int = 30,
 ) -> List[Dict[str, Any]]:
     """Fetches filing periods for a batch of filing period IDs using the CivicEngine API."""
@@ -223,19 +223,22 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: No new or updated filing periods to process")
         return session.createDataFrame(
             [],
-            filing_period_schema.withColumnRenamed("createdAt", "created_at")
-            .withColumnRenamed("databaseId", "database_id")
-            .withColumnRenamed("endOn", "end_on")
-            .withColumnRenamed("startOn", "start_on")
-            .withColumnRenamed("updatedAt", "updated_at"),
+            StructType(
+                [
+                    StructField("created_at", TimestampType(), True),
+                    StructField("database_id", IntegerType(), True),
+                    StructField("end_on", DateType(), True),
+                    StructField("id", StringType(), True),
+                    StructField("notes", StringType(), True),
+                    StructField("start_on", DateType(), True),
+                    StructField("type", StringType(), True),
+                    StructField("updated_at", TimestampType(), True),
+                ]
+            ),
         )
 
-    # downsample in dev for quicker testing
-    if dbt.config.get("dbt_environment") != "prod":
-        filing_periods = filing_periods.sample(False, 0.1).limit(10000)
-        logging.info(f"filing_periods.count: {filing_periods.count()}")
-
-    # get filing period data from API
+    # get filing period data from API. This is a long operation,
+    # downsample with `.sample(False, 0.1).limit(10000)` if needed
     get_filing_period = _get_filing_period_token(ce_api_token)
 
     # First get the filing period data as a struct, then extract each field into its own column
@@ -254,9 +257,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
-    result = (
-        result.filter(col("database_id") >= 0)
-        .filter(col("database_id").isNotNull())
-        .filter(col("id").isNotNull())
-    )
+    result = result.filter(col("database_id") >= 0)
+    result = result.filter(col("database_id").isNotNull())
+    result = result.filter(col("id").isNotNull())
     return result
