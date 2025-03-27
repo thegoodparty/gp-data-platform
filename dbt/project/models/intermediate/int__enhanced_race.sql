@@ -14,12 +14,15 @@ with
         lateral view explode(tbl_pos.election_frequencies) exploded_table as e
     ),
     election_frequency as (
-        select tbl_pos.database_id as position_database_id, tbl_freq.frequency
+        select
+            tbl_pos.database_id as position_database_id,
+            last(tbl_freq.frequency) as frequency
         from election_frequencies as tbl_pos
         left join
             {{ ref("int__ballotready_position_election_frequency") }} as tbl_freq
             on tbl_pos.pe_frequency_database_id = tbl_freq.database_id
         where tbl_freq.valid_to is null
+        group by position_database_id
     ),
     filing_period_ids as (
         select
