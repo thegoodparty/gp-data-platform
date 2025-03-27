@@ -2,7 +2,7 @@ models:
   - name: stg_airbyte_source__ballotready_api_election
     description: Election data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
     columns:
-      - name: databaseId
+      - name: database_id
         description: Identifies the primary key from the database.
         data_tests:
           - not_null
@@ -41,7 +41,7 @@ models:
   - name: stg_airbyte_source__ballotready_api_place
     description: Place data scan from [`places` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/places)
     columns:
-      - name: databaseId
+      - name: database_id
         description: Identifies the primary key from the database.
         data_tests:
           - not_null
@@ -64,6 +64,16 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: level
+        description: The level of the position.
+        accepted_values:
+          - CITY
+          - COUNTY
+          - FEDERAL
+          - LOCAL
+          - REGIONAL
+          - STATE
+          - TOWNSHIP
   - name: stg_airbyte_source__ballotready_api_position_to_place
     description: Position data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
     columns:
@@ -80,7 +90,7 @@ models:
   - name: stg_airbyte_source__ballotready_api_race
     description: Race data scan from [`races` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/races)
     columns:
-      - name: databaseId
+      - name: database_id
         description: Identifies the primary key from the database.
         data_tests:
           - not_null
