@@ -1,0 +1,48 @@
+version: 2
+
+seeds:
+  - name: us_zip_codes
+    description: >
+      US ZIP codes data from GeoNames Postal Code Files (https://download.geonames.org/export/zip/).
+      This data is licensed under a Creative Commons Attribution 4.0 License.
+      Attribution required: www.geonames.org. The exported file is modified according to ../scripts/clean_us_zip_codes.py
+    meta:
+      source: "GeoNames Postal Code Files"
+      source_url: "https://download.geonames.org/export/zip/US.zip"
+      license: "Creative Commons Attribution 4.0 License"
+      last_updated: "2025-03-28"
+    columns:
+      - name: zip_code
+        description: ZIP code
+        data_type: int
+        tests:
+          - not_null
+          - unique
+      - name: place_name
+        description: City/town name
+        data_type: string
+      - name: state_full
+        description: Full name of the state (e.g., Alaska)
+        data_type: string
+      - name: state_code
+        description: State abbreviation (e.g., AK)
+        data_type: string
+      - name: county_province
+        description: County/municipality
+        data_type: string
+      - name: latitude
+        description: Estimated latitude (WGS84)
+        data_type: float
+      - name: longitude
+        description: Estimated longitude (WGS84)
+        data_type: float
+      - name: accuracy
+        description: >
+          Accuracy of lat/lng coordinates:
+          1 = estimated
+          4 = geonameid
+          6 = centroid of addresses or shape
+        data_type: integer
+        tests:
+          - accepted_values:
+              values: [1, 4, 6]
