@@ -43,3 +43,6 @@ seeds:
           4 = geonameid
           6 = centroid of addresses or shape
         data_type: integer
+        tests:
+          - accepted_values:
+              values: [1, 4, 6]
