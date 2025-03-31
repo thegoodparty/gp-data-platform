@@ -30,7 +30,7 @@ with
             tbl_fun_facts.income_household_median as income_household_median,
             tbl_fun_facts.unemployment_rate as unemployment_rate,
             tbl_fun_facts.home_value as home_value
-        /* Need to add the following
+        /* TODO: add the following
                 // Relations
                 Race     Race[]
                 // Recursive relationships

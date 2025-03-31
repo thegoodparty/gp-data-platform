@@ -67,6 +67,7 @@ with
             tbl_election_frequency.frequency,
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end,
+            -- TODO: add field `place` (how to represent object?)
             -- need to add field `place` (how to represent object?)
             -- need to add int `place_id` (database_id?, possibly use geo_id to match
             -- position to a single place)
