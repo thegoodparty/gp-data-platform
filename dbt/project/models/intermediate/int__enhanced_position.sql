@@ -16,10 +16,9 @@ with
             as id,
             tbl_position.created_at,
             tbl_position.updated_at,
-            -- id as br_hash_id, # should be added to API data model
             tbl_position.database_id as br_database_id,
             tbl_position.`name`,
-            tbl_position.slug,
+            tbl_position.slug,  -- TODO: double check that this slug is correct from https://github.com/thegoodparty/election-api/blob/develop/prisma/schema/place.prisma#L7
             tbl_position.geo_id,
             tbl_position.mtfcc,
             tbl_position.`state`,
@@ -31,12 +30,7 @@ with
             tbl_fun_facts.unemployment_rate as unemployment_rate,
             tbl_fun_facts.home_value as home_value
         /* TODO: add the following
-                // Relations
-                Race     Race[]
-                // Recursive relationships
-                children Place[] @relation("PlaceHierarchy")
-                parent   Place?  @relation("PlaceHierarchy", fields: [parentId], references: [id])
-                parentId String? @db.Uuid
+            parentId String? @db.Uuid
         */
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
