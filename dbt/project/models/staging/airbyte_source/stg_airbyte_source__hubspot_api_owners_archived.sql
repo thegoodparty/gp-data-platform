@@ -10,7 +10,10 @@ with
             {{ adapter.quote("_airbyte_generation_id") }},
             int({{ adapter.quote("id") }}) as id,
             {{ adapter.quote("email") }},
-            {{ adapter.quote("teams") }},
+            from_json(
+                {{ adapter.quote("teams") }},
+                'array<struct<id:string,name:string,primary:boolean>>'
+            ) as teams,
             {{ adapter.quote("userId") }} as user_id,
             {{ adapter.quote("archived") }},
             {{ adapter.quote("lastName") }} as last_name,
