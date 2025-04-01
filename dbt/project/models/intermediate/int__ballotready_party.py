@@ -67,20 +67,20 @@ def _get_parties_batch(
     # Build the GraphQL query
     query = """
     query GetCandidacyParties($ids: [ID!]!) {
-      nodes(ids: $ids) {
-        ... on Candidacy {
-          id
-          databaseId
-          parties {
-            createdAt
-            databaseId
-            id
-            name
-            shortName
-            updatedAt
-          }
+        nodes(ids: $ids) {
+            ... on Candidacy {
+                id
+                databaseId
+                parties {
+                    createdAt
+                    databaseId
+                    id
+                    name
+                    shortName
+                    updatedAt
+                }
+            }
         }
-      }
     }
     """
     variables = {"ids": encoded_ids}
@@ -194,7 +194,6 @@ def _get_candidacy_parties_token(ce_api_token: str) -> Callable:
     """
 
     @pandas_udf(returnType=party_schema)
-    # @pandas_udf(returnType=StringType())
     def get_candidacy_parties(candidacy_ids: pd.Series) -> pd.Series:
         """
         Pandas UDF to process candidacy IDs in batches and fetch their parties.
