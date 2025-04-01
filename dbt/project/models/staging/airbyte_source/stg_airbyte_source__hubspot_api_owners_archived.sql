@@ -1,8 +1,25 @@
-/*
-    The columns in this data stream change frequently, so we use a macro to retrieve instead instead of hardcoding them. Alternatively we can pick up only the needed columns
-    To avoid breaking changes, we use the `except` keyword to select all columns except the ones that are transformed individually.
-*/
-{% set source_ref = source("airbyte_source", "hubspot_api_owners_archived") %}
+with
+    source as (
+        select * from {{ source("airbyte_source", "hubspot_api_owners_archived") }}
+    ),
+    renamed as (
+        select
+            {{ adapter.quote("_airbyte_raw_id") }},
+            {{ adapter.quote("_airbyte_extracted_at") }},
+            {{ adapter.quote("_airbyte_meta") }},
+            {{ adapter.quote("_airbyte_generation_id") }},
+            {{ adapter.quote("id") }},
+            {{ adapter.quote("email") }},
+            {{ adapter.quote("teams") }},
+            {{ adapter.quote("userId") }},
+            {{ adapter.quote("archived") }},
+            {{ adapter.quote("lastName") }},
+            {{ adapter.quote("createdAt") }},
+            {{ adapter.quote("firstName") }},
+            {{ adapter.quote("updatedAt") }},
+            {{ adapter.quote("userIdIncludingInactive") }}
 
-select {{ dbt_utils.star(from=source_ref, except=[]) }}  -- use `except` for any columns to transform individually
-from {{ source_ref }}
+        from source
+    )
+select *
+from renamed
