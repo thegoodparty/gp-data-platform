@@ -24,3 +24,12 @@ models:
     tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["position_database_id", "place_database_id"]
+
+  - name: int__geo_id_attributes
+    description: "Intermediate model that maps geo_id to its components and parent geo_id"
+    columns:
+      - name: geo_id
+        description: "geo_id from BallotReady"
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["geo_id", "mtfcc"]
