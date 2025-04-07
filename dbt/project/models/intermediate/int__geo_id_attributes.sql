@@ -130,7 +130,7 @@ with
             mtfcc,
             slug_geo_id_components,
             parent_geo_id,
-            left(geo_id, 2) as state_geo_id,
+            left(geo_id, 2) as state_geo_id
         from with_parent_geo_id
     )
 
