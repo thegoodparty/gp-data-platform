@@ -54,7 +54,7 @@ with
                 when length(geo_id) = 12 and mtfcc like 'X%'
                 then array(2, 5, 7)  -- BallotReady City Council, Justice District, School District
                 when length(geo_id) = 15 and mtfcc like 'X%'
-                then array(2, 5, 10)  -- BallotReady City Council, Justice District, School District
+                then array(2, 5, 10)  -- BallotReady Township Subdistrict
             end as split_indices
         from unique_geo_ids
     ),
