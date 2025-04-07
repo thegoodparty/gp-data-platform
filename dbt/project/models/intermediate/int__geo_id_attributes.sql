@@ -27,6 +27,10 @@ with
         select
             geo_id,
             mtfcc,
+            /*
+            implement case by case for geo_id length and mtcc according to
+            https://docs.google.com/spreadsheets/d/1t1U2oECqFRKPUVO7HYI2me-YzDgtvjbPzp5h9BqKHcU/edit?gid=0#gid=0
+            */
             case
                 when mtfcc in ('X0025', 'X0030', 'X0031', 'X0033', 'X0037', 'X9000')
                 then array()  -- BallotReady with empty parent_id
@@ -42,7 +46,7 @@ with
                 then array(2, 5)  -- State + County + Subdivision
                 when length(geo_id) = 11
                 then array(2, 5)  -- State + County + Census tract
-                when length(geo_id) = 12 and mtfcc like 'X%'
+                when length(geo_id) = 12 and mtfcc not like 'X%'
                 then array(2, 5, 11)  -- State + County + Tract + Block Group
                 when length(geo_id) = 12 and mtfcc like 'X%'
                 then array(2, 5, 7)  -- BallotReady City Council, Justice District, School District
@@ -76,66 +80,54 @@ with
             end as split_geo_ids,
             case
                 when size(split_indices) = 0
-                then concat(substring(geo_id, 1, 2), '-', substring(geo_id, 3))
+                then geo_id
                 when size(split_indices) = 1
-                then
-                    concat(
-                        substring(geo_id, 1, split_indices[0]),
-                        '-',
-                        substring(geo_id, split_indices[0] + 1)
-                    )
+                then concat(left(geo_id, split_indices[0]), '-', geo_id)
                 when size(split_indices) = 2
                 then
                     concat(
-                        substring(geo_id, 1, split_indices[0]),
+                        left(geo_id, split_indices[0]),
                         '-',
-                        substring(
-                            geo_id,
-                            split_indices[0] + 1,
-                            split_indices[1] - split_indices[0]
-                        ),
+                        left(geo_id, split_indices[1]),
                         '-',
-                        substring(geo_id, split_indices[1] + 1)
+                        geo_id
                     )
                 when size(split_indices) = 3
                 then
                     concat(
-                        substring(geo_id, 1, split_indices[0]),
+                        left(geo_id, split_indices[0]),
                         '-',
-                        substring(
-                            geo_id,
-                            split_indices[0] + 1,
-                            split_indices[1] - split_indices[0]
-                        ),
+                        left(geo_id, split_indices[1]),
                         '-',
-                        substring(
-                            geo_id,
-                            split_indices[1] + 1,
-                            split_indices[2] - split_indices[1]
-                        ),
+                        left(geo_id, split_indices[2]),
                         '-',
-                        substring(geo_id, split_indices[2] + 1)
+                        geo_id
                     )
-            end as slug
+            end as slug_geo_id_components
         from split_indices
     ),
-    with_parent_id as (
+    with_parent_geo_id as (
         select
             geo_id,
             mtfcc,
             split_indices,
             split_geo_ids,
-            slug,
+            slug_geo_id_components,
             case
                 when size(split_geo_ids) >= 1
                 then split_geo_ids[size(split_geo_ids) - 1]
                 else null
-            end as parent_id
+            end as parent_geo_id
         from splitted_geo_ids
     ),
     geo_id_attributes as (
-        select distinct geo_id, mtfcc, slug, parent_id, left(geo_id, 2) as state
-        from with_parent_id
+        select distinct
+            geo_id,
+            mtfcc,
+            slug_geo_id_components,
+            parent_geo_id,
+            left(geo_id, 2) as state
+        from with_parent_geo_id
     )
 
 select *
