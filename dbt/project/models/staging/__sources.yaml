@@ -38,5 +38,9 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_deals
         description: raw data load from HubSpot data model
+      - name: hubspot_api_owners_archived
+        description: raw data load from HubSpot data model
+      - name: hubspot_api_owners
+        description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
