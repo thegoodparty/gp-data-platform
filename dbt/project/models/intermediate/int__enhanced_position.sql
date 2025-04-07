@@ -31,9 +31,7 @@ with
             concat_ws(
                 '-', tbl_fun_facts.state, tbl_fun_facts.county_name, tbl_fun_facts.city
             ) as concatenated_location
-        /*
-                parent_id is self-referential, it is added in an additional layer
-            */
+        -- parent_id is self-referential, it is added in an additional layer
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
             {{ ref("int__position_fun_facts") }} as tbl_fun_facts
