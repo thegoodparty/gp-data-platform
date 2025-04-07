@@ -16,33 +16,35 @@
     -#}
     {% if keep_hyphens %}
         trim(
-            regexp_replace(
+            both '-'
+            from  -- trim leading/trailing hyphens
                 regexp_replace(
                     regexp_replace(
-                        lower(trim({{ column_name }})), '[^a-z0-9\\s-]', ''  -- remove special chars except hyphens
+                        regexp_replace(
+                            lower(trim({{ column_name }})), '[^a-z0-9\\s-]', ''  -- remove special chars except hyphens
+                        ),
+                        '\\s+',
+                        '-'  -- replace spaces with single hyphen
                     ),
-                    '\\s+',
-                    '-'  -- replace spaces with single hyphen
-                ),
-                '-{2,}',
-                '-'  -- collapse multiple hyphens
-            ),
-            '-'  -- trim leading/trailing hyphens
+                    '-{2,}',
+                    '-'  -- collapse multiple hyphens
+                )
         )
     {% else %}
         trim(
-            regexp_replace(
+            both '-'
+            from  -- trim leading/trailing hyphens
                 regexp_replace(
                     regexp_replace(
-                        lower(trim({{ column_name }})), '[^a-z0-9\\s]', ''  -- remove all special chars
+                        regexp_replace(
+                            lower(trim({{ column_name }})), '[^a-z0-9\\s]', ''  -- remove all special chars
+                        ),
+                        '\\s+',
+                        '-'  -- replace spaces with single hyphen
                     ),
-                    '\\s+',
-                    '-'  -- replace spaces with single hyphen
-                ),
-                '-{2,}',
-                '-'  -- collapse multiple hyphens
-            ),
-            '-'  -- trim leading/trailing hyphens
+                    '-{2,}',
+                    '-'  -- collapse multiple hyphens
+                )
         )
     {% endif %}
 {% endmacro %}

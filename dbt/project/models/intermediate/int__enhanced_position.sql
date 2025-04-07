@@ -18,7 +18,6 @@ with
             tbl_position.updated_at,
             tbl_position.database_id as br_database_id,
             tbl_position.`name`,
-            tbl_position.slug,  -- TODO: double check that this slug is correct from https://github.com/thegoodparty/election-api/blob/develop/prisma/schema/place.prisma#L7
             tbl_position.geo_id,
             tbl_position.mtfcc,
             tbl_position.`state`,
@@ -28,10 +27,13 @@ with
             tbl_fun_facts.density as density,
             tbl_fun_facts.income_household_median as income_household_median,
             tbl_fun_facts.unemployment_rate as unemployment_rate,
-            tbl_fun_facts.home_value as home_value
-        /* TODO: add the following
-            parentId String? @db.Uuid
-        */
+            tbl_fun_facts.home_value as home_value,
+            concat_ws(
+                '-', tbl_fun_facts.state, tbl_fun_facts.county_name, tbl_fun_facts.city
+            ) as concatenated_location
+        /*
+                parent_id is self-referential, it is added in an additional layer
+            */
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
             {{ ref("int__position_fun_facts") }} as tbl_fun_facts
@@ -39,6 +41,26 @@ with
         {% if is_incremental() %}
             where tbl_position.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
+    ),
+    with_slugged_location as (
+        select
+            id,
+            created_at,
+            updated_at,
+            br_database_id,
+            name,
+            {{ slugify("concatenated_location") }} as slug,
+            geo_id,
+            mtfcc,
+            state,
+            city_largest,
+            county_name,
+            population,
+            density,
+            income_household_median,
+            unemployment_rate,
+            home_value
+        from enhanced_position
     )
 
 select
@@ -46,11 +68,11 @@ select
     created_at,
     updated_at,
     br_database_id,
-    `name`,
+    name,
     slug,
     geo_id,
     mtfcc,
-    `state`,
+    state,
     city_largest,
     county_name,
     population,
@@ -58,4 +80,4 @@ select
     income_household_median,
     unemployment_rate,
     home_value
-from enhanced_position
+from with_slugged_location

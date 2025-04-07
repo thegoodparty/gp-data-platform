@@ -25,6 +25,40 @@ models:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["position_database_id", "place_database_id"]
 
+  - name: int__enhanced_place
+    description: "Intermediate model that enhances the place data from the BallotReady API"
+    columns:
+      - name: id
+        description: "UUID of the place"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+  - name: int__enhanced_position
+    description: "Intermediate model that enhances the position data from the BallotReady API"
+    columns:
+      - name: id
+        description: "UUID of the position"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+  - name: int__enhanced_position_w_parent
+    description: "Intermediate model that enhances the position data from the BallotReady API with its parent position"
+    columns:
+      - name: id
+        description: "UUID of the position"
+      - name: parent_id
+        description: "UUID of the parent position"
+        tests:
+          - relationships:
+              to: ref('int__enhanced_position')
+              field: id
+
   - name: int__enhanced_race
     description: "Intermediate model that enhances the race data from the BallotReady API"
     columns:
@@ -53,6 +87,7 @@ models:
         tests:
           - not_null
           - unique
+
   - name: int__geo_id_attributes
     description: "Intermediate model that maps geo_id to its components and parent geo_id"
     columns:
