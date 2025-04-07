@@ -9,6 +9,7 @@
 }}
 
 with
+    -- collect all geo_ids from ballotready api place and position tables
     geo_ids as (
         select distinct geo_id, mtfcc
         from {{ ref("stg_airbyte_source__ballotready_api_place") }}
@@ -22,7 +23,9 @@ with
             where geo_id not in (select geo_id from {{ this }})
         {% endif %}
     ),
+    -- select distinct geo_ids from geo_ids
     unique_geo_ids as (select distinct geo_id, mtfcc from geo_ids),
+    -- determine split indices according to mtfcc and geo_id length
     split_indices as (
         select
             geo_id,
@@ -55,6 +58,7 @@ with
             end as split_indices
         from unique_geo_ids
     ),
+    -- split geo_ids according to split_indices
     splitted_geo_ids as (
         select
             geo_id,
@@ -126,7 +130,7 @@ with
             mtfcc,
             slug_geo_id_components,
             parent_geo_id,
-            left(geo_id, 2) as state
+            left(geo_id, 2) as state_geo_id,
         from with_parent_geo_id
     )
 
