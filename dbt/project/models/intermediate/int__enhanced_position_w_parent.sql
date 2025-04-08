@@ -10,6 +10,15 @@
 
 with
 
+    /*
+        Geo_ids on position are not unique, so we need to dedup when selecting a parent_id.
+        Geo_ids present a unique identifier regarding location information like slug (i.e. ny-queens-new-york)
+    */
+    deduped_geo_id_for_parent as (
+        select *
+        from {{ ref("int__enhanced_position") }}
+        qualify row_number() over (partition by geo_id order by population desc) = 1
+    ),
     enhanced_position as (
         select
             tbl_pos.id,
@@ -59,7 +68,7 @@ with
             tbl_pos_parent.id as parent_id
         from enhanced_position as tbl_pos
         left join
-            {{ ref("int__enhanced_place") }} as tbl_pos_parent
+            deduped_geo_id_for_parent as tbl_pos_parent
             on tbl_pos.parent_geo_id = tbl_pos_parent.geo_id
 
     )

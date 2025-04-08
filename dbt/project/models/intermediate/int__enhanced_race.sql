@@ -36,15 +36,6 @@ with
         lateral view explode(filing_periods) as fp
         group by race_database_id
     ),
-    deduped_place as (
-        /*
-            Of the 72k places, 250 have duplicate geo_ids (2025-04-08). We remove these duplices by taking
-            the place with the largest population
-        */
-        select *
-        from {{ ref("int__enhanced_place_w_parent") }}
-        qualify row_number() over (partition by geo_id order by population desc) = 1
-    ),
     enhanced_race as (
         select
             {{ generate_salted_uuid(fields=["tbl_race.id"], salt="ballotready") }}
@@ -79,7 +70,7 @@ with
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end,
             tbl_position.geo_id as position_geo_id,
-            tbl_place.id as place_id
+            tbl_position_parent.id as place_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
@@ -100,7 +91,9 @@ with
         left join
             {{ ref("int__ballotready_filing_period") }} as tbl_filing_period
             on tbl_fp.filing_period_database_id = tbl_filing_period.database_id
-        left join deduped_place as tbl_place on tbl_position.geo_id = tbl_place.geo_id
+        left join
+            {{ ref("int__enhanced_position_w_parent") }} as tbl_position_parent
+            on tbl_position.database_id = tbl_position_parent.br_database_id
         {% if is_incremental() %}
             where tbl_race.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
