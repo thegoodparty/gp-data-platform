@@ -1,0 +1,27 @@
+version: 2
+
+models:
+
+  - name: write__election_api_db
+    description: >
+      This model writes data to the election api database.
+    config:
+      materialized: table
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      # TODO: add the election api db config
+      # TODO: add the ssh config
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: true
+    columns:
+      - name: id
+        description: "Unique identifier for the candidacy in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: table_name
+        description: "The name of the table"
+        tests:
+            - not_null
+      - name: number_of_rows
+        description: "The number of rows in the table that's been loaded"
