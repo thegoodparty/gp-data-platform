@@ -23,11 +23,13 @@ with
             tbl_position.`state`,
             tbl_fun_facts.city as city_largest,
             tbl_fun_facts.county_name as county_name,
-            tbl_fun_facts.population as population,
-            tbl_fun_facts.density as density,
-            tbl_fun_facts.income_household_median as income_household_median,
-            tbl_fun_facts.unemployment_rate as unemployment_rate,
-            tbl_fun_facts.home_value as home_value,
+            try_cast(tbl_fun_facts.population as int) as population,
+            try_cast(tbl_fun_facts.density as float) as density,
+            try_cast(
+                tbl_fun_facts.income_household_median as int
+            ) as income_household_median,
+            try_cast(tbl_fun_facts.unemployment_rate as float) as unemployment_rate,
+            try_cast(tbl_fun_facts.home_value as int) as home_value,
             concat_ws(
                 '-', tbl_fun_facts.state, tbl_fun_facts.county_name, tbl_fun_facts.city
             ) as concatenated_location

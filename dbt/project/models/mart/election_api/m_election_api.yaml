@@ -56,21 +56,3 @@ models:
           - relationships:
               to: ref('int__enhanced_position')
               field: br_database_id
-
-  - name: m_election_api__position
-    description: "Intermediate model that represents political positions/offices from the BallotReady API"
-    columns:
-      - name: id
-        description: "UUID of the position"
-        tests:
-          - not_null
-          - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-
-      - name: br_database_id
-        description: "Database ID of the `place` from BallotReady"
-        tests:
-          - relationships:
-              to: ref('int__ballotready_position')
-              field: br_database_id

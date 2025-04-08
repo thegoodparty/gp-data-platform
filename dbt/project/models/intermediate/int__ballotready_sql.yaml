@@ -114,7 +114,7 @@ models:
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: br_database_id
-        description: "Database ID of the position"
+        description: "Database ID of the race"
         tests:
           - not_null
           - unique
