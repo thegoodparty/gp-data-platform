@@ -15,7 +15,7 @@ select
     br_database_id as br_position_database_id,
     `name`,
     slug,
-    geo_id,
+    geo_id as geoid,
     mtfcc,
     `state`,
     city_largest,
