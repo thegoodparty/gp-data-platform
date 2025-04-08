@@ -8,8 +8,18 @@ models:
     config:
       materialized: table
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      # TODO: add the election api db config
-      # TODO: add the ssh config
+      ssh_host: "{{ env_var('DBT_SSH_HOST') }}"
+      ssh_port: "{{ env_var('DBT_SSH_PORT') }}"
+      ssh_user: "{{ env_var('DBT_SSH_USER') }}"
+      ssh_pk_1: "{{ env_var('DBT_SSH_PK_1') }}"
+      ssh_pk_2: "{{ env_var('DBT_SSH_PK_2') }}"
+      ssh_pk_3: "{{ env_var('DBT_SSH_PK_3') }}"
+      election_db_host: "{{ env_var('DBT_ELECTION_DB_HOST') }}"
+      election_db_port: "{{ env_var('DBT_ELECTION_DB_PORT') }}"
+      election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
+      election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
+      election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
+      election_db_pw: "{{ env_var('DBT_ELECTION_DB_PW') }}"
     meta:
       owner: "Data Engineering Team"
       contains_pii: true
