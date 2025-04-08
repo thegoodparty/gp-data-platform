@@ -35,6 +35,14 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: br_database_id
+        description: "Database ID of the position"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('stg_airbyte_source__ballotready_api_position')
+              field: database_id
 
   - name: int__enhanced_place_w_parent
     description: "Intermediate model that enhances the place data from the BallotReady API with its parent place"
@@ -105,6 +113,17 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: br_database_id
+        description: "Database ID of the position"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('stg_airbyte_source__ballotready_api_race')
+              field: database_id
+    tests:
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('stg_airbyte_source__ballotready_api_race')
 
   - name: int__place_fun_facts
     description: "Intermediate model that adds fun facts to places"
@@ -114,6 +133,12 @@ models:
         tests:
           - not_null
           - unique
+          - relationships:
+              to: ref('stg_airbyte_source__ballotready_api_place')
+              field: database_id
+    tests:
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('stg_airbyte_source__ballotready_api_place')
 
   - name: int__position_fun_facts
     description: "Intermediate model that adds fun facts to positions"
@@ -123,6 +148,12 @@ models:
         tests:
           - not_null
           - unique
+          - relationships:
+              to: ref('stg_airbyte_source__ballotready_api_position')
+              field: database_id
+    tests:
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('stg_airbyte_source__ballotready_api_position')
 
   - name: int__geo_id_attributes
     description: "Intermediate model that maps geo_id to its components and parent geo_id"
