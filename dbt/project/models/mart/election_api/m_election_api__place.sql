@@ -24,8 +24,9 @@ select
     density,
     income_household_median,
     unemployment_rate,
-    home_value
-from {{ ref("int__enhanced_position") }}  -- note that the position table is used for the election place table
+    home_value,
+    parent_id
+from {{ ref("int__enhanced_position_w_parent") }}  -- note that the position table is used for the election place table
 {% if is_incremental() %}
     where updated_at > (select max(updated_at) from {{ this }})
 {% endif %}
