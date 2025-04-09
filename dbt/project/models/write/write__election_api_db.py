@@ -1,6 +1,7 @@
 import base64
 import importlib.util
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,38 +10,9 @@ from datetime import datetime
 
 from pyspark.sql import DataFrame
 
-# Check if sshtunnel is installed, install if not
-# TODO: replace with paramiko if sshtunnel is not working
-# if importlib.util.find_spec("sshtunnel") is None:
-#     subprocess.check_call([sys.executable, "-m", "pip", "install", "sshtunnel==0.4.0"])
 if importlib.util.find_spec("paramiko") is None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
-from paramiko import SSHClient
-
-# from sshtunnel import SSHTunnelForwarder
-
-
-# def _create_ssh_tunnel(
-#     ssh_host: str,
-#     ssh_port: int,
-#     ssh_username: str,
-#     ssh_key_file_path: str,
-#     remote_host: str,
-#     remote_port: int,
-#     local_port: int,
-# ) -> SSHTunnelForwarder:
-#     logging.info(
-#         f"Creating SSH tunnel with {ssh_host}:{ssh_port} to {remote_host}:{remote_port} on port {local_port}"
-#     )
-#     tunnel = SSHTunnelForwarder(
-#         ssh_address_or_host=(ssh_host, ssh_port),
-#         ssh_username=ssh_username,
-#         ssh_pkey=ssh_key_file_path,
-#         remote_bind_address=(remote_host, remote_port),
-#         # local_bind_address=("localhost", local_port),
-#     )
-#     tunnel.start()
-#     return tunnel
+from paramiko import AutoAddPolicy, SSHClient
 
 
 def model(dbt, session) -> DataFrame:
@@ -77,32 +49,26 @@ def model(dbt, session) -> DataFrame:
     try:
 
         # store the ssh key in a temp file and delete after establishing the tunnel
-        with tempfile.NamedTemporaryFile(delete=True, suffix=".pem") as ssh_key_file:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".pem", mode="w"
+        ) as ssh_key_file:
             decoded_bytes = base64.b64decode(ssh_pk)
-            decoded_string = decoded_bytes.decode("utf-8")
-            ssh_key_file.write(decoded_string.encode())
+            decoded_string = decoded_bytes.decode("utf-8").strip()
+            ssh_key_file.write(decoded_string)
             ssh_key_file_path = ssh_key_file.name
 
-            # Use the key file for SSH connection
-            client = SSHClient()
-            client.load_system_host_keys()
-            client.connect(
-                hostname=ssh_host,
-                port=ssh_port,
-                username=ssh_username,
-                key_filename=ssh_key_file_path,
-            )
-
-        #     # create the ssh tunnel
-        #     tunnel = _create_ssh_tunnel(
-        #         ssh_host=ssh_host,
-        #         ssh_port=ssh_port,
-        #         ssh_username=ssh_username,
-        #         ssh_key_file_path=ssh_key_file_path,
-        #         remote_host=db_host,
-        #         remote_port=db_port,
-        #         local_port=5432,
-        #     )
+        # Use the key file for SSH connection
+        client = SSHClient()
+        client.set_missing_host_key_policy(
+            AutoAddPolicy()
+        )  # Automatically add unknown host keys
+        client.connect(
+            hostname=ssh_host,
+            port=ssh_port,
+            username=ssh_username,
+            key_filename=ssh_key_file_path,
+        )
+        logging.info("Connected to bastion host (AKA jump box)")
 
         # get the data to write
         place_df: DataFrame = dbt.ref("m_election_api__place")
@@ -145,8 +111,8 @@ def model(dbt, session) -> DataFrame:
         logging.error(f"Error: {e}")
         raise e
     finally:
-        # if "tunnel" in locals():
-        #     tunnel.stop()
         client.close()
+        if os.path.exists(ssh_key_file_path):
+            os.remove(ssh_key_file_path)
 
     return load_log_df
