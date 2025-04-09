@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pyspark.sql import DataFrame
 
+# install paramiko if not installed on the serverless databricks host
 if importlib.util.find_spec("paramiko") is None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
 from paramiko import AutoAddPolicy, SSHClient
@@ -110,6 +111,7 @@ def model(dbt, session) -> DataFrame:
     except Exception as e:
         logging.error(f"Error: {e}")
         raise e
+    # force clean up
     finally:
         client.close()
         if os.path.exists(ssh_key_file_path):
