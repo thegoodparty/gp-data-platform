@@ -2,7 +2,7 @@ import base64
 import importlib.util
 import logging
 import os
-import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -16,12 +16,6 @@ from pyspark.sql.functions import col, concat, concat_ws, lit, when
 if importlib.util.find_spec("paramiko") is None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
 from paramiko import AutoAddPolicy, SSHClient
-
-# install psycopg2 if not installed
-if importlib.util.find_spec("psycopg2") is None:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "psycopg2-binary"])
-
-import psycopg2
 
 
 # Function to transform array columns to PostgreSQL compatible format
@@ -65,16 +59,19 @@ def model(dbt, session) -> DataFrame:
     """
     This model loads data for the mart that services the election api.
     The tables are written to the postgres database directly from spark
-    since Airbyte does not support reads from databricks.
+    since Airbyte does not support reads from databricks. We use JDBC
+    through an SSH tunnel.
     """
     # configure the data model
     dbt.config(
         materialized="incremental",
+        connection="databricks-dedicated-cluster",
         incremental_strategy="append",
         unique_key="id",
         on_schema_change="fail",
         tags=["ballotready", "election_api", "write", "postgres"],
-        # packages = ["paramiko"]
+        # TODO: once serverless supports library installations on jobs, uncomment the following line
+        # packages=["paramiko"],
     )
 
     # get db and ssh tunnel config
@@ -92,11 +89,12 @@ def model(dbt, session) -> DataFrame:
     ssh_pk_3 = dbt.config.get("ssh_pk_3")
     ssh_pk = ssh_pk_1 + ssh_pk_2 + ssh_pk_3
 
-    # Temporary file paths
+    # Temporary file path for SSH key
     ssh_key_file_path = None
-    temp_csv_dir = None
-    client = None
-    sftp = None
+    ssh_client = None
+    local_port = None
+    channel = None
+    transport = None
 
     try:
         # get the data to write
@@ -106,27 +104,9 @@ def model(dbt, session) -> DataFrame:
         # TODO: separate place_df having `plarent_id` and without. May require separate loading to satisfy
         # foreign key constraints.
 
-        # Create a temporary directory for CSV files
-        temp_csv_dir = tempfile.mkdtemp()
-        place_csv_path = f"{temp_csv_dir}/place.csv"
-        race_csv_path = f"{temp_csv_dir}/race.csv"
-
         # Prepare DataFrames for PostgreSQL compatible format
-        place_df_prepared = _prepare_df_for_postgres(place_df)
-        race_df_prepared = _prepare_df_for_postgres(race_df)
-
-        # Export to CSV
-        logging.info(f"Writing place data to CSV at {place_csv_path}")
-        place_df_prepared.write.format("csv").option("header", "true").mode(
-            "overwrite"
-        ).save(place_csv_path)
-
-        logging.info(f"Writing race data to CSV at {race_csv_path}")
-        race_df_prepared.write.format("csv").option("header", "true").mode(
-            "overwrite"
-        ).save(race_csv_path)
-
-        logging.info("Data exported to CSV files")
+        # place_df_prepared = _prepare_df_for_postgres(place_df)
+        # race_df_prepared = _prepare_df_for_postgres(race_df)
 
         # Setup SSH connection with key
         with tempfile.NamedTemporaryFile(
@@ -138,11 +118,11 @@ def model(dbt, session) -> DataFrame:
             ssh_key_file_path = ssh_key_file.name
 
         # Use the key file for SSH connection
-        client = SSHClient()
-        client.set_missing_host_key_policy(
+        ssh_client = SSHClient()
+        ssh_client.set_missing_host_key_policy(
             AutoAddPolicy()
         )  # Automatically add unknown host keys
-        client.connect(
+        ssh_client.connect(
             hostname=ssh_host,
             port=ssh_port,
             username=ssh_username,
@@ -150,18 +130,35 @@ def model(dbt, session) -> DataFrame:
         )
         logging.info("Connected to bastion host")
 
-        # Create an SSH tunnel for PostgreSQL connection
-        # Forward a local port to the PostgreSQL server through the SSH tunnel
-        local_port = 24601  # Local port to forward
-        postgres_server = (db_host, db_port)
-        transport = client.get_transport()
+        # Set up port forwarding
+        local_port = 24629  # Local port to forward
+        transport = ssh_client.get_transport()
+        transport.request_port_forward("localhost", local_port)  # type: ignore
+        tunnel_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tunnel_socket.bind(("localhost", local_port))
+        tunnel_socket.listen(1)
 
         # Create a channel for direct tcpip
         local_address = ("localhost", local_port)
         dest_address = (db_host, db_port)
-
-        # Start the channel
-        channel = transport.open_channel("direct-tcpip", dest_address, local_address)  # type: ignore
+        # Log connection details for debugging
+        logging.info(
+            f"Attempting to connect to PostgreSQL at {db_host}:{db_port} through bastion host {ssh_host}"
+        )
+        try:
+            # Start the channel
+            channel = transport.open_channel(  # type: ignore
+                kind="direct-tcpip",
+                dest_addr=dest_address,
+                src_addr=local_address,
+                timeout=10,
+            )  # type: ignore
+        except Exception as e:
+            logging.error(f"Failed to establish channel: {e}")
+            logging.error(
+                f"Connection details: SSH host={ssh_host}, DB host={db_host}, DB port={db_port}"
+            )
+            raise Exception(f"Failed to establish SSH tunnel to database: {e}") from e
 
         # Test if the channel is active
         if not channel.active:
@@ -171,35 +168,34 @@ def model(dbt, session) -> DataFrame:
             f"SSH tunnel established to PostgreSQL server at {db_host}:{db_port}"
         )
 
-        # Create a PostgreSQL connection through the SSH tunnel
-        pg_conn = psycopg2.connect(
-            host="localhost",
-            port=local_port,
-            user=db_user,
-            password=db_pw,
-            database=db_name,
-        )
-        pg_conn.autocommit = True
-        cursor = pg_conn.cursor()
+        # JDBC connection properties
+        jdbc_url = f"jdbc:postgresql://localhost:{local_port}/{db_name}"
+        properties = {
+            "user": db_user,
+            "password": db_pw,
+            "driver": "org.postgresql.Driver",
+        }
 
-        # Truncate existing tables
-        logging.info(f"Truncating tables in schema {db_schema}")
-        cursor.execute(f"TRUNCATE TABLE {db_schema}.place;")
-        cursor.execute(f"TRUNCATE TABLE {db_schema}.race;")
+        # Write the DataFrames to PostgreSQL using JDBC
+        logging.info("Writing place data to PostgreSQL via JDBC")
+        place_df.write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f"{db_schema}.place"
+        ).option("user", db_user).option("password", db_pw).option(
+            "driver", "org.postgresql.Driver"
+        ).mode(
+            "append"
+        ).save()
 
-        # Load data from CSV files directly
-        with open(place_csv_path, "r") as f:
-            next(f)  # Skip header
-            cursor.copy_expert(f"COPY {db_schema}.place FROM STDIN WITH CSV HEADER", f)
+        logging.info("Writing race data to PostgreSQL via JDBC")
+        race_df.write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f"{db_schema}.race"
+        ).option("user", db_user).option("password", db_pw).option(
+            "driver", "org.postgresql.Driver"
+        ).mode(
+            "append"
+        ).save()
 
-        with open(race_csv_path, "r") as f:
-            next(f)  # Skip header
-            cursor.copy_expert(f"COPY {db_schema}.race FROM STDIN WITH CSV HEADER", f)
-
-        cursor.close()
-        pg_conn.close()
-
-        logging.info("Successfully imported data into PostgreSQL")
+        logging.info("Successfully imported data into PostgreSQL via JDBC")
 
         # log the loading information including the number of rows loaded
         columns = ["id", "table_name", "number_of_rows", "loaded_at"]
@@ -223,19 +219,13 @@ def model(dbt, session) -> DataFrame:
         raise e
     # force clean up
     finally:
-        if "pg_conn" in locals() and pg_conn:
-            pg_conn.close()
         if "channel" in locals() and channel:
             channel.close()
         if "transport" in locals() and transport:
             transport.close()
-        if sftp:
-            sftp.close()
-        if client:
-            client.close()
+        if ssh_client:
+            ssh_client.close()
         if ssh_key_file_path and os.path.exists(ssh_key_file_path):
             os.remove(ssh_key_file_path)
-        if temp_csv_dir and os.path.exists(temp_csv_dir):
-            shutil.rmtree(temp_csv_dir)
 
     return load_log_df
