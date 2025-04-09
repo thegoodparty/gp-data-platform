@@ -15,7 +15,7 @@ from pyspark.sql.functions import col, concat, concat_ws, lit, when
 # install paramiko if not installed on the serverless databricks host
 if importlib.util.find_spec("paramiko") is None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
-from paramiko import AutoAddPolicy, SSHClient, Transport
+from paramiko import AutoAddPolicy, SSHClient
 
 # install psycopg2 if not installed
 if importlib.util.find_spec("psycopg2") is None:
@@ -26,6 +26,19 @@ import psycopg2
 
 # Function to transform array columns to PostgreSQL compatible format
 def _prepare_df_for_postgres(df):
+    """
+    Transforms array columns in a DataFrame to PostgreSQL compatible format.
+
+    Examples:
+        - Input array column: ["apple", "banana", "cherry"]
+            Output: "{apple,banana,cherry}"
+
+        - Input array column: [1, 2, 3]
+            Output: "{1,2,3}"
+
+        - Input array column: None or []
+            Output: NULL
+    """
     # Copy the DataFrame to avoid changing the original
     transformed_df = df
 
@@ -139,14 +152,24 @@ def model(dbt, session) -> DataFrame:
 
         # Create an SSH tunnel for PostgreSQL connection
         # Forward a local port to the PostgreSQL server through the SSH tunnel
-        local_port = 5432  # Local port to forward
+        local_port = 24601  # Local port to forward
         postgres_server = (db_host, db_port)
-        transport: Transport = client.get_transport()  # type: ignore
-        transport.request_port_forward(
-            "", local_port, postgres_server[0], postgres_server[1]
-        )  # type: ignore
+        transport = client.get_transport()
 
-        logging.info("SSH tunnel established to PostgreSQL server")
+        # Create a channel for direct tcpip
+        local_address = ("localhost", local_port)
+        dest_address = (db_host, db_port)
+
+        # Start the channel
+        channel = transport.open_channel("direct-tcpip", dest_address, local_address)  # type: ignore
+
+        # Test if the channel is active
+        if not channel.active:
+            raise Exception("Failed to establish SSH tunnel")
+
+        logging.info(
+            f"SSH tunnel established to PostgreSQL server at {db_host}:{db_port}"
+        )
 
         # Create a PostgreSQL connection through the SSH tunnel
         pg_conn = psycopg2.connect(
@@ -202,8 +225,10 @@ def model(dbt, session) -> DataFrame:
     finally:
         if "pg_conn" in locals() and pg_conn:
             pg_conn.close()
+        if "channel" in locals() and channel:
+            channel.close()
         if "transport" in locals() and transport:
-            transport.cancel_port_forward("", local_port)
+            transport.close()
         if sftp:
             sftp.close()
         if client:
