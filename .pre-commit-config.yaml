@@ -40,6 +40,7 @@ repos:
     -   id: mypy
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
+            'types-paramiko',
         ]
 
 -   repo: https://github.com/tconbeer/sqlfmt

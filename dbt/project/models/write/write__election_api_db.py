@@ -10,33 +10,37 @@ from datetime import datetime
 from pyspark.sql import DataFrame
 
 # Check if sshtunnel is installed, install if not
-if importlib.util.find_spec("sshtunnel") is None:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "sshtunnel==0.4.0"])
+# TODO: replace with paramiko if sshtunnel is not working
+# if importlib.util.find_spec("sshtunnel") is None:
+#     subprocess.check_call([sys.executable, "-m", "pip", "install", "sshtunnel==0.4.0"])
+if importlib.util.find_spec("paramiko") is None:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
+from paramiko import SSHClient
 
-from sshtunnel import SSHTunnelForwarder
+# from sshtunnel import SSHTunnelForwarder
 
 
-def _create_ssh_tunnel(
-    ssh_host: str,
-    ssh_port: int,
-    ssh_username: str,
-    ssh_key_file_path: str,
-    remote_host: str,
-    remote_port: int,
-    local_port: int,
-) -> SSHTunnelForwarder:
-    logging.info(
-        f"Creating SSH tunnel with {ssh_host}:{ssh_port} to {remote_host}:{remote_port} on port {local_port}"
-    )
-    tunnel = SSHTunnelForwarder(
-        ssh_address_or_host=(ssh_host, ssh_port),
-        ssh_username=ssh_username,
-        ssh_pkey=ssh_key_file_path,
-        remote_bind_address=(remote_host, remote_port),
-        # local_bind_address=("localhost", local_port),
-    )
-    tunnel.start()
-    return tunnel
+# def _create_ssh_tunnel(
+#     ssh_host: str,
+#     ssh_port: int,
+#     ssh_username: str,
+#     ssh_key_file_path: str,
+#     remote_host: str,
+#     remote_port: int,
+#     local_port: int,
+# ) -> SSHTunnelForwarder:
+#     logging.info(
+#         f"Creating SSH tunnel with {ssh_host}:{ssh_port} to {remote_host}:{remote_port} on port {local_port}"
+#     )
+#     tunnel = SSHTunnelForwarder(
+#         ssh_address_or_host=(ssh_host, ssh_port),
+#         ssh_username=ssh_username,
+#         ssh_pkey=ssh_key_file_path,
+#         remote_bind_address=(remote_host, remote_port),
+#         # local_bind_address=("localhost", local_port),
+#     )
+#     tunnel.start()
+#     return tunnel
 
 
 def model(dbt, session) -> DataFrame:
@@ -79,16 +83,26 @@ def model(dbt, session) -> DataFrame:
             ssh_key_file.write(decoded_string.encode())
             ssh_key_file_path = ssh_key_file.name
 
-            # create the ssh tunnel
-            tunnel = _create_ssh_tunnel(
-                ssh_host=ssh_host,
-                ssh_port=ssh_port,
-                ssh_username=ssh_username,
-                ssh_key_file_path=ssh_key_file_path,
-                remote_host=db_host,
-                remote_port=db_port,
-                local_port=5432,
+            # Use the key file for SSH connection
+            client = SSHClient()
+            client.load_system_host_keys()
+            client.connect(
+                hostname=ssh_host,
+                port=ssh_port,
+                username=ssh_username,
+                key_filename=ssh_key_file_path,
             )
+
+        #     # create the ssh tunnel
+        #     tunnel = _create_ssh_tunnel(
+        #         ssh_host=ssh_host,
+        #         ssh_port=ssh_port,
+        #         ssh_username=ssh_username,
+        #         ssh_key_file_path=ssh_key_file_path,
+        #         remote_host=db_host,
+        #         remote_port=db_port,
+        #         local_port=5432,
+        #     )
 
         # get the data to write
         place_df: DataFrame = dbt.ref("m_election_api__place")
@@ -126,12 +140,13 @@ def model(dbt, session) -> DataFrame:
                 datetime.now(),
             ),
         ]
-        df = session.createDataFrame(data, columns)
+        load_log_df = session.createDataFrame(data, columns)
     except Exception as e:
         logging.error(f"Error: {e}")
         raise e
     finally:
-        if "tunnel" in locals():
-            tunnel.stop()
+        # if "tunnel" in locals():
+        #     tunnel.stop()
+        client.close()
 
-    return df
+    return load_log_df
