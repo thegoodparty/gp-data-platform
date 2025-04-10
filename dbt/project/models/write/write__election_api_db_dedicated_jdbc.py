@@ -2,7 +2,6 @@ import base64
 import importlib.util
 import logging
 import os
-import socket
 import subprocess
 import sys
 import tempfile
@@ -12,10 +11,10 @@ from datetime import datetime
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, concat, concat_ws, lit, when
 
-# install paramiko if not installed on the serverless databricks host
-if importlib.util.find_spec("paramiko") is None:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
-from paramiko import AutoAddPolicy, SSHClient
+# install required packages if not installed on the databricks host
+if importlib.util.find_spec("sshtunnel") is None:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "sshtunnel"])
+from sshtunnel import SSHTunnelForwarder
 
 
 # Function to transform array columns to PostgreSQL compatible format
@@ -57,21 +56,22 @@ def _prepare_df_for_postgres(df):
 
 def model(dbt, session) -> DataFrame:
     """
-    This model loads data for the mart that services the election api.
-    The tables are written to the postgres database directly from spark
-    since Airbyte does not support reads from databricks. We use JDBC
-    through an SSH tunnel.
+    This model loads data for the mart that services the election API. The tables are written
+    to the postgres database directly from spark since Airbyte does not support reads from
+    databricks. We use JDBC through an SSH tunnel, which requires a dedicated compute instance
+    rather than the default serverless.
     """
     # configure the data model
     dbt.config(
+        submission_method="all_purpose_cluster",  # required to write with jdbc
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required to write with jdbc
         materialized="incremental",
-        connection="databricks-dedicated-cluster",
         incremental_strategy="append",
         unique_key="id",
         on_schema_change="fail",
         tags=["ballotready", "election_api", "write", "postgres"],
         # TODO: once serverless supports library installations on jobs, uncomment the following line
-        # packages=["paramiko"],
+        # packages=["paramiko", "sshtunnel"],
     )
 
     # get db and ssh tunnel config
@@ -91,10 +91,7 @@ def model(dbt, session) -> DataFrame:
 
     # Temporary file path for SSH key
     ssh_key_file_path = None
-    ssh_client = None
-    local_port = None
-    channel = None
-    transport = None
+    tunnel = None
 
     try:
         # get the data to write
@@ -117,74 +114,84 @@ def model(dbt, session) -> DataFrame:
             ssh_key_file.write(decoded_string)
             ssh_key_file_path = ssh_key_file.name
 
-        # Use the key file for SSH connection
-        ssh_client = SSHClient()
-        ssh_client.set_missing_host_key_policy(
-            AutoAddPolicy()
-        )  # Automatically add unknown host keys
-        ssh_client.connect(
-            hostname=ssh_host,
-            port=ssh_port,
-            username=ssh_username,
-            key_filename=ssh_key_file_path,
-        )
-        logging.info("Connected to bastion host")
-
-        # Set up port forwarding
-        local_port = 24629  # Local port to forward
-        transport = ssh_client.get_transport()
-        transport.request_port_forward("localhost", local_port)  # type: ignore
-        tunnel_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tunnel_socket.bind(("localhost", local_port))
-        tunnel_socket.listen(1)
-
-        # Create a channel for direct tcpip
-        local_address = ("localhost", local_port)
-        dest_address = (db_host, db_port)
-        # Log connection details for debugging
         logging.info(
             f"Attempting to connect to PostgreSQL at {db_host}:{db_port} through bastion host {ssh_host}"
         )
-        try:
-            # Start the channel
-            channel = transport.open_channel(  # type: ignore
-                kind="direct-tcpip",
-                dest_addr=dest_address,
-                src_addr=local_address,
-                timeout=10,
-            )  # type: ignore
-        except Exception as e:
-            logging.error(f"Failed to establish channel: {e}")
-            logging.error(
-                f"Connection details: SSH host={ssh_host}, DB host={db_host}, DB port={db_port}"
-            )
-            raise Exception(f"Failed to establish SSH tunnel to database: {e}") from e
 
-        # Test if the channel is active
-        if not channel.active:
-            raise Exception("Failed to establish SSH tunnel")
-
-        logging.info(
-            f"SSH tunnel established to PostgreSQL server at {db_host}:{db_port}"
+        # Create SSH tunnel with automatic local port allocation
+        tunnel = SSHTunnelForwarder(
+            (ssh_host, ssh_port),
+            ssh_username=ssh_username,
+            ssh_pkey=ssh_key_file_path,
+            remote_bind_address=(db_host, db_port),
+            local_bind_address=("localhost", 0),  # Dynamically allocate a local port
         )
 
-        # JDBC connection properties
+        # Start the tunnel
+        tunnel.start()
+
+        # Test if the tunnel is active
+        if not tunnel.is_active:
+            logging.error("SSH tunnel failed to start")
+            raise Exception("Failed to establish SSH tunnel connection")
+
+        # Verify tunnel works by checking connectivity to a public endpoint
+        try:
+            import requests
+
+            response = requests.get("https://api.ipify.org", timeout=5)
+            if response.status_code == 200:
+                logging.info(
+                    f"Tunnel connectivity verified. Public IP: {response.text}"
+                )
+            else:
+                logging.warning(
+                    f"Tunnel connectivity check returned status code: {response.status_code}"
+                )
+        except Exception as e:
+            logging.warning(f"Tunnel connectivity check failed: {str(e)}")
+
+        logging.info("SSH tunnel started successfully")
+
+        # Get the dynamically allocated local port
+        local_port = tunnel.local_bind_port
+
+        logging.info(f"SSH tunnel established with local port: {local_port}")
+        jdbc_url = f"jdbc:postgresql://localhost:{local_port}/{db_name}"
+        logging.info(f"JDBC URL: {jdbc_url}")
+
+        # Test connection before writing
+        try:
+            test_df = (
+                session.read.format("jdbc")
+                .option("url", jdbc_url)
+                .option("dbtable", "(SELECT 1) AS test")
+                .option("user", db_user)
+                .option("password", db_pw)
+                .option("driver", "org.postgresql.Driver")
+                .load()
+            )
+
+            test_count = test_df.count()
+            logging.info(f"Connection test successful: {test_count} rows")
+        except Exception as e:
+            logging.error(f"Connection test failed: {str(e)}")
+            logging.error(f"Exception type: {type(e).__name__}")
+            raise
+
+        # JDBC connection properties using the dynamically allocated port
         jdbc_url = f"jdbc:postgresql://localhost:{local_port}/{db_name}"
         properties = {
             "user": db_user,
             "password": db_pw,
             "driver": "org.postgresql.Driver",
+            "url": jdbc_url,
+            "dbtable": f"{db_schema}.place",
         }
 
         # Write the DataFrames to PostgreSQL using JDBC
         logging.info("Writing place data to PostgreSQL via JDBC")
-        place_df.write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f"{db_schema}.place"
-        ).option("user", db_user).option("password", db_pw).option(
-            "driver", "org.postgresql.Driver"
-        ).mode(
-            "append"
-        ).save()
+        place_df.write.format("jdbc").options(**properties).mode("overwrite").save()
 
         logging.info("Writing race data to PostgreSQL via JDBC")
         race_df.write.format("jdbc").option("url", jdbc_url).option(
@@ -217,14 +224,10 @@ def model(dbt, session) -> DataFrame:
     except Exception as e:
         logging.error(f"Error: {e}")
         raise e
-    # force clean up
     finally:
-        if "channel" in locals() and channel:
-            channel.close()
-        if "transport" in locals() and transport:
-            transport.close()
-        if ssh_client:
-            ssh_client.close()
+        # Clean up resources
+        if tunnel is not None and tunnel.is_active:
+            tunnel.stop()
         if ssh_key_file_path and os.path.exists(ssh_key_file_path):
             os.remove(ssh_key_file_path)
 

@@ -659,6 +659,26 @@ files = [
 ]
 
 [[package]]
+name = "sshtunnel"
+version = "0.4.0"
+description = "Pure python SSH tunnels"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "sshtunnel-0.4.0-py2.py3-none-any.whl", hash = "sha256:98e54c26f726ab8bd42b47a3a21fca5c3e60f58956f0f70de2fb8ab0046d0606"},
+    {file = "sshtunnel-0.4.0.tar.gz", hash = "sha256:e7cb0ea774db81bf91844db22de72a40aae8f7b0f9bb9ba0f666d474ef6bf9fc"},
+]
+
+[package.dependencies]
+paramiko = ">=2.7.2"
+
+[package.extras]
+build-sphinx = ["sphinx", "sphinxcontrib-napoleon"]
+dev = ["check-manifest"]
+test = ["tox (>=1.8.1)"]
+
+[[package]]
 name = "tzdata"
 version = "2025.1"
 description = "Provider of IANA time zone data"
@@ -691,4 +711,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11"
-content-hash = "ce233717d618f4d7bb3b5c9234926988fad18d0c0f5f024ec1145e6ee761b6cc"
+content-hash = "738023b74231feac8bebeea38f84b4bd54933b63a8ee2b2b6b801c835930a079"

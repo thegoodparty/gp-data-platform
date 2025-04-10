@@ -40,7 +40,6 @@ models:
     description: >
       This model writes data to the election api database.
     config:
-      materialized: table
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       ssh_host: "{{ env_var('DBT_SSH_HOST') }}"
       ssh_port: "{{ env_var('DBT_SSH_PORT') }}"

@@ -12,7 +12,8 @@ dependencies = [
     "requests (>=2.32.3,<3.0.0)",
     "pyspark (>=3.5.5,<4.0.0)",
     "psycopg2 (>=2.9.10,<3.0.0)",
-    "paramiko (>=3.5.1,<4.0.0)"
+    "paramiko (>=3.5.1,<4.0.0)",
+    "sshtunnel (>=0.4.0,<0.5.0)"
 ]
 
 
