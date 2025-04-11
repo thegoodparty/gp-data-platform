@@ -29,7 +29,7 @@ with
             tbl_fun_facts.unemployment_rate as unemployment_rate,
             tbl_fun_facts.home_value as home_value,
             concat_ws(
-                '-', tbl_fun_facts.state, tbl_fun_facts.county_name, tbl_fun_facts.city
+                '/', tbl_fun_facts.state, tbl_fun_facts.county_name, tbl_fun_facts.city
             ) as concatenated_location
         -- parent_id is self-referential, it is added in an additional layer
         from {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place

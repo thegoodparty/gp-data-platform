@@ -33,6 +33,9 @@ clean-targets: # directories to be removed by `dbt clean`
 
 models:
   goodparty_data_catalog:
+    # set defaults for all .py models in this catalog
+    +submission_method: serverless_cluster
+    +create_notebook: True
     # Applies to all files under models/intermediate/
     intermediate:
       # set defaults for all .py models defined in this subfolder
