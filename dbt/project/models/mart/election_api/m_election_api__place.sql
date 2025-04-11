@@ -35,7 +35,9 @@ select
 from {{ ref("int__enhanced_position_w_parent") }} as tbl_pos  -- note that the position table is used for the election place table
 left join deduped_place as tbl_place on tbl_pos.geo_id = tbl_place.geo_id
 where
-    tbl_pos.geo_id is not null and tbl_pos.slug is not null
+    tbl_pos.geo_id is not null
+    and tbl_pos.slug is not null
+    and tbl_place.name is not null
     {% if is_incremental() %}
         and tbl_pos.updated_at > (select max(updated_at) from {{ this }})
     {% endif %}
