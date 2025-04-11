@@ -39,6 +39,8 @@ select
     frequency,
     place_id
 from {{ ref("int__enhanced_race") }}
-{% if is_incremental() %}
-    where updated_at > (select max(updated_at) from {{ this }})
-{% endif %}
+where
+    place_id in (select id from {{ ref("m_election_api__place") }})
+    {% if is_incremental() %}
+        and updated_at > (select max(updated_at) from {{ this }})
+    {% endif %}

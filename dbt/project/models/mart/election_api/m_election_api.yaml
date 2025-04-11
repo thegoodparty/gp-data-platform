@@ -35,9 +35,6 @@ models:
           - relationships:
               to: ref('int__enhanced_race')
               field: br_database_id
-    tests:
-      - dbt_utils.equal_rowcount:
-          compare_model: ref('int__enhanced_race')
 
   - name: m_election_api__place
     description: "Intermediate model that represents geographic locations from the BallotReady API"
