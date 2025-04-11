@@ -8,6 +8,7 @@ import tempfile
 import uuid
 from datetime import datetime
 
+import psycopg2
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, concat, concat_ws, lit, when
 
@@ -74,6 +75,9 @@ def model(dbt, session) -> DataFrame:
         # packages=["paramiko", "sshtunnel"],
     )
 
+    # Add barrier execution mode to ensure operations happen on the driver
+    session.conf.set("spark.databricks.barrier.mode", "true")
+
     # get db and ssh tunnel config
     db_host = dbt.config.get("election_db_host")
     db_port = int(dbt.config.get("election_db_port"))
@@ -88,6 +92,10 @@ def model(dbt, session) -> DataFrame:
     ssh_pk_2 = dbt.config.get("ssh_pk_2")
     ssh_pk_3 = dbt.config.get("ssh_pk_3")
     ssh_pk = ssh_pk_1 + ssh_pk_2 + ssh_pk_3
+
+    # fix the forwarded port
+    local_port = 8090
+    # local_port = 5432
 
     # Temporary file path for SSH key
     ssh_key_file_path = None
@@ -110,7 +118,8 @@ def model(dbt, session) -> DataFrame:
             delete=False, suffix=".pem", mode="w"
         ) as ssh_key_file:
             decoded_bytes = base64.b64decode(ssh_pk)
-            decoded_string = decoded_bytes.decode("utf-8").strip()
+            # decoded_string = decoded_bytes.decode("utf-8").strip()
+            decoded_string = decoded_bytes.decode("utf-8")
             ssh_key_file.write(decoded_string)
             ssh_key_file_path = ssh_key_file.name
 
@@ -118,13 +127,18 @@ def model(dbt, session) -> DataFrame:
             f"Attempting to connect to PostgreSQL at {db_host}:{db_port} through bastion host {ssh_host}"
         )
 
-        # Create SSH tunnel with automatic local port allocation
+        # Create SSH tunnel with explicit IP address instead of 'localhost'
+        local_host = "localhost"
+        # local_host = "127.0.0.1"
         tunnel = SSHTunnelForwarder(
             (ssh_host, ssh_port),
             ssh_username=ssh_username,
             ssh_pkey=ssh_key_file_path,
             remote_bind_address=(db_host, db_port),
-            local_bind_address=("localhost", 0),  # Dynamically allocate a local port
+            local_bind_address=(local_host, local_port),
+            # local_bind_address=(local_host, 0),
+            set_keepalive=10,  # Keep the connection alive
+            mute_exceptions=False,  # Show exceptions
         )
 
         # Start the tunnel
@@ -134,6 +148,11 @@ def model(dbt, session) -> DataFrame:
         if not tunnel.is_active:
             logging.error("SSH tunnel failed to start")
             raise Exception("Failed to establish SSH tunnel connection")
+
+        # Display detailed tunnel information for debugging
+        logging.info(f"SSH tunnel active: {tunnel.is_active}")
+        logging.info(f"Local bind port: {tunnel.local_bind_port}")
+        logging.info(f"Local bind host: {tunnel.local_bind_host}")
 
         # Verify tunnel works by checking connectivity to a public endpoint
         try:
@@ -154,47 +173,74 @@ def model(dbt, session) -> DataFrame:
         logging.info("SSH tunnel started successfully")
 
         # Get the dynamically allocated local port
-        local_port = tunnel.local_bind_port
+        assert tunnel.local_bind_port == local_port
+        # local_port = tunnel.local_bind_port
 
         logging.info(f"SSH tunnel established with local port: {local_port}")
-        jdbc_url = f"jdbc:postgresql://localhost:{local_port}/{db_name}"
+        jdbc_url = f"jdbc:postgresql://{local_host}:{local_port}/{db_name}"
         logging.info(f"JDBC URL: {jdbc_url}")
 
-        # Test connection before writing
-        try:
-            test_df = (
-                session.read.format("jdbc")
-                .option("url", jdbc_url)
-                .option("dbtable", "(SELECT 1) AS test")
-                .option("user", db_user)
-                .option("password", db_pw)
-                .option("driver", "org.postgresql.Driver")
-                .load()
+        # Test connection to PostgreSQL database
+        logging.info(
+            f"Attempting to connect to PostgreSQL through tunnel at {local_host}:{local_port}"
+        )
+
+        # Connect to PostgreSQL through the tunnel
+        conn = psycopg2.connect(
+            host=local_host,  # Use explicit IP instead of localhost
+            port=local_port,  # This is forwarded to the remote database
+            user=db_user,
+            password=db_pw,
+            database=db_name,
+            connect_timeout=30,  # Increase connection timeout
+        )
+
+        # Test the connection
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+
+        if result and result[0] == 1:
+            logging.info(
+                "Successfully connected to the database through the SSH tunnel!"
             )
 
-            test_count = test_df.count()
-            logging.info(f"Connection test successful: {test_count} rows")
-        except Exception as e:
-            logging.error(f"Connection test failed: {str(e)}")
-            logging.error(f"Exception type: {type(e).__name__}")
-            raise
+            # Close cursor and connection
+            cursor.close()
+            conn.close()
+        else:
+            logging.warning("Database connection test returned unexpected result")
 
-        # JDBC connection properties using the dynamically allocated port
-        jdbc_url = f"jdbc:postgresql://localhost:{local_port}/{db_name}"
-        properties = {
-            "user": db_user,
-            "password": db_pw,
-            "driver": "org.postgresql.Driver",
-            "url": jdbc_url,
-            "dbtable": f"{db_schema}.place",
-        }
+            # Close cursor and connection
+            cursor.close()
+            conn.close()
+
+        # JDBC connection properties using the explicit IP
+        jdbc_url = f"jdbc:postgresql://{local_host}:{local_port}/{db_name}"
+        # properties = {
+        #     "user": db_user,
+        #     "password": db_pw,
+        #     "driver": "org.postgresql.Driver",
+        #     "url": jdbc_url,
+        #     "dbtable": f"{db_schema}.place",
+        # }
 
         # Write the DataFrames to PostgreSQL using JDBC
         logging.info("Writing place data to PostgreSQL via JDBC")
-        place_df.write.format("jdbc").options(**properties).mode("overwrite").save()
+
+        # Write place data directly using JDBC
+        # Use coalesce to ensure all writes go through the SSH tunnel on the driver node
+        place_df.coalesce(1).write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f"{db_schema}.place"
+        ).option("user", db_user).option("password", db_pw).option(
+            "driver", "org.postgresql.Driver"
+        ).mode(
+            "overwrite"
+        ).save()
 
         logging.info("Writing race data to PostgreSQL via JDBC")
-        race_df.write.format("jdbc").option("url", jdbc_url).option(
+        # Use coalesce to ensure all writes go through the SSH tunnel on the driver node
+        race_df.coalesce(1).write.format("jdbc").option("url", jdbc_url).option(
             "dbtable", f"{db_schema}.race"
         ).option("user", db_user).option("password", db_pw).option(
             "driver", "org.postgresql.Driver"
@@ -221,14 +267,20 @@ def model(dbt, session) -> DataFrame:
             ),
         ]
         load_log_df = session.createDataFrame(data, columns)
+
     except Exception as e:
         logging.error(f"Error: {e}")
         raise e
     finally:
         # Clean up resources
         if tunnel is not None and tunnel.is_active:
-            tunnel.stop()
+            try:
+                tunnel.stop()
+                logging.info("SSH tunnel stopped successfully")
+            except Exception as e:
+                logging.error(f"Error stopping SSH tunnel: {e}")
         if ssh_key_file_path and os.path.exists(ssh_key_file_path):
             os.remove(ssh_key_file_path)
+            logging.info("SSH key file removed")
 
     return load_log_df
