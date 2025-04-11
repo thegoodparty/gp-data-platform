@@ -185,24 +185,20 @@ def model(dbt, session) -> DataFrame:
             f"Attempting to connect to PostgreSQL through tunnel at {local_host}:{local_port}"
         )
 
-        # ensure the connection is made from the driver node
-        from pyspark.sql.functions import spark_partition_id
+        # Connect to PostgreSQL through the tunnel
+        conn = psycopg2.connect(
+            host=local_host,  # Use explicit IP instead of localhost
+            port=local_port,  # This is forwarded to the remote database
+            user=db_user,
+            password=db_pw,
+            database=db_name,
+            connect_timeout=30,  # Increase connection timeout
+        )
 
-        if spark_partition_id() == 0:
-            # Connect to PostgreSQL through the tunnel
-            conn = psycopg2.connect(
-                host=local_host,  # Use explicit IP instead of localhost
-                port=local_port,  # This is forwarded to the remote database
-                user=db_user,
-                password=db_pw,
-                database=db_name,
-                connect_timeout=30,  # Increase connection timeout
-            )
-
-            # Test the connection
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            result = cursor.fetchone()
+        # Test the connection
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
 
         if result and result[0] == 1:
             logging.info(
