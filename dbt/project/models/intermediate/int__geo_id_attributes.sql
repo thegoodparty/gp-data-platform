@@ -122,7 +122,11 @@ with
                 then tbl_geo_id.split_geo_ids[size(tbl_geo_id.split_geo_ids) - 1]
                 else null
             end as parent_geo_id,
-            {{ slugify("tbl_place.name") }} as place_name_slug
+            case
+                when len(tbl_place.geo_id) = 2
+                then {{ slugify("tbl_place.state") }}
+                else {{ slugify("tbl_place.name") }}
+            end as place_name_slug
         from splitted_geo_ids as tbl_geo_id
         left join
             {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place
@@ -145,13 +149,6 @@ with
             tbl_base.slug_geo_id_components,
             tbl_base.parent_geo_id,
             tbl_base.state_geo_id,
-            /*
-            -- case
-            --     when tbl_parent.place_name_slug is not null
-            --         then {{ slugify("concat(tbl_parent.place_name_slug, '/', tbl_base.place_name_slug)") }}
-            --     else tbl_base.place_name_slug
-            -- end as place_name_slug
-            */
             tbl_base.place_name_slug,
             coalesce(tbl_parent.place_name_slug, '') as parent1_place_name_slug
         from geo_id_attributes as tbl_base
@@ -233,6 +230,12 @@ with
             state_geo_id,
             {{ slugify("place_name_slug") }} as place_name_slug
         from concated_place_name_slugs
+        -- In 660/106k rows, public school districts share the geo_id and mtfcc;
+        -- remove by slug length
+        qualify
+            row_number() over (partition by geo_id, mtfcc order by len(place_name_slug))
+            = 1
     )
+
 select *
 from final
