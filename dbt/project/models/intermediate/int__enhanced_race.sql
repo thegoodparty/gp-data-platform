@@ -36,6 +36,35 @@ with
         lateral view explode(filing_periods) as fp
         group by race_database_id
     ),
+    position_to_place as (
+        select
+            tbl_pos.database_id as position_database_id,
+            tbl_place.database_id as place_database_id,
+            tbl_place.geo_id as place_geo_id,
+            tbl_place.mtfcc as place_mtfcc,
+            tbl_place.name as place_name
+        from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_pos
+        left join
+            {{ ref("int__ballotready_position_to_place") }} as tbl_pos2place
+            on tbl_pos.database_id = tbl_pos2place.position_database_id
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place
+            on tbl_pos2place.place_database_id = tbl_place.database_id
+    ),
+    position_to_most_specific_place as (
+        select
+            position_database_id,
+            place_database_id,
+            place_geo_id,
+            place_mtfcc,
+            place_name
+        from position_to_place
+        qualify
+            row_number() over (
+                partition by position_database_id order by len(place_geo_id) desc
+            )
+            = 1
+    ),
     enhanced_race as (
         select
             {{ generate_salted_uuid(fields=["tbl_race.id"], salt="ballotready") }}
@@ -70,7 +99,11 @@ with
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end,
             tbl_position.geo_id as position_geo_id,
-            tbl_position_parent.id as place_id
+            -- tbl_position.id as place_id,
+            tbl_position_to_place.place_database_id as place_database_id,
+            tbl_position_to_place.place_geo_id as place_geo_id,
+            tbl_position_to_place.place_name as place_name,
+            tbl_place.id as place_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
@@ -94,6 +127,12 @@ with
         left join
             {{ ref("int__enhanced_position_w_parent") }} as tbl_position_parent
             on tbl_position.database_id = tbl_position_parent.br_database_id
+        left join
+            position_to_most_specific_place as tbl_position_to_place
+            on tbl_position.database_id = tbl_position_to_place.position_database_id
+        left join
+            {{ ref("int__enhanced_place") }} as tbl_place
+            on tbl_position_to_place.place_database_id = tbl_place.br_database_id
         {% if is_incremental() %}
             where tbl_race.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
@@ -129,5 +168,8 @@ select
     filing_date_start,
     filing_date_end,
     position_geo_id,
-    place_id
+    place_id,
+    place_database_id,
+    place_geo_id,
+    place_name
 from enhanced_race
