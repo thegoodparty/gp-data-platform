@@ -17,10 +17,11 @@ with
             tbl_place.updated_at,
             tbl_place.br_database_id,
             tbl_place.name,
-            tbl_place.slug,
             tbl_place.geo_id,
             tbl_place.mtfcc,
             tbl_place.state,
+            tbl_place.slug,
+            tbl_place.place_name_slug,
             tbl_place.city_largest,
             tbl_place.county_name,
             tbl_place.population,
@@ -39,13 +40,14 @@ with
         {% endif %}
     ),
     with_parent_id as (
-        select
+        select distinct
             tbl_place.id,
             tbl_place.created_at,
             tbl_place.updated_at,
             tbl_place.br_database_id,
             tbl_place.name,
             tbl_place.slug,
+            tbl_place.place_name_slug,
             tbl_place.geo_id,
             tbl_place.mtfcc,
             tbl_place.state,
@@ -56,7 +58,8 @@ with
             tbl_place.income_household_median,
             tbl_place.unemployment_rate,
             tbl_place.home_value,
-            tbl_place_parent.id as parent_id
+            tbl_place_parent.id as parent_id,
+            tbl_place_parent.geo_id as parent_geo_id
         from enhanced_place as tbl_place
         left join
             {{ ref("int__enhanced_place") }} as tbl_place_parent
