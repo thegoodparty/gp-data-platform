@@ -102,7 +102,8 @@ with
             tbl_position_to_place.place_database_id as place_database_id,
             tbl_position_to_place.place_geo_id as place_geo_id,
             tbl_position_to_place.place_name as place_name,
-            tbl_place.id as place_id
+            tbl_place.id as place_id,
+            tbl_race_to_positions.position_names
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as tbl_election
@@ -129,6 +130,9 @@ with
         left join
             {{ ref("int__enhanced_place") }} as tbl_place
             on tbl_position_to_place.place_database_id = tbl_place.br_database_id
+        left join
+            {{ ref("int__race_to_positions") }} as tbl_race_to_positions
+            on tbl_race.database_id = tbl_race_to_positions.race_database_id
         {% if is_incremental() %}
             where tbl_race.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
@@ -167,5 +171,6 @@ select
     place_id,
     place_database_id,
     place_geo_id,
-    place_name
+    place_name,
+    position_names
 from enhanced_race

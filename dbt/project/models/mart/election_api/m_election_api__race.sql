@@ -20,7 +20,7 @@ select
     `state`,
     position_level,
     normalized_position_name,
-    position_name,
+    position_names,
     position_description,
     filing_office_address,
     filing_phone_number,
