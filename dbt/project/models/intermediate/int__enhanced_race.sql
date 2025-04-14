@@ -99,7 +99,6 @@ with
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end,
             tbl_position.geo_id as position_geo_id,
-            -- tbl_position.id as place_id,
             tbl_position_to_place.place_database_id as place_database_id,
             tbl_position_to_place.place_geo_id as place_geo_id,
             tbl_position_to_place.place_name as place_name,
@@ -124,9 +123,6 @@ with
         left join
             {{ ref("int__ballotready_filing_period") }} as tbl_filing_period
             on tbl_fp.filing_period_database_id = tbl_filing_period.database_id
-        left join
-            {{ ref("int__enhanced_position_w_parent") }} as tbl_position_parent
-            on tbl_position.database_id = tbl_position_parent.br_database_id
         left join
             position_to_most_specific_place as tbl_position_to_place
             on tbl_position.database_id = tbl_position_to_place.position_database_id
