@@ -110,19 +110,27 @@ with
             end as slug_geo_id_components
         from split_indices
     ),
-    with_parent_geo_id as (
+    with_parent_geo_id_and_place as (
         select
-            geo_id,
-            mtfcc,
-            split_indices,
-            split_geo_ids,
-            slug_geo_id_components,
+            tbl_geo_id.geo_id,
+            tbl_geo_id.mtfcc,
+            tbl_geo_id.split_indices,
+            tbl_geo_id.split_geo_ids,
+            tbl_geo_id.slug_geo_id_components,
             case
-                when size(split_geo_ids) >= 1
-                then split_geo_ids[size(split_geo_ids) - 1]
+                when size(tbl_geo_id.split_geo_ids) >= 1
+                then tbl_geo_id.split_geo_ids[size(tbl_geo_id.split_geo_ids) - 1]
                 else null
-            end as parent_geo_id
-        from splitted_geo_ids
+            end as parent_geo_id,
+            case
+                when len(tbl_place.geo_id) = 2
+                then {{ slugify("tbl_place.state") }}
+                else {{ slugify("tbl_place.name") }}
+            end as place_name_slug
+        from splitted_geo_ids as tbl_geo_id
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place
+            on tbl_geo_id.geo_id = tbl_place.geo_id
     ),
     geo_id_attributes as (
         select distinct
@@ -130,9 +138,104 @@ with
             mtfcc,
             slug_geo_id_components,
             parent_geo_id,
-            left(geo_id, 2) as state_geo_id
-        from with_parent_geo_id
+            left(geo_id, 2) as state_geo_id,
+            coalesce(place_name_slug, '') as place_name_slug
+        from with_parent_geo_id_and_place
+    ),
+    parent_slug_1 as (
+        select
+            tbl_base.geo_id,
+            tbl_base.mtfcc,
+            tbl_base.slug_geo_id_components,
+            tbl_base.parent_geo_id,
+            tbl_base.state_geo_id,
+            tbl_base.place_name_slug,
+            coalesce(tbl_parent.place_name_slug, '') as parent1_place_name_slug
+        from geo_id_attributes as tbl_base
+        left join
+            geo_id_attributes as tbl_parent
+            on tbl_base.parent_geo_id = tbl_parent.geo_id
+    ),
+    parent_slug_2 as (
+        select
+            tbl_base.geo_id,
+            tbl_base.mtfcc,
+            tbl_base.slug_geo_id_components,
+            tbl_base.parent_geo_id,
+            tbl_base.state_geo_id,
+            tbl_base.place_name_slug,
+            tbl_base.parent1_place_name_slug,
+            coalesce(tbl_parent.parent1_place_name_slug, '') as parent2_place_name_slug
+        from parent_slug_1 as tbl_base
+        left join
+            parent_slug_1 as tbl_parent on tbl_base.parent_geo_id = tbl_parent.geo_id
+    ),
+    parent_slug_3 as (
+        select
+            tbl_base.geo_id,
+            tbl_base.mtfcc,
+            tbl_base.slug_geo_id_components,
+            tbl_base.parent_geo_id,
+            tbl_base.state_geo_id,
+            tbl_base.place_name_slug,
+            tbl_base.parent1_place_name_slug,
+            tbl_base.parent2_place_name_slug,
+            coalesce(tbl_parent.parent2_place_name_slug, '') as parent3_place_name_slug
+        from parent_slug_2 as tbl_base
+        left join
+            parent_slug_2 as tbl_parent on tbl_base.parent_geo_id = tbl_parent.geo_id
+    ),
+    parent_slug_4 as (
+        select
+            tbl_base.geo_id,
+            tbl_base.mtfcc,
+            tbl_base.slug_geo_id_components,
+            tbl_base.parent_geo_id,
+            tbl_base.state_geo_id,
+            tbl_base.place_name_slug,
+            tbl_base.parent1_place_name_slug,
+            tbl_base.parent2_place_name_slug,
+            tbl_base.parent3_place_name_slug,
+            coalesce(tbl_parent.parent3_place_name_slug, '') as parent4_place_name_slug
+        from parent_slug_3 as tbl_base
+        left join
+            parent_slug_3 as tbl_parent on tbl_base.parent_geo_id = tbl_parent.geo_id
+    ),
+    concated_place_name_slugs as (
+        select
+            geo_id,
+            mtfcc,
+            slug_geo_id_components,
+            parent_geo_id,
+            state_geo_id,
+            concat(
+                parent4_place_name_slug,
+                '/',
+                parent3_place_name_slug,
+                '/',
+                parent2_place_name_slug,
+                '/',
+                parent1_place_name_slug,
+                '/',
+                place_name_slug
+            ) as place_name_slug
+        from parent_slug_4
+    ),
+    final as (
+        select
+            geo_id,
+            mtfcc,
+            slug_geo_id_components,
+            parent_geo_id,
+            state_geo_id,
+            {{ slugify("place_name_slug") }} as place_name_slug
+        from concated_place_name_slugs
+        -- In 660/106k rows, public school districts share the geo_id and mtfcc;
+        -- remove by slug length
+        qualify
+            row_number() over (partition by geo_id, mtfcc order by len(place_name_slug))
+            = 1
     )
 
 select *
-from geo_id_attributes
+from final
