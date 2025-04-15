@@ -16,34 +16,42 @@
     -#}
     {% if keep_hyphens %}
         trim(
-            both '-'
-            from  -- trim leading/trailing hyphens
+            both '-/'
+            from  -- trim leading/trailing hyphens and forward slashes
                 regexp_replace(
                     regexp_replace(
                         regexp_replace(
-                            lower(trim({{ column_name }})), '[^a-z0-9\\s-]', ''  -- remove special chars except hyphens
+                            regexp_replace(
+                                lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
+                            ),
+                            '\\s+',
+                            '-'  -- replace spaces with single hyphen
                         ),
-                        '\\s+',
-                        '-'  -- replace spaces with single hyphen
+                        '-{2,}',
+                        '-'  -- collapse multiple hyphens
                     ),
-                    '-{2,}',
-                    '-'  -- collapse multiple hyphens
+                    '/{2,}',
+                    '/'  -- collapse multiple forward slashes
                 )
         )
     {% else %}
         trim(
-            both '-'
-            from  -- trim leading/trailing hyphens
+            both '-/'
+            from  -- trim leading/trailing hyphens and forward slashes
                 regexp_replace(
                     regexp_replace(
                         regexp_replace(
-                            lower(trim({{ column_name }})), '[^a-z0-9\\s]', ''  -- remove all special chars
+                            regexp_replace(
+                                lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
+                            ),
+                            '\\s+',
+                            '-'  -- replace spaces with single hyphen
                         ),
-                        '\\s+',
-                        '-'  -- replace spaces with single hyphen
+                        '-{2,}',
+                        '-'  -- collapse multiple hyphens
                     ),
-                    '-{2,}',
-                    '-'  -- collapse multiple hyphens
+                    '/{2,}',
+                    '/'  -- collapse multiple forward slashes
                 )
         )
     {% endif %}

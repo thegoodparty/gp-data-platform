@@ -15,12 +15,9 @@ select
     br_hash_id,
     br_database_id,
     election_date,
-    position_slug,
-    state_slug,
-    `state`,
+    state,
     position_level,
     normalized_position_name,
-    position_name,
     position_description,
     filing_office_address,
     filing_phone_number,
@@ -37,8 +34,12 @@ select
     sub_area_name,
     sub_area_value,
     frequency,
-    place_id
+    place_id,
+    slug,
+    position_names
 from {{ ref("int__enhanced_race") }}
-{% if is_incremental() %}
-    where updated_at > (select max(updated_at) from {{ this }})
-{% endif %}
+where
+    place_id in (select id from {{ ref("m_election_api__place") }})
+    {% if is_incremental() %}
+        and updated_at > (select max(updated_at) from {{ this }})
+    {% endif %}
