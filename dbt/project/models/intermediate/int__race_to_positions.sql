@@ -14,7 +14,7 @@ with
     race_pos_geo_id as (
         select
             tbl_race.database_id as race_database_id,
-            tbl_race.updated_at as race_updated_at
+            tbl_race.updated_at as race_updated_at,
             tbl_position.geo_id as position_geo_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
