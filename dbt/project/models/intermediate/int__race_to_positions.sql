@@ -5,7 +5,7 @@ Though each Race object has a single Position, the location of a place can have 
     config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="database_id",
+        unique_key="race_database_id",
         tags=["intermediate", "ballotready", "ballotready_race_to_positions"],
     )
 }}
