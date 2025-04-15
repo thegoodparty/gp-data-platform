@@ -21,13 +21,17 @@
                 regexp_replace(
                     regexp_replace(
                         regexp_replace(
-                            lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
+                            regexp_replace(
+                                lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
+                            ),
+                            '\\s+',
+                            '-'  -- replace spaces with single hyphen
                         ),
-                        '\\s+',
-                        '-'  -- replace spaces with single hyphen
+                        '-{2,}',
+                        '-'  -- collapse multiple hyphens
                     ),
-                    '-{2,}',
-                    '-'  -- collapse multiple hyphens
+                    '/{2,}',
+                    '/'  -- collapse multiple forward slashes
                 )
         )
     {% else %}
@@ -37,13 +41,17 @@
                 regexp_replace(
                     regexp_replace(
                         regexp_replace(
-                            lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
+                            regexp_replace(
+                                lower(trim({{ column_name }})), '[^a-z0-9\\s-/]', ''  -- remove special chars except hyphens and forward slashes
+                            ),
+                            '\\s+',
+                            '-'  -- replace spaces with single hyphen
                         ),
-                        '\\s+',
-                        '-'  -- replace spaces with single hyphen
+                        '-{2,}',
+                        '-'  -- collapse multiple hyphens
                     ),
-                    '-{2,}',
-                    '-'  -- collapse multiple hyphens
+                    '/{2,}',
+                    '/'  -- collapse multiple forward slashes
                 )
         )
     {% endif %}

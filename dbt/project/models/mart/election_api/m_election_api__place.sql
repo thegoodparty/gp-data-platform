@@ -15,6 +15,16 @@ with
         select distinct parent_id
         from {{ ref("int__enhanced_place_w_parent") }}
         where id in (select place_id from place_ids_in_races)
+    ),
+    grandparent_ids as (
+        select distinct tbl_parent.parent_id as grandparent_id
+        from {{ ref("int__enhanced_place_w_parent") }} as tbl_parent
+        where tbl_parent.id in (select parent_id from parent_ids)
+    ),
+    greatgrandparent_ids as (
+        select distinct tbl_parent.parent_id as greatgrandparent_id
+        from {{ ref("int__enhanced_place_w_parent") }} as tbl_parent
+        where tbl_parent.id in (select grandparent_id from grandparent_ids)
     )
 select
     tbl_place.id,
@@ -42,6 +52,8 @@ where
     and (
         tbl_place.id in (select place_id from place_ids_in_races)
         or tbl_place.id in (select parent_id from parent_ids)
+        or tbl_place.id in (select grandparent_id from grandparent_ids)
+        or tbl_place.id in (select greatgrandparent_id from greatgrandparent_ids)
     )
     {% if is_incremental() %}
         and tbl_place.updated_at > (select max(updated_at) from {{ this }})

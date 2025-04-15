@@ -76,10 +76,11 @@ with
             tbl_race.created_at,
             tbl_race.updated_at,
             to_timestamp(tbl_election.election_day) as election_date,
-            {{ slugify("tbl_normalized_position.name") }} as position_slug,
             concat(
-                tbl_position.state, '-', {{ slugify("tbl_normalized_position.name") }}
-            ) as state_slug,  -- state-positionSlug
+                tbl_place.place_name_slug,
+                '/',
+                {{ slugify("tbl_normalized_position.name") }}
+            ) as slug,
             tbl_position.state as `state`,
             tbl_position.level as position_level,
             tbl_normalized_position.name as normalized_position_name,
@@ -147,8 +148,7 @@ select
     created_at,
     updated_at,
     election_date,
-    position_slug,
-    state_slug,
+    slug,
     `state`,
     position_level,
     normalized_position_name,
