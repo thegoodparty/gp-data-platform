@@ -21,6 +21,7 @@ with
             tbl_position.geo_id,
             tbl_position.mtfcc,
             tbl_position.`state`,
+            tbl_position.slug,
             tbl_fun_facts.city as city_largest,
             tbl_fun_facts.county_name as county_name,
             try_cast(tbl_fun_facts.population as int) as population,
@@ -29,10 +30,7 @@ with
                 tbl_fun_facts.income_household_median as int
             ) as income_household_median,
             try_cast(tbl_fun_facts.unemployment_rate as float) as unemployment_rate,
-            try_cast(tbl_fun_facts.home_value as int) as home_value,
-            concat_ws(
-                '/', tbl_fun_facts.state, tbl_fun_facts.county_name, tbl_fun_facts.city
-            ) as concatenated_location
+            try_cast(tbl_fun_facts.home_value as int) as home_value
         -- parent_id is self-referential, it is added in an additional layer
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
@@ -49,7 +47,7 @@ with
             updated_at,
             br_database_id,
             name,
-            {{ slugify("concatenated_location") }} as slug,
+            slug,
             geo_id,
             mtfcc,
             state,
