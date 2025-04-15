@@ -7,7 +7,15 @@
     )
 }}
 
-
+with
+    place_ids_in_races as (
+        select distinct place_id from {{ ref("int__enhanced_race") }}
+    ),
+    parent_ids as (
+        select distinct parent_id
+        from {{ ref("int__enhanced_place_w_parent") }}
+        where id in (select place_id from place_ids_in_races)
+    )
 select
     tbl_place.id,
     tbl_place.created_at,
@@ -25,13 +33,16 @@ select
     tbl_place.income_household_median,
     tbl_place.unemployment_rate,
     tbl_place.home_value,
-    tbl_place.parent_geo_id,
     tbl_place.parent_id
 from {{ ref("int__enhanced_place_w_parent") }} as tbl_place
 where
     tbl_place.geo_id is not null
     and tbl_place.place_name_slug is not null
     and tbl_place.name is not null
+    and (
+        tbl_place.id in (select place_id from place_ids_in_races)
+        or tbl_place.id in (select parent_id from parent_ids)
+    )
     {% if is_incremental() %}
         and tbl_place.updated_at > (select max(updated_at) from {{ this }})
     {% endif %}
