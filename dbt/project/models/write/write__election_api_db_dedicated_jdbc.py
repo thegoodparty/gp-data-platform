@@ -1,10 +1,4 @@
-import base64
-import importlib.util
 import logging
-import os
-import subprocess
-import sys
-import tempfile
 import uuid
 from datetime import datetime
 
@@ -12,10 +6,115 @@ import psycopg2
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, concat, concat_ws, lit, when
 
-# install required packages if not installed on the databricks host
-if importlib.util.find_spec("sshtunnel") is None:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "sshtunnel"])
-from sshtunnel import SSHTunnelForwarder
+PLACE_UPSERT_QUERY = """
+INSERT INTO {db_schema}."Place" (
+    id,
+    created_at,
+    updated_at,
+    br_database_id,
+    name,
+    slug,
+    geoid,
+    mtfcc,
+    state,
+    city_largest,
+    county_name,
+    population,
+    density,
+    income_household_median,
+    unemployment_rate,
+    home_value,
+    parent_id
+)
+SELECT
+    id::text,
+    created_at::timestamp without time zone,
+    updated_at::timestamp without time zone,
+    br_database_id::integer,
+    name::text,
+    slug::text,
+    geoid::text,
+    mtfcc::text,
+    state::text,
+    city_largest::text,
+    county_name::text,
+    population::integer,
+    density::real,
+    income_household_median::integer,
+    unemployment_rate::real,
+    home_value::integer,
+    parent_id::text
+FROM {staging_schema}."Place"
+ON CONFLICT (id) DO UPDATE SET
+    created_at = EXCLUDED.created_at,
+    updated_at = EXCLUDED.updated_at,
+    br_database_id = EXCLUDED.br_database_id,
+    name = EXCLUDED.name,
+    slug = EXCLUDED.slug,
+    geoid = EXCLUDED.geoid,
+    mtfcc = EXCLUDED.mtfcc,
+    state = EXCLUDED.state,
+    city_largest = EXCLUDED.city_largest,
+    county_name = EXCLUDED.county_name,
+    population = EXCLUDED.population,
+    density = EXCLUDED.density,
+    income_household_median = EXCLUDED.income_household_median,
+    unemployment_rate = EXCLUDED.unemployment_rate,
+    home_value = EXCLUDED.home_value,
+    parent_id = EXCLUDED.parent_id
+"""
+
+RACE_SCHEME_PSQL = """
+    id uuid NOT NULL,
+    created_at timestamp(3) without time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp(3) without time zone NOT NULL,
+    br_hash_id text NULL,
+    br_database_id integer NULL,
+    election_date timestamp(3) without time zone NOT NULL,
+    state character(2) NOT NULL,
+    position_level "PositionLevel" NOT NULL,
+    normalized_position_name text NULL,
+    position_description text NULL,
+    filing_office_address text NULL,
+    filing_phone_number text NULL,
+    paperwork_instructions text NULL,
+    filing_requirements text NULL,
+    is_runoff boolean NULL,
+    is_primary boolean NULL,
+    partisan_type text NULL,
+    filing_date_start timestamp(3) without time zone NULL,
+    filing_date_end timestamp(3) without time zone NULL,
+    employment_type text NULL,
+    eligibility_requirements text NULL,
+    salary text NULL,
+    sub_area_name text NULL,
+    sub_area_value text NULL,
+    frequency integer[] NULL,
+    place_id uuid NULL,
+    slug text NOT NULL,
+    position_names text[] NULL
+"""
+
+
+def _execute_sql_query(
+    query: str, host: str, port: int, user: str, password: str, database: str
+):
+
+    try:
+        conn = psycopg2.connect(
+            dbname=database, user=user, password=password, host=host, port=port
+        )
+        cursor = conn.cursor()
+        # cursor.execute("CREATE SCHEMA IF NOT EXISTS databricks_staging;")
+        cursor.execute(query)
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error executing query: {query}")
+        logging.error(f"Error: {e}")
+        raise e
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # Function to transform array columns to PostgreSQL compatible format
@@ -73,6 +172,7 @@ def model(dbt, session) -> DataFrame:
         tags=["ballotready", "election_api", "write", "postgres"],
         # TODO: once serverless supports library installations on jobs, uncomment the following line
         # packages=["paramiko", "sshtunnel"],
+        # enabled=False,
     )
 
     # Add barrier execution mode to ensure operations happen on the driver
@@ -85,21 +185,13 @@ def model(dbt, session) -> DataFrame:
     db_pw = dbt.config.get("election_db_pw")
     db_name = dbt.config.get("election_db_name")
     db_schema = dbt.config.get("election_db_schema")
-    ssh_host = dbt.config.get("ssh_host")
-    ssh_port = int(dbt.config.get("ssh_port"))
-    ssh_username = dbt.config.get("ssh_user")
-    ssh_pk_1 = dbt.config.get("ssh_pk_1")
-    ssh_pk_2 = dbt.config.get("ssh_pk_2")
-    ssh_pk_3 = dbt.config.get("ssh_pk_3")
-    ssh_pk = ssh_pk_1 + ssh_pk_2 + ssh_pk_3
-
-    # fix the forwarded port
-    local_port = 8090
-    # local_port = 5432
-
-    # Temporary file path for SSH key
-    ssh_key_file_path = None
-    tunnel = None
+    # TODO: remove ssh tunnel config, delete variables from dbt env and write.yaml
+    # ssh_host = dbt.config.get("ssh_host")  # type: ignore
+    # ssh_port = int(dbt.config.get("ssh_port"))  # type: ignore
+    # ssh_username = dbt.config.get("ssh_user")  # type: ignore
+    # ssh_pk_1 = dbt.config.get("ssh_pk_1")  # type: ignore
+    # ssh_pk_2 = dbt.config.get("ssh_pk_2")  # type: ignore
+    # ssh_pk_3 = dbt.config.get("ssh_pk_3")  # type: ignore
 
     try:
         # get the data to write
@@ -113,110 +205,8 @@ def model(dbt, session) -> DataFrame:
         # place_df_prepared = _prepare_df_for_postgres(place_df)
         # race_df_prepared = _prepare_df_for_postgres(race_df)
 
-        # Setup SSH connection with key
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=".pem", mode="w"
-        ) as ssh_key_file:
-            decoded_bytes = base64.b64decode(ssh_pk)
-            # decoded_string = decoded_bytes.decode("utf-8").strip()
-            decoded_string = decoded_bytes.decode("utf-8")
-            ssh_key_file.write(decoded_string)
-            ssh_key_file_path = ssh_key_file.name
-
-        logging.info(
-            f"Attempting to connect to PostgreSQL at {db_host}:{db_port} through bastion host {ssh_host}"
-        )
-
-        # Create SSH tunnel with explicit IP address instead of 'localhost'
-        local_host = "localhost"
-        # local_host = "127.0.0.1"
-        tunnel = SSHTunnelForwarder(
-            (ssh_host, ssh_port),
-            ssh_username=ssh_username,
-            ssh_pkey=ssh_key_file_path,
-            remote_bind_address=(db_host, db_port),
-            local_bind_address=(local_host, local_port),
-            # local_bind_address=(local_host, 0),
-            set_keepalive=10,  # Keep the connection alive
-            mute_exceptions=False,  # Show exceptions
-        )
-
-        # Start the tunnel
-        tunnel.start()
-
-        # Test if the tunnel is active
-        if not tunnel.is_active:
-            logging.error("SSH tunnel failed to start")
-            raise Exception("Failed to establish SSH tunnel connection")
-
-        # Display detailed tunnel information for debugging
-        logging.info(f"SSH tunnel active: {tunnel.is_active}")
-        logging.info(f"Local bind port: {tunnel.local_bind_port}")
-        logging.info(f"Local bind host: {tunnel.local_bind_host}")
-
-        # Verify tunnel works by checking connectivity to a public endpoint
-        try:
-            import requests
-
-            response = requests.get("https://api.ipify.org", timeout=5)
-            if response.status_code == 200:
-                logging.info(
-                    f"Tunnel connectivity verified. Public IP: {response.text}"
-                )
-            else:
-                logging.warning(
-                    f"Tunnel connectivity check returned status code: {response.status_code}"
-                )
-        except Exception as e:
-            logging.warning(f"Tunnel connectivity check failed: {str(e)}")
-
-        logging.info("SSH tunnel started successfully")
-
-        # Get the dynamically allocated local port
-        assert tunnel.local_bind_port == local_port
-        # local_port = tunnel.local_bind_port
-
-        logging.info(f"SSH tunnel established with local port: {local_port}")
-        jdbc_url = f"jdbc:postgresql://{local_host}:{local_port}/{db_name}"
-        logging.info(f"JDBC URL: {jdbc_url}")
-
-        # Test connection to PostgreSQL database
-        logging.info(
-            f"Attempting to connect to PostgreSQL through tunnel at {local_host}:{local_port}"
-        )
-
-        # Connect to PostgreSQL through the tunnel
-        conn = psycopg2.connect(
-            host=local_host,  # Use explicit IP instead of localhost
-            port=local_port,  # This is forwarded to the remote database
-            user=db_user,
-            password=db_pw,
-            database=db_name,
-            connect_timeout=30,  # Increase connection timeout
-        )
-
-        # Test the connection
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-
-        if result and result[0] == 1:
-            logging.info(
-                "Successfully connected to the database through the SSH tunnel!"
-            )
-
-            # Close cursor and connection
-            cursor.close()
-            conn.close()
-        else:
-            logging.warning("Database connection test returned unexpected result")
-
-            # Close cursor and connection
-            cursor.close()
-            conn.close()
-
         # JDBC connection properties using the explicit IP
-        jdbc_url = f"jdbc:postgresql://{local_host}:{local_port}/{db_name}"
+        jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
         # properties = {
         #     "user": db_user,
         #     "password": db_pw,
@@ -229,23 +219,50 @@ def model(dbt, session) -> DataFrame:
         logging.info("Writing place data to PostgreSQL via JDBC")
 
         # Write place data directly using JDBC
-        # Use coalesce to ensure all writes go through the SSH tunnel on the driver node
-        place_df.coalesce(1).write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f"{db_schema}.place"
+        # First, create the schema if it doesn't exist
+        # Create a temporary DataFrame with a SQL query to create the schema
+        staging_schema = "databricks_staging"  # TODO: pass this in as an environment variable from the dbt project
+        _execute_sql_query(
+            f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
+        )
+        place_df.write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f'{staging_schema}."Place"'
         ).option("user", db_user).option("password", db_pw).option(
             "driver", "org.postgresql.Driver"
         ).mode(
             "overwrite"
         ).save()
 
+        # execute the upsert query
+        _execute_sql_query(
+            PLACE_UPSERT_QUERY.format(
+                db_schema=db_schema, staging_schema=staging_schema
+            ),
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
+        )
+
         logging.info("Writing race data to PostgreSQL via JDBC")
-        # Use coalesce to ensure all writes go through the SSH tunnel on the driver node
-        race_df.coalesce(1).write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f"{db_schema}.race"
+        race_df.write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f"{staging_schema}.Race"
         ).option("user", db_user).option("password", db_pw).option(
             "driver", "org.postgresql.Driver"
+        ).option(
+            "mergeSchema", "true"
+        ).option(
+            "mergeKey", "id"
+        ).option(
+            "incrementalColumn", "updated_at"
         ).mode(
-            "append"
+            "merge"
         ).save()
 
         logging.info("Successfully imported data into PostgreSQL via JDBC")
@@ -271,16 +288,20 @@ def model(dbt, session) -> DataFrame:
     except Exception as e:
         logging.error(f"Error: {e}")
         raise e
-    finally:
-        # Clean up resources
-        if tunnel is not None and tunnel.is_active:
-            try:
-                tunnel.stop()
-                logging.info("SSH tunnel stopped successfully")
-            except Exception as e:
-                logging.error(f"Error stopping SSH tunnel: {e}")
-        if ssh_key_file_path and os.path.exists(ssh_key_file_path):
-            os.remove(ssh_key_file_path)
-            logging.info("SSH key file removed")
+    # finally:
+    # Clean up resources
+
+    # delete the staging schema
+    # _execute_sql_query(f"DROP SCHEMA IF EXISTS {staging_schema} CASCADE;", db_host, db_port, db_user, db_pw, db_name)
+
+    # if tunnel is not None and tunnel.is_active:
+    #     try:
+    #         tunnel.stop()
+    #         logging.info("SSH tunnel stopped successfully")
+    #     except Exception as e:
+    #         logging.error(f"Error stopping SSH tunnel: {e}")
+    # if ssh_key_file_path and os.path.exists(ssh_key_file_path):
+    #     os.remove(ssh_key_file_path)
+    #     logging.info("SSH key file removed")
 
     return load_log_df
