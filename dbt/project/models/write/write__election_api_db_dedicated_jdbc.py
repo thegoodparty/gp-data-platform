@@ -176,12 +176,65 @@ def _execute_sql_query(
         conn.close()
 
 
+def _load_data_to_postgres(
+    df: DataFrame,
+    table_name: str,
+    upsert_query: str,
+    db_host: str,
+    db_port: int,
+    db_user: str,
+    db_pw: str,
+    db_name: str,
+    staging_schema: str,
+    db_schema: str,
+):
+    """
+    Load a DataFrame to PostgreSQL via JDBC and execute an upsert query.
+
+    Args:
+        df: DataFrame to load
+        table_name: Name of the table
+        upsert_query: SQL query to execute for upserting data from staging to the target table
+        db_host: Database host
+        db_port: Database port
+        db_user: Database user
+        db_pw: Database password
+        db_name: Database name
+        staging_schema: Schema for staging tables
+        db_schema: Target schema for the final tables
+    """
+    logging.info(f"Writing {table_name} data to PostgreSQL via JDBC")
+
+    # Construct JDBC URL
+    jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
+
+    # Write data directly using JDBC
+    df.write.format("jdbc").option("url", jdbc_url).option(
+        "dbtable", f'{staging_schema}."{table_name}"'
+    ).option("user", db_user).option("password", db_pw).option(
+        "driver", "org.postgresql.Driver"
+    ).mode(
+        "overwrite"
+    ).save()
+
+    # Execute the upsert query
+    _execute_sql_query(
+        upsert_query.format(db_schema=db_schema, staging_schema=staging_schema),
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    return df.count()
+
+
 def model(dbt, session) -> DataFrame:
     """
     This model loads data for the mart that services the election API. The tables are written
     to the postgres database directly from spark since Airbyte does not support reads from
-    databricks. We use JDBC through an SSH tunnel, which requires a dedicated compute instance
-    rather than the default serverless.
+    databricks. We use JDBC drivers, which requires a dedicated compute instance rather than the default serverless.
     """
     # configure the data model
     dbt.config(
@@ -194,41 +247,72 @@ def model(dbt, session) -> DataFrame:
         tags=["ballotready", "election_api", "write", "postgres"],
     )
 
-    # Add barrier execution mode to ensure operations happen on the driver
-    session.conf.set("spark.databricks.barrier.mode", "true")
-
-    # get db and ssh tunnel config
+    # get db configs
+    staging_schema = dbt.config.get("staging_schema")
     db_host = dbt.config.get("election_db_host")
     db_port = int(dbt.config.get("election_db_port"))
     db_user = dbt.config.get("election_db_user")
     db_pw = dbt.config.get("election_db_pw")
     db_name = dbt.config.get("election_db_name")
     db_schema = dbt.config.get("election_db_schema")
-    # TODO: remove ssh tunnel config, delete variables from dbt env and write.yaml
-    # ssh_host = dbt.config.get("ssh_host")  # type: ignore
-    # ssh_port = int(dbt.config.get("ssh_port"))  # type: ignore
-    # ssh_username = dbt.config.get("ssh_user")  # type: ignore
-    # ssh_pk_1 = dbt.config.get("ssh_pk_1")  # type: ignore
-    # ssh_pk_2 = dbt.config.get("ssh_pk_2")  # type: ignore
-    # ssh_pk_3 = dbt.config.get("ssh_pk_3")  # type: ignore
 
     try:
         # get the data to write
         place_df: DataFrame = dbt.ref("m_election_api__place")
         race_df: DataFrame = dbt.ref("m_election_api__race")
 
-        # TODO: add incremental logic, especially if loading is slow
+        # Implement incremental logic if this is an incremental run
+        if dbt.is_incremental:
+            # Get the max updated_at value from the existing data
+            jdbc_props = {
+                "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
+                "user": db_user,
+                "password": db_pw,
+                "driver": "org.postgresql.Driver",
+            }
 
-        # JDBC connection properties using the explicit IP
-        jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
+            # Get the latest timestamp for places
+            place_query = (
+                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
+            )
+            place_max_df = (
+                session.read.format("jdbc")
+                .options(**jdbc_props)
+                .option("query", place_query)
+                .load()
+            )
+            place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
 
-        # Write the DataFrames to PostgreSQL using JDBC
-        logging.info("Writing place data to PostgreSQL via JDBC")
+            # Get the latest timestamp for races
+            race_query = (
+                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
+            )
+            race_max_df = (
+                session.read.format("jdbc")
+                .options(**jdbc_props)
+                .option("query", race_query)
+                .load()
+            )
+            race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
 
-        # Write place data directly using JDBC
-        # First, create the schema if it doesn't exist
-        # Create a temporary DataFrame with a SQL query to create the schema
-        staging_schema = "databricks_staging"  # TODO: pass this in as an environment variable from the dbt project
+            # Filter dataframes to only include new or updated records
+            if place_max_updated_at:
+                logging.info(
+                    f"Filtering place data for records updated after {place_max_updated_at}"
+                )
+                place_df = place_df.filter(place_df.updated_at > place_max_updated_at)
+
+            if race_max_updated_at:
+                logging.info(
+                    f"Filtering race data for records updated after {race_max_updated_at}"
+                )
+                race_df = race_df.filter(race_df.updated_at > race_max_updated_at)
+
+            logging.info(
+                f"Incremental load: {place_df.count()} place records and {race_df.count()} race records to process"
+            )
+
+        # Create a staging schema if it doesn't exist
         _execute_sql_query(
             f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
             db_host,
@@ -237,45 +321,32 @@ def model(dbt, session) -> DataFrame:
             db_pw,
             db_name,
         )
-        place_df.write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f'{staging_schema}."Place"'
-        ).option("user", db_user).option("password", db_pw).option(
-            "driver", "org.postgresql.Driver"
-        ).mode(
-            "overwrite"
-        ).save()
 
-        # execute the `Place` upsert query
-        _execute_sql_query(
-            PLACE_UPSERT_QUERY.format(
-                db_schema=db_schema, staging_schema=staging_schema
-            ),
-            db_host,
-            db_port,
-            db_user,
-            db_pw,
-            db_name,
+        # Load Place and Race data using the utility function
+        place_count = _load_data_to_postgres(
+            df=place_df,
+            table_name="Place",
+            upsert_query=PLACE_UPSERT_QUERY,
+            db_host=db_host,
+            db_port=db_port,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_name=db_name,
+            staging_schema=staging_schema,
+            db_schema=db_schema,
         )
 
-        logging.info("Writing race data to PostgreSQL via JDBC")
-        race_df.write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f'{staging_schema}."Race"'
-        ).option("user", db_user).option("password", db_pw).option(
-            "driver", "org.postgresql.Driver"
-        ).mode(
-            "overwrite"
-        ).save()
-
-        # execute the `Race` upsert query
-        _execute_sql_query(
-            RACE_UPSERT_QUERY.format(
-                db_schema=db_schema, staging_schema=staging_schema
-            ),
-            db_host,
-            db_port,
-            db_user,
-            db_pw,
-            db_name,
+        race_count = _load_data_to_postgres(
+            df=race_df,
+            table_name="Race",
+            upsert_query=RACE_UPSERT_QUERY,
+            db_host=db_host,
+            db_port=db_port,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_name=db_name,
+            staging_schema=staging_schema,
+            db_schema=db_schema,
         )
 
         # log the loading information including the number of rows loaded
@@ -284,13 +355,13 @@ def model(dbt, session) -> DataFrame:
             (
                 str(uuid.uuid4()),
                 "m_election_api__place",
-                place_df.count(),
+                place_count,
                 datetime.now(),
             ),
             (
                 str(uuid.uuid4()),
                 "m_election_api__race",
-                race_df.count(),
+                race_count,
                 datetime.now(),
             ),
         ]
@@ -299,10 +370,5 @@ def model(dbt, session) -> DataFrame:
     except Exception as e:
         logging.error(f"Error: {e}")
         raise e
-    # finally:
-    # Clean up resources
-
-    # delete the staging schema
-    # _execute_sql_query(f"DROP SCHEMA IF EXISTS {staging_schema} CASCADE;", db_host, db_port, db_user, db_pw, db_name)
 
     return load_log_df

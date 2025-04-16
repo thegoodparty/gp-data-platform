@@ -31,3 +31,6 @@ for queries in "${transform_load_queries[@]}"; do
         --staging_query "$staging_query" \
         --upsert_query "$upsert_query"
 done
+
+# drop the staging schema and its tables if it exists
+psql -h "$DB_HOST_GP" -p "$DB_PORT_GP" -U "$DB_USER_GP" -d "$DB_NAME_GP" -c "DROP SCHEMA IF EXISTS staging CASCADE;"
