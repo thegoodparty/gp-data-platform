@@ -4,64 +4,63 @@ from datetime import datetime
 
 import psycopg2
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, concat, concat_ws, lit, when
 
 PLACE_UPSERT_QUERY = """
-INSERT INTO {db_schema}."Place" (
-    id,
-    created_at,
-    updated_at,
-    br_database_id,
-    name,
-    slug,
-    geoid,
-    mtfcc,
-    state,
-    city_largest,
-    county_name,
-    population,
-    density,
-    income_household_median,
-    unemployment_rate,
-    home_value,
-    parent_id
-)
-SELECT
-    id::uuid,
-    created_at,
-    updated_at,
-    br_database_id,
-    name,
-    slug,
-    geoid,
-    mtfcc,
-    state,
-    city_largest,
-    county_name,
-    CASE WHEN population = '' THEN NULL ELSE population::integer END,
-    CASE WHEN density = '' THEN NULL ELSE density::real END,
-    CASE WHEN income_household_median = '' THEN NULL ELSE income_household_median::integer END,
-    CASE WHEN unemployment_rate = '' THEN NULL ELSE unemployment_rate::real END,
-    CASE WHEN home_value = '' THEN NULL ELSE home_value::integer END,
-    parent_id::uuid
-FROM {staging_schema}."Place"
-ON CONFLICT (id) DO UPDATE SET
-    created_at = EXCLUDED.created_at,
-    updated_at = EXCLUDED.updated_at,
-    br_database_id = EXCLUDED.br_database_id,
-    name = EXCLUDED.name,
-    slug = EXCLUDED.slug,
-    geoid = EXCLUDED.geoid,
-    mtfcc = EXCLUDED.mtfcc,
-    state = EXCLUDED.state,
-    city_largest = EXCLUDED.city_largest,
-    county_name = EXCLUDED.county_name,
-    population = EXCLUDED.population,
-    density = EXCLUDED.density,
-    income_household_median = EXCLUDED.income_household_median,
-    unemployment_rate = EXCLUDED.unemployment_rate,
-    home_value = EXCLUDED.home_value,
-    parent_id = EXCLUDED.parent_id
+    INSERT INTO {db_schema}."Place" (
+        id,
+        created_at,
+        updated_at,
+        br_database_id,
+        name,
+        slug,
+        geoid,
+        mtfcc,
+        state,
+        city_largest,
+        county_name,
+        population,
+        density,
+        income_household_median,
+        unemployment_rate,
+        home_value,
+        parent_id
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        br_database_id,
+        name,
+        slug,
+        geoid,
+        mtfcc,
+        state,
+        city_largest,
+        county_name,
+        CASE WHEN population = '' THEN NULL ELSE population::integer END,
+        CASE WHEN density = '' THEN NULL ELSE density::real END,
+        CASE WHEN income_household_median = '' THEN NULL ELSE income_household_median::integer END,
+        CASE WHEN unemployment_rate = '' THEN NULL ELSE unemployment_rate::real END,
+        CASE WHEN home_value = '' THEN NULL ELSE home_value::integer END,
+        parent_id::uuid
+    FROM {staging_schema}."Place"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        br_database_id = EXCLUDED.br_database_id,
+        name = EXCLUDED.name,
+        slug = EXCLUDED.slug,
+        geoid = EXCLUDED.geoid,
+        mtfcc = EXCLUDED.mtfcc,
+        state = EXCLUDED.state,
+        city_largest = EXCLUDED.city_largest,
+        county_name = EXCLUDED.county_name,
+        population = EXCLUDED.population,
+        density = EXCLUDED.density,
+        income_household_median = EXCLUDED.income_household_median,
+        unemployment_rate = EXCLUDED.unemployment_rate,
+        home_value = EXCLUDED.home_value,
+        parent_id = EXCLUDED.parent_id
 """
 
 RACE_UPSERT_QUERY = """
@@ -103,7 +102,7 @@ RACE_UPSERT_QUERY = """
         br_database_id,
         election_date,
         state,
-        position_level,
+        position_level::\"PositionLevel\",
         normalized_position_name,
         position_description,
         filing_office_address,
@@ -121,7 +120,7 @@ RACE_UPSERT_QUERY = """
         sub_area_name,
         sub_area_value,
         frequency,
-        place_id,
+        place_id::uuid,
         slug,
         position_names
     FROM {staging_schema}."Race"
@@ -177,43 +176,6 @@ def _execute_sql_query(
         conn.close()
 
 
-# Function to transform array columns to PostgreSQL compatible format
-def _prepare_df_for_postgres(df):
-    """
-    Transforms array columns in a DataFrame to PostgreSQL compatible format.
-
-    Examples:
-        - Input array column: ["apple", "banana", "cherry"]
-            Output: "{apple,banana,cherry}"
-
-        - Input array column: [1, 2, 3]
-            Output: "{1,2,3}"
-
-        - Input array column: None or []
-            Output: NULL
-    """
-    # Copy the DataFrame to avoid changing the original
-    transformed_df = df
-
-    # Get the schema to identify array columns
-    schema = df.schema
-    for field in schema:
-        # Check if the field is an array type
-        if "array" in str(field.dataType).lower():
-            # Convert array to PostgreSQL array format {val1,val2,val3}
-            transformed_df = transformed_df.withColumn(
-                field.name, concat_ws(",", col(field.name)).cast("string")
-            ).withColumn(
-                field.name,
-                when(
-                    col(field.name).isNotNull(),
-                    concat(lit("{"), col(field.name), lit("}")),
-                ),
-            )
-
-    return transformed_df
-
-
 def model(dbt, session) -> DataFrame:
     """
     This model loads data for the mart that services the election API. The tables are written
@@ -230,9 +192,6 @@ def model(dbt, session) -> DataFrame:
         unique_key="id",
         on_schema_change="fail",
         tags=["ballotready", "election_api", "write", "postgres"],
-        # TODO: once serverless supports library installations on jobs, uncomment the following line
-        # packages=["paramiko", "sshtunnel"],
-        # enabled=False,
     )
 
     # Add barrier execution mode to ensure operations happen on the driver
@@ -258,12 +217,7 @@ def model(dbt, session) -> DataFrame:
         place_df: DataFrame = dbt.ref("m_election_api__place")
         race_df: DataFrame = dbt.ref("m_election_api__race")
 
-        # TODO: separate place_df having `plarent_id` and without. May require separate loading to satisfy
-        # foreign key constraints.
-
-        # Prepare DataFrames for PostgreSQL compatible format
-        # place_df_prepared = _prepare_df_for_postgres(place_df)
-        # race_df_prepared = _prepare_df_for_postgres(race_df)
+        # TODO: add incremental logic, especially if loading is slow
 
         # JDBC connection properties using the explicit IP
         jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
@@ -291,7 +245,7 @@ def model(dbt, session) -> DataFrame:
             "overwrite"
         ).save()
 
-        # execute the `Place`` upsert query
+        # execute the `Place` upsert query
         _execute_sql_query(
             PLACE_UPSERT_QUERY.format(
                 db_schema=db_schema, staging_schema=staging_schema
@@ -305,7 +259,7 @@ def model(dbt, session) -> DataFrame:
 
         logging.info("Writing race data to PostgreSQL via JDBC")
         race_df.write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f"{staging_schema}.Race"
+            "dbtable", f'{staging_schema}."Race"'
         ).option("user", db_user).option("password", db_pw).option(
             "driver", "org.postgresql.Driver"
         ).mode(
@@ -350,15 +304,5 @@ def model(dbt, session) -> DataFrame:
 
     # delete the staging schema
     # _execute_sql_query(f"DROP SCHEMA IF EXISTS {staging_schema} CASCADE;", db_host, db_port, db_user, db_pw, db_name)
-
-    # if tunnel is not None and tunnel.is_active:
-    #     try:
-    #         tunnel.stop()
-    #         logging.info("SSH tunnel stopped successfully")
-    #     except Exception as e:
-    #         logging.error(f"Error stopping SSH tunnel: {e}")
-    # if ssh_key_file_path and os.path.exists(ssh_key_file_path):
-    #     os.remove(ssh_key_file_path)
-    #     logging.info("SSH key file removed")
 
     return load_log_df

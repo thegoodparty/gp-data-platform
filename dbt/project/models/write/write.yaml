@@ -2,43 +2,6 @@ version: 2
 
 models:
 
-  - name: write__election_api_db_serverless
-    enabled: false
-    description: >
-      This model writes data to the election api database.
-    config:
-      materialized: table
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      ssh_host: "{{ env_var('DBT_SSH_HOST') }}"
-      ssh_port: "{{ env_var('DBT_SSH_PORT') }}"
-      ssh_user: "{{ env_var('DBT_SSH_USER') }}"
-      ssh_pk_1: "{{ env_var('DBT_SSH_PK_1') }}"
-      ssh_pk_2: "{{ env_var('DBT_SSH_PK_2') }}"
-      ssh_pk_3: "{{ env_var('DBT_SSH_PK_3') }}"
-      election_db_host: "{{ env_var('DBT_ELECTION_DB_HOST') }}"
-      election_db_port: "{{ env_var('DBT_ELECTION_DB_PORT') }}"
-      election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
-      election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
-      election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
-      election_db_pw: "{{ env_var('DBT_ELECTION_DB_PW') }}"
-      s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
-      s3_prefix: "{{ env_var('DBT_S3_PREFIX') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: true
-    columns:
-      - name: id
-        description: "Unique identifier for the candidacy in the CivicEngine database"
-        tests:
-          - not_null
-          - unique
-      - name: table_name
-        description: "The name of the table"
-        tests:
-            - not_null
-      - name: number_of_rows
-        description: "The number of rows in the table that's been loaded"
-
   - name: write__election_api_db_dedicated_jdbc
     enabled: false
     description: >

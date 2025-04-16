@@ -40,6 +40,7 @@ select
 from {{ ref("int__enhanced_race") }}
 where
     place_id in (select id from {{ ref("m_election_api__place") }})
+    and election_date is not null
     {% if is_incremental() %}
         and updated_at > (select max(updated_at) from {{ this }})
     {% endif %}
