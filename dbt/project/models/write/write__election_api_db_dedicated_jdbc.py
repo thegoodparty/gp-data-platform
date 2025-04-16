@@ -27,23 +27,23 @@ INSERT INTO {db_schema}."Place" (
     parent_id
 )
 SELECT
-    id::text,
-    created_at::timestamp without time zone,
-    updated_at::timestamp without time zone,
-    br_database_id::integer,
-    name::text,
-    slug::text,
-    geoid::text,
-    mtfcc::text,
-    state::text,
-    city_largest::text,
-    county_name::text,
-    population::integer,
-    density::real,
-    income_household_median::integer,
-    unemployment_rate::real,
-    home_value::integer,
-    parent_id::text
+    id::uuid,
+    created_at,
+    updated_at,
+    br_database_id,
+    name,
+    slug,
+    geoid,
+    mtfcc,
+    state,
+    city_largest,
+    county_name,
+    CASE WHEN population = '' THEN NULL ELSE population::integer END,
+    CASE WHEN density = '' THEN NULL ELSE density::real END,
+    CASE WHEN income_household_median = '' THEN NULL ELSE income_household_median::integer END,
+    CASE WHEN unemployment_rate = '' THEN NULL ELSE unemployment_rate::real END,
+    CASE WHEN home_value = '' THEN NULL ELSE home_value::integer END,
+    parent_id::uuid
 FROM {staging_schema}."Place"
 ON CONFLICT (id) DO UPDATE SET
     created_at = EXCLUDED.created_at,
@@ -64,35 +64,95 @@ ON CONFLICT (id) DO UPDATE SET
     parent_id = EXCLUDED.parent_id
 """
 
-RACE_SCHEME_PSQL = """
-    id uuid NOT NULL,
-    created_at timestamp(3) without time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamp(3) without time zone NOT NULL,
-    br_hash_id text NULL,
-    br_database_id integer NULL,
-    election_date timestamp(3) without time zone NOT NULL,
-    state character(2) NOT NULL,
-    position_level "PositionLevel" NOT NULL,
-    normalized_position_name text NULL,
-    position_description text NULL,
-    filing_office_address text NULL,
-    filing_phone_number text NULL,
-    paperwork_instructions text NULL,
-    filing_requirements text NULL,
-    is_runoff boolean NULL,
-    is_primary boolean NULL,
-    partisan_type text NULL,
-    filing_date_start timestamp(3) without time zone NULL,
-    filing_date_end timestamp(3) without time zone NULL,
-    employment_type text NULL,
-    eligibility_requirements text NULL,
-    salary text NULL,
-    sub_area_name text NULL,
-    sub_area_value text NULL,
-    frequency integer[] NULL,
-    place_id uuid NULL,
-    slug text NOT NULL,
-    position_names text[] NULL
+RACE_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Race" (
+        id,
+        created_at,
+        updated_at,
+        br_hash_id,
+        br_database_id,
+        election_date,
+        state,
+        position_level,
+        normalized_position_name,
+        position_description,
+        filing_office_address,
+        filing_phone_number,
+        paperwork_instructions,
+        filing_requirements,
+        is_runoff,
+        is_primary,
+        partisan_type,
+        filing_date_start,
+        filing_date_end,
+        employment_type,
+        eligibility_requirements,
+        salary,
+        sub_area_name,
+        sub_area_value,
+        frequency,
+        place_id,
+        slug,
+        position_names
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        br_hash_id,
+        br_database_id,
+        election_date,
+        state,
+        position_level,
+        normalized_position_name,
+        position_description,
+        filing_office_address,
+        filing_phone_number,
+        paperwork_instructions,
+        filing_requirements,
+        is_runoff,
+        is_primary,
+        partisan_type,
+        filing_date_start,
+        filing_date_end,
+        employment_type,
+        eligibility_requirements,
+        salary,
+        sub_area_name,
+        sub_area_value,
+        frequency,
+        place_id,
+        slug,
+        position_names
+    FROM {staging_schema}."Race"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        br_hash_id = EXCLUDED.br_hash_id,
+        br_database_id = EXCLUDED.br_database_id,
+        election_date = EXCLUDED.election_date,
+        state = EXCLUDED.state,
+        position_level = EXCLUDED.position_level,
+        normalized_position_name = EXCLUDED.normalized_position_name,
+        position_description = EXCLUDED.position_description,
+        filing_office_address = EXCLUDED.filing_office_address,
+        filing_phone_number = EXCLUDED.filing_phone_number,
+        paperwork_instructions = EXCLUDED.paperwork_instructions,
+        filing_requirements = EXCLUDED.filing_requirements,
+        is_runoff = EXCLUDED.is_runoff,
+        is_primary = EXCLUDED.is_primary,
+        partisan_type = EXCLUDED.partisan_type,
+        filing_date_start = EXCLUDED.filing_date_start,
+        filing_date_end = EXCLUDED.filing_date_end,
+        employment_type = EXCLUDED.employment_type,
+        eligibility_requirements = EXCLUDED.eligibility_requirements,
+        salary = EXCLUDED.salary,
+        sub_area_name = EXCLUDED.sub_area_name,
+        sub_area_value = EXCLUDED.sub_area_value,
+        frequency = EXCLUDED.frequency,
+        place_id = EXCLUDED.place_id,
+        slug = EXCLUDED.slug,
+        position_names = EXCLUDED.position_names
 """
 
 
@@ -207,13 +267,6 @@ def model(dbt, session) -> DataFrame:
 
         # JDBC connection properties using the explicit IP
         jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
-        # properties = {
-        #     "user": db_user,
-        #     "password": db_pw,
-        #     "driver": "org.postgresql.Driver",
-        #     "url": jdbc_url,
-        #     "dbtable": f"{db_schema}.place",
-        # }
 
         # Write the DataFrames to PostgreSQL using JDBC
         logging.info("Writing place data to PostgreSQL via JDBC")
@@ -238,7 +291,7 @@ def model(dbt, session) -> DataFrame:
             "overwrite"
         ).save()
 
-        # execute the upsert query
+        # execute the `Place`` upsert query
         _execute_sql_query(
             PLACE_UPSERT_QUERY.format(
                 db_schema=db_schema, staging_schema=staging_schema
@@ -255,17 +308,21 @@ def model(dbt, session) -> DataFrame:
             "dbtable", f"{staging_schema}.Race"
         ).option("user", db_user).option("password", db_pw).option(
             "driver", "org.postgresql.Driver"
-        ).option(
-            "mergeSchema", "true"
-        ).option(
-            "mergeKey", "id"
-        ).option(
-            "incrementalColumn", "updated_at"
         ).mode(
-            "merge"
+            "overwrite"
         ).save()
 
-        logging.info("Successfully imported data into PostgreSQL via JDBC")
+        # execute the `Race` upsert query
+        _execute_sql_query(
+            RACE_UPSERT_QUERY.format(
+                db_schema=db_schema, staging_schema=staging_schema
+            ),
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
+        )
 
         # log the loading information including the number of rows loaded
         columns = ["id", "table_name", "number_of_rows", "loaded_at"]
