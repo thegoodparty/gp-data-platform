@@ -142,6 +142,38 @@ with
             coalesce(place_name_slug, '') as place_name_slug
         from with_parent_geo_id_and_place
     ),
+    -- find dupes of place_name_slug
+    dupes as (
+        select place_name_slug, count(*) as dupe_count
+        from geo_id_attributes
+        group by 1
+        having dupe_count > 1
+    ),
+    -- for the dupes, change the `place_name_slug` to `place_name_slug` || '-' ||
+    -- `geo_id`
+    deduped as (
+        select
+            geo_id_attributes.geo_id,
+            geo_id_attributes.mtfcc,
+            geo_id_attributes.slug_geo_id_components,
+            geo_id_attributes.parent_geo_id,
+            geo_id_attributes.state_geo_id,
+            geo_id_attributes.place_name_slug
+            || '-'
+            || geo_id_attributes.geo_id as place_name_slug
+        from dupes
+        left join
+            geo_id_attributes
+            on geo_id_attributes.place_name_slug = dupes.place_name_slug
+    ),
+    deduped_geo_id_attributes as (
+        select *
+        from deduped
+        union
+        select *
+        from geo_id_attributes
+        where place_name_slug not in (select place_name_slug from deduped)
+    ),
     parent_slug_1 as (
         select
             tbl_base.geo_id,
@@ -151,9 +183,9 @@ with
             tbl_base.state_geo_id,
             tbl_base.place_name_slug,
             coalesce(tbl_parent.place_name_slug, '') as parent1_place_name_slug
-        from geo_id_attributes as tbl_base
+        from deduped_geo_id_attributes as tbl_base
         left join
-            geo_id_attributes as tbl_parent
+            deduped_geo_id_attributes as tbl_parent
             on tbl_base.parent_geo_id = tbl_parent.geo_id
     ),
     parent_slug_2 as (
@@ -235,33 +267,35 @@ with
         qualify
             row_number() over (partition by geo_id, mtfcc order by len(place_name_slug))
             = 1
-    ),
-    dupes as (
-        select place_name_slug, count(*) as dupe_count
-        from final_w_dupes
-        group by 1
-        having dupe_count > 1
-    ),
-    deduped as (
-        select
-            geo_id,
-            mtfcc,
-            slug_geo_id_components,
-            parent_geo_id,
-            state_geo_id,
-            dupes.place_name_slug || '-' || geo_id as place_name_slug
-        from dupes
-        left join final_w_dupes on dupes.place_name_slug = final_w_dupes.place_name_slug
-    ),
-    final as (
-        select *
-        from deduped
-        union
-        select *
-        from final_w_dupes
-        where place_name_slug not in (select place_name_slug from dupes)
     )
-
-select
-    geo_id, mtfcc, slug_geo_id_components, parent_geo_id, state_geo_id, place_name_slug
-from final
+-- ,
+-- dupes as (
+-- select place_name_slug, count(*) as dupe_count
+-- from final_w_dupes
+-- group by 1
+-- having dupe_count > 1
+-- ),
+-- deduped as (
+-- select
+-- geo_id,
+-- mtfcc,
+-- slug_geo_id_components,
+-- parent_geo_id,
+-- state_geo_id,
+-- dupes.place_name_slug || '-' || geo_id as place_name_slug
+-- from dupes
+-- left join final_w_dupes on dupes.place_name_slug = final_w_dupes.place_name_slug
+-- ),
+-- final as (
+-- select *
+-- from deduped
+-- union
+-- select *
+-- from final_w_dupes
+-- where place_name_slug not in (select place_name_slug from dupes)
+-- )
+-- select
+-- geo_id, mtfcc, slug_geo_id_components, parent_geo_id, state_geo_id, place_name_slug
+-- from final
+select *
+from final_w_dupes
