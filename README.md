@@ -20,10 +20,6 @@ A comprehensive data platform that handles data ingestion, transformation, orche
 - SQL, Jinja templating, and Python utilities
 - Data quality tests and documentation
 
-### Data Serving
-- NestJS API for serving transformed data
-- GraphQL or RESTful endpoints for data access
-
 ## Project Structure
 
 The project structure will be added here as it evolves
