@@ -298,4 +298,4 @@ with
 -- geo_id, mtfcc, slug_geo_id_components, parent_geo_id, state_geo_id, place_name_slug
 -- from final
 select *
-from final_w_dupes
+from deduped
