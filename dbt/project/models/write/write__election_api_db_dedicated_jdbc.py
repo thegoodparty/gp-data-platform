@@ -4,6 +4,7 @@ from datetime import datetime
 
 import psycopg2
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import current_date, date_sub
 
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (
@@ -157,14 +158,13 @@ RACE_UPSERT_QUERY = """
 
 def _execute_sql_query(
     query: str, host: str, port: int, user: str, password: str, database: str
-):
+) -> None:
 
     try:
         conn = psycopg2.connect(
             dbname=database, user=user, password=password, host=host, port=port
         )
         cursor = conn.cursor()
-        # cursor.execute("CREATE SCHEMA IF NOT EXISTS databricks_staging;")
         cursor.execute(query)
         conn.commit()
     except Exception as e:
@@ -187,7 +187,7 @@ def _load_data_to_postgres(
     db_name: str,
     staging_schema: str,
     db_schema: str,
-):
+) -> int:
     """
     Load a DataFrame to PostgreSQL via JDBC and execute an upsert query.
 
@@ -249,6 +249,7 @@ def model(dbt, session) -> DataFrame:
 
     # get db configs
     staging_schema = dbt.config.get("staging_schema")
+    dbt_environment = dbt.config.get("dbt_environment")
     db_host = dbt.config.get("election_db_host")
     db_port = int(dbt.config.get("election_db_port"))
     db_user = dbt.config.get("election_db_user")
@@ -256,119 +257,131 @@ def model(dbt, session) -> DataFrame:
     db_name = dbt.config.get("election_db_name")
     db_schema = dbt.config.get("election_db_schema")
 
-    try:
-        # get the data to write
-        place_df: DataFrame = dbt.ref("m_election_api__place")
-        race_df: DataFrame = dbt.ref("m_election_api__race")
-
-        # Implement incremental logic if this is an incremental run
-        if dbt.is_incremental:
-            # Get the max updated_at value from the existing data
-            jdbc_props = {
-                "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
-                "user": db_user,
-                "password": db_pw,
-                "driver": "org.postgresql.Driver",
-            }
-
-            # Get the latest timestamp for places
-            place_query = (
-                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
-            )
-            place_max_df = (
-                session.read.format("jdbc")
-                .options(**jdbc_props)
-                .option("query", place_query)
-                .load()
-            )
-            place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
-
-            # Get the latest timestamp for races
-            race_query = (
-                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
-            )
-            race_max_df = (
-                session.read.format("jdbc")
-                .options(**jdbc_props)
-                .option("query", race_query)
-                .load()
-            )
-            race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
-
-            # Filter dataframes to only include new or updated records
-            if place_max_updated_at:
-                logging.info(
-                    f"Filtering place data for records updated after {place_max_updated_at}"
-                )
-                place_df = place_df.filter(place_df.updated_at > place_max_updated_at)
-
-            if race_max_updated_at:
-                logging.info(
-                    f"Filtering race data for records updated after {race_max_updated_at}"
-                )
-                race_df = race_df.filter(race_df.updated_at > race_max_updated_at)
-
-            logging.info(
-                f"Incremental load: {place_df.count()} place records and {race_df.count()} race records to process"
-            )
-
-        # Create a staging schema if it doesn't exist
-        _execute_sql_query(
-            f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
-            db_host,
-            db_port,
-            db_user,
-            db_pw,
-            db_name,
-        )
-
-        # Load Place and Race data using the utility function
-        place_count = _load_data_to_postgres(
-            df=place_df,
-            table_name="Place",
-            upsert_query=PLACE_UPSERT_QUERY,
-            db_host=db_host,
-            db_port=db_port,
-            db_user=db_user,
-            db_pw=db_pw,
-            db_name=db_name,
-            staging_schema=staging_schema,
-            db_schema=db_schema,
-        )
-
-        race_count = _load_data_to_postgres(
-            df=race_df,
-            table_name="Race",
-            upsert_query=RACE_UPSERT_QUERY,
-            db_host=db_host,
-            db_port=db_port,
-            db_user=db_user,
-            db_pw=db_pw,
-            db_name=db_name,
-            staging_schema=staging_schema,
-            db_schema=db_schema,
-        )
-
-        # log the loading information including the number of rows loaded
+    # TODO: disable prod loads until dev testing is complete and prod db is deployed
+    if dbt_environment == "prod":
+        logging.info("Skipping load for prod environment")
+        # Create an empty DataFrame with the same schema
         columns = ["id", "table_name", "number_of_rows", "loaded_at"]
-        data = [
-            (
-                str(uuid.uuid4()),
-                "m_election_api__place",
-                place_count,
-                datetime.now(),
-            ),
-            (
-                str(uuid.uuid4()),
-                "m_election_api__race",
-                race_count,
-                datetime.now(),
-            ),
-        ]
-        load_log_df = session.createDataFrame(data, columns)
+        return session.createDataFrame([], schema=columns)
 
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        raise e
+    # get the data to write
+    place_df: DataFrame = dbt.ref("m_election_api__place")
+    race_df: DataFrame = dbt.ref("m_election_api__race")
+
+    # Implement incremental logic if this is an incremental run
+    if dbt.is_incremental:
+        # Get the max updated_at value from the existing data
+        jdbc_props = {
+            "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
+            "user": db_user,
+            "password": db_pw,
+            "driver": "org.postgresql.Driver",
+        }
+
+        # Get the latest timestamp for places
+        place_query = (
+            f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
+        )
+        place_max_df = (
+            session.read.format("jdbc")
+            .options(**jdbc_props)
+            .option("query", place_query)
+            .load()
+        )
+        place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
+
+        # Get the latest timestamp for races
+        race_query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
+        race_max_df = (
+            session.read.format("jdbc")
+            .options(**jdbc_props)
+            .option("query", race_query)
+            .load()
+        )
+        race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
+
+        # Filter dataframes to only include new or updated records
+        if place_max_updated_at:
+            logging.info(
+                f"Filtering place data for records updated after {place_max_updated_at}"
+            )
+            place_df = place_df.filter(place_df.updated_at > place_max_updated_at)
+
+        if race_max_updated_at:
+            logging.info(
+                f"Filtering race data for records updated after {race_max_updated_at}"
+            )
+            race_df = race_df.filter(race_df.updated_at > race_max_updated_at)
+
+        logging.info(
+            f"Incremental load: {place_df.count()} place records and {race_df.count()} race records to process"
+        )
+
+    # Create a staging schema if it doesn't exist
+    _execute_sql_query(
+        f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # Load Place and Race data using the utility function
+    place_count = _load_data_to_postgres(
+        df=place_df,
+        table_name="Place",
+        upsert_query=PLACE_UPSERT_QUERY,
+        db_host=db_host,
+        db_port=db_port,
+        db_user=db_user,
+        db_pw=db_pw,
+        db_name=db_name,
+        staging_schema=staging_schema,
+        db_schema=db_schema,
+    )
+
+    # for race, we need to drop rows that have `election_date` more than 1 day ago
+    race_df = race_df.filter(race_df.election_date > date_sub(current_date(), 1))
+    race_count = _load_data_to_postgres(
+        df=race_df,
+        table_name="Race",
+        upsert_query=RACE_UPSERT_QUERY,
+        db_host=db_host,
+        db_port=db_port,
+        db_user=db_user,
+        db_pw=db_pw,
+        db_name=db_name,
+        staging_schema=staging_schema,
+        db_schema=db_schema,
+    )
+
+    # for the race db, drop rows that have `election_date` more than 1 day ago
+    _execute_sql_query(
+        f"DELETE FROM {db_schema}.\"Race\" WHERE election_date < current_date - interval '1 day'",
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # log the loading information including the number of rows loaded
+    columns = ["id", "table_name", "number_of_rows", "loaded_at"]
+    data = [
+        (
+            str(uuid.uuid4()),
+            "m_election_api__place",
+            place_count,
+            datetime.now(),
+        ),
+        (
+            str(uuid.uuid4()),
+            "m_election_api__race",
+            race_count,
+            datetime.now(),
+        ),
+    ]
+    load_log_df = session.createDataFrame(data, columns)
 
     return load_log_df

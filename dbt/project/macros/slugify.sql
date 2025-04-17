@@ -31,7 +31,7 @@
                         '-'  -- collapse multiple hyphens
                     ),
                     '/{2,}',
-                    '/'  -- collapse multiple forward slashes
+                    '-'  -- collapse multiple forward slashes (can use '/' instead)
                 )
         )
     {% else %}
@@ -51,7 +51,7 @@
                         '-'  -- collapse multiple hyphens
                     ),
                     '/{2,}',
-                    '/'  -- collapse multiple forward slashes
+                    '-'  -- collapse multiple forward slashes (can use '/' instead)
                 )
         )
     {% endif %}
