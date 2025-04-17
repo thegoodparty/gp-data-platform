@@ -22,7 +22,6 @@ airflow/logs
 dbt/*/target/
 dbt/*/dbt_packages/
 dbt/*/logs/
-dbt/*/package-lock.yml
 # end dbt Cloud content
 
 # ignore .venv
