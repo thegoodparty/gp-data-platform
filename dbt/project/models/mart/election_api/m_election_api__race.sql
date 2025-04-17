@@ -17,7 +17,7 @@ select
     election_date,
     state,
     position_level,
-    normalized_position_name,
+    regexp_replace(normalized_position_name, '//', '-') as normalized_position_name,
     position_description,
     filing_office_address,
     filing_phone_number,
@@ -34,12 +34,18 @@ select
     sub_area_name,
     sub_area_value,
     frequency,
-    place_id,
-    slug,
+    coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id) as place_id,
+    concat(
+        coalesce(place_slug_by_pos_geo_id, place_slug_most_specific_geo_id),
+        '/',
+        {{ slugify("normalized_position_name") }}
+    ) as slug,
     position_names
 from {{ ref("int__enhanced_race") }}
 where
-    place_id in (select id from {{ ref("m_election_api__place") }})
+    coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id)
+    in (select id from {{ ref("m_election_api__place") }})
+    and election_date > current_date()
     {% if is_incremental() %}
         and updated_at > (select max(updated_at) from {{ this }})
     {% endif %}

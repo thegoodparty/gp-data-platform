@@ -76,11 +76,6 @@ with
             tbl_race.created_at,
             tbl_race.updated_at,
             to_timestamp(tbl_election.election_day) as election_date,
-            concat(
-                tbl_place.place_name_slug,
-                '/',
-                {{ slugify("tbl_normalized_position.name") }}
-            ) as slug,
             tbl_position.state as `state`,
             tbl_position.level as position_level,
             tbl_normalized_position.name as normalized_position_name,
@@ -100,10 +95,14 @@ with
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end,
             tbl_position.geo_id as position_geo_id,
-            tbl_position_to_place.place_database_id as place_database_id,
-            tbl_position_to_place.place_geo_id as place_geo_id,
-            tbl_position_to_place.place_name as place_name,
-            tbl_place.id as place_id,
+            tbl_place_by_position_geo_id.id as place_id_by_pos_geo_id,
+            tbl_place_by_position_geo_id.name as place_name_by_pos_geo_id,
+            tbl_place_by_position_geo_id.place_name_slug as place_slug_by_pos_geo_id,
+            tbl_position_to_place.place_geo_id as geo_id_most_specific_geo_id,
+            tbl_position_to_place.place_name as place_name_most_specific_geo_id,
+            tbl_place_most_specific_geo_id.id as place_id_most_specific_geo_id,
+            tbl_place_most_specific_geo_id.place_name_slug
+            as place_slug_most_specific_geo_id,
             tbl_race_to_positions.position_names
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
@@ -112,6 +111,9 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
             on tbl_race.position.databaseid = tbl_position.database_id
+        left join
+            {{ ref("int__enhanced_place") }} as tbl_place_by_position_geo_id
+            on tbl_position.geo_id = tbl_place_by_position_geo_id.geo_id
         left join
             {{ ref("int__ballotready_normalized_position") }} as tbl_normalized_position
             on tbl_position.normalized_position.`databaseId`
@@ -129,8 +131,9 @@ with
             position_to_most_specific_place as tbl_position_to_place
             on tbl_position.database_id = tbl_position_to_place.position_database_id
         left join
-            {{ ref("int__enhanced_place") }} as tbl_place
-            on tbl_position_to_place.place_database_id = tbl_place.br_database_id
+            {{ ref("int__enhanced_place") }} as tbl_place_most_specific_geo_id
+            on tbl_position_to_place.place_database_id
+            = tbl_place_most_specific_geo_id.br_database_id
         left join
             {{ ref("int__race_to_positions") }} as tbl_race_to_positions
             on tbl_race.database_id = tbl_race_to_positions.race_database_id
@@ -148,7 +151,6 @@ select
     created_at,
     updated_at,
     election_date,
-    slug,
     `state`,
     position_level,
     normalized_position_name,
@@ -168,9 +170,12 @@ select
     filing_date_start,
     filing_date_end,
     position_geo_id,
-    place_id,
-    place_database_id,
-    place_geo_id,
-    place_name,
+    place_id_by_pos_geo_id,
+    place_name_by_pos_geo_id,
+    place_id_most_specific_geo_id,
+    place_slug_by_pos_geo_id,
+    geo_id_most_specific_geo_id,
+    place_name_most_specific_geo_id,
+    place_slug_most_specific_geo_id,
     position_names
 from enhanced_race

@@ -221,7 +221,7 @@ with
             ) as place_name_slug
         from parent_slug_4
     ),
-    final as (
+    final_w_dupes as (
         select
             geo_id,
             mtfcc,
@@ -235,7 +235,33 @@ with
         qualify
             row_number() over (partition by geo_id, mtfcc order by len(place_name_slug))
             = 1
+    ),
+    dupes as (
+        select place_name_slug, count(*) as dupe_count
+        from final_w_dupes
+        group by 1
+        having dupe_count > 1
+    ),
+    deduped as (
+        select
+            geo_id,
+            mtfcc,
+            slug_geo_id_components,
+            parent_geo_id,
+            state_geo_id,
+            dupes.place_name_slug || '-' || geo_id as place_name_slug
+        from dupes
+        left join final_w_dupes on dupes.place_name_slug = final_w_dupes.place_name_slug
+    ),
+    final as (
+        select *
+        from deduped
+        union
+        select *
+        from final_w_dupes
+        where place_name_slug not in (select place_name_slug from dupes)
     )
 
-select *
+select
+    geo_id, mtfcc, slug_geo_id_components, parent_geo_id, state_geo_id, place_name_slug
 from final

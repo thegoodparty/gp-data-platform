@@ -9,7 +9,11 @@
 
 with
     place_ids_in_races as (
-        select distinct place_id from {{ ref("int__enhanced_race") }}
+        select distinct place_id_by_pos_geo_id as place_id
+        from {{ ref("int__enhanced_race") }}
+        union
+        select distinct place_id_most_specific_geo_id as place_id
+        from {{ ref("int__enhanced_race") }}
     ),
     parent_ids as (
         select distinct parent_id
@@ -31,8 +35,8 @@ select
     tbl_place.created_at,
     tbl_place.updated_at,
     tbl_place.br_database_id,
-    tbl_place.`name`,
-    tbl_place.place_name_slug as slug,
+    replace(tbl_place.`name`, 'CCD', '') as name,
+    replace(tbl_place.place_name_slug, '-ccd', '') as slug,
     tbl_place.geo_id as geoid,
     tbl_place.mtfcc,
     tbl_place.`state`,

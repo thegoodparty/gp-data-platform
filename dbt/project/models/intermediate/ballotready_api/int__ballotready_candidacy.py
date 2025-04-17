@@ -334,4 +334,5 @@ def model(dbt, session) -> DataFrame:
 
     # remove cases where database_id is -1 which was a placeholder
     candidacies = candidacies.filter(candidacies["database_id"] != -1)
+    candidacies = candidacies.filter(candidacies["id"].isNotNull())
     return candidacies
