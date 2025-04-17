@@ -177,9 +177,9 @@ models:
           Constructed slug using Place.name on geo_id and concatenated with geo_id hierarchy.
           Uniqunes imposed by concatenating geo_id to the end of the slug if the
           Place.name is not unique
-        tests:
-          - unique
 
     tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["geo_id", "mtfcc"]
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["geo_id", "mtfcc", "place_name_slug"]
