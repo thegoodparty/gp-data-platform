@@ -265,6 +265,5 @@ with
         where place_name_slug not in (select place_name_slug from dupes)
     )
 
-select
-    geo_id, mtfcc, slug_geo_id_components, parent_geo_id, state_geo_id, place_name_slug
-from final
+select *
+from final_w_dupes
