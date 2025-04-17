@@ -1,0 +1,31 @@
+version: 2
+
+models:
+
+  - name: write__election_api_db_dedicated_jdbc
+    description: >
+      This model writes data to the election api database.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      election_db_host: "{{ env_var('DBT_ELECTION_DB_HOST') }}"
+      election_db_port: "{{ env_var('DBT_ELECTION_DB_PORT') }}"
+      election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
+      election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
+      election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
+      election_db_pw: "{{ env_var('DBT_ELECTION_DB_PW') }}"
+      staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: true
+    columns:
+      - name: id
+        description: "Unique identifier for the candidacy in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: table_name
+        description: "The name of the table"
+        tests:
+            - not_null
+      - name: number_of_rows
+        description: "The number of rows in the table that's been loaded"

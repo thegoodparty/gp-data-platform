@@ -40,6 +40,7 @@ with
         left join
             {{ ref("int__geo_id_attributes") }} as tbl_geo_id
             on tbl_place.geo_id = tbl_geo_id.geo_id
+            and tbl_place.mtfcc = tbl_geo_id.mtfcc
         {% if is_incremental() %}
             where tbl_place.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
