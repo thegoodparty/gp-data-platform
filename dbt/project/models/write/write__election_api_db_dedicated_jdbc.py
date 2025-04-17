@@ -341,7 +341,7 @@ def model(dbt, session) -> DataFrame:
         db_schema=db_schema,
     )
 
-    # for race, we need to drop rows that have `election_date` more than 1 day ago, and up to 2 years from now
+    # for race, we need to drop rows that have `election_date` more than 1 day ago, and more than 2 years from now
     race_df = race_df.filter(
         (race_df.election_date > date_sub(current_date(), 1))
         & (race_df.election_date < date_add(current_date(), 2 * 365))
