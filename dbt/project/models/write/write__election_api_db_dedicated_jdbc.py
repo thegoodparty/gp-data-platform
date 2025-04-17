@@ -4,7 +4,7 @@ from datetime import datetime
 
 import psycopg2
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import current_date, date_sub
+from pyspark.sql.functions import current_date, date_add, date_sub
 
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (
@@ -341,8 +341,12 @@ def model(dbt, session) -> DataFrame:
         db_schema=db_schema,
     )
 
-    # for race, we need to drop rows that have `election_date` more than 1 day ago
-    race_df = race_df.filter(race_df.election_date > date_sub(current_date(), 1))
+    # for race, we need to drop rows that have `election_date` more than 1 day ago, and up to 2 years from now
+    race_df = race_df.filter(
+        (race_df.election_date > date_sub(current_date(), 1))
+        & (race_df.election_date < date_add(current_date(), 2 * 365))
+    )
+
     race_count = _load_data_to_postgres(
         df=race_df,
         table_name="Race",
