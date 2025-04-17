@@ -35,10 +35,14 @@ select
     sub_area_value,
     frequency,
     coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id) as place_id,
-    concat(
-        coalesce(place_slug_by_pos_geo_id, place_slug_most_specific_geo_id),
-        '/',
-        {{ slugify("normalized_position_name") }}
+    replace(
+        concat(
+            coalesce(place_slug_by_pos_geo_id, place_slug_most_specific_geo_id),
+            '/',
+            {{ slugify("normalized_position_name") }}
+        ),
+        '-ccd',
+        ''
     ) as slug,
     position_names
 from {{ ref("int__enhanced_race") }}

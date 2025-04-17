@@ -239,7 +239,7 @@ with
     dupes as (
         select place_name_slug, count(*) as dupe_count
         from final_w_dupes
-        group by 1
+        group by place_name_slug
         having dupe_count > 1
     ),
     deduped as (
