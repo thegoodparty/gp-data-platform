@@ -39,7 +39,7 @@ def _get_position_election_frequency_batch(
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> List[Dict[str, Any]]:
     """
     Fetches position election frequency data for a batch of position database IDs from the CivicEngine API.
