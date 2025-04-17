@@ -322,16 +322,18 @@ def model(dbt, session) -> DataFrame:
     # First get the geofence data as a struct, then extract each field into its own column
     geofence = geofence.withColumn("geofence_data", get_geofence(col("geofence_id")))
     result = geofence.select(
-        col("geofence_data.createdAt").alias("createdAt"),
-        col("geofence_data.databaseId").alias("databaseId"),
-        col("geofence_data.geoId").alias("geoId"),
+        col("geofence_data.createdAt").alias("created_at"),
+        col("geofence_data.databaseId").alias("database_id"),
+        col("geofence_data.geoId").alias("geo_id"),
         col("geofence_data.id").alias("id"),
         col("geofence_data.mtfcc").alias("mtfcc"),
-        col("geofence_data.updatedAt").alias("updatedAt"),
-        col("geofence_data.validFrom").alias("validFrom"),
-        col("geofence_data.validTo").alias("validTo"),
+        col("geofence_data.updatedAt").alias("updated_at"),
+        col("geofence_data.validFrom").alias("valid_from"),
+        col("geofence_data.validTo").alias("valid_to"),
     )
 
     # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
-    result = result.filter(col("databaseId") >= 0)
+    result = result.filter(col("database_id") >= 0)
+    result = result.filter(col("database_id") != -1)
+    result = result.filter(col("id").isNotNull())
     return result
