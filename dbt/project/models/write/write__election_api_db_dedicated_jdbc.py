@@ -5,6 +5,13 @@ from datetime import datetime
 import psycopg2
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import current_date, date_add, date_sub
+from pyspark.sql.types import (
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (
@@ -156,6 +163,16 @@ RACE_UPSERT_QUERY = """
 """
 
 
+WRITE_TABLE_SCHEMA = StructType(
+    [
+        StructField("id", StringType(), False),
+        StructField("table_name", StringType(), False),
+        StructField("number_of_rows", IntegerType(), False),
+        StructField("loaded_at", TimestampType(), False),
+    ]
+)
+
+
 def _execute_sql_query(
     query: str, host: str, port: int, user: str, password: str, database: str
 ) -> None:
@@ -261,9 +278,10 @@ def model(dbt, session) -> DataFrame:
     if dbt_environment == "prod":
         logging.info("Skipping load for prod environment")
         # Create an empty DataFrame with the same schema
-        columns = ["id", "table_name", "number_of_rows", "loaded_at"]
-        return session.createDataFrame([], schema=columns)
-
+        return session.createDataFrame(
+            data=[],
+            schema=WRITE_TABLE_SCHEMA,
+        )
     # get the data to write
     place_df: DataFrame = dbt.ref("m_election_api__place")
     race_df: DataFrame = dbt.ref("m_election_api__race")
@@ -371,7 +389,6 @@ def model(dbt, session) -> DataFrame:
     )
 
     # log the loading information including the number of rows loaded
-    columns = ["id", "table_name", "number_of_rows", "loaded_at"]
     data = [
         (
             str(uuid.uuid4()),
@@ -386,6 +403,6 @@ def model(dbt, session) -> DataFrame:
             datetime.now(),
         ),
     ]
-    load_log_df = session.createDataFrame(data, columns)
+    load_log_df = session.createDataFrame(data, schema=WRITE_TABLE_SCHEMA)
 
     return load_log_df
