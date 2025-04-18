@@ -257,8 +257,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
-    result = result.filter(col("database_id") >= 0)
-    result = result.filter(result["database_id"] != -1)
+    result = result.filter(col("database_id") != -1)
     result = result.filter(col("database_id").isNotNull())
     result = result.filter(col("id").isNotNull())
     return result
