@@ -214,6 +214,8 @@ def model(dbt, session) -> DataFrame:
     See https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency
     """
     dbt.config(
+        submission_method="all_purpose_cluster",  # required for .cache()
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
