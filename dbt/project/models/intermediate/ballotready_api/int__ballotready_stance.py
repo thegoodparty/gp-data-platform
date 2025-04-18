@@ -256,6 +256,8 @@ def model(dbt, session) -> DataFrame:
     """
     # Configure the model
     dbt.config(
+        submission_method="all_purpose_cluster",  # required for .cache()
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="candidacy_id",
@@ -327,8 +329,12 @@ def model(dbt, session) -> DataFrame:
     else:
         logging.info("INFO: Running in full refresh mode")
 
+    # Trigger a cache to ensure filters above are applied before making API calls
+    candidacies.cache()
+    candidacies_count = candidacies.count()
+
     # If no records to process after filtering, return early
-    if candidacies.count() == 0 and dbt.is_incremental:
+    if candidacies_count and dbt.is_incremental:
         logging.info("INFO: No new or updated candidacies to process")
         # Return empty DataFrame with correct schema
         empty_df = session.createDataFrame(
