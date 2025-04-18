@@ -237,21 +237,24 @@ with
             = 1
     ),
     dupes as (
-        select place_name_slug, count(*) as dupe_count
+        select place_name_slug, mtfcc, count(*) as dupe_count
         from final_w_dupes
-        group by place_name_slug
+        group by place_name_slug, mtfcc
         having dupe_count > 1
     ),
     deduped as (
         select
             geo_id,
-            mtfcc,
+            dupes.mtfcc,
             slug_geo_id_components,
             parent_geo_id,
             state_geo_id,
             dupes.place_name_slug || '-' || geo_id as place_name_slug
         from dupes
-        left join final_w_dupes on dupes.place_name_slug = final_w_dupes.place_name_slug
+        left join
+            final_w_dupes
+            on dupes.place_name_slug = final_w_dupes.place_name_slug
+            and dupes.mtfcc = final_w_dupes.mtfcc
     ),
     final as (
         select *
@@ -262,6 +265,5 @@ with
         where place_name_slug not in (select place_name_slug from dupes)
     )
 
-select
-    geo_id, mtfcc, slug_geo_id_components, parent_geo_id, state_geo_id, place_name_slug
-from final
+select *
+from final_w_dupes
