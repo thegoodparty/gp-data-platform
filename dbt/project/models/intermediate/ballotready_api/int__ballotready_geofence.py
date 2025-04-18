@@ -308,8 +308,11 @@ def model(dbt, session) -> DataFrame:
     else:
         geofence = candidacy_df.select("geofence_id").dropDuplicates(["geofence_id"])
 
+    # Trigger a cache to ensure these transformations are applied before the filter
     # if geofence_id is empty, return empty DataFrame
-    if geofence.count() == 0:
+    geofence.cache()
+    geofence_count = geofence.count()
+    if geofence_count == 0:
         logging.info("INFO: No new or updated geofence ids to process")
         return session.createDataFrame([], geofence_schema)
 
@@ -332,7 +335,10 @@ def model(dbt, session) -> DataFrame:
         col("geofence_data.validTo").alias("valid_to"),
     )
 
-    # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
+    # Drop rows with database_id -1, which is a placeholder for failed records
+    # Trigger a cache to ensure these transformations are applied before the filter
+    result.cache()
+    result.count()
     result = result.filter(col("database_id") >= 0)
     result = result.filter(col("database_id") != -1)
     result = result.filter(col("id").isNotNull())

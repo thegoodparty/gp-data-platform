@@ -218,6 +218,11 @@ def model(dbt, session) -> DataFrame:
     ).withColumnRenamed("databaseId", "database_id")
     filing_periods = filing_periods.filter(col("database_id").isNotNull())
 
+    # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
+    filing_periods.cache()
+    filing_periods_count = filing_periods.count()
+    logging.info(f"Found {filing_periods_count} new filing periods to process")
+
     # if filing_periods is empty, return an empty dataframe
     if filing_periods.count() == 0:
         logging.info("INFO: No new or updated filing periods to process")
@@ -257,6 +262,9 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Drop rows with database_id -1, which is a placeholder for failed records
+    # Trigger a cache to ensure these transformations are applied before the filter
+    result.cache()
+    result.count()
     result = result.filter(col("database_id") != -1)
     result = result.filter(col("database_id").isNotNull())
     result = result.filter(col("id").isNotNull())

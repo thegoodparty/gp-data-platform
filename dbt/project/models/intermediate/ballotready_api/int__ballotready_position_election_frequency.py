@@ -252,8 +252,11 @@ def model(dbt, session) -> DataFrame:
             how="left_anti",  # Only keep rows that don't match (equivalent to NOT IN)
         )
 
+        # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
+        position_election_frequency.cache()
+        position_count = position_election_frequency.count()
         logging.info(
-            f"Found {position_election_frequency.count()} new position election frequencies to process"
+            f"Found {position_count} new position election frequencies to process"
         )
 
     # Validate source data
@@ -298,7 +301,9 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Filter out placeholder records with negative database_id values which were placeholders
-    # in pandas UDF
+    # in pandas UDF. Trigger a cache to ensure these transformations are applied before filtering
+    position_election_frequency.cache()
+    position_election_frequency.count()
     position_election_frequency = position_election_frequency.filter(
         col("database_id") >= 0
     )
