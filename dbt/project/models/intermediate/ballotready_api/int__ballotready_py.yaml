@@ -77,11 +77,11 @@ models:
       owner: "Data Engineering Team"
       contains_pii: false
     columns:
-      - name: createdAt
+      - name: created_at
         description: "Timestamp when the geofence was created in the CivicEngine system"
         tests:
           - not_null
-      - name: databaseId
+      - name: database_id
         description: "Unique identifier for the geofence in the CivicEngine database"
         tests:
           - not_null
@@ -91,7 +91,7 @@ models:
         tests:
           - not_null
           - unique
-      - name: updatedAt
+      - name: updated_at
         description: "Timestamp when the geofence was last updated"
         tests:
           - not_null

@@ -183,6 +183,8 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
 
 def model(dbt, session) -> DataFrame:
     dbt.config(
+        submission_method="all_purpose_cluster",  # required for .cache()
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
@@ -217,6 +219,11 @@ def model(dbt, session) -> DataFrame:
         filing_periods.select("filing_periods.databaseId").distinct()
     ).withColumnRenamed("databaseId", "database_id")
     filing_periods = filing_periods.filter(col("database_id").isNotNull())
+
+    # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
+    filing_periods.cache()
+    filing_periods_count = filing_periods.count()
+    logging.info(f"Found {filing_periods_count} new filing periods to process")
 
     # if filing_periods is empty, return an empty dataframe
     if filing_periods.count() == 0:
@@ -256,7 +263,10 @@ def model(dbt, session) -> DataFrame:
         col("filing_period_data.updatedAt").alias("updated_at"),
     )
 
-    # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
+    # Drop rows with database_id -1, which is a placeholder for failed records
+    # Trigger a cache to ensure these transformations are applied before the filter
+    result.cache()
+    result.count()
     result = result.filter(col("database_id") != -1)
     result = result.filter(col("database_id").isNotNull())
     result = result.filter(col("id").isNotNull())

@@ -39,7 +39,7 @@ def _get_position_election_frequency_batch(
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> List[Dict[str, Any]]:
     """
     Fetches position election frequency data for a batch of position database IDs from the CivicEngine API.
@@ -214,6 +214,8 @@ def model(dbt, session) -> DataFrame:
     See https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency
     """
     dbt.config(
+        submission_method="all_purpose_cluster",  # required for .cache()
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
@@ -252,8 +254,11 @@ def model(dbt, session) -> DataFrame:
             how="left_anti",  # Only keep rows that don't match (equivalent to NOT IN)
         )
 
+        # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
+        position_election_frequency.cache()
+        position_count = position_election_frequency.count()
         logging.info(
-            f"Found {position_election_frequency.count()} new position election frequencies to process"
+            f"Found {position_count} new position election frequencies to process"
         )
 
     # Validate source data
@@ -298,7 +303,9 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Filter out placeholder records with negative database_id values which were placeholders
-    # in pandas UDF
+    # in pandas UDF. Trigger a cache to ensure these transformations are applied before filtering
+    position_election_frequency.cache()
+    position_election_frequency.count()
     position_election_frequency = position_election_frequency.filter(
         col("database_id") >= 0
     )

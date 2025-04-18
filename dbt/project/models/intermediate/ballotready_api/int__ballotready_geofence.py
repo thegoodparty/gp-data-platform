@@ -269,6 +269,8 @@ geofence_schema = StructType(
 def model(dbt, session) -> DataFrame:
     # Configure the model
     dbt.config(
+        submission_method="all_purpose_cluster",  # required for .cache()
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
@@ -291,11 +293,11 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
         existing_timestamps = existing_table.select(
-            "databaseId", "createdAt", "updatedAt"
+            "database_id", "created_at", "updated_at"
         ).distinct()
 
         # get the latest updated_at date
-        latest_updated_at = existing_timestamps.agg({"updatedAt": "max"}).collect()[0][
+        latest_updated_at = existing_timestamps.agg({"updated_at": "max"}).collect()[0][
             0
         ]
 
@@ -308,8 +310,11 @@ def model(dbt, session) -> DataFrame:
     else:
         geofence = candidacy_df.select("geofence_id").dropDuplicates(["geofence_id"])
 
+    # Trigger a cache to ensure these transformations are applied before the filter
     # if geofence_id is empty, return empty DataFrame
-    if geofence.count() == 0:
+    geofence.cache()
+    geofence_count = geofence.count()
+    if geofence_count == 0:
         logging.info("INFO: No new or updated geofence ids to process")
         return session.createDataFrame([], geofence_schema)
 
@@ -322,16 +327,21 @@ def model(dbt, session) -> DataFrame:
     # First get the geofence data as a struct, then extract each field into its own column
     geofence = geofence.withColumn("geofence_data", get_geofence(col("geofence_id")))
     result = geofence.select(
-        col("geofence_data.createdAt").alias("createdAt"),
-        col("geofence_data.databaseId").alias("databaseId"),
-        col("geofence_data.geoId").alias("geoId"),
+        col("geofence_data.createdAt").alias("created_at"),
+        col("geofence_data.databaseId").alias("database_id"),
+        col("geofence_data.geoId").alias("geo_id"),
         col("geofence_data.id").alias("id"),
         col("geofence_data.mtfcc").alias("mtfcc"),
-        col("geofence_data.updatedAt").alias("updatedAt"),
-        col("geofence_data.validFrom").alias("validFrom"),
-        col("geofence_data.validTo").alias("validTo"),
+        col("geofence_data.updatedAt").alias("updated_at"),
+        col("geofence_data.validFrom").alias("valid_from"),
+        col("geofence_data.validTo").alias("valid_to"),
     )
 
-    # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
-    result = result.filter(col("databaseId") >= 0)
+    # Drop rows with database_id -1, which is a placeholder for failed records
+    # Trigger a cache to ensure these transformations are applied before the filter
+    result.cache()
+    result.count()
+    result = result.filter(col("database_id") >= 0)
+    result = result.filter(col("database_id") != -1)
+    result = result.filter(col("id").isNotNull())
     return result

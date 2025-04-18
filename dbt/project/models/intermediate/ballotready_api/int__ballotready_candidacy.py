@@ -272,6 +272,8 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
 def model(dbt, session) -> DataFrame:
     # configure the model
     dbt.config(
+        submission_method="all_purpose_cluster",  # required for .cache()
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
@@ -302,7 +304,12 @@ def model(dbt, session) -> DataFrame:
     # get distinct candidacy IDs
     candidacy_ids = candidacies_s3.select("candidacy_id").distinct()
 
-    if candidacy_ids.count() == 0:
+    # Trigger a cache to ensure these transformations are applied before the filter
+    # if candidacy_id is empty, return empty DataFrame
+    candidacy_ids.cache()
+    candidacy_ids_count = candidacy_ids.count()
+
+    if candidacy_ids_count == 0:
         logging.info("INFO: No new or updated candidacies to process")
         return session.createDataFrame([], CANDIDACY_SCHEMA)
 
@@ -332,7 +339,10 @@ def model(dbt, session) -> DataFrame:
         col("candidacy.withdrawn").alias("withdrawn"),
     )
 
-    # remove cases where database_id is -1 which was a placeholder
-    candidacies = candidacies.filter(candidacies["database_id"] != -1)
-    candidacies = candidacies.filter(candidacies["id"].isNotNull())
+    # Remove cases where database_id is -1 which was a placeholder
+    # Trigger a cache to ensure these transformations are applied before the filter
+    candidacies.cache()
+    candidacies.count()
+    candidacies = candidacies.filter(col("database_id") != -1)
+    candidacies = candidacies.filter(col("id").isNotNull())
     return candidacies
