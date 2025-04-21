@@ -15,6 +15,8 @@ with
         select
             tbl_race.database_id as race_database_id,
             tbl_race.updated_at as race_updated_at,
+            tbl_position.normalized_position.databaseid
+            as position_normalized_database_id,
             tbl_position.geo_id as position_geo_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         left join
@@ -35,13 +37,15 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
             on race_pos_geo_id.position_geo_id = tbl_position.geo_id
+            and race_pos_geo_id.position_normalized_database_id
+            = tbl_position.normalized_position.databaseid
         where tbl_position.geo_id is not null
     ),
     aggregated_positions as (
         select
             race_database_id,
             race_updated_at,
-            array_agg(distinct position_name) as position_names
+            sort_array(array_agg(distinct position_name)) as position_names
         from race_all_pos_geo_ids
         group by race_database_id, race_updated_at
     )
