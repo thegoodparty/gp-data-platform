@@ -22,22 +22,8 @@ models:
         data_tests:
           - not_null
           - unique
-  - name: stg_airbyte_source__gp_api_db_county
-    description: raw data load from gp_api_db postgres db from table `county`
-    columns:
-      - name: id
-        data_tests:
-          - not_null
-          - unique
   - name: stg_airbyte_source__gp_api_db_election_type
     description: raw data load from gp_api_db postgres db from table `election_type`
-    columns:
-      - name: id
-        data_tests:
-          - not_null
-          - unique
-  - name: stg_airbyte_source__gp_api_db_municipality
-    description: raw data load from gp_api_db postgres db from table `municipality`
     columns:
       - name: id
         data_tests:
