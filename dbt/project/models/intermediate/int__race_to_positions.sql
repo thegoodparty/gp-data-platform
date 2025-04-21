@@ -45,7 +45,7 @@ with
         select
             race_database_id,
             race_updated_at,
-            array_agg(distinct position_name) as position_names
+            sort_array(array_agg(distinct position_name)) as position_names
         from race_all_pos_geo_ids
         group by race_database_id, race_updated_at
     )
