@@ -35,6 +35,7 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
             on race_pos_geo_id.position_geo_id = tbl_position.geo_id
+        -- use normalized_position_datbase_id instead
         where tbl_position.geo_id is not null
     ),
     aggregated_positions as (
