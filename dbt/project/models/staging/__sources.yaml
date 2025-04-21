@@ -36,12 +36,8 @@ sources:
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position
         description: raw data load from gp_api_db postgres db from table `campaign_position`
-      - name: gp_api_db_county
-        description: raw data load from gp_api_db postgres db from table `county`
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
-      - name: gp_api_db_municipality
-        description: raw data load from gp_api_db postgres db from table `municipality`
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
       - name: gp_api_db_position
