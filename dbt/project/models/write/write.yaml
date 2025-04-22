@@ -2,7 +2,7 @@ version: 2
 
 models:
 
-  - name: write__election_api_db_dedicated_jdbc
+  - name: write__election_api_db
     description: >
       This model writes data to the election api database.
     config:

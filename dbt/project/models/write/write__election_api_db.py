@@ -266,7 +266,6 @@ def model(dbt, session) -> DataFrame:
 
     # get db configs
     staging_schema = dbt.config.get("staging_schema")
-    dbt_environment = dbt.config.get("dbt_environment")
     db_host = dbt.config.get("election_db_host")
     db_port = int(dbt.config.get("election_db_port"))
     db_user = dbt.config.get("election_db_user")
@@ -274,14 +273,6 @@ def model(dbt, session) -> DataFrame:
     db_name = dbt.config.get("election_db_name")
     db_schema = dbt.config.get("election_db_schema")
 
-    # TODO: disable prod loads until dev testing is complete and prod db is deployed
-    if dbt_environment == "prod":
-        logging.info("Skipping load for prod environment")
-        # Create an empty DataFrame with the same schema
-        return session.createDataFrame(
-            data=[],
-            schema=WRITE_TABLE_SCHEMA,
-        )
     # get the data to write
     place_df: DataFrame = dbt.ref("m_election_api__place")
     race_df: DataFrame = dbt.ref("m_election_api__race")
