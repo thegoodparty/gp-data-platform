@@ -32,6 +32,20 @@ sources:
         description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_uscounties_v1_73
         description: raw data load from s3 data dump sent from ballotready
+      - name: gp_api_db_campaign
+        description: raw data load from gp_api_db postgres db from table `campaign`
+      - name: gp_api_db_campaign_position
+        description: raw data load from gp_api_db postgres db from table `campaign_position`
+      - name: gp_api_db_election_type
+        description: raw data load from gp_api_db postgres db from table `election_type`
+      - name: gp_api_db_path_to_victory
+        description: raw data load from gp_api_db postgres db from table `path_to_victory`
+      - name: gp_api_db_position
+        description: raw data load from gp_api_db postgres db from table `position`
+      - name: gp_api_db_top_issue
+        description: raw data load from gp_api_db postgres db from table `top_issues`
+      - name: gp_api_db_user
+        description: raw data load from gp_api_db postgres db from table `user`
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts

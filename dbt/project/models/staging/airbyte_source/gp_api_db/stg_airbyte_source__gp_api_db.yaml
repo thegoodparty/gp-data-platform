@@ -1,0 +1,70 @@
+models:
+  - name: stg_airbyte_source__gp_api_db_campaign_position
+    description: raw data load from gp_api_db postgres db from table `campaign_position`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        data_tests:
+          - not_null
+      - name: position_id
+        data_tests:
+          - not_null
+      - name: top_issue_id
+        data_tests:
+          - not_null
+  - name: stg_airbyte_source__gp_api_db_campaign
+    description: raw data load from gp_api_db postgres db from table `campaign`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__gp_api_db_election_type
+    description: raw data load from gp_api_db postgres db from table `election_type`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__gp_api_db_path_to_victory
+    description: raw data load from gp_api_db postgres db from table `path_to_victory`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_airbyte_source__gp_api_db_campaign')
+              field: id
+  - name: stg_airbyte_source__gp_api_db_position
+    description: raw data load from gp_api_db postgres db from table `position`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+      - name: top_issue_id
+        tests:
+          - relationships:
+              to: ref('stg_airbyte_source__gp_api_db_top_issue')
+              field: id
+  - name: stg_airbyte_source__gp_api_db_top_issue
+    description: raw data load from gp_api_db postgres db from table `top_issue`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__gp_api_db_user
+    description: raw data load from gp_api_db postgres db from table `user`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
