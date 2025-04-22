@@ -7,7 +7,6 @@ models:
       This model retrieves and processes candidate data from the CivicEngine API since the source
       candidacies_v3 csv file does not contain all the fields needed.
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
     meta:
@@ -31,7 +30,6 @@ models:
       It contains endorsement information for political candidates, including their endorsements
       from various organizations.
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
     meta:
       owner: "Data Engineering Team"
@@ -49,7 +47,6 @@ models:
       It contains filing period information for political candidates, including their endorsements
       from various organizations.
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
     meta:
@@ -71,7 +68,6 @@ models:
     description: >
       This model retrieves and processes geofence data from the CivicEngine API.
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
     meta:
       owner: "Data Engineering Team"
@@ -101,7 +97,6 @@ models:
       This model retrieves normalized position data from the CivicEngine API. It uses the `position_id` from the position table
       to retrieve ids on which to query the normalized position data.
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
     meta:
       owner: "Data Engineering Team"
@@ -124,7 +119,15 @@ models:
       It contains endorsement information for political candidates, including their endorsements
       from various organizations.
     config:
-      materialized: table
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+
+  - name: int__ballotready_person
+    description: >
+      This model retrieves and processes person data from the CivicEngine API.
+    config:
       ce_api_token: "{{ env_var('DBT_CE') }}"
     meta:
       owner: "Data Engineering Team"
@@ -135,7 +138,6 @@ models:
       This model retrieves and processes position election frequency data from the CivicEngine API.
       See https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
     meta:
       owner: "Data Engineering Team"
@@ -153,7 +155,6 @@ models:
       It contains stance information for political candidates, including their positions
       on various issues.
     config:
-      materialized: table
       ce_api_token: "{{ env_var('DBT_CE') }}"
     meta:
       owner: "Data Engineering Team"
