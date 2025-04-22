@@ -203,7 +203,8 @@ def _get_person_token(ce_api_token: str) -> Callable:
     The wrapper is necessary to pass in ce_api_token to the UDF.
     """
 
-    @pandas_udf(PERSON_BR_SCHEMA)
+    @pandas_udf(StringType())
+    # @pandas_udf(PERSON_BR_SCHEMA)
     def get_person(person_ids: pd.Series) -> pd.DataFrame:
         """
         Pandas UDF that processes batches of person IDs and returns their persons.
@@ -232,9 +233,14 @@ def _get_person_token(ce_api_token: str) -> Callable:
                 raise e
 
         # create a list of dictionaries for each person in order of input
-        persons_list = [persons_by_person_id[id] for id in person_ids]
+        # TODO: handle missing persons with dictionary of key list
+        # persons_list = [persons_by_person_id.get(id)for id in person_ids]
+        # return pd.DataFrame(persons_list)
 
-        return pd.DataFrame(persons_list)
+        from json import dumps
+
+        persons_list = [dumps(persons_by_person_id.get(id)) for id in person_ids]
+        return persons_list
 
     return get_person
 
@@ -281,7 +287,7 @@ def model(dbt, session) -> DataFrame:
         return empty_df
 
     # get person data from API
-    get_person = _get_person_token(ce_api_token)
-    persons = person_ids.withColumn("person", get_person(col("person_database_id")))
+    _get_person = _get_person_token(ce_api_token)
+    person = person_ids.withColumn("person", _get_person(col("person_database_id")))
 
-    return persons
+    return person
