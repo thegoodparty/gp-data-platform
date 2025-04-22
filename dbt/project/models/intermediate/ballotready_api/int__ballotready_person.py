@@ -204,8 +204,9 @@ def _get_person_token(ce_api_token: str) -> Callable:
     """
 
     @pandas_udf(StringType())
-    # @pandas_udf(PERSON_BR_SCHEMA)
-    def get_person(person_ids: pd.Series) -> pd.DataFrame:
+    def get_person(person_ids: pd.Series) -> pd.Series:
+        # @pandas_udf(PERSON_BR_SCHEMA)
+        # def get_person(person_ids: pd.Series) -> pd.DataFrame:
         """
         Pandas UDF that processes batches of person IDs and returns their persons.
         """
@@ -227,6 +228,8 @@ def _get_person_token(ce_api_token: str) -> Callable:
                 for person in batch_persons:
                     if person:
                         persons_by_person_id[person["databaseId"]] = person
+                if i == 0:
+                    print(persons_by_person_id)
 
             except Exception as e:
                 logging.error(f"Error processing person batch: {e}")
@@ -239,8 +242,11 @@ def _get_person_token(ce_api_token: str) -> Callable:
 
         from json import dumps
 
+        # TODO: if `null` output, store the payload and test with postman
         persons_list = [dumps(persons_by_person_id.get(id)) for id in person_ids]
-        return persons_list
+
+        # persons_list = ["hello world" for id in person_ids]
+        return pd.Series(persons_list)
 
     return get_person
 
@@ -279,15 +285,19 @@ def model(dbt, session) -> DataFrame:
     # if candidacy_id is empty, return empty DataFrame
     person_ids.cache()
     person_ids_count = person_ids.count()
-
     if person_ids_count == 0:
         logging.info("INFO: No new or updated persons to process")
         empty_df = session.createDataFrame([], PERSON_BR_SCHEMA)
         # TODO: rename columns to match expected output
         return empty_df
 
+    if dbt.config.get("dbt_environment") != "prod":
+        # filter for 1000 samples
+        person_ids = person_ids.limit(1000)
+        display(person_ids)  # type: ignore
+
     # get person data from API
     _get_person = _get_person_token(ce_api_token)
-    person = person_ids.withColumn("person", _get_person(col("person_database_id")))
+    person = person_ids.withColumn("person", _get_person(col("candidate_database_id")))
 
     return person

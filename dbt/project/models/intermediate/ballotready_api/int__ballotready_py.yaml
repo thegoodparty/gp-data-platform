@@ -120,6 +120,7 @@ models:
       from various organizations.
     config:
       ce_api_token: "{{ env_var('DBT_CE') }}"
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
