@@ -33,6 +33,21 @@ PERSON_BR_SCHEMA = StructType(
             ),
             True,
         ),
+        StructField(
+            "contacts",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("email", StringType(), True),
+                        StructField("fax", StringType(), True),
+                        StructField("phone", StringType(), True),
+                        StructField("type", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            True,
+        ),
         StructField("createdAt", TimestampType(), True),
         StructField("databaseId", IntegerType(), True),
         StructField(
@@ -80,20 +95,20 @@ PERSON_BR_SCHEMA = StructType(
         StructField("lastName", StringType(), True),
         StructField("middleName", StringType(), True),
         StructField("nickname", StringType(), True),
-        #     StructField(
-        #         "officeHolders",
-        #         ArrayType(
-        #             StructType(
-        #                 [
-        #                     StructField("databaseId", IntegerType(), True),
-        #                     StructField("id", StringType(), True),
-        #                 ]
-        #             )
-        #         ),
+        # StructField(
+        #     "officeHolders",
+        #     ArrayType(
+        #         StructType(
+        #             [
+        #                 StructField("databaseId", IntegerType(), True),
+        #                 StructField("id", StringType(), True),
+        #             ]
+        #         )
         #     ),
-        #     StructField("slug", StringType(), True),
-        #     StructField("suffix", StringType(), True),
-        #     StructField("updatedAt", TimestampType(), True),
+        # ),
+        # StructField("slug", StringType(), True),
+        # StructField("suffix", StringType(), True),
+        # StructField("updatedAt", TimestampType(), True),
         #     StructField(
         #         "urls",
         #         ArrayType(
@@ -150,9 +165,15 @@ def _get_person_batch(
             nodes(ids: $ids) {
                 ... on Person {
                     bioText
-                    candidacies {
+                    candidacies(includeUncertified: true) {
                         databaseId
                         id
+                    }
+                    contacts {
+                        email
+                        fax
+                        phone
+                        type
                     }
                     createdAt
                     databaseId
@@ -293,7 +314,7 @@ def model(dbt, session) -> DataFrame:
     person_ids = candidacy.select("candidate_database_id").distinct()
 
     # Trigger a cache to ensure these transformations are applied before the filter
-    # if candidacy_id is empty, return empty DataFrame
+    # if person_ids is empty, return empty DataFrame
     person_ids.cache()
     person_ids_count = person_ids.count()
     if person_ids_count == 0:
@@ -301,18 +322,29 @@ def model(dbt, session) -> DataFrame:
         empty_df = session.createDataFrame([], PERSON_BR_SCHEMA)
         # TODO: rename columns to match expected output
         empty_df = empty_df.select(
-            col("databaseId").alias("database_id"),
+            col("bioText").alias("bio_text"),
+            col("candidacies"),
+            col("contacts"),
             col("createdAt").alias("created_at"),
+            col("databaseId").alias("database_id"),
+            col("degrees"),
+            col("experiences"),
             col("firstName").alias("first_name"),
             col("fullName").alias("full_name"),
-            col("id").alias("id"),
-            col("images").alias("images"),
+            col("id"),
+            col("images"),
             col("lastName").alias("last_name"),
             col("middleName").alias("middle_name"),
-            col("nickname").alias("nickname"),
+            col("nickname"),
+            col("officeHolders").alias("office_holders"),
+            col("slug"),
+            col("suffix"),
+            col("updatedAt").alias("updated_at"),
         )
         return empty_df
 
+    # TODO: test at higher limit
+    # TODO: remove limit
     # filter for 1000 samples
     person_ids = person_ids.limit(10)
     display(person_ids)  # type: ignore
@@ -325,6 +357,7 @@ def model(dbt, session) -> DataFrame:
     person = person.select(
         col("person.bioText").alias("bio_text"),
         col("person.candidacies").alias("candidacies"),
+        col("person.contacts").alias("contacts"),
         col("person.createdAt").alias("created_at"),
         col("person.databaseId").alias("database_id"),
         col("person.degrees").alias("degrees"),
@@ -336,6 +369,10 @@ def model(dbt, session) -> DataFrame:
         col("person.lastName").alias("last_name"),
         col("person.middleName").alias("middle_name"),
         col("person.nickname").alias("nickname"),
+        # col("person.officeHolders").alias("office_holders"),
+        # col("person.slug").alias("slug"),
+        # col("person.suffix").alias("suffix"),
+        # col("person.updatedAt").alias("updated_at"),
     )
 
     # TODO: might need to filter out null
