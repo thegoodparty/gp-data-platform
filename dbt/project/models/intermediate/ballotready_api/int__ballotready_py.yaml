@@ -133,6 +133,21 @@ models:
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
+    # TODO: add column and table tests
+    columns:
+      - name: database_id
+        description: "Unique identifier for the person in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('int__ballotready_candidacy')
+              field: candidate_database_id
+      - name: id
+        description: "Encoded identifier for the person in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
 
   - name: int__ballotready_position_election_frequency
     description: >

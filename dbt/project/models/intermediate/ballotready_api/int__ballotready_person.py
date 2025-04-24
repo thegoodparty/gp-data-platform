@@ -35,57 +35,57 @@ PERSON_BR_SCHEMA = StructType(
         ),
         StructField("createdAt", TimestampType(), True),
         StructField("databaseId", IntegerType(), True),
-        #     StructField(
-        #         "degrees",
-        #         ArrayType(
-        #             StructType(
-        #                 [
-        #                     StructField("databaseId", StringType(), True),
-        #                     StructField("id", StringType(), True),
-        #                 ]
-        #             ),
-        #             True,
-        #         ),
-        #         True,
-        #     ),
-        #     StructField(
-        #         "experiences",
-        #         ArrayType(
-        #             StructType(
-        #                 [
-        #                     StructField("databaseId", StringType(), True),
-        #                     StructField("id", StringType(), True),
-        #                 ]
-        #             ),
-        #             True,
-        #         ),
-        #         True,
-        #     ),
-        #     StructField("firstName", StringType(), True),
-        #     StructField("fullName", StringType(), True),
-        #     StructField("id", StringType(), True),
-        #     StructField(
-        #         "images",
-        #         ArrayType(
-        #             StructType(
-        #                 [
-        #                     StructField("type", StringType(), True),
-        #                     StructField("url", StringType(), True),
-        #                 ]
-        #             ),
-        #             True,
-        #         ),
-        #         True,
-        #     ),
-        #     StructField("lastName", StringType(), True),
-        #     StructField("middleName", StringType(), True),
-        #     StructField("nickname", StringType(), True),
+        StructField(
+            "degrees",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            True,
+        ),
+        StructField(
+            "experiences",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            True,
+        ),
+        StructField("firstName", StringType(), True),
+        StructField("fullName", StringType(), True),
+        StructField("id", StringType(), True),
+        StructField(
+            "images",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("type", StringType(), True),
+                        StructField("url", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            True,
+        ),
+        StructField("lastName", StringType(), True),
+        StructField("middleName", StringType(), True),
+        StructField("nickname", StringType(), True),
         #     StructField(
         #         "officeHolders",
         #         ArrayType(
         #             StructType(
         #                 [
-        #                     StructField("databaseId", StringType(), True),
+        #                     StructField("databaseId", IntegerType(), True),
         #                     StructField("id", StringType(), True),
         #                 ]
         #             )
@@ -156,14 +156,31 @@ def _get_person_batch(
                     }
                     createdAt
                     databaseId
+                    degrees {
+                        databaseId
+                        id
+                    }
+                    experiences {
+                        databaseId
+                        id
+                    }
+                    firstName
+                    fullName
+                    id
+                    images {
+                        type
+                        url
+                    }
+                    lastName
+                    middleName
+                    nickname
                 }
             }
         }
         """,
         "variables": {"ids": encoded_ids},
     }
-    # return payload
-    # Send the request to the API
+
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -184,8 +201,7 @@ def _get_person_batch(
         logging.debug(f"Received response for {len(encoded_ids)} persons")
         persons: List[Dict[str, Any]] = response_data["data"]["nodes"]
 
-        # process each entry (rename, handle timestamps)
-        # TODO: complete renaming and data types to match schema
+        # handle necessary transformations to match schema
         for person in persons:
             if person:
                 person["createdAt"] = pd.to_datetime(person["createdAt"])
@@ -219,9 +235,6 @@ def _get_person_token(ce_api_token: str) -> Callable:
             batch_size_info = f"Batch {i//batch_size + 1}/{(len(person_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
-            # payload = _get_person_batch(batch, ce_api_token)
-            # from json import dumps
-            # return pd.Series([dumps(payload) for id in person_ids])
             try:
                 batch_persons = _get_person_batch(batch, ce_api_token)
                 # process and organize persons by person id
@@ -287,15 +300,44 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: No new or updated persons to process")
         empty_df = session.createDataFrame([], PERSON_BR_SCHEMA)
         # TODO: rename columns to match expected output
+        empty_df = empty_df.select(
+            col("databaseId").alias("database_id"),
+            col("createdAt").alias("created_at"),
+            col("firstName").alias("first_name"),
+            col("fullName").alias("full_name"),
+            col("id").alias("id"),
+            col("images").alias("images"),
+            col("lastName").alias("last_name"),
+            col("middleName").alias("middle_name"),
+            col("nickname").alias("nickname"),
+        )
         return empty_df
 
-    if dbt.config.get("dbt_environment") != "prod":
-        # filter for 1000 samples
-        person_ids = person_ids.limit(10)
-        display(person_ids)  # type: ignore
+    # filter for 1000 samples
+    person_ids = person_ids.limit(10)
+    display(person_ids)  # type: ignore
 
     # get person data from API
     _get_person = _get_person_token(ce_api_token)
     person = person_ids.withColumn("person", _get_person(col("candidate_database_id")))
+
+    # Explode the person column and extract fields
+    person = person.select(
+        col("person.bioText").alias("bio_text"),
+        col("person.candidacies").alias("candidacies"),
+        col("person.createdAt").alias("created_at"),
+        col("person.databaseId").alias("database_id"),
+        col("person.degrees").alias("degrees"),
+        col("person.experiences").alias("experiences"),
+        col("person.firstName").alias("first_name"),
+        col("person.fullName").alias("full_name"),
+        col("person.id").alias("id"),
+        col("person.images").alias("images"),
+        col("person.lastName").alias("last_name"),
+        col("person.middleName").alias("middle_name"),
+        col("person.nickname").alias("nickname"),
+    )
+
+    # TODO: might need to filter out null
 
     return person
