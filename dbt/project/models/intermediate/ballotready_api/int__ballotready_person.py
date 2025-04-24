@@ -379,12 +379,6 @@ def model(dbt, session) -> DataFrame:
         )
         return empty_df
 
-    # TODO: test at higher limit
-    # TODO: remove limit
-    # filter for 1000 samples (100 is 3 minutes, 1k is 12 minutes, 10k is )
-    person_ids = person_ids.limit(10000)
-    display(person_ids)  # type: ignore
-
     # get person data from API
     _get_person = _get_person_token(ce_api_token)
     person = person_ids.withColumn("person", _get_person(col("candidate_database_id")))

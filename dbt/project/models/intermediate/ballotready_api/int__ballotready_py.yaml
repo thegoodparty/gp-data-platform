@@ -139,9 +139,6 @@ models:
         tests:
           - not_null
           - unique
-          - relationships:
-              to: ref('int__ballotready_candidacy')
-              field: candidate_database_id
       - name: id
         description: "Encoded identifier for the person in the CivicEngine system"
         tests:
