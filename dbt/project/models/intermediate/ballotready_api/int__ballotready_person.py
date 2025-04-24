@@ -95,20 +95,20 @@ PERSON_BR_SCHEMA = StructType(
         StructField("lastName", StringType(), True),
         StructField("middleName", StringType(), True),
         StructField("nickname", StringType(), True),
-        # StructField(
-        #     "officeHolders",
-        #     ArrayType(
-        #         StructType(
-        #             [
-        #                 StructField("databaseId", IntegerType(), True),
-        #                 StructField("id", StringType(), True),
-        #             ]
-        #         )
-        #     ),
-        # ),
-        # StructField("slug", StringType(), True),
-        # StructField("suffix", StringType(), True),
-        # StructField("updatedAt", TimestampType(), True),
+        StructField(
+            "officeHolders",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                    ]
+                )
+            ),
+        ),
+        StructField("slug", StringType(), True),
+        StructField("suffix", StringType(), True),
+        StructField("updatedAt", TimestampType(), True),
         #     StructField(
         #         "urls",
         #         ArrayType(
@@ -195,6 +195,15 @@ def _get_person_batch(
                     lastName
                     middleName
                     nickname
+                    officeHolders {
+                        nodes {
+                            databaseId
+                            id
+                        }
+                    }
+                    slug
+                    suffix
+                    updatedAt
                 }
             }
         }
@@ -226,6 +235,8 @@ def _get_person_batch(
         for person in persons:
             if person:
                 person["createdAt"] = pd.to_datetime(person["createdAt"])
+                person["officeHolders"] = person["officeHolders"]["nodes"]
+                person["updatedAt"] = pd.to_datetime(person["updatedAt"])
         return persons
 
     except (KeyError, TypeError) as e:
@@ -369,12 +380,14 @@ def model(dbt, session) -> DataFrame:
         col("person.lastName").alias("last_name"),
         col("person.middleName").alias("middle_name"),
         col("person.nickname").alias("nickname"),
-        # col("person.officeHolders").alias("office_holders"),
-        # col("person.slug").alias("slug"),
-        # col("person.suffix").alias("suffix"),
-        # col("person.updatedAt").alias("updated_at"),
+        col("person.officeHolders").alias("office_holders"),
+        col("person.slug").alias("slug"),
+        col("person.suffix").alias("suffix"),
+        col("person.updatedAt").alias("updated_at"),
     )
 
     # TODO: might need to filter out null
 
+    # TODO: ensure all fields picked up from
+    # https://developers.civicengine.com/docs/api/graphql/reference/objects/contact
     return person

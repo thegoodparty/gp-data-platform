@@ -133,7 +133,6 @@ models:
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
-    # TODO: add column and table tests
     columns:
       - name: database_id
         description: "Unique identifier for the person in the CivicEngine database"
