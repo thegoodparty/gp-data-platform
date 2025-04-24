@@ -305,16 +305,16 @@ def _get_person_token(ce_api_token: str) -> Callable:
                 logging.error(f"Error processing person batch: {e}")
                 raise e
 
-        # create a list of dictionaries for each person in order of input
-        # TODO: handle missing persons with dictionary of key list
-        persons_list = [persons_by_person_id.get(id, {}) for id in person_ids]
+        empty_person: Dict[str, Any] = {}
+        for field in PERSON_BR_SCHEMA:
+            if isinstance(field.dataType, ArrayType):
+                empty_person[field.name] = []
+            elif isinstance(field.dataType, StructType):
+                empty_person[field.name] = {}
+            else:
+                empty_person[field.name] = None
+        persons_list = [persons_by_person_id.get(id, empty_person) for id in person_ids]
         return pd.DataFrame(persons_list)
-
-        # from json import dumps
-
-        # TODO: if `null` output, store the payload and test with postman
-        # persons_list = [dumps(persons_by_person_id.get(id)) for id in person_ids]
-        # return pd.Series(persons_list)
 
     return get_person
 
@@ -381,8 +381,8 @@ def model(dbt, session) -> DataFrame:
 
     # TODO: test at higher limit
     # TODO: remove limit
-    # filter for 1000 samples
-    person_ids = person_ids.limit(10)
+    # filter for 1000 samples (100 is 3 minutes, 1k is 12 minutes, 10k is )
+    person_ids = person_ids.limit(10000)
     display(person_ids)  # type: ignore
 
     # get person data from API
@@ -413,7 +413,4 @@ def model(dbt, session) -> DataFrame:
     )
 
     # TODO: might need to filter out null
-
-    # TODO: ensure all fields picked up from
-    # https://developers.civicengine.com/docs/api/graphql/reference/objects/contact
     return person
