@@ -91,7 +91,7 @@ def _get_candidacy_batch(
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> List[Dict[str, Any]]:
     """
     Fetches candidacies from the BallotReady API in batches.
@@ -157,7 +157,7 @@ def _get_candidacy_batch(
 
     try:
         logging.debug(f"Sending request for {len(encoded_ids)} candidacies")
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
 
         # Calculate sleep time with jitter to avoid synchronized API calls
         jitter = random.uniform(-jitter_factor, jitter_factor) * base_sleep
@@ -278,7 +278,7 @@ def model(dbt, session) -> DataFrame:
         incremental_strategy="merge",
         unique_key="database_id",
         on_schema_change="fail",
-        tags=["ballotready", "candidacy", "api", "pandas_udf"],
+        tags=["intermediate", "ballotready", "candidacy", "api", "pandas_udf"],
     )
 
     # get api token from environment variables
