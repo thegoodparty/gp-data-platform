@@ -412,5 +412,8 @@ def model(dbt, session) -> DataFrame:
         col("person.urls").alias("urls"),
     )
 
-    # TODO: might need to filter out null
+    # Trigger a cache to ensure these transformations are applied before the filter
+    person.cache()
+    person.count()
+    person = person.filter(col("id").isNotNull()).filter(col("database_id").isNotNull())
     return person
