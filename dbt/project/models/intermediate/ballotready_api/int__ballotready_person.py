@@ -298,8 +298,6 @@ def _get_person_token(ce_api_token: str) -> Callable:
                 for person in batch_persons:
                     if person:
                         persons_by_person_id[person["databaseId"]] = person
-                if i == 0:
-                    print(persons_by_person_id)
 
             except Exception as e:
                 logging.error(f"Error processing person batch: {e}")
