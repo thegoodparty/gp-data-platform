@@ -19,101 +19,101 @@ from pyspark.sql.types import (
 
 PERSON_BR_SCHEMA = StructType(
     [
-        StructField(name="bioText", dataType=StringType(), nullable=False),
+        StructField(name="bioText", dataType=StringType(), nullable=True),
         StructField(
             "candidacies",
             ArrayType(
                 StructType(
                     [
-                        StructField("databaseId", StringType(), False),
-                        StructField("id", StringType(), False),
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
                     ]
                 ),
-                False,
+                True,
             ),
-            False,
+            True,
         ),
-        StructField("createdAt", TimestampType(), False),
-        StructField("databaseId", IntegerType(), False),
-        StructField(
-            "degrees",
-            ArrayType(
-                StructType(
-                    [
-                        StructField("databaseId", StringType(), False),
-                        StructField("id", StringType(), False),
-                    ]
-                ),
-                False,
-            ),
-            False,
-        ),
-        StructField(
-            "experiences",
-            ArrayType(
-                StructType(
-                    [
-                        StructField("databaseId", StringType(), False),
-                        StructField("id", StringType(), False),
-                    ]
-                ),
-                False,
-            ),
-            False,
-        ),
-        StructField("firstName", StringType(), False),
-        StructField("fullName", StringType(), False),
-        StructField("id", StringType(), False),
-        StructField(
-            "images",
-            ArrayType(
-                StructType(
-                    [
-                        StructField("type", StringType(), False),
-                        StructField("url", StringType(), False),
-                    ]
-                ),
-                False,
-            ),
-            False,
-        ),
-        StructField("lastName", StringType(), False),
-        StructField("middleName", StringType(), False),
-        StructField("nickname", StringType(), False),
-        StructField(
-            "officeHolders",
-            ArrayType(
-                StructType(
-                    [
-                        StructField("databaseId", StringType(), False),
-                        StructField("id", StringType(), False),
-                    ]
-                )
-            ),
-        ),
-        StructField("slug", StringType(), False),
-        StructField("suffix", StringType(), False),
-        StructField("updatedAt", TimestampType(), False),
-        StructField(
-            "urls",
-            ArrayType(
-                StructType(
-                    [
-                        StructField("databaseId", IntegerType(), False),
-                        StructField("id", StringType(), False),
-                    ]
-                ),
-                False,
-            ),
-            False,
-        ),
+        StructField("createdAt", TimestampType(), True),
+        StructField("databaseId", IntegerType(), True),
+        #     StructField(
+        #         "degrees",
+        #         ArrayType(
+        #             StructType(
+        #                 [
+        #                     StructField("databaseId", StringType(), True),
+        #                     StructField("id", StringType(), True),
+        #                 ]
+        #             ),
+        #             True,
+        #         ),
+        #         True,
+        #     ),
+        #     StructField(
+        #         "experiences",
+        #         ArrayType(
+        #             StructType(
+        #                 [
+        #                     StructField("databaseId", StringType(), True),
+        #                     StructField("id", StringType(), True),
+        #                 ]
+        #             ),
+        #             True,
+        #         ),
+        #         True,
+        #     ),
+        #     StructField("firstName", StringType(), True),
+        #     StructField("fullName", StringType(), True),
+        #     StructField("id", StringType(), True),
+        #     StructField(
+        #         "images",
+        #         ArrayType(
+        #             StructType(
+        #                 [
+        #                     StructField("type", StringType(), True),
+        #                     StructField("url", StringType(), True),
+        #                 ]
+        #             ),
+        #             True,
+        #         ),
+        #         True,
+        #     ),
+        #     StructField("lastName", StringType(), True),
+        #     StructField("middleName", StringType(), True),
+        #     StructField("nickname", StringType(), True),
+        #     StructField(
+        #         "officeHolders",
+        #         ArrayType(
+        #             StructType(
+        #                 [
+        #                     StructField("databaseId", StringType(), True),
+        #                     StructField("id", StringType(), True),
+        #                 ]
+        #             )
+        #         ),
+        #     ),
+        #     StructField("slug", StringType(), True),
+        #     StructField("suffix", StringType(), True),
+        #     StructField("updatedAt", TimestampType(), True),
+        #     StructField(
+        #         "urls",
+        #         ArrayType(
+        #             StructType(
+        #                 [
+        #                     StructField("databaseId", IntegerType(), True),
+        #                     StructField("id", StringType(), True),
+        #                 ]
+        #             ),
+        #             True,
+        #         ),
+        #         True,
+        #     ),
     ]
 )
 
 
 def _base64_encode_id(person_id: int) -> str:
     """Base64 encodes the person id"""
-    id_prefix = "gid://ballot-factory/Person/"
+    id_prefix = "gid://ballot-factory/Candidate/"
     prefixed_id = f"{id_prefix}{person_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
@@ -130,7 +130,7 @@ def _get_person_batch(
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> List[Dict[str, Any]]:
     """
     Fetches persons from the BallotReady API in batches.
@@ -155,13 +155,14 @@ def _get_person_batch(
                         id
                     }
                     createdAt
+                    databaseId
                 }
             }
         }
         """,
         "variables": {"ids": encoded_ids},
     }
-
+    # return payload
     # Send the request to the API
     headers = {
         "Content-Type": "application/json",
@@ -187,9 +188,7 @@ def _get_person_batch(
         # TODO: complete renaming and data types to match schema
         for person in persons:
             if person:
-                person["databaseId"] = int(person["databaseId"])
                 person["createdAt"] = pd.to_datetime(person["createdAt"])
-                person["database_id"] = int(person["databaseId"])
         return persons
 
     except (KeyError, TypeError) as e:
@@ -203,10 +202,8 @@ def _get_person_token(ce_api_token: str) -> Callable:
     The wrapper is necessary to pass in ce_api_token to the UDF.
     """
 
-    @pandas_udf(StringType())
-    def get_person(person_ids: pd.Series) -> pd.Series:
-        # @pandas_udf(PERSON_BR_SCHEMA)
-        # def get_person(person_ids: pd.Series) -> pd.DataFrame:
+    @pandas_udf(PERSON_BR_SCHEMA)
+    def get_person(person_ids: pd.Series) -> pd.DataFrame:
         """
         Pandas UDF that processes batches of person IDs and returns their persons.
         """
@@ -222,6 +219,9 @@ def _get_person_token(ce_api_token: str) -> Callable:
             batch_size_info = f"Batch {i//batch_size + 1}/{(len(person_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
+            # payload = _get_person_batch(batch, ce_api_token)
+            # from json import dumps
+            # return pd.Series([dumps(payload) for id in person_ids])
             try:
                 batch_persons = _get_person_batch(batch, ce_api_token)
                 # process and organize persons by person id
@@ -237,16 +237,14 @@ def _get_person_token(ce_api_token: str) -> Callable:
 
         # create a list of dictionaries for each person in order of input
         # TODO: handle missing persons with dictionary of key list
-        # persons_list = [persons_by_person_id.get(id)for id in person_ids]
-        # return pd.DataFrame(persons_list)
+        persons_list = [persons_by_person_id.get(id, {}) for id in person_ids]
+        return pd.DataFrame(persons_list)
 
-        from json import dumps
+        # from json import dumps
 
         # TODO: if `null` output, store the payload and test with postman
-        persons_list = [dumps(persons_by_person_id.get(id)) for id in person_ids]
-
-        # persons_list = ["hello world" for id in person_ids]
-        return pd.Series(persons_list)
+        # persons_list = [dumps(persons_by_person_id.get(id)) for id in person_ids]
+        # return pd.Series(persons_list)
 
     return get_person
 
@@ -293,7 +291,7 @@ def model(dbt, session) -> DataFrame:
 
     if dbt.config.get("dbt_environment") != "prod":
         # filter for 1000 samples
-        person_ids = person_ids.limit(1000)
+        person_ids = person_ids.limit(10)
         display(person_ids)  # type: ignore
 
     # get person data from API
