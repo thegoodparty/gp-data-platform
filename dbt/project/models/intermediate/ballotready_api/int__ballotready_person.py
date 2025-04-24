@@ -56,7 +56,11 @@ PERSON_BR_SCHEMA = StructType(
                 StructType(
                     [
                         StructField("databaseId", IntegerType(), True),
+                        StructField("degree", StringType(), True),
+                        StructField("gradYear", IntegerType(), True),
                         StructField("id", StringType(), True),
+                        StructField("major", StringType(), True),
+                        StructField("school", StringType(), True),
                     ]
                 ),
                 True,
@@ -69,7 +73,12 @@ PERSON_BR_SCHEMA = StructType(
                 StructType(
                     [
                         StructField("databaseId", IntegerType(), True),
+                        StructField("end", StringType(), True),
                         StructField("id", StringType(), True),
+                        StructField("organization", StringType(), True),
+                        StructField("start", StringType(), True),
+                        StructField("title", StringType(), True),
+                        StructField("type", StringType(), True),
                     ]
                 ),
                 True,
@@ -109,19 +118,21 @@ PERSON_BR_SCHEMA = StructType(
         StructField("slug", StringType(), True),
         StructField("suffix", StringType(), True),
         StructField("updatedAt", TimestampType(), True),
-        #     StructField(
-        #         "urls",
-        #         ArrayType(
-        #             StructType(
-        #                 [
-        #                     StructField("databaseId", IntegerType(), True),
-        #                     StructField("id", StringType(), True),
-        #                 ]
-        #             ),
-        #             True,
-        #         ),
-        #         True,
-        #     ),
+        StructField(
+            "urls",
+            ArrayType(
+                StructType(
+                    [
+                        StructField("databaseId", IntegerType(), True),
+                        StructField("id", StringType(), True),
+                        StructField("type", StringType(), True),
+                        StructField("url", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            True,
+        ),
     ]
 )
 
@@ -158,7 +169,6 @@ def _get_person_batch(
     encoded_ids = [_base64_encode_id(person_id) for person_id in person_ids]
 
     # Construct the payload with the nodes query
-    # TODO: complete payload query
     payload = {
         "query": """
         query GetPersonsBatch($ids: [ID!]!) {
@@ -179,11 +189,20 @@ def _get_person_batch(
                     databaseId
                     degrees {
                         databaseId
+                        degree
+                        gradYear
                         id
+                        major
+                        school
                     }
                     experiences {
                         databaseId
+                        end
                         id
+                        organization
+                        start
+                        title
+                        type
                     }
                     firstName
                     fullName
@@ -204,6 +223,12 @@ def _get_person_batch(
                     slug
                     suffix
                     updatedAt
+                    urls {
+                        databaseId
+                        id
+                        type
+                        url
+                    }
                 }
             }
         }
@@ -331,7 +356,6 @@ def model(dbt, session) -> DataFrame:
     if person_ids_count == 0:
         logging.info("INFO: No new or updated persons to process")
         empty_df = session.createDataFrame([], PERSON_BR_SCHEMA)
-        # TODO: rename columns to match expected output
         empty_df = empty_df.select(
             col("bioText").alias("bio_text"),
             col("candidacies"),
@@ -351,6 +375,7 @@ def model(dbt, session) -> DataFrame:
             col("slug"),
             col("suffix"),
             col("updatedAt").alias("updated_at"),
+            col("urls"),
         )
         return empty_df
 
@@ -384,6 +409,7 @@ def model(dbt, session) -> DataFrame:
         col("person.slug").alias("slug"),
         col("person.suffix").alias("suffix"),
         col("person.updatedAt").alias("updated_at"),
+        col("person.urls").alias("urls"),
     )
 
     # TODO: might need to filter out null
