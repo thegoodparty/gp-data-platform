@@ -109,7 +109,7 @@ with
                 when tbl_position.mtfcc = 'G5210'
                 then left(tbl_position.geo_id, 2)  -- State Legistlative District (upper)
                 when tbl_position.mtfcc = 'X0102'
-                then left(tbl_position.geo_id, 7)  -- Secondary School District Subdistrict
+                then left(tbl_position.geo_id, 7)  -- Unified School District Subdistrict
                 when tbl_position.mtfcc = 'X0010'
                 then left(tbl_position.geo_id, 2)  -- Circuit Court
                 else tbl_position.geo_id
