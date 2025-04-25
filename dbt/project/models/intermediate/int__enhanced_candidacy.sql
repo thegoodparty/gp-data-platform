@@ -35,17 +35,13 @@ with
             case
                 when size(tbl_person.images) > 0 then tbl_person.images[0].url else null
             end as image,
-            case
-                when tbl_person.bio_text is not null then tbl_person.bio_text else null
-            -- TODO: in case bio_text is null, use
-            -- https://github.com/thegoodparty/tgp-api/blob/74b4b6247b75cc39077ad4b16bfbe83dd997b6cf/api/helpers/candidate/generate-presentation.js#L175
-            end as about,
+            tbl_person.about,
             transform(tbl_person.urls, url -> url.url) as urls
         -- TODO: join to gp-api data
         -- TODO: add position/place data (candidacy -> race -> position)
         from latest_candidacy as tbl_candidacy
         left join
-            {{ ref("int__ballotready_person") }} as tbl_person
+            {{ ref("int__enhanced_person") }} as tbl_person
             on tbl_candidacy.candidate_database_id = tbl_person.database_id
     )
 
