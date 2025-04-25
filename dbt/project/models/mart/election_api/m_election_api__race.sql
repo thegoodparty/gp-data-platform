@@ -34,7 +34,8 @@ select
     sub_area_name,
     sub_area_value,
     frequency,
-    coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id) as place_id,
+    -- coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id) as place_id,
+    place_id,
     replace(
         concat(
             coalesce(place_slug_by_pos_geo_id, place_slug_most_specific_geo_id),
@@ -47,8 +48,8 @@ select
     position_names
 from {{ ref("int__enhanced_race") }}
 where
-    coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id)
-    in (select id from {{ ref("m_election_api__place") }})
+    -- coalesce(place_id_by_pos_geo_id, place_id_most_specific_geo_id)
+    place_id in (select id from {{ ref("m_election_api__place") }})
     and election_date > current_date()
     {% if is_incremental() %}
         and updated_at > (select max(updated_at) from {{ this }})
