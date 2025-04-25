@@ -57,3 +57,8 @@ models:
           - relationships:
               to: ref('int__enhanced_place')
               field: br_database_id
+      - name: geoid
+        description: "Geo ID of the place"
+        tests:
+          - not_null
+          - unique
