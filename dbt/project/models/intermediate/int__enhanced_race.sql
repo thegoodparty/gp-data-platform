@@ -197,6 +197,7 @@ with
             tbl_race.position_to_place_geo_id,
             tbl_place.id as place_id,
             tbl_place.name as place_name,
+            tbl_place.place_name_slug,
             tbl_race.position_names
         from enhanced_race as tbl_race
         left join
@@ -236,6 +237,7 @@ select
     position_to_place_geo_id,
     place_id,
     place_name,
+    place_name_slug,
     -- place_id_by_pos_geo_id,
     -- place_name_by_pos_geo_id,
     -- place_id_most_specific_geo_id,

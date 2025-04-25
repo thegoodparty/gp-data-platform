@@ -38,9 +38,8 @@ select
     place_id,
     replace(
         concat(
-            coalesce(place_slug_by_pos_geo_id, place_slug_most_specific_geo_id),
-            '/',
-            {{ slugify("normalized_position_name") }}
+            -- coalesce(place_slug_by_pos_geo_id, place_slug_most_specific_geo_id),
+            place_name_slug, '/', {{ slugify("normalized_position_name") }}
         ),
         '-ccd',
         ''
