@@ -46,7 +46,11 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-
+      - name: slug
+        description: "Slug of the place"
+        tests:
+          - not_null
+          - unique
       - name: br_database_id
         description: "Database ID of the `place` from BallotReady"
         tests:
