@@ -279,35 +279,49 @@ def model(dbt, session) -> DataFrame:
 
     # Implement incremental logic if this is an incremental run
     if dbt.is_incremental:
-        # Get the max updated_at value from the existing data
-        jdbc_props = {
-            "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
-            "user": db_user,
-            "password": db_pw,
-            "driver": "org.postgresql.Driver",
-        }
+        write_history = session.table(f"{dbt.this}")
 
-        # Get the latest timestamp for places
-        place_query = (
-            f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
+        place_max_updated_at = (
+            write_history.filter(write_history.table_name == "m_election_api__place")
+            .agg({"loaded_at": "max"})
+            .collect()[0]["loaded_at"]
         )
-        place_max_df = (
-            session.read.format("jdbc")
-            .options(**jdbc_props)
-            .option("query", place_query)
-            .load()
-        )
-        place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
 
-        # Get the latest timestamp for races
-        race_query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
-        race_max_df = (
-            session.read.format("jdbc")
-            .options(**jdbc_props)
-            .option("query", race_query)
-            .load()
+        race_max_updated_at = (
+            write_history.filter(write_history.table_name == "m_election_api__race")
+            .agg({"loaded_at": "max"})
+            .collect()[0]["loaded_at"]
         )
-        race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
+
+        # # Get the max updated_at value from the existing data
+        # jdbc_props = {
+        #     "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
+        #     "user": db_user,
+        #     "password": db_pw,
+        #     "driver": "org.postgresql.Driver",
+        # }
+
+        # # Get the latest timestamp upsert for places
+        # place_query = (
+        #     f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
+        # )
+        # place_max_df = (
+        #     session.read.format("jdbc")
+        #     .options(**jdbc_props)
+        #     .option("query", place_query)
+        #     .load()
+        # )
+        # place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
+
+        # # Get the latest timestamp for races
+        # race_query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
+        # race_max_df = (
+        #     session.read.format("jdbc")
+        #     .options(**jdbc_props)
+        #     .option("query", race_query)
+        #     .load()
+        # )
+        # race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
 
         # Filter dataframes to only include new or updated records
         if place_max_updated_at:
