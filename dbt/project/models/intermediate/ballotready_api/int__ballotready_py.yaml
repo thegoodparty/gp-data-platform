@@ -92,6 +92,15 @@ models:
         tests:
           - not_null
 
+# TODO: add tests to `issue` table
+  - name: int__ballotready_issue
+    description: >
+      This model retrieves and processes issue data from the CivicEngine API: https://developers.civicengine.com/docs/api/graphql/reference/objects/issue
+      It is used to retrieve the issue data for the [`stance`](https://developers.civicengine.com/docs/api/graphql/reference/objects/stance) table.
+    config:
+      ce_api_token: "{{ env_var('DBT_CE') }}"
+
+
   - name: int__ballotready_normalized_position
     description: >
       This model retrieves normalized position data from the CivicEngine API. It uses the `position_id` from the position table
