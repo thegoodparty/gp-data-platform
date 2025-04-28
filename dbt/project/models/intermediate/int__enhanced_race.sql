@@ -89,6 +89,10 @@ with
                 then left(tbl_position.geo_id, 2)  -- District Court
                 when tbl_position.mtfcc = 'X0027'
                 then left(tbl_position.geo_id, 5)  -- Fire District
+                when tbl_position.mtfcc = 'X0026'
+                then left(tbl_position.geo_id, 5)  -- Justice Precinct
+                when tbl_position.mtfcc = 'X0025'
+                then left(tbl_position.geo_id, 7)  -- Neighborhood Council District; Washington, DC
                 else tbl_position.geo_id
             end as position_to_place_geo_id,
             tbl_position.mtfcc as position_mtfcc,
