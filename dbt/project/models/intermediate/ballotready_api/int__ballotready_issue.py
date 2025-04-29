@@ -1,4 +1,4 @@
-# TODO: uncomment fields `expandedText` and `parentIssue`
+# TODO: uncomment fields `expandedText` and `parentIssue` throughout file: API call and schema
 import logging
 import random
 import time
@@ -51,7 +51,7 @@ def _base64_encode_id(issue_id: int) -> str:
     return encoded_id
 
 
-@pandas_udf(ISSUE_BR_SCHEMA)
+@pandas_udf(StringType())
 def _base64_encode_id_udf(issue_id: pd.Series) -> pd.Series:
     return pd.Series([_base64_encode_id(x) for x in issue_id])
 

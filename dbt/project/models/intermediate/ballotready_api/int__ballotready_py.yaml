@@ -92,7 +92,6 @@ models:
         tests:
           - not_null
 
-# TODO: add tests to `issue` table
   - name: int__ballotready_issue
     description: >
       This model retrieves and processes issue data from the CivicEngine API: https://developers.civicengine.com/docs/api/graphql/reference/objects/issue
@@ -113,8 +112,9 @@ models:
         tests:
           - not_null
           - unique
-      - name: parent_issue.databaseId
-        description: "The database id of the parent issue"
+      # TODO: add relationship test once `parentIssue` is uncommented in the API response
+      # - name: parent_issue.databaseId
+        # description: "The database id of the parent issue"
         # tests:
         #   - relationships:
         #       to: ref('int__ballotready_issue')
