@@ -125,8 +125,6 @@ def _get_issue_batch(
 
 def _get_issue_token(ce_api_token: str) -> Callable:
 
-    # @pandas_udf(StringType())
-    # def get_issue(issue_database_id: pd.Series) -> pd.Series:
     @pandas_udf(ISSUE_BR_SCHEMA)
     def get_issue(issue_database_id: pd.Series) -> pd.DataFrame:
         """
@@ -143,11 +141,6 @@ def _get_issue_token(ce_api_token: str) -> Callable:
             batch = issue_database_id[i : i + batch_size]
             batch_size_info = f"Batch {i//batch_size + 1}/{(len(issue_database_id) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
-
-            # payload = _get_issue_batch(batch, ce_api_token)
-            # logging.debug(f"Payload: {payload}")
-            # from json import dumps
-            # return pd.Series([dumps(payload) for x in issue_database_id])
 
             try:
                 batch_issues = _get_issue_batch(batch, ce_api_token)
@@ -196,13 +189,10 @@ def model(dbt, session) -> DataFrame:
     # get unique issue ids from stances
     stances: DataFrame = dbt.ref("int__ballotready_stance")
 
-    # Extract issue database IDs from the stances
-    # First, explode the stances array to get individual stance records
+    # First, explode the stances array to get individual stance records then extract the issue database IDs
     exploded_stances = stances.select("stances").withColumn(
         "stance", explode("stances")
     )
-
-    # Then extract the issue database IDs from each stance
     issue_database_ids = exploded_stances.select(
         col("stance.issue.databaseId").alias("database_id")
     ).distinct()
