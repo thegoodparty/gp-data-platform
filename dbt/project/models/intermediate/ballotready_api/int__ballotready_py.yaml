@@ -99,7 +99,26 @@ models:
       It is used to retrieve the issue data for the [`stance`](https://developers.civicengine.com/docs/api/graphql/reference/objects/stance) table.
     config:
       ce_api_token: "{{ env_var('DBT_CE') }}"
-
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: database_id
+        description: "Unique identifier for the issue in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Encoded identifier for the issue in the CivicEngine system"
+        tests:
+          - not_null
+          - unique
+      - name: parent_issue.databaseId
+        description: "The database id of the parent issue"
+        # tests:
+        #   - relationships:
+        #       to: ref('int__ballotready_issue')
+        #       field: database_id
 
   - name: int__ballotready_normalized_position
     description: >

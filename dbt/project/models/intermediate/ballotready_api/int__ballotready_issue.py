@@ -1,3 +1,4 @@
+# TODO: uncomment fields `expandedText` and `parentIssue`
 import logging
 import random
 import time
@@ -7,8 +8,9 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import col, explode, pandas_udf
 from pyspark.sql.types import (
+    ArrayType,
     BooleanType,
     IntegerType,
     StringType,
@@ -18,21 +20,21 @@ from pyspark.sql.types import (
 
 ISSUE_BR_SCHEMA = StructType(
     [
-        StructField(name="databasd", dataType=IntegerType(), nullable=True),
-        StructField("expandedText", StringType(), True),
+        StructField(name="databaseId", dataType=IntegerType(), nullable=True),
+        # StructField("expandedText", StringType(), True),
         StructField("id", StringType(), True),
         StructField("key", StringType(), True),
         StructField("name", StringType(), True),
-        StructField(
-            "parentIssue",
-            StructType(
-                [
-                    StructField("databaseId", IntegerType(), True),
-                    StructField("id", StringType(), True),
-                ]
-            ),
-            True,
-        ),
+        # StructField(
+        #     "parentIssue",
+        #     StructType(
+        #         [
+        #             StructField("databaseId", IntegerType(), True),
+        #             StructField("id", StringType(), True),
+        #         ]
+        #     ),
+        #     True,
+        # ),
         StructField("pluginEnabled", BooleanType(), True),
         StructField("responseType", StringType(), True),
         StructField("rowOrder", IntegerType(), True),
@@ -77,21 +79,22 @@ def _get_issue_batch(
             nodes(ids: $ids) {
                 ... on Issue {
                     databaseId
-                    expandedText
+                    # expandedText
                     id
                     key
                     name
-                    parentIssue {
-                        databaseId
-                        id
-                    }
+                    # parentIssue {
+                    #     databaseId
+                    #     id
+                    # }
                     pluginEnabled
                     responseType
                     rowOrder
                 }
             }
         }
-        """
+        """,
+        "variables": {"ids": encoded_ids},
     }
 
     headers = {
@@ -122,6 +125,8 @@ def _get_issue_batch(
 
 def _get_issue_token(ce_api_token: str) -> Callable:
 
+    # @pandas_udf(StringType())
+    # def get_issue(issue_database_id: pd.Series) -> pd.Series:
     @pandas_udf(ISSUE_BR_SCHEMA)
     def get_issue(issue_database_id: pd.Series) -> pd.DataFrame:
         """
@@ -139,6 +144,11 @@ def _get_issue_token(ce_api_token: str) -> Callable:
             batch_size_info = f"Batch {i//batch_size + 1}/{(len(issue_database_id) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
+            # payload = _get_issue_batch(batch, ce_api_token)
+            # logging.debug(f"Payload: {payload}")
+            # from json import dumps
+            # return pd.Series([dumps(payload) for x in issue_database_id])
+
             try:
                 batch_issues = _get_issue_batch(batch, ce_api_token)
                 # process and organize issues by issue database id
@@ -149,6 +159,20 @@ def _get_issue_token(ce_api_token: str) -> Callable:
             except Exception as e:
                 logging.error(f"Error processing issue batch: {e}")
                 raise e
+
+        # create empty issue dict for missing issue ids. order according to input id list
+        empty_issue: Dict[str, Any] = {}
+        for field in ISSUE_BR_SCHEMA:
+            if isinstance(field.dataType, ArrayType):
+                empty_issue[field.name] = []
+            elif isinstance(field.dataType, StructType):
+                empty_issue[field.name] = {}
+            else:
+                empty_issue[field.name] = None
+        issues_list = [
+            issues_by_issue_db_id.get(id, empty_issue) for id in issue_database_id
+        ]
+        return pd.DataFrame(issues_list)
 
     return get_issue
 
@@ -169,9 +193,19 @@ def model(dbt, session) -> DataFrame:
     if not ce_api_token:
         raise ValueError("Missing required config parameter: ce_api_token")
 
-    # get issues
+    # get unique issue ids from stances
     stances: DataFrame = dbt.ref("int__ballotready_stance")
-    issue_database_ids = stances.select("issue.databaseId").distinct()
+
+    # Extract issue database IDs from the stances
+    # First, explode the stances array to get individual stance records
+    exploded_stances = stances.select("stances").withColumn(
+        "stance", explode("stances")
+    )
+
+    # Then extract the issue database IDs from each stance
+    issue_database_ids = exploded_stances.select(
+        col("stance.issue.databaseId").alias("database_id")
+    ).distinct()
 
     # for incremental, only pick up issue id's that don't already exist in the table
     if dbt.is_incremental:
@@ -189,11 +223,11 @@ def model(dbt, session) -> DataFrame:
         empty_df = session.createDataFrame([], ISSUE_BR_SCHEMA)
         empty_df = empty_df.select(
             col("databaseId").alias("database_id"),
-            col("expandedText").alias("expanded_text"),
+            # col("expandedText").alias("expanded_text"),
             col("id"),
             col("key"),
             col("name"),
-            col("parentIssue").alias("parent_issue"),
+            # col("parentIssue").alias("parent_issue"),
             col("pluginEnabled").alias("plugin_enabled"),
             col("responseType").alias("response_type"),
             col("rowOrder").alias("row_order"),
@@ -204,6 +238,20 @@ def model(dbt, session) -> DataFrame:
     _get_issue = _get_issue_token(ce_api_token)
     issue = issue_database_ids.withColumn("issue", _get_issue(col("database_id")))
 
-    # Explode the issue column and extract fields
-    # issue = issue.select(
+    issue = issue.select(
+        col("issue.databaseId").alias("database_id"),
+        # col("issue.expandedText").alias("expanded_text"),
+        col("issue.id").alias("id"),
+        col("issue.key").alias("key"),
+        col("issue.name").alias("name"),
+        # col("issue.parentIssue").alias("parent_issue"),
+        col("issue.pluginEnabled").alias("plugin_enabled"),
+        col("issue.responseType").alias("response_type"),
+        col("issue.rowOrder").alias("row_order"),
+    )
+
+    # Trigger a cache to ensure these transformations are applied before the filter
+    issue.cache()
+    issue.count()
+    issue = issue.filter(col("id").isNotNull()).filter(col("database_id").isNotNull())
     return issue
