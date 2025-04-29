@@ -199,10 +199,12 @@ def model(dbt, session) -> DataFrame:
 
     # for incremental, only pick up issue id's that don't already exist in the table
     if dbt.is_incremental:
-        existing_table = session.table(f"{dbt.this}")
+        existing_table: DataFrame = session.table(f"{dbt.this}")
         existing_issue_database_ids = existing_table.select("database_id").distinct()
-        issue_database_ids = issue_database_ids.filter(
-            ~col("database_id").isin(existing_issue_database_ids)
+        issue_database_ids = issue_database_ids.join(
+            other=existing_issue_database_ids,
+            on="database_id",
+            how="left_anti",
         )
 
     # trigger a cache to ensure transformations are applied before the filter
