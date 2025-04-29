@@ -113,26 +113,6 @@ models:
           - not_null
           - unique
 
-  - name: int__ballotready_office_holder
-    description: >
-      This model retrieves and processes office holder data from the CivicEngine API: https://developers.civicengine.com/docs/api/graphql/reference/objects/office-holder
-    config:
-      ce_api_token: "{{ env_var('DBT_CE') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
-    columns:
-      - name: database_id
-        description: "Unique identifier for the office holder in the CivicEngine database"
-        tests:
-          - not_null
-          - unique
-      - name: id
-        description: "Encoded identifier for the office holder in the CivicEngine system"
-        tests:
-          - not_null
-          - unique
-
   - name: int__ballotready_party
     description: >
       This model retrieves and processes candidate endorsement data from the CivicEngine API.
