@@ -41,7 +41,7 @@ with
             case
                 when size(tbl_person.images) > 0 then tbl_person.images[0].url else null
             end as image,
-            tbl_person.bio_text,
+            tbl_person.bio_text as about,
             transform(tbl_person.urls, url -> url.url) as urls,
             tbl_place.state,
             tbl_place.name as place_name,
@@ -82,7 +82,7 @@ select
     first_name,
     last_name,
     image,
-    bio_text,
+    about,
     urls,
     election_frequency,
     salary,
