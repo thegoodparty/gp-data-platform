@@ -23,22 +23,27 @@ models:
       - dbt_utils.equal_rowcount:
           compare_model: ref('int__ballotready_candidacy')
 
-  - name: m_election_api__race
+  - name: m_election_api__issue
     description: "Mart model that serves the Election API"
     columns:
       - name: id
-        description: "UUID of the race"
+        description: "UUID of the issue"
         tests:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: br_database_id
-        description: "Database ID of the `race` from BallotReady"
+        description: "Database ID of the `issue` from BallotReady"
         tests:
+          - not_null
+          - unique
           - relationships:
-              to: ref('int__enhanced_race')
-              field: br_database_id
+              to: ref('int__ballotready_issue')
+              field: database_id
+    tests:
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('int__ballotready_issue')
 
   - name: m_election_api__place
     description: "Mart model that serves the Election API"
@@ -66,3 +71,20 @@ models:
         tests:
           - not_null
           - unique
+
+  - name: m_election_api__race
+    description: "Mart model that serves the Election API"
+    columns:
+      - name: id
+        description: "UUID of the race"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: br_database_id
+        description: "Database ID of the `race` from BallotReady"
+        tests:
+          - relationships:
+              to: ref('int__enhanced_race')
+              field: br_database_id
