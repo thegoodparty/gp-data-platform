@@ -25,28 +25,6 @@ models:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["position_database_id", "place_database_id"]
 
-  - name: int__enhanced_candidacy
-    description: "Intermediate model that enhances the candidacy data from the BallotReady API"
-    columns:
-      - name: br_database_id
-        description: "Database ID of the candidacy"
-        tests:
-          - not_null
-          - unique
-          - relationships:
-              to: ref('int__ballotready_candidacy')
-              field: database_id
-      - name: id
-        description: "UUID of the place"
-        tests:
-          - not_null
-          - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    tests:
-      - dbt_utils.equal_rowcount:
-          compare_model: ref('int__ballotready_candidacy')
-
   - name: int__enhanced_place
     description: "Intermediate model that enhances the place data from the BallotReady API"
     columns:
