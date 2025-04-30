@@ -193,12 +193,10 @@ select
     filing_date_start,
     filing_date_end,
     position_geo_id,
-    place_id_by_pos_geo_id,
-    place_name_by_pos_geo_id,
-    place_id_most_specific_geo_id,
-    place_slug_by_pos_geo_id,
-    geo_id_most_specific_geo_id,
-    place_name_most_specific_geo_id,
-    place_slug_most_specific_geo_id,
+    position_mtfcc,
+    position_to_place_geo_id,
+    place_id,
+    place_name,
+    place_name_slug,
     position_names
 from race_w_place
