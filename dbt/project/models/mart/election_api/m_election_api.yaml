@@ -19,9 +19,6 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    tests:
-      - dbt_utils.equal_rowcount:
-          compare_model: ref('int__ballotready_candidacy')
 
   - name: m_election_api__issue
     description: "Mart model that serves the Election API"

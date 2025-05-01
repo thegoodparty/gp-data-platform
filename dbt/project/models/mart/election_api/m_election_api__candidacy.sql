@@ -24,18 +24,20 @@ with
             where updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
     ),
-    enhanced_columns as (
+    tbl_party as (
+        select
+            candidacy_id,
+            case when size(parties) > 0 then parties[0].name else null end as party
+        from {{ ref("int__ballotready_party") }}
+    ),
+    enhanced_candidacy as (
         select
             tbl_candidacy.id,
             tbl_candidacy.br_database_id,
             tbl_candidacy.created_at,
             tbl_candidacy.updated_at,
             tbl_candidacy.race_database_id,
-            case
-                when size(tbl_party.parties) > 0
-                then tbl_party.parties[0].name
-                else null
-            end as party,
+            tbl_party.party,
             tbl_person.first_name,
             tbl_person.last_name,
             case
@@ -49,25 +51,55 @@ with
             tbl_race.salary,
             tbl_race.normalized_position_name,
             tbl_race.position_description,
-            {{
-                slugify(
-                    "concat(tbl_person.first_name, '-', tbl_person.last_name, '-', tbl_race.normalized_position_name)"
-                )
-            }}
-            as slug
+            concat(
+                tbl_person.first_name,
+                '-',
+                tbl_person.last_name,
+                '-',
+                tbl_race.normalized_position_name
+            ) as slug_base
         from latest_candidacy as tbl_candidacy
+        left join
+            tbl_party as tbl_party
+            on tbl_candidacy.br_database_id = tbl_party.candidacy_id
         left join
             {{ ref("int__ballotready_person") }} as tbl_person
             on tbl_candidacy.candidate_database_id = tbl_person.database_id
-        left join
-            {{ ref("int__ballotready_party") }} as tbl_party
-            on tbl_candidacy.br_database_id = tbl_party.candidacy_id
         left join
             {{ ref("m_election_api__race") }} as tbl_race
             on tbl_candidacy.race_database_id = tbl_race.br_database_id
         left join
             {{ ref("m_election_api__place") }} as tbl_place
             on tbl_race.place_id = tbl_place.id
+    ),
+    candidacy_with_person_and_slug as (
+        select
+            id,
+            br_database_id,
+            created_at,
+            updated_at,
+            party,
+            state,
+            place_name,
+            race_database_id,
+            first_name,
+            last_name,
+            image,
+            about,
+            urls,
+            election_frequency,
+            salary,
+            normalized_position_name,
+            position_description,
+            slug_base,
+            {{ slugify("slug_base") }} as slug
+        from enhanced_candidacy
+        where slug_base is not null
+    ),
+    deduped_candidacy as (
+        select *
+        from candidacy_with_person_and_slug
+        qualify row_number() over (partition by slug order by updated_at desc) = 1
     )
 
 select
@@ -89,4 +121,4 @@ select
     normalized_position_name,
     position_description,
     slug
-from enhanced_columns
+from deduped_candidacy
