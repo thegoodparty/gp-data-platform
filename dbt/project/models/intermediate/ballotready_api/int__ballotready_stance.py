@@ -271,9 +271,7 @@ def model(dbt, session) -> DataFrame:
         raise ValueError("Missing required config parameter: ce_api_token")
 
     # Get candidacies
-    candidacies: DataFrame = dbt.ref(
-        "stg_airbyte_source__ballotready_s3_candidacies_v3"
-    )
+    candidacies: DataFrame = dbt.ref("int__ballotready_candidacy")
 
     # Validate source data
     if candidacies.count() == 0:
@@ -293,8 +291,8 @@ def model(dbt, session) -> DataFrame:
         return empty_df
 
     # Get distinct candidacy IDs
-    ids_from_candidacies = candidacies.select("candidacy_id").distinct().collect()
-    ids_from_candidacies = [row.candidacy_id for row in ids_from_candidacies]
+    ids_from_candidacies = candidacies.select("database_id").distinct().collect()
+    ids_from_candidacies = [row.database_id for row in ids_from_candidacies]
     logging.info(f"INFO: Found {len(ids_from_candidacies)} distinct candidacy IDs")
 
     # Handle incremental loading
@@ -312,7 +310,7 @@ def model(dbt, session) -> DataFrame:
         if max_updated_at:
             # Filter source to only process records updated since last run
             candidacies = candidacies.filter(
-                candidacies["candidacy_updated_at"] >= max_updated_at
+                candidacies["updated_at"] >= max_updated_at
             )
             logging.info(
                 f"INFO: Filtered to candidacies updated since {max_updated_at}"
@@ -321,7 +319,7 @@ def model(dbt, session) -> DataFrame:
             # Fallback to 30-day window if no max_updated_at found
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             candidacies = candidacies.filter(
-                candidacies["candidacy_updated_at"] >= thirty_days_ago
+                candidacies["updated_at"] >= thirty_days_ago
             )
             logging.info(
                 f"INFO: No max updated_at found. Filtered to candidacies updated since {thirty_days_ago}"
@@ -358,7 +356,7 @@ def model(dbt, session) -> DataFrame:
 
     # Create a DataFrame with just candidacy_ids for processing
     stance = candidacies.select(
-        col("candidacy_id").cast("integer").alias("candidacy_id")
+        col("database_id").cast("integer").alias("candidacy_id")
     )
 
     # Apply the pandas UDF to get stances for each candidacy

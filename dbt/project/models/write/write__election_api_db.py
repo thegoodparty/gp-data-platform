@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import datetime
+from typing import Dict
 
 import psycopg2
 from pyspark.sql import DataFrame
@@ -439,45 +440,6 @@ def model(dbt, session) -> DataFrame:
             if max_updated_at[table]:
                 df = df.filter(df.updated_at > max_updated_at[table])
 
-        # # Get the latest timestamp for places
-        # place_query = (
-        #     f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
-        # )
-        # place_max_df = (
-        #     session.read.format("jdbc")
-        #     .options(**jdbc_props)
-        #     .option("query", place_query)
-        #     .load()
-        # )
-        # place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
-
-        # # Get the latest timestamp for races
-        # race_query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
-        # race_max_df = (
-        #     session.read.format("jdbc")
-        #     .options(**jdbc_props)
-        #     .option("query", race_query)
-        #     .load()
-        # )
-        # race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
-
-        # # Filter dataframes to only include new or updated records
-        # if place_max_updated_at:
-        #     logging.info(
-        #         f"Filtering place data for records updated after {place_max_updated_at}"
-        #     )
-        #     place_df = place_df.filter(place_df.updated_at > place_max_updated_at)
-
-        # if race_max_updated_at:
-        #     logging.info(
-        #         f"Filtering race data for records updated after {race_max_updated_at}"
-        #     )
-        #     race_df = race_df.filter(race_df.updated_at > race_max_updated_at)
-
-        # logging.info(
-        #     f"Incremental load: {place_df.count()} place records and {race_df.count()} race records to process"
-        # )
-
     # Create a staging schema if it doesn't exist
     _execute_sql_query(
         f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
@@ -488,8 +450,9 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
-    table_load_counts = {}
-    for table, df, upsert_query in zip(
+    # Load tables to postgres
+    table_load_counts: Dict[str, int] = {}
+    for table_name, df, upsert_query in zip(
         ["Candidacy", "Issue", "Place", "Race", "Stance"],
         [candidacy_df, issue_df, place_df, race_df, stance_df],
         [
@@ -500,9 +463,9 @@ def model(dbt, session) -> DataFrame:
             STANCE_UPSERT_QUERY,
         ],
     ):
-        table_load_counts[table] = _load_data_to_postgres(
+        table_load_counts[table_name] = _load_data_to_postgres(
             df=df,
-            table_name=table,
+            table_name=table_name,
             upsert_query=upsert_query,
             db_host=db_host,
             db_port=db_port,
@@ -512,38 +475,6 @@ def model(dbt, session) -> DataFrame:
             staging_schema=staging_schema,
             db_schema=db_schema,
         )
-    # # Load Place and Race data using the utility function
-    # place_count = _load_data_to_postgres(
-    #     df=place_df,
-    #     table_name="Place",
-    #     upsert_query=PLACE_UPSERT_QUERY,
-    #     db_host=db_host,
-    #     db_port=db_port,
-    #     db_user=db_user,
-    #     db_pw=db_pw,
-    #     db_name=db_name,
-    #     staging_schema=staging_schema,
-    #     db_schema=db_schema,
-    # )
-
-    # # for race, we need to drop rows that have `election_date` more than 1 day ago, and more than 2 years from now
-    # race_df = race_df.filter(
-    #     (race_df.election_date > date_sub(current_date(), 1))
-    #     & (race_df.election_date < date_add(current_date(), 2 * 365))
-    # )
-
-    # race_count = _load_data_to_postgres(
-    #     df=race_df,
-    #     table_name="Race",
-    #     upsert_query=RACE_UPSERT_QUERY,
-    #     db_host=db_host,
-    #     db_port=db_port,
-    #     db_user=db_user,
-    #     db_pw=db_pw,
-    #     db_name=db_name,
-    #     staging_schema=staging_schema,
-    #     db_schema=db_schema,
-    # )
 
     # for the race db, drop rows that have `election_date` more than 1 day ago
     _execute_sql_query(
@@ -555,27 +486,12 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
-    # log the loading information including the number of rows loaded
-    # data = [
-    #     (
-    #         str(uuid.uuid4()),
-    #         "m_election_api__place",
-    #         place_count,
-    #         datetime.now(),
-    #     ),
-    #     (
-    #         str(uuid.uuid4()),
-    #         "m_election_api__race",
-    #         race_count,
-    #         datetime.now(),
-    #     ),
-    # ]
     data = []
-    for table, count in table_load_counts.items():
+    for table_name, count in table_load_counts.items():
         data.append(
             (
                 str(uuid.uuid4()),
-                f"m_election_api___{table}".lower(),
+                f"m_election_api___{table_name}".lower(),
                 count,
                 datetime.now(),
             )

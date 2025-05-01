@@ -52,11 +52,11 @@ with
             tbl_race.normalized_position_name,
             tbl_race.position_description,
             concat(
-                tbl_person.first_name,
+                coalesce(tbl_person.first_name, ''),
                 '-',
-                tbl_person.last_name,
+                coalesce(tbl_person.last_name, ''),
                 '-',
-                tbl_race.normalized_position_name
+                coalesce(tbl_race.normalized_position_name, '')
             ) as slug_base
         from latest_candidacy as tbl_candidacy
         left join
