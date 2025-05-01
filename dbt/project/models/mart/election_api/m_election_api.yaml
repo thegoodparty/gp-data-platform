@@ -88,3 +88,33 @@ models:
           - relationships:
               to: ref('int__enhanced_race')
               field: br_database_id
+
+  - name: m_election_api__stance
+    description: "Mart model that serves the Election API"
+    columns:
+      - name: id
+        description: "UUID of the stance"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: br_database_id
+        description: "Database ID of the `stance` from BallotReady"
+        tests:
+          - not_null
+          - unique
+      - name: issue_id
+        description: "UUID of the issue"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('m_election_api__issue')
+              field: id
+      - name: candidacy_id
+        description: "UUID of the candidacy"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('m_election_api__candidacy')
+              field: id
