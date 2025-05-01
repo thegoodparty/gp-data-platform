@@ -32,7 +32,7 @@ select
     current_timestamp() as created_at,
     current_timestamp() as updated_at,
     br_database_id,
-    cast(null as string) as expanded_text,  -- TODO: add expanded_text from API
+    cast('' as string) as expanded_text,  -- TODO: add expanded_text from API
     key,
     name,
     cast(null as string) as parent_id  -- TODO: add parent_id from API
