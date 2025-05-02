@@ -50,6 +50,7 @@ with
         left join
             {{ ref("m_election_api__candidacy") }} as tbl_candidacy
             on tbl_stance.candidacy_id = tbl_candidacy.br_database_id
+        where stance_reference_url is not null
     )
 select
     id,

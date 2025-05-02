@@ -20,9 +20,11 @@ with
             created_at,
             updated_at
         from {{ ref("int__ballotready_candidacy") }}
-        {% if is_incremental() %}
-            where updated_at > (select max(updated_at) from {{ this }})
-        {% endif %}
+        where
+            1 = 1
+            {% if is_incremental() %}
+                and updated_at > (select max(updated_at) from {{ this }})
+            {% endif %}
     ),
     tbl_party as (
         select
@@ -94,7 +96,7 @@ with
             slug_base,
             {{ slugify("slug_base") }} as slug
         from enhanced_candidacy
-        where slug_base is not null
+        where first_name is not null and last_name is not null
     ),
     deduped_candidacy as (
         select *
