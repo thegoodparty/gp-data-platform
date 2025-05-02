@@ -32,7 +32,8 @@ CANDIDACY_UPSERT_QUERY = """
         election_frequency,
         salary,
         normalized_position_name,
-        position_description
+        position_description,
+        race_id
     )
     SELECT
         id::uuid,
@@ -51,7 +52,8 @@ CANDIDACY_UPSERT_QUERY = """
         election_frequency,
         salary,
         normalized_position_name,
-        position_description
+        position_description,
+        race_id::uuid
     FROM {staging_schema}."Candidacy"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
@@ -69,7 +71,8 @@ CANDIDACY_UPSERT_QUERY = """
         election_frequency = EXCLUDED.election_frequency,
         salary = EXCLUDED.salary,
         normalized_position_name = EXCLUDED.normalized_position_name,
-        position_description = EXCLUDED.position_description
+        position_description = EXCLUDED.position_description,
+        race_id = EXCLUDED.race_id
 """
 
 ISSUE_UPSERT_QUERY = """
@@ -356,6 +359,29 @@ def _load_data_to_postgres(
     ).mode(
         "overwrite"
     ).save()
+
+    # dedup on slugs if they have different ids:
+    if table_name in ["Candidacy", "Place"]:
+        dedup_query = f"""
+        with
+            dupes as (
+                select tbl_pub.id as pub_id, tbl_stg.id as stg_id
+                from {db_schema}."{table_name}" as tbl_pub
+                left join {staging_schema}."{table_name}" as tbl_stg
+                    on tbl_pub.slug = tbl_stg.slug
+                    and tbl_pub.id != tbl_stg.id::uuid
+            )
+            delete from {db_schema}."{table_name}"
+            where id in (select pub_id from dupes where stg_id is not null)
+        """
+        _execute_sql_query(
+            dedup_query,
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
+        )
 
     # Execute the upsert query
     _execute_sql_query(

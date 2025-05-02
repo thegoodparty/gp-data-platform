@@ -59,7 +59,8 @@ with
                 coalesce(tbl_person.last_name, ''),
                 '-',
                 coalesce(tbl_race.normalized_position_name, '')
-            ) as slug_base
+            ) as slug_base,
+            tbl_race.id as race_id
         from latest_candidacy as tbl_candidacy
         left join
             tbl_party as tbl_party
@@ -94,7 +95,8 @@ with
             normalized_position_name,
             position_description,
             slug_base,
-            {{ slugify("slug_base") }} as slug
+            {{ slugify("slug_base") }} as slug,
+            race_id
         from enhanced_candidacy
         where first_name is not null and last_name is not null
     ),
@@ -122,5 +124,6 @@ select
     salary,
     normalized_position_name,
     position_description,
-    slug
+    slug,
+    race_id
 from deduped_candidacy
