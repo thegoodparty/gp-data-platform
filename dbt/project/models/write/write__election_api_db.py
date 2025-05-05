@@ -32,6 +32,7 @@ CANDIDACY_UPSERT_QUERY = """
         election_frequency,
         salary,
         normalized_position_name,
+        position_name,
         position_description,
         race_id
     )
@@ -52,6 +53,7 @@ CANDIDACY_UPSERT_QUERY = """
         election_frequency,
         salary,
         normalized_position_name,
+        position_name,
         position_description,
         race_id::uuid
     FROM {staging_schema}."Candidacy"
@@ -71,6 +73,7 @@ CANDIDACY_UPSERT_QUERY = """
         election_frequency = EXCLUDED.election_frequency,
         salary = EXCLUDED.salary,
         normalized_position_name = EXCLUDED.normalized_position_name,
+        position_name = EXCLUDED.position_name,
         position_description = EXCLUDED.position_description,
         race_id = EXCLUDED.race_id
 """

@@ -49,18 +49,17 @@ with
             transform(tbl_person.urls, url -> url.url) as urls,
             tbl_place.state,
             tbl_place.name as place_name,
-            tbl_race.frequency as election_frequency,
-            tbl_race.salary,
-            tbl_race.normalized_position_name,
-            tbl_race.position_description,
+            tbl_int_race.position_name as position_name,
+            tbl_mart_race.frequency as election_frequency,
+            tbl_mart_race.salary,
+            tbl_mart_race.normalized_position_name,
+            tbl_mart_race.position_description,
             concat(
                 coalesce(tbl_person.first_name, ''),
                 '-',
-                coalesce(tbl_person.last_name, ''),
-                '-',
-                coalesce(tbl_race.normalized_position_name, '')
-            ) as slug_base,
-            tbl_race.id as race_id
+                coalesce(tbl_person.last_name, '')
+            ) as first_last_name_slug,
+            tbl_mart_race.id as race_id
         from latest_candidacy as tbl_candidacy
         left join
             tbl_party as tbl_party
@@ -69,11 +68,14 @@ with
             {{ ref("int__ballotready_person") }} as tbl_person
             on tbl_candidacy.candidate_database_id = tbl_person.database_id
         left join
-            {{ ref("m_election_api__race") }} as tbl_race
-            on tbl_candidacy.race_database_id = tbl_race.br_database_id
+            {{ ref("m_election_api__race") }} as tbl_mart_race
+            on tbl_candidacy.race_database_id = tbl_mart_race.br_database_id
+        left join
+            {{ ref("int__enhanced_race") }} as tbl_int_race
+            on tbl_mart_race.br_database_id = tbl_int_race.br_database_id
         left join
             {{ ref("m_election_api__place") }} as tbl_place
-            on tbl_race.place_id = tbl_place.id
+            on tbl_mart_race.place_id = tbl_place.id
     ),
     candidacy_with_person_and_slug as (
         select
@@ -93,9 +95,19 @@ with
             election_frequency,
             salary,
             normalized_position_name,
+            position_name,
             position_description,
-            slug_base,
-            {{ slugify("slug_base") }} as slug,
+            first_last_name_slug,
+            case
+                when position_name is not null
+                then
+                    concat(
+                        {{ slugify("first_last_name_slug") }},
+                        '/',
+                        {{ slugify("position_name") }}
+                    )
+                else {{ slugify("first_last_name_slug") }}
+            end as slug,
             race_id
         from enhanced_candidacy
         where first_name is not null and last_name is not null
@@ -123,6 +135,7 @@ select
     election_frequency,
     salary,
     normalized_position_name,
+    position_name,
     position_description,
     slug,
     race_id
