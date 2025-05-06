@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict
 from uuid import uuid4
 from zipfile import ZipFile
 
+# import boto3
 import pandas as pd
 from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
@@ -19,14 +20,15 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-# import boto3
 
-
-# from zipfile import ZipFile
-
-
-def _extract_and_load_w_sftp(
-    host: str, port: int, user: str, password: str
+def _extract_and_load_w_creds(
+    sftp_host: str,
+    sftp_port: int,
+    sftp_user: str,
+    sftp_password: str,
+    s3_bucket: str,
+    s3_access_key: str,
+    s3_secret_key: str,
 ) -> Callable:
     """
     Creates a pandas UDF that extracts and loads files from an SFTP server to an S3 bucket. Note that
@@ -34,10 +36,13 @@ def _extract_and_load_w_sftp(
     on the worker nodes.
 
     Args:
-        host: The host of the SFTP server
-        port: The port of the SFTP server
-        user: The user of the SFTP server
-        password: The password of the SFTP server
+        sftp_host: The host of the SFTP server
+        sftp_port: The port of the SFTP server
+        sftp_user: The user of the SFTP server
+        sftp_password: The password of the SFTP server
+        s3_bucket: The name of the S3 bucket
+        s3_access_key: The access key for the S3 bucket
+        s3_secret_key: The secret key for the S3 bucket
 
     Returns:
         A pandas UDF function
@@ -55,11 +60,18 @@ def _extract_and_load_w_sftp(
             JSON string with load details
         """
         # Create SFTP connection inside the UDF
-        transport: Transport = Transport((host, port))
-        transport.connect(username=user, password=password)
+        transport: Transport = Transport((sftp_host, sftp_port))
+        transport.connect(username=sftp_user, password=sftp_password)
         sftp_client: SFTPClient | None = SFTPClient.from_transport(transport)
         if sftp_client is None:
             raise ValueError("Failed to create SFTP client")
+
+        # create s3 client
+        # s3_client = boto3.client(
+        #     "s3",
+        #     aws_access_key_id=s3_access_key,
+        #     aws_secret_access_key=s3_secret_key,
+        # )
 
         try:
             remote_file_path = "/VMFiles/"
@@ -189,14 +201,18 @@ def model(dbt, session):
         tags=["l2", "sftp", "s3", "load"],
     )
 
-    # S3 configuration
-    # s3_bucket = dbt.var("s3_bucket", "data-platform-prod")
-
-    # connecting to sftp server
+    # sftp server configuration
     sftp_host = dbt.config.get("l2_sftp_host")
     sftp_port = int(dbt.config.get("l2_sftp_port"))
     sftp_user = dbt.config.get("l2_sftp_user")
     sftp_password = dbt.config.get("l2_sftp_password")
+
+    # S3 configuration
+    s3_bucket = dbt.config.get("l2_s3_bucket")
+    s3_access_key = dbt.config.get("l2_s3_access_key")
+    s3_secret_key = dbt.config.get("l2_s3_secret_key")
+
+    # l2_vmfiles_prefix = "l2_data/from_sftp_server/VMFiles/"
 
     # get list of states
     states: DataFrame = (
@@ -215,8 +231,14 @@ def model(dbt, session):
     states.count()
 
     # extract and load the files
-    extract_and_load = _extract_and_load_w_sftp(
-        sftp_host, sftp_port, sftp_user, sftp_password
+    extract_and_load = _extract_and_load_w_creds(
+        sftp_host=sftp_host,
+        sftp_port=sftp_port,
+        sftp_user=sftp_user,
+        sftp_password=sftp_password,
+        s3_bucket=s3_bucket,
+        s3_access_key=s3_access_key,
+        s3_secret_key=s3_secret_key,
     )
     states = states.withColumn("load_details", extract_and_load(states["state_id"]))
 
