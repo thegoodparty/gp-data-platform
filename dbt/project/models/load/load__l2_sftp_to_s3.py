@@ -112,12 +112,8 @@ def _extract_and_load_w_sftp(
                         file_type = match.group(1)
                         extension = match.group(2)  # _DataDictionary.csv or .tab
 
-                        # Process based on type and extension
-                        if file_type == "DEMOGRAPHIC" and extension == ".tab":
-                            print(f"Demographic tab: {file}")
-                        elif file_type == "VOTEHISTORY" and extension == ".tab":
-                            print(f"Votehistory tab: {file}")
-                        elif (
+                        # headers and footers must be removed from data dictionary files
+                        if (
                             file_type == "DEMOGRAPHIC"
                             and extension == "_DataDictionary.csv"
                         ):
@@ -132,24 +128,24 @@ def _extract_and_load_w_sftp(
                     else:
                         logging.info(f"Skipping (match={match}) file: {filename}")
 
-        # TODO: upload files to s3
-        # # Upload extracted files to S3
-        # s3_client = boto3.client('s3')
-        # s3_prefix = f"states/{state_id}/data/"
+                # TODO: upload files to s3
+                # # Upload extracted files to S3
+                # s3_client = boto3.client('s3')
+                # s3_prefix = f"states/{state_id}/data/"
 
-        # # Upload each extracted file to S3
-        # for extracted_file in file_names:
-        #     local_file_path = os.path.join(temp_dir, extracted_file)
-        #     s3_key = f"{s3_prefix}{extracted_file}"
+                # # Upload each extracted file to S3
+                # for extracted_file in file_names:
+                #     local_file_path = os.path.join(temp_dir, extracted_file)
+                #     s3_key = f"{s3_prefix}{extracted_file}"
 
-        #     if os.path.isfile(local_file_path):
-        #         s3_client.upload_file(
-        #             Filename=local_file_path,
-        #             Bucket=s3_bucket_name,
-        #             Key=s3_key
-        #         )
+                #     if os.path.isfile(local_file_path):
+                #         s3_client.upload_file(
+                #             Filename=local_file_path,
+                #             Bucket=s3_bucket_name,
+                #             Key=s3_key
+                #         )
 
-        # TODO: delete old files from s3 prefix
+                # TODO: delete old files from s3 prefix
 
         finally:
             # Close SFTP connection
@@ -158,8 +154,7 @@ def _extract_and_load_w_sftp(
 
         result = {
             "state_id": state_id,
-            # "source_file_names": [source_file_name],
-            "source_file_names": file_names,  # use extracted file names
+            "source_file_names": file_names,
             "source_zip_file": source_file_name,
             "loaded_at": datetime.now(),
             # "s3_prefix": s3_prefix
