@@ -1,11 +1,12 @@
-# import os
+import os
 import re
 from datetime import datetime
 
 # import pandas as pd
-# from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict
 from uuid import uuid4
+from zipfile import ZipFile
 
 from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
@@ -74,22 +75,21 @@ def _extract_and_load_w_sftp(
                     f"file_list: {file_list}\n"
                 )
             # download the file from the sftp server and extract it
-            file_name = file_list[0]
-            # full_file_path = os.path.join(remote_file_path, file_name)
+            source_file_name = file_list[0]
+            full_file_path = os.path.join(remote_file_path, source_file_name)
 
             # TODO: extract the zip files
             # Create a temporary directory to store the zip file and extracted contents
-            # with TemporaryDirectory() as temp_dir:
-            # local_zip_path = os.path.join(temp_dir, file_name)
+            with TemporaryDirectory() as temp_dir:
+                # Download the file from the SFTP server
+                local_zip_path = os.path.join(temp_dir, source_file_name)
+                sftp_client.get(full_file_path, local_zip_path)
 
-            # Download the file from the SFTP server
-            # sftp_client.get(full_file_path, local_zip_path)
-
-            # # Extract the zip file
-            # file_names = []
-            # with ZipFile(local_zip_path, 'r') as zip_file:
-            #     file_names = zip_file.namelist()
-            #     zip_file.extractall(path=temp_dir)
+                # Extract the zip file
+                # file_names = []
+                with ZipFile(local_zip_path, "r") as zip_file:
+                    file_names = zip_file.namelist()
+                    zip_file.extractall(path=temp_dir)
 
         # TODO: process files, like removing headers and footers
 
@@ -119,8 +119,9 @@ def _extract_and_load_w_sftp(
 
         result = {
             "state_id": state_id,
-            "source_file_names": [file_name],
-            "source_zip_file": file_name,
+            # "source_file_names": [source_file_name],
+            "source_file_names": file_names,  # use extracted file names
+            "source_zip_file": source_file_name,
             "loaded_at": datetime.now(),
             # "s3_prefix": s3_prefix
         }
@@ -175,6 +176,10 @@ def model(dbt, session):
     states = states.filter(col("state_id") == "AK")
     # TODO: remove dev restiction above
 
+    # force evaluation of the states dataframe up until now
+    states.cache()
+    states.count()
+
     # extract and load the files
     extract_and_load = _extract_and_load_w_sftp(
         sftp_host, sftp_port, sftp_user, sftp_password
@@ -194,7 +199,8 @@ def model(dbt, session):
     )
 
     # generate an uuid for each file name
-    exploded_states = exploded_states.withColumn("id", lit(str(uuid4())))
+    generate_uuid = udf(lambda: str(uuid4()), StringType())
+    exploded_states = exploded_states.withColumn("id", generate_uuid())
 
     exploded_states = exploded_states.select(
         "id",
