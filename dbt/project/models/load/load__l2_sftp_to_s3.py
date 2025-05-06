@@ -1,13 +1,13 @@
+import logging
 import os
 import re
 from datetime import datetime
-
-# import pandas as pd
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict
 from uuid import uuid4
 from zipfile import ZipFile
 
+import pandas as pd
 from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, explode, lit, udf, upper
@@ -84,6 +84,14 @@ def _extract_and_load_w_sftp(
                 local_zip_path = os.path.join(temp_dir, source_file_name)
                 sftp_client.get(full_file_path, local_zip_path)
 
+                """
+                Files inside of the zip are named like:
+                'VM2--{state_id}--{YYYY-MM-DD}-DEMOGRAPHIC-FillRate.tab'
+                'VM2--{state_id}--{YYYY-MM-DD}-DEMOGRAPHIC.tab'
+                'VM2--{state_id}--{YYYY-MM-DD}-DEMOGRAPHIC_DataDictionary.csv'
+                'VM2--{state_id}--{YYYY-MM-DD}-VOTEHISTORY.tab'
+                'VM2--{state_id}--{YYYY-MM-DD}-VOTEHISTORY_DataDictionary.csv'
+                """
                 with ZipFile(local_zip_path, "r") as zip_file:
                     file_names = zip_file.namelist()
                     zip_file.extractall(path=temp_dir)
@@ -92,37 +100,37 @@ def _extract_and_load_w_sftp(
                 file_name_paths = [
                     os.path.join(temp_dir, file_name) for file_name in file_names
                 ]
+                file_name_paths_to_upload = []
                 pattern = r"^VM2--[A-Z]{2}--\d{4}-\d{2}-\d{2}-(DEMOGRAPHIC|VOTEHISTORY)(_DataDictionary\.csv|\.tab)$"
                 for file in file_name_paths:
                     filename = os.path.basename(file)
                     match = re.match(pattern, filename)
                     if match:
-                        # Extract the type (DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY) and extension
-                        file_type = match.group(
-                            1
-                        )  # DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY
+                        file_name_paths_to_upload.append(file)
+
+                        # Extract the file type (DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY) and extension
+                        file_type = match.group(1)
                         extension = match.group(2)  # _DataDictionary.csv or .tab
 
                         # Process based on type and extension
                         if file_type == "DEMOGRAPHIC" and extension == ".tab":
                             print(f"Demographic tab: {file}")
-                        elif (
-                            file_type in ("VOTEHISTORY", "VOTERHISTORY")
-                            and extension == ".tab"
-                        ):
+                        elif file_type == "VOTEHISTORY" and extension == ".tab":
                             print(f"Votehistory tab: {file}")
                         elif (
                             file_type == "DEMOGRAPHIC"
                             and extension == "_DataDictionary.csv"
                         ):
-                            print(f"Demographic csv: {file}")
+                            df = pd.read_csv(file, skiprows=15, skipfooter=24)
+                            df.to_csv(file, index=False)
                         elif (
-                            file_type in ("VOTEHISTORY", "VOTERHISTORY")
+                            file_type == "VOTEHISTORY"
                             and extension == "_DataDictionary.csv"
                         ):
-                            print(f"Votehistory csv: {file}")
+                            df = pd.read_csv(file, skiprows=15, skipfooter=4)
+                            df.to_csv(file, index=False)
                     else:
-                        print(f"Skipping (match={match}) file: {filename}")
+                        logging.info(f"Skipping (match={match}) file: {filename}")
 
         # TODO: upload files to s3
         # # Upload extracted files to S3
