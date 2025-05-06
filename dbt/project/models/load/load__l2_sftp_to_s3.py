@@ -1,17 +1,23 @@
 # import os
 import re
-
-# import tempfile
-# from datetime import datetime
-from typing import Callable
+from datetime import datetime
 
 # import pandas as pd
+# from tempfile import TemporaryDirectory
+from typing import Any, Callable, Dict
+from uuid import uuid4
+
 from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, udf, upper
-from pyspark.sql.types import StringType
+from pyspark.sql.functions import col, explode, lit, udf, upper
+from pyspark.sql.types import (
+    ArrayType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
-# import tempfile
 # import boto3
 
 
@@ -36,10 +42,8 @@ def _extract_and_load_w_sftp(
         A pandas UDF function
     """
 
-    def _extract_and_load(state_id: str) -> str:
-        # def _extract_and_load(state_id: str) -> Dict[str, str | datetime | int]:
-        # @pandas_udf(returnType=StringType())
-        # def _extract_and_load(state_id: pd.Series) -> pd.Series:
+    def _extract_and_load(state_id: str) -> Dict[str, Any]:
+        # def _extract_and_load(state_id: str) -> Dict[str, Union[str, List[str], datetime]]:
         """
         UDF to process state IDs and extract and load files from SFTP to S3.
 
@@ -49,18 +53,6 @@ def _extract_and_load_w_sftp(
         Returns:
             JSON string with load details
         """
-        """
-        TODO: complete writing this function
-        List files in the SFTP directory
-        create pandas udf that takes in a state id and
-        1. filters through the sftp server to find the related files
-        2. extracts the zip
-        3. loads the files to s3
-        4. deletes the old files in s3
-        5. returns a an ArrayType with each file name getting it's own row and id,
-            it would also have a column for the state id, and time of loading and anything
-            else that airbyte logs when using the sftp bulk loader
-        """
         # Create SFTP connection inside the UDF
         transport: Transport = Transport((host, port))
         transport.connect(username=user, password=password)
@@ -69,9 +61,8 @@ def _extract_and_load_w_sftp(
             raise ValueError("Failed to create SFTP client")
 
         try:
-            # file_name_pattern = f"VM2--{state_id}*.zip"
-            file_path = "/VMFiles/"
-            file_list = sftp_client.listdir(file_path)
+            remote_file_path = "/VMFiles/"
+            file_list = sftp_client.listdir(remote_file_path)
             string_pattern = f"VM2--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
             file_name_pattern = re.compile(string_pattern)
             file_list = [f for f in file_list if re.match(file_name_pattern, f)]
@@ -82,29 +73,27 @@ def _extract_and_load_w_sftp(
                     f"file_name_pattern: {file_name_pattern}\n"
                     f"file_list: {file_list}\n"
                 )
+            # download the file from the sftp server and extract it
+            file_name = file_list[0]
+            # full_file_path = os.path.join(remote_file_path, file_name)
 
-        finally:
-            # Close SFTP connection
-            sftp_client.close()
-            transport.close()
+            # TODO: extract the zip files
+            # Create a temporary directory to store the zip file and extracted contents
+            # with TemporaryDirectory() as temp_dir:
+            # local_zip_path = os.path.join(temp_dir, file_name)
 
-        # download the file from the sftp server and extract it
-        file_name = file_list[0]
-        # full_file_path = os.path.join(file_path, file_name)
+            # Download the file from the SFTP server
+            # sftp_client.get(full_file_path, local_zip_path)
 
-        # Create a temporary directory to store the zip file and extracted contents
-        # with tempfile.TemporaryDirectory() as temp_dir:
-        #     local_zip_path = os.path.join(temp_dir, file_name)
+            # # Extract the zip file
+            # file_names = []
+            # with ZipFile(local_zip_path, 'r') as zip_file:
+            #     file_names = zip_file.namelist()
+            #     zip_file.extractall(path=temp_dir)
 
-        #     # Download the file from the SFTP server
-        #     sftp_client.get(full_file_path, local_zip_path)
+        # TODO: process files, like removing headers and footers
 
-        #     # Extract the zip file
-        #     file_names = []
-        #     with ZipFile(local_zip_path, 'r') as zip_file:
-        #         file_names = zip_file.namelist()
-        #         zip_file.extractall(path=temp_dir)
-
+        # TODO: upload files to s3
         # # Upload extracted files to S3
         # s3_client = boto3.client('s3')
         # s3_prefix = f"states/{state_id}/data/"
@@ -121,24 +110,36 @@ def _extract_and_load_w_sftp(
         #             Key=s3_key
         #         )
 
-        # load_time = datetime.now().isoformat()
-        # result = {
-        #     "state_id": state_id,
-        #     "file_names": file_names,
-        #     "zip_file": file_name,
-        #     "load_time": load_time,
-        #     # "s3_prefix": s3_prefix
-        # }
+        # TODO: delete old files from s3 prefix
 
-        from json import dumps
+        finally:
+            # Close SFTP connection
+            sftp_client.close()
+            transport.close()
 
-        # return dumps(result)
+        result = {
+            "state_id": state_id,
+            "source_file_names": [file_name],
+            "source_zip_file": file_name,
+            "loaded_at": datetime.now(),
+            # "s3_prefix": s3_prefix
+        }
+        return result
 
-        return dumps({"state_id": state_id, "file_names": [file_name]})
-
-    # return_type = MapType(StringType(), ArrayType(StringType()))
-    # _extract_and_load = udf(_extract_and_load, returnType=return_type)
-    _extract_and_load = udf(_extract_and_load, returnType=StringType())
+    # Define the schema for the dictionary
+    return_schema = StructType(
+        [
+            StructField(name="state_id", dataType=StringType(), nullable=True),
+            StructField(
+                name="source_file_names",
+                dataType=ArrayType(StringType()),
+                nullable=False,
+            ),
+            StructField(name="source_zip_file", dataType=StringType(), nullable=False),
+            StructField(name="loaded_at", dataType=TimestampType(), nullable=False),
+        ]
+    )
+    _extract_and_load = udf(_extract_and_load, returnType=return_schema)
     return _extract_and_load
 
 
@@ -170,12 +171,37 @@ def model(dbt, session):
     )
     states = states.withColumn("state_id", upper(col("state_id").cast(StringType())))
 
-    # for dev just take the first state
-    states = states.limit(1)
+    # for dev just take AK
+    states = states.filter(col("state_id") == "AK")
+    # TODO: remove dev restiction above
 
+    # extract and load the files
     extract_and_load = _extract_and_load_w_sftp(
         sftp_host, sftp_port, sftp_user, sftp_password
     )
     states = states.withColumn("load_details", extract_and_load(states["state_id"]))
 
-    return states
+    # generate an uuid for each file name
+    states = states.withColumn("load_id", lit(str(uuid4())))
+
+    # Explode the file_names array to create separate rows for each filename
+    exploded_states = states.select(
+        col("load_id"),
+        col("load_details.loaded_at").alias("loaded_at"),
+        explode(col("load_details.source_file_names")).alias("source_file_name"),
+        col("load_details.source_zip_file").alias("source_zip_file"),
+        col("load_details.state_id").alias("state_id"),
+    )
+
+    # generate an uuid for each file name
+    exploded_states = exploded_states.withColumn("id", lit(str(uuid4())))
+
+    exploded_states = exploded_states.select(
+        "id",
+        "load_id",
+        "loaded_at",
+        "state_id",
+        "source_file_name",
+        "source_zip_file",
+    )
+    return exploded_states
