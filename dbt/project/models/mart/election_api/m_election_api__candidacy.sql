@@ -77,7 +77,7 @@ with
             {{ ref("m_election_api__place") }} as tbl_place
             on tbl_mart_race.place_id = tbl_place.id
     ),
-    candidacy_with_person_and_slug as (
+    non2party_with_person_and_slug as (
         select
             id,
             br_database_id,
@@ -110,11 +110,15 @@ with
             end as slug,
             race_id
         from enhanced_candidacy
-        where first_name is not null and last_name is not null
+        where
+            1 = 1
+            and first_name is not null
+            and last_name is not null
+            and party not in ('Democrat', 'Republican')
     ),
     deduped_candidacy as (
         select *
-        from candidacy_with_person_and_slug
+        from non2party_with_person_and_slug
         qualify row_number() over (partition by slug order by updated_at desc) = 1
     )
 
