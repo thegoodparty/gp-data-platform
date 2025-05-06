@@ -78,20 +78,51 @@ def _extract_and_load_w_sftp(
             source_file_name = file_list[0]
             full_file_path = os.path.join(remote_file_path, source_file_name)
 
-            # TODO: extract the zip files
             # Create a temporary directory to store the zip file and extracted contents
             with TemporaryDirectory() as temp_dir:
                 # Download the file from the SFTP server
                 local_zip_path = os.path.join(temp_dir, source_file_name)
                 sftp_client.get(full_file_path, local_zip_path)
 
-                # Extract the zip file
-                # file_names = []
                 with ZipFile(local_zip_path, "r") as zip_file:
                     file_names = zip_file.namelist()
                     zip_file.extractall(path=temp_dir)
 
-        # TODO: process files, like removing headers and footers
+                # TODO: process files, like removing headers and footers
+                file_name_paths = [
+                    os.path.join(temp_dir, file_name) for file_name in file_names
+                ]
+                pattern = r"^VM2--[A-Z]{2}--\d{4}-\d{2}-\d{2}-(DEMOGRAPHIC|VOTEHISTORY)(_DataDictionary\.csv|\.tab)$"
+                for file in file_name_paths:
+                    filename = os.path.basename(file)
+                    match = re.match(pattern, filename)
+                    if match:
+                        # Extract the type (DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY) and extension
+                        file_type = match.group(
+                            1
+                        )  # DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY
+                        extension = match.group(2)  # _DataDictionary.csv or .tab
+
+                        # Process based on type and extension
+                        if file_type == "DEMOGRAPHIC" and extension == ".tab":
+                            print(f"Demographic tab: {file}")
+                        elif (
+                            file_type in ("VOTEHISTORY", "VOTERHISTORY")
+                            and extension == ".tab"
+                        ):
+                            print(f"Votehistory tab: {file}")
+                        elif (
+                            file_type == "DEMOGRAPHIC"
+                            and extension == "_DataDictionary.csv"
+                        ):
+                            print(f"Demographic csv: {file}")
+                        elif (
+                            file_type in ("VOTEHISTORY", "VOTERHISTORY")
+                            and extension == "_DataDictionary.csv"
+                        ):
+                            print(f"Votehistory csv: {file}")
+                    else:
+                        print(f"Skipping (match={match}) file: {filename}")
 
         # TODO: upload files to s3
         # # Upload extracted files to S3
