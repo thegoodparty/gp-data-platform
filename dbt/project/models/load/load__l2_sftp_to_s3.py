@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import shutil
 from datetime import datetime
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict
@@ -30,6 +31,7 @@ def _extract_and_load_w_creds(
     s3_prefix: str,
     s3_access_key: str,
     s3_secret_key: str,
+    databricks_volume_directory: str,
 ) -> Callable:
     """
     Creates a pandas UDF that extracts and loads files from an SFTP server to an S3 bucket. Note that
@@ -115,11 +117,8 @@ def _extract_and_load_w_creds(
             full_file_path = os.path.join(remote_file_path, source_file_name)
 
             # Create a temporary directory to store the zip file and extracted contents
-            volume_directory = (
-                "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
-            )
-            # TODO: change directory according to environment
-            with TemporaryDirectory(dir=volume_directory) as temp_dir:
+            temp_dir = os.path.join(databricks_volume_directory, state_id)
+            with TemporaryDirectory(dir=temp_dir) as temp_dir:
                 # Download the file from the SFTP server
                 local_zip_path = os.path.join(temp_dir, source_file_name)
                 sftp_client.get(full_file_path, local_zip_path)
@@ -255,6 +254,12 @@ def model(dbt, session):
     s3_secret_key = dbt.config.get("l2_s3_secret_key")
     l2_vmfiles_prefix = "l2_data/from_sftp_server/VMFiles"
 
+    # dbt cloud account id
+    dbt_cloud_account_id = dbt.config.get("dbt_cloud_account_id")
+    databricks_volume_directory = (
+        f"/Volumes/goodparty_data_catalog/{dbt_cloud_account_id}/object_storage/l2_temp"
+    )
+
     # get list of states
     states: DataFrame = (
         dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77")
@@ -272,7 +277,7 @@ def model(dbt, session):
 
     # for dev just a few states
     # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
-    states = states.sample(fraction=0.1, seed=42)
+    # states = states.sample(fraction=0.1, seed=42)
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
     # TODO: remove dev restiction above
@@ -290,6 +295,7 @@ def model(dbt, session):
         s3_prefix=l2_vmfiles_prefix,
         s3_access_key=s3_access_key,
         s3_secret_key=s3_secret_key,
+        databricks_volume_directory=databricks_volume_directory,
     )
     states = states.withColumn("load_details", extract_and_load(states["state_id"]))
 
@@ -326,5 +332,14 @@ def model(dbt, session):
     exploded_states = exploded_states.filter(col("state_id").isNotNull())
     exploded_states = exploded_states.filter(col("source_file_name").isNotNull())
     exploded_states = exploded_states.filter(col("source_zip_file").isNotNull())
+
+    # clean up objects inside the temp directory
+    if os.path.exists(databricks_volume_directory):
+        for item in os.listdir(databricks_volume_directory):
+            item_path = os.path.join(databricks_volume_directory, item)
+            if os.path.isfile(item_path):
+                os.remove(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
 
     return exploded_states
