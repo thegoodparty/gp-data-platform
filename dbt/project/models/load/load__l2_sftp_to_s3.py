@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import shutil
+import time
 from datetime import datetime
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict
@@ -20,6 +21,45 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+
+
+def _create_sftp_connection(
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    max_retries: int = 3,
+    retry_delay: int = 5,
+) -> tuple[Transport, SFTPClient]:
+    """
+    Creates an SFTP connection with retry logic and keep-alive settings.
+
+    Args:
+        host: SFTP host
+        port: SFTP port
+        username: SFTP username
+        password: SFTP password
+        max_retries: Maximum number of connection attempts
+        retry_delay: Delay between retries in seconds
+
+    Returns:
+        Tuple of (Transport, SFTPClient)
+    """
+    for attempt in range(max_retries):
+        try:
+            transport = Transport((host, port))
+            transport.set_keepalive(60)  # Send keepalive packet every 60 seconds
+            transport.connect(username=username, password=password)
+            sftp_client = SFTPClient.from_transport(transport)
+            if sftp_client is None:
+                raise ValueError("Failed to create SFTP client")
+            return transport, sftp_client
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise
+            logging.warning(f"SFTP connection attempt {attempt + 1} failed: {str(e)}")
+            time.sleep(retry_delay)
+    raise Exception("Failed to establish SFTP connection after all retries")
 
 
 def _extract_and_load_w_creds(
@@ -62,13 +102,16 @@ def _extract_and_load_w_creds(
             JSON string with load details
         """
         logging.info(f"Processing state: {state_id}")
+        transport = None
+        sftp_client = None
         try:
-            # Create SFTP connection inside the UDF
-            transport: Transport = Transport((sftp_host, sftp_port))
-            transport.connect(username=sftp_user, password=sftp_password)
-            sftp_client: SFTPClient | None = SFTPClient.from_transport(transport)
-            if sftp_client is None:
-                raise ValueError("Failed to create SFTP client")
+            # Create SFTP connection inside the UDF with retry logic
+            transport, sftp_client = _create_sftp_connection(
+                host=sftp_host,
+                port=sftp_port,
+                username=sftp_user,
+                password=sftp_password,
+            )
 
             # create s3 client
             s3_client = boto3.client(
@@ -117,10 +160,15 @@ def _extract_and_load_w_creds(
             full_file_path = os.path.join(remote_file_path, source_file_name)
 
             # Create a temporary directory to store the zip file and extracted contents
-            temp_dir = os.path.join(databricks_volume_directory, state_id)
-            with TemporaryDirectory(dir=temp_dir) as temp_dir:
+            temp_volume_dir = os.path.join(databricks_volume_directory, state_id)
+            os.makedirs(temp_volume_dir, exist_ok=True)
+
+            # with TemporaryDirectory(prefix=state_id, dir=temp_volume_dir) as temp_extract_dir:
+            with TemporaryDirectory(
+                prefix=state_id, dir=databricks_volume_directory
+            ) as temp_extract_dir:
                 # Download the file from the SFTP server
-                local_zip_path = os.path.join(temp_dir, source_file_name)
+                local_zip_path = os.path.join(temp_extract_dir, source_file_name)
                 sftp_client.get(full_file_path, local_zip_path)
 
                 """
@@ -133,14 +181,15 @@ def _extract_and_load_w_creds(
                 """
                 with ZipFile(local_zip_path, "r") as zip_file:
                     file_names = zip_file.namelist()
-                    zip_file.extractall(path=temp_dir)
+                    zip_file.extractall(path=temp_extract_dir)
 
                 # delete the zip file
                 os.remove(local_zip_path)
 
                 # Process files one at a time to manage memory
                 file_name_paths = [
-                    os.path.join(temp_dir, file_name) for file_name in file_names
+                    os.path.join(temp_extract_dir, file_name)
+                    for file_name in file_names
                 ]
                 file_name_paths_to_upload = []
                 pattern = r"^VM2--[A-Z]{2}--\d{4}-\d{2}-\d{2}-(DEMOGRAPHIC|VOTEHISTORY)(_DataDictionary\.csv|\.tab)$"
@@ -178,7 +227,7 @@ def _extract_and_load_w_creds(
 
                 # Upload each extracted file to S3
                 for extracted_file in file_names:
-                    local_file_path = os.path.join(temp_dir, extracted_file)
+                    local_file_path = os.path.join(temp_extract_dir, extracted_file)
                     s3_key = f"{s3_state_prefix}{extracted_file}"
 
                     if os.path.isfile(local_file_path):
@@ -196,13 +245,16 @@ def _extract_and_load_w_creds(
                 for file in file_name_paths_to_upload:
                     os.remove(file)
 
-        finally:
-            # Close SFTP connection
-            if "sftp_client" in locals():
-                if sftp_client is not None:
-                    sftp_client.close()
-            if "transport" in locals():
-                transport.close()
+        except Exception as e:
+            logging.error(f"Error processing state {state_id}: {str(e)}")
+            raise e
+        # finally:
+        #     # Close SFTP connection
+        #     if "sftp_client" in locals():
+        #         if sftp_client is not None:
+        #             sftp_client.close()
+        #     if "transport" in locals():
+        #         transport.close()
 
         result = {
             "state_id": state_id,
@@ -255,9 +307,12 @@ def model(dbt, session):
     l2_vmfiles_prefix = "l2_data/from_sftp_server/VMFiles"
 
     # dbt cloud account id
-    dbt_cloud_account_id = dbt.config.get("dbt_cloud_account_id")
+    # dbt_cloud_account_id = dbt.config.get("dbt_cloud_account_id")
+    # databricks_volume_directory = (
+    # f"/Volumes/goodparty_data_catalog/{dbt_cloud_account_id}/object_storage/l2_temp"
+    # )
     databricks_volume_directory = (
-        f"/Volumes/goodparty_data_catalog/{dbt_cloud_account_id}/object_storage/l2_temp"
+        "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
     )
 
     # get list of states
