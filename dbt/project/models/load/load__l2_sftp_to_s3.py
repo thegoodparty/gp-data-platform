@@ -59,6 +59,7 @@ def _extract_and_load_w_creds(
         Returns:
             JSON string with load details
         """
+        logging.info(f"Processing state: {state_id}")
         try:
             # Create SFTP connection inside the UDF
             transport: Transport = Transport((sftp_host, sftp_port))
@@ -114,7 +115,11 @@ def _extract_and_load_w_creds(
             full_file_path = os.path.join(remote_file_path, source_file_name)
 
             # Create a temporary directory to store the zip file and extracted contents
-            with TemporaryDirectory() as temp_dir:
+            volume_directory = (
+                "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
+            )
+            # TODO: change directory according to environment
+            with TemporaryDirectory(dir=volume_directory) as temp_dir:
                 # Download the file from the SFTP server
                 local_zip_path = os.path.join(temp_dir, source_file_name)
                 sftp_client.get(full_file_path, local_zip_path)
@@ -230,7 +235,7 @@ def _extract_and_load_w_creds(
 def model(dbt, session):
     dbt.config(
         submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # TODO: maybe requires 64GB cluster to prevent OOM
         materialized="incremental",
         incremental_strategy="append",
         unique_key="id",
@@ -258,12 +263,18 @@ def model(dbt, session):
     )
     states = states.withColumn("state_id", upper(col("state_id").cast(StringType())))
 
+    # remove Virgin Islands (VI), Puerto Rico (PR)
+    states = states.filter(~col("state_id").isin(["VI", "PR"]))
+
     # trigger preceding transformations and filter out nulls
     states.cache()
     states.count()
+
     # for dev just a few states
-    states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
-    # states = states.limit(5)
+    # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
+    states = states.sample(fraction=0.1, seed=42)
+    state_list = [row.state_id for row in states.select("state_id").collect()]
+    logging.info(f"States included: {', '.join(sorted(state_list))}")
     # TODO: remove dev restiction above
 
     # Repartition to ensure one state per partition
