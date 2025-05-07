@@ -19,7 +19,7 @@ models:
       contains_pii: true
     columns:
       - name: id
-        description: "Unique identifier for the candidacy in the CivicEngine database"
+        description: "Unique identifier for the loading job"
         tests:
           - not_null
           - unique

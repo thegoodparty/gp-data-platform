@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import datetime
+from typing import Dict
 
 import psycopg2
 from pyspark.sql import DataFrame
@@ -12,6 +13,101 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+
+CANDIDACY_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Candidacy" (
+        id,
+        created_at,
+        updated_at,
+        br_database_id,
+        slug,
+        first_name,
+        last_name,
+        party,
+        place_name,
+        state,
+        image,
+        about,
+        urls,
+        election_frequency,
+        salary,
+        normalized_position_name,
+        position_name,
+        position_description,
+        race_id
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        br_database_id,
+        slug,
+        first_name,
+        last_name,
+        party,
+        place_name,
+        state,
+        image,
+        about,
+        urls,
+        election_frequency,
+        salary,
+        normalized_position_name,
+        position_name,
+        position_description,
+        race_id::uuid
+    FROM {staging_schema}."Candidacy"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        br_database_id = EXCLUDED.br_database_id,
+        slug = EXCLUDED.slug,
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        party = EXCLUDED.party,
+        place_name = EXCLUDED.place_name,
+        state = EXCLUDED.state,
+        image = EXCLUDED.image,
+        about = EXCLUDED.about,
+        urls = EXCLUDED.urls,
+        election_frequency = EXCLUDED.election_frequency,
+        salary = EXCLUDED.salary,
+        normalized_position_name = EXCLUDED.normalized_position_name,
+        position_name = EXCLUDED.position_name,
+        position_description = EXCLUDED.position_description,
+        race_id = EXCLUDED.race_id
+"""
+
+ISSUE_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Issue" (
+        id,
+        created_at,
+        updated_at,
+        br_database_id,
+        expanded_text,
+        key,
+        name,
+        parent_id
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        br_database_id,
+        expanded_text,
+        key,
+        name,
+        parent_id::uuid
+    FROM {staging_schema}."Issue"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        br_database_id = EXCLUDED.br_database_id,
+        expanded_text = EXCLUDED.expanded_text,
+        key = EXCLUDED.key,
+        name = EXCLUDED.name,
+        parent_id = EXCLUDED.parent_id
+"""
 
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (
@@ -162,6 +258,39 @@ RACE_UPSERT_QUERY = """
         position_names = EXCLUDED.position_names
 """
 
+STANCE_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Stance" (
+        id,
+        created_at,
+        updated_at,
+        br_database_id,
+        stance_locale,
+        stance_reference_url,
+        stance_statement,
+        issue_id,
+        candidacy_id
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        br_database_id,
+        stance_locale,
+        stance_reference_url,
+        stance_statement,
+        issue_id::uuid,
+        candidacy_id::uuid
+    FROM {staging_schema}."Stance"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        br_database_id = EXCLUDED.br_database_id,
+        stance_locale = EXCLUDED.stance_locale,
+        stance_reference_url = EXCLUDED.stance_reference_url,
+        stance_statement = EXCLUDED.stance_statement,
+        issue_id = EXCLUDED.issue_id,
+        candidacy_id = EXCLUDED.candidacy_id
+"""
 
 WRITE_TABLE_SCHEMA = StructType(
     [
@@ -234,6 +363,29 @@ def _load_data_to_postgres(
         "overwrite"
     ).save()
 
+    # dedup on slugs if they have different ids:
+    if table_name in ["Candidacy", "Place"]:
+        dedup_query = f"""
+        with
+            dupes as (
+                select tbl_pub.id as pub_id, tbl_stg.id as stg_id
+                from {db_schema}."{table_name}" as tbl_pub
+                left join {staging_schema}."{table_name}" as tbl_stg
+                    on tbl_pub.slug = tbl_stg.slug
+                    and tbl_pub.id != tbl_stg.id::uuid
+            )
+            delete from {db_schema}."{table_name}"
+            where id in (select pub_id from dupes where stg_id is not null)
+        """
+        _execute_sql_query(
+            dedup_query,
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
+        )
+
     # Execute the upsert query
     _execute_sql_query(
         upsert_query.format(db_schema=db_schema, staging_schema=staging_schema),
@@ -274,8 +426,17 @@ def model(dbt, session) -> DataFrame:
     db_schema = dbt.config.get("election_db_schema")
 
     # get the data to write
+    candidacy_df: DataFrame = dbt.ref("m_election_api__candidacy")
+    issue_df: DataFrame = dbt.ref("m_election_api__issue")
     place_df: DataFrame = dbt.ref("m_election_api__place")
     race_df: DataFrame = dbt.ref("m_election_api__race")
+    stance_df: DataFrame = dbt.ref("m_election_api__stance")
+
+    # filter the race dataframe to only include races that are within 1 day of the current date and 2 years from the current date
+    race_df = race_df.filter(
+        (race_df.election_date > date_sub(current_date(), 1))
+        & (race_df.election_date < date_add(current_date(), 2 * 365))
+    )
 
     # Implement incremental logic if this is an incremental run
     if dbt.is_incremental:
@@ -287,44 +448,26 @@ def model(dbt, session) -> DataFrame:
             "driver": "org.postgresql.Driver",
         }
 
-        # Get the latest timestamp for places
-        place_query = (
-            f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Place"'
+        # get the latest timestamp for each table and filter the dataframes to only include new or updated records
+        max_updated_at = {}
+        to_load = zip(
+            ["Candidacy", "Issue", "Place", "Race", "Stance"],
+            [candidacy_df, issue_df, place_df, race_df, stance_df],
         )
-        place_max_df = (
-            session.read.format("jdbc")
-            .options(**jdbc_props)
-            .option("query", place_query)
-            .load()
-        )
-        place_max_updated_at = place_max_df.collect()[0]["max_updated_at"]
-
-        # Get the latest timestamp for races
-        race_query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."Race"'
-        race_max_df = (
-            session.read.format("jdbc")
-            .options(**jdbc_props)
-            .option("query", race_query)
-            .load()
-        )
-        race_max_updated_at = race_max_df.collect()[0]["max_updated_at"]
-
-        # Filter dataframes to only include new or updated records
-        if place_max_updated_at:
-            logging.info(
-                f"Filtering place data for records updated after {place_max_updated_at}"
+        for table, df in to_load:
+            query = (
+                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
             )
-            place_df = place_df.filter(place_df.updated_at > place_max_updated_at)
-
-        if race_max_updated_at:
-            logging.info(
-                f"Filtering race data for records updated after {race_max_updated_at}"
+            max_updated_at_df = (
+                session.read.format("jdbc")
+                .options(**jdbc_props)
+                .option("query", query)
+                .load()
             )
-            race_df = race_df.filter(race_df.updated_at > race_max_updated_at)
+            max_updated_at[table] = max_updated_at_df.collect()[0]["max_updated_at"]
 
-        logging.info(
-            f"Incremental load: {place_df.count()} place records and {race_df.count()} race records to process"
-        )
+            if max_updated_at[table]:
+                df = df.filter(df.updated_at > max_updated_at[table])
 
     # Create a staging schema if it doesn't exist
     _execute_sql_query(
@@ -336,38 +479,31 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
-    # Load Place and Race data using the utility function
-    place_count = _load_data_to_postgres(
-        df=place_df,
-        table_name="Place",
-        upsert_query=PLACE_UPSERT_QUERY,
-        db_host=db_host,
-        db_port=db_port,
-        db_user=db_user,
-        db_pw=db_pw,
-        db_name=db_name,
-        staging_schema=staging_schema,
-        db_schema=db_schema,
-    )
-
-    # for race, we need to drop rows that have `election_date` more than 1 day ago, and more than 2 years from now
-    race_df = race_df.filter(
-        (race_df.election_date > date_sub(current_date(), 1))
-        & (race_df.election_date < date_add(current_date(), 2 * 365))
-    )
-
-    race_count = _load_data_to_postgres(
-        df=race_df,
-        table_name="Race",
-        upsert_query=RACE_UPSERT_QUERY,
-        db_host=db_host,
-        db_port=db_port,
-        db_user=db_user,
-        db_pw=db_pw,
-        db_name=db_name,
-        staging_schema=staging_schema,
-        db_schema=db_schema,
-    )
+    # Load tables to postgres
+    table_load_counts: Dict[str, int] = {}
+    for table_name, df, upsert_query in zip(
+        ["Candidacy", "Issue", "Place", "Race", "Stance"],
+        [candidacy_df, issue_df, place_df, race_df, stance_df],
+        [
+            CANDIDACY_UPSERT_QUERY,
+            ISSUE_UPSERT_QUERY,
+            PLACE_UPSERT_QUERY,
+            RACE_UPSERT_QUERY,
+            STANCE_UPSERT_QUERY,
+        ],
+    ):
+        table_load_counts[table_name] = _load_data_to_postgres(
+            df=df,
+            table_name=table_name,
+            upsert_query=upsert_query,
+            db_host=db_host,
+            db_port=db_port,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_name=db_name,
+            staging_schema=staging_schema,
+            db_schema=db_schema,
+        )
 
     # for the race db, drop rows that have `election_date` more than 1 day ago
     _execute_sql_query(
@@ -379,21 +515,16 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
-    # log the loading information including the number of rows loaded
-    data = [
-        (
-            str(uuid.uuid4()),
-            "m_election_api__place",
-            place_count,
-            datetime.now(),
-        ),
-        (
-            str(uuid.uuid4()),
-            "m_election_api__race",
-            race_count,
-            datetime.now(),
-        ),
-    ]
+    data = []
+    for table_name, count in table_load_counts.items():
+        data.append(
+            (
+                str(uuid.uuid4()),
+                f"m_election_api___{table_name}".lower(),
+                count,
+                datetime.now(),
+            )
+        )
     load_log_df = session.createDataFrame(data, schema=WRITE_TABLE_SCHEMA)
 
     return load_log_df

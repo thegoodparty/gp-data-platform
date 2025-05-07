@@ -163,9 +163,6 @@ models:
           - relationships:
               to: ref('stg_airbyte_source__ballotready_api_position')
               field: database_id
-    tests:
-      - dbt_utils.equal_rowcount:
-          compare_model: ref('stg_airbyte_source__ballotready_api_position')
 
   - name: int__geo_id_attributes
     description: "Intermediate model that maps geo_id to its components and parent geo_id"

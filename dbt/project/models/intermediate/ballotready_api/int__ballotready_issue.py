@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List
 import pandas as pd
 import requests
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, explode, pandas_udf
+from pyspark.sql.functions import col, current_timestamp, explode, lit, pandas_udf
 from pyspark.sql.types import (
     ArrayType,
     BooleanType,
@@ -16,6 +16,7 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+    TimestampType,
 )
 
 ISSUE_BR_SCHEMA = StructType(
@@ -212,7 +213,7 @@ def model(dbt, session) -> DataFrame:
     issue_database_ids_count = issue_database_ids.count()
     if issue_database_ids_count == 0:
         logging.info("INFO: No new or updated issues to process")
-        empty_df = session.createDataFrame([], ISSUE_BR_SCHEMA)
+        empty_df: DataFrame = session.createDataFrame([], ISSUE_BR_SCHEMA)
         empty_df = empty_df.select(
             col("databaseId").alias("database_id"),
             # col("expandedText").alias("expanded_text"),
@@ -224,6 +225,9 @@ def model(dbt, session) -> DataFrame:
             col("responseType").alias("response_type"),
             col("rowOrder").alias("row_order"),
         )
+        # Add timestamp columns with null values to the empty dataframe
+        empty_df = empty_df.withColumn("created_at", lit(None).cast(TimestampType()))
+        empty_df = empty_df.withColumn("updated_at", lit(None).cast(TimestampType()))
         return empty_df
 
     # get issue data from API
@@ -241,6 +245,68 @@ def model(dbt, session) -> DataFrame:
         col("issue.responseType").alias("response_type"),
         col("issue.rowOrder").alias("row_order"),
     )
+
+    # add in created_at and updated_at timestamps
+    if dbt.is_incremental:
+
+        # get new issues that do not exist in the existing table and add created_at and updated_at timestamps
+        new_issues = issue.join(
+            other=existing_table,
+            on=["database_id"],
+            how="left_anti",
+        )
+        new_issues = new_issues.withColumn(
+            "created_at",
+            current_timestamp(),
+        ).withColumn(
+            "updated_at",
+            current_timestamp(),
+        )
+
+        # get overlap between data pull and existing issues
+        overlapping_issues = issue.join(
+            other=existing_table,
+            on=["database_id"],
+            how="inner",
+        )
+
+        # get updated issues by comparing the existing issues with the overlapping issues
+        # updated issues are the overlap without a complete match on all fields
+        updated_issues = overlapping_issues.join(
+            other=issue,
+            on=[
+                "database_id",
+                "key",
+                "name",
+                "plugin_enabled",
+                "response_type",
+                "row_order",
+            ],
+            how="left_anti",
+        )
+        # get original created_at timestamp and use current timestamp for updated_at
+        updated_issues = updated_issues.join(
+            other=existing_table.select("database_id", "created_at"),
+            on=["database_id"],
+            how="left",
+        )
+        updated_issues = updated_issues.withColumn(
+            "updated_at",
+            current_timestamp(),
+        )
+
+        # combine the new and updated issues
+        issue = new_issues.union(updated_issues)
+
+    else:
+        issue = issue.withColumn(
+            "created_at",
+            current_timestamp(),
+        )
+        issue = issue.withColumn(
+            "updated_at",
+            current_timestamp(),
+        )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     issue.cache()
