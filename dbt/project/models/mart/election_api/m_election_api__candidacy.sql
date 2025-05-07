@@ -115,19 +115,9 @@ with
             and first_name is not null
             and last_name is not null
             and (
-                party not in (
-                    'Democrat',
-                    'Democratic',
-                    'Republican',
-                    'Democratic-Farmer-Labor',
-                    'Conservative Party',
-                    'Progressive',
-                    'Democratic/Republican',
-                    'Democratic-NPL',
-                    'DCP'
-                )
-                and party not ilike '%Democrat%'
-                and party not ilike '%Republican%'
+                party not in ('Conservative Party', 'Progressive', 'DCP')
+                or party not ilike '%Democrat%'
+                or party not ilike '%Republican%'
             )
 
     ),
