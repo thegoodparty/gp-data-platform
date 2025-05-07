@@ -114,7 +114,22 @@ with
             1 = 1
             and first_name is not null
             and last_name is not null
-            and party not in ('Democrat', 'Republican')
+            and (
+                party not in (
+                    'Democrat',
+                    'Democratic',
+                    'Republican',
+                    'Democratic-Farmer-Labor',
+                    'Conservative Party',
+                    'Progressive',
+                    'Democratic/Republican',
+                    'Democratic-NPL',
+                    'DCP'
+                )
+                and party not ilike '%Democrat%'
+                and party not ilike '%Republican%'
+            )
+
     ),
     deduped_candidacy as (
         select *
