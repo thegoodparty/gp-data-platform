@@ -23,4 +23,10 @@ models:
         tests:
           - not_null
           - unique
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - source_file_name
+            - source_zip_file
+
 # TODO: add more tests that are relevant to the model
