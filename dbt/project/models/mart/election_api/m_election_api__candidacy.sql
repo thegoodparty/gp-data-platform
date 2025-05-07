@@ -114,12 +114,11 @@ with
             1 = 1
             and first_name is not null
             and last_name is not null
-            and (
-                party not in ('Conservative Party', 'Progressive', 'DCP')
-                or party not ilike '%Democrat%'
-                or party not ilike '%Republican%'
+            and not (
+                party in ('Conservative Party', 'Progressive', 'DCP')
+                or party ilike '%democrat%'
+                or party ilike '%republican%'
             )
-
     ),
     deduped_candidacy as (
         select *
