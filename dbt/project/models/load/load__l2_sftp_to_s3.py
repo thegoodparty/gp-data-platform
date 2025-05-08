@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import time
+import traceback
 from datetime import datetime
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict
@@ -15,11 +16,9 @@ from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, explode, lit, udf, upper
 from pyspark.sql.types import (
-    ArrayType,
     StringType,
     StructField,
     StructType,
-    TimestampType,
 )
 
 
@@ -48,16 +47,18 @@ def _create_sftp_connection(
     for attempt in range(max_retries):
         try:
             transport = Transport((host, port))
-            transport.set_keepalive(60)  # Send keepalive packet every 60 seconds
+            transport.set_keepalive(30)  # Send keepalive packet every 30 seconds
             transport.connect(username=username, password=password)
             sftp_client = SFTPClient.from_transport(transport)
             if sftp_client is None:
                 raise ValueError("Failed to create SFTP client")
+            logging.info("SFTP client created successfully")
             return transport, sftp_client
         except Exception as e:
+            logging.error(f"SFTP connection attempt {attempt + 1} failed: {str(e)}")
             if attempt == max_retries - 1:
                 raise
-            logging.warning(f"SFTP connection attempt {attempt + 1} failed: {str(e)}")
+            logging.warning(f"Waiting {retry_delay} seconds before next attempt...")
             time.sleep(retry_delay)
     raise Exception("Failed to establish SFTP connection after all retries")
 
@@ -135,19 +136,20 @@ def _extract_and_load_w_creds(
                 )
 
             # check if the base file name is the same as the file name in the s3 bucket
-            source_file_name = file_list[0]
-            source_file_base_name = source_file_name.split(".")[0]
+            source_zip_file_name = file_list[0]
+            source_zip_file_base_name = source_zip_file_name.split(".")[0]
             s3_state_prefix = f"{s3_prefix}/{state_id.upper()}/"
             s3_file_list = s3_client.list_objects_v2(
                 Bucket=s3_bucket, Prefix=s3_state_prefix
             )
             s3_file_list = [f["Key"] for f in s3_file_list.get("Contents", [])]
             s3_file_exists = any(
-                source_file_base_name in s3_file_name for s3_file_name in s3_file_list
+                source_zip_file_base_name in s3_file_name
+                for s3_file_name in s3_file_list
             )
             if s3_file_exists:
                 logging.info(
-                    f"File with base name {source_file_base_name} already exists in S3"
+                    f"File with base name {source_zip_file_base_name} already exists in S3"
                 )
                 return {
                     "state_id": None,
@@ -157,19 +159,18 @@ def _extract_and_load_w_creds(
                 }
 
             # download the file from the sftp server and extract it
-            full_file_path = os.path.join(remote_file_path, source_file_name)
+            full_file_path = os.path.join(remote_file_path, source_zip_file_name)
 
-            # Create a temporary directory to store the zip file and extracted contents
-            temp_volume_dir = os.path.join(databricks_volume_directory, state_id)
-            os.makedirs(temp_volume_dir, exist_ok=True)
-
-            # with TemporaryDirectory(prefix=state_id, dir=temp_volume_dir) as temp_extract_dir:
             with TemporaryDirectory(
-                prefix=state_id, dir=databricks_volume_directory
+                prefix=f"temp_{state_id}_", dir=databricks_volume_directory
             ) as temp_extract_dir:
                 # Download the file from the SFTP server
-                local_zip_path = os.path.join(temp_extract_dir, source_file_name)
-                sftp_client.get(full_file_path, local_zip_path)
+                local_zip_path = os.path.join(temp_extract_dir, source_zip_file_name)
+                sftp_client.get(
+                    remotepath=full_file_path,
+                    localpath=local_zip_path,
+                    max_concurrent_prefetch_requests=64,
+                )
 
                 """
                 Files inside of the zip are named like:
@@ -203,7 +204,7 @@ def _extract_and_load_w_creds(
 
                     match = re.match(pattern, filename)
                     if match:
-                        file_name_paths_to_upload.append(file)
+                        file_name_paths_to_upload.append(filename)
 
                         # Extract the file type (DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY) and extension
                         file_type = match.group(1)
@@ -226,7 +227,7 @@ def _extract_and_load_w_creds(
                         logging.info(f"Skipping (match={match}) file: {filename}")
 
                 # Upload each extracted file to S3
-                for extracted_file in file_names:
+                for extracted_file in file_name_paths_to_upload:
                     local_file_path = os.path.join(temp_extract_dir, extracted_file)
                     s3_key = f"{s3_state_prefix}{extracted_file}"
 
@@ -247,46 +248,50 @@ def _extract_and_load_w_creds(
 
         except Exception as e:
             logging.error(f"Error processing state {state_id}: {str(e)}")
-            raise e
-        # finally:
-        #     # Close SFTP connection
-        #     if "sftp_client" in locals():
-        #         if sftp_client is not None:
-        #             sftp_client.close()
-        #     if "transport" in locals():
-        #         transport.close()
+            error_details = traceback.format_exc()
+            logging.error(f"Full exception details:\n{error_details}")
+            raise Exception(
+                f"Error processing state {state_id}: {str(e)}\nFull traceback:\n{error_details}"
+            )
+        finally:
+            # Close SFTP connection
+            if sftp_client is not None:
+                sftp_client.close()
+            if transport is not None:
+                transport.close()
 
         result = {
             "state_id": state_id,
             "source_file_names": file_names,
-            "source_zip_file": source_file_name,
+            "source_zip_file": source_zip_file_name,
             "loaded_at": datetime.now(),
             "s3_state_prefix": s3_state_prefix,
         }
         return result
 
     # Define the schema for the dictionary
-    return_schema = StructType(
-        [
-            StructField(name="state_id", dataType=StringType(), nullable=True),
-            StructField(
-                name="source_file_names",
-                dataType=ArrayType(StringType()),
-                nullable=True,
-            ),
-            StructField(name="source_zip_file", dataType=StringType(), nullable=True),
-            StructField(name="loaded_at", dataType=TimestampType(), nullable=True),
-            StructField(name="s3_state_prefix", dataType=StringType(), nullable=True),
-        ]
-    )
-    _extract_and_load = udf(_extract_and_load, returnType=return_schema)
+    # return_schema = StructType(
+    #     [
+    #         StructField(name="state_id", dataType=StringType(), nullable=True),
+    #         StructField(
+    #             name="source_file_names",
+    #             dataType=ArrayType(StringType()),
+    #             nullable=True,
+    #         ),
+    #         StructField(name="source_zip_file", dataType=StringType(), nullable=True),
+    #         StructField(name="loaded_at", dataType=TimestampType(), nullable=True),
+    #         StructField(name="s3_state_prefix", dataType=StringType(), nullable=True),
+    #     ]
+    # )
+    # TODO: try with udf (pyspark) vs without udf (pandas)
+    # _extract_and_load = udf(_extract_and_load, returnType=return_schema)
     return _extract_and_load
 
 
 def model(dbt, session):
     dbt.config(
         submission_method="all_purpose_cluster",
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # TODO: maybe requires 64GB cluster to prevent OOM
+        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="append",
         unique_key="id",
@@ -332,13 +337,15 @@ def model(dbt, session):
 
     # for dev just a few states
     # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
+    # states = states.filter(col("state_id").isin(["AK",]))
     # states = states.sample(fraction=0.1, seed=42)
-    state_list = [row.state_id for row in states.select("state_id").collect()]
-    logging.info(f"States included: {', '.join(sorted(state_list))}")
+    # state_list = [row.state_id for row in states.select("state_id").collect()]
+    # logging.info(f"States included: {', '.join(sorted(state_list))}")
     # TODO: remove dev restiction above
 
-    # Repartition to ensure one state per partition
-    states = states.repartition(states.count())
+    # # Repartition to ensure one state per partition
+    # states = states.repartition(states.count())
+    states = states.repartition(4)  # limit parallel connections to sftp server
 
     # extract and load the files
     extract_and_load = _extract_and_load_w_creds(
@@ -352,7 +359,25 @@ def model(dbt, session):
         s3_secret_key=s3_secret_key,
         databricks_volume_directory=databricks_volume_directory,
     )
-    states = states.withColumn("load_details", extract_and_load(states["state_id"]))
+    # states = states.withColumn("load_details", extract_and_load(states["state_id"]))
+
+    # Convert to pandas DataFrame for processing with apply
+    states_pd = states.toPandas()
+    # states_pd['load_details'] = states_pd['state_id'].apply(extract_and_load)
+    import mapply
+
+    mapply.init(n_workers=4, chunk_size=2, progressbar=False)
+    states_pd["load_details"] = states_pd["state_id"].mapply(extract_and_load)
+
+    # Convert back to Spark DataFrame
+    schema = StructType(
+        [
+            StructField("state_id", StringType(), True),
+            StructField("load_details", StringType(), True),
+        ]
+    )
+
+    states = session.createDataFrame(states_pd, schema)
 
     # generate an uuid for the load job
     states = states.withColumn("load_id", lit(str(uuid4())))
