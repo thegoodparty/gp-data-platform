@@ -346,7 +346,7 @@ def model(dbt, session):
 
     # for dev just a few states
     # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
-    states = states.sample(fraction=0.1, seed=42)
+    # states = states.sample(fraction=0.2, seed=42)
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
     # TODO: remove dev restiction above
@@ -370,8 +370,13 @@ def model(dbt, session):
     # states = states.withColumn("load_details", extract_and_load(states["state_id"]))
 
     # Convert to pandas DataFrame for processing on spark driver since sftp connection for large files
-    # breaks when run through UDF on spark workers
-    mapply.init(n_workers=4, chunk_size=2, progressbar=False)
+    # breaks when run through UDF on spark
+    # n_workers = mapply.parallel.sensible_cpu_count()  # number of cores (include hyperthreading) - 1 for other processes
+    n_workers = 4  # number of cores on the instance type
+    chunk_size = (
+        2  # avoid having the largest States (CA, TX, FL) falling into the same chunk
+    )
+    mapply.init(n_workers=n_workers, chunk_size=chunk_size, progressbar=False)
     states_pd = states.toPandas()
     states_pd["load_details"] = states_pd["state_id"].mapply(extract_and_load)
 
