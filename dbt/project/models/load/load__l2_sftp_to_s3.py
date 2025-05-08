@@ -328,7 +328,7 @@ def model(dbt, session):
     databricks_volume_directory = (
         f"/Volumes/goodparty_data_catalog/{vol_prefix}/object_storage/l2_temp"
     )
-
+    "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
     # get list of states
     states: DataFrame = (
         dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77")
@@ -346,7 +346,6 @@ def model(dbt, session):
 
     # for dev just a few states
     # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
-    # states = states.filter(col("state_id").isin(["AK",]))
     states = states.sample(fraction=0.1, seed=42)
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
