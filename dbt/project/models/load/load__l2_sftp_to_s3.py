@@ -11,6 +11,7 @@ from uuid import uuid4
 from zipfile import ZipFile
 
 import boto3
+import mapply
 import pandas as pd
 from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
@@ -313,21 +314,20 @@ def model(dbt, session):
     dbt_env_name = dbt.config.get("dbt_cloud_environment_name")
     l2_vmfiles_prefix = f"l2_data/from_sftp_server/VMFiles/{dbt_env_name}"
 
-    # dbt cloud account id
-    # dbt_cloud_account_id = dbt.config.get("dbt_cloud_account_id")
-    # databricks_volume_directory = (
-    # f"/Volumes/goodparty_data_catalog/{dbt_cloud_account_id}/object_storage/l2_temp"
-    # )
+    # set databricks temporary volume path based on dbt cloud environment name
     # TODO: use volume path based on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
     if dbt_env_name == "Development":
-        databricks_volume_directory = (
-            "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
-        )
+        vol_prefix = "dbt_hugh"
     elif dbt_env_name == "Production":
-        databricks_volume_directory = (
-            "/Volumes/goodparty_data_catalog/dbt/object_storage/l2_temp"
+        vol_prefix = "dbt"
+    else:
+        raise ValueError(
+            f"Invalid `vol_prefix` handling of dbt environment name: {dbt_env_name}"
         )
+    databricks_volume_directory = (
+        f"/Volumes/goodparty_data_catalog/{vol_prefix}/object_storage/l2_temp"
+    )
 
     # get list of states
     states: DataFrame = (
@@ -345,9 +345,9 @@ def model(dbt, session):
     states.count()
 
     # for dev just a few states
-    states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
+    # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
     # states = states.filter(col("state_id").isin(["AK",]))
-    # states = states.sample(fraction=0.1, seed=42)
+    states = states.sample(fraction=0.1, seed=42)
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
     # TODO: remove dev restiction above
@@ -370,12 +370,10 @@ def model(dbt, session):
     )
     # states = states.withColumn("load_details", extract_and_load(states["state_id"]))
 
-    # Convert to pandas DataFrame for processing with apply
-    states_pd = states.toPandas()
-    # states_pd['load_details'] = states_pd['state_id'].apply(extract_and_load)
-    import mapply
-
+    # Convert to pandas DataFrame for processing on spark driver since sftp connection for large files
+    # breaks when run through UDF on spark workers
     mapply.init(n_workers=4, chunk_size=2, progressbar=False)
+    states_pd = states.toPandas()
     states_pd["load_details"] = states_pd["state_id"].mapply(extract_and_load)
 
     # Convert back to Spark DataFrame
