@@ -310,16 +310,24 @@ def model(dbt, session):
     s3_bucket = dbt.config.get("l2_s3_bucket")
     s3_access_key = dbt.config.get("l2_s3_access_key")
     s3_secret_key = dbt.config.get("l2_s3_secret_key")
-    l2_vmfiles_prefix = "l2_data/from_sftp_server/VMFiles"
+    dbt_env_name = dbt.config.get("dbt_cloud_environment_name")
+    l2_vmfiles_prefix = f"l2_data/from_sftp_server/VMFiles/{dbt_env_name}"
 
     # dbt cloud account id
     # dbt_cloud_account_id = dbt.config.get("dbt_cloud_account_id")
     # databricks_volume_directory = (
     # f"/Volumes/goodparty_data_catalog/{dbt_cloud_account_id}/object_storage/l2_temp"
     # )
-    databricks_volume_directory = (
-        "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
-    )
+    # TODO: use volume path based on dbt cloud account. current env vars listed in docs are not available
+    # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
+    if dbt_env_name == "Development":
+        databricks_volume_directory = (
+            "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
+        )
+    elif dbt_env_name == "Production":
+        databricks_volume_directory = (
+            "/Volumes/goodparty_data_catalog/dbt/object_storage/l2_temp"
+        )
 
     # get list of states
     states: DataFrame = (
