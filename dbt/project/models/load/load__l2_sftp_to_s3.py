@@ -16,9 +16,11 @@ from paramiko import SFTPClient, Transport
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, explode, lit, udf, upper
 from pyspark.sql.types import (
+    ArrayType,
     StringType,
     StructField,
     StructType,
+    TimestampType,
 )
 
 
@@ -156,6 +158,7 @@ def _extract_and_load_w_creds(
                     "source_file_names": None,
                     "source_zip_file": None,
                     "loaded_at": None,
+                    "s3_state_prefix": None,
                 }
 
             # download the file from the sftp server and extract it
@@ -235,16 +238,14 @@ def _extract_and_load_w_creds(
                         s3_client.upload_file(
                             Filename=local_file_path, Bucket=s3_bucket, Key=s3_key
                         )
+                        # delete locally extracted files
+                        os.remove(local_file_path)
 
                 # Delete files from s3 prefix that are not in the zip file
                 valid_files = [f for f in file_names if re.match(pattern, f)]
                 for s3_file_name in s3_file_list:
                     if s3_file_name not in valid_files:
                         s3_client.delete_object(Bucket=s3_bucket, Key=s3_file_name)
-
-                # delete locally extracted files
-                for file in file_name_paths_to_upload:
-                    os.remove(file)
 
         except Exception as e:
             logging.error(f"Error processing state {state_id}: {str(e)}")
@@ -336,11 +337,11 @@ def model(dbt, session):
     states.count()
 
     # for dev just a few states
-    # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
+    states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
     # states = states.filter(col("state_id").isin(["AK",]))
     # states = states.sample(fraction=0.1, seed=42)
-    # state_list = [row.state_id for row in states.select("state_id").collect()]
-    # logging.info(f"States included: {', '.join(sorted(state_list))}")
+    state_list = [row.state_id for row in states.select("state_id").collect()]
+    logging.info(f"States included: {', '.join(sorted(state_list))}")
     # TODO: remove dev restiction above
 
     # # Repartition to ensure one state per partition
@@ -370,14 +371,27 @@ def model(dbt, session):
     states_pd["load_details"] = states_pd["state_id"].mapply(extract_and_load)
 
     # Convert back to Spark DataFrame
-    schema = StructType(
+    load_details_schema = StructType(
         [
-            StructField("state_id", StringType(), True),
-            StructField("load_details", StringType(), True),
+            StructField(name="state_id", dataType=StringType(), nullable=True),
+            StructField(
+                name="load_details",
+                dataType=StructType(
+                    [
+                        StructField(
+                            name="state_id", dataType=StringType(), nullable=True
+                        ),
+                        StructField("source_file_names", ArrayType(StringType()), True),
+                        StructField("source_zip_file", StringType(), True),
+                        StructField("loaded_at", TimestampType(), True),
+                        StructField("s3_state_prefix", StringType(), True),
+                    ]
+                ),
+                nullable=True,
+            ),
         ]
     )
-
-    states = session.createDataFrame(states_pd, schema)
+    states = session.createDataFrame(states_pd, load_details_schema)
 
     # generate an uuid for the load job
     states = states.withColumn("load_id", lit(str(uuid4())))
