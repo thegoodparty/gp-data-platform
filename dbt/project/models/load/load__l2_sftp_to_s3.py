@@ -297,15 +297,15 @@ def model(dbt, session):
     s3_bucket = dbt.config.get("l2_s3_bucket")
     s3_access_key = dbt.config.get("l2_s3_access_key")
     s3_secret_key = dbt.config.get("l2_s3_secret_key")
-    dbt_env_name = dbt.config.get("dbt_cloud_environment_name")
+    dbt_env_name = dbt.config.get("dbt_environment")
     l2_vmfiles_prefix = f"l2_data/from_sftp_server/VMFiles/{dbt_env_name}"
 
     # set databricks temporary volume path based on dbt cloud environment name
     # TODO: use volume path based on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-    if dbt_env_name == "Development":
+    if dbt_env_name == "dev":
         vol_prefix = "dbt_hugh"
-    elif dbt_env_name == "Production":
+    elif dbt_env_name == "prod":
         vol_prefix = "dbt"
     else:
         raise ValueError(
