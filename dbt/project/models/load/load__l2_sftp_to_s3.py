@@ -104,7 +104,7 @@ def _extract_and_load_w_creds(
             state_id: Series of state IDs
 
         Returns:
-            JSON string with load details
+            Dictionary with details of loading job
         """
         logging.info(f"Processing state: {state_id}")
         transport = None
