@@ -1,7 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
+        materialized="table",
         unique_key="id",
         auto_liquid_cluster=true,
         tags=["mart", "election_api", "race"],
@@ -45,7 +44,5 @@ select
 from {{ ref("int__enhanced_race") }}
 where
     place_id in (select id from {{ ref("m_election_api__place") }})
-    and election_date > current_date()
-    {% if is_incremental() %}
-        and updated_at > (select max(updated_at) from {{ this }})
-    {% endif %}
+    and election_date
+    between current_date() - interval '1 day' and current_date() + interval '2 years'
