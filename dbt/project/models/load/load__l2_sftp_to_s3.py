@@ -50,7 +50,7 @@ def _create_sftp_connection(
     for attempt in range(max_retries):
         try:
             transport = Transport((host, port))
-            transport.set_keepalive(30)  # Send keepalive packet every 30 seconds
+            transport.set_keepalive(30)
             transport.connect(username=username, password=password)
             sftp_client = SFTPClient.from_transport(transport)
             if sftp_client is None:
@@ -90,6 +90,7 @@ def _extract_and_load_w_creds(
         s3_bucket: The name of the S3 bucket
         s3_access_key: The access key for the S3 bucket
         s3_secret_key: The secret key for the S3 bucket
+        databricks_volume_directory: The directory to store temporary files
 
     Returns:
         A pandas UDF function
@@ -124,7 +125,7 @@ def _extract_and_load_w_creds(
                 aws_secret_access_key=s3_secret_key,
             )
 
-            # collect existing files in the s3 bucket
+            # get file for the state from the sftp server and check that it exists
             remote_file_path = "/VMFiles/"
             file_list = sftp_client.listdir(remote_file_path)
             string_pattern = f"VM2--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
@@ -138,7 +139,8 @@ def _extract_and_load_w_creds(
                     f"file_list: {file_list}\n"
                 )
 
-            # check if the base file name is the same as the file name in the s3 bucket
+            # check if the base file name is the same as a file name in the s3 bucket
+            # if it is, skip the load since the date in the file name is the same. no updates available.
             source_zip_file_name = file_list[0]
             source_zip_file_base_name = source_zip_file_name.split(".")[0]
             s3_state_prefix = f"{s3_prefix}/{state_id.upper()}/"
@@ -191,7 +193,7 @@ def _extract_and_load_w_creds(
                 # delete the zip file
                 os.remove(local_zip_path)
 
-                # Process files one at a time to manage memory
+                # get list of files to upload
                 file_name_paths = [
                     os.path.join(temp_extract_dir, file_name)
                     for file_name in file_names
@@ -271,22 +273,6 @@ def _extract_and_load_w_creds(
         }
         return result
 
-    # Define the schema for the dictionary
-    # return_schema = StructType(
-    #     [
-    #         StructField(name="state_id", dataType=StringType(), nullable=True),
-    #         StructField(
-    #             name="source_file_names",
-    #             dataType=ArrayType(StringType()),
-    #             nullable=True,
-    #         ),
-    #         StructField(name="source_zip_file", dataType=StringType(), nullable=True),
-    #         StructField(name="loaded_at", dataType=TimestampType(), nullable=True),
-    #         StructField(name="s3_state_prefix", dataType=StringType(), nullable=True),
-    #     ]
-    # )
-    # TODO: try with udf (pyspark) vs without udf (pandas)
-    # _extract_and_load = udf(_extract_and_load, returnType=return_schema)
     return _extract_and_load
 
 
@@ -343,19 +329,10 @@ def model(dbt, session):
     # trigger preceding transformations and filter out nulls
     states.cache()
     states.count()
-
-    # for dev just a few states
-    # states = states.filter(col("state_id").isin(["AK", "DE", "RI"]))
-    # states = states.sample(fraction=0.2, seed=42)
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
-    # TODO: remove dev restiction above
 
-    # # Repartition to ensure one state per partition
-    # states = states.repartition(states.count())
-    states = states.repartition(4)  # limit parallel connections to sftp server
-
-    # extract and load the files
+    # set function to extract and load the files with credentials and configuration
     extract_and_load = _extract_and_load_w_creds(
         sftp_host=sftp_host,
         sftp_port=sftp_port,
@@ -367,12 +344,10 @@ def model(dbt, session):
         s3_secret_key=s3_secret_key,
         databricks_volume_directory=databricks_volume_directory,
     )
-    # states = states.withColumn("load_details", extract_and_load(states["state_id"]))
 
     # Convert to pandas DataFrame for processing on spark driver since sftp connection for large files
     # breaks when run through UDF on spark
-    # n_workers = mapply.parallel.sensible_cpu_count()  # number of cores (include hyperthreading) - 1 for other processes
-    n_workers = 4  # number of cores on the instance type
+    n_workers = 3  # number of cores on the instance type - 1 for other processes
     chunk_size = (
         2  # avoid having the largest States (CA, TX, FL) falling into the same chunk
     )
