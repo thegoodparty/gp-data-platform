@@ -112,6 +112,7 @@ with
         from enhanced_candidacy
         where
             1 = 1
+            race_id is not null
             and first_name is not null
             and last_name is not null
             and not (
