@@ -249,7 +249,6 @@ def _extract_and_load_w_creds(
                 ]
                 for s3_file_name in s3_file_list:
                     if os.path.basename(s3_file_name) not in valid_file_names:
-                        # s3_client.delete_object(Bucket=s3_bucket, Key=os.path.basename(s3_file_name))
                         s3_client.delete_object(Bucket=s3_bucket, Key=s3_file_name)
 
         except Exception as e:
@@ -316,7 +315,7 @@ def model(dbt, session: SparkSession):
     databricks_volume_directory = (
         f"/Volumes/goodparty_data_catalog/{vol_prefix}/object_storage/l2_temp"
     )
-    "/Volumes/goodparty_data_catalog/dbt_hugh/object_storage/l2_temp"
+
     # get list of states
     states: DataFrame = (
         dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77")
@@ -325,7 +324,7 @@ def model(dbt, session: SparkSession):
     )
     states = states.withColumn("state_id", upper(col("state_id").cast(StringType())))
 
-    # remove Virgin Islands (VI), Puerto Rico (PR)
+    # remove Virgin Islands (VI), Puerto Rico (PR) since there's no L2 data for them
     states = states.filter(~col("state_id").isin(["VI", "PR"]))
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
