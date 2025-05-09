@@ -479,16 +479,17 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
-    # Load tables to postgres
+    # Load tables to postgres. The ordering of the tables is important to satisfy
+    # foreign key constraints.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
-        ["Candidacy", "Issue", "Place", "Race", "Stance"],
-        [candidacy_df, issue_df, place_df, race_df, stance_df],
+        ["Place", "Race", "Candidacy", "Issue", "Stance"],
+        [place_df, race_df, candidacy_df, issue_df, stance_df],
         [
-            CANDIDACY_UPSERT_QUERY,
-            ISSUE_UPSERT_QUERY,
             PLACE_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
+            CANDIDACY_UPSERT_QUERY,
+            ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
         ],
     ):
