@@ -11,10 +11,9 @@ from uuid import uuid4
 from zipfile import ZipFile
 
 import boto3
-import mapply
 import pandas as pd
 from paramiko import SFTPClient, Transport
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, explode, lit, udf, upper
 from pyspark.sql.types import (
     ArrayType,
@@ -187,7 +186,7 @@ def _extract_and_load_w_creds(
                 'VM2--{state_id}--{YYYY-MM-DD}-VOTEHISTORY_DataDictionary.csv'
                 """
                 with ZipFile(local_zip_path, "r") as zip_file:
-                    file_names = zip_file.namelist()
+                    extracted_file_names = zip_file.namelist()
                     zip_file.extractall(path=temp_extract_dir)
 
                 # delete the zip file
@@ -196,13 +195,13 @@ def _extract_and_load_w_creds(
                 # get list of files to upload
                 file_name_paths = [
                     os.path.join(temp_extract_dir, file_name)
-                    for file_name in file_names
+                    for file_name in extracted_file_names
                 ]
-                file_name_paths_to_upload = []
+                file_names_to_upload = []
                 pattern = r"^VM2--[A-Z]{2}--\d{4}-\d{2}-\d{2}-(DEMOGRAPHIC|VOTEHISTORY)(_DataDictionary\.csv|\.tab)$"
 
-                for file in file_name_paths:
-                    filename = os.path.basename(file)
+                for file_path in file_name_paths:
+                    filename = os.path.basename(file_path)
                     # Skip FillRate files
                     if "FillRate" in filename:
                         logging.info(f"Skipping FillRate file: {filename}")
@@ -210,7 +209,7 @@ def _extract_and_load_w_creds(
 
                     match = re.match(pattern, filename)
                     if match:
-                        file_name_paths_to_upload.append(filename)
+                        file_names_to_upload.append(filename)
 
                         # Extract the file type (DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY) and extension
                         file_type = match.group(1)
@@ -221,21 +220,21 @@ def _extract_and_load_w_creds(
                             file_type == "DEMOGRAPHIC"
                             and extension == "_DataDictionary.csv"
                         ):
-                            df = pd.read_csv(file, skiprows=15, skipfooter=24)
-                            df.to_csv(file, index=False)
+                            df = pd.read_csv(file_path, skiprows=15, skipfooter=24)
+                            df.to_csv(file_path, index=False)
                         elif (
                             file_type == "VOTEHISTORY"
                             and extension == "_DataDictionary.csv"
                         ):
-                            df = pd.read_csv(file, skiprows=15, skipfooter=4)
-                            df.to_csv(file, index=False)
+                            df = pd.read_csv(file_path, skiprows=15, skipfooter=4)
+                            df.to_csv(file_path, index=False)
                     else:
                         logging.info(f"Skipping (match={match}) file: {filename}")
 
                 # Upload each extracted file to S3
-                for extracted_file in file_name_paths_to_upload:
-                    local_file_path = os.path.join(temp_extract_dir, extracted_file)
-                    s3_key = f"{s3_state_prefix}{extracted_file}"
+                for file_name in file_names_to_upload:
+                    local_file_path = os.path.join(temp_extract_dir, file_name)
+                    s3_key = f"{s3_state_prefix}{file_name}"
 
                     if os.path.isfile(local_file_path):
                         s3_client.upload_file(
@@ -245,9 +244,12 @@ def _extract_and_load_w_creds(
                         os.remove(local_file_path)
 
                 # Delete files from s3 prefix that are not in the zip file
-                valid_files = [f for f in file_names if re.match(pattern, f)]
+                valid_file_names = [
+                    f for f in file_names_to_upload if re.match(pattern, f)
+                ]
                 for s3_file_name in s3_file_list:
-                    if s3_file_name not in valid_files:
+                    if os.path.basename(s3_file_name) not in valid_file_names:
+                        # s3_client.delete_object(Bucket=s3_bucket, Key=os.path.basename(s3_file_name))
                         s3_client.delete_object(Bucket=s3_bucket, Key=s3_file_name)
 
         except Exception as e:
@@ -266,7 +268,7 @@ def _extract_and_load_w_creds(
 
         result = {
             "state_id": state_id,
-            "source_file_names": file_names,
+            "source_file_names": valid_file_names,
             "source_zip_file": source_zip_file_name,
             "loaded_at": datetime.now(),
             "s3_state_prefix": s3_state_prefix,
@@ -276,7 +278,7 @@ def _extract_and_load_w_creds(
     return _extract_and_load
 
 
-def model(dbt, session):
+def model(dbt, session: SparkSession):
     dbt.config(
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
@@ -325,10 +327,6 @@ def model(dbt, session):
 
     # remove Virgin Islands (VI), Puerto Rico (PR)
     states = states.filter(~col("state_id").isin(["VI", "PR"]))
-
-    # trigger preceding transformations and filter out nulls
-    states.cache()
-    states.count()
     state_list = [row.state_id for row in states.select("state_id").collect()]
     logging.info(f"States included: {', '.join(sorted(state_list))}")
 
@@ -346,14 +344,11 @@ def model(dbt, session):
     )
 
     # Convert to pandas DataFrame for processing on spark driver since sftp connection for large files
-    # breaks when run through UDF on spark
-    n_workers = 3  # number of cores on the instance type - 1 for other processes
-    chunk_size = (
-        2  # avoid having the largest States (CA, TX, FL) falling into the same chunk
-    )
-    mapply.init(n_workers=n_workers, chunk_size=chunk_size, progressbar=False)
+    # breaks when run through UDF on spark. `mapply` and other parallel processing libraries are
+    # are not robust so stick with one core in databricks
+    # TODO: move this to airflow over parallel tasks by each state
     states_pd = states.toPandas()
-    states_pd["load_details"] = states_pd["state_id"].mapply(extract_and_load)
+    states_pd["load_details"] = states_pd["state_id"].apply(extract_and_load)
 
     # Convert back to Spark DataFrame
     load_details_schema = StructType(
@@ -381,6 +376,13 @@ def model(dbt, session):
     # generate an uuid for the load job
     states = states.withColumn("load_id", lit(str(uuid4())))
 
+    # trigger preceding transformations and filter out nulls
+    states.cache()
+    states.count()
+    states = states.filter(col("load_details.state_id").isNotNull())
+    states = states.filter(col("load_details.source_file_names").isNotNull())
+    states = states.filter(col("load_details.source_zip_file").isNotNull())
+
     # Explode the file_names array to create separate rows for each filename
     exploded_states = states.select(
         col("load_id"),
@@ -404,13 +406,6 @@ def model(dbt, session):
         "source_zip_file",
         "s3_state_prefix",
     )
-
-    # trigger preceding transformations and filter out nulls
-    exploded_states.cache()
-    exploded_states.count()
-    exploded_states = exploded_states.filter(col("state_id").isNotNull())
-    exploded_states = exploded_states.filter(col("source_file_name").isNotNull())
-    exploded_states = exploded_states.filter(col("source_zip_file").isNotNull())
 
     # clean up objects inside the temp directory
     if os.path.exists(databricks_volume_directory):
