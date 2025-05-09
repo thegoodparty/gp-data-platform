@@ -1,7 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
+        materialized="table",
         unique_key="id",
         auto_liquid_cluster=true,
         tags=["mart", "election_api", "stance"],
@@ -24,9 +23,6 @@ with
         where
             candidacy_id
             in (select br_database_id from {{ ref("m_election_api__candidacy") }})
-            {% if is_incremental() %}
-                and updated_at > (select max(updated_at) from {{ this }})
-            {% endif %}
     ),
     enhanced_stances as (
         select
