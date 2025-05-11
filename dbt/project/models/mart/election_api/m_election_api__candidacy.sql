@@ -1,7 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
+        materialized="table",
         unique_key="id",
         auto_liquid_cluster=true,
         tags=["mart", "election_api", "candidacy"],
@@ -10,21 +9,20 @@
 
 
 with
-    latest_candidacy as (
+    active_candidacy as (
         select
-            {{ generate_salted_uuid(fields=["id"], salt="ballotready") }} as id,
-            id as br_hash_id,
-            database_id as br_database_id,
-            candidate_database_id,
-            race_database_id,
-            created_at,
-            updated_at
-        from {{ ref("int__ballotready_candidacy") }}
-        where
-            1 = 1
-            {% if is_incremental() %}
-                and updated_at > (select max(updated_at) from {{ this }})
-            {% endif %}
+            {{ generate_salted_uuid(fields=["tbl_candidacy.id"], salt="ballotready") }}
+            as id,
+            tbl_candidacy.id as br_hash_id,
+            tbl_candidacy.database_id as br_database_id,
+            tbl_candidacy.candidate_database_id,
+            tbl_candidacy.race_database_id,
+            tbl_candidacy.created_at,
+            tbl_candidacy.updated_at
+        from {{ ref("int__ballotready_candidacy") }} as tbl_candidacy
+        inner join
+            {{ ref("m_election_api__race") }} as tbl_race
+            on tbl_candidacy.race_database_id = tbl_race.br_database_id
     ),
     tbl_party as (
         select
@@ -60,7 +58,7 @@ with
                 coalesce(tbl_person.last_name, '')
             ) as first_last_name_slug,
             tbl_mart_race.id as race_id
-        from latest_candidacy as tbl_candidacy
+        from active_candidacy as tbl_candidacy
         left join
             tbl_party as tbl_party
             on tbl_candidacy.br_database_id = tbl_party.candidacy_id
