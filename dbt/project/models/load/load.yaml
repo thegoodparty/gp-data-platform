@@ -1,0 +1,35 @@
+version: 2
+
+models:
+
+  - name: load__l2_sftp_to_s3
+    description: >
+      This model loads data from the L2 SFTP server to S3.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      l2_sftp_host: "{{ env_var('DBT_L2_SFTP_HOST') }}"
+      l2_sftp_port: "{{ env_var('DBT_L2_SFTP_PORT') }}"
+      l2_sftp_user: "{{ env_var('DBT_L2_SFTP_USER') }}"
+      l2_sftp_password: "{{ env_var('DBT_L2_SFTP_PW') }}"
+      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
+      l2_s3_secret_key: "{{ env_var('DBT_S3_SECRET_KEY') }}"
+      # TODO: use dbt cloud account id for temp volume path s3 staging prefix
+      # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
+      # current env vars listed in docs are not available
+      # dbt_cloud_account_id: "{{ env_var('DBT_CLOUD_ACCOUNT_ID') }}"
+      # dbt_cloud_account: "{{ env_var('DBT_CLOUD_ACCOUNT') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: true
+    columns:
+      - name: id
+        description: "Unique identifier for the candidacy in the CivicEngine database"
+        tests:
+          - not_null
+          - unique
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - source_file_name
+            - source_zip_file
