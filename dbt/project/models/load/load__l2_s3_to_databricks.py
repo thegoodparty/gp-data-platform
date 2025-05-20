@@ -78,6 +78,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()
     ]
 
+    # TODO: remove this dev filter
+    state_list = [state for state in state_list if state in ["AL", "MO", "CA"]]
+
     # initialize list to capture metadata about data loads
     load_details = []
 
@@ -105,7 +108,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             this_table = session.table(f"{dbt.this}")
             this_table = this_table.filter(col("state_id") == state_id)
             last_load_this_table = this_table.agg({"loaded_at": "max"}).collect()[0][0]
-            latest_files = latest_files.filter(col("loaded_at") > last_load_this_table)
+            if last_load_this_table:
+                latest_files = latest_files.filter(
+                    col("loaded_at") > last_load_this_table
+                )
 
         # if there are no files to load, skip the state and move on to the next
         if latest_files.count() == 0:
@@ -132,7 +138,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             load_details.append(
                 {
                     "id": str(uuid4()),
-                    "loaded_at": datetime.now(),
                     "state_id": state_id,
                     "source_s3_path": s3_path,
                     "source_file_name": source_file_name,
@@ -145,6 +150,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     load_id = str(uuid4())
     for load_data in load_details:
         load_data["load_id"] = load_id
+        load_data["loaded_at"] = datetime.now()
+
     load_details_schema = StructType(
         [
             StructField("id", StringType(), True),
