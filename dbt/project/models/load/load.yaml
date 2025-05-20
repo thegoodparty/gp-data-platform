@@ -45,9 +45,9 @@ models:
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
-    # columns:
-    #   - name: id
-    #     description: "Unique identifier for the loaded table and job"
-    #     tests:
-    #       - not_null
-    #       - unique
+    columns:
+      - name: id
+        description: "Unique identifier for the loaded table and job"
+        tests:
+          - not_null
+          - unique

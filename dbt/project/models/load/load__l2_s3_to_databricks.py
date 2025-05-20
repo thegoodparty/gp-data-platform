@@ -4,6 +4,7 @@ from uuid import uuid4
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col
 from pyspark.sql.session import SparkSession
+from pyspark.sql.types import StringType, StructField, StructType, TimestampType
 
 
 def _extract_table_name(source_file_name: str, state_id: str) -> str:
@@ -115,4 +116,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
     # TODO: convert load details to a table
-    return load_details
+    load_id = str(uuid4())
+    for load_data in load_details:
+        load_data["load_id"] = load_id
+    load_details_schema = StructType(
+        [
+            StructField("id", StringType(), True),
+            StructField("loaded_at", TimestampType(), True),
+            StructField("state_id", StringType(), True),
+            StructField("source_s3_path", StringType(), True),
+            StructField("source_file_name", StringType(), True),
+            StructField("table_name", StringType(), True),
+        ]
+    )
+    load_details_df = session.createDataFrame(load_details, load_details_schema)
+    return load_details_df
