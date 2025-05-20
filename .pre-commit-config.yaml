@@ -50,3 +50,13 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
+
+
+-   repo: local
+    hooks:
+    -   id: pytest
+        name: Run pytest
+        entry: pytest
+        # args: [-m, fast, --quiet]
+        language: system
+        pass_filenames: false
