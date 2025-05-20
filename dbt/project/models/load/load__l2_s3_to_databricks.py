@@ -4,7 +4,12 @@ from uuid import uuid4
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col
 from pyspark.sql.session import SparkSession
-from pyspark.sql.types import StringType, StructField, StructType, TimestampType
+from pyspark.sql.types import (
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
 
 def _extract_table_name(source_file_name: str, state_id: str) -> str:
@@ -53,9 +58,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["l2", "s3", "databricks", "load"],
     )
 
-    # s3 configuration
+    # get dbt environment variables
+    dbt_env_name = dbt.config.get("dbt_environment")
     s3_bucket = dbt.config.get("l2_s3_bucket")
 
+    # set databricks schema based on dbt cloud environment name
+    # TODO: use schema based on dbt cloud account. current env vars listed in docs are not available
+    # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
+    if dbt_env_name == "dev":
+        databricks_schema = "dbt_hugh_source"
+    elif dbt_env_name == "prod":
+        databricks_schema = "dbt_source"
+    else:
+        raise ValueError(f"Invalid `dbt_env_name`: {dbt_env_name}")
+
+    # get files loaded from sftp server into s3
     s3_files_loaded: DataFrame = dbt.ref("load__l2_sftp_to_s3")
     state_list = [
         row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()
@@ -64,10 +81,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # TODO: remove this dev filter
     state_list = [state for state in state_list if state in ["AL"]]
 
-    # TODO: use s3 file paths and updated_at's from load__l2_sftp_to_s3
-    # TODO: incremental strategy based on updated_at for the state and file name of the s3
+    # initialize list to capture metadata about data loads
+    load_details = []
+
     # Ensure the schema exists
-    session.sql("CREATE SCHEMA IF NOT EXISTS goodparty_data_catalog.dbt_hugh_source")
+    session.sql(
+        f"CREATE SCHEMA IF NOT EXISTS goodparty_data_catalog.{databricks_schema}"
+    )
     for state_id in state_list:
 
         # get the latest loaded_at for the state
@@ -78,15 +98,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .loaded_at
         )
 
-        # take the the latest files having a distinct s3_state_prefix and with the latest loaded_at
-        latest_files = s3_files_loaded.filter(
-            col("state_id") == state_id,
-            col("loaded_at") == latest_date,
+        # take the most recent files for each state
+        latest_files = s3_files_loaded.filter(col("state_id") == state_id).filter(
+            col("loaded_at") == latest_date
         )
 
-        # TODO: if incremental, filter the latest_files to only include files with a later updated_at
-        load_details = []
-        for file in latest_files:
+        # if incremental, filter the latest_files to only include files yet to be loaded
+        if dbt.is_incremental:
+            this_table = session.table(f"{dbt.this}")
+            this_table = this_table.filter(col("state_id") == state_id)
+            last_load_this_table = this_table.agg({"loaded_at": "max"}).collect()[0][0]
+            latest_files = latest_files.filter(col("loaded_at") > last_load_this_table)
+
+        # if there are no files to load, skip the state and move on to the next
+        if latest_files.count() == 0:
+            continue
+
+        for file in latest_files.toLocalIterator():
             source_file_name = file.source_file_name
             table_name = _extract_table_name(source_file_name, state_id)
 
@@ -99,11 +127,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 inferSchema=True,
             )
 
-            # Write the table
-            # TODO: wrap this in a function and return load details (or maybe just script the details here)
-            data_df.write.mode("overwrite").saveAsTable(
-                f"goodparty_data_catalog.dbt_hugh_source.{table_name}"
-            )
+            # TODO: set table path based on dbt environment and compare against airbyte naming
+            table_path = f"goodparty_data_catalog.{databricks_schema}.{table_name}"
+            data_df.write.mode("overwrite").option("overwriteSchema", "true").format(
+                "delta"
+            ).saveAsTable(table_path)
             load_details.append(
                 {
                     "id": str(uuid4()),
@@ -112,21 +140,24 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     "source_s3_path": s3_path,
                     "source_file_name": source_file_name,
                     "table_name": table_name,
+                    "table_path": table_path,
                 }
             )
 
-    # TODO: convert load details to a table
+    # log load details to table
     load_id = str(uuid4())
     for load_data in load_details:
         load_data["load_id"] = load_id
     load_details_schema = StructType(
         [
             StructField("id", StringType(), True),
+            StructField("load_id", StringType(), True),
             StructField("loaded_at", TimestampType(), True),
             StructField("state_id", StringType(), True),
             StructField("source_s3_path", StringType(), True),
             StructField("source_file_name", StringType(), True),
             StructField("table_name", StringType(), True),
+            StructField("table_path", StringType(), True),
         ]
     )
     load_details_df = session.createDataFrame(load_details, load_details_schema)
