@@ -34,6 +34,14 @@ repos:
             'flake8-comprehensions',
         ]
 
+-   repo: local
+    hooks:
+    -   id: install-requirements-test
+        name: Install requirements_test.txt
+        entry: pip install -r requirements_test.txt
+        language: system
+        pass_filenames: false
+
 -   repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.15.0
     hooks:
