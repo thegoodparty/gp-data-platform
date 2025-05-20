@@ -53,14 +53,6 @@ repos:
 
 -   repo: local
     hooks:
-    -   id: install-requirements-test
-        name: Install requirements_test.txt
-        entry: pip install -r requirements_test.txt
-        language: system
-        pass_filenames: false
-
--   repo: local
-    hooks:
     -   id: pytest
         name: Run pytest
         entry: pytest
