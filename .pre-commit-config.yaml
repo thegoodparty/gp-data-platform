@@ -42,7 +42,9 @@ repos:
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
             'types-paramiko',
+            # 'types-pyspark',
         ]
+        # args: ["--explicit-package-bases"]
 
 -   repo: https://github.com/tconbeer/sqlfmt
     rev: v0.26.0
