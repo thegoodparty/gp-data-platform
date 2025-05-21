@@ -78,9 +78,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()
     ]
 
-    # TODO: remove this dev filter
-    state_list = [state for state in state_list if state in ["AL", "MO", "CA"]]
-
     # initialize list to capture metadata about data loads
     load_details = []
 
