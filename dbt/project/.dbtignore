@@ -1,0 +1,2 @@
+# ignore inits, which are required for imports to testing suite
+**/__init__.py

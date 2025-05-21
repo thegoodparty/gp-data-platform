@@ -41,6 +41,7 @@ repos:
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
+            'types-paramiko',
         ]
 
 -   repo: https://github.com/tconbeer/sqlfmt
@@ -49,3 +50,11 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
+
+-   repo: local
+    hooks:
+    -   id: pytest
+        name: Run pytest
+        entry: pytest
+        language: system
+        pass_filenames: false
