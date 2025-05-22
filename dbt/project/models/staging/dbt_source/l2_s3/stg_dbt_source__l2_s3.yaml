@@ -1,0 +1,44 @@
+models:
+  - name: l2_s3_ak_demographic
+    description: "AK (Alaska) Demographic data"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: l2_s3_ak_demographic_data_dictionary
+    description: "Staging model for l2_s3_ak_demographic_data_dictionary"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"
+  - name: l2_s3_ak_vote_history
+    description: "Staging model for l2_s3_ak_vote_history"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"
+  - name: l2_s3_ak_vote_history_data_dictionary
+    description: "Staging model for l2_s3_ak_vote_history_data_dictionary"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"
+  - name: l2_s3_al_demographic
+    description: "Staging model for l2_s3_al_demographic"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"
+  - name: l2_s3_al_demographic_data_dictionary
+    description: "Staging model for l2_s3_al_demographic_data_dictionary"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"
+  - name: l2_s3_al_vote_history
+    description: "Staging model for l2_s3_al_vote_history"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"
+  - name: l2_s3_al_vote_history_data_dictionary
+    description: "Staging model for l2_s3_al_vote_history_data_dictionary"
+    columns:
+      - name: PLACEHOLDER
+        description: "Add columns here"

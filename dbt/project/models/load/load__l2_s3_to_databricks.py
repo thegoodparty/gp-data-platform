@@ -129,6 +129,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
             # TODO: set table path based on dbt environment and compare against airbyte naming
             table_path = f"goodparty_data_catalog.{databricks_schema}.{table_name}"
+            # TODO: test clusterByAuto with an updated state dataset so it writes
             data_df.write.mode("overwrite").option("overwriteSchema", "true").option(
                 "clusterByAuto", "true"
             ).format("delta").saveAsTable(table_path)
