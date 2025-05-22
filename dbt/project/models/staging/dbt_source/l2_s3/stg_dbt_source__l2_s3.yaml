@@ -693,3 +693,243 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ny_vote_history_data_dictionary
     description: "Staging model for l2_s3_ny_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_oh_demographic
+    description: "Staging model for l2_s3_oh_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_oh_demographic_data_dictionary
+    description: "Staging model for l2_s3_oh_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_oh_vote_history
+    description: "Staging model for l2_s3_oh_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_oh_vote_history_data_dictionary
+    description: "Staging model for l2_s3_oh_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_ok_demographic
+    description: "Staging model for l2_s3_ok_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ok_demographic_data_dictionary
+    description: "Staging model for l2_s3_ok_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_ok_vote_history
+    description: "Staging model for l2_s3_ok_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ok_vote_history_data_dictionary
+    description: "Staging model for l2_s3_ok_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_or_demographic
+    description: "Staging model for l2_s3_or_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_or_demographic_data_dictionary
+    description: "Staging model for l2_s3_or_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_or_vote_history
+    description: "Staging model for l2_s3_or_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_or_vote_history_data_dictionary
+    description: "Staging model for l2_s3_or_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_pa_demographic
+    description: "Staging model for l2_s3_pa_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_pa_demographic_data_dictionary
+    description: "Staging model for l2_s3_pa_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_pa_vote_history
+    description: "Staging model for l2_s3_pa_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_pa_vote_history_data_dictionary
+    description: "Staging model for l2_s3_pa_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_ri_demographic
+    description: "Staging model for l2_s3_ri_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ri_demographic_data_dictionary
+    description: "Staging model for l2_s3_ri_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_ri_vote_history
+    description: "Staging model for l2_s3_ri_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ri_vote_history_data_dictionary
+    description: "Staging model for l2_s3_ri_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_sc_demographic
+    description: "Staging model for l2_s3_sc_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_sc_demographic_data_dictionary
+    description: "Staging model for l2_s3_sc_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_sc_vote_history
+    description: "Staging model for l2_s3_sc_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_sc_vote_history_data_dictionary
+    description: "Staging model for l2_s3_sc_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_va_demographic
+    description: "Staging model for l2_s3_va_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_va_demographic_data_dictionary
+    description: "Staging model for l2_s3_va_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_va_vote_history
+    description: "Staging model for l2_s3_va_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_va_vote_history_data_dictionary
+    description: "Staging model for l2_s3_va_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_vt_demographic
+    description: "Staging model for l2_s3_vt_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_vt_demographic_data_dictionary
+    description: "Staging model for l2_s3_vt_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_vt_vote_history
+    description: "Staging model for l2_s3_vt_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_vt_vote_history_data_dictionary
+    description: "Staging model for l2_s3_vt_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wa_demographic
+    description: "Staging model for l2_s3_wa_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wa_demographic_data_dictionary
+    description: "Staging model for l2_s3_wa_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wa_vote_history
+    description: "Staging model for l2_s3_wa_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wa_vote_history_data_dictionary
+    description: "Staging model for l2_s3_wa_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wi_demographic
+    description: "Staging model for l2_s3_wi_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wi_demographic_data_dictionary
+    description: "Staging model for l2_s3_wi_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wi_vote_history
+    description: "Staging model for l2_s3_wi_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wi_vote_history_data_dictionary
+    description: "Staging model for l2_s3_wi_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wv_demographic
+    description: "Staging model for l2_s3_wv_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wv_demographic_data_dictionary
+    description: "Staging model for l2_s3_wv_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wv_vote_history
+    description: "Staging model for l2_s3_wv_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wv_vote_history_data_dictionary
+    description: "Staging model for l2_s3_wv_vote_history_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wy_demographic
+    description: "Staging model for l2_s3_wy_demographic"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wy_demographic_data_dictionary
+    description: "Staging model for l2_s3_wy_demographic_data_dictionary"
+  - name: stg_dbt_source__l2_s3_wy_vote_history
+    description: "Staging model for l2_s3_wy_vote_history"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the demographic"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wy_vote_history_data_dictionary
+    description: "Staging model for l2_s3_wy_vote_history_data_dictionary"
