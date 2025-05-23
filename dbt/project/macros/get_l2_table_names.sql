@@ -8,12 +8,10 @@
         list[str]: A list of table names matching the prefix in the given schema.
 #}
 {% macro get_l2_table_names(schema_name, table_prefix, table_suffix) %}
-    {% set query %}
-        SELECT table_name
-        FROM system.information_schema.tables
-        WHERE table_schema = '{{ schema_name }}'
-        AND table_name LIKE '{{ table_prefix }}%'
-        AND table_name LIKE '%{{ table_suffix }}'
-    {% endset %}
-    {{ return(run_query(query).columns[0].values()) }}
+    select table_name
+    from system.information_schema.tables
+    where
+        table_schema = '{{ schema_name }}'
+        and table_name like '{{ table_prefix }}%'
+        and table_name like '%{{ table_suffix }}'
 {% endmacro %}
