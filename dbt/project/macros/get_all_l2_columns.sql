@@ -1,12 +1,12 @@
 {#
-    Macro: get_all_columns
+    Macro: get_all_l2_columns
     Args:
         schema_name (str): The schema name to search in.
         table_names (list[str]): A list of table names to include.
     Returns:
         list[str]: A list of column names.
 #}
-{% macro get_all_columns(schema_name, table_names) %}
+{% macro get_all_l2_columns(schema_name, table_names) %}
     {% set query %}
         SELECT DISTINCT column_name
         FROM system.information_schema.columns
