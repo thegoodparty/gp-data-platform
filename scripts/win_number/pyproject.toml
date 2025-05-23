@@ -1,0 +1,19 @@
+[project]
+name = "win-number"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "oakinh",email = "nikaohill@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "shapely (>=2.1.1,<3.0.0)",
+    "pyspark (>=4.0.0,<5.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+package-mode = false
