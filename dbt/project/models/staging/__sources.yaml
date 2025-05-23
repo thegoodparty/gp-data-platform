@@ -39,12 +39,15 @@ sources:
         description: raw data load from gp_api_db postgres db from table `campaign_position`
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
+        freshness: null
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
       - name: gp_api_db_position
         description: raw data load from gp_api_db postgres db from table `position`
+        freshness: null
       - name: gp_api_db_top_issue
         description: raw data load from gp_api_db postgres db from table `top_issues`
+        freshness: null
       - name: gp_api_db_user
         description: raw data load from gp_api_db postgres db from table `user`
       - name: hubspot_api_companies
