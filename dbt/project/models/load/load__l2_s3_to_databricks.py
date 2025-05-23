@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, current_timestamp
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import (
     StringType,
@@ -126,6 +126,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 header=True,
                 inferSchema=True,
             )
+            data_df = data_df.withColumn("loaded_at", current_timestamp())
 
             # TODO: set table path based on dbt environment and compare against airbyte naming
             table_path = f"goodparty_data_catalog.{databricks_schema}.{table_name}"
