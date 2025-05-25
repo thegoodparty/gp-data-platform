@@ -118,7 +118,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             source_file_name = file.source_file_name
             table_name = _extract_table_name(source_file_name, state_id)
 
-            # set up reader
+            # set up reader and add loaded_at column
             delimiter = "\t" if source_file_name.endswith(".tab") else ","
             s3_path = f"s3a://{s3_bucket}/{file.s3_state_prefix}/{source_file_name}"
             data_df = session.read.options(delimiter=delimiter).csv(
