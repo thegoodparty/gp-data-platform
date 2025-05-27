@@ -8,11 +8,18 @@ spark = SparkSession.builder \
     .appName("WinNumber") \
     .getOrCreate()
 
+# See https://docs.google.com/spreadsheets/d/17iURGef8AKFokr5aJGciiF6lqYDKycGBP106-0Q7u5k/edit?gid=857937239#gid=857937239
+# "election_type" tab, for a list of all possible `L2_district_type`s
+# -----------------
+# See this pinned message https://goodpartyorg.slack.com/archives/C08LC0W9L1W/p1743503690263989
+# for a script on scraping all the shape files
+# Nikao will create a mapping for shapefiles based on the L2_district type and state
 def enrich_with_geoids(shapefile_path, L2_district_type):
     query = f"""
 SELECT Residence_Addresses_Longitude, Residence_Addresses_Latitude, {L2_district_type}
 FROM goodparty_data_catalog.dbt_hugh_source.l2_s3_wy_demographic
 """
+
 
     df_spark = spark.sql(query)
     df_pandas = df_spark.toPandas()
@@ -40,7 +47,14 @@ FROM goodparty_data_catalog.dbt_hugh_source.l2_s3_wy_demographic
         .sort_values(L2_district_type)
     )
 
+    # Unknown: should we just always use the top most frequently occurring geoid? 
+    # Or more likely go down the list until we have a match in the BR data?
+
     print(most_prevalent_geoids)
+
+
+
+enrich_with_geoids("../shapefiles/tl_2024_48_unsd.shp", )
 
 
 
