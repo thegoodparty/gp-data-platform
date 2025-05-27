@@ -1,1 +1,15 @@
-# TODO add tests like LALVOTERID uniqueness, unique state id matches 51 values
+version: 2
+
+models:
+
+  - name: int__l2_vote_history
+    description: >
+      This model retrieves the vote history for all voters in all states from L2 S3.
+    columns:
+      - name: LALVOTERID
+        description: "Unique identifier for the voter in the L2 database"
+        tests:
+          - not_null
+          - unique
+
+# TODO: add demographic model as well

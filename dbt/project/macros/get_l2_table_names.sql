@@ -16,7 +16,7 @@
             table_schema = '{{ schema_name }}'
             and table_name like '{{ table_prefix }}%'
             and table_name like '%{{ table_suffix }}'
-        limit 3 -- TODO: remove limit
+        limit 5 -- TODO: remove limit
     {% endset %}
 
     -- execute the query and store the results in a list
@@ -26,7 +26,7 @@
         {% do table_names.append(result.get("table_name")) %}
     {% endfor %}
 
-    -- results depend on SQL execution, skip during parsing phase
+    -- `tables_names` depend on SQL execution, skip during parsing phase
     -- see: https://docs.getdbt.com/reference/dbt-jinja-functions/execute
     {% if execute %} {{ return(table_names) }}
     {% else %} {{ return([]) }}
