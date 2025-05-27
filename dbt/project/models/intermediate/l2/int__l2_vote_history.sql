@@ -82,12 +82,9 @@ depends_on: [
 -- get unique column names between all columns
 {% set all_columns = get_all_l2_columns(source_schema_name, table_names) %}
 
--- TODO: see notes in scratch_notepad
--- TODO: loop over all columns and tables to create a union of all tables with all
--- columns
 -- TODO: incremental loads on loaded_at by each state
--- TODO: create a union of all tables with all columns
 select
+    state_usps,
     {% for col in all_columns -%}
         {{ col }} {%- if not loop.last -%}, {% endif %}
     {% endfor %}
@@ -99,6 +96,11 @@ select
                     from=ref(table_name)
                 ) -%}
                 select
+                    regexp_extract(
+                        "{{ table_name }}",
+                        'stg_dbt_source__l2_s3_([a-z]{2})_vote_history',
+                        1
+                    ) as state_usps,
                     {% for col in all_columns -%}
                         {% if col in cols_in_table %}
                             {{ col }} {%- if not loop.last -%}, {% endif -%}
