@@ -89,5 +89,27 @@ depends_on: [
 -- TODO: create a union of all tables with all columns
 select
     {% for col in all_columns -%}
-        '{{ col }}' {%- if not loop.last -%}, {%- endif -%}
-    {%- endfor %}
+        {{ col }} {%- if not loop.last -%}, {% endif %}
+    {% endfor %}
+{%- if execute -%}
+    from
+        (
+            {% for table_name in table_names -%}
+                {%- set cols_in_table = dbt_utils.get_filtered_columns_in_relation(
+                    from=ref(table_name)
+                ) -%}
+                select
+                    {% for col in all_columns -%}
+                        {% if col in cols_in_table %}
+                            {{ col }} {%- if not loop.last -%}, {% endif -%}
+                        {% else %}
+                            null as {{ col }} {%- if not loop.last -%}, {% endif -%}
+                        {% endif %}
+                    {%- endfor %}
+                from {{ ref(table_name) }}
+                {%- if not loop.last %}
+                    union all
+                {% endif %}
+            {%- endfor %}
+        )
+{%- endif -%}
