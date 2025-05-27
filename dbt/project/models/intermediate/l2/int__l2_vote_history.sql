@@ -1,4 +1,61 @@
--- TODO: may need to add "if execute" block to prevent errors during parsing
+-- Note that `depends_on` is required in config since ref() is called inside for loops
+-- depending on SQL execution
+-- see https://docs.getdbt.com/reference/dbt-jinja-functions/ref#forcing-dependencies
+/*
+depends_on: [
+            {{ ref("stg_dbt_source__l2_s3_ak_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_al_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ar_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_az_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ca_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_co_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ct_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_dc_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_de_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_fl_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ga_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_hi_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ia_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_id_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_il_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_in_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ks_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ky_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_la_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ma_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_md_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_me_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_mi_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_mn_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_mo_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ms_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_mt_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_nc_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_nd_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ne_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_nh_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_nj_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_nm_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_nv_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ny_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_oh_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ok_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_or_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_pa_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ri_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_sc_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_sd_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_tn_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_tx_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_ut_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_va_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_vt_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_wa_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_wi_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_wv_vote_history") }},
+            {{ ref("stg_dbt_source__l2_s3_wy_vote_history") }},
+        ]
+*/
 -- TODO: add config
 {{
     config(
@@ -13,6 +70,7 @@
 {% else %} {% set source_schema_name = "dbt_hugh" %}
 {% endif %}
 
+-- set table name
 {% set table_prefix = "stg_dbt_source__l2_s3_" %}
 {% set table_suffix = "_vote_history" %}
 
@@ -24,13 +82,12 @@
 -- get unique column names between all columns
 {% set all_columns = get_all_l2_columns(source_schema_name, table_names) %}
 
-
 -- TODO: see notes in scratch_notepad
 -- TODO: loop over all columns and tables to create a union of all tables with all
 -- columns
 -- TODO: incremental loads on loaded_at by each state
--- select 'a', 'b'
+-- TODO: create a union of all tables with all columns
 select
-    {% for column in all_columns -%}
-        '{{ column }}' {% if not loop.last %}, {% endif %}
+    {% for col in all_columns -%}
+        '{{ col }}' {%- if not loop.last -%}, {%- endif -%}
     {%- endfor %}
