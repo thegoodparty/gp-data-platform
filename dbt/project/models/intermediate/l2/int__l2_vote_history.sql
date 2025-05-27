@@ -89,15 +89,19 @@ select
     {% for col in all_columns -%}
         {{ col }} {%- if not loop.last -%}, {% endif %}
     {% endfor %}
--- `all_columns` and `table_names` depend on SQL execution, skip during parsing phase
--- see: https://docs.getdbt.com/reference/dbt-jinja-functions/execute
+/*
+    `all_columns` and `table_names` depend on SQL execution, skip during parsing phase
+    see: https://docs.getdbt.com/reference/dbt-jinja-functions/execute
+*/
 {%- if execute -%}
     from
         (
-            -- loop over all state tables
-            -- use NULL for columns that don't exist in the table
-            -- insert state_usps from regexp'd table name
-            -- insert loaded_at from incremental logic for the state subset of data
+            /*
+            (1) loop over all state tables
+            (2) use NULL for columns that don't exist in the table
+            (3) insert state_usps from regexp'd table name
+            (4) insert loaded_at from incremental logic for the state subset of data
+            */
             {% for table_name in table_names -%}
                 {%- set cols_in_table = dbt_utils.get_filtered_columns_in_relation(
                     from=ref(table_name)
