@@ -11,5 +11,29 @@ models:
         tests:
           - not_null
           - unique
+      - name: loaded_at
+        description: "Timestamp of when the data was loaded from S3 and into databricks"
+        tests:
+          - not_null
+      - name: state_usps
+        description: "State postal abbreviation"
+        tests:
+          - not_null
 
-# TODO: add demographic model as well
+  - name: int__l2_demographic
+    description: >
+      This model retrieves the demographic data for all voters in all states from L2 S3.
+    columns:
+      - name: LALVOTERID
+        description: "Unique identifier for the voter in the L2 database"
+        tests:
+          - not_null
+          - unique
+      - name: loaded_at
+        description: "Timestamp of when the data was loaded from S3 and into databricks"
+        tests:
+          - not_null
+      - name: state_usps
+        description: "State postal abbreviation"
+        tests:
+          - not_null

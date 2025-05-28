@@ -16,7 +16,7 @@
             table_schema = '{{ schema_name }}'
             and table_name like '{{ table_prefix }}%'
             and table_name like '%{{ table_suffix }}'
-        limit 5 -- TODO: remove limit
+        limit 1 -- TODO: remove limit
     {% endset %}
 
     -- execute the query and store the results in a list
