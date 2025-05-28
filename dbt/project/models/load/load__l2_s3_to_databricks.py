@@ -15,6 +15,7 @@ from pyspark.sql.types import (
 def _extract_table_name(source_file_name: str, state_id: str) -> str:
     """
     Extract the table name from the source file name.
+    # TODO: handle uniform files
 
     Examples:
         >>> _extract_table_name('VM2--AL--2025-05-10-VOTEHISTORY.tab', 'AL')
