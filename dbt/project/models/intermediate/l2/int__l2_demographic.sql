@@ -114,7 +114,8 @@ select
                     ) as state_usps,
                     {% for col in all_columns -%}
                         {% if col in cols_in_table %}
-                            {{ col }} {%- if not loop.last -%}, {% endif -%}
+                            cast({{ col }} as {{ dbt.type_string() }})
+                            {%- if not loop.last -%}, {% endif -%}
                         {% else %}
                             null as {{ col }} {%- if not loop.last -%}, {% endif -%}
                         {% endif %}
