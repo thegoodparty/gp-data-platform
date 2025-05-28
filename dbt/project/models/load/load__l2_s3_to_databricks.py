@@ -26,12 +26,22 @@ def _extract_table_name(source_file_name: str, state_id: str) -> str:
         'l2_s3_ca_vote_history_data_dictionary'
         >>> _extract_table_name('VM2--TX--2025-05-10-DEMOGRAPHIC_DataDictionary.csv', 'TX')
         'l2_s3_tx_demographic_data_dictionary'
+        >>> _extract_table_name('VM2Uniform--AK--2025-05-10.tab', 'AK')
+        'l2_s3_ak_uniform_data_dictionary'
+        >>> _extract_table_name('VM2Uniform--AK--2025-05-10_DataDictionary.csv', 'AK')
+        'l2_s3_ak_uniform_data_dictionary'
     """
     # Extract the file type from the source file name
     file_type = source_file_name.split("--")[-1].split(".")[0].lower()
 
     # Remove the date from the file type
-    file_type = file_type.split("-")[-1]
+    if "uniform" in source_file_name.lower():
+        if "datadictionary" in source_file_name.lower():
+            file_type = "uniform_data_dictionary"
+        else:
+            file_type = "uniform"
+    else:
+        file_type = file_type.split("-")[-1]
 
     # Construct the table name based on file type and whether it's a data dictionary
     table_name = f"l2_s3_{state_id.lower()}_{file_type}".replace(
