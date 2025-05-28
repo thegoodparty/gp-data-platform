@@ -13,7 +13,7 @@ spark = SparkSession.builder \
 # -----------------
 # See this pinned message https://goodpartyorg.slack.com/archives/C08LC0W9L1W/p1743503690263989
 # for a script on scraping all the shape files
-# Nikao will create a mapping for shapefiles based on the L2_district type and state
+# Hopefully they can be combined into one file so we don't need mapping logic between L2_district_type + state -> shapefile
 def enrich_with_geoids(shapefile_path, L2_district_type):
     query = f"""
 SELECT Residence_Addresses_Longitude, Residence_Addresses_Latitude, {L2_district_type}
@@ -37,7 +37,7 @@ FROM goodparty_data_catalog.dbt_hugh_source.l2_s3_wy_demographic
     joined = gpd.sjoin(gdf_points, gdf_polygons, how="inner", predicate="within")
 
     frequency_table = joined.groupby(["GEOID", L2_district_type]).size().unstack(fill_value=0)
-
+    # Need logic to determine which layer of geoids / MTFCC we need. Many layers of districts on any one given lat long
     most_prevalent_geoids = (
         joined.groupby([L2_district_type, "GEOID"])
         .size()
