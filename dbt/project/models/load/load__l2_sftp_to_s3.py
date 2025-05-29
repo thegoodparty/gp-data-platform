@@ -196,9 +196,23 @@ def _extract_and_load_w_params(
                 'VM2Uniform--{state_id}--{YYYY-MM-DD}.tab'
                 'VM2Uniform--{state_id}--{YYYY-MM-DD}_DataDictionary.csv'
                 """
-                with ZipFile(local_zip_path, "r") as zip_file:
-                    extracted_file_names = zip_file.namelist()
-                    zip_file.extractall(path=temp_extract_dir)
+                try:
+                    with ZipFile(local_zip_path, "r") as zip_file:
+                        extracted_file_names = zip_file.namelist()
+                        zip_file.extractall(path=temp_extract_dir)
+                except NotImplementedError:
+                    logging.error(
+                        f"Source zip file {local_zip_path} is corrupted."
+                        " This may happen when source SFTP server is being updated."
+                        " Skipping for now."
+                    )
+                    return {
+                        "state_id": None,
+                        "source_file_names": None,
+                        "source_zip_file": None,
+                        "loaded_at": None,
+                        "s3_state_prefix": None,
+                    }
 
                 # delete the zip file
                 os.remove(local_zip_path)
