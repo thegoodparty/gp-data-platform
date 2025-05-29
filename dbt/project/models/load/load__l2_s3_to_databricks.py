@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, current_timestamp
+from pyspark.sql.functions import col, current_timestamp, row_number
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import (
     StringType,
@@ -10,6 +10,35 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+from pyspark.sql.window import Window
+
+
+def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
+    """
+    Filter the dataframe to only include latest loaded files that match the file patterns
+    """
+    df = df.filter(
+        (col("source_file_name").like("%VOTEHISTORY.tab"))
+        | (col("source_file_name").like("%DEMOGRAPHIC.tab"))
+        | (col("source_file_name").like("%VOTEHISTORY_DataDictionary.csv"))
+        | (col("source_file_name").like("%DEMOGRAPHIC_DataDictionary.csv"))
+        | (col("source_file_name").like("VM2Uniform%.tab"))
+        | (col("source_file_name").like("VM2Uniform%DataDictionary.csv"))
+    )
+
+    # define window to partition by source_dile_name and order by loaded_at descending
+    window_spec = Window.partitionBy("source_file_name").orderBy(
+        col("loaded_at").desc()
+    )
+
+    # add row number and select only most recent record (row_number = 1)
+    df = (
+        df.withColumn("rn", row_number().over(window_spec))
+        .filter(col("rn") == 1)
+        .drop("rn")
+    )
+
+    return df
 
 
 def _extract_table_name(source_file_name: str, state_id: str) -> str:
@@ -34,7 +63,7 @@ def _extract_table_name(source_file_name: str, state_id: str) -> str:
     # Extract the file type from the source file name
     file_type = source_file_name.split("--")[-1].split(".")[0].lower()
 
-    # Remove the date from the file type
+    # Remove the date from the file type. Uniform files are handled separately.
     if "uniform" in source_file_name.lower():
         if "datadictionary" in source_file_name.lower():
             file_type = "uniform_data_dictionary"
@@ -97,22 +126,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
         f"CREATE SCHEMA IF NOT EXISTS goodparty_data_catalog.{databricks_schema}"
     )
     for state_id in state_list:
+        state_files_loaded = s3_files_loaded.filter(col("state_id") == state_id)
 
         # get the latest loaded_at for the state
-        latest_date = (
-            s3_files_loaded.filter(col("state_id") == state_id)
-            .orderBy(col("loaded_at").desc())
-            .first()
-            .loaded_at
-        )
-
-        # take the most recent files for each state
-        latest_files = s3_files_loaded.filter(col("state_id") == state_id).filter(
-            col("loaded_at") == latest_date
-        )
+        latest_files = _filter_latest_loaded_files(state_files_loaded)
 
         # if incremental, filter the latest_files to only include files yet to be loaded
         if dbt.is_incremental:
+            # TODO: the incremental logic needs to be applied to each row/file in latest_files
             this_table = session.table(f"{dbt.this}")
             this_table = this_table.filter(col("state_id") == state_id)
             last_load_this_table = this_table.agg({"loaded_at": "max"}).collect()[0][0]
