@@ -207,7 +207,7 @@ RACE_UPSERT_QUERY = """
         br_database_id,
         election_date,
         state,
-        position_geoid::string,
+        position_geoid::text,
         position_level::\"PositionLevel\",
         normalized_position_name,
         position_description,
