@@ -173,7 +173,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     )
 
             files_to_load: DataFrame = session.createDataFrame(
-                data=files_to_load_list, schema=["source_file_name", "s3_state_prefix"]
+                data=files_to_load_list,
+                schema=StructType(
+                    [
+                        StructField("source_file_name", StringType(), True),
+                        StructField("s3_state_prefix", StringType(), True),
+                    ]
+                ),
             )
         else:
             files_to_load = latest_s3_files
