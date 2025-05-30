@@ -65,20 +65,45 @@ def enrich_with_geoids(shapefile_path, demographic_path, L2_district_type, L2_di
     print("Printing most_prevalent_geoids")
     print(most_prevalent_geoids)
 
+    return most_prevalent_geoids.iloc[0]
 
-def main():
-    turnout_df = pd.read_csv('resources/turnout_projections_sample.csv')
+def test_ca_state_house_18(turnout_df):
+    
     first_row_df = turnout_df.iloc[0]
     
     L2_district_type = first_row_df['OfficeType']
     L2_district_name = first_row_df['OfficeName']
 
-    enrich_with_geoids(
+    return enrich_with_geoids(
                         "./shapefiles/tl_2024_06_sldl_ca.shp", 
-                       "./resources/ca_demographic_sample.csv", 
+                       "./resources/ca_demographic_sample_house_018.csv", 
                        L2_district_type, 
                        L2_district_name
                        )
+    
+def test_ca_dinuba_city_council(turnout_df):
+    dinuba_city_row = turnout_df.iloc[2]
+
+    L2_district_type = dinuba_city_row['OfficeType']
+    L2_district_name = dinuba_city_row['OfficeName']
+
+    return enrich_with_geoids(
+                    "./shapefiles/ca_places/tl_2024_06_place.shp", 
+                    "./resources/ca_demographic_sample_dinuba.csv", 
+                    L2_district_type, 
+                    L2_district_name
+                    )
+
+def main():
+    turnout_df = pd.read_csv('resources/turnout_projections_sample.csv')
+    # geoid = test_ca_state_house_18(turnout_df)
+    geoid = test_ca_dinuba_city_council(turnout_df)
+
+    
+    
+
+    
+
 
 main()
 
