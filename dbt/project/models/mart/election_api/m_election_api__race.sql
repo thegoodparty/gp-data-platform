@@ -17,6 +17,7 @@ select
     election_date,
     state,
     position_level,
+    position_geo_id as position_geoid,
     regexp_replace(normalized_position_name, '//', '-') as normalized_position_name,
     position_description,
     filing_office_address,
