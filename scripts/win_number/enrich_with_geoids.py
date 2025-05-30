@@ -7,7 +7,71 @@ from shapely.geometry import Point
 # -----------------
 # See this pinned message https://goodpartyorg.slack.com/archives/C08LC0W9L1W/p1743503690263989
 # for a script on scraping all the shape files
-# Hopefully they can be combined into one file so we don't need mapping logic between L2_district_type + state -> shapefile
+
+# TIGER/Line layer codes used below
+# ---------------------------------
+# CD118 – 118th-Congress Congressional Districts
+# SLDU  – State Legislative District, Upper chamber
+# SLDL  – State Legislative District, Lower chamber
+# ELSD  – Elementary School Districts
+# SCSD  – Secondary (High) School Districts
+# UNSD  – Unified School Districts
+# SDADM – School-District Administrative Sub-areas (board zones, sub-districts)
+# VTD   – Voting Districts (precincts, wards, city-council districts)
+# PLACE – Incorporated Places / Census-Designated Places
+# COUSUB – County Subdivisions (MCD/CCD)
+# COUNTY – Counties & county-equivalents
+# CONCITY – Consolidated Cities
+
+L2_TO_TIGER_CODES: dict[str, list[str]] = {
+    # ------------- Legislative -------------
+    "US_Congressional_District": ["CD118"],
+    "State_Senate_District":      ["SLDU"],
+    "State_House_District":       ["SLDL"],
+
+    # ------------- School districts -------------
+    "Elementary_School_District":           ["ELSD"],
+    "High_School_District":                 ["SCSD"],
+    "Secondary_School_District":            ["SCSD"],
+    "Unified_School_District":              ["UNSD"],
+    "School_District":                      ["ELSD", "SCSD", "UNSD"],
+    # sub-districts, boards, vocational, etc.
+    "City_School_District":                 ["SDADM"],
+    "Board_of_Education_District":          ["SDADM"],
+    "School_District_Vocational":           ["SDADM"],
+    "School_Board_District":                ["SDADM"],
+    "School_Subdistrict":                   ["SDADM"],
+    "Unified_School_SubDistrict":           ["SDADM"],
+    "Elementary_School_SubDistrict":        ["SDADM"],
+    "High_School_SubDistrict":              ["SDADM"],
+    "County_Board_of_Education_District":   ["SDADM"],
+    "County_Board_of_Education_SubDistrict":["SDADM"],
+
+    # ------------- Voting districts / wards -------------
+    "City_Council_Commissioner_District": ["VTD", "PLACE"], # Roll up to PLACE, or maybe should always roll up to PLACE
+
+    # ------------- Municipal & county boundaries -------------
+    # Incorporated places / CDPs
+    "Proposed_City_Commissioner_District": ["PLACE"],
+    # Unincorporated or township-style areas
+    "Unincorporated_District": ["COUSUB"],
+    "Community_Planning_Area":  ["COUSUB"],
+    "Planning_Area_District":   ["COUSUB"],
+    # County-wide service areas
+    "County_Service_Area":            ["COUNTY"],
+    "County_Service_Area_SubDistrict":["COUNTY"],
+
+    # ------------- Consolidated cities -------------
+    "Consolidated_City": ["CONCITY"],
+
+    # ------------- Everything the Census DOESN’T publish -------------
+    # "County_Commissioner_District":      [],
+    # "County_Supervisorial_District":     [],
+    # "Designated_Market_Area_DMA":        [],
+    # "Water_District":                    [],
+    # "Fire_District":                     [],
+}
+
 def enrich_with_geoids(shapefile_path, demographic_path, L2_district_type, L2_district_name):
     print("L2_district_type: ", L2_district_type)
     print("L2_district_name: ", L2_district_name)
@@ -67,21 +131,26 @@ def enrich_with_geoids(shapefile_path, demographic_path, L2_district_type, L2_di
 
     return most_prevalent_geoids.iloc[0]
 
-def test_ca_state_house_18(turnout_df):
+def test_ca_state_house_18(turnout_df, shapefile_path):
     
     first_row_df = turnout_df.iloc[0]
     
     L2_district_type = first_row_df['OfficeType']
     L2_district_name = first_row_df['OfficeName']
 
-    return enrich_with_geoids(
-                        "./shapefiles/tl_2024_06_sldl_ca.shp", 
+    shapefile_paths = determine_shapefile_path(L2_district_name, 'ca')
+
+    for path in shapefile_paths:
+        geoid = enrich_with_geoids(
+                        path, 
                        "./resources/ca_demographic_sample_house_018.csv", 
                        L2_district_type, 
                        L2_district_name
                        )
+        if (geoid):
+            return geoid
     
-def test_ca_dinuba_city_council(turnout_df):
+def test_ca_dinuba_city_council(turnout_df, shapefile_path):
     dinuba_city_row = turnout_df.iloc[2]
 
     L2_district_type = dinuba_city_row['OfficeType']
@@ -94,12 +163,26 @@ def test_ca_dinuba_city_council(turnout_df):
                     L2_district_name
                     )
 
+def determine_shapefile_path(L2_district_type, state):
+    # state being a two letter abbreviation
+
+    # shapefiles should follow a convention: year_type_state
+    base_path = "./shapefiles/tl_2024_06"
+    types = L2_TO_TIGER_CODES[L2_district_type]
+
+    paths = []
+
+    for type in types:
+        shapefile_path = base_path + type.lower() + state.lower()
+        paths.append(shapefile_path)
+    
+
 def main():
     turnout_df = pd.read_csv('resources/turnout_projections_sample.csv')
     # geoid = test_ca_state_house_18(turnout_df)
     geoid = test_ca_dinuba_city_council(turnout_df)
 
-    
+
     
 
     
