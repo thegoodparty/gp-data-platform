@@ -281,29 +281,6 @@ def _extract_and_load_w_params(
                                     Bucket=s3_bucket, Key=existing_s3_file
                                 )
 
-                # # Upload each extracted file to S3
-                # for file_name in file_names_to_upload:
-                #     local_file_path = os.path.join(temp_extract_dir, file_name)
-                #     s3_key = f"{s3_state_prefix}{file_name}"
-
-                #     if os.path.isfile(local_file_path):
-                #         s3_client.upload_file(
-                #             Filename=local_file_path, Bucket=s3_bucket, Key=s3_key
-                #         )
-                #         # delete locally extracted files
-                #         os.remove(local_file_path)
-
-                #         # delete old versions of file from s3
-
-                # # Delete files from s3 prefix that are not in the zip file
-                # # TODO: handle uniform vs non-uniform files
-                # valid_file_names = [
-                #     f for f in file_names_to_upload if re.match(pattern, f)
-                # ]
-                # for s3_file_name in s3_file_list:
-                #     if os.path.basename(s3_file_name) not in valid_file_names:
-                #         s3_client.delete_object(Bucket=s3_bucket, Key=s3_file_name)
-
         except Exception as e:
             logging.error(f"Error processing state {state_id}: {str(e)}")
             error_details = traceback.format_exc()

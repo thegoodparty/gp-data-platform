@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Literal
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
@@ -45,7 +45,6 @@ def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
 def _extract_table_name(source_file_name: str, state_id: str) -> str:
     """
     Extract the table name from the source file name.
-    # TODO: handle uniform files
 
     Examples:
         >>> _extract_table_name('VM2--AL--2025-05-10-VOTEHISTORY.tab', 'AL')
@@ -134,20 +133,24 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         # if incremental, filter the latest_files to only include files yet to be loaded
         if dbt.is_incremental:
-            # TODO: the incremental logic needs to be applied to each row/file in latest_files
             this_table = session.table(f"{dbt.this}")
-            this_table = this_table.filter(col("state_id") == state_id)
-            this_table_latest_files = _filter_latest_loaded_files(this_table)
+            this_table_state_files = this_table.filter(col("state_id") == state_id)
+            this_table_latest_files = _filter_latest_loaded_files(
+                this_table_state_files
+            )
             this_table_latest_files_names = [
                 file.source_file_name
                 for file in this_table_latest_files.toLocalIterator()
             ]
 
-            files_to_load_list: List[Dict[str, str]] = []
+            files_to_load_list: List[
+                Dict[Literal["source_file_name", "s3_state_prefix"], str]
+            ] = []
             # Add file to load list if it's new or has newer loaded_at timestamp
             for s3_file in latest_s3_files.toLocalIterator():
-                # the file has been loaded to databricks before; check if the last s3 loaded file is newer
+
                 if s3_file.source_file_name in this_table_latest_files_names:
+                    # the file has been loaded to databricks before; check if the last s3 loaded file is newer
                     if (
                         s3_file.loaded_at
                         > this_table_latest_files.filter(
@@ -163,8 +166,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                             }
                         )
 
-                # the file has not been loaded to databricks before; add it to the load list
                 else:
+                    # the file has not been loaded to databricks before; add it to the load list
                     files_to_load_list.append(
                         {
                             "source_file_name": s3_file.source_file_name,
@@ -184,10 +187,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         else:
             files_to_load = latest_s3_files
 
-        # if there are no files to load, skip the state and move on to the next
-        if files_to_load.count() == 0:
-            continue
-
+        # iterate over files to load: read file from s3, write to databricks, and record load details
         for file in files_to_load.toLocalIterator():
             source_file_name = file.source_file_name
             table_name = _extract_table_name(source_file_name, state_id)
