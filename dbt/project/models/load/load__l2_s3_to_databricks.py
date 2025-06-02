@@ -3,7 +3,7 @@ from typing import Dict, List, Literal
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, current_timestamp, row_number
+from pyspark.sql.functions import col, current_timestamp, row_number, when
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import (
     StringType,
@@ -18,17 +18,28 @@ def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
     """
     Filter the dataframe to only include latest loaded files that match the file patterns
     """
-    df = df.filter(
-        (col("source_file_name").like("%VOTEHISTORY.tab"))
-        | (col("source_file_name").like("%DEMOGRAPHIC.tab"))
-        | (col("source_file_name").like("%VOTEHISTORY_DataDictionary.csv"))
-        | (col("source_file_name").like("%DEMOGRAPHIC_DataDictionary.csv"))
-        | (col("source_file_name").like("VM2Uniform%.tab"))
-        | (col("source_file_name").like("VM2Uniform%DataDictionary.csv"))
+    df = df.withColumn(
+        "source_file_type",
+        when(col("source_file_name").like("%VOTEHISTORY.tab"), "vote_history")
+        .when(col("source_file_name").like("%DEMOGRAPHIC.tab"), "demographic")
+        .when(
+            col("source_file_name").like("%VOTEHISTORY_DataDictionary.csv"),
+            "vote_history_data_dictionary",
+        )
+        .when(
+            col("source_file_name").like("%DEMOGRAPHIC_DataDictionary.csv"),
+            "demographic_data_dictionary",
+        )
+        .when(col("source_file_name").like("VM2Uniform%.tab"), "uniform")
+        .when(
+            col("source_file_name").like("VM2Uniform%DataDictionary.csv"),
+            "uniform_data_dictionary",
+        )
+        .otherwise(None),
     )
 
     # define window to partition by source_file_name and order by loaded_at descending
-    window_spec = Window.partitionBy("source_file_name").orderBy(
+    window_spec = Window.partitionBy("source_file_type").orderBy(
         col("loaded_at").desc()
     )
 
@@ -144,7 +155,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ]
 
             files_to_load_list: List[
-                Dict[Literal["source_file_name", "s3_state_prefix"], str]
+                Dict[
+                    Literal["source_file_name", "source_file_type", "s3_state_prefix"],
+                    str,
+                ]
             ] = []
             # Add file to load list if it's new or has newer loaded_at timestamp
             for s3_file in latest_s3_files.toLocalIterator():
@@ -162,6 +176,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                         files_to_load_list.append(
                             {
                                 "source_file_name": s3_file.source_file_name,
+                                "source_file_type": s3_file.source_file_type,
                                 "s3_state_prefix": s3_file.s3_state_prefix,
                             }
                         )
@@ -171,6 +186,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     files_to_load_list.append(
                         {
                             "source_file_name": s3_file.source_file_name,
+                            "source_file_type": s3_file.source_file_type,
                             "s3_state_prefix": s3_file.s3_state_prefix,
                         }
                     )
@@ -180,6 +196,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 schema=StructType(
                     [
                         StructField("source_file_name", StringType(), True),
+                        StructField("source_file_type", StringType(), True),
                         StructField("s3_state_prefix", StringType(), True),
                     ]
                 ),
@@ -213,6 +230,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     "state_id": state_id,
                     "source_s3_path": s3_path,
                     "source_file_name": source_file_name,
+                    "source_file_type": file.source_file_type,
                     "table_name": table_name,
                     "table_path": table_path,
                 }
@@ -232,6 +250,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             StructField("state_id", StringType(), True),
             StructField("source_s3_path", StringType(), True),
             StructField("source_file_name", StringType(), True),
+            StructField("source_file_type", StringType(), True),
             StructField("table_name", StringType(), True),
             StructField("table_path", StringType(), True),
         ]
