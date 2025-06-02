@@ -27,7 +27,7 @@ def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
         | (col("source_file_name").like("VM2Uniform%DataDictionary.csv"))
     )
 
-    # define window to partition by source_dile_name and order by loaded_at descending
+    # define window to partition by source_file_name and order by loaded_at descending
     window_spec = Window.partitionBy("source_file_name").orderBy(
         col("loaded_at").desc()
     )
