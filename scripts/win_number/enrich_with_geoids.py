@@ -264,7 +264,6 @@ def enrich_with_geoids(shapefile_path, demographic_path, L2_district_type, L2_di
     print("joined length: ", len(joined))
 
     frequency_table = joined.groupby(["GEOID", L2_district_type]).size().unstack(fill_value=0)
-    # Need logic to determine which layer of geoids / MTFCC we need. Many layers of districts on any one given lat long
     most_prevalent_geoids = (
         joined.groupby([L2_district_type, "GEOID"])
         .size()
