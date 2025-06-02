@@ -1,8 +1,9 @@
 from datetime import datetime
+from typing import Dict, List, Literal
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, current_timestamp
+from pyspark.sql.functions import col, current_timestamp, row_number
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import (
     StringType,
@@ -10,6 +11,35 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+from pyspark.sql.window import Window
+
+
+def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
+    """
+    Filter the dataframe to only include latest loaded files that match the file patterns
+    """
+    df = df.filter(
+        (col("source_file_name").like("%VOTEHISTORY.tab"))
+        | (col("source_file_name").like("%DEMOGRAPHIC.tab"))
+        | (col("source_file_name").like("%VOTEHISTORY_DataDictionary.csv"))
+        | (col("source_file_name").like("%DEMOGRAPHIC_DataDictionary.csv"))
+        | (col("source_file_name").like("VM2Uniform%.tab"))
+        | (col("source_file_name").like("VM2Uniform%DataDictionary.csv"))
+    )
+
+    # define window to partition by source_file_name and order by loaded_at descending
+    window_spec = Window.partitionBy("source_file_name").orderBy(
+        col("loaded_at").desc()
+    )
+
+    # add row number and select only most recent record (row_number = 1)
+    df = (
+        df.withColumn("rn", row_number().over(window_spec))
+        .filter(col("rn") == 1)
+        .drop("rn")
+    )
+
+    return df
 
 
 def _extract_table_name(source_file_name: str, state_id: str) -> str:
@@ -25,12 +55,22 @@ def _extract_table_name(source_file_name: str, state_id: str) -> str:
         'l2_s3_ca_vote_history_data_dictionary'
         >>> _extract_table_name('VM2--TX--2025-05-10-DEMOGRAPHIC_DataDictionary.csv', 'TX')
         'l2_s3_tx_demographic_data_dictionary'
+        >>> _extract_table_name('VM2Uniform--AK--2025-05-10.tab', 'AK')
+        'l2_s3_ak_uniform_data_dictionary'
+        >>> _extract_table_name('VM2Uniform--AK--2025-05-10_DataDictionary.csv', 'AK')
+        'l2_s3_ak_uniform_data_dictionary'
     """
     # Extract the file type from the source file name
     file_type = source_file_name.split("--")[-1].split(".")[0].lower()
 
-    # Remove the date from the file type
-    file_type = file_type.split("-")[-1]
+    # Remove the date from the file type. Uniform files are handled separately.
+    if "uniform" in source_file_name.lower():
+        if "datadictionary" in source_file_name.lower():
+            file_type = "uniform_data_dictionary"
+        else:
+            file_type = "uniform"
+    else:
+        file_type = file_type.split("-")[-1]
 
     # Construct the table name based on file type and whether it's a data dictionary
     table_name = f"l2_s3_{state_id.lower()}_{file_type}".replace(
@@ -86,35 +126,69 @@ def model(dbt, session: SparkSession) -> DataFrame:
         f"CREATE SCHEMA IF NOT EXISTS goodparty_data_catalog.{databricks_schema}"
     )
     for state_id in state_list:
+        state_files_loaded = s3_files_loaded.filter(col("state_id") == state_id)
 
-        # get the latest loaded_at for the state
-        latest_date = (
-            s3_files_loaded.filter(col("state_id") == state_id)
-            .orderBy(col("loaded_at").desc())
-            .first()
-            .loaded_at
-        )
-
-        # take the most recent files for each state
-        latest_files = s3_files_loaded.filter(col("state_id") == state_id).filter(
-            col("loaded_at") == latest_date
-        )
+        # get the latest files loaded for the state
+        latest_s3_files = _filter_latest_loaded_files(state_files_loaded)
 
         # if incremental, filter the latest_files to only include files yet to be loaded
         if dbt.is_incremental:
             this_table = session.table(f"{dbt.this}")
-            this_table = this_table.filter(col("state_id") == state_id)
-            last_load_this_table = this_table.agg({"loaded_at": "max"}).collect()[0][0]
-            if last_load_this_table:
-                latest_files = latest_files.filter(
-                    col("loaded_at") > last_load_this_table
-                )
+            this_table_state_files = this_table.filter(col("state_id") == state_id)
+            this_table_latest_files = _filter_latest_loaded_files(
+                this_table_state_files
+            )
+            this_table_latest_files_names = [
+                file.source_file_name
+                for file in this_table_latest_files.toLocalIterator()
+            ]
 
-        # if there are no files to load, skip the state and move on to the next
-        if latest_files.count() == 0:
-            continue
+            files_to_load_list: List[
+                Dict[Literal["source_file_name", "s3_state_prefix"], str]
+            ] = []
+            # Add file to load list if it's new or has newer loaded_at timestamp
+            for s3_file in latest_s3_files.toLocalIterator():
 
-        for file in latest_files.toLocalIterator():
+                if s3_file.source_file_name in this_table_latest_files_names:
+                    # the file has been loaded to databricks before; check if the last s3 loaded file is newer
+                    if (
+                        s3_file.loaded_at
+                        > this_table_latest_files.filter(
+                            col("source_file_name") == s3_file.source_file_name
+                        )
+                        .first()
+                        .loaded_at
+                    ):
+                        files_to_load_list.append(
+                            {
+                                "source_file_name": s3_file.source_file_name,
+                                "s3_state_prefix": s3_file.s3_state_prefix,
+                            }
+                        )
+
+                else:
+                    # the file has not been loaded to databricks before; add it to the load list
+                    files_to_load_list.append(
+                        {
+                            "source_file_name": s3_file.source_file_name,
+                            "s3_state_prefix": s3_file.s3_state_prefix,
+                        }
+                    )
+
+            files_to_load: DataFrame = session.createDataFrame(
+                data=files_to_load_list,
+                schema=StructType(
+                    [
+                        StructField("source_file_name", StringType(), True),
+                        StructField("s3_state_prefix", StringType(), True),
+                    ]
+                ),
+            )
+        else:
+            files_to_load = latest_s3_files
+
+        # iterate over files to load: read file from s3, write to databricks, and record load details
+        for file in files_to_load.toLocalIterator():
             source_file_name = file.source_file_name
             table_name = _extract_table_name(source_file_name, state_id)
 
@@ -128,7 +202,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
             data_df = data_df.withColumn("loaded_at", current_timestamp())
 
-            # TODO: set table path based on dbt environment and compare against airbyte naming
+            # write to databricks and record load details
             table_path = f"goodparty_data_catalog.{databricks_schema}.{table_name}"
             data_df.write.mode("overwrite").option("overwriteSchema", "true").option(
                 "clusterByAuto", "true"

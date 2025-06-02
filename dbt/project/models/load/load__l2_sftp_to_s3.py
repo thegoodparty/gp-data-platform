@@ -65,7 +65,7 @@ def _create_sftp_connection(
     raise Exception("Failed to establish SFTP connection after all retries")
 
 
-def _extract_and_load_w_creds(
+def _extract_and_load_w_params(
     sftp_host: str,
     sftp_port: int,
     sftp_user: str,
@@ -75,6 +75,7 @@ def _extract_and_load_w_creds(
     s3_access_key: str,
     s3_secret_key: str,
     databricks_volume_directory: str,
+    is_uniform: bool,
 ) -> Callable:
     """
     Creates a pandas UDF that extracts and loads files from an SFTP server to an S3 bucket. Note that
@@ -90,6 +91,7 @@ def _extract_and_load_w_creds(
         s3_access_key: The access key for the S3 bucket
         s3_secret_key: The secret key for the S3 bucket
         databricks_volume_directory: The directory to store temporary files
+        is_uniform: Whether the files are uniform or not
 
     Returns:
         A pandas UDF function
@@ -125,9 +127,14 @@ def _extract_and_load_w_creds(
             )
 
             # get file for the state from the sftp server and check that it exists
-            remote_file_path = "/VMFiles/"
+            if is_uniform:
+                remote_file_path = "/VM2Uniform"
+                string_pattern = f"VM2Uniform--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
+            else:
+                remote_file_path = "/VMFiles/"
+                string_pattern = f"VM2--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
+
             file_list = sftp_client.listdir(remote_file_path)
-            string_pattern = f"VM2--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
             file_name_pattern = re.compile(string_pattern)
             file_list = [f for f in file_list if re.match(file_name_pattern, f)]
             if len(file_list) != 1:
@@ -184,10 +191,28 @@ def _extract_and_load_w_creds(
                 'VM2--{state_id}--{YYYY-MM-DD}-DEMOGRAPHIC_DataDictionary.csv'
                 'VM2--{state_id}--{YYYY-MM-DD}-VOTEHISTORY.tab'
                 'VM2--{state_id}--{YYYY-MM-DD}-VOTEHISTORY_DataDictionary.csv'
+
+                Or for the uniform files:
+                'VM2Uniform--{state_id}--{YYYY-MM-DD}.tab'
+                'VM2Uniform--{state_id}--{YYYY-MM-DD}_DataDictionary.csv'
                 """
-                with ZipFile(local_zip_path, "r") as zip_file:
-                    extracted_file_names = zip_file.namelist()
-                    zip_file.extractall(path=temp_extract_dir)
+                try:
+                    with ZipFile(local_zip_path, "r") as zip_file:
+                        extracted_file_names = zip_file.namelist()
+                        zip_file.extractall(path=temp_extract_dir)
+                except NotImplementedError:
+                    logging.error(
+                        f"Source zip file {local_zip_path} is corrupted."
+                        " This may happen when source SFTP server is being updated."
+                        " Skipping for now."
+                    )
+                    return {
+                        "state_id": None,
+                        "source_file_names": None,
+                        "source_zip_file": None,
+                        "loaded_at": None,
+                        "s3_state_prefix": None,
+                    }
 
                 # delete the zip file
                 os.remove(local_zip_path)
@@ -198,7 +223,10 @@ def _extract_and_load_w_creds(
                     for file_name in extracted_file_names
                 ]
                 file_names_to_upload = []
-                pattern = r"^VM2--[A-Z]{2}--\d{4}-\d{2}-\d{2}-(DEMOGRAPHIC|VOTEHISTORY)(_DataDictionary\.csv|\.tab)$"
+                if is_uniform:
+                    pattern = r"^VM2Uniform--[A-Z]{2}--\d{4}-\d{2}-\d{2}(_DataDictionary\.csv|\.tab)$"
+                else:
+                    pattern = r"^VM2--[A-Z]{2}--\d{4}-\d{2}-\d{2}-(DEMOGRAPHIC|VOTEHISTORY)(_DataDictionary\.csv|\.tab)$"
 
                 for file_path in file_name_paths:
                     filename = os.path.basename(file_path)
@@ -212,12 +240,16 @@ def _extract_and_load_w_creds(
                         file_names_to_upload.append(filename)
 
                         # Extract the file type (DEMOGRAPHIC or VOTEHISTORY/VOTERHISTORY) and extension
-                        file_type = match.group(1)
-                        extension = match.group(2)  # _DataDictionary.csv or .tab
+                        if is_uniform:
+                            file_type = "UNIFORM"
+                            extension = match.group(1)  # _DataDictionary.csv or .tab
+                        else:
+                            file_type = match.group(1)
+                            extension = match.group(2)  # _DataDictionary.csv or .tab
 
                         # headers and footers must be removed from data dictionary files
                         if (
-                            file_type == "DEMOGRAPHIC"
+                            file_type in ["DEMOGRAPHIC", "UNIFORM"]
                             and extension == "_DataDictionary.csv"
                         ):
                             df = pd.read_csv(file_path, skiprows=15, skipfooter=24)
@@ -231,10 +263,8 @@ def _extract_and_load_w_creds(
                     else:
                         logging.info(f"Skipping (match={match}) file: {filename}")
 
-                # Upload each extracted file to S3
-                for file_name in file_names_to_upload:
-                    local_file_path = os.path.join(temp_extract_dir, file_name)
-                    s3_key = f"{s3_state_prefix}{file_name}"
+                    local_file_path = os.path.join(temp_extract_dir, filename)
+                    s3_key = f"{s3_state_prefix}{filename}"
 
                     if os.path.isfile(local_file_path):
                         s3_client.upload_file(
@@ -243,13 +273,13 @@ def _extract_and_load_w_creds(
                         # delete locally extracted files
                         os.remove(local_file_path)
 
-                # Delete files from s3 prefix that are not in the zip file
-                valid_file_names = [
-                    f for f in file_names_to_upload if re.match(pattern, f)
-                ]
-                for s3_file_name in s3_file_list:
-                    if os.path.basename(s3_file_name) not in valid_file_names:
-                        s3_client.delete_object(Bucket=s3_bucket, Key=s3_file_name)
+                        # delete old versions of file from s3, same prefix and suffix but different date
+                        for existing_s3_file in s3_file_list:
+                            s3_regexp_match = re.match(pattern, existing_s3_file)
+                            if s3_regexp_match and existing_s3_file != filename:
+                                s3_client.delete_object(
+                                    Bucket=s3_bucket, Key=existing_s3_file
+                                )
 
         except Exception as e:
             logging.error(f"Error processing state {state_id}: {str(e)}")
@@ -267,7 +297,7 @@ def _extract_and_load_w_creds(
 
         result = {
             "state_id": state_id,
-            "source_file_names": valid_file_names,
+            "source_file_names": file_names_to_upload,
             "source_zip_file": source_zip_file_name,
             "loaded_at": datetime.now(),
             "s3_state_prefix": s3_state_prefix,
@@ -330,7 +360,7 @@ def model(dbt, session: SparkSession):
     logging.info(f"States included: {', '.join(sorted(state_list))}")
 
     # set function to extract and load the files with credentials and configuration
-    extract_and_load = _extract_and_load_w_creds(
+    extract_and_load_uniform = _extract_and_load_w_params(
         sftp_host=sftp_host,
         sftp_port=sftp_port,
         sftp_user=sftp_user,
@@ -340,6 +370,20 @@ def model(dbt, session: SparkSession):
         s3_access_key=s3_access_key,
         s3_secret_key=s3_secret_key,
         databricks_volume_directory=databricks_volume_directory,
+        is_uniform=True,
+    )
+
+    extract_and_load_non_uniform = _extract_and_load_w_params(
+        sftp_host=sftp_host,
+        sftp_port=sftp_port,
+        sftp_user=sftp_user,
+        sftp_password=sftp_password,
+        s3_bucket=s3_bucket,
+        s3_prefix=l2_vmfiles_prefix,
+        s3_access_key=s3_access_key,
+        s3_secret_key=s3_secret_key,
+        databricks_volume_directory=databricks_volume_directory,
+        is_uniform=False,
     )
 
     # Convert to pandas DataFrame for processing on spark driver since sftp connection for large files
@@ -347,7 +391,11 @@ def model(dbt, session: SparkSession):
     # are not robust so stick with one core in databricks
     # TODO: move this to airflow over parallel tasks by each state
     states_pd = states.toPandas()
-    states_pd["load_details"] = states_pd["state_id"].apply(extract_and_load)
+    uniform_loads = states_pd["state_id"].apply(extract_and_load_uniform)
+    non_uniform_loads = states_pd["state_id"].apply(extract_and_load_non_uniform)
+    states_pd["load_details"] = pd.concat(
+        [uniform_loads, non_uniform_loads], ignore_index=True
+    )
 
     # Convert back to Spark DataFrame
     load_details_schema = StructType(
