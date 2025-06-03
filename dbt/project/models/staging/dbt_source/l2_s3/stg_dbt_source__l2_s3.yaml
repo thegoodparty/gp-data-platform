@@ -579,6 +579,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ma_demographic_data_dictionary
     description: "Staging model for MA (Massachusetts) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ma_uniform
+    description: "Staging model for MA (Massachusetts) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ma_uniform_data_dictionary
+    description: "Staging model for MA (Massachusetts) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ma_vote_history
     description: "Staging model for MA (Massachusetts) vote history"
     columns:
@@ -589,16 +599,6 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ma_vote_history_data_dictionary
     description: "Staging model for MA (Massachusetts) vote history data dictionary"
-  - name: stg_dbt_source__l2_s3_md_uniform
-    description: "Staging model for MD (Maryland) uniform"
-    columns:
-      - name: LALVOTERID
-        description: "The ID of the voter"
-        data_tests:
-          - not_null
-          - unique
-  - name: stg_dbt_source__l2_s3_md_uniform_data_dictionary
-    description: "Staging model for MD (Maryland) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_md_demographic
     description: "Staging model for MD (Maryland) demographic"
     columns:
@@ -609,6 +609,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_md_demographic_data_dictionary
     description: "Staging model for MD (Maryland) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_md_uniform
+    description: "Staging model for MD (Maryland) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_md_uniform_data_dictionary
+    description: "Staging model for MD (Maryland) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_md_vote_history
     description: "Staging model for MD (Maryland) vote history"
     columns:
@@ -619,16 +629,6 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_md_vote_history_data_dictionary
     description: "Staging model for MD (Maryland) vote history data dictionary"
-  - name: stg_dbt_source__l2_s3_me_uniform
-    description: "Staging model for ME (Maine) uniform"
-    columns:
-      - name: LALVOTERID
-        description: "The ID of the voter"
-        data_tests:
-          - not_null
-          - unique
-  - name: stg_dbt_source__l2_s3_me_uniform_data_dictionary
-    description: "Staging model for ME (Maine) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_me_demographic
     description: "Staging model for ME (Maine) demographic"
     columns:
@@ -639,6 +639,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_me_demographic_data_dictionary
     description: "Staging model for ME (Maine) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_me_uniform
+    description: "Staging model for ME (Maine) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_me_uniform_data_dictionary
+    description: "Staging model for ME (Maine) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_me_vote_history
     description: "Staging model for ME (Maine) vote history"
     columns:
@@ -649,16 +659,6 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_me_vote_history_data_dictionary
     description: "Staging model for ME (Maine) vote history data dictionary"
-  - name: stg_dbt_source__l2_s3_mi_uniform
-    description: "Staging model for MI (Michigan) uniform"
-    columns:
-      - name: LALVOTERID
-        description: "The ID of the voter"
-        data_tests:
-          - not_null
-          - unique
-  - name: stg_dbt_source__l2_s3_mi_uniform_data_dictionary
-    description: "Staging model for MI (Michigan) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mi_demographic
     description: "Staging model for MI (Michigan) demographic"
     columns:
@@ -669,6 +669,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mi_demographic_data_dictionary
     description: "Staging model for MI (Michigan) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_mi_uniform
+    description: "Staging model for MI (Michigan) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_mi_uniform_data_dictionary
+    description: "Staging model for MI (Michigan) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mi_vote_history
     description: "Staging model for MI (Michigan) vote history"
     columns:
@@ -679,16 +689,6 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mi_vote_history_data_dictionary
     description: "Staging model for MI (Michigan) vote history data dictionary"
-  - name: stg_dbt_source__l2_s3_mn_uniform
-    description: "Staging model for MN (Minnesota) uniform"
-    columns:
-      - name: LALVOTERID
-        description: "The ID of the voter"
-        data_tests:
-          - not_null
-          - unique
-  - name: stg_dbt_source__l2_s3_mn_uniform_data_dictionary
-    description: "Staging model for MN (Minnesota) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mn_demographic
     description: "Staging model for MN (Minnesota) demographic"
     columns:
