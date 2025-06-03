@@ -44,6 +44,10 @@ models:
     # Applies to all files under models/mart/
     mart:
       +materialized: table
+    staging:
+      dbt_source:
+        l2_s3:
+          +tags: ["staging", "dbt_source", "l2_s3"]
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
