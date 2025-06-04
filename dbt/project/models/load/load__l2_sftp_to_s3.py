@@ -178,11 +178,26 @@ def _extract_and_load_w_params(
             ) as temp_extract_dir:
                 # Download the file from the SFTP server
                 local_zip_path = os.path.join(temp_extract_dir, source_zip_file_name)
-                sftp_client.get(
-                    remotepath=full_file_path,
-                    localpath=local_zip_path,
-                    max_concurrent_prefetch_requests=64,
-                )
+
+                try:
+                    sftp_client.get(
+                        remotepath=full_file_path,
+                        localpath=local_zip_path,
+                        max_concurrent_prefetch_requests=64,
+                    )
+                except OSError as e:
+                    logging.error(
+                        f"Source file from sftp server {full_file_path} is locked: {str(e)}."
+                        " This may happen when source SFTP server is being updated."
+                        " Skipping for now. Will retry later."
+                    )
+                    return {
+                        "state_id": None,
+                        "source_file_names": None,
+                        "source_zip_file": None,
+                        "loaded_at": None,
+                        "s3_state_prefix": None,
+                    }
 
                 """
                 Files inside of the zip are named like:
