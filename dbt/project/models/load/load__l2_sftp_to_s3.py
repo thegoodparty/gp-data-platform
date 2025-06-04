@@ -23,6 +23,14 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
+EMPTY_LOAD_DETAILS = {
+    "state_id": None,
+    "source_file_names": None,
+    "source_zip_file": None,
+    "loaded_at": None,
+    "s3_state_prefix": None,
+}
+
 
 def _create_sftp_connection(
     host: str,
@@ -162,13 +170,7 @@ def _extract_and_load_w_params(
                 logging.info(
                     f"File with base name {source_zip_file_base_name} already exists in S3"
                 )
-                return {
-                    "state_id": None,
-                    "source_file_names": None,
-                    "source_zip_file": None,
-                    "loaded_at": None,
-                    "s3_state_prefix": None,
-                }
+                return EMPTY_LOAD_DETAILS
 
             # download the file from the sftp server and extract it
             full_file_path = os.path.join(remote_file_path, source_zip_file_name)
@@ -178,11 +180,20 @@ def _extract_and_load_w_params(
             ) as temp_extract_dir:
                 # Download the file from the SFTP server
                 local_zip_path = os.path.join(temp_extract_dir, source_zip_file_name)
-                sftp_client.get(
-                    remotepath=full_file_path,
-                    localpath=local_zip_path,
-                    max_concurrent_prefetch_requests=64,
-                )
+
+                try:
+                    sftp_client.get(
+                        remotepath=full_file_path,
+                        localpath=local_zip_path,
+                        max_concurrent_prefetch_requests=64,
+                    )
+                except OSError as e:
+                    logging.error(
+                        f"Source file from sftp server {full_file_path} is locked: {str(e)}."
+                        " This may happen when source SFTP server is being updated."
+                        " Skipping for now. Will retry later."
+                    )
+                    return EMPTY_LOAD_DETAILS
 
                 """
                 Files inside of the zip are named like:
@@ -204,15 +215,9 @@ def _extract_and_load_w_params(
                     logging.error(
                         f"Source zip file {local_zip_path} is corrupted."
                         " This may happen when source SFTP server is being updated."
-                        " Skipping for now."
+                        " Skipping for now. Will retry later."
                     )
-                    return {
-                        "state_id": None,
-                        "source_file_names": None,
-                        "source_zip_file": None,
-                        "loaded_at": None,
-                        "s3_state_prefix": None,
-                    }
+                    return EMPTY_LOAD_DETAILS
 
                 # delete the zip file
                 os.remove(local_zip_path)

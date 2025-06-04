@@ -38,7 +38,7 @@ def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
         .otherwise(None),
     )
 
-    # define window to partition by source_file_name and order by loaded_at descending
+    # define window to partition by source_file_type and order by loaded_at descending
     window_spec = Window.partitionBy("source_file_type").orderBy(
         col("loaded_at").desc()
     )
