@@ -219,7 +219,7 @@ def _extract_and_load_w_params(
                     logging.error(
                         f"Source zip file {local_zip_path} is corrupted."
                         " This may happen when source SFTP server is being updated."
-                        " Skipping for now."
+                        " Skipping for now. Will retry later."
                     )
                     return {
                         "state_id": None,
