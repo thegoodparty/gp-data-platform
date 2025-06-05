@@ -91,6 +91,15 @@ UPSERT_QUERY = """
         "Voters_VotingPerformanceEvenYearPrimary",
         "Voters_VotingPerformanceEvenYearGeneralAndPrimary",
         "Voters_VotingPerformanceMinorElection",
+        "General_2026",
+        "Primary_2026",
+        "OtherElection_2026",
+        "AnyElection_2025",
+        "General_2024",
+        "Primary_2024",
+        "PresidentialPrimary_2024",
+        "OtherElection_2024",
+        "AnyElection_2023",
         "General_2022",
         "Primary_2022",
         "OtherElection_2022",
@@ -430,6 +439,15 @@ UPSERT_QUERY = """
         "Voters_VotingPerformanceEvenYearPrimary",
         "Voters_VotingPerformanceEvenYearGeneralAndPrimary",
         "Voters_VotingPerformanceMinorElection",
+        "General_2026",
+        "Primary_2026",
+        "OtherElection_2026",
+        "AnyElection_2025",
+        "General_2024",
+        "Primary_2024",
+        "PresidentialPrimary_2024",
+        "OtherElection_2024",
+        "AnyElection_2023",
         "General_2022",
         "Primary_2022",
         "OtherElection_2022",
@@ -768,6 +786,15 @@ UPSERT_QUERY = """
         "Voters_VotingPerformanceEvenYearPrimary" = EXCLUDED.Voters_VotingPerformanceEvenYearPrimary,
         "Voters_VotingPerformanceEvenYearGeneralAndPrimary" = EXCLUDED.Voters_VotingPerformanceEvenYearGeneralAndPrimary,
         "Voters_VotingPerformanceMinorElection" = EXCLUDED.Voters_VotingPerformanceMinorElection,
+        "General_2026" = EXCLUDED.General_2026,
+        "Primary_2026" = EXCLUDED.Primary_2026,
+        "OtherElection_2026" = EXCLUDED.OtherElection_2026,
+        "AnyElection_2025" = EXCLUDED.AnyElection_2025,
+        "General_2024" = EXCLUDED.General_2024,
+        "Primary_2024" = EXCLUDED.Primary_2024,
+        "PresidentialPrimary_2024" = EXCLUDED.PresidentialPrimary_2024,
+        "OtherElection_2024" = EXCLUDED.OtherElection_2024,
+        "AnyElection_2023" = EXCLUDED.AnyElection_2023,
         "General_2022" = EXCLUDED.General_2022,
         "Primary_2022" = EXCLUDED.Primary_2022,
         "OtherElection_2022" = EXCLUDED.OtherElection_2022,
@@ -1173,6 +1200,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         row.state_id
         for row in loaded_to_databricks.select("state_id").distinct().collect()
     ]
+
+    # for testing, only load for one state
+    state_list = ["WY"]
 
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
