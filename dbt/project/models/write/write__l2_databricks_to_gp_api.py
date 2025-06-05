@@ -1059,16 +1059,27 @@ UPSERT_QUERY = """
 
 
 def _execute_sql_query(
-    query: str, host: str, port: int, user: str, password: str, database: str
+    query: str,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    database: str,
+    return_results: bool = False,
 ) -> List[Tuple[Any, ...]]:
-
+    """
+    Execute a SQL query and return the results. Not that the results should be None if no results are returned.
+    """
     try:
         conn = psycopg2.connect(
             dbname=database, user=user, password=password, host=host, port=port
         )
         cursor = conn.cursor()
         cursor.execute(query)
-        results = cursor.fetchall()
+        if return_results:
+            results = cursor.fetchall() if cursor.rowcount > 0 else []
+        else:
+            results = []
         conn.commit()
     except Exception as e:
         logging.error(f"Error executing query: {query}")
@@ -1201,8 +1212,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         for row in loaded_to_databricks.select("state_id").distinct().collect()
     ]
 
-    # for testing, only load for one state
-    state_list = ["WY"]
+    # # for testing, only load for one state
+    # state_list = ["WY"]
 
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
@@ -1228,7 +1239,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
             SELECT COUNT(*) FROM {db_schema}."VoterFile"
             WHERE "Filaname" = '{latest_file.source_file_name}'
         """
-        results = _execute_sql_query(query, db_host, db_port, db_user, db_pw, db_name)
+        results = _execute_sql_query(
+            query, db_host, db_port, db_user, db_pw, db_name, return_results=True
+        )
         if results[0][0] > 0:
             continue
 
