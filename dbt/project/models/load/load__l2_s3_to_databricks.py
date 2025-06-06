@@ -129,6 +129,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()
     ]
 
+    # for testing
+    state_list = ["WY"]
+
     # initialize list to capture metadata about data loads
     load_details = []
 
