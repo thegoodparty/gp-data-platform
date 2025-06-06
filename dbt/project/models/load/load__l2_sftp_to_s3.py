@@ -139,7 +139,7 @@ def _extract_and_load_w_params(
                 remote_file_path = "/VM2Uniform"
                 string_pattern = f"VM2Uniform--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
             else:
-                remote_file_path = "/VMFiles/"
+                remote_file_path = "/VMFiles"
                 string_pattern = f"VM2--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
 
             file_list = sftp_client.listdir(remote_file_path)
@@ -396,10 +396,17 @@ def model(dbt, session: SparkSession):
     # are not robust so stick with one core in databricks
     # TODO: move this to airflow over parallel tasks by each state
     states_pd = states.toPandas()
-    uniform_loads = states_pd["state_id"].apply(extract_and_load_uniform)
-    non_uniform_loads = states_pd["state_id"].apply(extract_and_load_non_uniform)
-    states_pd["load_details"] = pd.concat(
-        [uniform_loads, non_uniform_loads], ignore_index=True
+    uniform_loads = states_pd.copy()
+    non_uniform_loads = states_pd.copy()
+    uniform_loads["load_details"] = states_pd["state_id"].apply(
+        extract_and_load_uniform
+    )
+    non_uniform_loads["load_details"] = states_pd["state_id"].apply(
+        extract_and_load_non_uniform
+    )
+    states_loaded_pd = pd.concat(
+        [uniform_loads, non_uniform_loads],
+        ignore_index=True,
     )
 
     # Convert back to Spark DataFrame
@@ -423,7 +430,7 @@ def model(dbt, session: SparkSession):
             ),
         ]
     )
-    states = session.createDataFrame(states_pd, load_details_schema)
+    states = session.createDataFrame(states_loaded_pd, load_details_schema)
 
     # generate an uuid for the load job
     states = states.withColumn("load_id", lit(str(uuid4())))
