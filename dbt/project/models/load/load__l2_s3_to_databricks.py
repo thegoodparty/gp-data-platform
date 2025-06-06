@@ -129,6 +129,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()
     ]
 
+    # for testing
+    state_list = ["WY"]
+
     # initialize list to capture metadata about data loads
     load_details = []
 
@@ -211,7 +214,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
             # set up reader and add loaded_at column
             delimiter = "\t" if source_file_name.endswith(".tab") else ","
-            s3_path = f"s3a://{s3_bucket}/{file.s3_state_prefix}/{source_file_name}"
+            s3_path = f"s3a://{s3_bucket}/{file.s3_state_prefix}{source_file_name}"
             data_df = session.read.options(delimiter=delimiter).csv(
                 path=s3_path,
                 header=True,
