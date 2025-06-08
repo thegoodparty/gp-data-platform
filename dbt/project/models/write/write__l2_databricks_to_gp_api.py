@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Tuple
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, monotonically_increasing_id
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -377,12 +377,12 @@ UPSERT_QUERY = """
         "Residence_Addresses_AddressLine",
         "Residence_Addresses_ExtraAddressLine",
         "Residence_Addresses_City",
-        "Residence_Addresses_State"::INT,
+        "Residence_Addresses_State",
         "Residence_Addresses_Zip",
         "Residence_Addresses_ZipPlus4",
         "Residence_Addresses_DPBC",
         "Residence_Addresses_CheckDigit"::INT,
-        "Residence_Addresses_HouseNumber"::INT,
+        "Residence_Addresses_HouseNumber",
         "Residence_Addresses_Designator",
         "Residence_Addresses_SuffixDirection"::INT,
         "Residence_Addresses_ApartmentNum",
@@ -398,12 +398,12 @@ UPSERT_QUERY = """
         "Mailing_Addresses_AddressLine",
         "Mailing_Addresses_ExtraAddressLine",
         "Mailing_Addresses_City",
-        "Mailing_Addresses_State"::INT,
+        "Mailing_Addresses_State",
         "Mailing_Addresses_Zip",
         "Mailing_Addresses_ZipPlus4",
         "Mailing_Addresses_DPBC",
         "Mailing_Addresses_CheckDigit"::INT,
-        "Mailing_Addresses_HouseNumber"::INT,
+        "Mailing_Addresses_HouseNumber",
         "Mailing_Addresses_PrefixDirection"::INT,
         "Mailing_Addresses_StreetName",
         "Mailing_Addresses_Designator",
@@ -432,7 +432,7 @@ UPSERT_QUERY = """
         "AbsenteeTypes_Description",
         NULL AS "MilitaryStatus_Description",
         NULL AS "MaritalStatus_Description",
-        "Voters_MovedFrom_State"::INT,
+        "Voters_MovedFrom_State",
         "Voters_MovedFrom_Date"::DATE,
         "Voters_MovedFrom_Party_Description",
         "Voters_VotingPerformanceEvenYearGeneral",
@@ -895,7 +895,7 @@ UPSERT_QUERY = """
         "County_Water_Landowner_District" = EXCLUDED."County_Water_Landowner_District",
         "County_Water_SubDistrict" = EXCLUDED."County_Water_SubDistrict",
         "Metropolitan_Water_District" = EXCLUDED."Metropolitan_Water_District",
-        "Mountain_Water_District" = EXCLUDED.Mountain_Water_District,
+        "Mountain_Water_District" = EXCLUDED."Mountain_Water_District",
         "Municipal_Water_District" = EXCLUDED."Municipal_Water_District",
         "Municipal_Water_SubDistrict" = EXCLUDED."Municipal_Water_SubDistrict",
         "River_Water_District" = EXCLUDED."River_Water_District",
@@ -1130,14 +1130,30 @@ def _load_data_to_postgres(
     # Construct JDBC URL
     jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
 
-    # Write data directly using JDBC to staging table
-    df.write.format("jdbc").option("url", jdbc_url).option(
-        "dbtable", f'{staging_schema}."{table_name}"'
-    ).option("user", db_user).option("password", db_pw).option(
-        "driver", "org.postgresql.Driver"
-    ).mode(
-        "overwrite"
-    ).save()
+    # Add a row index for chunking to prevent data load hangups
+    df = df.withColumn("row_id", monotonically_increasing_id())
+    chunk_size = 100_000  # 100,000 rows per chunk
+    total_rows = df.count()
+
+    for start in range(0, total_rows, chunk_size):
+        if start == 0:
+            mode = "overwrite"
+        else:
+            mode = "append"
+        chunk_df = df.filter(
+            (col("row_id") >= start) & (col("row_id") < start + chunk_size)
+        ).drop("row_id")
+        chunk_df.write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f'{staging_schema}."{table_name}"'
+        ).option("user", db_user).option("password", db_pw).option(
+            "driver", "org.postgresql.Driver"
+        ).option(
+            "batchsize", 1000
+        ).option(
+            "reWriteBatchedInserts", "true"
+        ).mode(
+            mode
+        ).save()
 
     # make a wake up call to the database
     _execute_sql_query(
@@ -1181,6 +1197,11 @@ def _load_data_to_postgres(
             {num_rows_loaded},
             true,
             CURRENT_TIMESTAMP
+        )
+        ON CONFLICT ("Filename") DO UPDATE SET
+            "Lines" = EXCLUDED."Lines",
+            "Loaded" = EXCLUDED."Loaded",
+            "updatedAt" = CURRENT_TIMESTAMP
         """,
         db_host,
         db_port,
@@ -1260,6 +1281,37 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         # write to destination postgres table
         df = session.read.table(latest_file.table_path)
+        # safe_cast the integer columns
+        df = (
+            df.withColumn(
+                "Residence_Addresses_CheckDigit",
+                col("Residence_Addresses_CheckDigit").try_cast("int"),
+            )
+            .withColumn(
+                "Residence_Addresses_HouseNumber",
+                col("Residence_Addresses_HouseNumber").try_cast("int"),
+            )
+            .withColumn(
+                "Residence_Addresses_SuffixDirection",
+                col("Residence_Addresses_SuffixDirection").try_cast("int"),
+            )
+            .withColumn(
+                "Mailing_Addresses_CheckDigit",
+                col("Mailing_Addresses_CheckDigit").try_cast("int"),
+            )
+            .withColumn(
+                "Mailing_Addresses_HouseNumber",
+                col("Mailing_Addresses_HouseNumber").try_cast("int"),
+            )
+            .withColumn(
+                "Mailing_Addresses_PrefixDirection",
+                col("Mailing_Addresses_PrefixDirection").try_cast("int"),
+            )
+            .withColumn(
+                "Mailing_Addresses_SuffixDirection",
+                col("Mailing_Addresses_SuffixDirection").try_cast("int"),
+            )
+        )
         num_rows_loaded = _load_data_to_postgres(
             df=df,
             state_id=state_id,
