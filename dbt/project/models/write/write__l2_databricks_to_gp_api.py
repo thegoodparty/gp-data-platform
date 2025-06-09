@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 import psycopg2
@@ -953,7 +954,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     # TODO: test in a subset of states, eventually read all 50 + DC
-    state_list = ["AZ", "DC", "VA", "WY"]
+    state_list = ["AZ", "DC", "LA", "NJ", "VA", "WY"]
 
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
@@ -1015,7 +1016,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             {
                 "id": latest_file.id,
                 "load_id": latest_file.load_id,
-                "loaded_at": latest_file.loaded_at,
+                "loaded_at": datetime.now(),
                 "state_id": state_id,
                 "source_s3_path": latest_file.source_s3_path,
                 "source_file_name": latest_file.source_file_name,
