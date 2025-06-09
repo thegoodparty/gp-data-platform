@@ -952,8 +952,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         for row in loaded_to_databricks.select("state_id").distinct().collect()
     ]
 
-    # test on DC which is taking a long time
-    state_list = ["DC", "VA", "WY"]
+    # TODO: test in a subset of states, eventually read all 50 + DC
+    state_list = ["AZ", "DC", "VA", "WY"]
 
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
