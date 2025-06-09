@@ -864,49 +864,13 @@ def _load_data_to_postgres(
         return_results=False,
     )
 
-    # Add a row index for chunking to prevent data load hangups
-    from pyspark.sql.functions import monotonically_increasing_id
-
-    df = df.withColumn("row_id", monotonically_increasing_id())
-    chunk_size = 100_000  # 100,000 rows per chunk
-    total_rows = df.count()
-    for start in range(0, total_rows, chunk_size):
-        if start == 0:
-            mode = "overwrite"
-        else:
-            mode = "append"
-        chunk_df = df.filter(
-            (col("row_id") >= start) & (col("row_id") < start + chunk_size)
-        ).drop("row_id")
-        chunk_df.write.format("jdbc").option("url", jdbc_url).option(
-            "dbtable", f'{staging_schema}."{table_name}"'
-        ).option("user", db_user).option("password", db_pw).option(
-            "driver", "org.postgresql.Driver"
-        ).option(
-            "connectTimeout", 30
-        ).option(
-            "socketTimeout", 60
-        ).option(
-            "batchsize", 5000
-        ).mode(
-            mode
-        ).save()
-        # .option("reWriteBatchedInserts", "true") \
-
-    # df.write.format("jdbc").option("url", jdbc_url).option(
-    #     "dbtable", f'{staging_schema}."{table_name}"'
-    # ).option("user", db_user).option("password", db_pw).option(
-    #     "driver", "org.postgresql.Driver"
-    # ).option(
-    #     "batchsize", 5000
-    # ).option(
-    #     "reWriteBatchedInserts", "true"
-    # ).mode(
-    #     "overwrite"
-    # ).save()
-
-    # .option("connectTimeout", 30) \
-    # .option("socketTimeout", 60) \
+    df.write.format("jdbc").option("url", jdbc_url).option(
+        "dbtable", f'{staging_schema}."{table_name}"'
+    ).option("user", db_user).option("password", db_pw).option(
+        "driver", "org.postgresql.Driver"
+    ).mode(
+        "overwrite"
+    ).save()
 
     # Execute the upsert query to the destination table
     _execute_sql_query(
