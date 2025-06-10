@@ -419,6 +419,9 @@ update_columns_list_str = " " + ", ".join(
     ]
 )
 
+# Note that the value list under `INSERT` and `SELECT` must be in the same order, so a
+# programmatic generate of the query would either compromise the order listed in the
+# schema definition or require a manual reordering of the columns.
 UPSERT_QUERY = (
     """
     INSERT INTO {db_schema}."{table_name}" (
