@@ -1041,22 +1041,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         for row in loaded_to_databricks.select("state_id").distinct().collect()
     ]
 
-    # TODO: test in a subset of states, eventually read all 50 + DC
-    state_list = [
-        "AK",
-        "AL",
-        "AR",
-        "AZ",
-        "CO",
-        "CT",
-        "DC",
-        "LA",
-        "MN",
-        "NJ",
-        "VA",
-        "WY",
-    ]
-
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
 
