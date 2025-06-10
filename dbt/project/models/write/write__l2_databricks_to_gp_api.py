@@ -937,17 +937,7 @@ def _load_data_to_postgres(
         "overwrite"
     ).save()
 
-    # turn off synchronous_commit for the large upsert query in the session
-    _execute_sql_query(
-        "SET synchronous_commit = off; SET work_mem = '128MB'; SET max_parallel_workers_per_gather = 8;",
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-    )
-
-    # Execute the upsert query to the destination table
+    # turn off synchronous_commit, increase working memory parallelization for the large upsert query in the session
     upsert_query_w_config = (
         "SET synchronous_commit = off; "
         "SET work_mem = '128MB'; "
@@ -979,7 +969,7 @@ def _load_data_to_postgres(
     # number of rows loaded
     num_rows_loaded = df.count()
 
-    # load the source file name to the destination table
+    # log the load to the VoterFile logging table
     _execute_sql_query(
         f"""
         INSERT INTO {db_schema}."VoterFile" (
