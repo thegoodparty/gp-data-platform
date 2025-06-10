@@ -777,8 +777,69 @@ UPSERT_QUERY = (
         "Weed_District"
     FROM {staging_schema}."{table_name}"
     ON CONFLICT ("LALVOTERID") DO UPDATE SET
+        "Voters_Active" = EXCLUDED."Voters_Active",
+        "Voters_StateVoterID" = EXCLUDED."Voters_StateVoterID",
+        "Voters_CountyVoterID" = EXCLUDED."Voters_CountyVoterID",
+        "VoterTelephones_LandlineFormatted" = EXCLUDED."VoterTelephones_LandlineFormatted",
+        "VoterTelephones_LandlineConfidenceCode" = EXCLUDED."VoterTelephones_LandlineConfidenceCode",
+        "VoterTelephones_CellPhoneFormatted" = EXCLUDED."VoterTelephones_CellPhoneFormatted",
+        "VoterTelephones_CellConfidenceCode" = EXCLUDED."VoterTelephones_CellConfidenceCode",
+        "Voters_FirstName" = EXCLUDED."Voters_FirstName",
+        "Voters_MiddleName" = EXCLUDED."Voters_MiddleName",
+        "Voters_LastName" = EXCLUDED."Voters_LastName",
+        "Voters_NameSuffix" = EXCLUDED."Voters_NameSuffix",
+        "Residence_Addresses_AddressLine" = EXCLUDED."Residence_Addresses_AddressLine",
+        "Residence_Addresses_ExtraAddressLine" = EXCLUDED."Residence_Addresses_ExtraAddressLine",
+        "Residence_Addresses_City" = EXCLUDED."Residence_Addresses_City",
+        "Residence_Addresses_State" = EXCLUDED."Residence_Addresses_State",
+        "Residence_Addresses_Zip" = EXCLUDED."Residence_Addresses_Zip",
+        "Residence_Addresses_ZipPlus4" = EXCLUDED."Residence_Addresses_ZipPlus4",
+        "Residence_Addresses_DPBC" = EXCLUDED."Residence_Addresses_DPBC",
+        "Residence_Addresses_CheckDigit" = EXCLUDED."Residence_Addresses_CheckDigit",
+        "Residence_Addresses_HouseNumber" = EXCLUDED."Residence_Addresses_HouseNumber",
+        "Residence_Addresses_PrefixDirection" = EXCLUDED."Residence_Addresses_PrefixDirection",
+        "Residence_Addresses_StreetName" = EXCLUDED."Residence_Addresses_StreetName",
+        "Residence_Addresses_Designator" = EXCLUDED."Residence_Addresses_Designator",
+        "Residence_Addresses_SuffixDirection" = EXCLUDED."Residence_Addresses_SuffixDirection",
+        "Residence_Addresses_ApartmentNum" = EXCLUDED."Residence_Addresses_ApartmentNum",
+        "Residence_Addresses_ApartmentType" = EXCLUDED."Residence_Addresses_ApartmentType",
+        "Residence_Addresses_CassErrStatCode" = EXCLUDED."Residence_Addresses_CassErrStatCode",
+        "Voters_SequenceZigZag" = EXCLUDED."Voters_SequenceZigZag",
+        "Voters_SequenceOddEven" = EXCLUDED."Voters_SequenceOddEven",
+        "Residence_Addresses_Latitude" = EXCLUDED."Residence_Addresses_Latitude",
+        "Residence_Addresses_Longitude" = EXCLUDED."Residence_Addresses_Longitude",
+        "Residence_Addresses_LatLongAccuracy" = EXCLUDED."Residence_Addresses_LatLongAccuracy",
+        "Residence_HHParties_Description" = EXCLUDED."Residence_HHParties_Description",
+        "Mailing_Addresses_AddressLine" = EXCLUDED."Mailing_Addresses_AddressLine",
+        "Mailing_Addresses_ExtraAddressLine" = EXCLUDED."Mailing_Addresses_ExtraAddressLine",
+        "Mailing_Addresses_City" = EXCLUDED."Mailing_Addresses_City",
+        "Mailing_Addresses_State" = EXCLUDED."Mailing_Addresses_State",
+        "Mailing_Addresses_Zip" = EXCLUDED."Mailing_Addresses_Zip",
+        "Mailing_Addresses_ZipPlus4" = EXCLUDED."Mailing_Addresses_ZipPlus4",
+        "Mailing_Addresses_DPBC" = EXCLUDED."Mailing_Addresses_DPBC",
+        "Mailing_Addresses_CheckDigit" = EXCLUDED."Mailing_Addresses_CheckDigit",
+        "Mailing_Addresses_HouseNumber" = EXCLUDED."Mailing_Addresses_HouseNumber",
+        "Mailing_Addresses_PrefixDirection" = EXCLUDED."Mailing_Addresses_PrefixDirection",
+        "Mailing_Addresses_StreetName" = EXCLUDED."Mailing_Addresses_StreetName",
+        "Mailing_Addresses_Designator" = EXCLUDED."Mailing_Addresses_Designator",
+        "Mailing_Addresses_SuffixDirection" = EXCLUDED."Mailing_Addresses_SuffixDirection",
+        "Mailing_Addresses_ApartmentNum" = EXCLUDED."Mailing_Addresses_ApartmentNum",
+        "Mailing_Addresses_ApartmentType" = EXCLUDED."Mailing_Addresses_ApartmentType",
+        "Mailing_Addresses_CassErrStatCode" = EXCLUDED."Mailing_Addresses_CassErrStatCode",
+        "Mailing_Families_FamilyID" = EXCLUDED."Mailing_Families_FamilyID",
+        "Mailing_Families_HHCount" = EXCLUDED."Mailing_Families_HHCount",
+        "Mailing_HHGender_Description" = EXCLUDED."Mailing_HHGender_Description",
+        "Mailing_HHParties_Description" = EXCLUDED."Mailing_HHParties_Description",
+        "Voters_Age" = EXCLUDED."Voters_Age",
+        "Voters_MovedFrom_State" = EXCLUDED."Voters_MovedFrom_State",
+        "Voters_MovedFrom_Date" = EXCLUDED."Voters_MovedFrom_Date",
+        "Voters_MovedFrom_Party_Description" = EXCLUDED."Voters_MovedFrom_Party_Description",
+        "Voters_VotingPerformanceEvenYearGeneral" = EXCLUDED."Voters_VotingPerformanceEvenYearGeneral",
+        "Voters_VotingPerformanceEvenYearPrimary" = EXCLUDED."Voters_VotingPerformanceEvenYearPrimary",
+        "Voters_VotingPerformanceEvenYearGeneralAndPrimary" = EXCLUDED."Voters_VotingPerformanceEvenYearGeneralAndPrimary",
+        "Voters_VotingPerformanceMinorElection" = EXCLUDED."Voters_VotingPerformanceMinorElection"
     """
-    + update_columns_list_str
+    # + update_columns_list_str  # TODO: add this back in if we increase compute resources
 )
 
 
@@ -856,7 +917,7 @@ def _load_data_to_postgres(
 
     # make a wake up call to the database
     _execute_sql_query(
-        f'SELECT * FROM "{staging_schema}"."{table_name}" LIMIT 1;',
+        'SELECT * FROM public."VoterFile" LIMIT 1;',
         db_host,
         db_port,
         db_user,
@@ -873,11 +934,38 @@ def _load_data_to_postgres(
         "overwrite"
     ).save()
 
-    # Execute the upsert query to the destination table
+    # turn off synchronous_commit for the large upsert query in the session
     _execute_sql_query(
-        upsert_query.format(
+        "SET synchronous_commit = off; SET work_mem = '128MB'; SET max_parallel_workers_per_gather = 8;",
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # Execute the upsert query to the destination table
+    upsert_query_w_config = (
+        "SET synchronous_commit = off; "
+        "SET work_mem = '128MB'; "
+        "SET max_parallel_workers_per_gather = 8; "
+        + upsert_query.format(
             db_schema=db_schema, staging_schema=staging_schema, table_name=table_name
-        ),
+        )
+        + ";"
+    )
+    _execute_sql_query(
+        upsert_query_w_config,
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # turn synchronous_commit back on
+    _execute_sql_query(
+        "SET synchronous_commit = on;",
         db_host,
         db_port,
         db_user,
@@ -954,7 +1042,20 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     # TODO: test in a subset of states, eventually read all 50 + DC
-    state_list = ["AZ", "DC", "LA", "NJ", "VA", "WY"]
+    state_list = [
+        "AK",
+        "AL",
+        "AR",
+        "AZ",
+        "CO",
+        "CT",
+        "DC",
+        "LA",
+        "MN",
+        "NJ",
+        "VA",
+        "WY",
+    ]
 
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
