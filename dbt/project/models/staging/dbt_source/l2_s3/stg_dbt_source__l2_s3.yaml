@@ -19,6 +19,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ak_vote_history_data_dictionary
     description: "Staging model for AK (Alaska) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ak_uniform
+    description: "Staging model for AK (Alaska) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ak_uniform_data_dictionary
+    description: "Staging model for AK (Alaska) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_al_demographic
     description: "Staging model for AL (Alabama) demographic"
     columns:
@@ -39,6 +49,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_al_vote_history_data_dictionary
     description: "Staging model for AL (Alabama) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_al_uniform
+    description: "Staging model for AL (Alabama) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_al_uniform_data_dictionary
+    description: "Staging model for AL (Alabama) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ar_demographic
     description: "Staging model for AR (Arkansas) demographic"
     columns:
@@ -57,6 +77,16 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_dbt_source__l2_s3_ar_uniform
+    description: "Staging model for AR (Arkansas) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ar_uniform_data_dictionary
+    description: "Staging model for AR (Arkansas) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ar_vote_history_data_dictionary
     description: "Staging model for AR (Arkansas) vote history data dictionary"
   - name: stg_dbt_source__l2_s3_az_demographic
@@ -77,6 +107,16 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_dbt_source__l2_s3_az_uniform
+    description: "Staging model for AZ (Arizona) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_az_uniform_data_dictionary
+    description: "Staging model for AZ (Arizona) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_az_vote_history_data_dictionary
     description: "Staging model for AZ (Arizona) vote history data dictionary"
   - name: stg_dbt_source__l2_s3_ca_demographic
@@ -99,6 +139,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ca_vote_history_data_dictionary
     description: "Staging model for CA (California) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ca_uniform
+    description: "Staging model for CA (California) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ca_uniform_data_dictionary
+    description: "Staging model for CA (California) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_co_demographic
     description: "Staging model for CO (Colorado) demographic"
     columns:
@@ -119,6 +169,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_co_vote_history_data_dictionary
     description: "Staging model for CO (Colorado) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_co_uniform
+    description: "Staging model for CO (Colorado) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_co_uniform_data_dictionary
+    description: "Staging model for CO (Colorado) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ct_demographic
     description: "Staging model for CT (Connecticut) demographic"
     columns:
@@ -139,6 +199,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ct_vote_history_data_dictionary
     description: "Staging model for CT (Connecticut) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ct_uniform
+    description: "Staging model for CT (Connecticut) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ct_uniform_data_dictionary
+    description: "Staging model for CT (Connecticut) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_dc_demographic
     description: "Staging model for DC (District of Columbia) demographic"
     columns:
@@ -159,6 +229,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_dc_vote_history_data_dictionary
     description: "Staging model for DC (District of Columbia) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_dc_uniform
+    description: "Staging model for DC (District of Columbia) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_dc_uniform_data_dictionary
+    description: "Staging model for DC (District of Columbia) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_de_demographic
     description: "Staging model for DE (Delaware) demographic"
     columns:
@@ -179,6 +259,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_de_vote_history_data_dictionary
     description: "Staging model for DE (Delaware) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_de_uniform
+    description: "Staging model for DE (Delaware) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_de_uniform_data_dictionary
+    description: "Staging model for DE (Delaware) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_fl_demographic
     description: "Staging model for FL (Florida) demographic"
     columns:
@@ -199,6 +289,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_fl_vote_history_data_dictionary
     description: "Staging model for FL (Florida) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_fl_uniform
+    description: "Staging model for FL (Florida) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_fl_uniform_data_dictionary
+    description: "Staging model for FL (Florida) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ga_demographic
     description: "Staging model for GA (Georgia) demographic"
     columns:
@@ -219,6 +319,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ga_vote_history_data_dictionary
     description: "Staging model for GA (Georgia) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ga_uniform
+    description: "Staging model for GA (Georgia) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ga_uniform_data_dictionary
+    description: "Staging model for GA (Georgia) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_hi_demographic
     description: "Staging model for HI (Hawaii) demographic"
     columns:
@@ -239,6 +349,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_hi_vote_history_data_dictionary
     description: "Staging model for HI (Hawaii) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_hi_uniform
+    description: "Staging model for HI (Hawaii) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_hi_uniform_data_dictionary
+    description: "Staging model for HI (Hawaii) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ia_demographic
     description: "Staging model for IA (Iowa) demographic"
     columns:
@@ -259,6 +379,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ia_vote_history_data_dictionary
     description: "Staging model for IA (Iowa) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ia_uniform
+    description: "Staging model for IA (Iowa) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ia_uniform_data_dictionary
+    description: "Staging model for IA (Iowa) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_id_demographic
     description: "Staging model for ID (Idaho) demographic"
     columns:
@@ -279,6 +409,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_id_vote_history_data_dictionary
     description: "Staging model for ID (Idaho) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_id_uniform
+    description: "Staging model for ID (Idaho) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_id_uniform_data_dictionary
+    description: "Staging model for ID (Idaho) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_il_demographic
     description: "Staging model for IL (Illinois) demographic"
     columns:
@@ -299,6 +439,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_il_vote_history_data_dictionary
     description: "Staging model for IL (Illinois) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_il_uniform
+    description: "Staging model for IL (Illinois) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_il_uniform_data_dictionary
+    description: "Staging model for IL (Illinois) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_in_demographic
     description: "Staging model for IN (Indiana) demographic"
     columns:
@@ -319,6 +469,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_in_vote_history_data_dictionary
     description: "Staging model for IN (Indiana) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_in_uniform
+    description: "Staging model for IN (Indiana) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_in_uniform_data_dictionary
+    description: "Staging model for IN (Indiana) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ks_demographic
     description: "Staging model for KS (Kansas) demographic"
     columns:
@@ -339,6 +499,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ks_vote_history_data_dictionary
     description: "Staging model for KS (Kansas) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ks_uniform
+    description: "Staging model for KS (Kansas) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ks_uniform_data_dictionary
+    description: "Staging model for KS (Kansas) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ky_demographic
     description: "Staging model for KY (Kentucky) demographic"
     columns:
@@ -359,6 +529,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ky_vote_history_data_dictionary
     description: "Staging model for KY (Kentucky) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ky_uniform
+    description: "Staging model for KY (Kentucky) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ky_uniform_data_dictionary
+    description: "Staging model for KY (Kentucky) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_la_demographic
     description: "Staging model for LA (Louisiana) demographic"
     columns:
@@ -379,6 +559,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_la_vote_history_data_dictionary
     description: "Staging model for LA (Louisiana) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_la_uniform
+    description: "Staging model for LA (Louisiana) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_la_uniform_data_dictionary
+    description: "Staging model for LA (Louisiana) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ma_demographic
     description: "Staging model for MA (Massachusetts) demographic"
     columns:
@@ -389,6 +579,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ma_demographic_data_dictionary
     description: "Staging model for MA (Massachusetts) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ma_uniform
+    description: "Staging model for MA (Massachusetts) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ma_uniform_data_dictionary
+    description: "Staging model for MA (Massachusetts) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ma_vote_history
     description: "Staging model for MA (Massachusetts) vote history"
     columns:
@@ -409,6 +609,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_md_demographic_data_dictionary
     description: "Staging model for MD (Maryland) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_md_uniform
+    description: "Staging model for MD (Maryland) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_md_uniform_data_dictionary
+    description: "Staging model for MD (Maryland) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_md_vote_history
     description: "Staging model for MD (Maryland) vote history"
     columns:
@@ -429,6 +639,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_me_demographic_data_dictionary
     description: "Staging model for ME (Maine) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_me_uniform
+    description: "Staging model for ME (Maine) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_me_uniform_data_dictionary
+    description: "Staging model for ME (Maine) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_me_vote_history
     description: "Staging model for ME (Maine) vote history"
     columns:
@@ -449,6 +669,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mi_demographic_data_dictionary
     description: "Staging model for MI (Michigan) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_mi_uniform
+    description: "Staging model for MI (Michigan) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_mi_uniform_data_dictionary
+    description: "Staging model for MI (Michigan) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mi_vote_history
     description: "Staging model for MI (Michigan) vote history"
     columns:
@@ -469,6 +699,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mn_demographic_data_dictionary
     description: "Staging model for MN (Minnesota) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_mn_uniform
+    description: "Staging model for MN (Minnesota) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_mn_uniform_data_dictionary
+    description: "Staging model for MN (Minnesota) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mn_vote_history
     description: "Staging model for MN (Minnesota) vote history"
     columns:
@@ -489,6 +729,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mo_demographic_data_dictionary
     description: "Staging model for MO (Missouri) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_mo_uniform
+    description: "Staging model for MO (Missouri) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_mo_uniform_data_dictionary
+    description: "Staging model for MO (Missouri) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mo_vote_history
     description: "Staging model for MO (Missouri) vote history"
     columns:
@@ -499,6 +749,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mo_vote_history_data_dictionary
     description: "Staging model for MO (Missouri) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_ms_uniform
+    description: "Staging model for MS (Mississippi) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ms_uniform_data_dictionary
+    description: "Staging model for MS (Mississippi) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ms_demographic
     description: "Staging model for MS (Mississippi) demographic"
     columns:
@@ -519,6 +779,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ms_vote_history_data_dictionary
     description: "Staging model for MS (Mississippi) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_mt_uniform
+    description: "Staging model for MT (Montana) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_mt_uniform_data_dictionary
+    description: "Staging model for MT (Montana) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_mt_demographic
     description: "Staging model for MT (Montana) demographic"
     columns:
@@ -539,6 +809,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_mt_vote_history_data_dictionary
     description: "Staging model for MT (Montana) vote history data dictionary"
+  - name: stg_dbt_source__l2_s3_nc_uniform
+    description: "Staging model for NC (North Carolina) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_nc_uniform_data_dictionary
+    description: "Staging model for NC (North Carolina) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_nc_demographic
     description: "Staging model for NC (North Carolina) demographic"
     columns:
@@ -549,6 +829,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_nc_demographic_data_dictionary
     description: "Staging model for NC (North Carolina) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_nd_uniform
+    description: "Staging model for ND (North Dakota) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_nd_uniform_data_dictionary
+    description: "Staging model for ND (North Dakota) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_nc_vote_history
     description: "Staging model for NC (North Carolina) vote history"
     columns:
@@ -589,6 +879,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ne_demographic_data_dictionary
     description: "Staging model for NE (Nebraska) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ne_uniform
+    description: "Staging model for NE (Nebraska) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ne_uniform_data_dictionary
+    description: "Staging model for NE (Nebraska) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ne_vote_history
     description: "Staging model for NE (Nebraska) vote history"
     columns:
@@ -609,6 +909,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_nh_demographic_data_dictionary
     description: "Staging model for NH (New Hampshire) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_nh_uniform
+    description: "Staging model for NH (New Hampshire) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_nh_uniform_data_dictionary
+    description: "Staging model for NH (New Hampshire) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_nh_vote_history
     description: "Staging model for NH (New Hampshire) vote history"
     columns:
@@ -629,6 +939,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_nj_demographic_data_dictionary
     description: "Staging model for NJ (New Jersey) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_nj_uniform
+    description: "Staging model for NJ (New Jersey) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_nj_uniform_data_dictionary
+    description: "Staging model for NJ (New Jersey) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_nj_vote_history
     description: "Staging model for NJ (New Jersey) vote history"
     columns:
@@ -649,6 +969,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_nm_demographic_data_dictionary
     description: "Staging model for NM (New Mexico) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_nm_uniform
+    description: "Staging model for NM (New Mexico) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_nm_uniform_data_dictionary
+    description: "Staging model for NM (New Mexico) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_nm_vote_history
     description: "Staging model for NM (New Mexico) vote history"
     columns:
@@ -669,6 +999,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_nv_demographic_data_dictionary
     description: "Staging model for NV (Nevada) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_nv_uniform
+    description: "Staging model for NV (Nevada) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_nv_uniform_data_dictionary
+    description: "Staging model for NV (Nevada) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_nv_vote_history
     description: "Staging model for NV (Nevada) vote history"
     columns:
@@ -689,6 +1029,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ny_demographic_data_dictionary
     description: "Staging model for NY (New York) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ny_uniform
+    description: "Staging model for NY (New York) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ny_uniform_data_dictionary
+    description: "Staging model for NY (New York) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ny_vote_history
     description: "Staging model for NY (New York) vote history"
     columns:
@@ -709,6 +1059,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_oh_demographic_data_dictionary
     description: "Staging model for OH (Ohio) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_oh_uniform
+    description: "Staging model for OH (Ohio) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_oh_uniform_data_dictionary
+    description: "Staging model for OH (Ohio) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_oh_vote_history
     description: "Staging model for OH (Ohio) vote history"
     columns:
@@ -729,6 +1089,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ok_demographic_data_dictionary
     description: "Staging model for OK (Oklahoma) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ok_uniform
+    description: "Staging model for OK (Oklahoma) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ok_uniform_data_dictionary
+    description: "Staging model for OK (Oklahoma) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ok_vote_history
     description: "Staging model for OK (Oklahoma) vote history"
     columns:
@@ -749,6 +1119,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_or_demographic_data_dictionary
     description: "Staging model for OR (Oregon) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_or_uniform
+    description: "Staging model for OR (Oregon) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_or_uniform_data_dictionary
+    description: "Staging model for OR (Oregon) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_or_vote_history
     description: "Staging model for OR (Oregon) vote history"
     columns:
@@ -769,6 +1149,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_pa_demographic_data_dictionary
     description: "Staging model for PA (Pennsylvania) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_pa_uniform
+    description: "Staging model for PA (Pennsylvania) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_pa_uniform_data_dictionary
+    description: "Staging model for PA (Pennsylvania) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_pa_vote_history
     description: "Staging model for PA (Pennsylvania) vote history"
     columns:
@@ -789,6 +1179,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ri_demographic_data_dictionary
     description: "Staging model for RI (Rhode Island) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ri_uniform
+    description: "Staging model for RI (Rhode Island) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ri_uniform_data_dictionary
+    description: "Staging model for RI (Rhode Island) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ri_vote_history
     description: "Staging model for RI (Rhode Island) vote history"
     columns:
@@ -809,6 +1209,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_sc_demographic_data_dictionary
     description: "Staging model for SC (South Carolina) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_sc_uniform
+    description: "Staging model for SC (South Carolina) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_sc_uniform_data_dictionary
+    description: "Staging model for SC (South Carolina) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_sc_vote_history
     description: "Staging model for SC (South Carolina) vote history"
     columns:
@@ -829,6 +1239,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_sd_demographic_data_dictionary
     description: "Staging model for SD (South Dakota) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_sd_uniform
+    description: "Staging model for SD (South Dakota) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_sd_uniform_data_dictionary
+    description: "Staging model for SD (South Dakota) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_sd_vote_history
     description: "Staging model for SD (South Dakota) vote history"
     columns:
@@ -849,6 +1269,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_tn_demographic_data_dictionary
     description: "Staging model for TN (Tennessee) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_tn_uniform
+    description: "Staging model for TN (Tennessee) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_tn_uniform_data_dictionary
+    description: "Staging model for TN (Tennessee) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_tn_vote_history
     description: "Staging model for TN (Tennessee) vote history"
     columns:
@@ -869,6 +1299,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_tx_demographic_data_dictionary
     description: "Staging model for TX (Texas) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_tx_uniform
+    description: "Staging model for TX (Texas) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_tx_uniform_data_dictionary
+    description: "Staging model for TX (Texas) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_tx_vote_history
     description: "Staging model for TX (Texas) vote history"
     columns:
@@ -889,6 +1329,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_ut_demographic_data_dictionary
     description: "Staging model for UT (Utah) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_ut_uniform
+    description: "Staging model for UT (Utah) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_ut_uniform_data_dictionary
+    description: "Staging model for UT (Utah) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_ut_vote_history
     description: "Staging model for UT (Utah) vote history"
     columns:
@@ -909,6 +1359,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_va_demographic_data_dictionary
     description: "Staging model for VA (Virginia) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_va_uniform
+    description: "Staging model for VA (Virginia) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_va_uniform_data_dictionary
+    description: "Staging model for VA (Virginia) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_va_vote_history
     description: "Staging model for VA (Virginia) vote history"
     columns:
@@ -929,6 +1389,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_vt_demographic_data_dictionary
     description: "Staging model for VT (Vermont) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_vt_uniform
+    description: "Staging model for VT (Vermont) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_vt_uniform_data_dictionary
+    description: "Staging model for VT (Vermont) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_vt_vote_history
     description: "Staging model for VT (Vermont) vote history"
     columns:
@@ -949,6 +1419,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_wa_demographic_data_dictionary
     description: "Staging model for WA (Washington) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_wa_uniform
+    description: "Staging model for WA (Washington) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wa_uniform_data_dictionary
+    description: "Staging model for WA (Washington) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_wa_vote_history
     description: "Staging model for WA (Washington) vote history"
     columns:
@@ -969,6 +1449,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_wi_demographic_data_dictionary
     description: "Staging model for WI (Wisconsin) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_wi_uniform
+    description: "Staging model for WI (Wisconsin) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wi_uniform_data_dictionary
+    description: "Staging model for WI (Wisconsin) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_wi_vote_history
     description: "Staging model for WI (Wisconsin) vote history"
     columns:
@@ -989,6 +1479,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_wv_demographic_data_dictionary
     description: "Staging model for WV (West Virginia) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_wv_uniform
+    description: "Staging model for WV (West Virginia) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wv_uniform_data_dictionary
+    description: "Staging model for WV (West Virginia) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_wv_vote_history
     description: "Staging model for WV (West Virginia) vote history"
     columns:
@@ -1009,6 +1509,16 @@ models:
           - unique
   - name: stg_dbt_source__l2_s3_wy_demographic_data_dictionary
     description: "Staging model for WY (Wyoming) demographic data dictionary"
+  - name: stg_dbt_source__l2_s3_wy_uniform
+    description: "Staging model for WY (Wyoming) uniform"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_dbt_source__l2_s3_wy_uniform_data_dictionary
+    description: "Staging model for WY (Wyoming) uniform data dictionary"
   - name: stg_dbt_source__l2_s3_wy_vote_history
     description: "Staging model for WY (Wyoming) vote history"
     columns:

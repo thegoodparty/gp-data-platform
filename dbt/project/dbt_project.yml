@@ -44,6 +44,11 @@ models:
     # Applies to all files under models/mart/
     mart:
       +materialized: table
+    staging:
+      dbt_source:
+        l2_s3:
+          # There are about 300 static view models in this folder, so we need to add a tag to exclude them from recurring dbt jobs.
+          +tags: ["staging", "dbt_source", "l2_s3"]
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
