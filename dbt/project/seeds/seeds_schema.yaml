@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: fips_codes
+    description: >
+      Federal Information Processing System (FIPS) Codes for States and Counties
+
+      FIPS codes are numbers which uniquely identify geographic areas.  The number of
+      digits in FIPS codes vary depending on the level of geography.  State-level FIPS
+      codes have two digits, county-level FIPS codes have five digits of which the
+      first two are the FIPS code of the state to which the county belongs.  When
+      using the list below to look up county FIPS codes, it is advisable to first look
+      up the FIPS code for the state to which the county belongs.  This will help you
+      identify the right section of the list while scrolling down, which can be
+      important since there are over 3000 counties and county-equivalents (e.g.
+      independent cities, parishes, boroughs) in the United States.
+
+      see https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt
+    columns:
+      - name: fips_code
+        tests:
+          - unique
+          - not_null
+      - name: place_name
+        tests:
+          - not_null
+      - name: level
+        tests:
+          - not null
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["fips_code", "place_name"]
