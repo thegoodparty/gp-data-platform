@@ -1,0 +1,594 @@
+{{
+    config(
+        materialized="incremental",
+        incremental_strategy="merge",
+        unique_key="LALVOTERID",
+        auto_liquid_cluster=true,
+        tags=["intermediate", "l2", "nationwide_uniform", "uniform"],
+    )
+}}
+
+
+with
+    unioned_sources as (
+        select *, 'AK' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ak_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'AK')
+        {% endif %}
+        union all
+        select *, 'AL' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_al_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'AL')
+        {% endif %}
+        union all
+        select *, 'AR' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ar_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'AR')
+        {% endif %}
+        union all
+        select *, 'AZ' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_az_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'AZ')
+        {% endif %}
+        union all
+        select *, 'CA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ca_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'CA')
+        {% endif %}
+        union all
+        select *, 'CO' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_co_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'CO')
+        {% endif %}
+        union all
+        select *, 'CT' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ct_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'CT')
+        {% endif %}
+        union all
+        select *, 'DC' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_dc_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'DC')
+        {% endif %}
+        union all
+        select *, 'DE' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_de_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'DE')
+        {% endif %}
+        union all
+        select *, 'FL' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_fl_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'FL')
+        {% endif %}
+        union all
+        select *, 'GA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ga_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'GA')
+        {% endif %}
+        union all
+        select *, 'HI' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_hi_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'HI')
+        {% endif %}
+        union all
+        select *, 'IA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ia_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'IA')
+        {% endif %}
+        union all
+        select *, 'ID' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_id_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'ID')
+        {% endif %}
+        union all
+        select *, 'IL' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_il_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'IL')
+        {% endif %}
+        union all
+        select *, 'IN' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_in_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'IN')
+        {% endif %}
+        union all
+        select *, 'KS' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ks_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'KS')
+        {% endif %}
+        union all
+        select *, 'KY' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ky_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'KY')
+        {% endif %}
+        union all
+        select *, 'LA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_la_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'LA')
+        {% endif %}
+        union all
+        select *, 'MA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ma_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MA')
+        {% endif %}
+        union all
+        select *, 'MD' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_md_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MD')
+        {% endif %}
+        union all
+        select *, 'ME' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_me_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'ME')
+        {% endif %}
+        union all
+        select *, 'MI' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_mi_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MI')
+        {% endif %}
+        union all
+        select *, 'MN' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_mn_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MN')
+        {% endif %}
+        union all
+        select *, 'MO' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_mo_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MO')
+        {% endif %}
+        union all
+        select *, 'MS' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ms_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MS')
+        {% endif %}
+        union all
+        select *, 'MT' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_mt_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'MT')
+        {% endif %}
+        union all
+        select *, 'NC' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_nc_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NC')
+        {% endif %}
+        union all
+        select *, 'ND' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_nd_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'ND')
+        {% endif %}
+        union all
+        select *, 'NE' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ne_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NE')
+        {% endif %}
+        union all
+        select *, 'NH' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_nh_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NH')
+        {% endif %}
+        union all
+        select *, 'NJ' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_nj_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NJ')
+        {% endif %}
+        union all
+        select *, 'NM' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_nm_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NM')
+        {% endif %}
+        union all
+        select *, 'NV' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_nv_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NV')
+        {% endif %}
+        union all
+        select *, 'NY' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ny_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NY')
+        {% endif %}
+        union all
+        select *, 'OH' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_oh_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'OH')
+        {% endif %}
+        union all
+        select *, 'OK' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ok_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'OK')
+        {% endif %}
+        union all
+        select *, 'OR' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_or_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'OR')
+        {% endif %}
+        union all
+        select *, 'PA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_pa_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'PA')
+        {% endif %}
+        union all
+        select *, 'RI' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ri_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'RI')
+        {% endif %}
+        union all
+        select *, 'SC' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_sc_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'SC')
+        {% endif %}
+        union all
+        select *, 'SD' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_sd_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'SD')
+        {% endif %}
+        union all
+        select *, 'TN' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_tn_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'TN')
+        {% endif %}
+        union all
+        select *, 'TX' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_tx_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'TX')
+        {% endif %}
+        union all
+        select *, 'UT' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_ut_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'UT')
+        {% endif %}
+        union all
+        select *, 'VA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_va_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'VA')
+        {% endif %}
+        union all
+        select *, 'VT' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_vt_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'VT')
+        {% endif %}
+        union all
+        select *, 'WA' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_wa_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'WA')
+        {% endif %}
+        union all
+        select *, 'WI' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_wi_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'WI')
+        {% endif %}
+        union all
+        select *, 'WV' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_wv_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'WV')
+        {% endif %}
+        union all
+        select *, 'WY' as state_postal_code
+        from {{ ref("stg_dbt_source__l2_s3_wy_uniform") }}
+        {% if is_incremental() %}
+            where
+                loaded_at
+                > (select max(loaded_at) from {{ this }} where state_postal_code = 'WY')
+        {% endif %}
+    )
+
+select
+    -- list out all columns and cast data types. Get from dbt_utils and exclude
+    -- columns to transform
+    {{
+        dbt_utils.star(
+            from=ref("stg_dbt_source__l2_s3_wy_uniform"),
+            except=[
+                "Voters_VotingPerformanceEvenYearGeneral",
+                "Voters_VotingPerformanceEvenYearPrimary",
+                "Voters_VotingPerformanceEvenYearGeneralAndPrimary",
+                "Voters_VotingPerformanceMinorElection",
+                "General_2030",
+                "Primary_2030",
+                "OtherElection_2030",
+                "AnyElection_2029",
+                "General_2028",
+                "Primary_2028",
+                "PresidentialPrimary_2028",
+                "OtherElection_2028",
+                "AnyElection_2027",
+                "General_2026",
+                "Primary_2026",
+                "OtherElection_2026",
+                "AnyElection_2025",
+                "General_2024",
+                "Primary_2024",
+                "PresidentialPrimary_2024",
+                "OtherElection_2024",
+                "AnyElection_2023",
+                "General_2022",
+                "Primary_2022",
+                "OtherElection_2022",
+                "AnyElection_2021",
+                "General_2020",
+                "Primary_2020",
+                "PresidentialPrimary_2020",
+                "OtherElection_2020",
+                "AnyElection_2019",
+                "General_2018",
+                "Primary_2018",
+                "OtherElection_2018",
+                "AnyElection_2017",
+                "General_2016",
+                "Primary_2016",
+                "PresidentialPrimary_2016",
+                "OtherElection_2016",
+                "AnyElection_2015",
+                "General_2014",
+                "Primary_2014",
+                "OtherElection_2014",
+                "AnyElection_2013",
+                "General_2012",
+                "Primary_2012",
+                "PresidentialPrimary_2012",
+                "OtherElection_2012",
+                "AnyElection_2011",
+                "General_2010",
+                "Primary_2010",
+                "OtherElection_2010",
+                "AnyElection_2009",
+                "General_2008",
+                "Primary_2008",
+                "PresidentialPrimary_2008",
+                "OtherElection_2008",
+                "AnyElection_2007",
+                "General_2006",
+                "Primary_2006",
+                "OtherElection_2006",
+                "AnyElection_2005",
+                "General_2004",
+                "Primary_2004",
+                "PresidentialPrimary_2004",
+                "OtherElection_2004",
+                "AnyElection_2003",
+                "General_2002",
+                "Primary_2002",
+                "OtherElection_2002",
+                "AnyElection_2001",
+                "General_2000",
+                "Primary_2000",
+                "PresidentialPrimary_2000",
+                "OtherElection_2000",
+            ],
+        )
+    }},
+    try_cast(
+        regexp_replace(voters_votingperformanceevenyeargeneral, '%', '') as double
+    ) as voters_votingperformanceevenyeargeneral,
+    try_cast(
+        regexp_replace(voters_votingperformanceevenyearprimary, '%', '') as double
+    ) as voters_votingperformanceevenyearprimary,
+    try_cast(
+        regexp_replace(
+            voters_votingperformanceevenyeargeneralandprimary, '%', ''
+        ) as double
+    ) as voters_votingperformanceevenyeargeneralandprimary,
+    try_cast(
+        regexp_replace(voters_votingperformanceminorelection, '%', '') as double
+    ) as voters_votingperformanceminorelection,
+    try_cast(general_2030 as boolean) as general_2030,
+    try_cast(primary_2030 as boolean) as primary_2030,
+    try_cast(otherelection_2030 as boolean) as otherelection_2030,
+    try_cast(anyelection_2029 as boolean) as anyelection_2029,
+    try_cast(general_2028 as boolean) as general_2028,
+    try_cast(primary_2028 as boolean) as primary_2028,
+    try_cast(presidentialprimary_2028 as boolean) as presidentialprimary_2028,
+    try_cast(otherelection_2028 as boolean) as otherelection_2028,
+    try_cast(anyelection_2027 as boolean) as anyelection_2027,
+    try_cast(general_2026 as boolean) as general_2026,
+    try_cast(primary_2026 as boolean) as primary_2026,
+    try_cast(otherelection_2026 as boolean) as otherelection_2026,
+    try_cast(anyelection_2025 as boolean) as anyelection_2025,
+    try_cast(general_2024 as boolean) as general_2024,
+    try_cast(primary_2024 as boolean) as primary_2024,
+    try_cast(presidentialprimary_2024 as boolean) as presidentialprimary_2024,
+    try_cast(otherelection_2024 as boolean) as otherelection_2024,
+    try_cast(anyelection_2023 as boolean) as anyelection_2023,
+    try_cast(general_2022 as boolean) as general_2022,
+    try_cast(primary_2022 as boolean) as primary_2022,
+    try_cast(otherelection_2022 as boolean) as otherelection_2022,
+    try_cast(anyelection_2021 as boolean) as anyelection_2021,
+    try_cast(general_2020 as boolean) as general_2020,
+    try_cast(primary_2020 as boolean) as primary_2020,
+    try_cast(presidentialprimary_2020 as boolean) as presidentialprimary_2020,
+    try_cast(otherelection_2020 as boolean) as otherelection_2020,
+    try_cast(anyelection_2019 as boolean) as anyelection_2019,
+    try_cast(general_2018 as boolean) as general_2018,
+    try_cast(primary_2018 as boolean) as primary_2018,
+    try_cast(otherelection_2018 as boolean) as otherelection_2018,
+    try_cast(anyelection_2017 as boolean) as anyelection_2017,
+    try_cast(general_2016 as boolean) as general_2016,
+    try_cast(primary_2016 as boolean) as primary_2016,
+    try_cast(presidentialprimary_2016 as boolean) as presidentialprimary_2016,
+    try_cast(otherelection_2016 as boolean) as otherelection_2016,
+    try_cast(anyelection_2015 as boolean) as anyelection_2015,
+    try_cast(general_2014 as boolean) as general_2014,
+    try_cast(primary_2014 as boolean) as primary_2014,
+    try_cast(otherelection_2014 as boolean) as otherelection_2014,
+    try_cast(anyelection_2013 as boolean) as anyelection_2013,
+    try_cast(general_2012 as boolean) as general_2012,
+    try_cast(primary_2012 as boolean) as primary_2012,
+    try_cast(presidentialprimary_2012 as boolean) as presidentialprimary_2012,
+    try_cast(otherelection_2012 as boolean) as otherelection_2012,
+    try_cast(anyelection_2011 as boolean) as anyelection_2011,
+    try_cast(general_2010 as boolean) as general_2010,
+    try_cast(primary_2010 as boolean) as primary_2010,
+    try_cast(otherelection_2010 as boolean) as otherelection_2010,
+    try_cast(anyelection_2009 as boolean) as anyelection_2009,
+    try_cast(general_2008 as boolean) as general_2008,
+    try_cast(primary_2008 as boolean) as primary_2008,
+    try_cast(presidentialprimary_2008 as boolean) as presidentialprimary_2008,
+    try_cast(otherelection_2008 as boolean) as otherelection_2008,
+    try_cast(anyelection_2007 as boolean) as anyelection_2007,
+    try_cast(general_2006 as boolean) as general_2006,
+    try_cast(primary_2006 as boolean) as primary_2006,
+    try_cast(otherelection_2006 as boolean) as otherelection_2006,
+    try_cast(anyelection_2005 as boolean) as anyelection_2005,
+    try_cast(general_2004 as boolean) as general_2004,
+    try_cast(primary_2004 as boolean) as primary_2004,
+    try_cast(presidentialprimary_2004 as boolean) as presidentialprimary_2004,
+    try_cast(otherelection_2004 as boolean) as otherelection_2004,
+    try_cast(anyelection_2003 as boolean) as anyelection_2003,
+    try_cast(general_2002 as boolean) as general_2002,
+    try_cast(primary_2002 as boolean) as primary_2002,
+    try_cast(otherelection_2002 as boolean) as otherelection_2002,
+    try_cast(anyelection_2001 as boolean) as anyelection_2001,
+    try_cast(general_2000 as boolean) as general_2000,
+    try_cast(primary_2000 as boolean) as primary_2000,
+    try_cast(presidentialprimary_2000 as boolean) as presidentialprimary_2000,
+    try_cast(otherelection_2000 as boolean) as otherelection_2000,
+    state_postal_code
+from unioned_sources
