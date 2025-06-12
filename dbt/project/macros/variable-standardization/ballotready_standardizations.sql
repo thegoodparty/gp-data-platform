@@ -1,6 +1,6 @@
   {#
   This macro maps Ballotready columns 
-  Usage: {{ map_office_type([column_name]) }} 
+  Usage: {{ map_office_type(column_name) }} 
   #}
 {% macro map_office_type(column_name) %}
     case
