@@ -1,0 +1,14 @@
+models:
+  - name: stg_sandbox_source__turnout_projections_placeholder
+    description: placeholder table for turnout projections
+    columns:
+      - name: OfficeType
+        data_tests:
+          - not_null
+      - name: Election_Type
+        data_tests:
+          - accepted_values:
+              values:
+                - General
+                - Local_or_Municipal
+                - Consolidated_General

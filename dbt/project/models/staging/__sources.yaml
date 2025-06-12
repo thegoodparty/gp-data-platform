@@ -681,3 +681,11 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wy_vote_history_data_dictionary
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
+
+  - name: sandbox_source
+    schema: sandbox
+    description: Schema location for testing and development
+
+    tables:
+      - name: turnout_projections_placeholder
+        description: placeholder table for turnout projections
