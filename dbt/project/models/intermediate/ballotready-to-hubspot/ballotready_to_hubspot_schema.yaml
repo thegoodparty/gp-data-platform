@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int__ballotready_final_candidacies
+    description: >
+      Final filtered set of BallotReady candidacies to be uploaded to HubSpot,
+      including contested status and number of candidates per contest. 
+      Only includes records not already present in HubSpot.
+    meta:
+      owner: tristan.aubert@goodparty.org
+      source_systems: [BallotReady]
+    columns:
+      - name: br_candidate_code
+        description: Unique identifier for each candidate generated from BallotReady data.
+      - name: br_contest_id
+        description: Unique identifier for each contest.
+      - name: uncontested
+        description: Whether the contest is uncontested or contested.
+      - name: number_of_candidates
+        description: Total number of candidates for the contest (from both BR and HS data).
+      - name: number_of_seats_available
+        description: Number of seats available in the contest (prioritizing HS data).
