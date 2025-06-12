@@ -282,14 +282,14 @@ with
                 loaded_at
                 > (select max(loaded_at) from {{ this }} where state_postal_code = 'NV')
         {% endif %}
-        union all
-        select *, 'NY' as state_postal_code
-        from {{ ref("stg_dbt_source__l2_s3_ny_uniform") }}
-        {% if is_incremental() %}
-            where
-                loaded_at
-                > (select max(loaded_at) from {{ this }} where state_postal_code = 'NY')
-        {% endif %}
+        -- union all
+        -- select *, 'NY' as state_postal_code
+        -- from {{ ref("stg_dbt_source__l2_s3_ny_uniform") }}
+        -- {% if is_incremental() %}
+        --     where
+        --         loaded_at
+        --         > (select max(loaded_at) from {{ this }} where state_postal_code = 'NY')
+        -- {% endif %}
         union all
         select *, 'OH' as state_postal_code
         from {{ ref("stg_dbt_source__l2_s3_oh_uniform") }}
@@ -504,7 +504,8 @@ select
                 "OtherElection_2000",
             ],
         )
-    }},
+    }}
+    ,
     try_cast(
         regexp_replace(voters_votingperformanceevenyeargeneral, '%', '') as double
     ) as voters_votingperformanceevenyeargeneral,

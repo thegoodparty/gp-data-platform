@@ -7,7 +7,7 @@ models:
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
         tests:
-          - dbt_expectations.expect_column_values_to_be_in_set:
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
               value_set: [
                 'AK', 'AL', 'AR', 'AZ', 'CA', 'CO', 'CT', 'DC', 'DE', 'FL',
                 'GA', 'HI', 'IA', 'ID', 'IL', 'IN', 'KS', 'KY', 'LA', 'MA',
