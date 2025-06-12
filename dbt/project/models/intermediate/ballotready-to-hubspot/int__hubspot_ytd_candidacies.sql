@@ -1,6 +1,6 @@
 -- pulling in current year results 
 SELECT *
-FROM dbt.stg_airbyte_source__hubspot_api_contacts t1
+FROM {{ ref('stg_airbyte_source__hubspot_api_contacts') }}
 WHERE (
     properties_type LIKE '%Self-Filer Lead%'
     OR properties_product_user = 'yes'
