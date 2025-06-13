@@ -351,6 +351,9 @@ def _load_data_to_postgres(
         db_name: Database name
         staging_schema: Schema for staging tables
         db_schema: Target schema for the final tables
+
+    Returns:
+        Number of rows loaded
     """
     logging.info(f"Writing {table_name} data to PostgreSQL via JDBC")
 
@@ -399,7 +402,7 @@ def _load_data_to_postgres(
         db_name,
     )
 
-    return df.count()
+    return df.count()  # number of rows loaded
 
 
 def model(dbt, session) -> DataFrame:
