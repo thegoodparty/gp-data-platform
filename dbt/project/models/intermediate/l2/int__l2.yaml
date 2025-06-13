@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: int__l2_nationwide_uniform
+    description: "Combined uniform voter file data from all states"
+    columns:
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              value_set: [
+                'AK', 'AL', 'AR', 'AZ', 'CA', 'CO', 'CT', 'DC', 'DE', 'FL',
+                'GA', 'HI', 'IA', 'ID', 'IL', 'IN', 'KS', 'KY', 'LA', 'MA',
+                'MD', 'ME', 'MI', 'MN', 'MO', 'MS', 'MT', 'NC', 'ND', 'NE',
+                'NH', 'NJ', 'NM', 'NV', 'NY', 'OH', 'OK', 'OR', 'PA', 'RI',
+                'SC', 'SD', 'TN', 'TX', 'UT', 'VA', 'VT', 'WA', 'WI', 'WV',
+                'WY'
+              ]
