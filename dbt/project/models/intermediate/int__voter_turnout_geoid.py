@@ -1,6 +1,7 @@
 import re
 from typing import Dict, List
 
+import geopandas as gpd
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, udf
 from pyspark.sql.session import SparkSession
@@ -223,6 +224,13 @@ def _add_geoid(
     shapefile_paths: List[str], state: str, office_type: str, office_name: str
 ) -> str:
 
+    for shapefile_path in shapefile_paths:
+        # load shapefile
+        shapefile = gpd.read_file(shapefile_path)
+        # match office_name to geoid
+        geoid = shapefile[shapefile["NAME"] == office_name]["GEOID"].values[0]
+        return geoid
+
     return "hello world"
 
 
@@ -252,6 +260,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     voter_turnout: DataFrame = dbt.ref(
         "stg_sandbox_source__turnout_projections_placeholder"
     )
+
+    # l2 uniform voter files
+    l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # for dev, restrict to CA:
     voter_turnout = voter_turnout.filter(col("State") == "CA")
@@ -291,21 +302,58 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # for each district prediction, look at each shapefile and pull the most prevalent geoid
     # for loop over each state since need to pass L2 voter data by state
-    for index, state in enumerate(voter_turnout.select("state").distinct().collect()):
+    for state in voter_turnout.select("state").distinct().collect():
         state_voter_turnout = voter_turnout.filter(col("state") == state)
-        state_voter_turnout = state_voter_turnout.withColumn(
-            "geoid",
-            _add_geoid(
-                col("shapefile_paths"),
-                col("state"),
-                col("OfficeType"),
-                col("OfficeName"),
-            ),
-        )
-        if index == 0:
-            enhanced_voter_turnout = state_voter_turnout
-        else:
-            enhanced_voter_turnout = enhanced_voter_turnout.union(state_voter_turnout)
+        district_types_list = [
+            row["OfficeType"]
+            for row in state_voter_turnout.select("OfficeType").distinct().collect()
+        ]
 
-    # TODO: continue pseudocode and logic here
-    return
+        """
+        >>> df.join(
+        ...     df3,
+        ...     [df.name == df3.name, df.age == df3.age],
+        ...     'outer'
+        ... ).select(df.name, df3.age).show()
+        """
+        for district_type in district_types_list:
+            # get voters by district type
+            voters_by_district_type = l2_uniform_voter_files.select(
+                [
+                    district_type,
+                    "Residence_Addresses_Longitude",
+                    "Residence_Addresses_Latitude",
+                    "state_postal_code",
+                ]
+            )
+
+            # join voters by district type to voter turnout
+            voters_with_turnout: DataFrame = voters_by_district_type.join(
+                other=state_voter_turnout,
+                on=[
+                    voters_by_district_type.state_postal_code
+                    == state_voter_turnout.state,
+                    voters_by_district_type[district_type]
+                    == state_voter_turnout.OfficeName,
+                ],
+                how="inner",
+            )
+
+            # get the geoid for each voter by their (lat,long) for the given district
+            # voters_with_turnout = voters_with_turnout.withColumn(
+            #     "geoid",
+            #     _add_geoid(col("shapefile_paths"), col("state"), col("OfficeType"), col("OfficeName")),
+            # )
+
+            # add geoid back into the voter turnout dataframe
+            # voter_turnout = voter_turnout.join(
+            #     other=voters_with_turnout.select("officeType", "officeName", "state", "geoid"),
+            #     on=[
+            #         voter_turnout.state == voters_with_turnout.state,
+            #         voter_turnout.OfficeName == voters_with_turnout.OfficeName,
+            #         voter_turnout.OfficeType == voters_with_turnout.OfficeType,
+            #     ],
+            #     how="left",
+            # )
+
+    return voters_with_turnout
