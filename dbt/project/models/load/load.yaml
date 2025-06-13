@@ -52,6 +52,14 @@ models:
         tests:
           - not_null
           - unique
+      - name: source_file_name
+        description: "Name of the source file"
+        tests:
+          - not_null
+      - name: source_s3_path
+        description: "S3 path of the source file"
+        tests:
+          - not_null
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
