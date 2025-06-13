@@ -1,5 +1,5 @@
 models:
-  - name: stg_sandbox_source__turnout_projections_placeholder
+  - name: stg_sandbox_source__turnout_projections_placeholder0
     description: placeholder table for turnout projections
     columns:
       - name: OfficeType

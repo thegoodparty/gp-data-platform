@@ -687,5 +687,5 @@ sources:
     description: Schema location for testing and development
 
     tables:
-      - name: turnout_projections_placeholder
+      - name: turnout_projections_placeholder0
         description: placeholder table for turnout projections

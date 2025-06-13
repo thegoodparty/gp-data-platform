@@ -1,55 +1,55 @@
 fips_code,place_name,level
-01,ALABAMA,state
-02,ALASKA,state
-04,ARIZONA,state
-05,ARKANSAS,state
-06,CALIFORNIA,state
-08,COLORADO,state
-09,CONNECTICUT,state
-10,DELAWARE,state
-11,DISTRICT OF COLUMBIA,state
-12,FLORIDA,state
-13,GEORGIA,state
-15,HAWAII,state
-16,IDAHO,state
-17,ILLINOIS,state
-18,INDIANA,state
-19,IOWA,state
-20,KANSAS,state
-21,KENTUCKY,state
-22,LOUISIANA,state
-23,MAINE,state
-24,MARYLAND,state
-25,MASSACHUSETTS,state
-26,MICHIGAN,state
-27,MINNESOTA,state
-28,MISSISSIPPI,state
-29,MISSOURI,state
-30,MONTANA,state
-31,NEBRASKA,state
-32,NEVADA,state
-33,NEW HAMPSHIRE,state
-34,NEW JERSEY,state
-35,NEW MEXICO,state
-36,NEW YORK,state
-37,NORTH CAROLINA,state
-38,NORTH DAKOTA,state
-39,OHIO,state
-40,OKLAHOMA,state
-41,OREGON,state
-42,PENNSYLVANIA,state
-44,RHODE ISLAND,state
-45,SOUTH CAROLINA,state
-46,SOUTH DAKOTA,state
-47,TENNESSEE,state
-48,TEXAS,state
-49,UTAH,state
-50,VERMONT,state
-51,VIRGINIA,state
-53,WASHINGTON,state
-54,WEST VIRGINIA,state
-55,WISCONSIN,state
-56,WYOMING,state
+01,AL,state
+02,AK,state
+04,AZ,state
+05,AR,state
+06,CA,state
+08,CO,state
+09,CT,state
+10,DE,state
+11,DC,state
+12,FL,state
+13,GA,state
+15,HI,state
+16,ID,state
+17,IL,state
+18,IN,state
+19,IA,state
+20,KS,state
+21,KY,state
+22,LA,state
+23,ME,state
+24,MD,state
+25,MA,state
+26,MI,state
+27,MN,state
+28,MS,state
+29,MO,state
+30,MT,state
+31,NE,state
+32,NV,state
+33,NH,state
+34,NJ,state
+35,NM,state
+36,NY,state
+37,NC,state
+38,ND,state
+39,OH,state
+40,OK,state
+41,OR,state
+42,PA,state
+44,RI,state
+45,SC,state
+46,SD,state
+47,TN,state
+48,TX,state
+49,UT,state
+50,VT,state
+51,VA,state
+53,WA,state
+54,WV,state
+55,WI,state
+56,WY,state
 01000,ALABAMA,county
 01001,AUTAUGA COUNTY,county
 01003,BALDWIN COUNTY,county
