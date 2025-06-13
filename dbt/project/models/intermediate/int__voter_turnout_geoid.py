@@ -2,8 +2,9 @@ import re
 from typing import Dict, List
 
 import geopandas as gpd
+import pandas as pd
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, udf
+from pyspark.sql.functions import col, pandas_udf, udf
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, StringType
 
@@ -219,19 +220,46 @@ FALLBACK_PATTERNS = [
 ]
 
 
-@udf(returnType=StringType())
-def _add_geoid(
-    shapefile_paths: List[str], state: str, office_type: str, office_name: str
-) -> str:
-
-    for shapefile_path in shapefile_paths:
+@pandas_udf(returnType=StringType())
+def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
+    """
+    Add geoid to the dataframe. The input dataframe has the following columns:
+    - Residence_Addresses_Longitude
+    - Residence_Addresses_Latitude
+    - state_postal_code
+    - OfficeType
+    - OfficeName
+    - state
+    """
+    # all rows have the same shapefile path
+    for shapefile_path in df.iloc[0]["shapefile_paths"]:
         # load shapefile
-        shapefile = gpd.read_file(shapefile_path)
-        # match office_name to geoid
-        geoid = shapefile[shapefile["NAME"] == office_name]["GEOID"].values[0]
-        return geoid
+        gdf_polygons = gpd.read_file(shapefile_path)
 
-    return "hello world"
+        # get point for each voter from their lat/long
+        gdf_points = gpd.GeoDataFrame(
+            data=df,
+            geometry=gpd.points_from_xy(
+                df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
+            ),
+            crs=gdf_polygons.crs,
+        )
+
+        # apply the spatial join
+        joined = gpd.sjoin(gdf_points, gdf_polygons, how="inner", predicate="within")
+
+        # compute the most prevalent geoid for each voter
+        most_prevalent_geoids = (
+            joined.groupby(["OfficeType", "GEOID"])
+            .size()
+            .reset_index(name="count")
+            .sort_values("count", ascending=False)
+            .drop_duplicates(subset=["OfficeType"])
+            .sort_values("OfficeType")
+        )
+
+    # There seems to be one clearly dominant geoid each run, so we return that
+    return pd.Series([most_prevalent_geoids.iloc[0] for x in df.index])
 
 
 @udf(returnType=ArrayType(StringType()))
@@ -309,13 +337,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             for row in state_voter_turnout.select("OfficeType").distinct().collect()
         ]
 
-        """
-        >>> df.join(
-        ...     df3,
-        ...     [df.name == df3.name, df.age == df3.age],
-        ...     'outer'
-        ... ).select(df.name, df3.age).show()
-        """
         for district_type in district_types_list:
             # get voters by district type
             voters_by_district_type = l2_uniform_voter_files.select(
@@ -340,20 +361,31 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # get the geoid for each voter by their (lat,long) for the given district
-            # voters_with_turnout = voters_with_turnout.withColumn(
-            #     "geoid",
-            #     _add_geoid(col("shapefile_paths"), col("state"), col("OfficeType"), col("OfficeName")),
-            # )
+            voters_with_turnout = voters_with_turnout.withColumn(
+                "geoid",
+                _add_geoid_to_voters(
+                    col("shapefile_paths"),
+                    col("state"),
+                    col("OfficeType"),
+                    col("OfficeName"),
+                ),
+            )
+
+            voters_with_turnout = voters_with_turnout.select(
+                "officeType", "officeName", "state", "geoid"
+            ).distinct()
 
             # add geoid back into the voter turnout dataframe
-            # voter_turnout = voter_turnout.join(
-            #     other=voters_with_turnout.select("officeType", "officeName", "state", "geoid"),
-            #     on=[
-            #         voter_turnout.state == voters_with_turnout.state,
-            #         voter_turnout.OfficeName == voters_with_turnout.OfficeName,
-            #         voter_turnout.OfficeType == voters_with_turnout.OfficeType,
-            #     ],
-            #     how="left",
-            # )
+            voter_turnout = voter_turnout.join(
+                other=voters_with_turnout.select(
+                    "officeType", "officeName", "state", "geoid"
+                ),
+                on=[
+                    voter_turnout.state == voters_with_turnout.state,
+                    voter_turnout.OfficeName == voters_with_turnout.OfficeName,
+                    voter_turnout.OfficeType == voters_with_turnout.OfficeType,
+                ],
+                how="left",
+            )
 
     return voters_with_turnout
