@@ -5,7 +5,7 @@ models:
       - name: OfficeType
         data_tests:
           - not_null
-      - name: Election_Type
+      - name: election_code
         data_tests:
           - accepted_values:
               values:
