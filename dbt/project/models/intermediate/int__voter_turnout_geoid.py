@@ -276,7 +276,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
-        # unique_key="database_id",
+        # unique_key=["officeName", "OfficeType", "state", "updated_at"],
         on_schema_change="fail",
         tags=["voter_turnout", "geoid", "l2"],
     )
