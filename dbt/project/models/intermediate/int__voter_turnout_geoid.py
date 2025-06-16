@@ -303,25 +303,25 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "County_Board_of_Education_District",
         "Fire_Protection_District",
     ]
-    voter_turnout = voter_turnout.filter(col("OfficeType").isin(office_type_sublist))
+    voter_turnout = voter_turnout.filter(col("officeType").isin(office_type_sublist))
 
     # determine relevant shapefiles according to state and office_type which requires mapping to TIGER code
     voter_turnout = voter_turnout.withColumn(
         "tiger_codes",
-        udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("OfficeType")),
+        udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("officeType")),
     )
     # join over State to get the state fips code
     voter_turnout = voter_turnout.join(
         other=fips_codes.select(col("fips_code"), col("place_name")),
         on=col("state") == col("place_name"),
         how="left",
-    ).drop("state")
+    )
 
     # construct shapefile path:
     # /Volumes/goodparty_data_catalog/dbt/object_storage/census_shapefiles/tl_2024_{fips_code}_{tiger_code}/
     voter_turnout = voter_turnout.withColumn(
         "tiger_codes",
-        udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("OfficeType")),
+        udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("officeType")),
     )
     voter_turnout = voter_turnout.withColumn(
         "shapefile_paths",
@@ -330,11 +330,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # for each district prediction, look at each shapefile and pull the most prevalent geoid
     # for loop over each state since need to pass L2 voter data by state
-    for state in voter_turnout.select(col("state")).distinct().collect():
+    states = [
+        row["state"] for row in voter_turnout.select(col("state")).distinct().collect()
+    ]
+    for state in states:
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
-            row["OfficeType"]
-            for row in state_voter_turnout.select("OfficeType").distinct().collect()
+            row["officeType"]
+            for row in state_voter_turnout.select("officeType").distinct().collect()
         ]
 
         for district_type in district_types_list:
@@ -355,7 +358,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     voters_by_district_type.state_postal_code
                     == state_voter_turnout.state,
                     voters_by_district_type[district_type]
-                    == state_voter_turnout.OfficeName,
+                    == state_voter_turnout.officeName,
                 ],
                 how="inner",
             )
@@ -366,8 +369,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 _add_geoid_to_voters(
                     col("shapefile_paths"),
                     col("state"),
-                    col("OfficeType"),
-                    col("OfficeName"),
+                    col("officeType"),
+                    col("officeName"),
                 ),
             )
 
@@ -382,8 +385,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 ),
                 on=[
                     voter_turnout.state == voters_with_turnout.state,
-                    voter_turnout.OfficeName == voters_with_turnout.OfficeName,
-                    voter_turnout.OfficeType == voters_with_turnout.OfficeType,
+                    voter_turnout.officeName == voters_with_turnout.officeName,
+                    voter_turnout.officeType == voters_with_turnout.officeType,
                 ],
                 how="left",
             )
