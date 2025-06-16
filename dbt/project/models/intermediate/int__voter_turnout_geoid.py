@@ -233,6 +233,9 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
     """
     # all rows have the same shapefile path
     for shapefile_path in df.iloc[0]["shapefile_paths"]:
+
+        # TODO: handle case where shapefile for that TIGER doesn't exist; use `COUNTY`
+        # as a default backup
         # load shapefile
         gdf_polygons = gpd.read_file(shapefile_path)
 
@@ -292,13 +295,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # l2 uniform voter files
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
-    # for dev, restrict to CA:
+    # for dev, restrict to CA amd certaom offices
     voter_turnout = voter_turnout.filter(col("state") == "CA")
 
     # further restrict to only the following offices:
     office_type_sublist = [
         "State_Senate_District",
-        "Hospital_District",
+        "Hospital_SubDistrict",
         "Town_Ward",
         "County_Board_of_Education_District",
         "Fire_Protection_District",
@@ -311,10 +314,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
         udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("officeType")),
     )
     # join over State to get the state fips code
-    voter_turnout = voter_turnout.join(
-        other=fips_codes.select(col("fips_code"), col("place_name")),
-        on=col("state") == col("place_name"),
-        how="left",
+    voter_turnout = (
+        voter_turnout.alias("voter_turnout")
+        .join(
+            other=fips_codes.alias("fips_codes").select(
+                col("fips_code"), col("place_name")
+            ),
+            on=col("voter_turnout.state") == col("fips_codes.place_name"),
+            how="left",
+        )
+        .drop("fips_codes.place_name")
     )
 
     # construct shapefile path:
@@ -352,43 +361,50 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # join voters by district type to voter turnout
-            voters_with_turnout: DataFrame = voters_by_district_type.join(
-                other=state_voter_turnout,
-                on=[
-                    voters_by_district_type.state_postal_code
-                    == state_voter_turnout.state,
-                    voters_by_district_type[district_type]
-                    == state_voter_turnout.officeName,
-                ],
-                how="inner",
+            voters_with_turnout: DataFrame = (
+                voters_by_district_type.alias("voters")
+                .join(
+                    other=state_voter_turnout.alias("turnout"),
+                    on=[
+                        col("voters.state_postal_code") == col("turnout.state"),
+                        col("voters." + district_type) == col("turnout.officeName"),
+                    ],
+                    how="inner",
+                )
+                .drop("voters.state_postal_code")
+                .alias("voters_with_turnout")
             )
 
             # get the geoid for each voter by their (lat,long) for the given district
             voters_with_turnout = voters_with_turnout.withColumn(
                 "geoid",
-                _add_geoid_to_voters(
-                    col("shapefile_paths"),
-                    col("state"),
-                    col("officeType"),
-                    col("officeName"),
-                ),
-            )
-
-            voters_with_turnout = voters_with_turnout.select(
-                "officeType", "officeName", "state", "geoid"
-            ).distinct()
-
-            # add geoid back into the voter turnout dataframe
-            voter_turnout = voter_turnout.join(
-                other=voters_with_turnout.select(
-                    "officeType", "officeName", "state", "geoid"
-                ),
-                on=[
-                    voter_turnout.state == voters_with_turnout.state,
-                    voter_turnout.officeName == voters_with_turnout.officeName,
-                    voter_turnout.officeType == voters_with_turnout.officeType,
-                ],
-                how="left",
+                _add_geoid_to_voters(voters_with_turnout),
+                # )
+                # _add_geoid_to_voters(
+                #     col("shapefile_paths"),
+                #     col("state"),
+                #     col("officeType"),
+                #     col("officeName"),
+                # ),
             )
 
     return voters_with_turnout
+    # take the most prevalent geoid over all voters by count
+    # voters_with_turnout = voters_with_turnout.select(
+    #     "officeType", "officeName", "state", "geoid"
+    # ).distinct()
+
+    # # add geoid back into the voter turnout dataframe
+    # voter_turnout = voter_turnout.join(
+    #     other=voters_with_turnout.select(
+    #         "officeType", "officeName", "state", "geoid"
+    #     ),
+    #     on=[
+    #         col("voter_turnout.state") == col("voters_with_turnout.state"),
+    #         col("voter_turnout.officeName") == col("voters_with_turnout.officeName"),
+    #         col("voter_turnout.officeType") == col("voters_with_turnout.officeType"),
+    #     ],
+    #     how="left",
+    # )
+
+    # return voter_turnout
