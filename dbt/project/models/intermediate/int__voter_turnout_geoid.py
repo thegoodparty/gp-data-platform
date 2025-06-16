@@ -4,7 +4,7 @@ from typing import Dict, List
 import geopandas as gpd
 import pandas as pd
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf, udf
+from pyspark.sql.functions import col, pandas_udf, struct, udf
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, StringType
 
@@ -267,9 +267,12 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
 
 @udf(returnType=ArrayType(StringType()))
 def _construct_shapefile_path(fips_code: str, tiger_codes: list[str]) -> list[str]:
+    # Ensure FIPS code is two digits with leading zero if necessary
+    formatted_fips = fips_code.zfill(2)
+    lowered_tiger_codes = [tiger_code.lower() for tiger_code in tiger_codes]
     return [
-        f"/Volumes/goodparty_data_catalog/dbt/object_storage/census_shapefiles/tl_2024_{fips_code}_{tiger_code}/"
-        for tiger_code in tiger_codes
+        f"/Volumes/goodparty_data_catalog/dbt/object_storage/census_shapefiles/tl_2024_{formatted_fips}_{tiger_code}/"
+        for tiger_code in lowered_tiger_codes
     ]
 
 
@@ -378,14 +381,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
             # get the geoid for each voter by their (lat,long) for the given district
             voters_with_turnout = voters_with_turnout.withColumn(
                 "geoid",
-                _add_geoid_to_voters(voters_with_turnout),
-                # )
-                # _add_geoid_to_voters(
-                #     col("shapefile_paths"),
-                #     col("state"),
-                #     col("officeType"),
-                #     col("officeName"),
-                # ),
+                _add_geoid_to_voters(
+                    struct(
+                        col("Residence_Addresses_Longitude"),
+                        col("Residence_Addresses_Latitude"),
+                        col("state_postal_code"),
+                        col("OfficeType"),
+                        col("OfficeName"),
+                        col("state"),
+                        col("shapefile_paths"),
+                    )
+                ),
             )
 
     return voters_with_turnout
