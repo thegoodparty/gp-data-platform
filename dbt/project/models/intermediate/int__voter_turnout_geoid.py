@@ -286,14 +286,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # load voter turnout
     voter_turnout: DataFrame = dbt.ref(
-        "stg_sandbox_source__turnout_projections_placeholder"
+        "stg_sandbox_source__turnout_projections_placeholder0"
     )
 
     # l2 uniform voter files
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # for dev, restrict to CA:
-    voter_turnout = voter_turnout.filter(col("State") == "CA")
+    voter_turnout = voter_turnout.filter(col("state") == "CA")
 
     # further restrict to only the following offices:
     office_type_sublist = [
@@ -313,9 +313,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # join over State to get the state fips code
     voter_turnout = voter_turnout.join(
         other=fips_codes.select(col("fips_code"), col("place_name")),
-        on=col("State") == col("place_name"),
+        on=col("state") == col("place_name"),
         how="left",
-    ).drop("State")
+    ).drop("state")
 
     # construct shapefile path:
     # /Volumes/goodparty_data_catalog/dbt/object_storage/census_shapefiles/tl_2024_{fips_code}_{tiger_code}/
@@ -330,7 +330,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # for each district prediction, look at each shapefile and pull the most prevalent geoid
     # for loop over each state since need to pass L2 voter data by state
-    for state in voter_turnout.select("state").distinct().collect():
+    for state in voter_turnout.select(col("state")).distinct().collect():
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
             row["OfficeType"]
