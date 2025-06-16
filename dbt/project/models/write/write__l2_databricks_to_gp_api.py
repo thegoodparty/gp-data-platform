@@ -1026,9 +1026,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_schema = dbt.config.get("voter_db_schema")
 
     # get latest files loaded to databricks, filtering for uniform files
-    loaded_to_databricks = dbt.ref("load__l2_s3_to_databricks").filter(
+    loaded_to_databricks: DataFrame = dbt.ref("load__l2_s3_to_databricks").filter(
         col("source_file_type") == "uniform"
     )
+
+    # cache the dataframe and enforce filter before for-loop filtering
+    loaded_to_databricks.cache()
+    loaded_to_databricks.count()
+
+    # get the list of states to load
     state_list = [
         row.state_id
         for row in loaded_to_databricks.select("state_id").distinct().collect()
