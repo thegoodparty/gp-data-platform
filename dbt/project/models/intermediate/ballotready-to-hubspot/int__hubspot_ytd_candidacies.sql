@@ -1,4 +1,10 @@
--- pulling in current year results 
+{{
+    config(
+        tags=["intermediate", "hubspot"]
+    )
+}}
+-- pulling in current year results from hubspot
+
 SELECT *
 FROM dbt.stg_airbyte_source__hubspot_api_contacts t1
 WHERE (

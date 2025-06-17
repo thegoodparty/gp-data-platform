@@ -1,4 +1,14 @@
+{{
+    config(
+        materialized="incremental",
+        incremental_strategy="merge",
+        unique_key="id",
+        auto_liquid_cluster=true,
+        tags=["intermediate", "ballotready"]
+    )
+}}
 -- Creates the final set of BallotReady candidacies to be uploaded to HubSpot 
+
 
 --Add in the contested results 
 with br_with_contest as (
@@ -24,6 +34,7 @@ br_new_candidacies as (
 --write formatted new batch data to a table 
 br_new_candidacies_final as (
 SELECT
+    {{ generate_salted_uuid(fields=["election_date","candidate_office","state","last_name","first_name"], salt="ballotready") }} as id,
     CAST(election_date AS DATE) AS election_date,
     official_office_name,
     candidate_office,

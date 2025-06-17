@@ -1,3 +1,10 @@
+{{
+    config(
+        auto_liquid_cluster=true,
+        tags=["intermediate", "hubspot"]
+    )
+}}
+
 -- get the unique candidacies from the hubspot data 
 SELECT 
     {{ generate_candidate_code('properties_firstname', 'properties_lastname', 'properties_state', 'properties_office_type') }} AS hs_candidate_code
