@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List
+from typing import Any, Dict, List, Literal
 
 import geopandas as gpd
 import pandas as pd
@@ -81,6 +81,8 @@ L2_TO_TIGER_CODES: Dict[str, List[str]] = {
     "Community_Council_District": ["PLACE"],
     "Community_Council_SubDistrict": ["PLACE"],
     "Consolidated_City": ["CONCITY"],
+    "City": ["COUNTY"],
+    "County": ["COUNTY"],
     # ------------------------------------------------------------------
     # COUNTY-LEVEL DISTRICTS
     # ------------------------------------------------------------------
@@ -227,15 +229,18 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
     - Residence_Addresses_Longitude
     - Residence_Addresses_Latitude
     - state_postal_code
-    - OfficeType
-    - OfficeName
+    - officeType
+    - officeName
     - state
     """
-    # all rows have the same shapefile path
+    most_common_geo_per_shapefile: List[Dict[Literal["geoid", "count"], Any]] = []
+
     for shapefile_path in df.iloc[0]["shapefile_paths"]:
+        if shapefile_path == "MISSING_TIGER_CODE":
+            return pd.Series(["MISSING_TIGER_CODE" for x in df.index])
 
         # TODO: handle case where shapefile for that TIGER doesn't exist; use `COUNTY`
-        # as a default backup
+        # as a default backup.
         # load shapefile
         gdf_polygons = gpd.read_file(shapefile_path)
 
@@ -252,28 +257,73 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
         joined = gpd.sjoin(gdf_points, gdf_polygons, how="inner", predicate="within")
 
         # compute the most prevalent geoid for each voter
-        most_prevalent_geoids = (
-            joined.groupby(["OfficeType", "GEOID"])
+        geoids_by_count = (
+            joined.groupby(["officeType", "GEOID"])
             .size()
             .reset_index(name="count")
             .sort_values("count", ascending=False)
-            .drop_duplicates(subset=["OfficeType"])
-            .sort_values("OfficeType")
+            .drop_duplicates(subset=["officeType"])
+            .sort_values("officeType")
         )
 
-    # There seems to be one clearly dominant geoid each run, so we return that
-    return pd.Series([most_prevalent_geoids.iloc[0] for x in df.index])
+        # TODO: take the most prevalent geoid over all voters by count over all considered shapefiles
+        most_prevalent_geoid = geoids_by_count.iloc[0]["GEOID"]
+        most_common_geo_per_shapefile.append(
+            {"geoid": most_prevalent_geoid, "count": geoids_by_count.iloc[0]["count"]}
+        )
+
+    # most prevalent geoid over all voters by count over all considered shapefiles
+    most_prevalent_geoid = max(most_common_geo_per_shapefile, key=lambda x: x["count"])[
+        "geoid"
+    ]
+    return pd.Series([str(most_prevalent_geoid) for x in df.index])
 
 
 @udf(returnType=ArrayType(StringType()))
-def _construct_shapefile_path(fips_code: str, tiger_codes: list[str]) -> list[str]:
+def _construct_shapefile_path(fips_code: int, tiger_codes: list[str]) -> list[str]:
     # Ensure FIPS code is two digits with leading zero if necessary
-    formatted_fips = fips_code.zfill(2)
+    formatted_fips = str(fips_code).zfill(2)
     lowered_tiger_codes = [tiger_code.lower() for tiger_code in tiger_codes]
-    return [
-        f"/Volumes/goodparty_data_catalog/dbt/object_storage/census_shapefiles/tl_2024_{formatted_fips}_{tiger_code}/"
-        for tiger_code in lowered_tiger_codes
-    ]
+
+    # Handle the 'county' and 'state' case for shapefile path construction
+    # If the tiger_code is 'county', use 'us_county' in the path
+    # If the tiger_code is 'state', use 'us_state' in the path
+    # Otherwise, use the formatted fips and tiger_code as before
+    shapefile_paths = []
+    for tiger_code in lowered_tiger_codes:
+        if tiger_code == "county":
+            shapefile_paths.append(
+                "/Volumes/goodparty_data_catalog/dbt/object_storage/shapefiles/us_census/tl_2024_us_county/"
+            )
+        elif tiger_code == "state":
+            shapefile_paths.append(
+                "/Volumes/goodparty_data_catalog/dbt/object_storage/shapefiles/us_census/tl_2024_us_state/"
+            )
+        elif tiger_code == "missing_tiger_code":
+            shapefile_paths.append("MISSING_TIGER_CODE")
+        else:
+            shapefile_paths.append(
+                f"/Volumes/goodparty_data_catalog/dbt/object_storage/shapefiles/us_census/tl_2024_{formatted_fips}_{tiger_code}/"
+            )
+    return shapefile_paths
+
+
+@udf(returnType=ArrayType(StringType()))
+def _get_tiger_codes(office_type: str) -> List[str]:
+    """
+    Maps an L2 office type to its corresponding TIGER/Line layer codes.
+
+    Args:
+        office_type: The L2 office type (e.g. "US_Congressional_District")
+
+    Returns:
+        List of TIGER/Line layer codes (e.g. ["CD119"])
+    """
+    try:
+        tiger_code = L2_TO_TIGER_CODES[office_type]
+    except KeyError:
+        tiger_code = ["MISSING_TIGER_CODE"]
+    return tiger_code
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -291,6 +341,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     fips_codes: DataFrame = dbt.ref("fips_codes")
 
     # load voter turnout
+    # TODO: replace this with production-level predictions when available
     voter_turnout: DataFrame = dbt.ref(
         "stg_sandbox_source__turnout_projections_placeholder0"
     )
@@ -299,23 +350,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # for dev, restrict to CA amd certaom offices
+    # TODO: remove this to run over all states
     voter_turnout = voter_turnout.filter(col("state") == "CA")
 
-    # further restrict to only the following offices:
-    office_type_sublist = [
-        "State_Senate_District",
-        "Hospital_SubDistrict",
-        "Town_Ward",
-        "County_Board_of_Education_District",
-        "Fire_Protection_District",
-    ]
-    voter_turnout = voter_turnout.filter(col("officeType").isin(office_type_sublist))
+    # # further restrict to only the following offices:
+    # office_type_sublist = [
+    #     "State_Senate_District",
+    #     "Hospital_SubDistrict",
+    #     "Town_Ward",
+    #     "County_Board_of_Education_District",
+    #     "Fire_Protection_District",
+    # ]
+    # voter_turnout = voter_turnout.filter(col("officeType").isin(office_type_sublist))
 
-    # determine relevant shapefiles according to state and office_type which requires mapping to TIGER code
-    voter_turnout = voter_turnout.withColumn(
-        "tiger_codes",
-        udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("officeType")),
-    )
     # join over State to get the state fips code
     voter_turnout = (
         voter_turnout.alias("voter_turnout")
@@ -329,11 +376,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .drop("fips_codes.place_name")
     )
 
-    # construct shapefile path:
-    # /Volumes/goodparty_data_catalog/dbt/object_storage/census_shapefiles/tl_2024_{fips_code}_{tiger_code}/
+    # determine relevant shapefiles according to state and office_type which requires mapping to TIGER code
     voter_turnout = voter_turnout.withColumn(
         "tiger_codes",
-        udf(lambda x: L2_TO_TIGER_CODES[x], ArrayType(StringType()))(col("officeType")),
+        _get_tiger_codes(col("officeType")),
     )
     voter_turnout = voter_turnout.withColumn(
         "shapefile_paths",
@@ -386,21 +432,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
                         col("Residence_Addresses_Longitude"),
                         col("Residence_Addresses_Latitude"),
                         col("state_postal_code"),
-                        col("OfficeType"),
-                        col("OfficeName"),
+                        col("officeType"),
+                        col("officeName"),
                         col("state"),
                         col("shapefile_paths"),
                     )
                 ),
             )
 
-    return voters_with_turnout
-    # take the most prevalent geoid over all voters by count
-    # voters_with_turnout = voters_with_turnout.select(
-    #     "officeType", "officeName", "state", "geoid"
-    # ).distinct()
+    return voters_with_turnout  # TODO: test with a select over relevant columns
 
     # # add geoid back into the voter turnout dataframe
+    # TODO: add a distinct to check to avoid duplicates
     # voter_turnout = voter_turnout.join(
     #     other=voters_with_turnout.select(
     #         "officeType", "officeName", "state", "geoid"
