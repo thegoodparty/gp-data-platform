@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal
 
 import geopandas as gpd
 import pandas as pd
+from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import coalesce, col, lit, pandas_udf, struct, udf
 from pyspark.sql.session import SparkSession
@@ -241,7 +242,10 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
         # TODO: handle case where shapefile for that TIGER doesn't exist; use `COUNTY`
         # as a default backup.
         # load shapefile
-        gdf_polygons = gpd.read_file(shapefile_path)
+        try:
+            gdf_polygons = gpd.read_file(shapefile_path)
+        except DataSourceError:
+            continue
 
         # get point for each voter from their lat/long
         gdf_points = gpd.GeoDataFrame(
@@ -265,11 +269,18 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
             .sort_values("officeType")
         )
 
-        # TODO: take the most prevalent geoid over all voters by count over all considered shapefiles
-        most_prevalent_geoid = geoids_by_count.iloc[0]["GEOID"]
-        most_common_geo_per_shapefile.append(
-            {"geoid": most_prevalent_geoid, "count": geoids_by_count.iloc[0]["count"]}
-        )
+        if len(geoids_by_count) > 0:
+            most_prevalent_geoid = geoids_by_count.iloc[0]["GEOID"]
+            most_common_geo_per_shapefile.append(
+                {
+                    "geoid": most_prevalent_geoid,
+                    "count": geoids_by_count.iloc[0]["count"],
+                }
+            )
+        else:
+            most_common_geo_per_shapefile.append(
+                {"geoid": "NO_GEOID_FOUND", "count": 0}
+            )
 
     # most prevalent geoid over all voters by count over all considered shapefiles
     try:
@@ -348,6 +359,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "stg_sandbox_source__turnout_projections_placeholder0"
     )
 
+    # if incremental, filter to only inferences made after the last inference date in this table
+    if dbt.is_incremental:
+        this_table: DataFrame = session.table(f"{dbt.this}")
+        max_inference_date_row = this_table.agg({"inference_date": "max"}).collect()[0]
+        max_inference_date = (
+            max_inference_date_row[0] if max_inference_date_row else None
+        )
+
+        if max_inference_date:
+            voter_turnout = voter_turnout.filter(
+                col("inference_date") >= max_inference_date
+            )
+
     # l2 uniform voter files
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
@@ -355,15 +379,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # TODO: remove this to run over all states
     voter_turnout = voter_turnout.filter(col("state") == "CA")
 
-    # # further restrict to only the following offices:
-    # office_type_sublist = [
-    #     "State_Senate_District",
-    #     "Hospital_SubDistrict",
-    #     "Town_Ward",
-    #     "County_Board_of_Education_District",
-    #     "Fire_Protection_District",
-    # ]
-    # voter_turnout = voter_turnout.filter(col("officeType").isin(office_type_sublist))
+    # further restrict to only the following offices:
+    office_type_sublist = [
+        "State_Senate_District",
+        "Hospital_SubDistrict",
+        "Town_Ward",
+        "County_Board_of_Education_District",
+        "Fire_Protection_District",
+    ]
+    voter_turnout = voter_turnout.filter(col("officeType").isin(office_type_sublist))
 
     # join over State to get the state fips code
     voter_turnout = (
@@ -464,20 +488,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 coalesce(col("inferred_geoid"), col("geoid")),
             ).drop("inferred_geoid")
 
+    voter_turnout.select(
+        "state",
+        col("officeType").alias("office_type"),
+        col("officeName").alias("office_name"),
+        "ballots_projected",
+        "inference_date",
+        "election_year",
+        "election_code",
+        "model_version",
+        "fips_code",
+        "place_name",
+        "tiger_codes",
+        "shapefile_paths",
+        "geoid",
+    )
     return voter_turnout
-
-    # # add geoid back into the voter turnout dataframe
-    # TODO: add a distinct to check to avoid duplicates
-    # voter_turnout = voter_turnout.join(
-    #     other=voters_with_turnout.select(
-    #         "officeType", "officeName", "state", "geoid"
-    #     ),
-    #     on=[
-    #         col("voter_turnout.state") == col("voters_with_turnout.state"),
-    #         col("voter_turnout.officeName") == col("voters_with_turnout.officeName"),
-    #         col("voter_turnout.officeType") == col("voters_with_turnout.officeType"),
-    #     ],
-    #     how="left",
-    # )
-
-    # return voter_turnout

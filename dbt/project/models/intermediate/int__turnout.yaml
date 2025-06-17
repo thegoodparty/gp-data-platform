@@ -30,3 +30,22 @@ models:
     # tests:
     #   - dbt_expectations.expect_compound_columns_to_be_unique:
     #       column_list: ["state", "office_type", "office_name"]
+
+  - name: int__projected_turnout
+    description: "Intermediate model that maps voter turnout to geoids"
+    columns:
+      - name: id
+        description: "Unique identifier for the turnout"
+        tests:
+          - not_null
+          - unique
+    tests:
+      - dbt_expectations.expect_table_column_count_to_equal_other_table:
+          compare_model: ref("int__voter_turnout_geoid")
+
+    # TODO: add tests
+    # columns:
+    #   - name: state
+    #     description: "State of the voter turnout"
+    #     tests:
+    #       - not_null
