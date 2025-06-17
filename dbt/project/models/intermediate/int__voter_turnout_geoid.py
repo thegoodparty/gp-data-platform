@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal
 import geopandas as gpd
 import pandas as pd
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, pandas_udf, struct, udf
+from pyspark.sql.functions import coalesce, col, lit, pandas_udf, struct, udf
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, StringType
 
@@ -228,16 +228,15 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
     Add geoid to the dataframe. The input dataframe has the following columns:
     - Residence_Addresses_Longitude
     - Residence_Addresses_Latitude
-    - state_postal_code
     - officeType
     - officeName
-    - state
+    - shapefile_paths
     """
     most_common_geo_per_shapefile: List[Dict[Literal["geoid", "count"], Any]] = []
 
     for shapefile_path in df.iloc[0]["shapefile_paths"]:
         if shapefile_path == "MISSING_TIGER_CODE":
-            return pd.Series(["MISSING_TIGER_CODE" for x in df.index])
+            continue
 
         # TODO: handle case where shapefile for that TIGER doesn't exist; use `COUNTY`
         # as a default backup.
@@ -273,9 +272,12 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
         )
 
     # most prevalent geoid over all voters by count over all considered shapefiles
-    most_prevalent_geoid = max(most_common_geo_per_shapefile, key=lambda x: x["count"])[
-        "geoid"
-    ]
+    try:
+        most_prevalent_geoid = max(
+            most_common_geo_per_shapefile, key=lambda x: x["count"]
+        )["geoid"]
+    except ValueError:
+        most_prevalent_geoid = "NO_GEOID_FOUND"
     return pd.Series([str(most_prevalent_geoid) for x in df.index])
 
 
@@ -388,6 +390,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # for each district prediction, look at each shapefile and pull the most prevalent geoid
     # for loop over each state since need to pass L2 voter data by state
+    voter_turnout = voter_turnout.withColumn("geoid", lit(None))
     states = [
         row["state"] for row in voter_turnout.select(col("state")).distinct().collect()
     ]
@@ -424,23 +427,44 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .alias("voters_with_turnout")
             )
 
+            # Trigger a cache to ensure these transformations are applied before the filter
+            voters_with_turnout.cache()
+
             # get the geoid for each voter by their (lat,long) for the given district
             voters_with_turnout = voters_with_turnout.withColumn(
-                "geoid",
+                "inferred_geoid",
                 _add_geoid_to_voters(
                     struct(
                         col("Residence_Addresses_Longitude"),
                         col("Residence_Addresses_Latitude"),
-                        col("state_postal_code"),
                         col("officeType"),
                         col("officeName"),
-                        col("state"),
                         col("shapefile_paths"),
                     )
                 ),
             )
 
-    return voters_with_turnout  # TODO: test with a select over relevant columns
+            voters_with_turnout = voters_with_turnout.select(
+                "officeType", "officeName", "state", "inferred_geoid"
+            ).distinct()
+
+            # Trigger a cache to ensure these transformations are applied before the filter
+            voters_with_turnout.cache()
+
+            # join inferred geoid back into voter turnout
+            voter_turnout = voter_turnout.join(
+                other=voters_with_turnout,
+                on=["state", "officeType", "officeName"],
+                how="left",
+            )
+
+            # coalesce inferred geoid with existing geoid column
+            voter_turnout = voter_turnout.withColumn(
+                "geoid",
+                coalesce(col("inferred_geoid"), col("geoid")),
+            ).drop("inferred_geoid")
+
+    return voter_turnout
 
     # # add geoid back into the voter turnout dataframe
     # TODO: add a distinct to check to avoid duplicates
