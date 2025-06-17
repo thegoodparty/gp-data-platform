@@ -1,8 +1,8 @@
   {#
   This macro maps Ballotready columns 
-  Usage: {{ map_office_type([column_name]) }} 
+  Usage: {{ map_office_type(column_name) }} 
   #}
-{% macro map_office_type(column_name) %}
+{% macro map_ballotready_office_type(column_name) %}
     case
         when {{ column_name }} = 'Alderman' then 'Alderman'
         when {{ column_name }} = 'Alderperson' then 'Alderman'

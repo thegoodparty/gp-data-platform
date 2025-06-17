@@ -12,7 +12,7 @@
 
  
 with br_new as ( 
-    select * from dbt.stg_airbyte_source__ballotready_s3_candidacies_v3
+    select * from {{ ref('stg_airbyte_source__ballotready_s3_candidacies_v3') }}
     WHERE candidacy_updated_at > current_date - INTERVAL 1 MONTH
 ),
 br_formatted as (
