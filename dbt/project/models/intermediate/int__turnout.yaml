@@ -19,7 +19,7 @@ models:
           - not_null
     tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
-          column_list: ["state", "office_type", "office_name", "election_year"]
+          column_list: ["state", "office_type", "office_name", "election_year", "election_code", "model_version"]
 
   - name: int__projected_turnout
     description: "Intermediate model that maps voter turnout to geoids"

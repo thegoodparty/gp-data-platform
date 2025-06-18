@@ -51,7 +51,7 @@ with
             tbl_voter.election_code,
             tbl_voter.model_version,
             tbl_voter.geoid,
-            tbl_race.position_database_id as position_database_id
+            tbl_race.br_position_id
         from voter_turnout as tbl_voter
         left join
             {{ ref("int__enhanced_race") }} as tbl_race
@@ -68,7 +68,7 @@ select
     tbl_cleaned.election_year,
     tbl_cleaned.election_code,
     tbl_cleaned.model_version,
-    tbl_cleaned.position_database_id as br_position_database_id,
+    tbl_cleaned.br_position_id,
     tbl_cleaned.geoid,
     {% if is_incremental() %} coalesce(tbl_existing.created_at, now()) as created_at,
     {% else %} now() as created_at,
