@@ -229,8 +229,8 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
     Add geoid to the dataframe. The input dataframe has the following columns:
     - Residence_Addresses_Longitude
     - Residence_Addresses_Latitude
-    - officeType
-    - officeName
+    - office_type
+    - office_name
     - shapefile_paths
     """
     most_common_geo_per_shapefile: List[Dict[Literal["geoid", "count"], Any]] = []
@@ -261,12 +261,12 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
 
         # compute the most prevalent geoid for each voter
         geoids_by_count = (
-            joined.groupby(["officeType", "GEOID"])
+            joined.groupby(["office_type", "GEOID"])
             .size()
             .reset_index(name="count")
             .sort_values("count", ascending=False)
-            .drop_duplicates(subset=["officeType"])
-            .sort_values("officeType")
+            .drop_duplicates(subset=["office_type"])
+            .sort_values("office_type")
         )
 
         if len(geoids_by_count) > 0:
@@ -345,7 +345,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
-        # unique_key=["officeName", "OfficeType", "state", "updated_at"],
+        # unique_key=["office_name", "office_type", "state", "updated_at"],
         on_schema_change="fail",
         tags=["voter_turnout", "geoid", "l2"],
     )
@@ -359,17 +359,27 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "stg_sandbox_source__turnout_projections_placeholder0"
     )
 
+    # ensure there aren't duplicate rows
+    voter_turnout = voter_turnout.dropDuplicates(
+        subset=[
+            "state",
+            "office_type",
+            "office_name",
+            "election_year",
+            "election_code",
+            "inference_at",
+        ],
+    )
+
     # if incremental, filter to only inferences made after the last inference date in this table
     if dbt.is_incremental:
         this_table: DataFrame = session.table(f"{dbt.this}")
-        max_inference_date_row = this_table.agg({"inference_date": "max"}).collect()[0]
-        max_inference_date = (
-            max_inference_date_row[0] if max_inference_date_row else None
-        )
+        max_inference_at_row = this_table.agg({"inference_at": "max"}).collect()[0]
+        max_inference_at = max_inference_at_row[0] if max_inference_at_row else None
 
-        if max_inference_date:
+        if max_inference_at:
             voter_turnout = voter_turnout.filter(
-                col("inference_date") >= max_inference_date
+                col("inference_at") >= max_inference_at
             )
 
     # l2 uniform voter files
@@ -387,7 +397,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "County_Board_of_Education_District",
         "Fire_Protection_District",
     ]
-    voter_turnout = voter_turnout.filter(col("officeType").isin(office_type_sublist))
+    voter_turnout = voter_turnout.filter(col("office_type").isin(office_type_sublist))
 
     # join over State to get the state fips code
     voter_turnout = (
@@ -405,7 +415,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # determine relevant shapefiles according to state and office_type which requires mapping to TIGER code
     voter_turnout = voter_turnout.withColumn(
         "tiger_codes",
-        _get_tiger_codes(col("officeType")),
+        _get_tiger_codes(col("office_type")),
     )
     voter_turnout = voter_turnout.withColumn(
         "shapefile_paths",
@@ -421,8 +431,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     for state in states:
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
-            row["officeType"]
-            for row in state_voter_turnout.select("officeType").distinct().collect()
+            row["office_type"]
+            for row in state_voter_turnout.select("office_type").distinct().collect()
         ]
 
         for district_type in district_types_list:
@@ -443,7 +453,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     other=state_voter_turnout.alias("turnout"),
                     on=[
                         col("voters.state_postal_code") == col("turnout.state"),
-                        col("voters." + district_type) == col("turnout.officeName"),
+                        col("voters." + district_type) == col("turnout.office_name"),
                     ],
                     how="inner",
                 )
@@ -461,15 +471,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     struct(
                         col("Residence_Addresses_Longitude"),
                         col("Residence_Addresses_Latitude"),
-                        col("officeType"),
-                        col("officeName"),
+                        col("office_type"),
+                        col("office_name"),
                         col("shapefile_paths"),
                     )
                 ),
             )
 
             voters_with_turnout = voters_with_turnout.select(
-                "officeType", "officeName", "state", "inferred_geoid"
+                "office_type", "office_name", "state", "inferred_geoid"
             ).distinct()
 
             # Trigger a cache to ensure these transformations are applied before the filter
@@ -478,7 +488,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             # join inferred geoid back into voter turnout
             voter_turnout = voter_turnout.join(
                 other=voters_with_turnout,
-                on=["state", "officeType", "officeName"],
+                on=["state", "office_type", "office_name"],
                 how="left",
             )
 
@@ -488,12 +498,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 coalesce(col("inferred_geoid"), col("geoid")),
             ).drop("inferred_geoid")
 
-    voter_turnout.select(
+    voter_turnout = voter_turnout.select(
         "state",
-        col("officeType").alias("office_type"),
-        col("officeName").alias("office_name"),
+        col("office_type"),
+        col("office_name"),
         "ballots_projected",
-        "inference_date",
+        "inference_at",
         "election_year",
         "election_code",
         "model_version",

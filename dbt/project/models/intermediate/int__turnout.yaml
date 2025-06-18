@@ -4,32 +4,22 @@ models:
   - name: int__voter_turnout_geoid
     description: "Intermediate model that maps voter turnout to geoids"
     # TODO: add tests
-    # columns:
-    #   - name: state
-    #     description: "State of the voter turnout"
-    #     tests:
-    #       - not_null
-
-    #   - name: office_type
-    #     description: "Type of office for the voter turnout"
-    #     tests:
-    #       - relationships:
-    #           to: ref('stg_airbyte_source__ballotready_api_place')
-    #           field: office_type_id
-
-    #   - name: office_name
-    #     description: "Name of the office for the voter turnout"
-    #     tests:
-    #       - not_null
-
-    #   - name: geoid
-    #     description: "Geoid of the voter turnout"
-    #     tests:
-    #       - not_null
-
-    # tests:
-    #   - dbt_expectations.expect_compound_columns_to_be_unique:
-    #       column_list: ["state", "office_type", "office_name"]
+    columns:
+      - name: state
+        description: "State of the voter turnout"
+        tests:
+          - not_null
+      - name: office_type
+        description: "Type of office for the voter turnout"
+        tests:
+          - not_null
+      - name: office_name
+        description: "Name of the office for the voter turnout"
+        tests:
+          - not_null
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["state", "office_type", "office_name", "election_year"]
 
   - name: int__projected_turnout
     description: "Intermediate model that maps voter turnout to geoids"
