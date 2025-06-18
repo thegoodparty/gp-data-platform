@@ -1,14 +1,11 @@
-{{
-    config(
-        tags=["intermediate", "hubspot"]
-    )
-}}
+{{ config(tags=["intermediate", "hubspot"]) }}
 -- pulling in current year results from hubspot
-
-SELECT *
-FROM {{ ref('stg_airbyte_source__hubspot_api_contacts') }}
-WHERE (
-    properties_type LIKE '%Self-Filer Lead%'
-    OR properties_product_user = 'yes'
-)
-AND properties_election_date BETWEEN DATE_TRUNC('year', CURRENT_DATE) AND DATE_TRUNC('year', CURRENT_DATE + INTERVAL 1 YEAR) - INTERVAL 1 DAY
+select *
+from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+where
+    (properties_type like '%Self-Filer Lead%' or properties_product_user = 'yes')
+    and properties_election_date
+    between date_trunc('year', current_date) and date_trunc(
+        'year', current_date + interval 1 year
+    )
+    - interval 1 day

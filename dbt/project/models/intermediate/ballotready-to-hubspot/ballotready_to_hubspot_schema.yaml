@@ -4,7 +4,7 @@ models:
   - name: int__ballotready_final_candidacies
     description: >
       Final filtered set of BallotReady candidacies to be uploaded to HubSpot,
-      including contested status and number of candidates per contest. 
+      including contested status and number of candidates per contest.
       Only includes records not already present in HubSpot.
     meta:
       owner: tristan.aubert@goodparty.org
@@ -44,11 +44,11 @@ models:
       - name: state
       - name: phone
         tests:
-          - unique 
+          - unique
           - not_null
       - name: email
         tests:
-          - unique 
+          - unique
           - not_null
       - name: city
       - name: district
