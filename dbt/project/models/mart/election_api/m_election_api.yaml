@@ -69,6 +69,23 @@ models:
           - not_null
           - unique
 
+  - name: m_election_api__projected_turnout
+    description: "Mart model that serves the Election API"
+    columns:
+      - name: id
+        description: "UUID of the projected turnout"
+        tests:
+          - not_null
+          - unique
+      - name: br_position_id
+        description: "Database ID of the `race` from BallotReady"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('int__enhanced_race')
+              field: br_position_id
+
   - name: m_election_api__race
     description: "Mart model that serves the Election API"
     columns:

@@ -261,6 +261,52 @@ RACE_UPSERT_QUERY = """
         position_names = EXCLUDED.position_names
 """
 
+PROJECTED_TURNOUT_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."ProjectedTurnout" (
+        id,
+        br_position_id,
+        created_at,
+        updated_at,
+        geoid,
+        state,
+        l2_office_type,
+        l2_office_name,
+        election_year,
+        election_code,
+        projected_turnout,
+        inference_at,
+        model_version
+    )
+    SELECT
+        id::uuid,
+        br_position_id,
+        created_at,
+        updated_at,
+        geoid,
+        state,
+        l2_office_type,
+        l2_office_name,
+        election_year,
+        election_code,
+        projected_turnout,
+        inference_at,
+        model_version
+    from {staging_schema}."ProjectedTurnout"
+    ON CONFLICT (id) DO UPDATE SET
+        br_position_id = EXCLUDED.br_position_id,
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        geoid = EXCLUDED.geoid,
+        state = EXCLUDED.state,
+        l2_office_type = EXCLUDED.l2_office_type,
+        l2_office_name = EXCLUDED.l2_office_name,
+        election_year = EXCLUDED.election_year,
+        election_code = EXCLUDED.election_code,
+        projected_turnout = EXCLUDED.projected_turnout,
+        inference_at = EXCLUDED.inference_at,
+        model_version = EXCLUDED.model_version
+    """
+
 STANCE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Stance" (
         id,
@@ -434,6 +480,7 @@ def model(dbt, session) -> DataFrame:
     place_df: DataFrame = dbt.ref("m_election_api__place")
     race_df: DataFrame = dbt.ref("m_election_api__race")
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
+    projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
     # filter the race dataframe to only include races that are within 1 day of the current date and 2 years from the current date
     race_df = race_df.filter(
@@ -454,8 +501,15 @@ def model(dbt, session) -> DataFrame:
         # get the latest timestamp for each table and filter the dataframes to only include new or updated records
         max_updated_at = {}
         to_load = zip(
-            ["Candidacy", "Issue", "Place", "Race", "Stance"],
-            [candidacy_df, issue_df, place_df, race_df, stance_df],
+            ["Candidacy", "Issue", "Place", "Race", "Stance", "ProjectedTurnout"],
+            [
+                candidacy_df,
+                issue_df,
+                place_df,
+                race_df,
+                stance_df,
+                projected_turnout_df,
+            ],
         )
         for table, df in to_load:
             query = (
@@ -486,14 +540,15 @@ def model(dbt, session) -> DataFrame:
     # foreign key constraints.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
-        ["Place", "Race", "Candidacy", "Issue", "Stance"],
-        [place_df, race_df, candidacy_df, issue_df, stance_df],
+        ["Place", "Race", "Candidacy", "Issue", "Stance", "ProjectedTurnout"],
+        [place_df, race_df, candidacy_df, issue_df, stance_df, projected_turnout_df],
         [
             PLACE_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
+            PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
     ):
         table_load_counts[table_name] = _load_data_to_postgres(
