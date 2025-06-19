@@ -24,7 +24,7 @@ with
             geoid
         from {{ ref("int__voter_turnout_geoid") }}
         {% if is_incremental() %}
-            where inference_date = (select max(inference_date) from {{ this }})
+            where inference_at = (select max(inference_at) from {{ this }})
         {% endif %}
     ),
     cleaned_turnout as (

@@ -390,12 +390,26 @@ def model(dbt, session: SparkSession) -> DataFrame:
     voter_turnout = voter_turnout.filter(col("state") == "CA")
 
     # further restrict to only the following offices:
+    # TODO: remove this filter to run over all offices
     office_type_sublist = [
         "State_Senate_District",
         "Hospital_SubDistrict",
         "Town_Ward",
         "County_Board_of_Education_District",
         "Fire_Protection_District",
+        "Judicial_Appellate_District",
+        "Judicial_Circuit_Court_District",
+        "Judicial_Sub_Circuit_District",
+        "Judicial_Superior_Court_District",
+        "Judicial_District",
+        "Judicial_District_Court_District",
+        "Judicial_Chancery_Court",
+        "Judicial_County_Board_of_Review_District",
+        "Judicial_County_Court_District",
+        "Judicial_Family_Court_District",
+        "Judicial_Juvenile_Court_District",
+        "Judicial_Magistrate_Division",
+        "Judicial_Supreme_Court_District",
     ]
     voter_turnout = voter_turnout.filter(col("office_type").isin(office_type_sublist))
 
@@ -460,6 +474,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .drop("voters.state_postal_code")
                 .alias("voters_with_turnout")
             )
+
+            # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
+            max_value_to_downsample = 10000
+            min_value_to_downsample = 1000
+            fraction_to_downsample = 0.1
+            if (
+                voters_with_turnout.count()
+                > min_value_to_downsample / fraction_to_downsample
+            ):
+                voters_with_turnout = voters_with_turnout.sample(
+                    fraction=fraction_to_downsample, seed=24601, withReplacement=False
+                )
+            voters_with_turnout = voters_with_turnout.limit(max_value_to_downsample)
 
             # Trigger a cache to ensure these transformations are applied before the filter
             voters_with_turnout.cache()
