@@ -29,13 +29,12 @@ models:
         tests:
           - not_null
           - unique
+      - name: state
+        description: "State of the voter turnout"
+        tests:
+          - not_null
     tests:
       - dbt_expectations.expect_table_column_count_to_equal_other_table:
           compare_model: ref("int__voter_turnout_geoid")
 
-    # TODO: add tests
-    # columns:
-    #   - name: state
-    #     description: "State of the voter turnout"
-    #     tests:
-    #       - not_null
+    # TODO: add more tests

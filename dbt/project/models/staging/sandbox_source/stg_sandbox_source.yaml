@@ -12,6 +12,6 @@ models:
                 - General
                 - Local_or_Municipal
                 - Consolidated_General
-    # tests:
-      # - dbt_expectations.expect_compound_columns_to_be_unique:
-          # column_list: ["state", "office_type", "office_name", "election_year", "election_code", "model_version"]
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["state", "office_type", "office_name", "election_year", "election_code", "model_version"]
