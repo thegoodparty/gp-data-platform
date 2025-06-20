@@ -26,7 +26,7 @@ select
     updated_at
 from {{ ref("int__projected_turnout") }}
 where
-    geoid is not null
+    geoid is not null and br_position_id is not null
     {% if is_incremental() %}
         and updated_at = (select max(updated_at) from {{ this }})
     {% endif %}

@@ -345,7 +345,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
-        # unique_key=["office_name", "office_type", "state", "updated_at"],
+        unique_key=[
+            "state",
+            "office_type",
+            "office_name",
+            "election_year",
+            "election_code",
+            "model_version",
+        ],
         on_schema_change="fail",
         tags=["voter_turnout", "geoid", "l2"],
     )
@@ -359,18 +366,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "stg_sandbox_source__turnout_projections_placeholder0"
     )
 
-    # ensure there aren't duplicate rows; check this at the staging layer
-    # voter_turnout = voter_turnout.dropDuplicates(
-    #     subset=[
-    #         "state",
-    #         "office_type",
-    #         "office_name",
-    #         "election_year",
-    #         "election_code",
-    #         "inference_at",
-    #     ],
-    # )
-
     # if incremental, filter to only inferences made after the last inference date in this table
     if dbt.is_incremental:
         this_table: DataFrame = session.table(f"{dbt.this}")
@@ -382,12 +377,24 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 col("inference_at") >= max_inference_at
             )
 
+    # ensure there aren't duplicate rows; check this at the staging layer
+    voter_turnout = voter_turnout.dropDuplicates(
+        subset=[
+            "state",
+            "office_type",
+            "office_name",
+            "election_year",
+            "election_code",
+            "model_version",
+        ],
+    )
+
     # l2 uniform voter files
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # for dev, restrict to CA amd certaom offices
     # TODO: remove this to run over all states
-    voter_turnout = voter_turnout.filter(col("state") == "WY")
+    voter_turnout = voter_turnout.filter(col("state").isin(["WY", "ND", "VT"]))
 
     # further downsample to only the following offices:
     # TODO: remove this filter to run over all offices
@@ -411,8 +418,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #     "Judicial_Magistrate_Division",
     #     "Judicial_Supreme_Court_District",
     # ]
-    office_type_sublist = list(L2_TO_TIGER_CODES.keys())[:5]
-    voter_turnout = voter_turnout.filter(col("office_type").isin(office_type_sublist))
+
+    # for state='WY', take them all as there's only 20-40 rows
+    # office_type_sublist = list(L2_TO_TIGER_CODES.keys())[:50]
+    # voter_turnout = voter_turnout.filter(col("office_type").isin(office_type_sublist))
 
     # join over State to get the state fips code
     voter_turnout = (

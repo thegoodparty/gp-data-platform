@@ -13,6 +13,20 @@
 with
     voter_turnout as (
         select
+            {{
+                generate_salted_uuid(
+                    fields=[
+                        "state",
+                        "office_type",
+                        "office_name",
+                        "election_year",
+                        "election_code",
+                        "model_version",
+                        "inference_at",
+                        "geoid",
+                    ]
+                )
+            }} as id,
             state,
             office_type as l2_district_type,
             office_name as l2_district_name,
@@ -41,8 +55,10 @@ with
                         "tbl_voter.l2_district_name",
                         "tbl_voter.election_year",
                         "tbl_voter.election_code",
+                        "tbl_voter.model_version",
                         "tbl_voter.inference_at",
                         "tbl_voter.geoid",
+                        "tbl_race.br_position_id",
                     ]
                 )
             }} as id,
@@ -55,11 +71,18 @@ with
             tbl_voter.election_code,
             tbl_voter.model_version,
             tbl_voter.geoid,
-            tbl_race.br_position_id
+            tbl_race.br_position_id,
+            tbl_race.election_date
         from voter_turnout as tbl_voter
         left join
-            {{ ref("int__enhanced_race") }} as tbl_race
-            on tbl_voter.geoid = tbl_race.position_geo_id
+            {{ ref("m_election_api__race") }} as tbl_race
+            on tbl_voter.geoid = tbl_race.position_geoid
+        -- some positions have multiple elections, so we take the earliest one
+        qualify
+            row_number() over (
+                partition by tbl_race.br_position_id order by tbl_race.election_date asc
+            )
+            = 1
     )
 
 select

@@ -85,6 +85,14 @@ models:
           - relationships:
               to: ref('int__enhanced_race')
               field: br_position_id
+      - name: l2_election_code
+        description: "Election code from L2"
+        tests:
+          - accepted_values:
+              values:
+                - General
+                - LocalOrMunicipal
+                - ConsolidatedGeneral
 
   - name: m_election_api__race
     description: "Mart model that serves the Election API"
