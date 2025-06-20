@@ -20,6 +20,13 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__hubspot_api_engagements
+    description: Engagements data load from HubSpot API
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
   - name: stg_airbyte_source__hubspot_api_owners
     description: Owners data load from HubSpot API
     columns:
