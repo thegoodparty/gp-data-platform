@@ -262,7 +262,7 @@ RACE_UPSERT_QUERY = """
 """
 
 PROJECTED_TURNOUT_UPSERT_QUERY = """
-    INSERT INTO {db_schema}."ProjectedTurnout" (
+    INSERT INTO {db_schema}."Projected_Turnout" (
         id,
         br_position_id,
         created_at,
@@ -287,11 +287,11 @@ PROJECTED_TURNOUT_UPSERT_QUERY = """
         l2_office_type,
         l2_office_name,
         election_year,
-        election_code,
+        election_code::\"ElectionCode\",
         projected_turnout,
         inference_at,
         model_version
-    from {staging_schema}."ProjectedTurnout"
+    from {staging_schema}."Projected_Turnout"
     ON CONFLICT (id) DO UPDATE SET
         br_position_id = EXCLUDED.br_position_id,
         created_at = EXCLUDED.created_at,
@@ -501,7 +501,7 @@ def model(dbt, session) -> DataFrame:
         # get the latest timestamp for each table and filter the dataframes to only include new or updated records
         max_updated_at = {}
         to_load = zip(
-            ["Candidacy", "Issue", "Place", "Race", "Stance", "ProjectedTurnout"],
+            ["Candidacy", "Issue", "Place", "Race", "Stance", "Projected_Turnout"],
             [
                 candidacy_df,
                 issue_df,
@@ -540,7 +540,7 @@ def model(dbt, session) -> DataFrame:
     # foreign key constraints.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
-        ["Place", "Race", "Candidacy", "Issue", "Stance", "ProjectedTurnout"],
+        ["Place", "Race", "Candidacy", "Issue", "Stance", "Projected_Turnout"],
         [place_df, race_df, candidacy_df, issue_df, stance_df, projected_turnout_df],
         [
             PLACE_UPSERT_QUERY,

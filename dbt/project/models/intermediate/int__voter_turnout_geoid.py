@@ -359,17 +359,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "stg_sandbox_source__turnout_projections_placeholder0"
     )
 
-    # ensure there aren't duplicate rows
-    voter_turnout = voter_turnout.dropDuplicates(
-        subset=[
-            "state",
-            "office_type",
-            "office_name",
-            "election_year",
-            "election_code",
-            "inference_at",
-        ],
-    )
+    # ensure there aren't duplicate rows; check this at the staging layer
+    # voter_turnout = voter_turnout.dropDuplicates(
+    #     subset=[
+    #         "state",
+    #         "office_type",
+    #         "office_name",
+    #         "election_year",
+    #         "election_code",
+    #         "inference_at",
+    #     ],
+    # )
 
     # if incremental, filter to only inferences made after the last inference date in this table
     if dbt.is_incremental:
@@ -387,30 +387,31 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # for dev, restrict to CA amd certaom offices
     # TODO: remove this to run over all states
-    voter_turnout = voter_turnout.filter(col("state") == "CA")
+    voter_turnout = voter_turnout.filter(col("state") == "WY")
 
-    # further restrict to only the following offices:
+    # further downsample to only the following offices:
     # TODO: remove this filter to run over all offices
-    office_type_sublist = [
-        "State_Senate_District",
-        "Hospital_SubDistrict",
-        "Town_Ward",
-        "County_Board_of_Education_District",
-        "Fire_Protection_District",
-        "Judicial_Appellate_District",
-        "Judicial_Circuit_Court_District",
-        "Judicial_Sub_Circuit_District",
-        "Judicial_Superior_Court_District",
-        "Judicial_District",
-        "Judicial_District_Court_District",
-        "Judicial_Chancery_Court",
-        "Judicial_County_Board_of_Review_District",
-        "Judicial_County_Court_District",
-        "Judicial_Family_Court_District",
-        "Judicial_Juvenile_Court_District",
-        "Judicial_Magistrate_Division",
-        "Judicial_Supreme_Court_District",
-    ]
+    # office_type_sublist = [
+    #     "State_Senate_District",
+    #     "Hospital_SubDistrict",
+    #     "Town_Ward",
+    #     "County_Board_of_Education_District",
+    #     "Fire_Protection_District",
+    #     "Judicial_Appellate_District",
+    #     "Judicial_Circuit_Court_District",
+    #     "Judicial_Sub_Circuit_District",
+    #     "Judicial_Superior_Court_District",
+    #     "Judicial_District",
+    #     "Judicial_District_Court_District",
+    #     "Judicial_Chancery_Court",
+    #     "Judicial_County_Board_of_Review_District",
+    #     "Judicial_County_Court_District",
+    #     "Judicial_Family_Court_District",
+    #     "Judicial_Juvenile_Court_District",
+    #     "Judicial_Magistrate_Division",
+    #     "Judicial_Supreme_Court_District",
+    # ]
+    office_type_sublist = list(L2_TO_TIGER_CODES.keys())[:5]
     voter_turnout = voter_turnout.filter(col("office_type").isin(office_type_sublist))
 
     # join over State to get the state fips code
@@ -476,7 +477,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
-            max_value_to_downsample = 10000
+            max_value_to_downsample = 1000
             min_value_to_downsample = 1000
             fraction_to_downsample = 0.1
             if (

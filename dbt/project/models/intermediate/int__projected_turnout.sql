@@ -19,7 +19,11 @@ with
             ballots_projected as projected_turnout,
             inference_at,
             election_year,
-            election_code,
+            case
+                when election_code = 'Local_or_Municipal'
+                then 'LocalOrMunicipal'
+                else election_code
+            end as election_code,
             model_version,
             geoid
         from {{ ref("int__voter_turnout_geoid") }}
@@ -61,8 +65,10 @@ with
 select
     tbl_cleaned.id,
     tbl_cleaned.state,
-    tbl_cleaned.l2_district_type,
-    tbl_cleaned.l2_district_name,
+    -- tbl_cleaned.l2_district_type,
+    -- tbl_cleaned.l2_district_name,
+    tbl_cleaned.l2_district_type as l2_office_type,
+    tbl_cleaned.l2_district_name as l2_office_name,
     tbl_cleaned.projected_turnout,
     tbl_cleaned.inference_at,
     tbl_cleaned.election_year,
@@ -76,5 +82,5 @@ select
     now() as updated_at
 from cleaned_turnout as tbl_cleaned
 {% if is_incremental() %}
-    left join {{ this }} as tbl_existing on cleaned_turnout.id = tbl_existing.id
+    left join {{ this }} as tbl_existing on tbl_cleaned.id = tbl_existing.id
 {% endif %}
