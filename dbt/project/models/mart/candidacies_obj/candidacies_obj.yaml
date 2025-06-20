@@ -1,0 +1,193 @@
+version: 2
+
+models:
+  - name: m_hs__candidacies_obj  # Replace with your actual model name
+    description: >
+      This model creates the candidacies object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidacy_id
+        description: Internally generated unique identifier for candidacies
+        # data_type: uuid
+        tests:
+          # - not_null
+          - unique
+
+      - name: candidacy_id
+        description: Unique identifier for a person running in an election from source
+        # data_type: varchar
+        tests:
+          - not_null
+
+      - name: gp_user_id
+        description: Identifier to link to specific GoodParty user product
+        data_type: uuid
+        tests:
+          - not_null
+
+      - name: candidate_id_source
+        description: Identifier from which source the data originated from (BallotReady, Techspeed, Product, Other)
+        # data_type: varchar
+        tests:
+          - not_null
+
+      - name: gp_contest_id
+        description: Identifier to link contest
+        # data_type: uuid
+        tests:
+          - not_null
+
+      - name: hubspot_record_id
+        description: Need to know person in growth system
+        # data_type: varchar
+        tests:
+          - not_null
+
+      - name: first_name
+        description: Candidate’s given name
+        data_type: varchar
+
+      - name: last_name
+        description: Candidate’s family name
+        data_type: varchar
+
+      - name: full_name
+        description: Full campaign or legal name
+        data_type: varchar
+
+      - name: birth_date
+        description: Candidate’s date of birth
+        data_type: date
+
+      - name: email
+        description: Primary contact email
+        data_type: varchar
+
+      - name: phone_number
+        description: Primary contact phone number
+        data_type: varchar
+
+      - name: street_address
+        description: Candidate’s address (if available)
+        data_type: varchar
+
+      - name: website_url
+        description: Candidate’s campaign website
+        data_type: varchar
+
+      - name: linkedin_url
+        description: Candidate’s LinkedIn profile
+        data_type: varchar
+
+      - name: instagram_handle
+        description: Candidate’s Instagram handle
+        data_type: varchar
+
+      - name: twitter_handle
+        description: Candidate’s Twitter (X) handle
+        data_type: varchar
+
+      - name: facebook_url
+        description: Candidate’s Facebook page
+        data_type: varchar
+
+      - name: official_office_name
+        description: Formal office title the candidate is running for
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: candidate_office
+        description: Simplified/standardized office name
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: office_type
+        description: Executive, legislative, judicial, etc.
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: office_level
+        description: Local, state, or federal
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: party_affiliation
+        description: Candidate’s political party
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: state
+        description: U.S. state for the candidacy
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: city
+        description: City for contest
+        data_type: varchar
+
+      - name: district
+        description: Electoral district, if applicable
+        data_type: varchar
+
+      - name: seat
+        description: Specific seat being contested by candidate (if applicable)
+        data_type: varchar
+
+      - name: population
+        description: Population of candidate’s district
+        data_type: bigint
+
+      - name: filing_deadline
+        description: Official last date to file for the election
+        data_type: date
+
+      - name: primary_election_date
+        description: Date of primary election, if applicable
+        data_type: date
+
+      - name: general_election_date
+        description: Date of general election
+        data_type: date
+        tests:
+          - not_null
+
+      - name: runoff_election_date
+        description: Date of runoff if applicable
+        data_type: date
+
+      - name: is_partisan
+        description: Indicates if race is Partisan, nonpartisan
+        data_type: boolean
+
+      - name: is_incumbent
+        description: Is the candidacy Incumbent, challenger
+        data_type: boolean
+
+      - name: uncontested
+        description: Whether the number of open seats is less than or equal to number of candidates running
+        data_type: boolean
+
+      - name: number_of_opponents
+        description: How many other candidates in the race
+        data_type: integer
+
+      - name: seats_available
+        description: Total number of seats in race
+        data_type: integer
+
+      - name: open_seat
+        description: Whether this race is for an open seat
+        data_type: boolean
+
+      - name: candidate_id_tier
+        description: Internal confidence/priority tier
+        data_type: integer
+
+      - name: candidacy_result
+        description: Latest result of this candidate's campaign (won, lost primary, etc.)
+        data_type: varchar
