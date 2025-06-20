@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: m_hs__candidacies_obj  # Replace with your actual model name
+  - name: m_candidacy_object  # Replace with your actual model name
     description: >
       This model creates the candidacies object in the mart layer using the hubspot data
     columns:
@@ -36,10 +36,11 @@ models:
         tests:
           - not_null
 
-      - name: hubspot_record_id
+      - name: companies_id_main
         description: Need to know person in growth system
         # data_type: varchar
         tests:
+          - unique
           - not_null
 
       - name: first_name
