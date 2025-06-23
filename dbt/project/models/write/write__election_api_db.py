@@ -292,8 +292,8 @@ PROJECTED_TURNOUT_UPSERT_QUERY = """
         inference_at,
         model_version
     from {staging_schema}."Projected_Turnout"
-    ON CONFLICT (id) DO UPDATE SET
-        br_position_id = EXCLUDED.br_position_id,
+    ON CONFLICT (br_position_id) DO UPDATE SET
+        id = EXCLUDED.id,
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
         geoid = EXCLUDED.geoid,

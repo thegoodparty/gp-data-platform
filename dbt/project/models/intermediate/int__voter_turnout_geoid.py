@@ -392,9 +392,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # l2 uniform voter files
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
-    # for dev, restrict to CA amd certaom offices
+    # for dev, restrict to CA and certain offices
     # TODO: remove this to run over all states
-    voter_turnout = voter_turnout.filter(col("state").isin(["WY", "ND", "VT"]))
+    # states_to_include = ["WY"]  #, "ND", "VT"]
+    states_to_include = ["WY", "ND", "VT"]
+    voter_turnout = voter_turnout.filter(col("state").isin(states_to_include))
 
     # further downsample to only the following offices:
     # TODO: remove this filter to run over all offices

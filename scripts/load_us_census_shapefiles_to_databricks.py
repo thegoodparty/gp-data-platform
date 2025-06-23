@@ -41,7 +41,7 @@ def download_files(url, save_dir):
             zip_links.append(full_link)
 
     # only keep WY for now
-    zip_links = [link for link in zip_links if "56" in link]
+    zip_links = [link for link in zip_links if "38" in link]
 
     for url in zip_links:
         try:

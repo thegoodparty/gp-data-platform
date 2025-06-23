@@ -85,7 +85,7 @@ models:
           - relationships:
               to: ref('int__enhanced_race')
               field: br_position_id
-      - name: l2_election_code
+      - name: election_code
         description: "Election code from L2"
         tests:
           - accepted_values:
