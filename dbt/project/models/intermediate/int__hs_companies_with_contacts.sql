@@ -1,65 +1,78 @@
-{{
-  config(
-    materialized='table',
-    tags=['intermediate', 'candidacy']
-  )
-}}
+{{ config(materialized="table", tags=["intermediate", "candidacy"]) }}
 
-WITH extracted_engagements AS (
-  SELECT DISTINCT
-    companies.companies_id_main,
-    REGEXP_EXTRACT(engagements.associations_companyIds, '\\[(\\d+)\\]', 1) AS company_id_association,
-    REGEXP_EXTRACT(engagements.associations_contactIds, '\\[(\\d+)\\]', 1) AS contact_id_association
-  FROM {{ ref('int__hs_companies_recent') }} AS companies
-  LEFT JOIN {{ ref('stg_airbyte_source__hubspot_api_engagements') }} AS engagements
-    ON companies.companies_id_main = REGEXP_EXTRACT(engagements.associations_companyIds, '\\[(\\d+)\\]', 1)
-  WHERE companies.companies_id_main IS NOT NULL
-),
+with
+    extracted_engagements as (
+        select distinct
+            companies.companies_id_main,
+            regexp_extract(
+                engagements.associations_companyids, '\\[(\\d+)\\]', 1
+            ) as company_id_association,
+            regexp_extract(
+                engagements.associations_contactids, '\\[(\\d+)\\]', 1
+            ) as contact_id_association
+        from {{ ref("int__hs_companies_recent") }} as companies
+        left join
+            {{ ref("stg_airbyte_source__hubspot_api_engagements") }} as engagements
+            on companies.companies_id_main
+            = regexp_extract(engagements.associations_companyids, '\\[(\\d+)\\]', 1)
+        where companies.companies_id_main is not null
+    ),
 
-joined_data AS (
-  SELECT 
-    companies.*,
-    contacts.id AS contact_id,
-    contacts.properties_candidate_id_source AS candidate_id_source,
-    contacts.properties_firstname AS first_name,
-    contacts.properties_lastname AS last_name,
-    contacts.properties_birth_date AS birth_date, 
-    contacts.properties_instagram_handle AS instagram_handle,
-    contacts.properties_population AS population,
-    contacts.properties_candidate_id_tier AS candidate_id_tier,
-    contacts.properties_email AS email_contacts,
-    contacts.updatedAt AS contact_updated_at,
+    joined_data as (
+        select
+            companies.*,
+            contacts.id as contact_id,
+            contacts.properties_candidate_id_source as candidate_id_source,
+            contacts.properties_firstname as first_name,
+            contacts.properties_lastname as last_name,
+            contacts.properties_birth_date as birth_date,
+            contacts.properties_instagram_handle as instagram_handle,
+            contacts.properties_population as population,
+            contacts.properties_candidate_id_tier as candidate_id_tier,
+            contacts.properties_email as email_contacts,
+            contacts.updatedat as contact_updated_at,
 
-    -- Matching logic
-    CASE 
-      WHEN LOWER(contacts.properties_email) = LOWER(companies.email) THEN 1
-      ELSE 0
-    END AS email_match,
+            -- Matching logic
+            case
+                when lower(contacts.properties_email) = lower(companies.email)
+                then 1
+                else 0
+            end as email_match,
 
-    CASE 
-      WHEN LOWER(TRIM(companies.full_name)) = LOWER(TRIM(CONCAT(contacts.properties_firstname, ' ', contacts.properties_lastname))) THEN 1
-      ELSE 0
-    END AS name_match
+            case
+                when
+                    lower(trim(companies.full_name)) = lower(
+                        trim(
+                            concat(
+                                contacts.properties_firstname,
+                                ' ',
+                                contacts.properties_lastname
+                            )
+                        )
+                    )
+                then 1
+                else 0
+            end as name_match
 
-  FROM {{ ref('int_companies_recent') }} AS companies
-  LEFT JOIN extracted_engagements AS engagements
-    ON companies.companies_id_main = engagements.companies_id_main
-  LEFT JOIN {{ ref('stg_airbyte_source__hubspot_api_contacts') }} AS contacts
-    ON contacts.id = engagements.contact_id_association
-),
+        from {{ ref("int__hs_companies_recent") }} as companies
+        left join
+            extracted_engagements as engagements
+            on companies.companies_id_main = engagements.companies_id_main
+        left join
+            {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as contacts
+            on contacts.id = engagements.contact_id_association
+    ),
 
-ranked_matches AS (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY companies_id_main
-      ORDER BY 
-        email_match DESC,
-        name_match DESC,
-        contact_updated_at DESC
-    ) AS row_rank
-  FROM joined_data
-)
+    ranked_matches as (
+        select
+            *,
+            row_number() over (
+                partition by companies_id_main
+                order by email_match desc, name_match desc, contact_updated_at desc
+            ) as row_rank
+        from joined_data
+    )
 
-SELECT * 
-FROM ranked_matches
-WHERE row_rank = 1
+select *
+from ranked_matches
+where row_rank = 1
