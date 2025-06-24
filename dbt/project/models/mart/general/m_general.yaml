@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: m_candidacy_object  # Replace with your actual model name
+  - name: m_general__candidacy
     description: >
       This model creates the candidacies object in the mart layer using the hubspot data
     columns:
