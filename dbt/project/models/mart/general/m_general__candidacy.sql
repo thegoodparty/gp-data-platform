@@ -73,7 +73,7 @@ select
     companies_with_contacts.created_at,
     companies_with_contacts.updated_at
 
-from {{ ref("int__companies_with_contacts") }} as companies_with_contacts
+from {{ ref("int__hs_companies_with_contacts") }} as companies_with_contacts
 left join
     {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
     on companies_with_contacts.companies_id_main = viability_scores.id
