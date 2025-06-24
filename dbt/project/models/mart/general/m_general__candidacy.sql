@@ -15,7 +15,7 @@ select
     companies_with_contacts.gp_candidacy_id,
     companies_with_contacts.candidacy_id,
     companies_with_contacts.gp_user_id,
-    companies_with_contacts.gp_constest_id,
+    companies_with_contacts.gp_contest_id,
     companies_with_contacts.companies_id_main,
     companies_with_contacts.candidate_id_source,
     companies_with_contacts.candidate_id_tier,
