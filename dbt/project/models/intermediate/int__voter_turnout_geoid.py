@@ -7,7 +7,9 @@ from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
 
 # from pyspark.sql.functions import coalesce, col, lit, pandas_udf, struct, udf
-from pyspark.sql.functions import col, lit, pandas_udf, udf
+from pyspark.sql.functions import col, lit, pandas_udf, struct, udf
+
+# from pyspark.sql.functions import col, lit, pandas_udf, udf
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import ArrayType, StringType
 
@@ -396,8 +398,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # for dev, restrict to CA and certain offices
     # TODO: remove this to run over all states
-    # states_to_include = ["WY", "ND", "VT"]
-    states_to_include = ["ND", "VT"]
+    # states_to_include = ["ND"]
+    states_to_include = ["ND", "VT", "WY"]
     voter_turnout = voter_turnout.filter(col("state").isin(states_to_include))
 
     # further downsample to only the following offices:
@@ -456,14 +458,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     states = [
         row["state"] for row in voter_turnout.select(col("state")).distinct().collect()
     ]
-    for state in states:
+    for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
             row["office_type"]
             for row in state_voter_turnout.select("office_type").distinct().collect()
         ]
 
-        for district_type in district_types_list:
+        for district_type_num, district_type in enumerate(district_types_list):
             # get voters by district type
             voters_by_district_type = l2_uniform_voter_files.select(
                 [
@@ -504,47 +506,77 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 )
             voters_with_turnout = voters_with_turnout.limit(max_value_to_downsample)
 
+            # Trigger a cache to ensure these transformations are applied before the filter
+            # voters_with_turnout.cache()
+
+            # get the geoid for each voter by their (lat,long) for the given district
+            voters_with_turnout = voters_with_turnout.withColumn(
+                "inferred_geoid",
+                _add_geoid_to_voters(
+                    struct(
+                        col("Residence_Addresses_Longitude"),
+                        col("Residence_Addresses_Latitude"),
+                        col("office_type"),
+                        col("office_name"),
+                        col("shapefile_paths"),
+                    )
+                ),
+            )
+
+            # TODO: test return values here. see if it's fast or slow. joins against this table should be fast, and the geoid matching above should be slow
+
+            voters_with_turnout = voters_with_turnout.select(
+                "office_type", "office_name", "state", "inferred_geoid"
+            ).distinct()
+
             # TODO: the voters_with_turnout should have all 'office_type' and 'office_name'. At this point with the return value it does. (distinct office_type, state)
             # TODO: uncomment geoid algo that applies _add_geoid_to_voters, time it, and check that distinct(office_type, state) is still satisfied.
+            voters_with_turnout = voters_with_turnout.withColumn(
+                "metainfo",
+                lit(
+                    f"state={state}, state_num={state_num}, district_type={district_type}, district_type_num={district_type_num}"
+                ),
+            )
             voters_with_turnout.cache()
-            if "return_value" not in locals():
+            if state_num == 0 and district_type_num == 0:
                 return_value = voters_with_turnout
             else:
                 return_value = return_value.union(voters_with_turnout)
+            # if district_type_num == 2:
             # break
-        return_value = return_value.withColumn("geoid", lit("some_random_value"))
+            # break
+        # break
+        return_value.cache()
+    return_value = return_value.withColumn("geoid", lit("some_random_value"))
     return return_value
 
-    #         # Trigger a cache to ensure these transformations are applied before the filter
-    #         voters_with_turnout.cache()
+    # # Trigger a cache to ensure these transformations are applied before the filter
+    # voters_with_turnout.cache()
 
-    #         # get the geoid for each voter by their (lat,long) for the given district
-    #         voters_with_turnout = voters_with_turnout.withColumn(
-    #             "inferred_geoid",
-    #             _add_geoid_to_voters(
-    #                 struct(
-    #                     col("Residence_Addresses_Longitude"),
-    #                     col("Residence_Addresses_Latitude"),
-    #                     col("office_type"),
-    #                     col("office_name"),
-    #                     col("shapefile_paths"),
-    #                 )
-    #             ),
-    #         )
+    # # join inferred geoid back into voter turnout
+    # voter_turnout = voter_turnout.drop("inferred_geoid").join(
+    #     other=voters_with_turnout.alias("voters_with_turnout"),
+    #     on=["state", "office_type", "office_name"],
+    #     how="left",
+    # )
 
-    #         voters_with_turnout = voters_with_turnout.select(
-    #             "office_type", "office_name", "state", "inferred_geoid"
-    #         ).distinct()
+    # voter_turnout = voter_turnout.select(
+    #     "state",
+    #     "office_type",
+    #     "office_name",
+    #     "ballots_projected",
+    #     "inference_at",
+    #     "election_year",
+    #     "election_code",
+    #     "model_version",
+    #     "fips_code",
+    #     "place_name",
+    #     "tiger_codes",
+    #     "shapefile_paths",
+    #     "inferred_geoid",
+    # )
 
-    #         # Trigger a cache to ensure these transformations are applied before the filter
-    #         voters_with_turnout.cache()
-
-    #         # join inferred geoid back into voter turnout
-    #         voter_turnout = voter_turnout.join(
-    #             other=voters_with_turnout,
-    #             on=["state", "office_type", "office_name"],
-    #             how="left",
-    #         )
+    # TODO continue testing here: for 3 states and 1 district 475s. For 3 states and 2 districts 900s.
 
     #         # coalesce inferred geoid with existing geoid column
     #         voter_turnout = voter_turnout.withColumn(
