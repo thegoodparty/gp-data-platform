@@ -1,4 +1,9 @@
-{{ config(materialized="table", tags=["intermediate", "candidacy"]) }}
+{{
+    config(
+        materialized="view",
+        tags=["intermediate", "candidacy", "companies", "hubspot", "contacts"],
+    )
+}}
 
 with
     extracted_engagements as (
