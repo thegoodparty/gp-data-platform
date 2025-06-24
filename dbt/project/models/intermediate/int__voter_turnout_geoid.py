@@ -523,31 +523,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 ),
             )
 
-            #         # TODO: the voters_with_turnout should have all 'office_type' and 'office_name'. At this point with the return value it does. (distinct office_type, state)
-            #         # TODO: uncomment geoid algo that applies _add_geoid_to_voters, time it, and check that distinct(office_type, state) is still satisfied.
-            #         voters_with_turnout = voters_with_turnout.withColumn(
-            #             "metainfo",
-            #             lit(
-            #                 f"state={state}, state_num={state_num}, district_type={district_type}, district_type_num={district_type_num}"
-            #             ),
-            #         )
-            #         voters_with_turnout.cache()
-            #         if state_num == 0 and district_type_num == 0:
-            #             return_value = voters_with_turnout
-            #         else:
-            #             return_value = return_value.union(voters_with_turnout)
-            #         # if district_type_num == 2:
-            #         # break
-            #         # break
-            #     # break
-            #     return_value.cache()
-            # return_value = return_value.withColumn("geoid", lit("some_random_value"))
-            # return return_value
-
-            voters_with_turnout = voters_with_turnout.select(
-                "office_type", "office_name", "state", "inferred_geoid"
-            ).distinct()
-
             # TODO: the voters_with_turnout should have all 'office_type' and 'office_name'. At this point with the return value it does. (distinct office_type, state)
             # TODO: uncomment geoid algo that applies _add_geoid_to_voters, time it, and check that distinct(office_type, state) is still satisfied.
             voters_with_turnout = voters_with_turnout.withColumn(
@@ -567,7 +542,38 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # break
         return_value.cache()
     return_value = return_value.withColumn("geoid", lit("some_random_value"))
+
+    # TODO: test the time it takes with and without the distinct call below
+    #         voters_with_turnout = voters_with_turnout.select(
+    #             "office_type", "office_name", "state", "inferred_geoid"
+    #         ).distinct()
+
     return return_value
+
+    #         voters_with_turnout = voters_with_turnout.select(
+    #             "office_type", "office_name", "state", "inferred_geoid"
+    #         ).distinct()
+
+    #         # TODO: the voters_with_turnout should have all 'office_type' and 'office_name'. At this point with the return value it does. (distinct office_type, state)
+    #         # TODO: uncomment geoid algo that applies _add_geoid_to_voters, time it, and check that distinct(office_type, state) is still satisfied.
+    #         voters_with_turnout = voters_with_turnout.withColumn(
+    #             "metainfo",
+    #             lit(
+    #                 f"state={state}, state_num={state_num}, district_type={district_type}, district_type_num={district_type_num}"
+    #             ),
+    #         )
+    #         voters_with_turnout.cache()
+    #         if state_num == 0 and district_type_num == 0:
+    #             return_value = voters_with_turnout
+    #         else:
+    #             return_value = return_value.union(voters_with_turnout)
+    #         # if district_type_num == 2:
+    #         # break
+    #         # break
+    #     # break
+    #     return_value.cache()
+    # return_value = return_value.withColumn("geoid", lit("some_random_value"))
+    # return return_value
 
     # # Trigger a cache to ensure these transformations are applied before the filter
     # voters_with_turnout.cache()
