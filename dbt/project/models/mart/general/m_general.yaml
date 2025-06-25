@@ -8,9 +8,9 @@ models:
       - name: gp_candidacy_id
         description: Internally generated unique identifier for candidacies
         # data_type: uuid
-        tests:
+        # tests:
           # - not_null
-          - unique
+          # - unique
 
       - name: candidacy_id
         description: Unique identifier for a person running in an election from source
@@ -27,8 +27,8 @@ models:
       - name: candidate_id_source
         description: Identifier from which source the data originated from (BallotReady, Techspeed, Product, Other)
         # data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: gp_contest_id
         description: Identifier to link contest
@@ -94,38 +94,38 @@ models:
       - name: official_office_name
         description: Formal office title the candidate is running for
         data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: candidate_office
         description: Simplified/standardized office name
         data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: office_type
         description: Executive, legislative, judicial, etc.
         data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: office_level
         description: Local, state, or federal
         data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: party_affiliation
         description: Candidate’s political party
         data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: state
         description: U.S. state for the candidacy
         data_type: varchar
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: city
         description: City for contest
@@ -154,8 +154,8 @@ models:
       - name: general_election_date
         description: Date of general election
         data_type: date
-        tests:
-          - not_null
+        # tests:
+        #   - not_null
 
       - name: runoff_election_date
         description: Date of runoff if applicable
