@@ -8,8 +8,8 @@ models:
       - name: gp_candidacy_id
         description: Internally generated unique identifier for candidacies
         # data_type: uuid
-        # tests:
-          # - not_null
+        tests:
+          - not_null
           # - unique
 
       - name: candidacy_id
