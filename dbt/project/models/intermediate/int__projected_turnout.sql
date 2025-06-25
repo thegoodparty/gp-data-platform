@@ -13,20 +13,6 @@
 with
     voter_turnout as (
         select
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "state",
-                        "office_type",
-                        "office_name",
-                        "election_year",
-                        "election_code",
-                        "model_version",
-                        "inference_at",
-                        "geoid",
-                    ]
-                )
-            }} as id,
             state,
             office_type as l2_district_type,
             office_name as l2_district_name,
@@ -39,7 +25,7 @@ with
                 else election_code
             end as election_code,
             model_version,
-            geoid
+            inferred_geoid as geoid
         from {{ ref("int__voter_turnout_geoid") }}
         {% if is_incremental() %}
             where inference_at = (select max(inference_at) from {{ this }})

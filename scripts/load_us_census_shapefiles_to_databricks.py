@@ -1,5 +1,6 @@
 import os
 import zipfile
+from time import sleep
 from urllib.parse import urljoin
 
 import requests
@@ -40,15 +41,21 @@ def download_files(url, save_dir):
             full_link = urljoin(url, href)  # Ensure absolute URL
             zip_links.append(full_link)
 
-    # only keep WY for now
-    zip_links = [link for link in zip_links if "38" in link]
+    # only keep limited number of states for now
+    # zip_links = [link for link in zip_links if "38" in link]
 
     for url in zip_links:
+        filename = os.path.join(save_dir, url.split("/")[-1])
+
+        # Skip if file already exists
+        if os.path.exists(filename):
+            print(f"Skipping {filename} because it already exists")
+            continue
+
         try:
             response = requests.get(url, stream=True)
             response.raise_for_status()  # Raise an error for bad status codes
 
-            filename = os.path.join(save_dir, url.split("/")[-1])
             with open(filename, "wb") as file:
                 for chunk in response.iter_content(chunk_size=8192):
                     file.write(chunk)
@@ -108,12 +115,31 @@ def upload_to_databricks(directory):
         )
         w.dbfs.mkdirs(volume_path)
         print(f"Uploading {shapefile_directory} to {volume_path}")
+
+        # load us_county shapefile manually since it timesout with the w.files.upload() method
+        if shapefile_directory.split("/")[-1] == "tl_2024_us_county":
+            print(f"Skipping {shapefile_directory} as requested")
+            continue
+
         for file in os.listdir(shapefile_directory):
             print(f"Uploading {file} to {volume_path}")
-            with open(f"{shapefile_directory}/{file}", "rb") as f:
-                w.files.upload(
-                    file_path=f"{volume_path}/{file}", contents=f, overwrite=True
-                )
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    with open(f"{shapefile_directory}/{file}", "rb") as f:
+                        w.files.upload(
+                            file_path=f"{volume_path}/{file}",
+                            contents=f,
+                            overwrite=True,
+                        )
+                    break
+                except Exception as e:
+                    print(f"Error uploading {file}: {e}")
+                    sleep(2)
+                    if retry < max_retries - 1:
+                        print(f"Retrying {file} (attempt {retry + 2}/{max_retries})")
+                    else:
+                        print(f"Failed to upload {file} after {max_retries} attempts")
 
 
 shapefiles_directory = "tmp_data/tiger_shapefiles"
