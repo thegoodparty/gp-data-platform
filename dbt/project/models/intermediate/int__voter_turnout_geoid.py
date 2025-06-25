@@ -5,13 +5,16 @@ import geopandas as gpd
 import pandas as pd
 from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
-
-# from pyspark.sql.functions import coalesce, col, lit, pandas_udf, struct, udf
 from pyspark.sql.functions import col, lit, pandas_udf, struct, udf
-
-# from pyspark.sql.functions import col, lit, pandas_udf, udf
 from pyspark.sql.session import SparkSession
-from pyspark.sql.types import ArrayType, StringType
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
 # See https://docs.google.com/spreadsheets/d/17iURGef8AKFokr5aJGciiF6lqYDKycGBP106-0Q7u5k/edit?gid=857937239#gid=857937239
 # "election_type" tab, for a list of all possible `L2_district_type`s
@@ -226,6 +229,24 @@ FALLBACK_PATTERNS = [
     (re.compile(r"Unincorporated"), ["COUSUB"]),
 ]
 
+THIS_TABLE_SCHEMA = StructType(
+    [
+        StructField("state", StringType(), True),
+        StructField("office_type", StringType(), True),
+        StructField("office_name", StringType(), True),
+        StructField("ballots_projected", IntegerType(), True),
+        StructField("inference_at", TimestampType(), True),
+        StructField("election_year", IntegerType(), True),
+        StructField("election_code", StringType(), True),
+        StructField("model_version", StringType(), True),
+        StructField("inferred_geoid", StringType(), True),
+        StructField("fips_code", IntegerType(), True),
+        StructField("place_name", StringType(), True),
+        StructField("tiger_codes", ArrayType(StringType()), True),
+        StructField("shapefile_paths", ArrayType(StringType()), True),
+    ]
+)
+
 
 @pandas_udf(returnType=StringType())
 def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
@@ -377,57 +398,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
         max_inference_at = max_inference_at_row[0] if max_inference_at_row else None
 
         if max_inference_at:
-            voter_turnout = voter_turnout.filter(
-                col("inference_at") >= max_inference_at
-            )
-
-    # ensure there aren't duplicate rows; check this at the staging layer
-    voter_turnout = voter_turnout.dropDuplicates(
-        subset=[
-            "state",
-            "office_type",
-            "office_name",
-            "election_year",
-            "election_code",
-            "model_version",
-        ],
-    )
+            voter_turnout = voter_turnout.filter(col("inference_at") > max_inference_at)
 
     # l2 uniform voter files
     l2_uniform_voter_files: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # for dev, downsample to certain states
     # TODO: remove this to run over all states
-    states_to_include = ["ND", "VT", "WY"]
-    # states_to_include = ["ND", "VT", "WY"]
+    # states_to_include = ["CA"]
+    # states_to_include = ["ND", "VT", "WY", "DC", "AK", "SD", "MT", "RI", "DE", "HI"]
+    states_to_include = ["ND"]
     voter_turnout = voter_turnout.filter(col("state").isin(states_to_include))
 
-    # further downsample to only the following offices:
-    # TODO: remove this filter to run over all offices
-    # office_type_sublist = [
-    #     "State_Senate_District",
-    #     "Hospital_SubDistrict",
-    #     "Town_Ward",
-    #     "County_Board_of_Education_District",
-    #     "Fire_Protection_District",
-    #     "Judicial_Appellate_District",
-    #     "Judicial_Circuit_Court_District",
-    #     "Judicial_Sub_Circuit_District",
-    #     "Judicial_Superior_Court_District",
-    #     "Judicial_District",
-    #     "Judicial_District_Court_District",
-    #     "Judicial_Chancery_Court",
-    #     "Judicial_County_Board_of_Review_District",
-    #     "Judicial_County_Court_District",
-    #     "Judicial_Family_Court_District",
-    #     "Judicial_Juvenile_Court_District",
-    #     "Judicial_Magistrate_Division",
-    #     "Judicial_Supreme_Court_District",
-    # ]
-
-    # for state='WY', take them all as there's only 20-40 rows
-    # office_type_sublist = list(L2_TO_TIGER_CODES.keys())[:50]
-    # voter_turnout = voter_turnout.filter(col("office_type").isin(office_type_sublist))
+    # if voter_turnout has no rows, return an empty dataframe
+    if voter_turnout.count() == 0:
+        return session.createDataFrame(data=[], schema=THIS_TABLE_SCHEMA)
 
     # join over State to get the state fips code
     voter_turnout = (
@@ -523,8 +508,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 ),
             )
 
-            # TODO: the voters_with_turnout should have all 'office_type' and 'office_name'. At this point with the return value it does. (distinct office_type, state)
-            # TODO: uncomment geoid algo that applies _add_geoid_to_voters, time it, and check that distinct(office_type, state) is still satisfied.
             voters_with_turnout = voters_with_turnout.withColumn(
                 "metainfo",
                 lit(
@@ -566,4 +549,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "tiger_codes",
         "shapefile_paths",
     ).distinct()
-    return voter_turnout_w_geoid
+
+    # enforce table schema:
+    voter_turnout_w_geoid_enforced = voter_turnout_w_geoid.select(
+        *[
+            col(field.name).cast(field.dataType).alias(field.name)
+            for field in THIS_TABLE_SCHEMA
+        ]
+    )
+
+    return voter_turnout_w_geoid_enforced
