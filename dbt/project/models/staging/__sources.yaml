@@ -66,6 +66,15 @@ sources:
         description: raw data load from HubSpot data model
 
 
+  - name: model_predictions
+    schema: model_predictions
+    description: Raw data loaded from model predictions
+
+    tables:
+      - name: viability_scores
+        description: raw data load from model predictions
+
+
   - name: dbt_source
     schema: dbt_source
     description: Raw data loaded from dbt models
