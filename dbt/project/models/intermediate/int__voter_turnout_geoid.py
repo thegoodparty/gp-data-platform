@@ -418,8 +418,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # TODO: remove this to run over all states
     # states_to_include = ["CA"]
     # states_to_include = ["ND", "VT", "WY", "DC", "AK", "SD", "MT", "RI", "DE", "HI"]
-    states_to_include = ["WA"]
-    voter_turnout = voter_turnout.filter(col("state").isin(states_to_include))
+    # states_to_include = ["WA"]
+    # voter_turnout = voter_turnout.filter(col("state").isin(states_to_include))
 
     # if voter_turnout has no rows, return an empty dataframe
     if voter_turnout.count() == 0:
@@ -454,6 +454,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     states = [
         row["state"] for row in voter_turnout.select(col("state")).distinct().collect()
     ]
+
+    # TODO: remove downsampling
+    # downsample states
+    # states = states[:10]
     for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
@@ -490,8 +494,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
-            max_value_to_downsample = 10_000
-            min_value_to_downsample = 10_000
+            max_value_to_downsample = 2_000
+            min_value_to_downsample = 1_000
             fraction_to_downsample = 0.1
             if (
                 voters_with_turnout.count()

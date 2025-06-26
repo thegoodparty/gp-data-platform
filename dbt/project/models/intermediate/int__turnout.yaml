@@ -17,6 +17,14 @@ models:
         description: "Name of the office for the voter turnout"
         tests:
           - not_null
+      - name: election_year
+        description: "Year of the election"
+        tests:
+          - not_null
+      - name: election_code
+        description: "Code of the election"
+        tests:
+          - not_null
     tests:
       - dbt_expectations.expect_compound_columns_to_be_unique:
           column_list: ["state", "office_type", "office_name", "election_year", "election_code", "model_version"]
@@ -36,5 +44,3 @@ models:
     tests:
       - dbt_expectations.expect_table_column_count_to_equal_other_table:
           compare_model: ref("int__voter_turnout_geoid")
-
-    # TODO: add more tests
