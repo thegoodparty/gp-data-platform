@@ -1,9 +1,6 @@
-{% test projected_turnout_recovered(model, threshold) %}
-
 {{ 
     config(
         materialized = "incremental",
-        unique_key = "run_timestamp",
         on_schema_change = "append"
     )
 }}
@@ -16,9 +13,9 @@ with missing_before as (
 ),
 recovered as (
     select count(distinct br_position_id) as recovered_cnt
-    from {{ ref('m_election_api__projected_turnout') }} cur
-    where br_position_id in (select br_position_id from missing_before)
-        and projected_turnout is not null
+    from 'dbt_hugh.m_election_api__projected_turnout' AS cur
+    where cur.br_position_id in (select br_position_id from missing_before)
+        and cur.projected_turnout is not null
 ),
 tot as (
     select count(distinct br_position_id) as total_cnt
@@ -28,12 +25,7 @@ select
     {{ dbt.current_timestamp() }} as run_timestamp
     total_cnt,
     recovered_cnt,
-    case when total_cnt = 0
-        then null
+    case when total_cnt = 0 then null
         else recovered_cnt::decimal / total_cnt
     end as recovery_rate
 from recovered, tot
-
-{% if is_incremental() %}
-    where run_timestamp > (select max(run_timestamp) from {{ this }})
-{% endtest %}
