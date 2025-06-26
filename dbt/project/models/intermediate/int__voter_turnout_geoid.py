@@ -5,7 +5,17 @@ import geopandas as gpd
 import pandas as pd
 from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, pandas_udf, struct, udf
+from pyspark.sql.functions import (
+    col,
+    count,
+    desc,
+    first,
+    lit,
+    pandas_udf,
+    row_number,
+    struct,
+    udf,
+)
 from pyspark.sql.session import SparkSession
 from pyspark.sql.types import (
     ArrayType,
@@ -15,6 +25,7 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+from pyspark.sql.window import Window
 
 # See https://docs.google.com/spreadsheets/d/17iURGef8AKFokr5aJGciiF6lqYDKycGBP106-0Q7u5k/edit?gid=857937239#gid=857937239
 # "election_type" tab, for a list of all possible `L2_district_type`s
@@ -407,7 +418,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # TODO: remove this to run over all states
     # states_to_include = ["CA"]
     # states_to_include = ["ND", "VT", "WY", "DC", "AK", "SD", "MT", "RI", "DE", "HI"]
-    states_to_include = ["ND"]
+    states_to_include = ["WA"]
     voter_turnout = voter_turnout.filter(col("state").isin(states_to_include))
 
     # if voter_turnout has no rows, return an empty dataframe
@@ -479,8 +490,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
-            max_value_to_downsample = 1000
-            min_value_to_downsample = 1000
+            max_value_to_downsample = 10_000
+            min_value_to_downsample = 10_000
             fraction_to_downsample = 0.1
             if (
                 voters_with_turnout.count()
@@ -525,7 +536,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     voter_turnout_w_geoid = voter_turnout_w_geoid.select(
         "office_type", "office_name", "state", "inferred_geoid", "metainfo"
-    ).distinct()
+    )
+
+    # Group by district and select the most frequent inferred_geoid
+    geoid_counts = voter_turnout_w_geoid.groupBy(
+        "state", "office_type", "office_name", "inferred_geoid"
+    ).agg(count("*").alias("geoid_count"), first("metainfo").alias("metainfo"))
+
+    # Rank by frequency (most frequent first) and select the top one per district
+    window_spec = Window.partitionBy("state", "office_type", "office_name").orderBy(
+        desc("geoid_count"), desc("inferred_geoid")
+    )
+
+    voter_turnout_w_geoid = (
+        geoid_counts.withColumn("rank", row_number().over(window_spec))
+        .filter(col("rank") == 1)
+        .drop("rank", "geoid_count")
+    )
 
     # join inferred geoid back into voter turnout
     voter_turnout_w_geoid = voter_turnout_w_geoid.join(
