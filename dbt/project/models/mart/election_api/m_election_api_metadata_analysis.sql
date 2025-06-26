@@ -1,23 +1,39 @@
 {% test projected_turnout_recovered(model, threshold) %}
 
+{{ 
+    config(
+        materialized = "incremental",
+        unique_key = "run_timestamp",
+        on_schema_change = "append"
+    )
+}}
 
 with missing_before as (
-    select details, data,
-    get_json_object(details, '$.positionId') AS br_position_id
-    get_json_object(data, '$.hubspotUpdates.path_to_victory_status') AS p2v_status
+    select 
+        get_json_object(details, '$.positionId')::varchar AS br_position_id
     from ({ ref('stg_airbyte_source__gp_api_db_campaign') })
-    where p2v_status = "Locked"
-    OR p2v_status = "Waiting"
-    OR p2v_status = "Failed"
+    where get_json_object(data,'$.hubspotUpdates.path_to_victory_status') in ('Locked','Waiting','Failed')
 ),
 recovered as (
-    select count(*) as recovered_cnt
-    from {{ model }} cur
-    where cur.user_id in (select user_id from missing_before)
-        and cur.projected_turnout is not null
+    select count(distinct br_position_id) as recovered_cnt
+    from {{ ref('m_election_api__projected_turnout') }} cur
+    where br_position_id in (select br_position_id from missing_before)
+        and projected_turnout is not null
 ),
 tot as (
-    select count(*) as total_cnt from missing_before
+    select count(distinct br_position_id) as total_cnt
+    from missing_before
 )
-select * from recovered, tot
-where recovered_cnt::decimal / nullif(total_cnt, 0)
+select
+    {{ dbt.current_timestamp() }} as run_timestamp
+    total_cnt,
+    recovered_cnt,
+    case when total_cnt = 0
+        then null
+        else recovered_cnt::decimal / total_cnt
+    end as recovery_rate
+from recovered, tot
+
+{% if is_incremental() %}
+    where run_timestamp > (select max(run_timestamp) from {{ this }})
+{% endtest %}
