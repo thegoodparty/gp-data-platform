@@ -508,7 +508,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
             # Trigger a cache to ensure these transformations are applied before the filter, but don't persist them
             voters_with_turnout.cache()
-            voters_with_turnout.unpersist()
 
             # get the geoid for each voter by their (lat,long) for the given district
             voters_with_turnout = voters_with_turnout.withColumn(
@@ -523,6 +522,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     )
                 ),
             )
+
+            voters_with_turnout.unpersist()
 
             voters_with_turnout = voters_with_turnout.withColumn(
                 "metainfo",
