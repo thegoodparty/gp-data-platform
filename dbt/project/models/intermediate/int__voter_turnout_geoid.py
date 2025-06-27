@@ -494,7 +494,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
-            max_value_to_downsample = 1_000
+            max_value_to_downsample = 5_000
             min_value_to_downsample = 1_000
             fraction_to_downsample = 0.1
             if (
@@ -506,8 +506,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 )
             voters_with_turnout = voters_with_turnout.limit(max_value_to_downsample)
 
-            # Trigger a cache to ensure these transformations are applied before the filter
+            # Trigger a cache to ensure these transformations are applied before the filter, but don't persist them
             voters_with_turnout.cache()
+            voters_with_turnout.unpersist()
 
             # get the geoid for each voter by their (lat,long) for the given district
             voters_with_turnout = voters_with_turnout.withColumn(
@@ -529,14 +530,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     f"state={state}, state_num={state_num}, district_type={district_type}, district_type_num={district_type_num}"
                 ),
             )
-            voters_with_turnout.cache()
 
             if state_num == 0 and district_type_num == 0:
                 voter_turnout_w_geoid = voters_with_turnout
             else:
                 voter_turnout_w_geoid = voter_turnout_w_geoid.union(voters_with_turnout)
-
-        voter_turnout_w_geoid.cache()
 
     voter_turnout_w_geoid = voter_turnout_w_geoid.select(
         "office_type", "office_name", "state", "inferred_geoid", "metainfo"
