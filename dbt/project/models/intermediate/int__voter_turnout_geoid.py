@@ -457,7 +457,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # TODO: remove downsampling
     # downsample states
-    # states = states[:10]
+    # states = states[:20]
     for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
@@ -494,7 +494,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
-            max_value_to_downsample = 2_000
+            max_value_to_downsample = 1_000
             min_value_to_downsample = 1_000
             fraction_to_downsample = 0.1
             if (
