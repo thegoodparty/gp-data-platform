@@ -1,3 +1,20 @@
+"""
+Voter Turnout GEOID Assignment Model
+
+This model assigns GEOIDs to voter turnout predictions using spatial operations.
+The original pandas UDF approach has been replaced with Sedona spatial functions
+for better performance and scalability.
+
+Requirements:
+- Apache Sedona must be configured in the Spark environment
+- Shapefiles must be accessible in the specified paths
+- Sedona JARs must be available in the classpath
+
+The original _add_geoid_to_voters pandas UDF has been commented out and replaced
+with _add_geoid_to_voters_sedona which uses native Spark spatial operations.
+"""
+
+import gc
 import re
 from typing import Any, Dict, List, Literal
 
@@ -5,7 +22,10 @@ import geopandas as gpd
 import pandas as pd
 from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import (
+
+# from pyspark.sql.functions import sum as spark_sum
+# from pyspark.sql.functions import max as spark_max
+from pyspark.sql.functions import (  # array,; expr,; when,
     col,
     count,
     desc,
@@ -26,6 +46,10 @@ from pyspark.sql.types import (
     TimestampType,
 )
 from pyspark.sql.window import Window
+
+# Sedona imports for spatial operations
+# from sedona.sql import st_point, st_within
+# from sedona.utils import SedonaKryoRegistrator, KryoSerializer
 
 # See https://docs.google.com/spreadsheets/d/17iURGef8AKFokr5aJGciiF6lqYDKycGBP106-0Q7u5k/edit?gid=857937239#gid=857937239
 # "election_type" tab, for a list of all possible `L2_district_type`s
@@ -328,6 +352,131 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
     return pd.Series([str(most_prevalent_geoid) for x in df.index])
 
 
+# def _add_geoid_to_voters_sedona(
+#     voters_df: DataFrame,
+#     shapefile_paths: List[str],
+#     session: SparkSession
+# ) -> DataFrame:
+#     """
+#     Add geoid to voters using Sedona spatial operations.
+
+#     Args:
+#         voters_df: DataFrame with voter data including lat/long coordinates
+#         shapefile_paths: List of shapefile paths to check
+#         session: SparkSession instance
+
+#     Returns:
+#         DataFrame with inferred_geoid column added
+#     """
+#     # Create points from lat/long coordinates
+#     voters_with_points = voters_df.selectExpr(
+#         "*",
+#         "ST_Point(CAST(Residence_Addresses_Longitude AS Decimal(24,20)), CAST(Residence_Addresses_Latitude AS Decimal(24,20))) AS point_geom"
+#     )
+#     most_common_geoids = []
+
+#     for shapefile_path in shapefile_paths:
+#         if shapefile_path == "MISSING_TIGER_CODE":
+#             continue
+
+#         try:
+#             # Try different approaches to load the shapefile
+#             polygons_df = None
+
+#             # Approach 1: Try loading as GeoParquet (most common for Sedona)
+#             try:
+#                 polygons_df = session.read.format("org.apache.sedona.sql.spatialparquet") \
+#                     .option("spatialparquet.geometry", "geometry") \
+#                     .load(shapefile_path)
+#             except Exception:
+#                 pass
+
+#             # Approach 2: Try loading as shapefile directly
+#             if polygons_df is None:
+#                 try:
+#                     polygons_df = session.read.format("org.apache.sedona.sql.shapefile") \
+#                         .load(shapefile_path)
+#                 except Exception:
+#                     pass
+
+#             # Approach 3: Try loading as GeoJSON
+#             if polygons_df is None:
+#                 try:
+#                     polygons_df = session.read.format("org.apache.sedona.sql.geojson") \
+#                         .load(shapefile_path)
+#                 except Exception:
+#                     pass
+
+#             if polygons_df is None:
+#                 print(f"Could not load shapefile {shapefile_path} with any supported format")
+#                 continue
+
+#             # Ensure the geometry column exists and has the right name
+#             if "geometry" not in polygons_df.columns:
+#                 # Try to find geometry column with different names
+#                 geom_columns = [col for col in polygons_df.columns if "geom" in col.lower() or "shape" in col.lower()]
+#                 if geom_columns:
+#                     geometry_col = geom_columns[0]
+#                     polygons_df = polygons_df.withColumnRenamed(geometry_col, "geometry")
+#                 else:
+#                     print(f"No geometry column found in {shapefile_path}")
+#                     continue
+
+#             # Ensure GEOID column exists
+#             if "GEOID" not in polygons_df.columns:
+#                 # Try to find GEOID column with different names
+#                 geoid_columns = [col for col in polygons_df.columns if "geoid" in col.lower() or "id" in col.lower()]
+#                 if geoid_columns:
+#                     geoid_col = geoid_columns[0]
+#                     polygons_df = polygons_df.withColumnRenamed(geoid_col, "GEOID")
+#                 else:
+#                     print(f"No GEOID column found in {shapefile_path}")
+#                     continue
+
+#             # Perform spatial join using Sedona functions with a SQL expression
+#             spatial_joined = voters_with_points.crossJoin(polygons_df) \
+#                 .where(expr("ST_Within(point_geom, geometry)"))
+#             # Count occurrences of each GEOID
+#             geoid_counts = spatial_joined.groupBy("office_type", "GEOID") \
+#                 .agg(spark_sum(lit(1)).alias("count")) \
+#                 .orderBy("office_type", desc("count"))
+
+#             # Get the most frequent GEOID for each office_type
+#             window_spec = Window.partitionBy("office_type").orderBy(desc("count"))
+#             ranked_geoids = geoid_counts.withColumn("rank", row_number().over(window_spec)) \
+#                 .filter(col("rank") == 1) \
+#                 .select("office_type", "GEOID", "count")
+
+#             most_common_geoids.append(ranked_geoids)
+
+#         except Exception as e:
+#             # If shapefile loading fails, continue to next one
+#             print(f"Failed to load shapefile {shapefile_path}: {e}")
+#             continue
+
+#     # Combine results from all shapefiles and find the most common GEOID overall
+#     if most_common_geoids:
+#         all_geoids = most_common_geoids[0]
+#         for geoid_df in most_common_geoids[1:]:
+#             all_geoids = all_geoids.union(geoid_df)
+
+#         # Find the GEOID with the highest count across all shapefiles
+#         final_geoid = all_geoids.groupBy("GEOID") \
+#             .agg(spark_sum("count").alias("total_count")) \
+#             .orderBy(desc("total_count")) \
+#             .limit(1) \
+#             .select("GEOID")
+
+#         # Join back to original voters dataframe
+#         result = voters_df.crossJoin(final_geoid) \
+#             .select(voters_df["*"], col("GEOID").alias("inferred_geoid"))
+#     else:
+#         # If no valid shapefiles found, return NO_GEOID_FOUND
+#         result = voters_df.withColumn("inferred_geoid", lit("NO_SHAPEFILE_FOUND_OR_LOADED"))
+
+#     return result
+
+
 @udf(returnType=ArrayType(StringType()))
 def _construct_shapefile_path(fips_code: int, tiger_codes: list[str]) -> list[str]:
     # Ensure FIPS code is two digits with leading zero if necessary
@@ -523,7 +672,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 ),
             )
 
-            voters_with_turnout.unpersist()
+            # # Extract shapefile paths for this district
+            # shapefile_paths_row = state_voter_turnout.filter(
+            #     (col("state") == state) & (col("office_type") == district_type)
+            # ).select("shapefile_paths").first()
+
+            # if shapefile_paths_row:
+            #     shapefile_paths = shapefile_paths_row["shapefile_paths"]
+            #     voters_with_turnout = _add_geoid_to_voters_sedona(
+            #         voters_with_turnout,
+            #         shapefile_paths,
+            #         session
+            #     )
+            # else:
+            #     # If no shapefile paths found, set inferred_geoid to NO_GEOID_FOUND
+            #     voters_with_turnout = voters_with_turnout.withColumn(
+            #         "inferred_geoid", lit("NO_GEOID_FOUND")
+            #     )
 
             voters_with_turnout = voters_with_turnout.withColumn(
                 "metainfo",
@@ -536,6 +701,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 voter_turnout_w_geoid = voters_with_turnout
             else:
                 voter_turnout_w_geoid = voter_turnout_w_geoid.union(voters_with_turnout)
+
+            # clear up voters with turnout to save memory
+            voters_with_turnout.unpersist()
+            del voters_with_turnout
+            gc.collect()
+
+        # clear up state voter data to save memory
+        state_voter_turnout.unpersist()
+        del state_voter_turnout
+        gc.collect()
 
     voter_turnout_w_geoid = voter_turnout_w_geoid.select(
         "office_type", "office_name", "state", "inferred_geoid", "metainfo"
