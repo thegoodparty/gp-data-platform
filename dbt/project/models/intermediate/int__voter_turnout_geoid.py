@@ -18,7 +18,10 @@ import gc
 import re
 from typing import Any, Dict, List, Literal
 
-import geopandas as gpd
+import dask_geopandas as gpd
+
+# import geopandas as gpd
+import geopandas
 import pandas as pd
 from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
@@ -303,26 +306,45 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
         # as a default backup.
         # load shapefile
         try:
-            gdf_polygons = gpd.read_file(shapefile_path)
-            gdf_polygons = gdf_polygons.simplify(tolerance=0.001)
+            # gdf_polygons = gpd.read_file(shapefile_path)
+            gdf_polygons = geopandas.read_file(shapefile_path)
+            gdf_polygons = gpd.from_geopandas(gdf_polygons)
+            # gdf_polygons = gpd.read_file(shapefile_path, use_dask=True)  # Modified to use dask-geopandas
+            # gdf_polygons = gdf_polygons.simplify(tolerance=0.001)
+            # gdf_polygons = gdf_polygons.simplify(tolerance=0.001).compute()  # Compute after simplify
         except DataSourceError:
             continue
 
         # get point for each voter from their lat/long
-        gdf_points = gpd.GeoDataFrame(
-            data=df,
-            geometry=gpd.points_from_xy(
-                df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
-            ),
-            crs=gdf_polygons.crs,
+        # gdf_points = gpd.GeoDataFrame(
+        #     data=df,
+        #     geometry=gpd.points_from_xy(
+        #         df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
+        #     ),
+        #     crs=gdf_polygons.crs,
+        # )
+        # Create points using regular geopandas since df is a pandas DataFrame
+        points_geometry = geopandas.points_from_xy(
+            df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
         )
+
+        # Create GeoDataFrame and convert to dask-geopandas
+        gdf_points = gpd.from_geopandas(
+            geopandas.GeoDataFrame(
+                data=df, geometry=points_geometry, crs=gdf_polygons.crs
+            )
+        )
+        # .compute()  # Compute after creating GeoDataFrame
 
         # apply the spatial join
         joined = gpd.sjoin(gdf_points, gdf_polygons, how="inner", predicate="within")
 
+        # Convert dask DataFrame to pandas DataFrame for operations that require pandas methods
+        joined_pandas = joined.compute()
+
         # compute the most prevalent geoid for each voter
         geoids_by_count = (
-            joined.groupby(["office_type", "GEOID"])
+            joined_pandas.groupby(["office_type", "GEOID"])
             .size()
             .reset_index(name="count")
             .sort_values("count", ascending=False)
@@ -607,7 +629,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # TODO: remove downsampling
     # downsample states
-    states = states[20:30]
+    states = states[30:51]
     for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
