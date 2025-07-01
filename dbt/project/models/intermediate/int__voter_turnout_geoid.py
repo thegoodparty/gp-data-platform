@@ -304,6 +304,7 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
         # load shapefile
         try:
             gdf_polygons = gpd.read_file(shapefile_path)
+            gdf_polygons = gdf_polygons.simplify(tolerance=0.001)
         except DataSourceError:
             continue
 
@@ -606,7 +607,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # TODO: remove downsampling
     # downsample states
-    # states = states[:20]
+    states = states[20:30]
     for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
