@@ -11,7 +11,7 @@ with
         select get_json_object(details, '$.positionId')::string as br_position_id
         from {{ ref("stg_airbyte_source__gp_api_db_campaign") }}
         where
-            get_json_object(data, '$.hubspotUpdates.path_to_victory_status')
+            get_json_object(data, '$.hubSpotUpdates.path_to_victory_status')
             in ('Locked', 'Waiting', 'Failed')
     ),
     recovered as (
