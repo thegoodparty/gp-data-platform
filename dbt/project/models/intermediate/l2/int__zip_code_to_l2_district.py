@@ -1,8 +1,8 @@
-# from datetime import datetime
+from datetime import datetime
 
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import col  # , lit
+from pyspark.sql.functions import col, lit
 from pyspark.sql.types import (
     ArrayType,
     StringType,
@@ -304,45 +304,105 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
-    # during dev, test on a subset of the states
+    # downsample during dev, test on a subset of the states
     state_list = ["AL", "AK", "AZ", "AR"]
     l2_uniform_data = l2_uniform_data.filter(col("state_postal_code").isin(state_list))
 
-    # get the distinct zip codes from the l2_uniform_data
-    distinct_zip_codes: DataFrame = (
-        l2_uniform_data.select(col("Residence_Addresses_Zip").alias("zip_code"))
-        .distinct()
-        .union(
-            l2_uniform_data.select(
-                col("Mailing_Addresses_Zip").alias("zip_code")
-            ).distinct()
-        )
-    )
+    # ORIGINAL PROBLEMATIC CODE (for loop over zip codes) - COMMENTED OUT
 
-    # for each zip code, for each district type (column), get the unique set of values for that column
+    # # get the distinct zip codes from the l2_uniform_data
+    # distinct_zip_codes: DataFrame = (
+    #     l2_uniform_data.select(col("Residence_Addresses_Zip").alias("zip_code"))
+    #     .distinct()
+    #     .union(
+    #         l2_uniform_data.select(
+    #             col("Mailing_Addresses_Zip").alias("zip_code")
+    #         ).distinct()
+    #     )
+    #     .distinct()
+    # )
+
+    # # for each zip code, for each district type (column), get the unique set of values for that column
     # zip_code_to_l2_district: DataFrame = session.createDataFrame(
     #     data=[],
     #     schema=THIS_TABLE_SCHEMA,
     # )
+    #
+    # for zip_code in distinct_zip_codes.collect():
+    #     for district_type in DISTRICT_TYPE_FROM_COLUMNS:
+    #
+    #         # get the unique set of values for that column
+    #         unique_district_names: DataFrame = (
+    #             l2_uniform_data.filter(
+    #                 (col("Residence_Addresses_Zip") == zip_code.zip_code)
+    #                 | (col("Mailing_Addresses_Zip") == zip_code.zip_code)
+    #             )
+    #             .select(col("state_postal_code"), col(district_type).alias("district_name"))
+    #             .distinct()
+    #             .withColumn("zip_code", lit(zip_code.zip_code))
+    #             .withColumn("district_type", lit(district_type))
+    #             .withColumn("loaded_at", lit(datetime.now()))
+    #         )
+    #
+    #         zip_code_to_l2_district = zip_code_to_l2_district.union(unique_district_names)
+    #         break
+    #
+    # # TODO: uncommong code below return value and review each step
+    # return zip_code_to_l2_district
 
-    for zip_code in distinct_zip_codes.collect():
-        for district_type in DISTRICT_TYPE_FROM_COLUMNS:
+    # NEW FIXED CODE - Using Spark operations instead of Python loops
+    from pyspark.sql.functions import collect_list
 
-            # get the unique set of values for that column
-            unique_district_names: DataFrame = (
-                l2_uniform_data.filter(
-                    (col("Residence_Addresses_Zip") == zip_code.zip_code)
-                    | (col("Mailing_Addresses_Zip") == zip_code.zip_code)
-                )
-                .select(col(district_type).alias("district"), col("state_postal_code"))
-                .distinct()
-                .alias("district_names")
+    # Create a list of DataFrames for each district type
+    district_dataframes = []
+
+    for district_type in DISTRICT_TYPE_FROM_COLUMNS:
+        # Get data for this district type from both residence and mailing addresses
+        district_df = (
+            l2_uniform_data.select(
+                col("state_postal_code"),
+                col("Residence_Addresses_Zip").alias("zip_code"),
+                col(district_type).alias("district_name"),
             )
-            break
+            .filter(col("Residence_Addresses_Zip").isNotNull())
+            .union(
+                l2_uniform_data.select(
+                    col("state_postal_code"),
+                    col("Mailing_Addresses_Zip").alias("zip_code"),
+                    col(district_type).alias("district_name"),
+                ).filter(col("Mailing_Addresses_Zip").isNotNull())
+            )
+            .filter(col("district_name").isNotNull())  # Remove null district names
+            .distinct()
+            .withColumn("district_type", lit(district_type))
+            .withColumn("loaded_at", lit(datetime.now()))
+        )
 
-    # TODO: uncommong code below return value and review each step
-    return unique_district_names
+        district_dataframes.append(district_df)
 
+    # Union all district DataFrames together
+    if district_dataframes:
+        zip_code_to_l2_district = district_dataframes[0]
+        for df in district_dataframes[1:]:
+            zip_code_to_l2_district = zip_code_to_l2_district.union(df)
+    else:
+        # If no district dataframes, create empty DataFrame with correct schema
+        zip_code_to_l2_district = session.createDataFrame(
+            data=[],
+            schema=THIS_TABLE_SCHEMA,
+        )
+
+    # Group by zip_code, state_postal_code, district_type and collect district_names into arrays
+    final_result = zip_code_to_l2_district.groupBy(
+        "zip_code", "state_postal_code", "district_type"
+    ).agg(
+        collect_list("district_name").alias("district_names"),
+        lit(datetime.now()).alias("loaded_at"),
+    )
+
+    return final_result
+
+    # ORIGINAL COMMENTED OUT CODE BELOW
     #         # add column for zip code to be used as join key
     #         unique_district_names = unique_unique_district_namesvalues.withColumn("zip_code", lit(zip_code.zip_code))
 
@@ -359,4 +419,5 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #             zip_code_to_district
     #         )
 
+    # TODO: ensure the district_names are an array of strings
     # return zip_code_to_l2_district

@@ -17,7 +17,7 @@ models:
                 'WY'
               ]
 
-  - name: int__l2_zip_code_to_l2_district
+  - name: int__zip_code_to_l2_district
     description: "Zip code to L2 district mapping"
     columns:
       - name: zip_code
