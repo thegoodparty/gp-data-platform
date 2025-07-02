@@ -669,7 +669,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # TODO: remove downsampling
     # downsample states
-    # states = states[20:51]
+    states = states[:3]
     for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
