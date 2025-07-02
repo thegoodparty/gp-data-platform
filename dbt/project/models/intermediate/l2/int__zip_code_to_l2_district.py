@@ -1,6 +1,15 @@
+# from datetime import datetime
+
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import col, lit
+from pyspark.sql.functions import col  # , lit
+from pyspark.sql.types import (
+    ArrayType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
 DISTRICT_TYPE_FROM_COLUMNS = [
     "County",
@@ -260,6 +269,16 @@ DISTRICT_TYPE_FROM_COLUMNS = [
     "Weed_District",
 ]
 
+THIS_TABLE_SCHEMA = StructType(
+    [
+        StructField("zip_code", StringType(), True),
+        StructField("state_postal_code", StringType(), True),
+        StructField("district_type", StringType(), True),
+        StructField("district_names", ArrayType(StringType()), True),
+        StructField("loaded_at", TimestampType(), True),
+    ]
+)
+
 
 def model(dbt, session: SparkSession) -> DataFrame:
     """
@@ -301,31 +320,43 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # for each zip code, for each district type (column), get the unique set of values for that column
+    # zip_code_to_l2_district: DataFrame = session.createDataFrame(
+    #     data=[],
+    #     schema=THIS_TABLE_SCHEMA,
+    # )
+
     for zip_code in distinct_zip_codes.collect():
         for district_type in DISTRICT_TYPE_FROM_COLUMNS:
 
             # get the unique set of values for that column
-            unique_values: DataFrame = (
+            unique_district_names: DataFrame = (
                 l2_uniform_data.filter(
                     (col("Residence_Addresses_Zip") == zip_code.zip_code)
                     | (col("Mailing_Addresses_Zip") == zip_code.zip_code)
                 )
                 .select(col(district_type).alias("district"), col("state_postal_code"))
                 .distinct()
+                .alias("district_names")
             )
+            break
 
-            # add column for zip code to be used as join key
-            unique_values = unique_values.withColumn("zip_code", lit(zip_code.zip_code))
+    # TODO: uncommong code below return value and review each step
+    return unique_district_names
 
-            # join the unique values to the zip code
-            zip_code_to_district: DataFrame = zip_code.join(
-                unique_values, on="zip_code", how="left"
-            )
-            zip_code_to_district = zip_code_to_district.withColumn(
-                "district_type", lit(district_type)
-            )
+    #         # add column for zip code to be used as join key
+    #         unique_district_names = unique_unique_district_namesvalues.withColumn("zip_code", lit(zip_code.zip_code))
 
-            # union the zip code to the district
-            distinct_zip_codes = distinct_zip_codes.union(zip_code_to_district)
+    #         # join the unique values to the zip code
+    #         zip_code_to_district: DataFrame = zip_code.join(
+    #             unique_district_names, on="zip_code", how="left"
+    #         )
+    #         zip_code_to_district = zip_code_to_district.withColumn(
+    #             "district_type", lit(district_type)
+    #         ).withColumn("loaded_at", lit(datetime.now()))
 
-    return distinct_zip_codes
+    #         # union the zip code to the district
+    #         zip_code_to_l2_district = zip_code_to_l2_district.union(
+    #             zip_code_to_district
+    #         )
+
+    # return zip_code_to_l2_district
