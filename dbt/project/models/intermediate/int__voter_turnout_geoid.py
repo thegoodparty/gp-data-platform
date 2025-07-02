@@ -365,6 +365,10 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
                 {"geoid": "NO_GEOID_FOUND", "count": 0}
             )
 
+    # clean up loaded shapefile
+    del gdf_polygons
+    gc.collect()
+
     # most prevalent geoid over all voters by count over all considered shapefiles
     try:
         most_prevalent_geoid = max(
@@ -429,6 +433,8 @@ def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
 #                         .load(shapefile_path)
 #                 except Exception:
 #                     pass
+
+# TODO: try df = sedona.read.format("shapefile").load("/tmp/shapefiles")
 
 #             if polygons_df is None:
 #                 print(f"Could not load shapefile {shapefile_path} with any supported format")
@@ -551,6 +557,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     dbt.config(
         submission_method="all_purpose_cluster",  # required for .cache()
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
+        # http_path="sql/protocolv1/o/3578414625112071/0702-151429-z46evw2",  # sedona cluster
         materialized="incremental",
         incremental_strategy="merge",
         unique_key=[
@@ -629,7 +636,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # TODO: remove downsampling
     # downsample states
-    # states = states[30:51]
+    # states = states[20:51]
     for state_num, state in enumerate(states):
         state_voter_turnout = voter_turnout.filter(col("state") == state)
         district_types_list = [
@@ -666,7 +673,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
             # TODO: (update parameters as needed) downsample to 10% with some minimum and maximum value
-            max_value_to_downsample = 5_000
+            max_value_to_downsample = 2_000
             min_value_to_downsample = 1_000
             fraction_to_downsample = 0.1
             if (
@@ -728,6 +735,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             # clear up voters with turnout to save memory
             voters_with_turnout.unpersist()
             del voters_with_turnout
+            gc.collect()
+
+            voters_by_district_type.unpersist()
+            del voters_by_district_type
             gc.collect()
 
         # clear up state voter data to save memory
