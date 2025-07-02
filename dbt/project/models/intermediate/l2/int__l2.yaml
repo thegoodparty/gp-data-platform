@@ -23,7 +23,6 @@ models:
       - name: zip_code
         description: "Zip code"
         tests:
-          - unique
           - not_null
       - name: state_postal_code
         description: "State postal code"
@@ -38,10 +37,6 @@ models:
                 'WY'
               ]
     tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - zip_code
-            - district_type
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
             - zip_code

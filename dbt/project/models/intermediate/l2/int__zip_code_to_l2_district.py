@@ -305,7 +305,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # downsample during dev, test on a subset of the states
-    state_list = ["AL", "AK", "AZ", "AR"]
+    state_list = [
+        "AL",
+        "AK",
+    ]  # "AZ", "AR"]
     l2_uniform_data = l2_uniform_data.filter(col("state_postal_code").isin(state_list))
 
     # ORIGINAL PROBLEMATIC CODE (for loop over zip codes) - COMMENTED OUT
