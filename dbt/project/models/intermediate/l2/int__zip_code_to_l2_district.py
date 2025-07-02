@@ -292,7 +292,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="zip_code",
+        unique_key=["zip_code", "state_postal_code", "district_type"],
         on_schema_change="fail",
         auto_liquid_cluster=True,
         tags=["intermediate", "l2", "zip_code", "districts"],
@@ -368,13 +368,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 col(district_type).alias("district_name"),
             )
             .filter(col("Residence_Addresses_Zip").isNotNull())
-            .union(
-                l2_uniform_data.select(
-                    col("state_postal_code"),
-                    col("Mailing_Addresses_Zip").alias("zip_code"),
-                    col(district_type).alias("district_name"),
-                ).filter(col("Mailing_Addresses_Zip").isNotNull())
-            )
+            # TODO: mailing address could be outside of the state for residence addresses
+            # .union(
+            #     l2_uniform_data.select(
+            #         col("state_postal_code"),
+            #         col("Mailing_Addresses_Zip").alias("zip_code"),
+            #         col(district_type).alias("district_name"),
+            #     ).filter(col("Mailing_Addresses_Zip").isNotNull())
+            # )
             .filter(col("district_name").isNotNull())  # Remove null district names
             .distinct()
             .withColumn("district_type", lit(district_type))
