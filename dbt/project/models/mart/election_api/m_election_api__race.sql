@@ -41,7 +41,8 @@ select
         '-ccd',
         ''
     ) as slug,
-    position_names
+    position_names,
+    br_position_id
 from {{ ref("int__enhanced_race") }}
 where
     place_id in (select id from {{ ref("m_election_api__place") }})
