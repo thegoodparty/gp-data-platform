@@ -16,27 +16,26 @@ with _add_geoid_to_voters_sedona which uses native Spark spatial operations.
 
 import gc
 import re
-from typing import Any, Dict, List, Literal
-
-import dask_geopandas as gpd
+from typing import Dict, List
 
 # import geopandas as gpd
-import geopandas
-import pandas as pd
-from pyogrio.errors import DataSourceError
+# import geopandas
+# import pandas as pd
+# from pyogrio.errors import DataSourceError
 from pyspark.sql import DataFrame
 
-# from pyspark.sql.functions import sum as spark_sum
 # from pyspark.sql.functions import max as spark_max
-from pyspark.sql.functions import (  # array,; expr,; when,
+from pyspark.sql.functions import (  # array,; expr,; when,; pandas_udf,; struct,
     col,
     count,
     desc,
+    expr,
     first,
     lit,
-    pandas_udf,
     row_number,
-    struct,
+)
+from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import (  # array,; expr,; when,; pandas_udf,; struct,
     udf,
 )
 from pyspark.sql.session import SparkSession
@@ -49,6 +48,8 @@ from pyspark.sql.types import (
     TimestampType,
 )
 from pyspark.sql.window import Window
+
+# import dask_geopandas as gpd
 
 # Sedona imports for spatial operations
 # from sedona.sql import st_point, st_within
@@ -286,224 +287,252 @@ THIS_TABLE_SCHEMA = StructType(
 )
 
 
-@pandas_udf(returnType=StringType())
-def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
-    """
-    Add geoid to the dataframe. The input dataframe has the following columns:
-    - Residence_Addresses_Longitude
-    - Residence_Addresses_Latitude
-    - office_type
-    - office_name
-    - shapefile_paths
-    """
-    most_common_geo_per_shapefile: List[Dict[Literal["geoid", "count"], Any]] = []
-
-    for shapefile_path in df.iloc[0]["shapefile_paths"]:
-        if shapefile_path == "MISSING_TIGER_CODE":
-            continue
-
-        # TODO: handle case where shapefile for that TIGER doesn't exist; use `COUNTY`
-        # as a default backup.
-        # load shapefile
-        try:
-            # gdf_polygons = gpd.read_file(shapefile_path)
-            gdf_polygons = geopandas.read_file(shapefile_path)
-            gdf_polygons = gpd.from_geopandas(gdf_polygons)
-            # gdf_polygons = gpd.read_file(shapefile_path, use_dask=True)  # Modified to use dask-geopandas
-            # gdf_polygons = gdf_polygons.simplify(tolerance=0.001)
-            # gdf_polygons = gdf_polygons.simplify(tolerance=0.001).compute()  # Compute after simplify
-        except DataSourceError:
-            continue
-
-        # get point for each voter from their lat/long
-        # gdf_points = gpd.GeoDataFrame(
-        #     data=df,
-        #     geometry=gpd.points_from_xy(
-        #         df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
-        #     ),
-        #     crs=gdf_polygons.crs,
-        # )
-        # Create points using regular geopandas since df is a pandas DataFrame
-        points_geometry = geopandas.points_from_xy(
-            df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
-        )
-
-        # Create GeoDataFrame and convert to dask-geopandas
-        gdf_points = gpd.from_geopandas(
-            geopandas.GeoDataFrame(
-                data=df, geometry=points_geometry, crs=gdf_polygons.crs
-            )
-        )
-        # .compute()  # Compute after creating GeoDataFrame
-
-        # apply the spatial join
-        joined = gpd.sjoin(gdf_points, gdf_polygons, how="inner", predicate="within")
-
-        # Convert dask DataFrame to pandas DataFrame for operations that require pandas methods
-        joined_pandas = joined.compute()
-
-        # compute the most prevalent geoid for each voter
-        geoids_by_count = (
-            joined_pandas.groupby(["office_type", "GEOID"])
-            .size()
-            .reset_index(name="count")
-            .sort_values("count", ascending=False)
-            .drop_duplicates(subset=["office_type"])
-            .sort_values("office_type")
-        )
-
-        if len(geoids_by_count) > 0:
-            most_prevalent_geoid = geoids_by_count.iloc[0]["GEOID"]
-            most_common_geo_per_shapefile.append(
-                {
-                    "geoid": most_prevalent_geoid,
-                    "count": geoids_by_count.iloc[0]["count"],
-                }
-            )
-        else:
-            most_common_geo_per_shapefile.append(
-                {"geoid": "NO_GEOID_FOUND", "count": 0}
-            )
-
-    # clean up loaded shapefile
-    del gdf_polygons
-    gc.collect()
-
-    # most prevalent geoid over all voters by count over all considered shapefiles
-    try:
-        most_prevalent_geoid = max(
-            most_common_geo_per_shapefile, key=lambda x: x["count"]
-        )["geoid"]
-    except ValueError:
-        most_prevalent_geoid = "NO_GEOID_FOUND"
-    return pd.Series([str(most_prevalent_geoid) for x in df.index])
-
-
-# def _add_geoid_to_voters_sedona(
-#     voters_df: DataFrame,
-#     shapefile_paths: List[str],
-#     session: SparkSession
-# ) -> DataFrame:
+# @pandas_udf(returnType=StringType())
+# def _add_geoid_to_voters(df: pd.DataFrame) -> pd.Series:
 #     """
-#     Add geoid to voters using Sedona spatial operations.
-
-#     Args:
-#         voters_df: DataFrame with voter data including lat/long coordinates
-#         shapefile_paths: List of shapefile paths to check
-#         session: SparkSession instance
-
-#     Returns:
-#         DataFrame with inferred_geoid column added
+#     Add geoid to the dataframe. The input dataframe has the following columns:
+#     - Residence_Addresses_Longitude
+#     - Residence_Addresses_Latitude
+#     - office_type
+#     - office_name
+#     - shapefile_paths
 #     """
-#     # Create points from lat/long coordinates
-#     voters_with_points = voters_df.selectExpr(
-#         "*",
-#         "ST_Point(CAST(Residence_Addresses_Longitude AS Decimal(24,20)), CAST(Residence_Addresses_Latitude AS Decimal(24,20))) AS point_geom"
-#     )
-#     most_common_geoids = []
+#     most_common_geo_per_shapefile: List[Dict[Literal["geoid", "count"], Any]] = []
 
-#     for shapefile_path in shapefile_paths:
+#     for shapefile_path in df.iloc[0]["shapefile_paths"]:
 #         if shapefile_path == "MISSING_TIGER_CODE":
 #             continue
 
+#         # TODO: handle case where shapefile for that TIGER doesn't exist; use `COUNTY`
+#         # as a default backup.
+#         # load shapefile
 #         try:
-#             # Try different approaches to load the shapefile
-#             polygons_df = None
-
-#             # Approach 1: Try loading as GeoParquet (most common for Sedona)
-#             try:
-#                 polygons_df = session.read.format("org.apache.sedona.sql.spatialparquet") \
-#                     .option("spatialparquet.geometry", "geometry") \
-#                     .load(shapefile_path)
-#             except Exception:
-#                 pass
-
-#             # Approach 2: Try loading as shapefile directly
-#             if polygons_df is None:
-#                 try:
-#                     polygons_df = session.read.format("org.apache.sedona.sql.shapefile") \
-#                         .load(shapefile_path)
-#                 except Exception:
-#                     pass
-
-#             # Approach 3: Try loading as GeoJSON
-#             if polygons_df is None:
-#                 try:
-#                     polygons_df = session.read.format("org.apache.sedona.sql.geojson") \
-#                         .load(shapefile_path)
-#                 except Exception:
-#                     pass
-
-# TODO: try df = sedona.read.format("shapefile").load("/tmp/shapefiles")
-
-#             if polygons_df is None:
-#                 print(f"Could not load shapefile {shapefile_path} with any supported format")
-#                 continue
-
-#             # Ensure the geometry column exists and has the right name
-#             if "geometry" not in polygons_df.columns:
-#                 # Try to find geometry column with different names
-#                 geom_columns = [col for col in polygons_df.columns if "geom" in col.lower() or "shape" in col.lower()]
-#                 if geom_columns:
-#                     geometry_col = geom_columns[0]
-#                     polygons_df = polygons_df.withColumnRenamed(geometry_col, "geometry")
-#                 else:
-#                     print(f"No geometry column found in {shapefile_path}")
-#                     continue
-
-#             # Ensure GEOID column exists
-#             if "GEOID" not in polygons_df.columns:
-#                 # Try to find GEOID column with different names
-#                 geoid_columns = [col for col in polygons_df.columns if "geoid" in col.lower() or "id" in col.lower()]
-#                 if geoid_columns:
-#                     geoid_col = geoid_columns[0]
-#                     polygons_df = polygons_df.withColumnRenamed(geoid_col, "GEOID")
-#                 else:
-#                     print(f"No GEOID column found in {shapefile_path}")
-#                     continue
-
-#             # Perform spatial join using Sedona functions with a SQL expression
-#             spatial_joined = voters_with_points.crossJoin(polygons_df) \
-#                 .where(expr("ST_Within(point_geom, geometry)"))
-#             # Count occurrences of each GEOID
-#             geoid_counts = spatial_joined.groupBy("office_type", "GEOID") \
-#                 .agg(spark_sum(lit(1)).alias("count")) \
-#                 .orderBy("office_type", desc("count"))
-
-#             # Get the most frequent GEOID for each office_type
-#             window_spec = Window.partitionBy("office_type").orderBy(desc("count"))
-#             ranked_geoids = geoid_counts.withColumn("rank", row_number().over(window_spec)) \
-#                 .filter(col("rank") == 1) \
-#                 .select("office_type", "GEOID", "count")
-
-#             most_common_geoids.append(ranked_geoids)
-
-#         except Exception as e:
-#             # If shapefile loading fails, continue to next one
-#             print(f"Failed to load shapefile {shapefile_path}: {e}")
+#             # gdf_polygons = gpd.read_file(shapefile_path)
+#             gdf_polygons = geopandas.read_file(shapefile_path)
+#             gdf_polygons = gpd.from_geopandas(gdf_polygons)
+#             # gdf_polygons = gpd.read_file(shapefile_path, use_dask=True)  # Modified to use dask-geopandas
+#             # gdf_polygons = gdf_polygons.simplify(tolerance=0.001)
+#             # gdf_polygons = gdf_polygons.simplify(tolerance=0.001).compute()  # Compute after simplify
+#         except DataSourceError:
 #             continue
 
-#     # Combine results from all shapefiles and find the most common GEOID overall
-#     if most_common_geoids:
-#         all_geoids = most_common_geoids[0]
-#         for geoid_df in most_common_geoids[1:]:
-#             all_geoids = all_geoids.union(geoid_df)
+#         # get point for each voter from their lat/long
+#         # gdf_points = gpd.GeoDataFrame(
+#         #     data=df,
+#         #     geometry=gpd.points_from_xy(
+#         #         df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
+#         #     ),
+#         #     crs=gdf_polygons.crs,
+#         # )
+#         # Create points using regular geopandas since df is a pandas DataFrame
+#         points_geometry = geopandas.points_from_xy(
+#             df["Residence_Addresses_Longitude"], df["Residence_Addresses_Latitude"]
+#         )
 
-#         # Find the GEOID with the highest count across all shapefiles
-#         final_geoid = all_geoids.groupBy("GEOID") \
-#             .agg(spark_sum("count").alias("total_count")) \
-#             .orderBy(desc("total_count")) \
-#             .limit(1) \
-#             .select("GEOID")
+#         # Create GeoDataFrame and convert to dask-geopandas
+#         gdf_points = gpd.from_geopandas(
+#             geopandas.GeoDataFrame(
+#                 data=df, geometry=points_geometry, crs=gdf_polygons.crs
+#             )
+#         )
+#         # .compute()  # Compute after creating GeoDataFrame
 
-#         # Join back to original voters dataframe
-#         result = voters_df.crossJoin(final_geoid) \
-#             .select(voters_df["*"], col("GEOID").alias("inferred_geoid"))
-#     else:
-#         # If no valid shapefiles found, return NO_GEOID_FOUND
-#         result = voters_df.withColumn("inferred_geoid", lit("NO_SHAPEFILE_FOUND_OR_LOADED"))
+#         # apply the spatial join
+#         joined = gpd.sjoin(gdf_points, gdf_polygons, how="inner", predicate="within")
 
-#     return result
+#         # Convert dask DataFrame to pandas DataFrame for operations that require pandas methods
+#         joined_pandas = joined.compute()
+
+#         # compute the most prevalent geoid for each voter
+#         geoids_by_count = (
+#             joined_pandas.groupby(["office_type", "GEOID"])
+#             .size()
+#             .reset_index(name="count")
+#             .sort_values("count", ascending=False)
+#             .drop_duplicates(subset=["office_type"])
+#             .sort_values("office_type")
+#         )
+
+#         if len(geoids_by_count) > 0:
+#             most_prevalent_geoid = geoids_by_count.iloc[0]["GEOID"]
+#             most_common_geo_per_shapefile.append(
+#                 {
+#                     "geoid": most_prevalent_geoid,
+#                     "count": geoids_by_count.iloc[0]["count"],
+#                 }
+#             )
+#         else:
+#             most_common_geo_per_shapefile.append(
+#                 {"geoid": "NO_GEOID_FOUND", "count": 0}
+#             )
+
+#     # clean up loaded shapefile
+#     del gdf_polygons
+#     gc.collect()
+
+#     # most prevalent geoid over all voters by count over all considered shapefiles
+#     try:
+#         most_prevalent_geoid = max(
+#             most_common_geo_per_shapefile, key=lambda x: x["count"]
+#         )["geoid"]
+#     except ValueError:
+#         most_prevalent_geoid = "NO_GEOID_FOUND"
+#     return pd.Series([str(most_prevalent_geoid) for x in df.index])
+
+
+def _add_geoid_to_voters_sedona(
+    voters_df: DataFrame, shapefile_paths: List[str], session: SparkSession
+) -> DataFrame:
+    """
+    Add geoid to voters using Sedona spatial operations.
+
+    Args:
+        voters_df: DataFrame with voter data including lat/long coordinates
+        shapefile_paths: List of shapefile paths to check
+        session: SparkSession instance
+
+    Returns:
+        DataFrame with inferred_geoid column added
+    """
+    # Create points from lat/long coordinates
+    voters_with_points = voters_df.selectExpr(
+        "*",
+        "ST_Point(CAST(Residence_Addresses_Longitude AS Decimal(24,20)), CAST(Residence_Addresses_Latitude AS Decimal(24,20))) AS point_geom",
+    )
+    most_common_geoids = []
+
+    for shapefile_path in shapefile_paths:
+        if shapefile_path == "MISSING_TIGER_CODE":
+            continue
+
+        try:
+            # Try different approaches to load the shapefile
+            polygons_df = None
+
+            # Approach 1: Try loading as GeoParquet (most common for Sedona)
+            try:
+                polygons_df = session.read.format("shapefile").load(shapefile_path)
+            except Exception:
+                pass
+
+            # Approach 2: Try loading as GeoParquet (most common for Sedona)
+            try:
+                polygons_df = (
+                    session.read.format("org.apache.sedona.sql.spatialparquet")
+                    .option("spatialparquet.geometry", "geometry")
+                    .load(shapefile_path)
+                )
+            except Exception:
+                pass
+
+            # Approach 3: Try loading as shapefile from sedona sql
+            if polygons_df is None:
+                try:
+                    polygons_df = session.read.format(
+                        "org.apache.sedona.sql.shapefile"
+                    ).load(shapefile_path)
+                except Exception:
+                    pass
+
+            # Approach 4: Try loading as GeoJSON
+            if polygons_df is None:
+                try:
+                    polygons_df = session.read.format(
+                        "org.apache.sedona.sql.geojson"
+                    ).load(shapefile_path)
+                except Exception:
+                    pass
+
+            if polygons_df is None:
+                print(
+                    f"Could not load shapefile {shapefile_path} with any supported format"
+                )
+                continue
+
+            # Ensure the geometry column exists and has the right name, required as part of being a shapefile
+            if "geometry" not in polygons_df.columns:
+                # Try to find geometry column with different names
+                geom_columns = [
+                    col
+                    for col in polygons_df.columns
+                    if "geom" in col.lower() or "shape" in col.lower()
+                ]
+                if geom_columns:
+                    geometry_col = geom_columns[0]
+                    polygons_df = polygons_df.withColumnRenamed(
+                        geometry_col, "geometry"
+                    )
+                else:
+                    print(f"No geometry column found in {shapefile_path}")
+                    continue
+
+            # Ensure GEOID column exists
+            if "GEOID" not in polygons_df.columns:
+                # Try to find GEOID column with different names
+                geoid_columns = [
+                    col
+                    for col in polygons_df.columns
+                    if "geoid" in col.lower() or "id" in col.lower()
+                ]
+                if geoid_columns:
+                    geoid_col = geoid_columns[0]
+                    polygons_df = polygons_df.withColumnRenamed(geoid_col, "GEOID")
+                else:
+                    print(f"No GEOID column found in {shapefile_path}")
+                    continue
+
+            # Perform spatial join using Sedona functions with a SQL expression
+            spatial_joined = voters_with_points.crossJoin(polygons_df).where(
+                expr("ST_Within(point_geom, geometry)")
+            )
+            # Count occurrences of each GEOID
+            geoid_counts = (
+                spatial_joined.groupBy("office_type", "GEOID")
+                .agg(spark_sum(lit(1)).alias("count"))
+                .orderBy("office_type", desc("count"))
+            )
+
+            # Get the most frequent GEOID for each office_type
+            window_spec = Window.partitionBy("office_type").orderBy(desc("count"))
+            ranked_geoids = (
+                geoid_counts.withColumn("rank", row_number().over(window_spec))
+                .filter(col("rank") == 1)
+                .select("office_type", "GEOID", "count")
+            )
+
+            most_common_geoids.append(ranked_geoids)
+
+        except Exception as e:
+            # If shapefile loading fails, continue to next one
+            print(f"Failed to load shapefile {shapefile_path}: {e}")
+            continue
+
+    # Combine results from all shapefiles and find the most common GEOID overall
+    if most_common_geoids:
+        all_geoids = most_common_geoids[0]
+        for geoid_df in most_common_geoids[1:]:
+            all_geoids = all_geoids.union(geoid_df)
+
+        # Find the GEOID with the highest count across all shapefiles
+        final_geoid = (
+            all_geoids.groupBy("GEOID")
+            .agg(spark_sum("count").alias("total_count"))
+            .orderBy(desc("total_count"))
+            .limit(1)
+            .select("GEOID")
+        )
+
+        # Join back to original voters dataframe
+        result = voters_df.crossJoin(final_geoid).select(
+            voters_df["*"], col("GEOID").alias("inferred_geoid")
+        )
+    else:
+        # If no valid shapefiles found, return NO_GEOID_FOUND
+        result = voters_df.withColumn(
+            "inferred_geoid", lit("NO_SHAPEFILE_FOUND_OR_LOADED")
+        )
+
+    return result
 
 
 @udf(returnType=ArrayType(StringType()))
@@ -555,9 +584,13 @@ def _get_tiger_codes(office_type: str) -> List[str]:
 
 def model(dbt, session: SparkSession) -> DataFrame:
     dbt.config(
-        submission_method="all_purpose_cluster",  # required for .cache()
-        http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
-        # http_path="sql/protocolv1/o/3578414625112071/0702-151429-z46evw2",  # sedona cluster
+        submission_method="all_purpose_cluster",
+        # START: Desk approach #####
+        # http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
+        # END: Desk approach #####
+        # START: Sedona approach #####
+        http_path="sql/protocolv1/o/3578414625112071/0702-151429-z46evw2",  # sedona cluster
+        # END: Sedona approach #####
         materialized="incremental",
         incremental_strategy="merge",
         unique_key=[
@@ -689,36 +722,43 @@ def model(dbt, session: SparkSession) -> DataFrame:
             voters_with_turnout.cache()
 
             # get the geoid for each voter by their (lat,long) for the given district
-            voters_with_turnout = voters_with_turnout.withColumn(
-                "inferred_geoid",
-                _add_geoid_to_voters(
-                    struct(
-                        col("Residence_Addresses_Longitude"),
-                        col("Residence_Addresses_Latitude"),
-                        col("office_type"),
-                        col("office_name"),
-                        col("shapefile_paths"),
-                    )
-                ),
+
+            # START: Desk approach #####
+            # voters_with_turnout = voters_with_turnout.withColumn(
+            #     "inferred_geoid",
+            #     _add_geoid_to_voters(
+            #         struct(
+            #             col("Residence_Addresses_Longitude"),
+            #             col("Residence_Addresses_Latitude"),
+            #             col("office_type"),
+            #             col("office_name"),
+            #             col("shapefile_paths"),
+            #         )
+            #     ),
+            # )
+            # END: Desk approach #####
+
+            # START: Sedona approach #####
+            # Extract shapefile paths for this district
+            shapefile_paths_row = (
+                state_voter_turnout.filter(
+                    (col("state") == state) & (col("office_type") == district_type)
+                )
+                .select("shapefile_paths")
+                .first()
             )
 
-            # # Extract shapefile paths for this district
-            # shapefile_paths_row = state_voter_turnout.filter(
-            #     (col("state") == state) & (col("office_type") == district_type)
-            # ).select("shapefile_paths").first()
-
-            # if shapefile_paths_row:
-            #     shapefile_paths = shapefile_paths_row["shapefile_paths"]
-            #     voters_with_turnout = _add_geoid_to_voters_sedona(
-            #         voters_with_turnout,
-            #         shapefile_paths,
-            #         session
-            #     )
-            # else:
-            #     # If no shapefile paths found, set inferred_geoid to NO_GEOID_FOUND
-            #     voters_with_turnout = voters_with_turnout.withColumn(
-            #         "inferred_geoid", lit("NO_GEOID_FOUND")
-            #     )
+            if shapefile_paths_row:
+                shapefile_paths = shapefile_paths_row["shapefile_paths"]
+                voters_with_turnout = _add_geoid_to_voters_sedona(
+                    voters_with_turnout, shapefile_paths, session
+                )
+            else:
+                # If no shapefile paths found, set inferred_geoid to NO_GEOID_FOUND
+                voters_with_turnout = voters_with_turnout.withColumn(
+                    "inferred_geoid", lit("NO_MATCHING_SHAPEFILE_FOUND")
+                )
+            # END: Sedona approach #####
 
             voters_with_turnout = voters_with_turnout.withColumn(
                 "metainfo",
