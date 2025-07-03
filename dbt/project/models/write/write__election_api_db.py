@@ -78,6 +78,31 @@ CANDIDACY_UPSERT_QUERY = """
         race_id = EXCLUDED.race_id
 """
 
+DISTRICT_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."District" (
+        id,
+        created_at,
+        updated_at,
+        state,
+        l2_district_type,
+        l2_district_name
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        state,
+        l2_district_type,
+        l2_district_name
+    from {staging_schema}."District"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        state = EXCLUDED.state,
+        l2_district_type = EXCLUDED.l2_district_type,
+        l2_district_name = EXCLUDED.l2_district_name
+    """
+
 ISSUE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Issue" (
         id,
@@ -108,6 +133,40 @@ ISSUE_UPSERT_QUERY = """
         name = EXCLUDED.name,
         parent_id = EXCLUDED.parent_id
 """
+
+PROJECTED_TURNOUT_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Projected_Turnout" (
+        id,
+        created_at,
+        updated_at,
+        election_year,
+        election_code,
+        projected_turnout,
+        inference_at,
+        model_version,
+        district_id
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        election_year,
+        election_code::\"ElectionCode\",
+        projected_turnout,
+        inference_at,
+        model_version,
+        district_id::uuid
+    from {staging_schema}."Projected_Turnout"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        election_year = EXCLUDED.election_year,
+        election_code = EXCLUDED.election_code,
+        projected_turnout = EXCLUDED.projected_turnout,
+        inference_at = EXCLUDED.inference_at,
+        model_version = EXCLUDED.model_version,
+        district_id = EXCLUDED.district_id
+    """
 
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (
@@ -434,6 +493,8 @@ def model(dbt, session) -> DataFrame:
     place_df: DataFrame = dbt.ref("m_election_api__place")
     race_df: DataFrame = dbt.ref("m_election_api__race")
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
+    district_df: DataFrame = dbt.ref("m_election_api__district")
+    projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
     # filter the race dataframe to only include races that are within 1 day of the current date and 2 years from the current date
     race_df = race_df.filter(
@@ -454,8 +515,24 @@ def model(dbt, session) -> DataFrame:
         # get the latest timestamp for each table and filter the dataframes to only include new or updated records
         max_updated_at = {}
         to_load = zip(
-            ["Candidacy", "Issue", "Place", "Race", "Stance"],
-            [candidacy_df, issue_df, place_df, race_df, stance_df],
+            [
+                "Candidacy",
+                "Issue",
+                "Place",
+                "Race",
+                "Stance",
+                "District",
+                "Projected_Turnout",
+            ],
+            [
+                candidacy_df,
+                issue_df,
+                place_df,
+                race_df,
+                stance_df,
+                district_df,
+                projected_turnout_df,
+            ],
         )
         for table, df in to_load:
             query = (
@@ -486,14 +563,32 @@ def model(dbt, session) -> DataFrame:
     # foreign key constraints.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
-        ["Place", "Race", "Candidacy", "Issue", "Stance"],
-        [place_df, race_df, candidacy_df, issue_df, stance_df],
+        [
+            "Place",
+            "Race",
+            "Candidacy",
+            "Issue",
+            "Stance",
+            "District",
+            "Projected_Turnout",
+        ],
+        [
+            place_df,
+            race_df,
+            candidacy_df,
+            issue_df,
+            stance_df,
+            district_df,
+            projected_turnout_df,
+        ],
         [
             PLACE_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
+            DISTRICT_UPSERT_QUERY,
+            PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
     ):
         table_load_counts[table_name] = _load_data_to_postgres(

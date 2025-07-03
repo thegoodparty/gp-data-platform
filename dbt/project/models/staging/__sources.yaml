@@ -71,6 +71,8 @@ sources:
     description: Raw data loaded from model predictions
 
     tables:
+      - name: turnout_projections_model2odd
+        description: raw data load from voter turnout projections for odd years
       - name: viability_scores
         description: raw data load from model predictions
 

@@ -1,13 +1,5 @@
 models:
-  - name: stg_model_predictions__viability_scores
-    description: Viability scores data load from model predictions
-    columns:
-      - name: id
-        description: The HubSpot company id
-        data_tests:
-          - not_null
-          - unique
-  - name: stg_model_predictions__turnout_projections_model2odd
+  - name: int__model_prediction_voter_turnout
     description: Turnout projections data load from model predictions
     columns:
       - name: office_type
