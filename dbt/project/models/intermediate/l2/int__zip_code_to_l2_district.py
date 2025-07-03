@@ -327,7 +327,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .filter(col("district_name").isNotNull())
             .distinct()
             .withColumn("district_type", lit(district_type))
-            .withColumn("loaded_at", lit(datetime.now()))
         )
 
         district_dataframes.append(district_df)
@@ -345,11 +344,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
 
     # Group by zip_code, state_postal_code, district_type and collect district_names into arrays
-    final_result = zip_code_to_l2_district.groupBy(
-        "zip_code", "state_postal_code", "district_type"
-    ).agg(
-        collect_list("district_name").alias("district_names"),
-        lit(datetime.now()).alias("loaded_at"),
+    final_result = (
+        zip_code_to_l2_district.groupBy(
+            "zip_code",
+            "state_postal_code",
+            "district_type",
+        )
+        .agg(collect_list("district_name").alias("district_names"))
+        .withColumn("loaded_at", lit(datetime.now()))
     )
 
     # TODO: run bugbot
