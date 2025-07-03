@@ -56,12 +56,23 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_deals
         description: raw data load from HubSpot data model
+      - name: hubspot_api_engagements
+        description: raw data load from HubSpot data model
       - name: hubspot_api_owners_archived
         description: raw data load from HubSpot data model
       - name: hubspot_api_owners
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
+
+
+  - name: model_predictions
+    schema: model_predictions
+    description: Raw data loaded from model predictions
+
+    tables:
+      - name: viability_scores
+        description: raw data load from model predictions
 
 
   - name: dbt_source
