@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import col, collect_list, lit
+from pyspark.sql.functions import col, collect_list, lit, size
 from pyspark.sql.types import (
     ArrayType,
     StringType,
@@ -271,11 +271,13 @@ DISTRICT_TYPE_FROM_COLUMNS = [
 
 THIS_TABLE_SCHEMA = StructType(
     [
-        StructField("zip_code", StringType(), True),
-        StructField("state_postal_code", StringType(), True),
-        StructField("district_type", StringType(), True),
-        StructField("district_names", ArrayType(StringType()), True),
-        StructField("loaded_at", TimestampType(), True),
+        StructField(name="zip_code", dataType=StringType(), nullable=False),
+        StructField(name="state_postal_code", dataType=StringType(), nullable=False),
+        StructField(name="district_type", dataType=StringType(), nullable=False),
+        StructField(
+            name="district_names", dataType=ArrayType(StringType()), nullable=False
+        ),
+        StructField(name="loaded_at", dataType=TimestampType(), nullable=False),
     ]
 )
 
@@ -353,6 +355,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .agg(collect_list("district_name").alias("district_names"))
         .withColumn("loaded_at", lit(datetime.now()))
     )
+
+    # drop rows which have no district names or the size of the array is 0
+    final_result = final_result.filter(col("district_names").isNotNull())
+    final_result = final_result.filter(size(col("district_names")) > 0)
 
     # TODO: run bugbot
     return final_result
