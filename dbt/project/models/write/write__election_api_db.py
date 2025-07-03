@@ -493,6 +493,8 @@ def model(dbt, session) -> DataFrame:
     place_df: DataFrame = dbt.ref("m_election_api__place")
     race_df: DataFrame = dbt.ref("m_election_api__race")
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
+    district_df: DataFrame = dbt.ref("m_election_api__district")
+    projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
     # filter the race dataframe to only include races that are within 1 day of the current date and 2 years from the current date
     race_df = race_df.filter(
@@ -545,14 +547,32 @@ def model(dbt, session) -> DataFrame:
     # foreign key constraints.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
-        ["Place", "Race", "Candidacy", "Issue", "Stance"],
-        [place_df, race_df, candidacy_df, issue_df, stance_df],
+        [
+            "Place",
+            "Race",
+            "Candidacy",
+            "Issue",
+            "Stance",
+            "District",
+            "Projected_Turnout",
+        ],
+        [
+            place_df,
+            race_df,
+            candidacy_df,
+            issue_df,
+            stance_df,
+            district_df,
+            projected_turnout_df,
+        ],
         [
             PLACE_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
+            DISTRICT_UPSERT_QUERY,
+            PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
     ):
         table_load_counts[table_name] = _load_data_to_postgres(
