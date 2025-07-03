@@ -300,23 +300,26 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["intermediate", "l2", "zip_code", "districts"],
     )
 
-    # TODO: handle incremental runs
-    # get the max loaded_at for the incremental run
-    # if dbt.is_incremental:
-
     l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
-    # downsample during dev, test on a subset of the states
-    # all_states = l2_uniform_data.select(col("state_postal_code")).distinct().collect()
-    # state_list = [state.state_postal_code for state in all_states]
-    # state_list = state_list[:10]
-    # l2_uniform_data = l2_uniform_data.filter(col("state_postal_code").isin(state_list))
+    # get the max loaded for this table and compare against latest changes to l2 uniform data
+    if dbt.is_incremental:
+        existing_table = session.table(f"{dbt.this}")
+        max_loaded_at = existing_table.agg({"loaded_at": "max"}).collect()[0][0]
+        l2_uniform_data = l2_uniform_data.filter(col("loaded_at") > max_loaded_at)
 
     # Create a list of DataFrames for each district type
     district_dataframes = []
     # TODO: get district_types from model predictions
-    # DISTRICT_TYPE_FROM_COLUMNS = dbt.ref("int__model_prediction_voter_turnout").select(col("office_type")).distinct().collect()
-    # DISTRICT_TYPE_FROM_COLUMNS = [district_type.office_type for district_type in DISTRICT_TYPE_FROM_COLUMNS]
+    DISTRICT_TYPE_FROM_COLUMNS = (
+        dbt.ref("int__model_prediction_voter_turnout")
+        .select(col("office_type"))
+        .distinct()
+        .collect()
+    )
+    DISTRICT_TYPE_FROM_COLUMNS = [
+        district_type.office_type for district_type in DISTRICT_TYPE_FROM_COLUMNS
+    ]
     for district_type in DISTRICT_TYPE_FROM_COLUMNS:
         # Get data for this district type from both residence and mailing addresses
         district_df = (
