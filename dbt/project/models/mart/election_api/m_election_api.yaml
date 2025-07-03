@@ -108,18 +108,6 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-      - name: state
-        description: State postal code
-        tests:
-          - not_null
-          - accepted_values:
-              values: [
-                "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-                "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-                "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-                "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-                "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
-              ]
       - name: election_code
         description: The election code
         tests:
@@ -130,6 +118,13 @@ models:
         description: The model version
         tests:
           - not_null
+      - name: district_id
+        description: "UUID of the district"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('m_election_api__district')
+              field: id
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:

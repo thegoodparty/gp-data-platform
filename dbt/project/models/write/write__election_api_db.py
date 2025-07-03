@@ -515,8 +515,24 @@ def model(dbt, session) -> DataFrame:
         # get the latest timestamp for each table and filter the dataframes to only include new or updated records
         max_updated_at = {}
         to_load = zip(
-            ["Candidacy", "Issue", "Place", "Race", "Stance"],
-            [candidacy_df, issue_df, place_df, race_df, stance_df],
+            [
+                "Candidacy",
+                "Issue",
+                "Place",
+                "Race",
+                "Stance",
+                "District",
+                "Projected_Turnout",
+            ],
+            [
+                candidacy_df,
+                issue_df,
+                place_df,
+                race_df,
+                stance_df,
+                district_df,
+                projected_turnout_df,
+            ],
         )
         for table, df in to_load:
             query = (

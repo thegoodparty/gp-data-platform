@@ -9,7 +9,7 @@
 }}
 
 with
-    projectected_turnout as (
+    projected_turnout as (
         select
             {{
                 generate_salted_uuid(
@@ -19,9 +19,7 @@ with
                         "office_name",
                     ]
                 )
-            }} as district_id
-            -- office_type as l2_district_type,
-            -- office_name as l2_district_name,
+            }} as district_id,
             election_year,
             case
                 when election_code = 'Local_or_Municipal'
@@ -41,9 +39,7 @@ select
     {{
         generate_salted_uuid(
             fields=[
-                "state",
-                "l2_district_type",
-                "l2_district_name",
+                "district_id",
                 "election_year",
                 "election_code",
                 "model_version",
@@ -54,13 +50,10 @@ select
     {% else %} now() as created_at,
     {% endif %}
     current_timestamp() as updated_at,
-    -- state,
-    -- l2_district_type,
-    -- l2_district_name,
     district_id,
     election_year,
     election_code,
     model_version,
     projected_turnout,
     inference_at
-from projectected_turnout
+from projected_turnout

@@ -22,8 +22,8 @@ select
         generate_salted_uuid(
             fields=[
                 "state",
-                "office_type",
-                "office_name",
+                "l2_district_type",
+                "l2_district_name",
             ]
         )
     }} as id,
@@ -33,5 +33,5 @@ select
     current_timestamp() as updated_at,
     state,
     l2_district_type,
-    l2_district_name,
+    l2_district_name
 from districts
