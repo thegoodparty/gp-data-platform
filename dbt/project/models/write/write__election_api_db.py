@@ -155,7 +155,7 @@ PROJECTED_TURNOUT_UPSERT_QUERY = """
         projected_turnout,
         inference_at,
         model_version,
-        district_id
+        district_id::uuid
     from {staging_schema}."Projected_Turnout"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,

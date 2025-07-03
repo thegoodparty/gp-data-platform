@@ -46,14 +46,28 @@ select
             ]
         )
     }} as id,
-    {% if is_incremental() %} coalesce({{ this }}.created_at, now()) as created_at,
+    {% if is_incremental() %} coalesce(existing.created_at, now()) as created_at,
     {% else %} now() as created_at,
     {% endif %}
     current_timestamp() as updated_at,
-    district_id,
-    election_year,
-    election_code,
-    model_version,
-    projected_turnout,
-    inference_at
+    projected_turnout.district_id,
+    projected_turnout.election_year,
+    projected_turnout.election_code,
+    projected_turnout.model_version,
+    projected_turnout.projected_turnout,
+    projected_turnout.inference_at
 from projected_turnout
+{% if is_incremental() %}
+    left join
+        {{ this }} as existing
+        on {{
+            generate_salted_uuid(
+                fields=[
+                    "projected_turnout.district_id",
+                    "projected_turnout.election_year",
+                    "projected_turnout.election_code",
+                    "projected_turnout.model_version",
+                ]
+            )
+        }} = existing.id
+{% endif %}
