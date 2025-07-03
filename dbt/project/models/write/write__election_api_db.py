@@ -78,6 +78,31 @@ CANDIDACY_UPSERT_QUERY = """
         race_id = EXCLUDED.race_id
 """
 
+DISTRICT_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."District" (
+        id,
+        created_at,
+        updated_at,
+        state,
+        l2_district_type,
+        l2_district_name
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        state,
+        l2_district_type,
+        l2_district_name
+    from {staging_schema}."District"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        state = EXCLUDED.state,
+        l2_district_type = EXCLUDED.l2_district_type,
+        l2_district_name = EXCLUDED.l2_district_name
+    """
+
 ISSUE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Issue" (
         id,
@@ -108,6 +133,40 @@ ISSUE_UPSERT_QUERY = """
         name = EXCLUDED.name,
         parent_id = EXCLUDED.parent_id
 """
+
+PROJECTED_TURNOUT_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Projected_Turnout" (
+        id,
+        created_at,
+        updated_at,
+        election_year,
+        election_code,
+        projected_turnout,
+        inference_at,
+        model_version,
+        district_id
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        election_year,
+        election_code::\"ElectionCode\",
+        projected_turnout,
+        inference_at,
+        model_version,
+        district_id
+    from {staging_schema}."Projected_Turnout"
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        election_year = EXCLUDED.election_year,
+        election_code = EXCLUDED.election_code,
+        projected_turnout = EXCLUDED.projected_turnout,
+        inference_at = EXCLUDED.inference_at,
+        model_version = EXCLUDED.model_version,
+        district_id = EXCLUDED.district_id
+    """
 
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (

@@ -69,6 +69,48 @@ models:
           - not_null
           - unique
 
+  - name: m_election_api__projected_turnout
+    description: Turnout projections data load from model predictions
+    columns:
+      - name: id
+        description: "UUID of the projected turnout"
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: state
+        description: State postal code
+        tests:
+          - not_null
+          - accepted_values:
+              values: [
+                "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
+              ]
+      - name: election_code
+        description: The election code
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral"]
+      - name: model_version
+        description: The model version
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - state
+            - l2_district_type
+            - l2_district_name
+            - election_year
+            - election_code
+            - model_version
+
   - name: m_election_api__race
     description: "Mart model that serves the Election API"
     columns:
