@@ -114,6 +114,8 @@ def upload_to_databricks(directory):
             f"{DBX_SHAPEFILES_VOLUME_PATH}/{shapefile_directory.split('/')[-1]}"
         )
         w.dbfs.mkdirs(volume_path)
+
+        # TODO: convert shapefile to geohash
         print(f"Uploading {shapefile_directory} to {volume_path}")
 
         # load us_county shapefile manually since it timesout with the w.files.upload() method

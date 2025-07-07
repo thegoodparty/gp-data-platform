@@ -772,6 +772,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
             else:
                 voter_turnout_w_geoid = voter_turnout_w_geoid.union(voters_with_turnout)
 
+            # force voter_turnout_w_geoid to be collected to force union above
+            voter_turnout_w_geoid.collect()
+
             # clear up voters with turnout to save memory
             voters_with_turnout.unpersist()
             del voters_with_turnout
