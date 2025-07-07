@@ -1,0 +1,17 @@
+models:
+  - name: stg_sandbox_source__turnout_projections_placeholder0
+    description: placeholder table for turnout projections
+    columns:
+      - name: office_type
+        data_tests:
+          - not_null
+      - name: election_code
+        data_tests:
+          - accepted_values:
+              values:
+                - General
+                - Local_or_Municipal
+                - Consolidated_General
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["state", "office_type", "office_name", "election_year", "election_code", "model_version"]
