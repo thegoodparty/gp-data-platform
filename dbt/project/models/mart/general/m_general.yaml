@@ -10,7 +10,9 @@ models:
         # data_type: uuid
         tests:
           - not_null
-          # - unique
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
       - name: candidacy_id
         description: Unique identifier for a person running in an election from source

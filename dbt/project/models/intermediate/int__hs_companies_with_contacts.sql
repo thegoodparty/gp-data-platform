@@ -26,6 +26,19 @@ with
     joined_data as (
         select
             companies.*,
+            -- TODO: add uuid, uniquness and non-null test
+            {{
+                generate_salted_uuid(
+                    fields=[
+                        "contacts.properties_firstname",
+                        "contacts.properties_lastname",
+                        "companies.state",
+                        "companies.candidate_office",
+                        "companies.general_election_date",
+                        "companies.district",
+                    ]
+                )
+            }} as gp_candidacy_id,
             contacts.id as contact_id,
             contacts.properties_candidate_id_source as candidate_id_source,
             contacts.properties_firstname as first_name,

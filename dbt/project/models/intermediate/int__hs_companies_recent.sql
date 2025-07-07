@@ -7,7 +7,8 @@
 
 -- Recent candidates (companies) from HubSpot data with standardized fields
 select
-    'gp_candidacy_id-tbd' as gp_candidacy_id,
+    -- 'gp_candidacy_id-tbd' as gp_candidacy_id, -- need first_name, so add in
+    -- downstream table
     'candidacy_id-tbd' as candidacy_id,
     'gp_user_id-tbd' as gp_user_id,
     'gp_contest_id-tbd' as gp_contest_id,
