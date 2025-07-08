@@ -1,83 +1,85 @@
 {{
     config(
         materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="companies_id_main",
-        merge_update_condition="DBT_INTERNAL_SOURCE.updated_at > DBT_INTERNAL_DEST.updated_at",
+        unique_key="gp_candidacy_id",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
-        tags=["mart", "candidacy", "hubspot"],
+        tags=["mart", "general", "candidacy", "hubspot"],
     )
 }}
 
 -- Final candidacy objects with viability scores
 select
     -- Identifiers
-    companies_with_contacts.gp_candidacy_id,
-    companies_with_contacts.candidacy_id,
-    companies_with_contacts.gp_user_id,
-    companies_with_contacts.gp_contest_id,
-    companies_with_contacts.companies_id_main,
-    companies_with_contacts.candidate_id_source,
-    companies_with_contacts.candidate_id_tier,
+    tbl_contacts.gp_candidacy_id,
+    -- tbl_contacts.candidacy_id,
+    cast(null as string) as candidacy_id,
+    -- tbl_contacts.gp_user_id,
+    cast(null as string) as gp_user_id,
+    -- tbl_contacts.gp_contest_id,
+    cast(null as string) as gp_contest_id,
+    tbl_contacts.company_id,
+    tbl_contacts.candidate_id_source,
+    tbl_contacts.candidate_id_tier,
 
     -- Personal information
-    companies_with_contacts.first_name,
-    companies_with_contacts.last_name,
-    companies_with_contacts.full_name,
-    companies_with_contacts.birth_date,
-    companies_with_contacts.email,
-    companies_with_contacts.phone_number,
+    tbl_contacts.first_name,
+    tbl_contacts.last_name,
+    tbl_contacts.full_name,
+    tbl_contacts.birth_date,
+    tbl_contacts.email,
+    tbl_contacts.phone_number,
 
     -- Digital presence
-    companies_with_contacts.website_url,
-    companies_with_contacts.linkedin_url,
-    companies_with_contacts.twitter_handle,
-    companies_with_contacts.facebook_url,
-    companies_with_contacts.instagram_handle,
+    tbl_contacts.website_url,
+    tbl_contacts.linkedin_url,
+    tbl_contacts.twitter_handle,
+    tbl_contacts.facebook_url,
+    tbl_contacts.instagram_handle,
 
     -- Location
-    companies_with_contacts.street_address,
+    tbl_contacts.street_address,
 
     -- Office information
-    companies_with_contacts.official_office_name,
-    companies_with_contacts.candidate_office,
-    companies_with_contacts.office_level,
-    companies_with_contacts.office_type,
-    companies_with_contacts.party_affiliation,
-    companies_with_contacts.is_partisan,
+    tbl_contacts.official_office_name,
+    tbl_contacts.candidate_office,
+    tbl_contacts.office_level,
+    tbl_contacts.office_type,
+    tbl_contacts.party_affiliation,
+    tbl_contacts.is_partisan,
 
     -- Geographic representation
-    companies_with_contacts.state,
-    companies_with_contacts.city,
-    companies_with_contacts.district,
-    companies_with_contacts.seat,
-    companies_with_contacts.population,
+    tbl_contacts.state,
+    tbl_contacts.city,
+    tbl_contacts.district,
+    tbl_contacts.seat,
+    tbl_contacts.population,
 
     -- Election timeline
-    companies_with_contacts.filing_deadline,
-    companies_with_contacts.primary_election_date,
-    companies_with_contacts.general_election_date,
-    companies_with_contacts.runoff_election_date,
+    tbl_contacts.filing_deadline,
+    tbl_contacts.primary_election_date,
+    tbl_contacts.general_election_date,
+    tbl_contacts.runoff_election_date,
 
     -- Election context
-    companies_with_contacts.is_incumbent,
-    companies_with_contacts.is_uncontested,
-    companies_with_contacts.number_of_opponents,
-    companies_with_contacts.is_open_seat,
-    companies_with_contacts.candidacy_result,
+    tbl_contacts.is_incumbent,
+    tbl_contacts.is_uncontested,
+    tbl_contacts.number_of_opponents,
+    tbl_contacts.is_open_seat,
+    tbl_contacts.candidacy_result,
 
     -- Viability assessment
-    viability_scores.viability_rating_2_0 as viability_score,
+    try_cast(viability_scores.viability_rating_2_0 as float) as viability_score,
 
     -- Metadata
-    companies_with_contacts.created_at,
-    companies_with_contacts.updated_at
+    tbl_contacts.created_at,
+    tbl_contacts.updated_at
 
-from {{ ref("int__hs_companies_with_contacts") }} as companies_with_contacts
+from {{ ref("int__hubspot_contacts_w_campanies") }} as tbl_contacts
 left join
     {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
-    on companies_with_contacts.companies_id_main = viability_scores.id
+    on tbl_contacts.company_id = viability_scores.id
 
 {% if is_incremental() %}
-    where companies_with_contacts.updated_at > (select max(updated_at) from {{ this }})
+    where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
 {% endif %}

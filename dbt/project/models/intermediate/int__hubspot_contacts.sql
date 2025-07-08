@@ -15,13 +15,18 @@ select
     properties_full_name as full_name,
     properties_firstname as first_name,
     properties_lastname as last_name,
+    properties_birth_date as birth_date,
     properties_email as email,
+    properties_email as email_contacts,
     properties_phone as phone_number,
     properties_website as website_url,
+    properties_instagram_handle as instagram_handle,
     properties_linkedin_url as linkedin_url,
     properties_twitterhandle as twitter_handle,
     properties_facebook_url as facebook_url,
     properties_address as street_address,
+    properties_candidate_id_source as candidate_id_source,
+    properties_candidate_id_tier as candidate_id_tier,
 
     -- Office information
     properties_official_office_name as official_office_name,
@@ -36,6 +41,7 @@ select
     properties_city as city,
     properties_candidate_district as district,
     properties_open_seat as seat,
+    try_cast(properties_population as int) as population,
 
     -- Election dates
     properties_filing_deadline as filing_deadline,
@@ -51,8 +57,8 @@ select
     properties_number_opponents as number_of_opponents,
 
     -- Metadata
-    "createdAt" as created_at,
-    "updatedAt" as updated_at
+    `createdAt` as created_at,
+    `updatedAt` as updated_at
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     1 = 1 and properties_firstname is not null and properties_lastname is not null
