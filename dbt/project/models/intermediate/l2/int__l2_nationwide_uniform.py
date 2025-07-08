@@ -97,7 +97,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",
-        on_schema_change="fail",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "l2", "nationwide_uniform", "uniform"],
     )
