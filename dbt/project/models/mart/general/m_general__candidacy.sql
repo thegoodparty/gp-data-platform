@@ -15,7 +15,8 @@ select
     "candidacy_id-tbd" as candidacy_id,
     "gp_user_id-tbd" as gp_user_id,
     "gp_contest_id-tbd" as gp_contest_id,
-    tbl_contacts.company_id,
+    tbl_contacts.company_id as company_id,
+    tbl_contacts.company_id as companies_id_main,
     tbl_contacts.candidate_id_source,
     tbl_contacts.candidate_id_tier,
 

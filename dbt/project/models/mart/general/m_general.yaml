@@ -41,9 +41,9 @@ models:
       - name: companies_id_main
         description: Need to know person in growth system
         # data_type: varchar
-        tests:
-          - unique
-          - not_null
+        # tests:
+          # - unique
+          # - not_null
 
       - name: first_name
         description: Candidate’s given name

@@ -35,6 +35,7 @@ with
                         "tbl_contacts.first_name",
                         "tbl_contacts.last_name",
                         "tbl_contacts.state",
+                        "tbl_contacts.party_affiliation",
                         "tbl_contacts.candidate_office",
                         "tbl_contacts.general_election_date",
                         "tbl_contacts.district",

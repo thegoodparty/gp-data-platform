@@ -63,5 +63,5 @@ from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     1 = 1 and properties_firstname is not null and properties_lastname is not null
     {% if is_incremental() %}
-        and "updatedAt" >= (select max(updated_at) from {{ this }})
+        and `updatedAt` >= (select max(updated_at) from {{ this }})
     {% endif %}
