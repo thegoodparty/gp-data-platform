@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: int__hubspot_contacts
+    description: >
+        "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Candidacies."
+    columns:
+      - name: id
+        description: "HubSpot ID of the contact from the source system"
+        tests:
+          - unique
+          - not_null
+      - name: first_name
+        description: "First name of the contact"
+        tests:
+          - not_null
+      - name: last_name
+        description: "Last name of the contact"
+        tests:
+          - not_null

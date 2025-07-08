@@ -5,6 +5,9 @@
     )
 }}
 
+
+-- TODO: can change to incremental with unique gp_candidacy_id
+-- TODO: add versioning to id column, so gp_candidacy_id_v1
 with
     extracted_engagements as (
         select distinct
@@ -26,7 +29,6 @@ with
     joined_data as (
         select
             companies.*,
-            -- TODO: add uuid, uniquness and non-null test
             {{
                 generate_salted_uuid(
                     fields=[
