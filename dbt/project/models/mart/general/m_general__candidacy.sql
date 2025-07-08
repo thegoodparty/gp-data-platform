@@ -12,12 +12,9 @@
 select
     -- Identifiers
     tbl_contacts.gp_candidacy_id,
-    -- tbl_contacts.candidacy_id,
-    cast(null as string) as candidacy_id,
-    -- tbl_contacts.gp_user_id,
-    cast(null as string) as gp_user_id,
-    -- tbl_contacts.gp_contest_id,
-    cast(null as string) as gp_contest_id,
+    "candidacy_id-tbd" as candidacy_id,
+    "gp_user_id-tbd" as gp_user_id,
+    "gp_contest_id-tbd" as gp_contest_id,
     tbl_contacts.company_id,
     tbl_contacts.candidate_id_source,
     tbl_contacts.candidate_id_tier,
@@ -69,7 +66,7 @@ select
     tbl_contacts.candidacy_result,
 
     -- Viability assessment
-    try_cast(viability_scores.viability_rating_2_0 as float) as viability_score,
+    viability_scores.viability_rating_2_0 as viability_score,
 
     -- Metadata
     tbl_contacts.created_at,
