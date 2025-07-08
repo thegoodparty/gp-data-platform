@@ -165,7 +165,7 @@ with
             {{ ref("stg_airbyte_source__hubspot_api_companies") }} as tbl_companies
             on tbl_companies.id = tbl_engagements.company_id_association
         {% if is_incremental() %}
-            where updated_at >= (select max(updated_at) from {{ this }})
+            where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
     ),
     ranked_matches as (
@@ -174,11 +174,13 @@ with
             row_number() over (
                 partition by contact_id
                 order by email_match desc, name_match desc, updated_at desc
-            ) as row_rank
+            ) as row_rank,
+            row_number() over (
+                partition by gp_candidacy_id order by updated_at desc
+            ) as row_rank_gp_candidacy_id
         from joined_data
     )
 
--- TODO: add tests for the following fields and columns
 select
     contact_id,
     company_id,
@@ -225,4 +227,4 @@ select
     email_match,
     name_match
 from ranked_matches
-where row_rank = 1
+where 1 = 1 and row_rank = 1 and row_rank_gp_candidacy_id = 1
