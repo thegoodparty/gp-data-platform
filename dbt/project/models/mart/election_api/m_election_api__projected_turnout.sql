@@ -15,8 +15,8 @@ with
                 generate_salted_uuid(
                     fields=[
                         "state",
-                        "office_type",
-                        "office_name",
+                        "district_type",
+                        "district_name",
                     ]
                 )
             }} as district_id,
@@ -24,9 +24,11 @@ with
             case
                 when election_code = 'Local_or_Municipal'
                 then 'LocalOrMunicipal'
+                when election_code = 'Consolidated_General'
+                then 'ConsolidatedGeneral'
                 else election_code
             end as election_code,
-            ballots_projected as projected_turnout,
+            coalesce(ballots_projected, 0) as projected_turnout,
             inference_at,
             model_version
         from {{ ref("int__model_prediction_voter_turnout") }}

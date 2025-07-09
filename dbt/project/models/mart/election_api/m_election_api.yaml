@@ -40,7 +40,8 @@ models:
                 "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
                 "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
                 "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-                "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
+                "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                "DC", "US"
               ]
     tests:
       - dbt_utils.unique_combination_of_columns:
@@ -125,6 +126,10 @@ models:
           - relationships:
               to: ref('m_election_api__district')
               field: id
+      - name: projected_turnout
+        description: The projected turnout
+        tests:
+          - not_null
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:

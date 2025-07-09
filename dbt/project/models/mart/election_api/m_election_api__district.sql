@@ -10,7 +10,8 @@
 
 with
     districts as (
-        select state, office_type as l2_district_type, office_name as l2_district_name
+        select distinct
+            state, district_type as l2_district_type, district_name as l2_district_name
         from {{ ref("int__model_prediction_voter_turnout") }}
         {% if is_incremental() %}
             where inference_at >= (select max(updated_at) from {{ this }})

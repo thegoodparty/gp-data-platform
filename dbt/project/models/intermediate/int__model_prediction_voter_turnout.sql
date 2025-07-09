@@ -3,8 +3,8 @@
         materialized="incremental",
         unique_key=[
             "state",
-            "office_type",
-            "office_name",
+            "district_type",
+            "district_name",
             "election_year",
             "election_code",
             "model_version",
@@ -20,8 +20,8 @@ with
         select
             ballots_projected,
             state,
-            office_type,
-            office_name,
+            district_type,
+            district_name,
             election_year,
             election_code,
             model_version,
@@ -30,7 +30,49 @@ with
         {% if is_incremental() %}
             where inference_at >= (select max(inference_at) from {{ this }})
         {% endif %}
+        qualify
+            row_number() over (
+                partition by
+                    state,
+                    district_type,
+                    district_name,
+                    election_year,
+                    election_code,
+                    model_version
+                order by inference_at desc
+            )
+            = 1
+    ),
+    even_year_projections as (
+        select
+            ballots_projected,
+            state,
+            district_type,
+            district_name,
+            election_year,
+            election_code,
+            model_version,
+            inference_at
+        from {{ ref("stg_model_predictions__turnout_projections_even_years_20250709") }}
+        {% if is_incremental() %}
+            where inference_at >= (select max(inference_at) from {{ this }})
+        {% endif %}
+        qualify
+            row_number() over (
+                partition by
+                    state,
+                    district_type,
+                    district_name,
+                    election_year,
+                    election_code,
+                    model_version
+                order by inference_at desc
+            )
+            = 1
     )
 
 select *
 from odd_year_projections
+union all
+select *
+from even_year_projections

@@ -54,13 +54,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
     district_dataframes = []
     district_type_from_columns = (
         dbt.ref("int__model_prediction_voter_turnout")
-        .select(col("office_type"))
+        .select(col("district_type"))
         .distinct()
         .collect()
     )
     district_type_from_columns = [
-        district_type.office_type for district_type in district_type_from_columns
+        district_type.district_type for district_type in district_type_from_columns
     ]
+
+    # remove "Country" as a district since it doesn't match any of the other district types
+    district_type_from_columns = [
+        district_type
+        for district_type in district_type_from_columns
+        if district_type != "Country"
+    ]
+
     for district_type in district_type_from_columns:
         # Get data for this district type from both residence and mailing addresses
         district_df = (
