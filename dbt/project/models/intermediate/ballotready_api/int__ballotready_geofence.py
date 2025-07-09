@@ -274,7 +274,7 @@ def model(dbt, session) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
-        on_schema_change="fail",
+        on_schema_change="append_new_columns",
         tags=["ballotready", "geofence", "api", "pandas_udf"],
     )
 
