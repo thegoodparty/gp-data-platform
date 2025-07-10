@@ -50,6 +50,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
         max_loaded_at = existing_table.agg({"loaded_at": "max"}).collect()[0][0]
         l2_uniform_data = l2_uniform_data.filter(col("loaded_at") > max_loaded_at)
 
+        if l2_uniform_data.count() == 0:
+            return session.createDataFrame(
+                data=[],
+                schema=THIS_TABLE_SCHEMA,
+            )
+
     # Create a list of DataFrames for each district type
     district_dataframes = []
     district_type_from_columns = (
