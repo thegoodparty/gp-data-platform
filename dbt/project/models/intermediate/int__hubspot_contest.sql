@@ -32,7 +32,19 @@ select
     properties_state as state,
     properties_city as city,
     properties_candidate_district as district,
-    properties_open_seat as seat_name,
+    case
+        when properties_official_office_name like '% - Seat %'
+        then regexp_extract(properties_official_office_name, ' - Seat ([^,]+)')
+        when properties_official_office_name like '% - Group %'
+        then regexp_extract(properties_official_office_name, ' - Group ([^,]+)')
+        when properties_official_office_name like '%, Seat %'
+        then regexp_extract(properties_official_office_name, ', Seat ([^,]+)')
+        when properties_official_office_name like '%: % - Seat %'
+        then regexp_extract(properties_official_office_name, ' - Seat ([^,]+)')
+        when properties_official_office_name like '% - Position %'
+        then regexp_extract(properties_official_office_name, ' - Position ([^\\s(]+)')
+        else ''
+    end as seat_name,
 
     -- election context
     properties_number_opponents as number_of_opponents,
@@ -49,6 +61,16 @@ select
     cast(null as date) as runoff_election_date,  -- get from campaign
 
     -- election results
+    case
+        when today() < filing_deadline
+        then 'not started'
+        when
+            today() >= filing_deadline
+            and today() <= max(general_election_date, runoff_election_date)
+        then 'in progress'
+        when today() > max(general_election_date, runoff_election_date)
+        then 'completed'
+    end as contest_status,
     null as primary_results,
     null as general_election_results,
     null as runoff_election_results,
@@ -56,7 +78,6 @@ select
 
 -- to add
 -- term_length_years,
--- contest_status
 -- TODO: add tests
 from {{ ref("stg_airbyte_source__hubspot_api_companies") }}
 where
