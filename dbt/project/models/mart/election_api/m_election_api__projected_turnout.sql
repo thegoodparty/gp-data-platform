@@ -33,7 +33,10 @@ with
             model_version
         from {{ ref("int__model_prediction_voter_turnout") }}
         {% if is_incremental() %}
-            where inference_at >= (select max(inference_at) from {{ this }})
+            where
+                inference_at >= coalesce(
+                    (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
+                )
         {% endif %}
     )
 

@@ -28,7 +28,10 @@ with
             inference_at
         from {{ ref("stg_model_predictions__turnout_projections_model2odd") }}
         {% if is_incremental() %}
-            where inference_at >= (select max(inference_at) from {{ this }})
+            where
+                inference_at >= coalesce(
+                    (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
+                )
         {% endif %}
         qualify
             row_number() over (
@@ -55,7 +58,10 @@ with
             inference_at
         from {{ ref("stg_model_predictions__turnout_projections_even_years_20250709") }}
         {% if is_incremental() %}
-            where inference_at >= (select max(inference_at) from {{ this }})
+            where
+                inference_at >= coalesce(
+                    (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
+                )
         {% endif %}
         qualify
             row_number() over (

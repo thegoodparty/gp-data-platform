@@ -48,7 +48,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
         max_loaded_at = existing_table.agg({"loaded_at": "max"}).collect()[0][0]
-        l2_uniform_data = l2_uniform_data.filter(col("loaded_at") > max_loaded_at)
+
+        # Handle case where table is empty (max_loaded_at is None)
+        if max_loaded_at is not None:
+            l2_uniform_data = l2_uniform_data.filter(col("loaded_at") > max_loaded_at)
 
         if l2_uniform_data.count() == 0:
             return session.createDataFrame(
