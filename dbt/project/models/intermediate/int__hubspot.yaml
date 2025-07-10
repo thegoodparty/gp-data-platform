@@ -19,7 +19,7 @@ models:
         tests:
           - not_null
 
-  - name: int__hubspot_contacts_w_campanies
+  - name: int__hubspot_contacts_w_companies
     description: >
         "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Candidacies."
     columns:
