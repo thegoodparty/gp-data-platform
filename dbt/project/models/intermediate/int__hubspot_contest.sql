@@ -34,20 +34,33 @@ select
     properties_candidate_district as district,
     properties_open_seat as seat_name,
 
+    -- election context
+    properties_number_opponents as number_of_opponents,
+    properties_number_of_seats_available as seats_available,
+    properties_uncontested as uncontested,
+    properties_open_seat as open_seat,
+    properties_start_date as term_start_date,
+
+    -- election dates
+    properties_filing_deadline as filing_deadline,
+    properties_primary_election_date as primary_election_date,
+    properties_general_election_date as general_election_date,
+    properties_runoff_election_date as runoff_election_date,
+    cast(null as date) as runoff_election_date,  -- get from campaign
+
+    -- election results
+    null as primary_results,
+    null as general_election_results,
+    null as runoff_election_results,
+    null as contest_results
+
 -- to add
--- number_opponents,
--- seats_available,
--- uncontested,
--- open_seat,
--- filing_deadline,
--- primary_election_date,
--- general_election_date,
--- runoff_election_date,
--- primary_results,
--- general_election_results,
--- runoff_election_results,
--- contest_results,
--- term_start_date,
 -- term_length_years,
 -- contest_status
+-- TODO: add tests
 from {{ ref("stg_airbyte_source__hubspot_api_companies") }}
+where
+    1 = 1 and properties_official_office_name is not null
+    {% if is_incremental() %}
+        and `updatedAt` >= (select max(updated_at) from {{ this }})
+    {% endif %}
