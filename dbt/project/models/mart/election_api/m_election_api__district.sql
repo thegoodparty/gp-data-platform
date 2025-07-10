@@ -11,19 +11,11 @@
 with
     districts as (
         select distinct
-            state,
-            district_type as l2_district_type,
-            district_name as l2_district_name,
-            max(inference_at) as inference_at
+            state, district_type as l2_district_type, district_name as l2_district_name
         from {{ ref("int__model_prediction_voter_turnout") }}
         {% if is_incremental() %}
-            where
-                inference_at >= (
-                    select coalesce(max(inference_at), '1900-01-01'::timestamp)
-                    from {{ this }}
-                )
+            where inference_at >= (select max(updated_at) from {{ this }})
         {% endif %}
-        group by state, district_type, district_name
     )
 
 select
@@ -42,8 +34,7 @@ select
     current_timestamp() as updated_at,
     districts.state,
     districts.l2_district_type,
-    districts.l2_district_name,
-    districts.inference_at
+    districts.l2_district_name
 from districts
 {% if is_incremental() %}
     left join

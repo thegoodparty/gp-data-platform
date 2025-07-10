@@ -68,7 +68,6 @@ select
 
     -- Viability assessment
     viability_scores.viability_rating_2_0 as viability_score,
-
     -- Metadata
     tbl_contacts.created_at,
     tbl_contacts.updated_at
