@@ -8,19 +8,9 @@
     )
 }}
 
-/* generate unique gp_contest_id_v1 from the following fields:
-official_office_name
-candidate_office
-office_type
-office_level
-state
-city
-district
-seat_name
-*/
 select
     id as contact_id,
-    -- gp_contest_id_v1
+
     -- office information
     properties_official_office_name as official_office_name,
     properties_candidate_office as candidate_office,
