@@ -72,9 +72,22 @@ select
         then 'not started'
         when
             current_date() >= filing_deadline
-            and current_date() <= greatest(general_election_date, runoff_election_date)
+            and current_date() <= case
+                when runoff_election_date is null
+                then general_election_date
+                when general_election_date is null
+                then runoff_election_date
+                else greatest(runoff_election_date, general_election_date)
+            end
         then 'in progress'
-        when current_date() > greatest(general_election_date, runoff_election_date)
+        when
+            current_date() > case
+                when runoff_election_date is null
+                then general_election_date
+                when general_election_date is null
+                then runoff_election_date
+                else greatest(runoff_election_date, general_election_date)
+            end
         then 'completed'
     end as contest_status,
     cast(null as string) as primary_results,
