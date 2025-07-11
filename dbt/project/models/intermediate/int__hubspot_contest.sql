@@ -103,7 +103,10 @@ select
 -- TODO: add tests
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
-    1 = 1 and properties_official_office_name is not null
+    1 = 1
+    and properties_official_office_name is not null
+    and properties_office_type is not null
+    and properties_candidate_office is not null
     {% if is_incremental() %}
         and `updatedAt` >= (select max(updated_at) from {{ this }})
     {% endif %}
