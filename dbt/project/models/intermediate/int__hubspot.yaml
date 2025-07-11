@@ -35,3 +35,30 @@ models:
           - not_null
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+  - name: int__hubspot_contest
+    description: >
+        "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Contest."
+    columns:
+      - name: contact_id
+        description: "HubSpot ID of the contact from the source system"
+        tests:
+          - unique
+          - not_null
+      - name: official_office_name
+        description: "Official office name of the contact"
+        tests:
+          - not_null
+      - name: candidate_office
+        description: "Candidate office of the contact"
+        tests:
+          - not_null
+      - name: office_type
+        description: "Office type of the contact"
+        tests:
+          - not_null
+      - name: office_level
+        description: "Office level of the contact"
+        tests:
+          - not_null
+      - name: partisan_type

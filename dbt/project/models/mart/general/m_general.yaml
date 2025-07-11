@@ -194,3 +194,17 @@ models:
       - name: candidacy_result
         description: Latest result of this candidate's campaign (won, lost primary, etc.)
         data_type: varchar
+
+
+  - name: m_general__contest
+    description: >
+      This model creates the contest object in the mart layer using the hubspot data
+    columns:
+      - name: gp_contest_id
+        description: Internally generated unique identifier for contests
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
