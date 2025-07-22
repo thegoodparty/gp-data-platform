@@ -91,7 +91,7 @@ with
                 tbl_contacts.is_partisan,
                 try_cast(tbl_companies.properties_partisan_np as string)
             ) as is_partisan,
-            coalesce(tbl_contacts.state, tbl_companies.properties_state) as state,
+            tbl_contacts.state as state,
             coalesce(tbl_contacts.city, tbl_companies.properties_city) as city,
             coalesce(
                 tbl_contacts.district, tbl_companies.properties_candidate_district
