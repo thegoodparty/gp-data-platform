@@ -37,8 +37,7 @@ select
     properties_partisan_type as is_partisan,
 
     -- Geographic information
-    tbl_states.state_cleaned_postal_code as state,
-    -- properties_state as state,
+    coalesce(tbl_states.state_cleaned_postal_code, properties_state) as state,
     properties_city as city,
     properties_candidate_district as district,
     properties_open_seat as seat,
