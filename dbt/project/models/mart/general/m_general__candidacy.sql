@@ -73,7 +73,7 @@ select
     tbl_contacts.created_at,
     tbl_contacts.updated_at
 
-from {{ ref("int__hubspot_contacts_w_campanies") }} as tbl_contacts
+from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
 left join
     {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
     on tbl_contacts.company_id = viability_scores.id

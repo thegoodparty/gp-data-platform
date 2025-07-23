@@ -37,7 +37,7 @@ select
     properties_partisan_type as is_partisan,
 
     -- Geographic information
-    properties_state as state,
+    coalesce(tbl_states.state_cleaned_postal_code, properties_state) as state,
     properties_city as city,
     properties_candidate_district as district,
     properties_open_seat as seat,
@@ -60,6 +60,9 @@ select
     `createdAt` as created_at,
     `updatedAt` as updated_at
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+left join
+    {{ ref("clean_states") }} as tbl_states
+    on trim(upper(properties_state)) = tbl_states.state_raw
 where
     1 = 1 and properties_firstname is not null and properties_lastname is not null
     {% if is_incremental() %}

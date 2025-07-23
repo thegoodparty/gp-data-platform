@@ -1,0 +1,64 @@
+version: 2
+
+seeds:
+  - name: fips_codes
+    description: >
+      Federal Information Processing System (FIPS) Codes for States and Counties
+
+      FIPS codes are numbers which uniquely identify geographic areas.  The number of
+      digits in FIPS codes vary depending on the level of geography.  State-level FIPS
+      codes have two digits, county-level FIPS codes have five digits of which the
+      first two are the FIPS code of the state to which the county belongs.  When
+      using the list below to look up county FIPS codes, it is advisable to first look
+      up the FIPS code for the state to which the county belongs.  This will help you
+      identify the right section of the list while scrolling down, which can be
+      important since there are over 3000 counties and county-equivalents (e.g.
+      independent cities, parishes, boroughs) in the United States.
+
+      see https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt
+    columns:
+      - name: fips_code
+        tests:
+          - unique
+          - not_null
+      - name: place_name
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              value_set: [
+                'AK', 'AL', 'AR', 'AZ', 'CA', 'CO', 'CT', 'DC', 'DE', 'FL',
+                'GA', 'HI', 'IA', 'ID', 'IL', 'IN', 'KS', 'KY', 'LA', 'MA',
+                'MD', 'ME', 'MI', 'MN', 'MO', 'MS', 'MT', 'NC', 'ND', 'NE',
+                'NH', 'NJ', 'NM', 'NV', 'NY', 'OH', 'OK', 'OR', 'PA', 'RI',
+                'SC', 'SD', 'TN', 'TX', 'UT', 'VA', 'VT', 'WA', 'WI', 'WV',
+                'WY'
+              ]
+              row_condition: "level = 'state'"
+
+      - name: level
+        tests:
+          - not_null
+    tests:
+      - dbt_expectations.expect_compound_columns_to_be_unique:
+          column_list: ["fips_code", "place_name"]
+
+  - name: clean_states
+    description: "Clean state names, postal codes, and FIPS codes for US states and territories"
+    columns:
+      - name: state_raw
+        description: "Raw state name"
+        tests:
+          - not_null
+          - unique
+      - name: state_cleaned_postal_code
+        description: "Clean state name"
+        tests:
+        - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              value_set: [
+                'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+                'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+                'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+                'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+                'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+                'DC'
+              ]
