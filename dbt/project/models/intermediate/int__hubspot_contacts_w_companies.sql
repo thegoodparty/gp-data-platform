@@ -91,7 +91,11 @@ with
                 tbl_contacts.is_partisan,
                 try_cast(tbl_companies.properties_partisan_np as string)
             ) as is_partisan,
-            coalesce(tbl_contacts.state, tbl_companies.properties_state) as state,
+            coalesce(
+                tbl_contacts.state,
+                tbl_states_company.state_cleaned_postal_code,
+                tbl_companies.properties_state
+            ) as state,
             coalesce(tbl_contacts.city, tbl_companies.properties_city) as city,
             coalesce(
                 tbl_contacts.district, tbl_companies.properties_candidate_district
@@ -164,6 +168,10 @@ with
         left join
             {{ ref("stg_airbyte_source__hubspot_api_companies") }} as tbl_companies
             on tbl_companies.id = tbl_engagements.company_id_association
+        left join
+            {{ ref("clean_states") }} as tbl_states_company
+            on trim(upper(tbl_companies.properties_state))
+            = tbl_states_company.state_raw
         {% if is_incremental() %}
             where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
