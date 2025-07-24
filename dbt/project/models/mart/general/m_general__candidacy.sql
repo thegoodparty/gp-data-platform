@@ -66,8 +66,10 @@ select
     tbl_contacts.is_open_seat,
     tbl_contacts.candidacy_result,
 
-    -- Viability assessment
+    -- Assessments
     viability_scores.viability_rating_2_0 as viability_score,
+    tbl_contacts.win_number,
+    tbl_contacts.win_number_model,
 
     -- Metadata
     tbl_contacts.created_at,
