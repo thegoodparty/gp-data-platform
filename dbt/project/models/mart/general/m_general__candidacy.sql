@@ -12,6 +12,7 @@
 select
     -- Identifiers
     tbl_contacts.gp_candidacy_id,
+    tbl_contacts.product_campaign_id,
     "candidacy_id-tbd" as candidacy_id,
     "gp_user_id-tbd" as gp_user_id,
     "gp_contest_id-tbd" as gp_contest_id,
