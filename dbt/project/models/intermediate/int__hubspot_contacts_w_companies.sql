@@ -49,13 +49,13 @@ with
             ) as full_name,
             tbl_gp_db_campaign.data:name::string as full_name_gp_db,
             coalesce(
-                tbl_contacts.first_name, tbl_gp_db_campaign.details:"firstName"::string
+                tbl_contacts.first_name, tbl_gp_db_campaign.details:`firstName`::string
             ) as first_name,
-            tbl_gp_db_campaign.details:"firstName"::string as first_name_gp_db,
+            tbl_gp_db_campaign.details:`firstName`::string as first_name_gp_db,
             coalesce(
-                tbl_contacts.last_name, tbl_gp_db_campaign.details:"lastName"::string
+                tbl_contacts.last_name, tbl_gp_db_campaign.details:`lastName`::string
             ) as last_name,
-            tbl_gp_db_campaign.details:"lastName"::string as last_name_gp_db,
+            tbl_gp_db_campaign.details:`lastName`::string as last_name_gp_db,
             tbl_contacts.candidate_id_source as candidate_id_source,
             tbl_contacts.candidate_id_tier as candidate_id_tier,
             coalesce(
@@ -114,11 +114,11 @@ with
             ) as party_affiliation,
             tbl_gp_db_campaign.details:party::string as party_affiliation_gp_db,
             coalesce(
-                tbl_gp_db_campaign.details:"partisanType"::string,
+                tbl_gp_db_campaign.details:`partisanType`::string,
                 tbl_contacts.is_partisan,
                 try_cast(tbl_companies.properties_partisan_np as string)
             ) as is_partisan,
-            tbl_gp_db_campaign.details:"partisanType"::string as is_partisan_gp_db,
+            tbl_gp_db_campaign.details:`partisanType`::string as is_partisan_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:state::string,
                 tbl_contacts.state,
@@ -143,27 +143,27 @@ with
                 cast(tbl_companies.properties_candidates_seats as string)
             ) as seat,
             coalesce(
-                tbl_gp_db_campaign.details:"filingDeadline"::string,
+                tbl_gp_db_campaign.details:`filingDeadline`::string,
                 tbl_contacts.filing_deadline,
                 tbl_companies.properties_filing_deadline
             ) as filing_deadline,
-            tbl_gp_db_campaign.details:"filingDeadline"::string
+            tbl_gp_db_campaign.details:`filingDeadline`::string
             as filing_deadline_gp_db,
             coalesce(
                 try_cast(
-                    tbl_gp_db_campaign.details:"primaryElectionDate"::string as date
+                    tbl_gp_db_campaign.details:`primaryElectionDate`::string as date
                 ),
                 tbl_contacts.primary_election_date,
                 tbl_companies.properties_primary_date
             ) as primary_election_date,
-            tbl_gp_db_campaign.details:"primaryElectionDate"::string
+            tbl_gp_db_campaign.details:`primaryElectionDate`::string
             as primary_election_date_gp_db,
             coalesce(
-                try_cast(tbl_gp_db_campaign.details:"electionDate"::string as date),
+                try_cast(tbl_gp_db_campaign.details:`electionDate`::string as date),
                 tbl_contacts.general_election_date,
                 tbl_companies.properties_election_date
             ) as general_election_date,
-            tbl_gp_db_campaign.details:"electionDate"::string
+            tbl_gp_db_campaign.details:`electionDate`::string
             as general_election_date_gp_db,
             coalesce(
                 tbl_contacts.runoff_election_date, tbl_companies.properties_runoff_date
@@ -200,7 +200,7 @@ with
             tbl_gp_db_campaign.id as product_campaign_id,
 
             -- assessments
-            tbl_gp_db_ptv.data:"winNumber"::string as win_number,
+            tbl_gp_db_ptv.data:`winNumber`::string as win_number,
             null::string as win_number_model,
 
             -- Matching logic
@@ -278,6 +278,7 @@ select
     candidate_id_tier,
     phone_number,
     website_url,
+    website_url_gp_db,
     linkedin_url,
     linkedin_url_gp_db,
     twitter_handle,
