@@ -1,6 +1,6 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit, regexp_replace
-from pyspark.sql.types import BooleanType, DoubleType
+from pyspark.sql.types import BooleanType, DoubleType, StringType
 
 ELECTION_COLUMNS = [
     "General_2030",
@@ -782,5 +782,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # cast elections as booleans
     for column in ELECTION_COLUMNS:
         df = df.withColumn(column, col(column).cast(BooleanType()))
+
+    # other casting changes
+    df = df.withColumn(
+        "ConsumerData_PASS_Prospector_Home_Value_Mortgage_File",
+        col("ConsumerData_PASS_Prospector_Home_Value_Mortgage_File").cast(StringType()),
+    )
 
     return df
