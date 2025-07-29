@@ -25,6 +25,14 @@ models:
           - not_null
           - unique
 
+  - name: stg_airbyte_source__ballotready_s3_recruitment_v1
+    description: Recruitment data load from ballotready csvs in s3 bucket
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
+
   - name: stg_airbyte_source__ballotready_s3_uscities_v1_77
     description: US Cities data load from ballotready csvs in s3 bucket
     columns:
