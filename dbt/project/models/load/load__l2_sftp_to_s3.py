@@ -396,18 +396,28 @@ def model(dbt, session: SparkSession):
     # are not robust so stick with one core in databricks
     # TODO: move this to airflow over parallel tasks by each state
     states_pd = states.toPandas()
-    uniform_loads = states_pd.copy()
-    non_uniform_loads = states_pd.copy()
-    uniform_loads["load_details"] = states_pd["state_id"].apply(
-        extract_and_load_uniform
-    )
-    non_uniform_loads["load_details"] = states_pd["state_id"].apply(
-        extract_and_load_non_uniform
-    )
-    states_loaded_pd = pd.concat(
-        [uniform_loads, non_uniform_loads],
-        ignore_index=True,
-    )
+
+    # Process both uniform and non-uniform loads for each state
+    all_load_details = []
+
+    for state_id in states_pd["state_id"]:
+        # Process uniform load
+        uniform_result = extract_and_load_uniform(state_id)
+        if uniform_result["state_id"] is not None:  # Only add if load was successful
+            all_load_details.append(
+                {"state_id": state_id, "load_details": uniform_result}
+            )
+
+        # Process non-uniform load
+        non_uniform_result = extract_and_load_non_uniform(state_id)
+        if (
+            non_uniform_result["state_id"] is not None
+        ):  # Only add if load was successful
+            all_load_details.append(
+                {"state_id": state_id, "load_details": non_uniform_result}
+            )
+
+    states_loaded_pd = pd.DataFrame(all_load_details)
 
     # Convert back to Spark DataFrame
     load_details_schema = StructType(
