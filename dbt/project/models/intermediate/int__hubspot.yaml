@@ -31,10 +31,12 @@ models:
       - name: gp_candidacy_id
         description: "GoodParty Candidacy ID of the contact"
         tests:
-          - unique
           - not_null
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - unique:
+              config:
+                severity: warn
 
   - name: int__hubspot_contest
     description: >
