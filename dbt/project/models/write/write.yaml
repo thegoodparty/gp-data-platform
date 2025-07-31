@@ -29,3 +29,30 @@ models:
             - not_null
       - name: number_of_rows
         description: "The number of rows in the table that's been loaded"
+
+  - name: write__l2_databricks_to_gp_api
+    description: >
+      This model writes data from Databricks to the voter db in gp-api.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
+      voter_db_host: "{{ env_var('DBT_VOTER_DB_HOST') }}"
+      voter_db_port: "{{ env_var('DBT_VOTER_DB_PORT') }}"
+      voter_db_name: "{{ env_var('DBT_VOTER_DB_NAME') }}"
+      voter_db_schema: "{{ env_var('DBT_VOTER_DB_SCHEMA') }}"
+      voter_db_user: "{{ env_var('DBT_VOTER_DB_USER') }}"
+      voter_db_pw: "{{ env_var('DBT_VOTER_DB_PW') }}"
+    meta:
+      owner: "Data Engineering Team"
+      contains_pii: false
+    columns:
+      - name: id
+        description: "Unique identifier for the loaded table and job"
+        tests:
+          - not_null
+          - unique
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - source_file_name
+            - loaded_at

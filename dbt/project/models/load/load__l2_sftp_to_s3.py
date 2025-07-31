@@ -139,7 +139,7 @@ def _extract_and_load_w_params(
                 remote_file_path = "/VM2Uniform"
                 string_pattern = f"VM2Uniform--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
             else:
-                remote_file_path = "/VMFiles/"
+                remote_file_path = "/VMFiles"
                 string_pattern = f"VM2--{state_id}" + r"--\d{4}-\d{2}-\d{2}\.zip"
 
             file_list = sftp_client.listdir(remote_file_path)
@@ -396,11 +396,28 @@ def model(dbt, session: SparkSession):
     # are not robust so stick with one core in databricks
     # TODO: move this to airflow over parallel tasks by each state
     states_pd = states.toPandas()
-    uniform_loads = states_pd["state_id"].apply(extract_and_load_uniform)
-    non_uniform_loads = states_pd["state_id"].apply(extract_and_load_non_uniform)
-    states_pd["load_details"] = pd.concat(
-        [uniform_loads, non_uniform_loads], ignore_index=True
-    )
+
+    # Process both uniform and non-uniform loads for each state
+    all_load_details = []
+
+    for state_id in states_pd["state_id"]:
+        # Process uniform load
+        uniform_result = extract_and_load_uniform(state_id)
+        if uniform_result["state_id"] is not None:  # Only add if load was successful
+            all_load_details.append(
+                {"state_id": state_id, "load_details": uniform_result}
+            )
+
+        # Process non-uniform load
+        non_uniform_result = extract_and_load_non_uniform(state_id)
+        if (
+            non_uniform_result["state_id"] is not None
+        ):  # Only add if load was successful
+            all_load_details.append(
+                {"state_id": state_id, "load_details": non_uniform_result}
+            )
+
+    states_loaded_pd = pd.DataFrame(all_load_details)
 
     # Convert back to Spark DataFrame
     load_details_schema = StructType(
@@ -423,7 +440,7 @@ def model(dbt, session: SparkSession):
             ),
         ]
     )
-    states = session.createDataFrame(states_pd, load_details_schema)
+    states = session.createDataFrame(states_loaded_pd, load_details_schema)
 
     # generate an uuid for the load job
     states = states.withColumn("load_id", lit(str(uuid4())))
