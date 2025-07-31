@@ -789,4 +789,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         col("ConsumerData_PASS_Prospector_Home_Value_Mortgage_File").cast(StringType()),
     )
 
+    # Extract state from LALVOTERID (substring starting at position 4 with length 2)
+    df = df.withColumn("state_from_lalvoterid", col("LALVOTERID").substr(4, 2))
+
     return df
