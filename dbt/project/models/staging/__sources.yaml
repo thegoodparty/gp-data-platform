@@ -66,6 +66,10 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
+      - name: techspeed_gdrive_candidates
+        description: raw data load from Techspeed Google Drive
+      - name: techspeed_gdrive_marketing_data_enrichment
+        description: raw data load from Techspeed Google Drive
 
 
   - name: model_predictions
