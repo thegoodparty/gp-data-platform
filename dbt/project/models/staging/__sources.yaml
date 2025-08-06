@@ -29,6 +29,8 @@ sources:
         description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_office_holders_v3
         description: raw data load from s3 data dump sent from ballotready
+      - name: ballotready_s3_recruitment_v1
+        description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_uscities_v1_77
         description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_uscounties_v1_73
@@ -64,6 +66,10 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
+      - name: techspeed_gdrive_candidates
+        description: raw data load from Techspeed Google Drive
+      - name: techspeed_gdrive_marketing_data_enrichment
+        description: raw data load from Techspeed Google Drive
 
 
   - name: model_predictions

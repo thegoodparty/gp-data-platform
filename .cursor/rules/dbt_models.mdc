@@ -1,0 +1,19 @@
+---
+description: Core dbt coding standards
+globs: ["dbt/**/*.sql", "dbt/**/*.yml", "dbt/**/*.yaml"]
+alwaysApply: true
+---
+- Adhere to dbt best practices[](https://docs.getdbt.com/best-practices).
+- Use lowercase, snake_case for model, source, and column names (e.g., `customer_orders`, `order_id`).
+- Reference models and sources using `{{ ref('model_name') }}` and `{{ source('source_name', 'table_name') }}`.
+- Avoid `SELECT *` in production models; list columns explicitly.
+- Organize models into `staging`, `intermediate`, `marts` subdirectories (e.g., `models/staging/stg_orders.sql`).
+- Use incremental models for large datasets with `{{ config(materialized='incremental') }}` and `is_incremental()` checks. Example:
+  ```sql
+  {{ config(materialized='incremental') }}
+  SELECT *
+  FROM {{ ref('stg_orders') }}
+  {% if is_incremental() %}
+  WHERE updated_at > (SELECT MAX(updated_at) FROM {{ this }})
+  {% endif %}
+  ```
