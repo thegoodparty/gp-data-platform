@@ -544,6 +544,7 @@ def model(dbt, session) -> DataFrame:
                 "Race",
                 "Stance",
                 "District",
+                "Position",
                 "Projected_Turnout",
             ],
             [
@@ -553,6 +554,7 @@ def model(dbt, session) -> DataFrame:
                 race_df,
                 stance_df,
                 district_df,
+                position_df,
                 projected_turnout_df,
             ],
         )
