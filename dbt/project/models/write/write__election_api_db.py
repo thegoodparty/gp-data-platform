@@ -103,6 +103,27 @@ DISTRICT_UPSERT_QUERY = """
         l2_district_name = EXCLUDED.l2_district_name
     """
 
+POSITION_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Position" (
+        id,
+        br_database_id,
+        br_position_id,
+        state,
+        district_id
+    )
+    SELECT
+        id::uuid,
+        br_database_id,
+        br_position_id,
+        state,
+        district_id::uuid
+    FROM {staging_schema}."Position"
+    ON CONFLICT (id) DO UPDATE SET
+        br_database_id = EXCLUDED.br_database_id,
+        br_position_id = EXCLUDED.br_position_id,
+        state = EXCLUDED.state,
+        district_id = EXCLUDED.district_id
+"""
 ISSUE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Issue" (
         id,
@@ -494,6 +515,7 @@ def model(dbt, session) -> DataFrame:
     race_df: DataFrame = dbt.ref("m_election_api__race")
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
     district_df: DataFrame = dbt.ref("m_election_api__district")
+    position_df: DataFrame = dbt.ref("m_election_api__position")
     projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
     # filter the race dataframe to only include races that are within 1 day of the current date and 2 years from the current date
@@ -522,6 +544,7 @@ def model(dbt, session) -> DataFrame:
                 "Race",
                 "Stance",
                 "District",
+                "Position",
                 "Projected_Turnout",
             ],
             [
@@ -531,6 +554,7 @@ def model(dbt, session) -> DataFrame:
                 race_df,
                 stance_df,
                 district_df,
+                position_df,
                 projected_turnout_df,
             ],
         )
@@ -570,6 +594,7 @@ def model(dbt, session) -> DataFrame:
             "Issue",
             "Stance",
             "District",
+            "Position",
             "Projected_Turnout",
         ],
         [
@@ -579,6 +604,7 @@ def model(dbt, session) -> DataFrame:
             issue_df,
             stance_df,
             district_df,
+            position_df,
             projected_turnout_df,
         ],
         [
@@ -588,6 +614,7 @@ def model(dbt, session) -> DataFrame:
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
             DISTRICT_UPSERT_QUERY,
+            POSITION_UPSERT_QUERY,
             PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
     ):
