@@ -1,0 +1,99 @@
+version: 2
+
+models:
+  - name: int__techspeed_uploaded_files
+    description: |
+      Tracking table for TechSpeed source files that have been successfully processed.
+      This replaces manual tracking in sandbox.uploaded_files for dbt-managed processing.
+    columns:
+      - name: source_file_url
+        description: The _ab_source_file_url from TechSpeed source data
+        tests:
+          - not_null
+          - unique
+      - name: uploaded_at
+        description: Timestamp when the file was successfully processed
+        tests:
+          - not_null
+      - name: processing_date
+        description: Date when the file was processed (for partitioning/filtering)
+        tests:
+          - not_null
+
+  - name: int__techspeed_new_candidates
+    description: |
+      TechSpeed candidates from files that haven't been processed yet.
+      This is an incremental model that only processes new source files.
+    columns:
+      - name: candidate_id_source
+        description: Original candidate ID from TechSpeed
+        tests:
+          - not_null
+          - unique
+      - name: _ab_source_file_url
+        description: Source file URL for tracking processed files
+        tests:
+          - not_null
+      - name: new_records
+        description: Flag indicating whether this record is from a new file (always 'new' in this model)
+
+  - name: int__techspeed_cleaned_candidates
+    description: |
+      TechSpeed candidates with cleaned names, standardized fields, and contact validation.
+      Applies complex name cleaning logic and filters out non-contactable candidates.
+    columns:
+      - name: last_name
+        description: Cleaned last name using candidate_name_cleaning macro
+      - name: phone
+        description: Phone number with separators removed
+      - name: candidate_type
+        description: Standardized candidate type (Incumbent/Challenger)
+      - name: election_type
+        description: Standardized election type (Primary/General)
+      - name: upload_exclusion_reason
+        description: Reason for excluding from upload (e.g., 'no_contact')
+
+  - name: int__techspeed_deduplicated_candidates
+    description: |
+      TechSpeed candidates after deduplication against existing HubSpot contacts.
+      Excludes candidates already in HubSpot and applies date/business logic filters.
+    columns:
+      - name: ts_candidate_code
+        description: Generated candidate code for deduplication (first_name__last_name__state__office_type)
+      - name: standardized_office_type
+        description: Office type standardized using map_ballotready_office_type macro
+      - name: election_date
+        description: Consolidated election date (General if available, else Primary)
+      - name: corrected_general_election_date
+        description: General election date with known corrections applied
+      - name: final_exclusion_reason
+        description: Final reason for excluding from upload (in_hubspot, past_election, etc.)
+
+  - name: int__techspeed_hubspot_ready
+    description: |
+      Final TechSpeed candidates formatted for HubSpot upload.
+      All field names match HubSpot property names, nulls converted to empty strings.
+      Only includes candidates ready for upload (no exclusion reasons).
+    columns:
+      - name: Candidate ID Source
+        description: TechSpeed candidate identifier
+      - name: First Name
+        description: Candidate first name
+      - name: Last Name
+        description: Cleaned candidate last name
+      - name: Email
+        description: Candidate email address
+      - name: Phone Number
+        description: Cleaned phone number
+      - name: Postal Code
+        description: Zero-padded 5-digit postal code
+      - name: Office Type
+        description: Standardized office type for HubSpot
+      - name: Election Date
+        description: Primary election date (General if available, else Primary)
+      - name: Upload Date
+        description: Date when record was processed for upload
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - 'Candidate ID Source'
