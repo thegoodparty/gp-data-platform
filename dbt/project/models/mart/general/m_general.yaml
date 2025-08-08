@@ -195,6 +195,26 @@ models:
         description: Latest result of this candidate's campaign (won, lost primary, etc.)
         data_type: varchar
 
+  - name: m_general__candidate
+    description: >
+      This model creates the candidate object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidate_id
+        description: Internally generated unique identifier for candidates
+        data_type: uuid
+      - name: gp_contest_id
+        description: Identifier to link contest
+        data_type: uuid
+        data_tests:
+          - relationships:
+              to: ref('m_general__contest')
+              field: gp_contest_id
+      - name: prod_db_user_id
+        description: Identifier for the candidate in the production database
+        data_tests:
+          - unique:
+              config:
+                where: "prod_db_user_id is not null"
 
   - name: m_general__contest
     description: >
