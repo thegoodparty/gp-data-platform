@@ -642,9 +642,9 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
-    # now drop the candidacy's that have no race
+    # now drop the candidacy's that have no race or it's now null
     _execute_sql_query(
-        f'DELETE FROM {db_schema}."Candidacy" WHERE race_id not in (select id from {db_schema}."Race")',
+        f'DELETE FROM {db_schema}."Candidacy" WHERE race_id not in (select id from {db_schema}."Race") or race_id is null',
         db_host,
         db_port,
         db_user,
