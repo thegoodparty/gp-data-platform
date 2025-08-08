@@ -84,3 +84,8 @@ left join
 {% if is_incremental() %}
     where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
 {% endif %}
+qualify
+    row_number() over (
+        partition by gp_candidacy_id order by tbl_contacts.updated_at desc
+    )
+    = 1
