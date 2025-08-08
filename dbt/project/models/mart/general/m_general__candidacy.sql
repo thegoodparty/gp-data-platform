@@ -80,7 +80,11 @@ from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
 left join
     {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
     on tbl_contacts.company_id = viability_scores.id
-
 {% if is_incremental() %}
     where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
 {% endif %}
+qualify
+    row_number() over (
+        partition by gp_candidacy_id order by tbl_contacts.updated_at desc
+    )
+    = 1
