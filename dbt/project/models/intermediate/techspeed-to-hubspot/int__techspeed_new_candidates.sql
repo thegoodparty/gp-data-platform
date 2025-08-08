@@ -3,9 +3,12 @@
         materialized="incremental",
         unique_key="candidate_id_source",
         on_schema_change="sync_all_columns",
-        tags=["techspeed", "incremental"],
+        tags=["techspeed", "incremental"]
     )
 }}
+
+-- Ensure uploaded_files table exists before this model runs
+{{ config(depends_on=[ref('int__techspeed_uploaded_files')]) }}
 
 with
     techspeed_raw as (
