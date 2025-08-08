@@ -8,6 +8,15 @@
     )
 }}
 
+-- TODO:
+-- 1. confirm all id columns are set
+-- 2. add tests for them:
+-- id
+-- gp_candidate_id_v1
+-- hubspot_contact_id
+-- prodbd_user_id
+-- gp_candidacy_id
+-- gp_contest_id
 select
     tbl_hs_contacts.contact_id as hubspot_contact_id,
     tbl_gp_user.id as prod_db_user_id,
