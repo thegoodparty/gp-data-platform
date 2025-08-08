@@ -642,6 +642,16 @@ def model(dbt, session) -> DataFrame:
         db_name,
     )
 
+    # now drop the candidacy's that have no race
+    _execute_sql_query(
+        f'DELETE FROM {db_schema}."Candidacy" WHERE race_id is not in (select id from {db_schema}."Race")',
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
     data = []
     for table_name, count in table_load_counts.items():
         data.append(
