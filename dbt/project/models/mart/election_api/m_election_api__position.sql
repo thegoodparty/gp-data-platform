@@ -19,7 +19,7 @@ with
             tbl_district.id as district_id,
             tbl_position.created_at,
             tbl_position.updated_at
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20250806") }} as tbl_match
+        from {{ ref("stg_model_predictions__llm_l2_br_match_20250811") }} as tbl_match
         left join
             {{ ref("int__enhanced_position") }} as tbl_position
             on tbl_match.br_database_id = tbl_position.br_database_id
@@ -45,6 +45,6 @@ from matched_positions
 where
     district_id is not null
     and (
-        (lower(l2_district_type) = 'state' and confidence >= 99)
+        (lower(l2_district_type) = 'state' and confidence >= 100)
         or (lower(l2_district_type) != 'state' and confidence >= 95)
     )
