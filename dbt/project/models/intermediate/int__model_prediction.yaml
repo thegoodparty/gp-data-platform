@@ -1,0 +1,38 @@
+models:
+  - name: int__model_prediction_voter_turnout
+    description: Turnout projections data load from model predictions
+    columns:
+      - name: district_type
+        description: The number of ballots projected
+        data_tests:
+          - not_null
+      - name: district_name
+        description: The district name
+        data_tests:
+          - not_null
+      - name: election_year
+        description: The election year
+        data_tests:
+          - not_null
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [
+                "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                "DC", "US",
+              ]
+    tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns:
+          - state
+          - district_type
+          - district_name
+          - election_year
+          - election_code
+          - model_version
