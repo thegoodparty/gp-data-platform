@@ -1,7 +1,7 @@
 {{
     config(
         materialized="incremental",
-        unique_key="hubspot_contact_id",
+        unique_key=["hubspot_contact_id", "gp_candidacy_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["mart", "general", "candidacy", "hubspot"],
@@ -21,6 +21,7 @@ with
     ranked_candidates as (
         select
             tbl_hs_contacts.contact_id as hubspot_contact_id,
+            tbl_hs_contacts.gp_candidacy_id,
             tbl_gp_user.id as prod_db_user_id,
             tbl_hs_contacts.candidate_id_source,
             tbl_contest.gp_contest_id,
@@ -57,7 +58,10 @@ with
                 when tbl_gp_user.id is not null
                 then
                     row_number() over (
-                        partition by tbl_hs_contacts.contact_id, tbl_gp_user.id
+                        partition by
+                            tbl_hs_contacts.contact_id,
+                            tbl_hs_contacts.gp_candidacy_id,
+                            tbl_gp_user.id
                         order by tbl_gp_user.updated_at desc
                     )
                 else 1
@@ -77,6 +81,7 @@ with
 
 select
     hubspot_contact_id,
+    gp_candidacy_id,
     prod_db_user_id,
     candidate_id_source,
     gp_contest_id,
