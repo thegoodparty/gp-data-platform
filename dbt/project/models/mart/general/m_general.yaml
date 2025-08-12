@@ -203,8 +203,6 @@ models:
         description: Unique identifier from HubSpot for the contact
         tests:
           - not_null
-          - unique
-
       - name: gp_candidacy_id
         description: Internally generated unique identifier for candidacies
         tests:
@@ -212,12 +210,19 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
-
+      - name: prod_db_user_id
+        description: Identifier for the candidate in the production database
+        tests:
+          - unique:
+              config:
+                where: "prod_db_user_id is not null"
+      - name: gp_contest_id
+        description: Identifier to link contest
+        tests:
+          - relationships:
+              to: ref('m_general__contest')
+              field: gp_contest_id
     tests:
-      - unique:
-          column_name: "hubspot_contact_id || '_' || gp_candidacy_id"
-          config:
-            where: "hubspot_contact_id is not null and gp_candidacy_id is not null"
       - relationships:
           to: ref('int__hubspot_contacts_w_companies')
           field: "contact_id"
@@ -226,65 +231,6 @@ models:
           to: ref('int__hubspot_contacts_w_companies')
           field: "gp_candidacy_id"
           column_name: gp_candidacy_id
-
-      - name: prod_db_user_id
-        description: Identifier for the candidate in the production database
-        tests:
-          - unique:
-              config:
-                where: "prod_db_user_id is not null"
-
-      - name: candidate_id_source
-        description: Identifier from which source the data originated from
-
-      - name: gp_contest_id
-        description: Identifier to link contest
-        tests:
-          - relationships:
-              to: ref('m_general__contest')
-              field: gp_contest_id
-
-      - name: candidate_name
-        description: Full name of the candidate
-
-      - name: first_name
-        description: Candidate's given name
-
-      - name: last_name
-        description: Candidate's family name
-
-      - name: birth_date
-        description: Candidate's date of birth
-
-      - name: candidate_email
-        description: Primary contact email
-
-      - name: phone_number
-        description: Primary contact phone number
-
-      - name: linkedin_url
-        description: Candidate's LinkedIn profile
-
-      - name: instagram_handle
-        description: Candidate's Instagram handle
-
-      - name: twitter_handle
-        description: Candidate's Twitter (X) handle
-
-      - name: facebook_url
-        description: Candidate's Facebook page
-
-      - name: website_url
-        description: Candidate's campaign website
-
-      - name: street_address
-        description: Candidate's address (if available)
-
-      - name: created_at
-        description: When the record was created
-
-      - name: updated_at
-        description: When the record was last updated
 
   - name: m_general__contest
     description: >

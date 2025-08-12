@@ -1,7 +1,7 @@
 {{
     config(
         materialized="incremental",
-        unique_key=["hubspot_contact_id", "gp_candidacy_id"],
+        unique_key=["gp_candidacy_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["mart", "general", "candidacy", "hubspot"],
@@ -77,6 +77,12 @@ with
         {% if is_incremental() %}
             where tbl_hs_contacts.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
+        qualify
+            row_number() over (
+                partition by tbl_hs_contacts.gp_candidacy_id
+                order by tbl_hs_contacts.updated_at desc
+            )
+            = 1
     )
 
 select
