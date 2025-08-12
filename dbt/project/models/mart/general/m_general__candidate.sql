@@ -8,15 +8,6 @@
     )
 }}
 
--- TODO:
--- 1. confirm all id columns are set
--- 2. add tests for them:
--- id
--- gp_candidate_id_v1
--- hubspot_contact_id
--- prodbd_user_id
--- gp_candidacy_id
--- gp_contest_id
 with
     ranked_candidates as (
         select
@@ -31,11 +22,11 @@ with
         -- Data source follows the following hierarchy:
         -- gp db -> hs.companies -> hs.contact
         */
-            coalesce(tbl_gp_user.name, tbl_hs_contacts.full_name) as candidate_name,
+            coalesce(tbl_gp_user.name, tbl_hs_contacts.full_name) as full_name,
             coalesce(tbl_gp_user.first_name, tbl_hs_contacts.first_name) as first_name,
             coalesce(tbl_gp_user.last_name, tbl_hs_contacts.last_name) as last_name,
             tbl_hs_contacts.birth_date,
-            coalesce(tbl_gp_user.email, tbl_hs_contacts.email) as candidate_email,
+            coalesce(tbl_gp_user.email, tbl_hs_contacts.email) as email,
             coalesce(tbl_gp_user.phone, tbl_hs_contacts.phone_number) as phone_number,
 
             /*
@@ -86,16 +77,24 @@ with
     )
 
 select
+    {{
+        generate_salted_uuid(
+            fields=[
+                "gp_candidacy_id",
+                "gp_contest_id",
+            ]
+        )
+    }} as gp_candidate_id_v1,
     hubspot_contact_id,
-    gp_candidacy_id,
     prod_db_user_id,
-    candidate_id_source,
+    gp_candidacy_id,
     gp_contest_id,
-    candidate_name,
+    candidate_id_source,
+    full_name,
     first_name,
     last_name,
     birth_date,
-    candidate_email,
+    email,
     phone_number,
     linkedin_url,
     instagram_handle,
@@ -103,6 +102,8 @@ select
     facebook_url,
     website_url,
     street_address,
+    -- is_verified,
+    -- candidate_notes,
     created_at,
     updated_at
 from ranked_candidates

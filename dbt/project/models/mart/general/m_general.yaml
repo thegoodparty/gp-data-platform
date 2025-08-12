@@ -203,6 +203,13 @@ models:
         description: Unique identifier from HubSpot for the contact
         tests:
           - not_null
+      - name: gp_candidate_id_v1
+        description: Internally generated unique identifier for candidates
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
       - name: gp_candidacy_id
         description: Internally generated unique identifier for candidacies
         tests:
