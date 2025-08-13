@@ -1,18 +1,12 @@
 {{ config(materialized="view", tags=["techspeed", "hubspot", "export"]) }}
 
 with
-    latest_candidates as (
+    recent_candidates as (
         select *
-        from (
-            select *,
-                row_number() over (
-                    partition by candidate_uuid 
-                    order by updated_at desc
-                ) as rn
-            from {{ ref("int__techspeed_candidates_processed") }}
-            where final_exclusion_reason is null
-        ) ranked
-        where rn = 1
+        from {{ ref("int__techspeed_candidates_processed") }}
+        where 
+            final_exclusion_reason is null
+            and updated_at >= date_sub(current_timestamp(), 30)  -- Only last 30 days
     )
 
 select
@@ -55,8 +49,7 @@ select
     type as `Type`,
     contact_owner as `Contact Owner`,
     owner_name as `Owner Name`,
-    current_date() as `Upload Date`,
     created_at as `created_at`,
     updated_at as `updated_at`
 
-from latest_candidates
+from recent_candidates

@@ -138,9 +138,9 @@ models:
 
   - name: int__techspeed_hubspot_ready
     description: |
-      Final TechSpeed candidates formatted for HubSpot export with latest records only.
-      Simple view that renames columns to HubSpot format (spaced names) and selects
-      the most recent version of each candidate. Preserves nulls for data integrity.
+      Final TechSpeed candidates formatted for HubSpot export with recently updated records only.
+      Simple view that renames columns to HubSpot format (spaced names) and filters to
+      candidates updated within the last 30 days. Preserves nulls for data integrity.
     columns:
       - name: Candidate ID Source
         description: TechSpeed candidate identifier
@@ -158,8 +158,6 @@ models:
         description: Standardized office type for HubSpot
       - name: Election Date
         description: Primary election date (General if available, else Primary)
-      - name: Upload Date
-        description: Date when record was processed for upload
       - name: created_at
         description: Timestamp when candidacy record was first created (snake_case format)
       - name: updated_at
