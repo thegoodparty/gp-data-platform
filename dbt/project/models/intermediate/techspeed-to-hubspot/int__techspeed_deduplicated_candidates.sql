@@ -23,7 +23,7 @@ with
             )
             and properties_election_date
             between date_trunc('year', current_date()) and date_trunc(
-                'year', date_add(current_date(), interval 1 year)
+                'year', add_months(current_date(), 12)
             )
             - interval 1 day
     ),
@@ -104,7 +104,7 @@ with
         select
             * except (updated_exclusion_reason),
             case
-                when cast(election_date as date) <= current_date()
+                when try_cast(election_date as date) <= current_date()
                 then 'past_election'
                 else updated_exclusion_reason
             end as final_exclusion_reason

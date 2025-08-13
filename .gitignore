@@ -35,3 +35,6 @@ tmp_data/
 
 # Claude Code documentation (project-specific, not for repo)
 CLAUDE.md
+
+# Local development environment files
+dbt/.env.local

@@ -1,50 +1,10 @@
-{{
-    config(
-        materialized="table",
-        tags=["techspeed", "hubspot", "export"],
-        post_hook="insert into {{ ref('int__techspeed_uploaded_files') }} (source_file_url, uploaded_at, processing_date) select distinct _ab_source_file_url, current_timestamp(), current_date() from {{ this }} where final_exclusion_reason is null",
-    )
-}}
+{{ config(materialized="view", tags=["techspeed", "hubspot", "export"]) }}
 
 with
-    deduplicated_candidates as (
-        select * from {{ ref("int__techspeed_deduplicated_candidates") }}
-    ),
-
-    -- Clean district names
-    district_cleaning as (
-        select
-            * except (district),
-            trim(
-                regexp_replace(
-                    regexp_replace(
-                        regexp_replace(
-                            regexp_replace(
-                                district, 'District |Dist\\. #?|Subdistrict |Ward ', ''
-                            ),
-                            '(st|nd|rd|th) Congressional District',
-                            ''
-                        ),
-                        '[-#]',
-                        ''
-                    ),
-                    ' District',
-                    ''
-                )
-            ) as district
-        from deduplicated_candidates
-    ),
-
-    -- Clean city names (remove everything after comma)
-    city_cleaning as (
-        select
-            * except (city),
-            case
-                when city like '%,%'
-                then left(city, position(',' in city) - 1)
-                else city
-            end as city
-        from district_cleaning
+    processed_candidates as (
+        select *
+        from {{ ref("int__techspeed_candidates_processed") }}
+        where final_exclusion_reason is null
     ),
 
     -- Final HubSpot formatting with null-to-empty-string conversion
@@ -83,14 +43,7 @@ with
                 when street_address is null then '' else street_address
             end as `Street Address`,
             case when state is null then '' else state end as `State/Region`,
-
-            -- Zero-pad postal codes to 5 digits
-            case
-                when postal_code is null
-                then ''
-                else right(concat('00000', cast(postal_code as string)), 5)
-            end as `Postal Code`,
-
+            case when postal_code is null then '' else postal_code end as `Postal Code`,
             case when district is null then '' else district end as `District`,
             case when city is null then '' else city end as `City`,
             case
@@ -100,9 +53,7 @@ with
                 when official_office_name is null then '' else official_office_name
             end as `Official Office Name`,
             case
-                when candidate_office is null
-                then ''
-                else initcap(trim(candidate_office))
+                when candidate_office is null then '' else candidate_office
             end as `Candidate Office`,
             case
                 when standardized_office_type is null
@@ -152,16 +103,10 @@ with
                 when contact_owner is null then '' else contact_owner
             end as `Contact Owner`,
             case when owner_name is null then '' else owner_name end as `Owner Name`,
+            current_date() as `Upload Date`
 
-            -- Keep exclusion reason and metadata for analysis
-            final_exclusion_reason,
-            current_date() as `Upload Date`,
-            _ab_source_file_url
-
-        from city_cleaning
+        from processed_candidates
     )
 
--- Return only candidates ready for upload (no exclusion reason)
-select * except (_ab_source_file_url)
+select *
 from hubspot_formatted
-where final_exclusion_reason is null
