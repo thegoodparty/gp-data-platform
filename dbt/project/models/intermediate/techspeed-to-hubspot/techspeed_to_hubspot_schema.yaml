@@ -69,11 +69,78 @@ models:
       - name: final_exclusion_reason
         description: Final reason for excluding from upload (in_hubspot, past_election, etc.)
 
+  - name: int__techspeed_candidates_processed
+    description: |
+      Complete processed TechSpeed candidate data with historical tracking and standardized formatting.
+      This is the main storage table containing all transformations, validations, and business logic.
+      Maintains historical records with proper timestamp management for audit trail.
+    columns:
+      - name: candidate_uuid
+        description: Generated UUID based on candidate components (name, state, office, election year)
+        tests:
+          - not_null
+          - unique
+      - name: candidate_id_source
+        description: Original candidate ID from TechSpeed
+        tests:
+          - not_null
+      - name: first_name
+        description: Candidate first name
+        tests:
+          - not_null
+      - name: last_name
+        description: Cleaned candidate last name using standardization macro
+        tests:
+          - not_null
+      - name: email
+        description: Candidate email address
+      - name: phone
+        description: Cleaned phone number (separators removed)
+      - name: birth_date
+        description: Birth date standardized to yyyy-mm-dd format
+      - name: postal_code
+        description: Cleaned 5-digit ZIP code (removes ZIP+4, leading dashes, zero-pads)
+      - name: population
+        description: Population as bigint (commas removed from string values)
+      - name: filing_deadline
+        description: Filing deadline standardized to yyyy-mm-dd format
+      - name: primary_election_date
+        description: Primary election date standardized to yyyy-mm-dd format
+      - name: corrected_general_election_date
+        description: General election date with corrections, standardized to yyyy-mm-dd format
+      - name: election_date
+        description: Consolidated election date standardized to yyyy-mm-dd format
+      - name: standardized_office_type
+        description: Office type standardized using map_ballotready_office_type macro
+      - name: ts_candidate_code
+        description: Generated candidate code for deduplication (first_name__last_name__state__office_type)
+      - name: final_exclusion_reason
+        description: Final reason for excluding from upload (no_first_name, no_last_name, no_contact, in_hubspot, past_election)
+      - name: created_at
+        description: Timestamp when candidacy record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when candidacy record was last updated
+        tests:
+          - not_null
+      - name: uploaded_at
+        description: Timestamp when candidacy was last exported to HubSpot (NULL if never exported)
+      - name: _ab_source_file_url
+        description: Source file URL for tracking and audit purposes
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - candidate_uuid
+            - updated_at
+
   - name: int__techspeed_hubspot_ready
     description: |
-      Final TechSpeed candidates formatted for HubSpot upload.
-      All field names match HubSpot property names, nulls converted to empty strings.
-      Only includes candidates ready for upload (no exclusion reasons).
+      Final TechSpeed candidates formatted for HubSpot export with latest records only.
+      Simple view that renames columns to HubSpot format (spaced names) and selects 
+      the most recent version of each candidate. Preserves nulls for data integrity.
     columns:
       - name: Candidate ID Source
         description: TechSpeed candidate identifier
