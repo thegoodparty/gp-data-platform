@@ -139,7 +139,7 @@ models:
   - name: int__techspeed_hubspot_ready
     description: |
       Final TechSpeed candidates formatted for HubSpot export with latest records only.
-      Simple view that renames columns to HubSpot format (spaced names) and selects 
+      Simple view that renames columns to HubSpot format (spaced names) and selects
       the most recent version of each candidate. Preserves nulls for data integrity.
     columns:
       - name: Candidate ID Source
@@ -160,6 +160,10 @@ models:
         description: Primary election date (General if available, else Primary)
       - name: Upload Date
         description: Date when record was processed for upload
+      - name: createdAt
+        description: Timestamp when candidacy record was first created (camelCase for HubSpot)
+      - name: updatedAt
+        description: Timestamp when candidacy record was last updated (camelCase for HubSpot)
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:
