@@ -88,32 +88,22 @@ with
             instagram_handle,
             twitter_handle,
             facebook_url,
-            birth_date,
+            {{ standardize_date_format("birth_date") }} as birth_date,
             street_address,
             state,
-
-            -- Zero-pad postal codes to 5 digits
-            case
-                when postal_code is null
-                then null
-                else right(concat('00000', cast(postal_code as string)), 5)
-            end as postal_code,
-
+            {{ standardize_postal_code("postal_code") }} as postal_code,
             district,
             city,
-            population,
+            {{ standardize_population("population") }} as population,
             official_office_name,
             initcap(trim(candidate_office)) as candidate_office,
             standardized_office_type,
             office_level,
-            filing_deadline,
+            {{ standardize_date_format("filing_deadline") }} as filing_deadline,
             ballotready_race_id,
-            -- Parse date fields that might be in M/D/YYYY format
-            try_cast(primary_election_date as date) as primary_election_date,
-            try_cast(
-                corrected_general_election_date as date
-            ) as corrected_general_election_date,
-            try_cast(election_date as date) as election_date,
+            {{ standardize_date_format("primary_election_date") }} as primary_election_date,
+            {{ standardize_date_format("corrected_general_election_date") }} as corrected_general_election_date,
+            {{ standardize_date_format("election_date") }} as election_date,
             election_type,
             uncontested,
             number_of_candidates,

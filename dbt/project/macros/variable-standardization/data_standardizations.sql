@@ -166,3 +166,53 @@
             )
     end
 {% endmacro %}
+
+{#
+  This macro standardizes date fields to yyyy-mm-dd format
+  Usage: {{ standardize_date_format(column_name) }}
+  #}
+{% macro standardize_date_format(column_name) %}
+    case
+        when {{ column_name }} is null then null
+        when try_cast({{ column_name }} as date) is not null 
+        then date_format(try_cast({{ column_name }} as date), 'yyyy-MM-dd')
+        when {{ column_name }} rlike '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$'
+        then date_format(to_date({{ column_name }}, 'M/d/yyyy'), 'yyyy-MM-dd')
+        when {{ column_name }} rlike '^[0-9]{1,2}-[0-9]{1,2}-[0-9]{4}$'
+        then date_format(to_date({{ column_name }}, 'M-d-yyyy'), 'yyyy-MM-dd')
+        when {{ column_name }} rlike '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
+        then date_format(to_date({{ column_name }}, 'MM/dd/yyyy'), 'yyyy-MM-dd')
+        when {{ column_name }} rlike '^[0-9]{2}-[0-9]{2}-[0-9]{4}$'
+        then date_format(to_date({{ column_name }}, 'MM-dd-yyyy'), 'yyyy-MM-dd')
+        else null
+    end
+{% endmacro %}
+
+{#
+  This macro standardizes postal codes to 5-digit ZIP format
+  Usage: {{ standardize_postal_code(column_name) }}
+  #}
+{% macro standardize_postal_code(column_name) %}
+    case
+        when {{ column_name }} is null then null
+        when {{ column_name }} like '%-%' and length({{ column_name }}) = 10 
+        then left({{ column_name }}, 5)  -- Extract 5-digit from ZIP+4
+        when {{ column_name }} like '-%' 
+        then right({{ column_name }}, length({{ column_name }}) - 1)  -- Remove leading dash
+        when length(cast({{ column_name }} as string)) < 5
+        then right(concat('00000', cast({{ column_name }} as string)), 5)  -- Zero-pad
+        else left(cast({{ column_name }} as string), 5)  -- Take first 5 digits
+    end
+{% endmacro %}
+
+{#
+  This macro cleans population fields (removes commas and casts to bigint)
+  Usage: {{ standardize_population(column_name) }}
+  #}
+{% macro standardize_population(column_name) %}
+    case
+        when {{ column_name }} is null then null
+        when trim(cast({{ column_name }} as string)) = '' then null
+        else try_cast(replace(replace(cast({{ column_name }} as string), ',', ''), ' ', '') as bigint)
+    end
+{% endmacro %}

@@ -99,7 +99,10 @@ with
         select
             *,
             case
-                when (phone is null and email is null) then 'no_contact' else null
+                when (first_name is null or trim(first_name) = '') then 'no_first_name'
+                when (last_name is null or trim(last_name) = '') then 'no_last_name'  
+                when ((phone is null or trim(phone) = '') and (email is null or trim(email) = '')) then 'no_contact'
+                else null
             end as upload_exclusion_reason
         from initial_cleaning
     )
