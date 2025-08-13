@@ -66,7 +66,7 @@ with
             {{ ref("m_general__contest") }} as tbl_contest
             on tbl_hs_contacts.contact_id = tbl_contest.contact_id
         {% if is_incremental() %}
-            where tbl_hs_contacts.updated_at > (select max(updated_at) from {{ this }})
+            where tbl_hs_contacts.updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
         qualify
             row_number() over (
