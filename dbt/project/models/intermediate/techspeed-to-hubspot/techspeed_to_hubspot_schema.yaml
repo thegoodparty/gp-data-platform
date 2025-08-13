@@ -160,10 +160,10 @@ models:
         description: Primary election date (General if available, else Primary)
       - name: Upload Date
         description: Date when record was processed for upload
-      - name: createdAt
-        description: Timestamp when candidacy record was first created (camelCase for HubSpot)
-      - name: updatedAt
-        description: Timestamp when candidacy record was last updated (camelCase for HubSpot)
+      - name: created_at
+        description: Timestamp when candidacy record was first created (snake_case format)
+      - name: updated_at
+        description: Timestamp when candidacy record was last updated (snake_case format)
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:

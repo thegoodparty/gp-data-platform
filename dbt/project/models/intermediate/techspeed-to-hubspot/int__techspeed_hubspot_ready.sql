@@ -56,7 +56,7 @@ select
     contact_owner as `Contact Owner`,
     owner_name as `Owner Name`,
     current_date() as `Upload Date`,
-    created_at as `createdAt`,
-    updated_at as `updatedAt`
+    created_at as `created_at`,
+    updated_at as `updated_at`
 
 from latest_candidates
