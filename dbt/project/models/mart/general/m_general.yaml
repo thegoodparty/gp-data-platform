@@ -219,7 +219,6 @@ models:
               regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
-        tests:
       - name: gp_contest_id
         description: Identifier to link contest
         tests:
