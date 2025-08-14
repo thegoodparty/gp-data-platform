@@ -1,0 +1,14 @@
+models:
+
+  - name: stg_airbyte_source__ddhq_gdrive_election_results
+    description: Election results data load from ddhq google drive
+    columns:
+      - name: race_id
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - race_id
+            - candidate_id
+            - candidate
