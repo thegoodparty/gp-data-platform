@@ -220,9 +220,6 @@ models:
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
         tests:
-          - unique:
-              config:
-                where: "prod_db_user_id is not null"
       - name: gp_contest_id
         description: Identifier to link contest
         tests:
@@ -238,6 +235,12 @@ models:
           to: ref('int__hubspot_contacts_w_companies')
           field: "gp_candidacy_id"
           column_name: gp_candidacy_id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - prod_db_user_id
+            - gp_candidacy_id
+          config:
+            where: "prod_db_user_id is not null"
 
   - name: m_general__contest
     description: >
