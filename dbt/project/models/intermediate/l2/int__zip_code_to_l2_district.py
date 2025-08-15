@@ -115,6 +115,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
 
     # Group by zip_code, state_postal_code, district_type and collect district_names into arrays
+    # drop rows which have `State` for district_type
+    zip_code_to_l2_district = zip_code_to_l2_district.filter(
+        col("district_type") != "State"
+    )
+
     final_result = (
         zip_code_to_l2_district.groupBy(
             "zip_code",

@@ -1,7 +1,7 @@
 {{
     config(
         materialized="incremental",
-        unique_key="gp_candidacy_id",
+        unique_key=["contact_id", "gp_candidacy_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["intermediate", "candidacy", "contacts", "hubspot"],
@@ -243,11 +243,6 @@ with
         {% if is_incremental() %}
             where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
-        qualify
-            row_number() over (
-                partition by gp_candidacy_id order by tbl_contacts.updated_at desc
-            )
-            = 1
     ),
     ranked_matches as (
         select
