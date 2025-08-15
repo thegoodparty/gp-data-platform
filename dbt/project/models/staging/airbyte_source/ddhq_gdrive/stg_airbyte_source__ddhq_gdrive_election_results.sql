@@ -10,7 +10,7 @@ with
             {{ adapter.quote("_airbyte_generation_id") }},
             cast({{ adapter.quote("date") }} as date) as date,
             {{ adapter.quote("votes") }},
-            cast({{ adapter.quote("race_id") }} as int) as race_id,,
+            cast({{ adapter.quote("race_id") }} as int) as race_id,
             {{ adapter.quote("candidate") }},
             {{ adapter.quote("is_winner") }},
             {{ adapter.quote("race_name") }},
