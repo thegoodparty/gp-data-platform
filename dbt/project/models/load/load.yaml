@@ -30,10 +30,11 @@ models:
           - unique
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - source_file_name
-            - source_zip_file
-            - loaded_at
+          arguments:
+            combination_of_columns:
+              - source_file_name
+              - source_zip_file
+              - loaded_at
 
   - name: load__l2_s3_to_databricks
     description: >
@@ -62,6 +63,7 @@ models:
           - not_null
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - source_file_name
-            - loaded_at
+          arguments:
+            combination_of_columns:
+              - source_file_name
+              - loaded_at

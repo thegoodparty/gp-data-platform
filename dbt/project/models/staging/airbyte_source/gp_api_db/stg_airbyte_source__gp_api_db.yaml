@@ -40,8 +40,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('stg_airbyte_source__gp_api_db_campaign')
-              field: id
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
   - name: stg_airbyte_source__gp_api_db_position
     description: raw data load from gp_api_db postgres db from table `position`
     columns:
@@ -52,8 +53,9 @@ models:
       - name: top_issue_id
         tests:
           - relationships:
-              to: ref('stg_airbyte_source__gp_api_db_top_issue')
-              field: id
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_top_issue')
+                field: id
   - name: stg_airbyte_source__gp_api_db_top_issue
     description: raw data load from gp_api_db postgres db from table `top_issue`
     columns:
