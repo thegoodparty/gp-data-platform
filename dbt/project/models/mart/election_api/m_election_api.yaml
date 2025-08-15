@@ -77,7 +77,8 @@ models:
                 field: database_id
     tests:
       - dbt_utils.equal_rowcount:
-          compare_model: ref('int__ballotready_issue')
+          arguments:
+            compare_model: ref('int__ballotready_issue')
 
   - name: m_election_api__place
     description: "Mart model that serves the Election API"

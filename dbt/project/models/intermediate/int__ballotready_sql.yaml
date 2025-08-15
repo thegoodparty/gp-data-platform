@@ -68,7 +68,8 @@ models:
                 field: id
     tests:
       - dbt_utils.equal_rowcount:
-          compare_model: ref('int__enhanced_place')
+          arguments:
+            compare_model: ref('int__enhanced_place')
 
   - name: int__enhanced_position
     description: "Intermediate model that enhances the position data from the BallotReady API"
@@ -111,7 +112,8 @@ models:
                 field: id
     tests:
       - dbt_utils.equal_rowcount:
-          compare_model: ref('int__enhanced_position')
+          arguments:
+            compare_model: ref('int__enhanced_position')
 
   - name: int__enhanced_race
     description: "Intermediate model that enhances the race data from the BallotReady API"
@@ -135,7 +137,8 @@ models:
                 field: database_id
     tests:
       - dbt_utils.equal_rowcount:
-          compare_model: ref('stg_airbyte_source__ballotready_api_race')
+          arguments:
+            compare_model: ref('stg_airbyte_source__ballotready_api_race')
 
   - name: int__race_to_positions
     description: "Intermediate model that maps races to positions from the BallotReady API"
@@ -164,7 +167,8 @@ models:
                 field: database_id
     tests:
       - dbt_utils.equal_rowcount:
-          compare_model: ref('stg_airbyte_source__ballotready_api_place')
+          arguments:
+            compare_model: ref('stg_airbyte_source__ballotready_api_place')
 
   - name: int__position_fun_facts
     description: "Intermediate model that adds fun facts to positions"

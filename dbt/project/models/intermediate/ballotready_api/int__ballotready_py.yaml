@@ -117,8 +117,9 @@ models:
         # description: "The database id of the parent issue"
         # tests:
         #   - relationships:
-        #       to: ref('int__ballotready_issue')
-        #       field: database_id
+        #       arguments:
+        #         to: ref('int__ballotready_issue')
+        #         field: database_id
 
   - name: int__ballotready_normalized_position
     description: >
