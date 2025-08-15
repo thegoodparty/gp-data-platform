@@ -75,7 +75,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     district_type_from_columns = [
         district_type
         for district_type in district_type_from_columns
-        if district_type != "Country"
+        if district_type not in ["Country", "State"]
     ]
 
     for district_type in district_type_from_columns:
