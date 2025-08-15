@@ -12,7 +12,8 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
       - name: candidacy_id
         description: Unique identifier for a person running in an election from source
@@ -209,35 +210,41 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
       - name: gp_candidacy_id
         description: Internally generated unique identifier for candidacies
         tests:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
       - name: gp_contest_id
         description: Identifier to link contest
         tests:
           - relationships:
-              to: ref('m_general__contest')
-              field: gp_contest_id
+              arguments:
+                to: ref('m_general__contest')
+                field: gp_contest_id
     tests:
       - relationships:
-          to: ref('int__hubspot_contacts_w_companies')
-          field: "contact_id"
-          column_name: hubspot_contact_id
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "contact_id"
+            column_name: hubspot_contact_id
       - relationships:
-          to: ref('int__hubspot_contacts_w_companies')
-          field: "gp_candidacy_id"
-          column_name: gp_candidacy_id
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "gp_candidacy_id"
+            column_name: gp_candidacy_id
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - prod_db_user_id
-            - gp_candidacy_id
+          arguments:
+            combination_of_columns:
+              - prod_db_user_id
+              - gp_candidacy_id
           config:
             where: "prod_db_user_id is not null"
 
@@ -252,4 +259,5 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$

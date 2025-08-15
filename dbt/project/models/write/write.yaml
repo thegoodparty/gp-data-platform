@@ -53,6 +53,7 @@ models:
           - unique
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - source_file_name
-            - loaded_at
+          arguments:
+            combination_of_columns:
+              - source_file_name
+              - loaded_at

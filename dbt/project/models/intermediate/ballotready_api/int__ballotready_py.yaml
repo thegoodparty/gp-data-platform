@@ -201,9 +201,10 @@ models:
       contains_pii: false
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - candidacy_id
-            - stances.databaseId
+          arguments:
+            combination_of_columns:
+              - candidacy_id
+              - stances.databaseId
     columns:
       - name: candidacy_id
         description: "The id of the candidacy"
@@ -211,7 +212,8 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_be_of_type:
-              column_type: int
+              arguments:
+                column_type: int
       - name: stances
         description: "The stances of the candidacy as a json with a list of json objects"
         tests:
@@ -225,5 +227,6 @@ models:
         tests:
           - not_null
           - dbt_expectations.expect_column_values_to_be_between:
-              min_value: "'2020-01-01'"  # Adjust based on expected data range
-              max_value: "{{ dbt.current_timestamp() }}"
+              arguments:
+                min_value: "'2020-01-01'"  # Adjust based on expected data range
+                max_value: "{{ dbt.current_timestamp() }}"

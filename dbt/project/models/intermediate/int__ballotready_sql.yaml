@@ -13,8 +13,9 @@ models:
         description: "Database ID of the place associated with the position"
         tests:
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_place')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_place')
+                field: database_id
 
       - name: position_created_at
         description: "Timestamp when the position was created"
@@ -34,15 +35,17 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              arguments:
+                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: br_database_id
         description: "Database ID of the place"
         tests:
           - not_null
           - unique
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_place')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_place')
+                field: database_id
 
   - name: int__enhanced_place_w_parent
     description: "Intermediate model that enhances the place data from the BallotReady API with its parent place"
@@ -53,13 +56,15 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              arguments:
+                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: parent_id
         description: "UUID of the parent place"
         tests:
           - relationships:
-              to: ref('int__enhanced_place')
-              field: id
+              arguments:
+                to: ref('int__enhanced_place')
+                field: id
     tests:
       - dbt_utils.equal_rowcount:
           compare_model: ref('int__enhanced_place')
@@ -73,15 +78,17 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              arguments:
+                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: br_database_id
         description: "Database ID of the position"
         tests:
           - not_null
           - unique
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_position')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
 
   - name: int__enhanced_position_w_parent
     description: "Intermediate model that enhances the position data from the BallotReady API with its parent position"
@@ -92,13 +99,15 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              arguments:
+                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: parent_id
         description: "UUID of the parent position"
         tests:
           - relationships:
-              to: ref('int__enhanced_position')
-              field: id
+              arguments:
+                to: ref('int__enhanced_position')
+                field: id
     tests:
       - dbt_utils.equal_rowcount:
           compare_model: ref('int__enhanced_position')
@@ -112,15 +121,17 @@ models:
           - not_null
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
-              regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              arguments:
+                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       - name: br_database_id
         description: "Database ID of the race"
         tests:
           - not_null
           - unique
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_race')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_race')
+                field: database_id
     tests:
       - dbt_utils.equal_rowcount:
           compare_model: ref('stg_airbyte_source__ballotready_api_race')
@@ -134,8 +145,9 @@ models:
           - not_null
           - unique
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_race')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_race')
+                field: database_id
 
   - name: int__place_fun_facts
     description: "Intermediate model that adds fun facts to places"
@@ -146,8 +158,9 @@ models:
           - not_null
           - unique
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_place')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_place')
+                field: database_id
     tests:
       - dbt_utils.equal_rowcount:
           compare_model: ref('stg_airbyte_source__ballotready_api_place')
@@ -161,8 +174,9 @@ models:
           - not_null
           - unique
           - relationships:
-              to: ref('stg_airbyte_source__ballotready_api_position')
-              field: database_id
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
 
   - name: int__geo_id_attributes
     description: "Intermediate model that maps geo_id to its components and parent geo_id"
