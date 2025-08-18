@@ -3,7 +3,7 @@ name = "astro-goodparty"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Hugh Karimi",email = "hussain.h.karimi@gmail.com"}
+    {name = "Hugh Karimi",email = "hkarimi@goodparty.org"}
 ]
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
