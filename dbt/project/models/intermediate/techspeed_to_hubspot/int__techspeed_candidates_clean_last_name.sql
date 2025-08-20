@@ -185,6 +185,34 @@ select
     suggested_last as last_name,
     candidate_type,
     email,
+    case
+        when first_name is null
+        then null
+        when last_name is null
+        then null
+        when state is null
+        then null
+        when office_type is null
+        then null
+        else
+            lower(
+                concat_ws(
+                    '__',
+                    regexp_replace(
+                        regexp_replace(trim(first_name), ' ', '-'), '[^a-zA-Z0-9-]', ''
+                    ),
+                    regexp_replace(
+                        regexp_replace(trim(last_name), ' ', '-'), '[^a-zA-Z0-9-]', ''
+                    ),
+                    regexp_replace(
+                        regexp_replace(trim(state), ' ', '-'), '[^a-zA-Z0-9-]', ''
+                    ),
+                    regexp_replace(
+                        regexp_replace(trim(office_type), ' ', '-'), '[^a-zA-Z0-9-]', ''
+                    )
+                )
+            )
+    end as techspeed_candidate_code,
     phone,
     candidate_id_tier,
     party,
