@@ -1,19 +1,15 @@
-{{
-    /*
-    This model must be materialized as a view because it contains columns with spaces and special characters
-    in their names (e.g., "Candidate ID Source", "First Name", "Party Affiliation", etc.).
+/*
+This model must be materialized as a view because it contains columns with spaces and special characters
+in their names (e.g., "Candidate ID Source", "First Name", "Party Affiliation", etc.).
 
-    Database tables typically cannot have column names with spaces or special characters, but views can
-    handle these column aliases. This allows us to maintain the exact column naming requirements
-    for downstream systems (like HubSpot) while working within database constraints.
+Database tables typically cannot have column names with spaces or special characters, but views can
+handle these column aliases. This allows us to maintain the exact column naming requirements
+for downstream systems (like HubSpot) while working within database constraints.
 
-    If this were materialized as a table, the column names would need to be converted to valid
-    database identifiers (e.g., snake_case), which would break the expected schema for HubSpot integration.
-    */
-    config(
-        materialized="view"
-    )
-}}
+If this were materialized as a table, the column names would need to be converted to valid
+database identifiers (e.g., snake_case), which would break the expected schema for HubSpot integration.
+*/
+{{ config(materialized="view") }}
 
 with
     techspeed_candidates_w_hubspot as (
@@ -121,45 +117,44 @@ with
     )
 
 select
-    -- {{ adapter.quote("Candidate ID Source")}},
-    -- `First Name`,
-    -- `Last Name`,
-    -- `Candidate Type`,
-    -- `Party Affiliation`,
-    -- `Email`,
-    -- `Phone Number`,
-    -- `Candidate ID Tier`,
-    -- `Website URL`,
-    -- `LinkedIn URL`,
-    -- `Instagram Handle`,
-    -- `Twitter Handle`,
-    -- `Facebook URL`,
-    -- `Birth Date`,
-    -- `Street Address`,
-    -- `State/Region`,
-    -- `District`,
-    -- `City`,
-    -- `population`,
-    -- `Official Office Name`,
-    -- `Candidate Office`,
-    -- `Office Type`,
-    -- `Office Level`,
-    -- `Filing Deadline`,
-    -- `BallotReady Race ID`,
-    -- `Primary Election Date`,
-    -- `General Election Date`,
-    -- `Election Date`,
-    -- `Election Type`,
-    -- `Uncontested`,
-    -- `Number of Candidates`,
-    -- `Number of Seats Available`,
-    -- `Open Seat`,
-    -- `Partisan Type`,
-    -- `Type`,
-    -- `Contact Owner`,
-    -- `Owner Name`,
-    -- uploaded,
-    -- _airbyte_extracted_at,
-    -- added_to_mart_at
-    *
+    `Candidate ID Source`,
+    `First Name`,
+    `Last Name`,
+    `Candidate Type`,
+    `Party Affiliation`,
+    `Email`,
+    `Phone Number`,
+    `Candidate ID Tier`,
+    `Website URL`,
+    `LinkedIn URL`,
+    `Instagram Handle`,
+    `Twitter Handle`,
+    `Facebook URL`,
+    `Birth Date`,
+    `Street Address`,
+    `State/Region`,
+    `District`,
+    `City`,
+    `population`,
+    `Official Office Name`,
+    `Candidate Office`,
+    `Office Type`,
+    `Office Level`,
+    `Filing Deadline`,
+    `BallotReady Race ID`,
+    `Primary Election Date`,
+    `General Election Date`,
+    `Election Date`,
+    `Election Type`,
+    `Uncontested`,
+    `Number of Candidates`,
+    `Number of Seats Available`,
+    `Open Seat`,
+    `Partisan Type`,
+    `Type`,
+    `Contact Owner`,
+    `Owner Name`,
+    uploaded,
+    _airbyte_extracted_at,
+    added_to_mart_at
 from techspeed_candidates_w_hubspot
