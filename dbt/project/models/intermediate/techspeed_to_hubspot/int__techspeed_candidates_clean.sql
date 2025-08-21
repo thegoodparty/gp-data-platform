@@ -19,8 +19,28 @@ with
             birth_date,
             street_address,
             postal_code,
-            district,
-            city,
+            trim(
+                regexp_replace(
+                    regexp_replace(
+                        regexp_replace(
+                            regexp_replace(
+                                district, 'District |Dist\. #?|Subdistrict |Ward ', ''
+                            ),
+                            '(st|nd|rd|th) Congressional District',
+                            ''
+                        ),
+                        '[-#]',
+                        ''
+                    ),
+                    ' District$',
+                    ''
+                )
+            ) as district,
+            case
+                when city like '%,%'
+                then left(city, position(',' in city) - 1)
+                else city
+            end as city,
             state,
             official_office_name,
             candidate_office,
@@ -29,6 +49,7 @@ with
             filing_deadline,
             primary_election_date,
             general_election_date,
+            coalesce(general_election_date, primary_election_date) as election_date,
             election_type,
             uncontested,
             number_of_candidates,
@@ -40,7 +61,11 @@ with
             type,
             contact_owner,
             owner_name,
-            uploaded,
+            case
+                when try_cast(general_election_date as date) <= current_date
+                then 'past_election'
+                else 'future_election'
+            end as uploaded,
             _airbyte_extracted_at,
             trim(
                 regexp_replace(
@@ -234,6 +259,7 @@ select
     filing_deadline,
     primary_election_date,
     general_election_date,
+    election_date,
     election_type,
     uncontested,
     number_of_candidates,

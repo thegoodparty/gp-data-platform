@@ -35,7 +35,12 @@ with
             office_level,
             filing_deadline,
             primary_election_date,
-            general_election_date,
+            -- one time fix
+            case
+                when general_election_date = '2025-10-07'
+                then '2025-11-04'
+                else general_election_date
+            end as general_election_date,
 
             -- Transform is_primary to Election Type
             case

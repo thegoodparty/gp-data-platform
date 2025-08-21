@@ -8,45 +8,10 @@ with
         select
             candidate_id_source,
             first_name,
-            suggested_last as last_name,
+            last_name,
             candidate_type,
             email,
-            case
-                when first_name is null
-                then null
-                when last_name is null
-                then null
-                when state is null
-                then null
-                when office_type is null
-                then null
-                else
-                    lower(
-                        concat_ws(
-                            '__',
-                            regexp_replace(
-                                regexp_replace(trim(first_name), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            ),
-                            regexp_replace(
-                                regexp_replace(trim(last_name), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            ),
-                            regexp_replace(
-                                regexp_replace(trim(state), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            ),
-                            regexp_replace(
-                                regexp_replace(trim(office_type), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            )
-                        )
-                    )
-            end as techspeed_candidate_code,
+            techspeed_candidate_code,
             phone,
             candidate_id_tier,
             party,
@@ -67,13 +32,8 @@ with
             office_level,
             filing_deadline,
             primary_election_date,
-            -- one time fix
-            case
-                when general_election_date = '2025-10-07'
-                then '2025-11-04'
-                else general_election_date
-            end as general_election_date,
-            coalesce(general_election_date, primary_election_date) as election_date,
+            general_election_date,
+            election_date,
             election_type,
             uncontested,
             number_of_candidates,
@@ -87,7 +47,7 @@ with
             owner_name,
             case
                 when
-                    ts_candidate_code in (
+                    techspeed_candidate_code in (
                         select hubspot_candidate_code
                         from {{ ref("int__hubspot_candidate_codes") }}
                     )
@@ -95,7 +55,7 @@ with
                 else uploaded
             end as uploaded,
             _airbyte_extracted_at
-        from {{ ref("int__techspeed_candidates_clean_last_name") }}
+        from {{ ref("int__techspeed_candidates_clean") }}
         {% if is_incremental() %}
             where
                 _airbyte_extracted_at
@@ -121,26 +81,8 @@ select
     birth_date,
     street_address,
     postal_code,
-    trim(
-        regexp_replace(
-            regexp_replace(
-                regexp_replace(
-                    regexp_replace(
-                        district, 'District |Dist\. #?|Subdistrict |Ward ', ''
-                    ),
-                    '(st|nd|rd|th) Congressional District',
-                    ''
-                ),
-                '[-#]',
-                ''
-            ),
-            ' District$',
-            ''
-        )
-    ) as district,
-    case
-        when city like '%,%' then left(city, position(',' in city) - 1) else city
-    end as city,
+    district,
+    city,
     state,
     official_office_name,
     candidate_office,
@@ -161,10 +103,6 @@ select
     type,
     contact_owner,
     owner_name,
-    case
-        when try_cast(election_date as date) <= current_date
-        then 'past_election'
-        else uploaded
-    end as uploaded,
+    uploaded,
     _airbyte_extracted_at
 from techspeed_candidates_w_hubspot
