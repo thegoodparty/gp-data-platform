@@ -6,7 +6,7 @@ models:
     columns:
       - name: candidate_id_source
         description: "Unique identifier for the candidate from source system"
-        data_tests:
+        tests:
           - not_null
       - name: first_name
         description: "Candidate's first name"
@@ -69,13 +69,18 @@ models:
     columns:
       - name: candidate_id_source
         description: "Unique identifier for the candidate from source system"
+        tests:
+          - relationships:
+              arguments:
+                to: ref('int__techspeed_candidates')
+                field: candidate_id_source
       - name: first_name
         description: "Candidate's first name"
         tests:
           - not_null
       - name: last_name
         description: "Cleaned last name without suffixes"
-        data_tests:
+        tests:
           - not_null
           - last_name_cleaning_quality
       - name: techspeed_candidate_code
@@ -83,6 +88,9 @@ models:
         tests:
           - not_null
           - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: '^[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+$'
       - name: district
         description: "Cleaned district name without prefixes"
         tests:
@@ -103,7 +111,7 @@ models:
           - not_null
       - name: uploaded
         description: "Upload status based on election date"
-        data_tests:
+        tests:
           - accepted_values:
               arguments:
                 values: ['past_election', 'future_election', 'no_contact']
@@ -119,6 +127,10 @@ models:
         description: "Unique identifier for the candidate from source system"
         tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('int__techspeed_candidates_clean')
+                field: candidate_id_source
       - name: first_name
         description: "Candidate's first name"
         tests:
@@ -148,7 +160,7 @@ models:
           - not_null
       - name: uploaded
         description: "Upload status (in_hubspot, past_election, future_election, or no_contact)"
-        data_tests:
+        tests:
           - accepted_values:
               arguments:
                 values: ['in_hubspot', 'past_election', 'future_election']
@@ -156,95 +168,3 @@ models:
         description: "Timestamp when the record was extracted"
         tests:
           - not_null
-
-# # Generic tests for all models
-# tests:
-#   - name: techspeed_candidates_sequential_flow
-#     description: "Ensure data flows correctly through the transformation pipeline"
-#     severity: warn
-#     config:
-#       tags: ["techspeed", "data_quality"]
-#     columns:
-#       - name: candidate_id_source
-#         tests:
-#           - relationships:
-#               to: ref('int__techspeed_candidates')
-#               field: candidate_id_source
-#               config:
-#                 severity: error
-#       - name: candidate_id_source
-#         tests:
-#           - relationships:
-#               to: ref('int__techspeed_candidates_clean')
-#               field: candidate_id_source
-#               config:
-#                 severity: error
-
-#   - name: techspeed_candidate_codes_format
-#     description: "Ensure techspeed candidate codes follow the expected format"
-#     severity: warn
-#     config:
-#       tags: ["techspeed", "data_quality"]
-#     columns:
-#       - name: techspeed_candidate_code
-#         tests:
-#           - regex:
-#               pattern: '^[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+$'
-#               config:
-#                 severity: warn
-
-#   - name: techspeed_election_date_consistency
-#     description: "Ensure election dates are consistent across the pipeline"
-#     severity: warn
-#     config:
-#       tags: ["techspeed", "data_quality"]
-#     columns:
-#       - name: general_election_date
-#         tests:
-#           - not_null_proportion:
-#               at_least: 0.8
-#               config:
-#                 severity: warn
-#       - name: primary_election_date
-#         tests:
-#           - not_null_proportion:
-#               at_least: 0.8
-#               config:
-#                 severity: warn
-
-#   - name: techspeed_contact_info_quality
-#     description: "Ensure at least one contact method is available for candidates"
-#     severity: warn
-#     config:
-#       tags: ["techspeed", "data_quality"]
-#     columns:
-#       - name: email
-#         tests:
-#           - not_null_proportion:
-#               at_least: 0.3
-#               config:
-#                 severity: warn
-#       - name: phone
-#         tests:
-#           - not_null_proportion:
-#               at_least: 0.3
-#               config:
-#                 severity: warn
-
-#   - name: techspeed_pipeline_integrity
-#     description: "Ensure data integrity across the entire transformation pipeline"
-#     severity: error
-#     config:
-#       tags: ["techspeed", "pipeline", "critical"]
-
-#   - name: techspeed_candidate_code_uniqueness_across_models
-#     description: "Ensure techspeed candidate codes are unique across all models"
-#     severity: error
-#     config:
-#       tags: ["techspeed", "uniqueness", "critical"]
-
-#   - name: techspeed_data_freshness
-#     description: "Ensure data is fresh across all models in the pipeline"
-#     severity: warn
-#     config:
-#       tags: ["techspeed", "freshness", "monitoring"]

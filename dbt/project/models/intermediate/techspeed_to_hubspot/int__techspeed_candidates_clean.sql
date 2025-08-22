@@ -249,6 +249,7 @@ with
                 partition by techspeed_candidate_code order by _ab_source_file_url desc
             )
             = 1
+            and techspeed_candidate_code != '______'  -- account for case where all fields are null
     )
 
 select
