@@ -634,7 +634,7 @@ def model(dbt, session) -> DataFrame:
 
     # for the race db, drop rows that have `election_date` more than 1 day ago
     _execute_sql_query(
-        f"DELETE FROM {db_schema}.\"Race\" WHERE election_date < current_date - interval '1 day'",
+        f"DELETE FROM {db_schema}.\"Race\" WHERE election_date < current_date - interval '2 years'",
         db_host,
         db_port,
         db_user,
