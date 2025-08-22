@@ -64,96 +64,98 @@ models:
         tests:
           - not_null
 
-#   - name: int__techspeed_candidates_clean
-#     description: "Further cleaned techspeed candidate data with name standardization and district cleaning"
-#     columns:
-#       - name: candidate_id_source
-#         description: "Unique identifier for the candidate from source system"
-#       - name: first_name
-#         description: "Candidate's first name"
-#         tests:
-#           - not_null
-#       - name: last_name
-#         description: "Cleaned last name without suffixes"
-#         tests:
-#           - not_null
-#           - last_name_cleaning_quality
-#       - name: techspeed_candidate_code
-#         description: "Generated unique code for the candidate"
-#         tests:
-#           - not_null
-#           - unique
-#       - name: district
-#         description: "Cleaned district name without prefixes"
-#         tests:
-#           - district_cleaning_quality
-#       - name: city
-#         description: "City name without trailing commas"
-#       - name: state
-#         description: "State where the candidate is running"
-#         tests:
-#           - not_null
-#       - name: office_type
-#         description: "Type of office the candidate is running for"
-#         tests:
-#           - not_null
-#       - name: election_date
-#         description: "Election date (general or primary)"
-#         tests:
-#           - not_null
-#       - name: uploaded
-#         description: "Upload status based on election date"
-#         data_tests:
-#           - accepted_values:
-#               arguments:
-#                 values: ['past_election', 'future_election', 'no_contact']
-#       - name: _airbyte_extracted_at
-#         description: "Timestamp when the record was extracted"
-#         tests:
-#           - not_null
+  - name: int__techspeed_candidates_clean
+    description: "Further cleaned techspeed candidate data with name standardization and district cleaning"
+    columns:
+      - name: candidate_id_source
+        description: "Unique identifier for the candidate from source system"
+      - name: first_name
+        description: "Candidate's first name"
+        tests:
+          - not_null
+      - name: last_name
+        description: "Cleaned last name without suffixes"
+        data_tests:
+          - not_null
+          - last_name_cleaning_quality
+      - name: techspeed_candidate_code
+        description: "Generated unique code for the candidate"
+        tests:
+          - not_null
+          - unique
+      - name: district
+        description: "Cleaned district name without prefixes"
+        tests:
+          - district_cleaning_quality
+      - name: city
+        description: "City name without trailing commas"
+      - name: state
+        description: "State where the candidate is running"
+        tests:
+          - not_null
+      - name: office_type
+        description: "Type of office the candidate is running for"
+        tests:
+          - not_null
+      - name: election_date
+        description: "Election date (general or primary)"
+        tests:
+          - not_null
+      - name: uploaded
+        description: "Upload status based on election date"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['past_election', 'future_election', 'no_contact']
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted"
+        tests:
+          - not_null
 
-#   - name: int__techspeed_candidates_w_hubspot
-#     description: "Techspeed candidates with HubSpot integration status"
-#     columns:
-#       - name: candidate_id_source
-#         description: "Unique identifier for the candidate from source system"
-#         tests:
-#           - not_null
-#       - name: first_name
-#         description: "Candidate's first name"
-#         tests:
-#           - not_null
-#       - name: last_name
-#         description: "Cleaned last name without suffixes"
-#         tests:
-#           - not_null
-#       - name: techspeed_candidate_code
-#         description: "Generated unique code for the candidate"
-#         tests:
-#           - not_null
-#           - unique
-#       - name: state
-#         description: "State where the candidate is running"
-#         tests:
-#           - not_null
-#       - name: office_type
-#         description: "Type of office the candidate is running for"
-#         tests:
-#           - not_null
-#       - name: election_date
-#         description: "Election date (general or primary)"
-#         tests:
-#           - not_null
-#       - name: uploaded
-#         description: "Upload status (in_hubspot, past_election, future_election, or no_contact)"
-#         data_tests:
-#           - accepted_values:
-#               arguments:
-#                 values: ['in_hubspot', 'past_election', 'future_election']
-#       - name: _airbyte_extracted_at
-#         description: "Timestamp when the record was extracted"
-#         tests:
-#           - not_null
+  - name: int__techspeed_candidates_w_hubspot
+    description: "Techspeed candidates with HubSpot integration status"
+    columns:
+      - name: candidate_id_source
+        description: "Unique identifier for the candidate from source system"
+        tests:
+          - not_null
+      - name: first_name
+        description: "Candidate's first name"
+        tests:
+          - not_null
+      - name: last_name
+        description: "Cleaned last name without suffixes"
+        tests:
+          - not_null
+      - name: techspeed_candidate_code
+        description: "Generated unique code for the candidate"
+        tests:
+          - not_null
+          - unique:
+              config:
+                where: techspeed_candidate_code is not null
+      - name: state
+        description: "State where the candidate is running"
+        tests:
+          - not_null
+      - name: office_type
+        description: "Type of office the candidate is running for"
+        tests:
+          - not_null
+      - name: election_date
+        description: "Election date (general or primary)"
+        tests:
+          - not_null
+      - name: uploaded
+        description: "Upload status (in_hubspot, past_election, future_election, or no_contact)"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['in_hubspot', 'past_election', 'future_election']
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted"
+        tests:
+          - not_null
 
 # # Generic tests for all models
 # tests:

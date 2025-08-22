@@ -86,6 +86,7 @@ with
                 when (phone is null and email is null) then 'no_contact' else null
             end as uploaded,
 
+            _ab_source_file_url,
             _airbyte_extracted_at
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }}
         {% if is_incremental() %}
@@ -133,5 +134,6 @@ select
     contact_owner,
     owner_name,
     uploaded,
+    _ab_source_file_url,
     _airbyte_extracted_at
 from clean_candidates

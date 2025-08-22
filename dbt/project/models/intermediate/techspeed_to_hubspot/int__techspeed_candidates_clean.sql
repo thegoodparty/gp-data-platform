@@ -66,6 +66,7 @@ with
                 then 'past_election'
                 else 'future_election'
             end as uploaded,
+            _ab_source_file_url,
             _airbyte_extracted_at,
             trim(
                 regexp_replace(
@@ -202,6 +203,52 @@ with
                 else last_name_clean
             end as suggested_last
         from candidates_w_clean_initials
+    ),
+    candidates_deduped_on_name_state_office_type as (
+        select
+            *,
+            case
+                when first_name is null
+                then null
+                when last_name is null
+                then null
+                when state is null
+                then null
+                when office_type is null
+                then null
+                else
+                    lower(
+                        concat_ws(
+                            '__',
+                            regexp_replace(
+                                regexp_replace(trim(first_name), ' ', '-'),
+                                '[^a-zA-Z0-9-]',
+                                ''
+                            ),
+                            regexp_replace(
+                                regexp_replace(trim(last_name), ' ', '-'),
+                                '[^a-zA-Z0-9-]',
+                                ''
+                            ),
+                            regexp_replace(
+                                regexp_replace(trim(state), ' ', '-'),
+                                '[^a-zA-Z0-9-]',
+                                ''
+                            ),
+                            regexp_replace(
+                                regexp_replace(trim(office_type), ' ', '-'),
+                                '[^a-zA-Z0-9-]',
+                                ''
+                            )
+                        )
+                    )
+            end as techspeed_candidate_code
+        from candidates_w_extracted_last_name
+        qualify
+            row_number() over (
+                partition by techspeed_candidate_code order by _ab_source_file_url desc
+            )
+            = 1
     )
 
 select
@@ -210,34 +257,7 @@ select
     suggested_last as last_name,
     candidate_type,
     email,
-    case
-        when first_name is null
-        then null
-        when last_name is null
-        then null
-        when state is null
-        then null
-        when office_type is null
-        then null
-        else
-            lower(
-                concat_ws(
-                    '__',
-                    regexp_replace(
-                        regexp_replace(trim(first_name), ' ', '-'), '[^a-zA-Z0-9-]', ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim(last_name), ' ', '-'), '[^a-zA-Z0-9-]', ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim(state), ' ', '-'), '[^a-zA-Z0-9-]', ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim(office_type), ' ', '-'), '[^a-zA-Z0-9-]', ''
-                    )
-                )
-            )
-    end as techspeed_candidate_code,
+    techspeed_candidate_code,
     phone,
     candidate_id_tier,
     party,
@@ -272,5 +292,6 @@ select
     contact_owner,
     owner_name,
     uploaded,
+    _ab_source_file_url,
     _airbyte_extracted_at
-from candidates_w_extracted_last_name
+from candidates_deduped_on_name_state_office_type
