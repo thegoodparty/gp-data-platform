@@ -1,1 +1,248 @@
-# TODO: add tests here
+version: 2
+
+models:
+  - name: int__techspeed_candidates
+    description: "Cleaned and standardized techspeed candidate data with basic transformations"
+    columns:
+      - name: candidate_id_source
+        description: "Unique identifier for the candidate from source system"
+        data_tests:
+          - not_null
+      - name: first_name
+        description: "Candidate's first name"
+        tests:
+          - not_null
+      - name: last_name
+        description: "Candidate's last name"
+        tests:
+          - not_null
+      - name: candidate_type
+        description: "Type of candidate (Incumbent/Challenger)"
+      - name: email
+        description: "Candidate's email address"
+      - name: phone
+        description: "Candidate's phone number (cleaned)"
+      - name: candidate_id_tier
+        description: "Tier identifier for the candidate"
+      - name: party
+        description: "Political party affiliation"
+      - name: state
+        description: "State where the candidate is running"
+        tests:
+          - not_null
+      - name: office_type
+        description: "Type of office the candidate is running for"
+        tests:
+          - not_null
+      - name: election_type
+        description: "Type of election (Primary/General)"
+      - name: uncontested
+        description: "Whether the race is contested or uncontested"
+      - name: type
+        description: "Lead type classification"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Self-Filer Lead']
+      - name: contact_owner
+        description: "Email of the contact owner"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['jesse@goodparty.org']
+      - name: owner_name
+        description: "Name of the contact owner"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Jesse Diliberto']
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted"
+        tests:
+          - not_null
+
+#   - name: int__techspeed_candidates_clean
+#     description: "Further cleaned techspeed candidate data with name standardization and district cleaning"
+#     columns:
+#       - name: candidate_id_source
+#         description: "Unique identifier for the candidate from source system"
+#       - name: first_name
+#         description: "Candidate's first name"
+#         tests:
+#           - not_null
+#       - name: last_name
+#         description: "Cleaned last name without suffixes"
+#         tests:
+#           - not_null
+#           - last_name_cleaning_quality
+#       - name: techspeed_candidate_code
+#         description: "Generated unique code for the candidate"
+#         tests:
+#           - not_null
+#           - unique
+#       - name: district
+#         description: "Cleaned district name without prefixes"
+#         tests:
+#           - district_cleaning_quality
+#       - name: city
+#         description: "City name without trailing commas"
+#       - name: state
+#         description: "State where the candidate is running"
+#         tests:
+#           - not_null
+#       - name: office_type
+#         description: "Type of office the candidate is running for"
+#         tests:
+#           - not_null
+#       - name: election_date
+#         description: "Election date (general or primary)"
+#         tests:
+#           - not_null
+#       - name: uploaded
+#         description: "Upload status based on election date"
+#         data_tests:
+#           - accepted_values:
+#               arguments:
+#                 values: ['past_election', 'future_election', 'no_contact']
+#       - name: _airbyte_extracted_at
+#         description: "Timestamp when the record was extracted"
+#         tests:
+#           - not_null
+
+#   - name: int__techspeed_candidates_w_hubspot
+#     description: "Techspeed candidates with HubSpot integration status"
+#     columns:
+#       - name: candidate_id_source
+#         description: "Unique identifier for the candidate from source system"
+#         tests:
+#           - not_null
+#       - name: first_name
+#         description: "Candidate's first name"
+#         tests:
+#           - not_null
+#       - name: last_name
+#         description: "Cleaned last name without suffixes"
+#         tests:
+#           - not_null
+#       - name: techspeed_candidate_code
+#         description: "Generated unique code for the candidate"
+#         tests:
+#           - not_null
+#           - unique
+#       - name: state
+#         description: "State where the candidate is running"
+#         tests:
+#           - not_null
+#       - name: office_type
+#         description: "Type of office the candidate is running for"
+#         tests:
+#           - not_null
+#       - name: election_date
+#         description: "Election date (general or primary)"
+#         tests:
+#           - not_null
+#       - name: uploaded
+#         description: "Upload status (in_hubspot, past_election, future_election, or no_contact)"
+#         data_tests:
+#           - accepted_values:
+#               arguments:
+#                 values: ['in_hubspot', 'past_election', 'future_election']
+#       - name: _airbyte_extracted_at
+#         description: "Timestamp when the record was extracted"
+#         tests:
+#           - not_null
+
+# # Generic tests for all models
+# tests:
+#   - name: techspeed_candidates_sequential_flow
+#     description: "Ensure data flows correctly through the transformation pipeline"
+#     severity: warn
+#     config:
+#       tags: ["techspeed", "data_quality"]
+#     columns:
+#       - name: candidate_id_source
+#         tests:
+#           - relationships:
+#               to: ref('int__techspeed_candidates')
+#               field: candidate_id_source
+#               config:
+#                 severity: error
+#       - name: candidate_id_source
+#         tests:
+#           - relationships:
+#               to: ref('int__techspeed_candidates_clean')
+#               field: candidate_id_source
+#               config:
+#                 severity: error
+
+#   - name: techspeed_candidate_codes_format
+#     description: "Ensure techspeed candidate codes follow the expected format"
+#     severity: warn
+#     config:
+#       tags: ["techspeed", "data_quality"]
+#     columns:
+#       - name: techspeed_candidate_code
+#         tests:
+#           - regex:
+#               pattern: '^[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+$'
+#               config:
+#                 severity: warn
+
+#   - name: techspeed_election_date_consistency
+#     description: "Ensure election dates are consistent across the pipeline"
+#     severity: warn
+#     config:
+#       tags: ["techspeed", "data_quality"]
+#     columns:
+#       - name: general_election_date
+#         tests:
+#           - not_null_proportion:
+#               at_least: 0.8
+#               config:
+#                 severity: warn
+#       - name: primary_election_date
+#         tests:
+#           - not_null_proportion:
+#               at_least: 0.8
+#               config:
+#                 severity: warn
+
+#   - name: techspeed_contact_info_quality
+#     description: "Ensure at least one contact method is available for candidates"
+#     severity: warn
+#     config:
+#       tags: ["techspeed", "data_quality"]
+#     columns:
+#       - name: email
+#         tests:
+#           - not_null_proportion:
+#               at_least: 0.3
+#               config:
+#                 severity: warn
+#       - name: phone
+#         tests:
+#           - not_null_proportion:
+#               at_least: 0.3
+#               config:
+#                 severity: warn
+
+#   - name: techspeed_pipeline_integrity
+#     description: "Ensure data integrity across the entire transformation pipeline"
+#     severity: error
+#     config:
+#       tags: ["techspeed", "pipeline", "critical"]
+
+#   - name: techspeed_candidate_code_uniqueness_across_models
+#     description: "Ensure techspeed candidate codes are unique across all models"
+#     severity: error
+#     config:
+#       tags: ["techspeed", "uniqueness", "critical"]
+
+#   - name: techspeed_data_freshness
+#     description: "Ensure data is fresh across all models in the pipeline"
+#     severity: warn
+#     config:
+#       tags: ["techspeed", "freshness", "monitoring"]

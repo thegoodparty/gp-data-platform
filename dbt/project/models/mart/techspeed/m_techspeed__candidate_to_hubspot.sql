@@ -108,7 +108,7 @@ with
             uploaded,
             _airbyte_extracted_at,
             current_timestamp as added_to_mart_at
-        from {{ ref("int_techspeed_candidates_w_hubspot") }}
+        from {{ ref("int__techspeed_candidates_w_hubspot") }}
         {% if is_incremental() %}
             where
                 _airbyte_extracted_at

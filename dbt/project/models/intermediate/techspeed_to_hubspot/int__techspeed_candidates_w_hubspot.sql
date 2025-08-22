@@ -1,8 +1,5 @@
 {{ config(materialized="incremental", on_schema_change="append_new_columns") }}
 
--- TODO:
--- move all transformations to the intermerdiate model name cleaned
--- include office type transformation in the above data model
 with
     techspeed_candidates_w_hubspot as (
         select
