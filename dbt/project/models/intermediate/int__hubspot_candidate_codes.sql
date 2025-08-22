@@ -3,6 +3,10 @@
 with
     candidates as (
         select
+            properties_firstname,
+            properties_lastname,
+            properties_state,
+            properties_office_type,
             lower(
                 concat_ws(
                     '__',
@@ -31,10 +35,14 @@ with
             `updatedAt` as updated_at
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
         where
-            properties_firstname is not null
-            and properties_lastname is not null
-            and properties_state is not null
-            and properties_office_type is not null
+            trim(properties_firstname) is not null
+            and trim(properties_firstname) <> ''
+            and trim(properties_lastname) is not null
+            and trim(properties_lastname) <> ''
+            and trim(properties_state) is not null
+            and trim(properties_state) <> ''
+            and trim(properties_office_type) is not null
+            and trim(properties_office_type) <> ''
             and (
                 properties_type like '%Self-Filer Lead%'
                 or properties_product_user = 'yes'
@@ -49,5 +57,11 @@ with
             {% endif %}
     )
 
-select hubspot_candidate_code, updated_at
+select
+    hubspot_candidate_code,
+    updated_at,
+    properties_firstname,
+    properties_lastname,
+    properties_state,
+    properties_office_type
 from candidates
