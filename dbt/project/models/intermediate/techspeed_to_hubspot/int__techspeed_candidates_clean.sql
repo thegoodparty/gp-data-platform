@@ -68,55 +68,7 @@ with
             end as uploaded,
             _ab_source_file_url,
             _airbyte_extracted_at,
-            trim(
-                regexp_replace(
-                    regexp_replace(
-                        regexp_replace(
-                            regexp_replace(
-                                regexp_replace(
-                                    regexp_replace(
-                                        regexp_replace(
-                                            regexp_replace(
-                                                regexp_replace(
-                                                    regexp_replace(
-                                                        regexp_replace(
-                                                            regexp_replace(
-                                                                last_name, ' Jr$', ''
-                                                            ),
-                                                            ' Jr\.$',
-                                                            ''
-                                                        ),
-                                                        ' Sr$',
-                                                        ''
-                                                    ),
-                                                    ' Sr\.$',
-                                                    ''
-                                                ),
-                                                ' II$',
-                                                ''
-                                            ),
-                                            ' Ii$',
-                                            ''
-                                        ),
-                                        ' III$',
-                                        ''
-                                    ),
-                                    ' Iii$',
-                                    ''
-                                ),
-                                ' Iv$',
-                                ''
-                            ),
-                            ' I ii$',
-                            ''
-                        ),
-                        ' V$',
-                        ''
-                    ),
-                    ' Iiii$',
-                    ''
-                )
-            ) as last_name_no_suffix
+            {{ remove_techspeed_name_suffixes("last_name") }} as last_name_no_suffix
         from {{ ref("int__techspeed_candidates") }}
         {% if is_incremental() %}
             where
