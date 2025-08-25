@@ -107,7 +107,8 @@ with
             case when owner_name is null then '' else owner_name end as `Owner Name`,
             uploaded,
             _airbyte_extracted_at,
-            current_timestamp as added_to_mart_at
+            current_timestamp as added_to_mart_at,
+            _ab_source_file_url
         from {{ ref("int__techspeed_candidates_w_hubspot") }}
         {% if is_incremental() %}
             where
@@ -154,6 +155,7 @@ select
     `Type`,
     `Contact Owner`,
     `Owner Name`,
+    _ab_source_file_url,
     uploaded,
     _airbyte_extracted_at,
     added_to_mart_at

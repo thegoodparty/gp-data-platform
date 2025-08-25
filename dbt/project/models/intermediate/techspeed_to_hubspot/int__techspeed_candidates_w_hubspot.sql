@@ -51,7 +51,8 @@ with
                 then 'in_hubspot'
                 else uploaded
             end as uploaded,
-            _airbyte_extracted_at
+            _airbyte_extracted_at,
+            _ab_source_file_url
         from {{ ref("int__techspeed_candidates_clean") }}
         {% if is_incremental() %}
             where
@@ -101,5 +102,6 @@ select
     contact_owner,
     owner_name,
     uploaded,
-    _airbyte_extracted_at
+    _airbyte_extracted_at,
+    _ab_source_file_url
 from techspeed_candidates_w_hubspot

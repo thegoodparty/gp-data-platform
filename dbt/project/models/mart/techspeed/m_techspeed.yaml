@@ -1,0 +1,127 @@
+version: 2
+
+models:
+  - name: m_techspeed__candidate_to_hubspot
+    description: "Mart model for techspeed candidates with HubSpot integration, materialized as view due to column naming constraints"
+    columns:
+      - name: "`Candidate ID Source`"
+        description: "Unique identifier for the candidate from source system"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__techspeed_candidates_w_hubspot')
+                field: candidate_id_source
+      - name: "`First Name`"
+        description: "Candidate's first name"
+        tests:
+          - not_null
+      - name: "`Last Name`"
+        description: "Candidate's last name"
+        tests:
+          - not_null
+      - name: "`Candidate Type`"
+        description: "Type of candidate (Incumbent/Challenger)"
+      - name: "`Party Affiliation`"
+        description: "Political party affiliation"
+      - name: "Email"
+        description: "Candidate's email address"
+      - name: "`Phone Number`"
+        description: "Candidate's phone number"
+      - name: "`Candidate ID Tier`"
+        description: "Tier identifier for the candidate"
+      - name: "Website URL"
+        description: "Candidate's website URL"
+      - name: "`LinkedIn URL`"
+        description: "Candidate's LinkedIn profile URL"
+      - name: "`Instagram Handle`"
+        description: "Candidate's Instagram handle"
+      - name: "`Twitter Handle`"
+        description: "Candidate's Twitter handle"
+      - name: "`Facebook URL`"
+        description: "Candidate's Facebook page URL"
+      - name: "`Birth Date`"
+        description: "Candidate's birth date"
+      - name: "`Street Address`"
+        description: "Candidate's street address"
+      - name: "`State/Region`"
+        description: "State where the candidate is running"
+        tests:
+          - not_null
+      - name: "`District`"
+        description: "District where the candidate is running"
+      - name: "`City`"
+        description: "City where the candidate is running"
+      - name: "`population`"
+        description: "Population of the area"
+      - name: "`Official Office Name`"
+        description: "Official name of the office"
+      - name: "`Candidate Office`"
+        description: "Office the candidate is running for"
+      - name: "`Office Type`"
+        description: "Type of office the candidate is running for"
+        tests:
+          - not_null
+      - name: "`Office Level`"
+        description: "Level of the office (Federal/State/Local)"
+      - name: "`Filing Deadline`"
+        description: "Deadline for filing candidacy"
+      - name: "`BallotReady Race ID`"
+        description: "Race identifier from BallotReady"
+      - name: "`Primary Election Date`"
+        description: "Date of the primary election"
+      - name: "`General Election Date`"
+        description: "Date of the general election"
+      - name: "`Election Date`"
+        description: "Election date (general or primary)"
+        tests:
+          - not_null
+      - name: "`Election Type`"
+        description: "Type of election (Primary/General)"
+      - name: "`Uncontested`"
+        description: "Whether the race is contested or uncontested"
+      - name: "`Number of Candidates`"
+        description: "Total number of candidates in the race"
+      - name: "`Number of Seats Available`"
+        description: "Number of seats available in the race"
+      - name: "`Open Seat`"
+        description: "Whether this is an open seat race"
+      - name: "`Partisan Type`"
+        description: "Partisan classification of the race"
+      - name: "`Type`"
+        description: "Lead type classification"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Self-Filer Lead']
+      - name: "`Contact Owner`"
+        description: "Email of the contact owner"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['jesse@goodparty.org']
+      - name: "`Owner Name`"
+        description: "Name of the contact owner"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Jesse Diliberto']
+      - name: _ab_source_file_url
+        description: "Source file URL from Airbyte"
+      - name: uploaded
+        description: "Upload status (in_hubspot, past_election, future_election, or no_contact)"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['in_hubspot', 'past_election', 'future_election', 'no_contact']
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted"
+        tests:
+          - not_null
+      - name: added_to_mart_at
+        description: "Timestamp when the record was added to the mart"
+        tests:
+          - not_null
