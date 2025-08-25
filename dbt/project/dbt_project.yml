@@ -32,9 +32,9 @@ clean-targets: # directories to be removed by `dbt clean`
 # using the `{{ config(...) }}` macro.
 
 models:
-  # Enable auto liquid cluster for all non-view models
-  +auto_liquid_cluster: true
   goodparty_data_catalog:
+    # Enable auto liquid cluster for all non-view models
+    +auto_liquid_cluster: true
     # set defaults for all .py models in this catalog
     +submission_method: serverless_cluster
     +create_notebook: True
