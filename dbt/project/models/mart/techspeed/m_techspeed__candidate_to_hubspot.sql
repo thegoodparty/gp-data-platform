@@ -129,6 +129,7 @@ select
     `Birth Date`,
     `Street Address`,
     `State/Region`,
+    postal_code,
     `District`,
     `City`,
     `population`,
