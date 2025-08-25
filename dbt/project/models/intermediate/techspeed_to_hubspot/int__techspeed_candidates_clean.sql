@@ -243,11 +243,20 @@ with
             end as techspeed_candidate_code
         from candidates_w_extracted_last_name
         qualify
+            -- qualify over the techspeed_candidate_code, and order by the source file
+            -- url in ascending order. This is to ensure that we only keep the record
+            -- the first time it appears so we don't overwrite the record with
+            -- a later one
             row_number() over (
-                partition by techspeed_candidate_code order by _ab_source_file_url desc
+                partition by techspeed_candidate_code order by _ab_source_file_url asc
             )
             = 1
             and techspeed_candidate_code != '______'  -- account for case where all fields are null
+            -- deduplicate on phone number, and order by the source file url
+            -- in ascending order. This is to ensure that we only keep the record the
+            -- first time it appears so we don't overwrite the record with a later one
+            and row_number() over (partition by phone order by _ab_source_file_url asc)
+            = 1
     )
 
 select
