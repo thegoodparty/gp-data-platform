@@ -163,7 +163,7 @@ models:
         tests:
           - accepted_values:
               arguments:
-                values: ['in_hubspot', 'past_election', 'future_election']
+                values: ['in_hubspot', 'past_election', 'future_election', 'no_contact']
       - name: _airbyte_extracted_at
         description: "Timestamp when the record was extracted"
         tests:

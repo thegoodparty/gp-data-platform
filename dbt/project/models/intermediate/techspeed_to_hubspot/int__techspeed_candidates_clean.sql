@@ -173,8 +173,6 @@ with
                                 last_name_clean,
                                 position('De La ' in last_name_clean) + 7
                             )
-                        -- Hugh: Why is the offset 7 here, instead of 5 (= len('de la
-                        -- '))?
                         when last_name_clean like '%Van %'
                         then
                             'Van ' || substring(

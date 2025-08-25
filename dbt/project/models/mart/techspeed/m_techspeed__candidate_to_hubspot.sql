@@ -110,11 +110,6 @@ with
             current_timestamp as added_to_mart_at,
             _ab_source_file_url
         from {{ ref("int__techspeed_candidates_w_hubspot") }}
-        {% if is_incremental() %}
-            where
-                _airbyte_extracted_at
-                > (select max(_airbyte_extracted_at) from {{ this }})
-        {% endif %}
     )
 
 select
