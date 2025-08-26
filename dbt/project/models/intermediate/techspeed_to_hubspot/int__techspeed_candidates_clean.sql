@@ -1,4 +1,10 @@
-{{ config(materialized="incremental", on_schema_change="append_new_columns") }}
+{{
+    config(
+        materialized="incremental",
+        unique_id="techspeed_candidate_code",
+        on_schema_change="append_new_columns",
+    )
+}}
 
 with
     candidates_wo_suffix as (
