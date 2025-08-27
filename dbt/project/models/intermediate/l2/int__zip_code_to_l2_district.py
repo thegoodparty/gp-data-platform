@@ -79,7 +79,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     for district_type in district_type_from_columns:
-        # Get data for this district type from both residence and mailing addresses
+        # Get data for this district type from residence
         district_df = (
             l2_uniform_data.select(
                 col("state_postal_code"),
