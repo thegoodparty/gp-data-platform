@@ -2,7 +2,13 @@
     config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="zip_code",
+        auto_liquid_cluster=true,
+        unique_key=[
+            "zip_code",
+            "district_type",
+            "district_name",
+            "br_race_database_id",
+        ],
         tags=["intermediate", "l2", "ballotready", "zip_code"],
     )
 }}
@@ -75,7 +81,7 @@ with
         -- dedup over the latest race in the database so as not to get a past one
         qualify
             row_number() over (
-                partition by zip_code, district_type, district_name, br_race_database_id
+                partition by zip_code, district_type, district_name
                 order by br_race_database_id desc
             )
             = 1
