@@ -65,3 +65,16 @@ seeds:
                 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
                 'DC'
               ]
+  - name: states_zip_code_range
+    description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
+    columns:
+      - name: state_postal_code
+        tests:
+          - not_null
+          - unique
+      - name: zip_code_range
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^\\[([0-9]{5},[0-9]{5})\\]$
