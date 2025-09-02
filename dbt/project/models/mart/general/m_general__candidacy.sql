@@ -15,7 +15,20 @@ select
     tbl_contacts.product_campaign_id,
     "candidacy_id-tbd" as candidacy_id,
     "gp_user_id-tbd" as gp_user_id,
-    "gp_contest_id-tbd" as gp_contest_id,
+    {{
+        generate_salted_uuid(
+            fields=[
+                "tbl_contest.official_office_name",
+                "tbl_contest.candidate_office",
+                "tbl_contest.office_type",
+                "tbl_contest.office_level",
+                "tbl_contest.state",
+                "tbl_contest.city",
+                "tbl_contest.district",
+                "tbl_contest.seat_name",
+            ]
+        )
+    }} as gp_contest_id,
     tbl_contacts.company_id as company_id,
     tbl_contacts.company_id as companies_id_main,
     tbl_contacts.contact_id,
@@ -98,6 +111,15 @@ left join
     {{ ref("stg_model_predictions__candidacy_ddhq_matches_20250826") }}
     as tbl_ddhq_matches
     on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
+left join
+    {{ ref("int__hubspot_contest") }} as tbl_contest
+    on tbl_contacts.official_office_name = tbl_contest.official_office_name
+    and tbl_contacts.candidate_office = tbl_contest.candidate_office
+    and tbl_contacts.office_type = tbl_contest.office_type
+    and tbl_contacts.office_level = tbl_contest.office_level
+    and tbl_contacts.state = tbl_contest.state
+    and tbl_contacts.city = tbl_contest.city
+    and tbl_contacts.district = tbl_contest.district
 {% if is_incremental() %}
     where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
 {% endif %}
