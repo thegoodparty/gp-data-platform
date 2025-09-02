@@ -210,11 +210,15 @@ with
             )
             = 1
             and techspeed_candidate_code != '______'  -- account for case where all fields are null
-            -- deduplicate on phone number, and order by the source file url
-            -- in ascending order. This is to ensure that we only keep the record the
-            -- first time it appears so we don't overwrite the record with a later one
-            and row_number() over (partition by phone order by _ab_source_file_url asc)
-            = 1
+    ),
+    -- deduplicate on phone number, and order by the source file url
+    -- in ascending order. This is to ensure that we only keep the record the
+    -- first time it appears so we don't overwrite the record with a later one
+    candidates_deduped_on_phone as (
+        select *
+        from candidates_deduped_on_name_state_office_type
+        qualify
+            row_number() over (partition by phone order by _ab_source_file_url asc) = 1
     )
 
 select
@@ -260,4 +264,4 @@ select
     uploaded,
     _ab_source_file_url,
     _airbyte_extracted_at
-from candidates_deduped_on_name_state_office_type
+from candidates_deduped_on_phone
