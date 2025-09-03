@@ -38,7 +38,15 @@ models:
         # data_type: uuid
         tests:
           - not_null
-
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - dbt_utils.relationships_where:
+              arguments:
+                to: ref('m_general__contest')
+                field: gp_contest_id
+                # exclude case where one of the components to the contest id is null
+                from_condition: gp_contest_id not in ('a51cb416-6f84-a1d9-51e4-577800d54cbf')
       - name: companies_id_main
         description: Need to know person in growth system
         # data_type: varchar
@@ -222,13 +230,6 @@ models:
                 regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
-      - name: gp_contest_id
-        description: Identifier to link contest
-        tests:
-          - relationships:
-              arguments:
-                to: ref('m_general__contest')
-                field: gp_contest_id
     tests:
       - relationships:
           arguments:
