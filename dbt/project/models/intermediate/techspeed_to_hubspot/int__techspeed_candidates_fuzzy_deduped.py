@@ -1,6 +1,8 @@
+from typing import Callable
+
 import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import pandas_udf
+from pyspark.sql.functions import col, pandas_udf
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -74,14 +76,14 @@ def wrap_perform_fuzzy_matching(
     hubspot_df: pd.DataFrame,
     threshold: int = FUZZY_THRESHOLD,
     top_n: int = TOP_N_MATCHES,
-) -> pd.DataFrame:
+) -> Callable:
     """
     Wraps the perform_fuzzy_matching function in a callable that can be used in a pandas UDF.
     The wrapper is necessary to pass in threshold and top_n to the UDF.
     """
 
     @pandas_udf(returnType=THIS_TABLE_SCHEMA)
-    def perform_fuzzy_matching(techspeed_df: pd.DataFrame) -> pd.DataFrame:
+    def perform_fuzzy_matching(techspeed_codes: pd.Series) -> pd.DataFrame:
         """
         Perform fuzzy matching between BR candidate codes and HubSpot candidate codes
 
@@ -96,24 +98,27 @@ def wrap_perform_fuzzy_matching(
         """
         # Prepare HubSpot data for fuzzy matching
         hubspot_codes = (
-            hubspot_df[hubspot_df["hs_candidate_code"].notna()]["hs_candidate_code"]
+            hubspot_df[hubspot_df["hubspot_candidate_code"].notna()][
+                "hubspot_candidate_code"
+            ]
             .unique()
             .tolist()
         )
 
         # Create lookup dictionary for HubSpot data
         hubspot_lookup = (
-            hubspot_df.dropna(subset=["hs_candidate_code"])
-            .drop_duplicates(subset=["hs_candidate_code"])
-            .set_index("hs_candidate_code")
+            hubspot_df.dropna(subset=["hubspot_candidate_code"])
+            .drop_duplicates(subset=["hubspot_candidate_code"])
+            .set_index("hubspot_candidate_code")
             .to_dict("index")
         )
 
         fuzzy_results = []
 
         # Process each BR candidate with progress bar
-        for _, row in techspeed_df.iterrows():
-            techspeed_code = row.get("techspeed_candidate_code")
+        # for _, row in techspeed_codes.iterrows():
+        #     techspeed_code = row.get("techspeed_candidate_code")
+        for techspeed_code in techspeed_codes:
 
             if pd.isna(techspeed_code):
                 continue
@@ -130,12 +135,11 @@ def wrap_perform_fuzzy_matching(
 
                     fuzzy_results.append(
                         {
-                            "candidacy_id": row.get("candidacy_id"),
                             "techspeed_candidate_code": techspeed_code,
                             "fuzzy_matched_hs_candidate_code": matched_code,
                             "fuzzy_match_score": score,
                             "fuzzy_match_rank": rank,
-                            "fuzzy_matched_hs_contact_id": hubspot_data.get("id"),
+                            "fuzzy_matched_hubspot_contact_id": hubspot_data.get("id"),
                             "fuzzy_matched_first_name": hubspot_data.get(
                                 "properties_firstname"
                             ),
@@ -174,12 +178,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
     hubspot_candidate_codes: DataFrame = dbt.ref("int__hubspot_candidate_codes")
 
     # during dev, downsample
-    techspeed_candidates_w_hubspot = techspeed_candidates_w_hubspot.sample(frac=0.1)
-    hubspot_candidate_codes = hubspot_candidate_codes.sample(frac=0.1).toPandas()
+    techspeed_candidates_w_hubspot = techspeed_candidates_w_hubspot.sample(fraction=0.1)
+    hubspot_candidate_codes = hubspot_candidate_codes.sample(fraction=0.1).toPandas()
 
     udf_perform_fuzzy_matching = wrap_perform_fuzzy_matching(
         hubspot_candidate_codes, threshold=FUZZY_THRESHOLD, top_n=TOP_N_MATCHES
     )
-    fuzzy_results = udf_perform_fuzzy_matching(techspeed_candidates_w_hubspot)
+    fuzzy_results = techspeed_candidates_w_hubspot.withColumn(
+        "fuzzy_results", udf_perform_fuzzy_matching(col("techspeed_candidate_code"))
+    )
+    # fuzzy_results = udf_perform_fuzzy_matching(techspeed_candidates_w_hubspot)
 
     return fuzzy_results
