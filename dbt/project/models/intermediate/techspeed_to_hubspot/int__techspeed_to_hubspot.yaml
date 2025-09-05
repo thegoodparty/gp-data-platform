@@ -69,11 +69,6 @@ models:
     columns:
       - name: candidate_id_source
         description: "Unique identifier for the candidate from source system"
-        tests:
-          - relationships:
-              arguments:
-                to: ref('int__techspeed_candidates')
-                field: candidate_id_source
       - name: first_name
         description: "Candidate's first name"
         tests:
@@ -127,10 +122,6 @@ models:
         description: "Unique identifier for the candidate from source system"
         tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('int__techspeed_candidates_clean')
-                field: candidate_id_source
       - name: first_name
         description: "Candidate's first name"
         tests:

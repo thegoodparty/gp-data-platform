@@ -72,7 +72,7 @@ with
             end as `Filing Deadline`,
             case
                 when ballotready_race_id is null then '' else ballotready_race_id
-            end as `BallotReady Race ID`,
+            end as br_race_id,
             case
                 when primary_election_date is null
                 then ''
@@ -138,7 +138,7 @@ select
     `Office Type`,
     `Office Level`,
     `Filing Deadline`,
-    `BallotReady Race ID`,
+    br_race_id,
     `Primary Election Date`,
     `General Election Date`,
     `Election Date`,
