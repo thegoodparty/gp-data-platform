@@ -16,6 +16,7 @@ dependencies = [
     "boto3 (>=1.38.10,<2.0.0)",
     "pytest (>=8.3.5,<9.0.0)",
     "apache-airflow (==3.0.4)",
+    "thefuzz (<1.0.0)",
 ]
 
 
