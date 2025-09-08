@@ -105,11 +105,20 @@ with
                 when contact_owner is null then '' else contact_owner
             end as `Contact Owner`,
             case when owner_name is null then '' else owner_name end as `Owner Name`,
+            fuzzy_results_techspeed_candidate_code,
+            fuzzy_matched_hubspot_candidate_code,
+            fuzzy_match_score,
+            fuzzy_match_rank,
+            fuzzy_matched_hubspot_contact_id,
+            fuzzy_matched_first_name,
+            fuzzy_matched_last_name,
+            fuzzy_matched_state,
+            fuzzy_matched_office_type,
             uploaded,
             _airbyte_extracted_at,
             current_timestamp as added_to_mart_at,
             _ab_source_file_url
-        from {{ ref("int__techspeed_candidates_w_hubspot") }}
+        from {{ ref("int__techspeed_candidates_fuzzy_deduped") }}
     )
 
 select
