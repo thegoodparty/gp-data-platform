@@ -27,7 +27,7 @@ FUZZ_MATCH_SCHEMA = StructType(
 
 # Configuration parameters
 FUZZY_THRESHOLD: int = 85  # Default threshold for fuzzy matching
-TOP_N_MATCHES: int = 1  # Default number of matches to return per candidate
+TOP_N_MATCHES: int = 1  # Default number of matches to return per candidate.
 
 
 def wrap_perform_fuzzy_matching(
@@ -54,6 +54,11 @@ def wrap_perform_fuzzy_matching(
         Returns:
             DataFrame with fuzzy match results
         """
+        # TODO: unneeded in practice, but possibly useful later: add support for multiple matches
+        # this would rqeuire the output schema to hold all the results in a list of dictionaries.
+        # the corresponding pyspark schema would be an array of structs.
+        assert top_n == 1, "top_n must be 1"
+
         # Prepare HubSpot data for fuzzy matching
         hubspot_codes = (
             hubspot_df[hubspot_df["hubspot_candidate_code"].notna()][
