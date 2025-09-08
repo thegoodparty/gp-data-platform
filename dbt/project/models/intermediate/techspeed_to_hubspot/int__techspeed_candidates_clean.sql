@@ -54,16 +54,23 @@ with
             state,
             official_office_name,
             candidate_office,
-            office_type,
-            /* TODO: clean up office_type:
-                City mayor -> Mayor
-                City council Member -> City Council
-                Township Trustee -> Town Council
-                Village Council -> Town Council
-                City Commissioner -> City Council
-                Services Director-> Other
-                Town Commission -> Town Council
-            */
+            case
+                when lower(office_type) = 'city mayor'
+                then 'Mayor'
+                when lower(office_type) = 'city council member'
+                then 'City Council'
+                when lower(office_type) = 'township trustee'
+                then 'Town Council'
+                when lower(office_type) = 'Village Council'
+                then 'Town Council'
+                when lower(office_type) = 'City Commissioner'
+                then 'City Council'
+                when lower(office_type) = 'Services Director'
+                then 'Other'
+                when lower(office_type) = 'town commission'
+                then 'Town Council'
+                else office_type
+            end as office_type,
             office_level,
             filing_deadline,
             primary_election_date,
