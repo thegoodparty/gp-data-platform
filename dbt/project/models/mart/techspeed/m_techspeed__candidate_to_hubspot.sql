@@ -56,7 +56,7 @@ with
             end as postal_code,
             case when district is null then '' else district end as `District`,
             case when city is null then '' else city end as `City`,
-            case when population is null then '' else population end as `population`,
+            population,
             case
                 when official_office_name is null then '' else official_office_name
             end as `Official Office Name`,
