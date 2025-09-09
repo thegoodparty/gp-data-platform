@@ -69,11 +69,6 @@ models:
     columns:
       - name: candidate_id_source
         description: "Unique identifier for the candidate from source system"
-        tests:
-          - relationships:
-              arguments:
-                to: ref('int__techspeed_candidates')
-                field: candidate_id_source
       - name: first_name
         description: "Candidate's first name"
         tests:
@@ -120,6 +115,25 @@ models:
         tests:
           - not_null
 
+  - name: int__techspeed_candidates_fuzzy_deduped
+    description: "Techspeed candidates with fuzzy matching to HubSpot candidates"
+    columns:
+      - name: techspeed_candidate_code
+        description: "Generated unique code for the candidate"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref("int__techspeed_candidates_w_hubspot")
+                field: techspeed_candidate_code
+    tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('int__techspeed_candidates_w_hubspot')
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "techspeed_candidate_code = fuzzy_results_techspeed_candidate_code"
+
   - name: int__techspeed_candidates_w_hubspot
     description: "Techspeed candidates with HubSpot integration status"
     columns:
@@ -127,10 +141,6 @@ models:
         description: "Unique identifier for the candidate from source system"
         tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('int__techspeed_candidates_clean')
-                field: candidate_id_source
       - name: first_name
         description: "Candidate's first name"
         tests:

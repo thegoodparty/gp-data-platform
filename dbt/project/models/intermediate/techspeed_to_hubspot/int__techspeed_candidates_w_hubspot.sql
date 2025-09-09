@@ -1,4 +1,11 @@
-{{ config(materialized="incremental", on_schema_change="append_new_columns") }}
+{{
+    config(
+        materialized="incremental",
+        unique_id="techspeed_candidate_code",
+        on_schema_change="append_new_columns",
+        tags=["intermediate", "techspeed", "hubspot"],
+    )
+}}
 
 with
     techspeed_candidates_w_hubspot as (

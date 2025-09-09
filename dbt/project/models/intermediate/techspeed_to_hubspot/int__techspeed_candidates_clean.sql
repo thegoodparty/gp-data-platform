@@ -9,7 +9,11 @@
 with
     candidates_wo_suffix as (
         select
-            candidate_id_source,
+            case
+                when candidate_id_source = 'ts_found_race_net_new'
+                then 'TS NET NEW'
+                else candidate_id_source
+            end as candidate_id_source,
             first_name,
             last_name,
             candidate_type,
@@ -50,7 +54,23 @@ with
             state,
             official_office_name,
             candidate_office,
-            office_type,
+            case
+                when lower(office_type) = 'city mayor'
+                then 'Mayor'
+                when lower(office_type) = 'city council member'
+                then 'City Council'
+                when lower(office_type) = 'township trustee'
+                then 'Town Council'
+                when lower(office_type) = 'village council'
+                then 'Town Council'
+                when lower(office_type) = 'city commissioner'
+                then 'City Council'
+                when lower(office_type) = 'services director'
+                then 'Other'
+                when lower(office_type) = 'town commission'
+                then 'Town Council'
+                else office_type
+            end as office_type,
             office_level,
             filing_deadline,
             primary_election_date,
@@ -62,7 +82,11 @@ with
             number_of_seats_available,
             open_seat,
             partisan,
-            population,
+            case
+                when (population = '' or population is null)
+                then null
+                else cast(trim(regexp_replace(population, '[^0-9]', '')) as integer)
+            end as population,
             ballotready_race_id,
             type,
             contact_owner,
