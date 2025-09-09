@@ -1,7 +1,8 @@
 {{
     config(
         materialized="incremental",
-        unique_id="techspeed_candidate_code",
+        unique_key="techspeed_candidate_code",
+        incremental_strategy="merge",
         on_schema_change="append_new_columns",
         tags=["intermediate", "techspeed", "hubspot"],
     )
