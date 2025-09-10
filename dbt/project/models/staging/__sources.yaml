@@ -81,6 +81,8 @@ sources:
     tables:
       - name: candidacy_ddhq_matches_20250826
         description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_ddhq_matches_20250909
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
       - name: llm_l2_br_match_20250806
         description: output of gemini string matching between L2 districts and BallotReady office positions
       - name: llm_l2_br_match_20250811
