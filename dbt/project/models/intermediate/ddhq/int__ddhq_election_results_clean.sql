@@ -65,5 +65,24 @@ with
             )
     )
 
-select *
+select
+    _airbyte_raw_id,
+    _airbyte_extracted_at,
+    _airbyte_meta,
+    _airbyte_generation_id,
+    date,
+    votes,
+    race_id,
+    candidate,
+    is_winner,
+    race_name,
+    extracted_state,
+    candidate_id,
+    election_type,
+    is_uncontested,
+    candidate_party,
+    _ab_source_file_url,
+    number_of_seats_in_election,
+    _ab_source_file_last_modified,
+    total_number_of_ballots_in_race
 from filtered_election_results
