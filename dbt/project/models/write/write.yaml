@@ -57,3 +57,16 @@ models:
             combination_of_columns:
               - source_file_name
               - loaded_at
+
+  - name: write__l2_databricks_to_people_api
+    description: >
+      This model writes data from Databricks to the people api database.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
+      people_db_host: "{{ env_var('DBT_PEOPLE_DB_HOST') }}"
+      people_db_port: "{{ env_var('DBT_PEOPLE_DB_PORT') }}"
+      people_db_name: "{{ env_var('DBT_PEOPLE_DB_NAME') }}"
+      people_db_schema: "{{ env_var('DBT_PEOPLE_DB_SCHEMA') }}"
+      people_db_user: "{{ env_var('DBT_PEOPLE_DB_USER') }}"
+      people_db_pw: "{{ env_var('DBT_PEOPLE_DB_PW') }}"
