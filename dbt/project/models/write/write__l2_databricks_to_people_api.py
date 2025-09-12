@@ -559,7 +559,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # downsample for non-prod environment with three least populous states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-    filter_list = ["WY"]  # , "ND", "VT"]
+    filter_list = ["WY", "ND", "VT"]
     if dbt_env_name != "prod":
         voter_table = voter_table.filter(col("State").isin(filter_list))
 
@@ -600,7 +600,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .collect()[0][0]
             )
             if max_loaded_at:
-                state_df = state_df.filter(col("loaded_at") > max_loaded_at)
+                state_df = state_df.filter(col("updated_at") > max_loaded_at)
 
         num_rows_loaded = _load_data_to_postgres(
             df=state_df,
