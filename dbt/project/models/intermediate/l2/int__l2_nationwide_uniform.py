@@ -1,6 +1,6 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit, regexp_replace
-from pyspark.sql.types import BooleanType, DoubleType
+from pyspark.sql.types import BooleanType, DoubleType, StringType
 
 ELECTION_COLUMNS = [
     "General_2030",
@@ -97,7 +97,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",
-        on_schema_change="fail",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "l2", "nationwide_uniform", "uniform"],
     )
@@ -782,5 +782,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # cast elections as booleans
     for column in ELECTION_COLUMNS:
         df = df.withColumn(column, col(column).cast(BooleanType()))
+
+    # other casting changes
+    df = df.withColumn(
+        "ConsumerData_PASS_Prospector_Home_Value_Mortgage_File",
+        col("ConsumerData_PASS_Prospector_Home_Value_Mortgage_File").cast(StringType()),
+    )
+
+    # Extract state from LALVOTERID (substring starting at position 4 with length 2)
+    df = df.withColumn("state_from_lalvoterid", col("LALVOTERID").substr(4, 2))
 
     return df

@@ -3,10 +3,10 @@ name = "dbt-goodparty"
 version = "0.1.0"
 description = "Data warehouse for GoodParty.org"
 authors = [
-    {name = "Hugh Karimi",email = "hussain.h.karimi@gmail.com"}
+    {name = "Hugh Karimi",email = "hkarimi@goodparty.org"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "pandas (>=2.2.3,<3.0.0)",
     "requests (>=2.32.3,<3.0.0)",
@@ -15,6 +15,8 @@ dependencies = [
     "paramiko (>=3.5.1,<4.0.0)",
     "boto3 (>=1.38.10,<2.0.0)",
     "pytest (>=8.3.5,<9.0.0)",
+    "apache-airflow (==3.0.4)",
+    "thefuzz (<1.0.0)",
 ]
 
 

@@ -332,7 +332,7 @@ def model(dbt, session) -> DataFrame:
     candidacies_count = candidacies.count()
 
     # If no records to process after filtering, return early
-    if candidacies_count and dbt.is_incremental:
+    if candidacies_count == 0:
         logging.info("INFO: No new or updated candidacies to process")
         # Return empty DataFrame with correct schema
         empty_df = session.createDataFrame(

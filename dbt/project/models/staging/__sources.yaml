@@ -29,10 +29,14 @@ sources:
         description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_office_holders_v3
         description: raw data load from s3 data dump sent from ballotready
+      - name: ballotready_s3_recruitment_v1
+        description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_uscities_v1_77
         description: raw data load from s3 data dump sent from ballotready
       - name: ballotready_s3_uscounties_v1_73
         description: raw data load from s3 data dump sent from ballotready
+      - name: ddhq_gdrive_election_results
+        description: raw data load from ddhq google drive for election results
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position
@@ -56,12 +60,39 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_deals
         description: raw data load from HubSpot data model
+      - name: hubspot_api_engagements
+        description: raw data load from HubSpot data model
       - name: hubspot_api_owners_archived
         description: raw data load from HubSpot data model
       - name: hubspot_api_owners
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
+      - name: techspeed_gdrive_candidates
+        description: raw data load from Techspeed Google Drive
+      - name: techspeed_gdrive_marketing_data_enrichment
+        description: raw data load from Techspeed Google Drive
+
+
+  - name: model_predictions
+    schema: model_predictions
+    description: Raw data loaded from model predictions
+
+    tables:
+      - name: candidacy_ddhq_matches_20250826
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_ddhq_matches_20250909
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: llm_l2_br_match_20250806
+        description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: llm_l2_br_match_20250811
+        description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: turnout_projections_even_years_20250709
+        description: raw data load from voter turnout projections for even years
+      - name: turnout_projections_model2odd
+        description: raw data load from voter turnout projections for odd years
+      - name: viability_scores
+        description: raw data load from model predictions
 
 
   - name: dbt_source

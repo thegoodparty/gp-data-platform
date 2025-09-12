@@ -1,0 +1,6 @@
+postgres:
+    port: "5435"
+project:
+    name: etl
+webserver:
+    port: "8081"

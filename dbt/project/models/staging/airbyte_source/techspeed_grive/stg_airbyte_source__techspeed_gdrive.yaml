@@ -1,0 +1,15 @@
+models:
+  - name: stg_airbyte_source__techspeed_gdrive_candidates
+    description: Candidates data load from TechSpeed Google Drive
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - not_null
+          - unique
+  - name: stg_airbyte_source__techspeed_gdrive_marketing_data_enrichment
+    description: Marketing data enrichment load from TechSpeed Google Drive
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - not_null
+          - unique

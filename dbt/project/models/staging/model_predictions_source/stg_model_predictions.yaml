@@ -1,0 +1,172 @@
+models:
+
+  - name: stg_model_predictions__candidacy_ddhq_matches_20250826
+    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    columns:
+      - name: gp_candidacy_id
+        description: unique id
+        data_tests:
+          - not_null
+
+  - name: stg_model_predictions__candidacy_ddhq_matches_20250909
+    description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
+    columns:
+      - name: gp_candidacy_id
+        description: unique id
+        data_tests:
+          - not_null
+
+  - name: stg_model_predictions__llm_l2_br_match_20250806
+    description: gemini outputs to string match L2 districts to BallotReady positions/offices
+    columns:
+      - name: id
+        description: unique id
+        data_tests:
+          - not_null
+          - unique
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+      - name: br_database_id
+        description: BallotReady database id
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int__enhanced_position')
+                field: br_database_id
+
+  - name: stg_model_predictions__llm_l2_br_match_20250811
+    description: gemini outputs to string match L2 districts to BallotReady positions/offices
+    columns:
+      - name: id
+        description: unique id
+        data_tests:
+          - not_null
+          - unique
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+      - name: br_database_id
+        description: BallotReady database id
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('int__enhanced_position')
+                field: br_database_id
+
+  - name: stg_model_predictions__viability_scores
+    description: Viability scores data load from model predictions
+    columns:
+      - name: id
+        description: The HubSpot company id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stg_model_predictions__turnout_projections_even_years_20250709
+    description: Turnout projections data load from model predictions
+    columns:
+      - name: district_type
+        description: The number of ballots projected
+        data_tests:
+          - not_null
+      - name: district_name
+        description: The office name
+        data_tests:
+          - not_null
+      - name: election_year
+        description: The election year
+        data_tests:
+          - not_null
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+    tests:
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+            - state
+            - district_type
+            - district_name
+            - election_year
+            - election_code
+            - model_version
+            - inference_at
+
+  - name: stg_model_predictions__turnout_projections_model2odd
+    description: Turnout projections data load from model predictions
+    columns:
+      - name: district_type
+        description: The number of ballots projected
+        data_tests:
+          - not_null
+      - name: district_name
+        description: The office name
+        data_tests:
+          - not_null
+      - name: election_year
+        description: The election year
+        data_tests:
+          - not_null
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+    tests:
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+            - state
+            - district_type
+            - district_name
+            - election_year
+            - election_code
+            - model_version
+            - inference_at
