@@ -100,7 +100,9 @@ with
             cast(null as string) as `MilitaryStatus_Description`,
             cast(null as string) as `MaritalStatus_Description`,
             `Voters_MovedFrom_State` as `MovedFrom_State`,
-            `Voters_MovedFrom_Date` as `MovedFrom_Date`,
+            cast(
+                to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy') as date
+            ) as `MovedFrom_Date`,
             `Voters_MovedFrom_Party_Description` as `MovedFrom_Party_Description`,
 
             -- Voter Turnout
