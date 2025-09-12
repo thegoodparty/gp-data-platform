@@ -33,3 +33,4 @@ dbt/*/logs/
 # ignore tmp_data
 tmp_data/
 .python-version
+CLAUDE.md
