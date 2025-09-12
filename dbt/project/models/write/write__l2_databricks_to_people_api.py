@@ -477,7 +477,7 @@ def _load_data_to_postgres(
 
     # make a wake up call to the database
     _execute_sql_query(
-        'SELECT * FROM public."Voter" LIMIT 1;',
+        f'SELECT * FROM {db_schema}."{table_name}" LIMIT 1;',
         db_host,
         db_port,
         db_user,
@@ -595,7 +595,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # handle incremental loading
         if dbt.is_incremental:
             max_loaded_at = (
-                this_table.filter(col("State") == state_id)
+                this_table.filter(col("state_id") == state_id)
                 .agg(max("loaded_at"))
                 .collect()[0][0]
             )

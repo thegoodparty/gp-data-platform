@@ -768,7 +768,7 @@ with
         {% if is_incremental() %}
             left join
                 {{ this }} as tbl_existing
-                on tbl_updated.lalvoterid = tbl_existing.lalvoterid
+                on tbl_updated.`LALVOTERID` = tbl_existing.`LALVOTERID`
         {% endif %}
     )
 
