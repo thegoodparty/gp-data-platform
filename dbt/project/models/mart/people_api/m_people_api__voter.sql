@@ -33,12 +33,18 @@ with
             `Residence_Addresses_Zip`,
             `Residence_Addresses_ZipPlus4`,
             `Residence_Addresses_DPBC`,
-            `Residence_Addresses_CheckDigit`,
+            try_cast(
+                `Residence_Addresses_CheckDigit` as int
+            ) as `Residence_Addresses_CheckDigit`,
             `Residence_Addresses_HouseNumber`,
-            `Residence_Addresses_PrefixDirection`,
+            try_cast(
+                `Residence_Addresses_PrefixDirection` as int
+            ) as `Residence_Addresses_PrefixDirection`,
             `Residence_Addresses_StreetName`,
             `Residence_Addresses_Designator`,
-            `Residence_Addresses_SuffixDirection`,
+            try_cast(
+                `Residence_Addresses_SuffixDirection` as int
+            ) as `Residence_Addresses_SuffixDirection`,
             `Residence_Addresses_ApartmentNum`,
             `Residence_Addresses_ApartmentType`,
             `Residence_Addresses_CassErrStatCode`,
@@ -56,17 +62,23 @@ with
             `Mailing_Addresses_Zip`,
             `Mailing_Addresses_ZipPlus4`,
             `Mailing_Addresses_DPBC`,
-            `Mailing_Addresses_CheckDigit`,
+            try_cast(
+                `Mailing_Addresses_CheckDigit` as int
+            ) as `Mailing_Addresses_CheckDigit`,
             `Mailing_Addresses_HouseNumber`,
-            `Mailing_Addresses_PrefixDirection`,
+            try_cast(
+                `Mailing_Addresses_PrefixDirection` as int
+            ) as `Mailing_Addresses_PrefixDirection`,
             `Mailing_Addresses_StreetName`,
             `Mailing_Addresses_Designator`,
-            `Mailing_Addresses_SuffixDirection`,
+            try_cast(
+                `Mailing_Addresses_SuffixDirection` as int
+            ) as `Mailing_Addresses_SuffixDirection`,
             `Mailing_Addresses_ApartmentNum`,
             `Mailing_Addresses_ApartmentType`,
             `Mailing_Addresses_CassErrStatCode`,
             `Mailing_Families_FamilyID`,
-            cast(null as string) as `Mailing_Families_HHCount`,
+            try_cast(null as int) as `Mailing_Families_HHCount`,
             cast(null as string) as `Mailing_HHGender_Description`,
             cast(null as string) as `Mailing_HHParties_Description`,
             cast(`Voters_Age` as string) as `Age`,
