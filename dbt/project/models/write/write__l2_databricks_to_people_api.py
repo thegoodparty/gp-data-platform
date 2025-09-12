@@ -378,7 +378,7 @@ voter_column_list_str = ",".join(
 update_set_query = [
     f"{col} = EXCLUDED.{col}"
     for col in protected_voter_column_list
-    if col != "LALVOTERID"
+    if col != '"LALVOTERID"'
 ]
 update_set_query_str = ", ".join(update_set_query)
 
@@ -599,7 +599,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg(max("loaded_at"))
                 .collect()[0][0]
             )
-            state_df = state_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at:
+                state_df = state_df.filter(col("loaded_at") > max_loaded_at)
 
         num_rows_loaded = _load_data_to_postgres(
             df=state_df,
