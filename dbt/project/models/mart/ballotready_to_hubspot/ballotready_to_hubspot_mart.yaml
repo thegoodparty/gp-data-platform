@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: m_ballotready_to_hubspot__records_sent_historical
+    description: >
+      Historical tracking table for all BallotReady candidates processed for HubSpot upload.
+      Maintains audit trail with fuzzy match results and viability scores.
+      Used to prevent duplicate sends and track processing history.
+    meta:
+      owner: tristan.aubert@goodparty.org
+      source_systems: [BallotReady, HubSpot]
+    columns:
+      - name: candidacy_id
+        description: Unique identifier for the candidacy from BallotReady
+        tests:
+          - unique
+          - not_null
+      - name: election_date
+        description: Date of the election
+        tests:
+          - not_null
+      - name: first_name
+        description: Candidate's first name
+        tests:
+          - not_null
+      - name: last_name
+        description: Candidate's last name
+        tests:
+          - not_null
+      - name: phone
+        description: Candidate's phone number (cleaned)
+        tests:
+          - not_null
+      - name: email
+        description: Candidate's email address
+        tests:
+          - not_null
+      - name: br_candidate_code
+        description: Generated unique code for candidate matching
+        tests:
+          - not_null
+      - name: match_type
+        description: Type of match performed (exact, fuzzy, none)
+      - name: fuzzy_match_score
+        description: Similarity score for fuzzy matches (0-100)
+      - name: viability_score
+        description: Calculated viability score for candidate (placeholder)
+      - name: upload_timestamp
+        description: Timestamp when record was processed for HubSpot
+        tests:
+          - not_null
+
+  - name: m_ballotready_to_hubspot__records_sent_to_techspeed
+    description: >
+      Historical tracking table for BallotReady candidates sent to TechSpeed for data enrichment.
+      Tracks candidates with missing contact information that need external data augmentation.
+    meta:
+      owner: tristan.aubert@goodparty.org
+      source_systems: [BallotReady, TechSpeed]
+    columns:
+      - name: candidacy_id
+        description: Unique identifier for the candidacy from BallotReady
+        tests:
+          - unique
+          - not_null
+      - name: election_day
+        description: Date of the election
+        tests:
+          - not_null
+      - name: first_name
+        description: Candidate's first name
+      - name: last_name
+        description: Candidate's last name
+      - name: phone
+        description: Candidate's phone number (may be empty)
+      - name: email
+        description: Candidate's email address (may be empty)
+      - name: upload_datetime
+        description: Timestamp when record was sent to TechSpeed
+        tests:
+          - not_null

@@ -395,78 +395,7 @@ with
                 then regexp_extract(official_office_name, ' - Position ([^\\s(]+)')
                 else ''
             end as seat,
-            -- Add candidate slug generation
-            case
-                when official_office_name is not null and official_office_name != ''
-                then
-                    concat(
-                        -- Slugify first_last_name_slug
-                        trim(
-                            both '-/'
-                            from
-                                regexp_replace(
-                                    regexp_replace(
-                                        regexp_replace(
-                                            regexp_replace(
-                                                lower(trim(concat(coalesce(first_name, ''), '-', coalesce(last_name, '')))), 
-                                                '[^a-z0-9\\s-/]', ''
-                                            ),
-                                            '\\s+',
-                                            '-'
-                                        ),
-                                        '-{2,}',
-                                        '-'
-                                    ),
-                                    '/{2,}',
-                                    '-'
-                                )
-                        ),
-                        '/',
-                        -- Slugify official_office_name
-                        trim(
-                            both '-/'
-                            from
-                                regexp_replace(
-                                    regexp_replace(
-                                        regexp_replace(
-                                            regexp_replace(
-                                                lower(trim(official_office_name)), 
-                                                '[^a-z0-9\\s-/]', ''
-                                            ),
-                                            '\\s+',
-                                            '-'
-                                        ),
-                                        '-{2,}',
-                                        '-'
-                                    ),
-                                    '/{2,}',
-                                    '-'
-                                )
-                        )
-                    )
-                else 
-                    -- Just slugify first_last_name_slug if no official_office_name
-                    trim(
-                        both '-/'
-                        from
-                            regexp_replace(
-                                regexp_replace(
-                                    regexp_replace(
-                                        regexp_replace(
-                                            lower(trim(concat(coalesce(first_name, ''), '-', coalesce(last_name, '')))), 
-                                            '[^a-z0-9\\s-/]', ''
-                                        ),
-                                        '\\s+',
-                                        '-'
-                                    ),
-                                    '-{2,}',
-                                    '-'
-                                ),
-                                '/{2,}',
-                                '-'
-                            )
-                    )
-            end as candidate_slug,
+            {{ generate_candidate_slug('first_name', 'last_name', 'official_office_name') }} as candidate_slug,
             {{ map_ballotready_office_type("candidate_office") }} as office_type,
             'Self-Filer Lead' as type,
             'jesse@goodparty.org' as contact_owner,
