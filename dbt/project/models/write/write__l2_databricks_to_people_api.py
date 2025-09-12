@@ -396,7 +396,7 @@ UPSERT_QUERY = (
     """
     + voter_column_list_str
     + """
-    FROM {staging_schema}."{table_name}"
+    FROM {staging_schema}."{staging_table_name}"
     ON CONFLICT ("LALVOTERID") DO UPDATE SET
     """
     + update_set_query_str
@@ -469,6 +469,7 @@ def _load_data_to_postgres(
         Number of rows loaded
     """
     table_name = "Voter"
+    staging_table_name = f"Voter_{state_id.upper()}"
     logging.info(f"Writing {state_id} data to PostgreSQL via JDBC")
 
     # Construct JDBC URL
@@ -486,7 +487,7 @@ def _load_data_to_postgres(
     )
 
     df.write.format("jdbc").option("url", jdbc_url).option(
-        "dbtable", f'{staging_schema}."{table_name}"'
+        "dbtable", f'{staging_schema}."{staging_table_name}"'
     ).option("user", db_user).option("password", db_pw).option(
         "driver", "org.postgresql.Driver"
     ).mode(
@@ -499,7 +500,10 @@ def _load_data_to_postgres(
         "SET work_mem = '128MB'; "
         "SET max_parallel_workers_per_gather = 8; "
         + upsert_query.format(
-            db_schema=db_schema, staging_schema=staging_schema, table_name=table_name
+            db_schema=db_schema,
+            staging_schema=staging_schema,
+            table_name=table_name,
+            staging_table_name=staging_table_name,
         )
         + ";"
     )
