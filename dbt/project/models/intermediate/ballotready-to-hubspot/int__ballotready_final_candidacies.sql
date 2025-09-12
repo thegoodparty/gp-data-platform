@@ -30,6 +30,10 @@ with
             t1.br_candidate_code not in (
                 select hs_candidate_code from {{ ref("int__hubspot_candidacy_codes") }}
             )
+            and t1.br_candidate_code is not null
+            and t1.phone not in (
+                select phone from {{ ref("int__hubspot_phone_numbers") }}
+            )
     ),
 
     -- write formatted new batch data to a table
@@ -51,11 +55,12 @@ with
             official_office_name,
             candidate_office,
             office_level,
-            cast(candidate_id_tier as int) as candidate_id_tier,
+            cast(geographic_tier as int) as geographic_tier,
             cast(number_of_seats_available as int) as number_of_seats_available,
             election_type,
             party_affiliation,
             party_list,
+            parties,
             first_name,
             middle_name,
             last_name,
@@ -68,13 +73,19 @@ with
                 then left(district, position(', ' in district) - 1)
                 else district
             end as district,
+            seat,
             office_type,
             type,
             contact_owner,
             owner_name,
             candidate_id_source,
+            candidacy_id,
+            ballotready_race_id,
+            br_contest_id,
+            br_candidate_code,
             uncontested,
             number_of_candidates,
+            candidate_slug,
             current_timestamp() as created_at
         from br_new_candidacies
     )

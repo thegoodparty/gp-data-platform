@@ -81,7 +81,7 @@ with
                 then 'State'
                 else level
             end as office_level,
-            tier as candidate_id_tier,
+            tier as geographic_tier,
             number_of_seats as number_of_seats_available,
             case
                 when is_primary = 'false'
@@ -215,9 +215,7 @@ with
                 then 'Wyoming'
                 else state
             end as state,
-            replace(
-                replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
-            ) as phone,
+            trim(regexp_replace(phone, '[^0-9]', '')) as phone,
             email,
             case
                 when official_office_name like '% County%'
@@ -397,6 +395,78 @@ with
                 then regexp_extract(official_office_name, ' - Position ([^\\s(]+)')
                 else ''
             end as seat,
+            -- Add candidate slug generation
+            case
+                when official_office_name is not null and official_office_name != ''
+                then
+                    concat(
+                        -- Slugify first_last_name_slug
+                        trim(
+                            both '-/'
+                            from
+                                regexp_replace(
+                                    regexp_replace(
+                                        regexp_replace(
+                                            regexp_replace(
+                                                lower(trim(concat(coalesce(first_name, ''), '-', coalesce(last_name, '')))), 
+                                                '[^a-z0-9\\s-/]', ''
+                                            ),
+                                            '\\s+',
+                                            '-'
+                                        ),
+                                        '-{2,}',
+                                        '-'
+                                    ),
+                                    '/{2,}',
+                                    '-'
+                                )
+                        ),
+                        '/',
+                        -- Slugify official_office_name
+                        trim(
+                            both '-/'
+                            from
+                                regexp_replace(
+                                    regexp_replace(
+                                        regexp_replace(
+                                            regexp_replace(
+                                                lower(trim(official_office_name)), 
+                                                '[^a-z0-9\\s-/]', ''
+                                            ),
+                                            '\\s+',
+                                            '-'
+                                        ),
+                                        '-{2,}',
+                                        '-'
+                                    ),
+                                    '/{2,}',
+                                    '-'
+                                )
+                        )
+                    )
+                else 
+                    -- Just slugify first_last_name_slug if no official_office_name
+                    trim(
+                        both '-/'
+                        from
+                            regexp_replace(
+                                regexp_replace(
+                                    regexp_replace(
+                                        regexp_replace(
+                                            lower(trim(concat(coalesce(first_name, ''), '-', coalesce(last_name, '')))), 
+                                            '[^a-z0-9\\s-/]', ''
+                                        ),
+                                        '\\s+',
+                                        '-'
+                                    ),
+                                    '-{2,}',
+                                    '-'
+                                ),
+                                '/{2,}',
+                                '-'
+                            )
+                    )
+            end as candidate_slug,
             {{ map_ballotready_office_type("candidate_office") }} as office_type,
             'Self-Filer Lead' as type,
             'jesse@goodparty.org' as contact_owner,
@@ -440,7 +510,10 @@ with
                             )
                         )
                     )
-            end as br_contest_id
+            end as br_contest_id,
+        candidacy_id,
+        race_id as ballotready_race_id,
+        parties
         from br_new
         -- what follows is the core substance of who is being selected for uploading
         -- to HubSpot
