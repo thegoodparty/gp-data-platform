@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, max
+from pyspark.sql.functions import col
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -586,21 +586,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # load data state by state since job may time out
     load_id = str(uuid4())
-    if dbt.is_incremental:
-        this_table = session.table(f"{dbt.this}")
-
     for state_id in state_list:
         state_df = voter_table.filter(col("State") == state_id)
 
         # handle incremental loading
         if dbt.is_incremental:
-            max_loaded_at = (
-                this_table.filter(col("state_id") == state_id)
-                .agg(max("loaded_at"))
-                .collect()[0][0]
-            )
-            if max_loaded_at:
-                state_df = state_df.filter(col("updated_at") > max_loaded_at)
+            # check for the latest updated_at for the state in the destination db
+            query = f"""
+                SELECT MAX(updated_at) FROM {db_schema}."Voter"
+                WHERE "State" = '{state_id}'
+            """
+            max_updated_at = _execute_sql_query(
+                query, db_host, db_port, db_user, db_pw, db_name, return_results=True
+            )[0][0]
+            if max_updated_at:
+                # postgres rounds down microseconds, so add 2 seconds as a safe buffer
+                max_updated_at = max_updated_at + timedelta(seconds=2)
+                state_df = state_df.filter(col("updated_at") > max_updated_at)
 
         num_rows_loaded = _load_data_to_postgres(
             df=state_df,
