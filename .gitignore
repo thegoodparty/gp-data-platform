@@ -32,3 +32,6 @@ dbt/*/logs/
 
 # ignore tmp_data
 tmp_data/
+
+scripts/win_number/resources
+scripts/win_number/shapefiles
