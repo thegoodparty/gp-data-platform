@@ -42,8 +42,8 @@ with
             street_address,
 
             -- Office information
-            official_office_name,
-            candidate_office,
+            {{ clean_office_for_ddhq("official_office_name") }} as official_office_name,
+            {{ clean_office_for_ddhq("candidate_office") }} as candidate_office,
             office_level,
             office_type,
             party_affiliation,
@@ -100,9 +100,21 @@ with
                 select distinct state_postal_code
                 from {{ ref("int__general_states_zip_code_range") }}
             )
+            and first_name is not null
+            and last_name is not null
             {% if is_incremental() %}
                 and updated_at > (select max(updated_at) from {{ this }})
             {% endif %}
+    ),
+    primary_candidacies as (
+        select
+            * except (general_election_date, runoff_election_date),
+            "primary" as election_type,
+            primary_election_date as election_date,
+            cast(null as date) as general_election_date,
+            cast(null as date) as runoff_election_date
+        from candidacies
+        where primary_election_date is not null
     )
 select *
-from candidacies
+from primary_candidacies
