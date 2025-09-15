@@ -47,7 +47,7 @@ with
         {% if is_incremental() %}
             where
                 _airbyte_extracted_at
-                >= (select max(_airbyte_extracted_at) from {{ this }})
+                > (select max(_airbyte_extracted_at) from {{ this }})
         {% endif %}
     ),
     filtered_election_results as (

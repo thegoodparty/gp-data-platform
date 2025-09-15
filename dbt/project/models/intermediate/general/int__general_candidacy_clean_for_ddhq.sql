@@ -146,6 +146,17 @@ with
         union all
         select *
         from runoff_candidacies
+    ),
+    ddhq_unique_election_dates as (
+        select distinct date from {{ ref("int__ddhq_election_results_clean") }}
+    ),
+    election_fixed_candidacies_in_ddhq_dates as (
+        select *
+        from election_fixed_candidacies
+        inner join
+            ddhq_unique_election_dates
+            on cast(election_fixed_candidacies.election_date as date)
+            = ddhq_unique_election_dates.date
     )
 select *
-from election_fixed_candidacies
+from election_fixed_candidacies_in_ddhq_dates

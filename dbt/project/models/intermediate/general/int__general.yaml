@@ -226,6 +226,10 @@ models:
           - accepted_values:
               arguments:
                 values: ["primary", "general", "runoff"]
+    tests:
+      - dbt_utils.fewer_rows_than:
+          arguments:
+            compare_model: ref('int__general_candidacy')
 
   - name: int__general_states_zip_code_range
     description: >
