@@ -46,7 +46,8 @@ with
             {{ clean_office_for_ddhq("candidate_office") }} as candidate_office,
             office_level,
             office_type,
-            party_affiliation,
+            {{ clean_party_affiliation_for_ddhq("party_affiliation") }}
+            as party_affiliation,
             is_partisan,
 
             -- Geographic representation
