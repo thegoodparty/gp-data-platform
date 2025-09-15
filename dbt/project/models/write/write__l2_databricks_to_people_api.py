@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import asc, col, count
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -579,10 +579,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_name,
     )
 
-    # get the list of states to load
-    state_list: List[str] = [
-        row.State for row in voter_table.select("State").distinct().collect()
-    ]
+    # get the list of states to load, ordered by number of rows per state (ascending)
+    state_counts = (
+        voter_table.groupBy("State")
+        .agg(count("*").alias("row_count"))
+        .orderBy(asc("row_count"))
+        .select("State")
+        .collect()
+    )
+    state_list: List[str] = [row.State for row in state_counts]
 
     # load data state by state since job may time out
     load_id = str(uuid4())
