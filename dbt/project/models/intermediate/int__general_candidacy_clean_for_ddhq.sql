@@ -115,6 +115,36 @@ with
             cast(null as date) as runoff_election_date
         from candidacies
         where primary_election_date is not null
+    ),
+    general_candidacies as (
+        select
+            * except (primary_election_date, runoff_election_date),
+            "general" as election_type,
+            general_election_date as election_date,
+            cast(null as date) as primary_election_date,
+            cast(null as date) as runoff_election_date
+        from candidacies
+        where general_election_date is not null
+    ),
+    runoff_candidacies as (
+        select
+            * except (primary_election_date, general_election_date),
+            "runoff" as election_type,
+            runoff_election_date as election_date,
+            cast(null as date) as primary_election_date,
+            cast(null as date) as general_election_date
+        from candidacies
+        where runoff_election_date is not null
+    ),
+    election_fixed_candidacies as (
+        select *
+        from primary_candidacies
+        union all
+        select *
+        from general_candidacies
+        union all
+        select *
+        from runoff_candidacies
     )
 select *
-from primary_candidacies
+from election_fixed_candidacies

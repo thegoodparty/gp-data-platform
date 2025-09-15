@@ -219,6 +219,13 @@ models:
                   'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
                   'DC', 'US'
                 ]
+      - name: election_type
+        description: Type of election
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["primary", "general", "runoff"]
 
   - name: int__general_states_zip_code_range
     description: >
