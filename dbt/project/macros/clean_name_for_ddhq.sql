@@ -27,10 +27,12 @@
 
         else
             initcap(
-                regexp_replace(
-                    regexp_replace({{ name_column }}, '\\s+', ' '),
-                    "^[^\\w\\s\\-']+|([^\\w\\s\\-'\\s])$",
-                    ''
+                trim(
+                    regexp_replace(
+                        regexp_replace({{ name_column }}, '\\s+', ' '),
+                        "^[^\\w\\s\\-']+|([^\\w\\s\\-'\\s])$",
+                        ''
+                    )
                 )
             )
     end

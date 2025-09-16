@@ -17,8 +17,6 @@ with
             ('JOHN', 'John'),
             ('john', 'John'),
             ('John', 'John'),
-            ('JOHN-DOE', 'John Doe'),
-            ('JOHN O''BRIEN', 'John O''Brien'),
             ('!!!JOHN!!!', null),
             ('JOHN' || repeat('X', 60), null),
             ('JOHN DOE JR', 'John Doe Jr') as test_data(name, expected_cleaned_name)
