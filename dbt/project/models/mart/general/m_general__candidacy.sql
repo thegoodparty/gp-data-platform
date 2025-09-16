@@ -110,7 +110,7 @@ with
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
             on tbl_contacts.company_id = viability_scores.id
         left join
-            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20250909") }}
+            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20250916") }}
             as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
