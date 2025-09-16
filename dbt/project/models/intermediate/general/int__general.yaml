@@ -205,6 +205,17 @@ models:
       intermediate model will be used in the generation of embeddings and eventually LLM calls to match
       DDHQ election results with the candidacies object.
     columns:
+      - name: gp_candidacy_id
+        description: Internally generated unique identifier for candidacies
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__general_candidacy')
+                field: "gp_candidacy_id"
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
       - name: state
         description: U.S. state for the candidacy, also known as the state_postal_code more accurately elsewhere
         tests:
