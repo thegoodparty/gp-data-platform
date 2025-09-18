@@ -121,13 +121,13 @@ with
             + (case when `OtherElection_2022` is true then 1 else 0 end)
             + (
                 case when `AnyElection_2021` is true then 1 else 0 end
-            ) as `Voting_For_Voter_Status`,
+            ) as `Last_10_Elections_Voted`,
             (case when `AnyElection_2025` is true then 1 else 0 end)
             + (case when `General_2024` is true then 1 else 0 end)
             + (
                 case when `Primary_2024` is true then 1 else 0 end
             ) as `Last_3_Elections_Voted`,
-            current_timestamp() as `Voter_States_UpdatedAt`,
+            current_timestamp() as `Voter_Status_UpdatedAt`,
             cast(
                 `VoterTelephones_CellConfidenceCode` as int
             ) as `VoterTelephones_CellConfidenceCode`,
@@ -507,17 +507,17 @@ with
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
             case
+                when tbl_updated.`Last_10_Elections_Voted` = 0
+                then 'First Time'
                 when tbl_updated.`Last_3_Elections_Voted` = 0
                 then 'Unlikely'
-                when tbl_updated.`Voting_For_Voter_Status` = 0
-                then 'First Time'
-                when tbl_updated.`Voting_For_Voter_Status` = 10
+                when tbl_updated.`Last_3_Elections_Voted` = 3
                 then 'Super'
-                when tbl_updated.`Voting_For_Voter_Status` > 2
+                when tbl_updated.`Last_3_Elections_Voted` = 2
                 then 'Likely'
                 else 'Unknown'
             end as `Voter_Status`,
-            tbl_updated.`Voter_States_UpdatedAt`,
+            tbl_updated.`Voter_Status_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,
             tbl_updated.`VoterTelephones_LandlineConfidenceCode`,
