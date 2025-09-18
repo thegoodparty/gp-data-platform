@@ -40,7 +40,7 @@ with
             `Mailing_Addresses_ApartmentNum`,
             `Mailing_Addresses_ApartmentType`,
             `Mailing_Addresses_CassErrStatCode`,
-            cast(
+            try_cast(
                 `Mailing_Addresses_CheckDigit` as int
             ) as `Mailing_Addresses_CheckDigit`,
             `Mailing_Addresses_City`,
@@ -48,34 +48,34 @@ with
             `Mailing_Addresses_DPBC`,
             `Mailing_Addresses_ExtraAddressLine`,
             `Mailing_Addresses_HouseNumber`,
-            cast(
+            try_cast(
                 `Mailing_Addresses_PrefixDirection` as int
             ) as `Mailing_Addresses_PrefixDirection`,
             `Mailing_Addresses_State`,
             `Mailing_Addresses_StreetName`,
-            cast(
+            try_cast(
                 `Mailing_Addresses_SuffixDirection` as int
             ) as `Mailing_Addresses_SuffixDirection`,
             `Mailing_Addresses_Zip`,
             `Mailing_Addresses_ZipPlus4`,
             `Mailing_Families_FamilyID`,
-            `Mailing_HHGender_Description`,
+            -- `Mailing_HHGender_Description`,
             `ConsumerData_Marital_Status` as `Marital_Status`,
             cast(
                 to_date(`Voters_MovedFrom_Date`, 'MM/dd/yyyy') as date
             ) as `MovedFrom_Date`,
-            `Voters_MovedFrom_Party` as `MovedFrom_Party_Description`,
+            `Voters_MovedFrom_Party_Description` as `MovedFrom_Party_Description`,
             `Voters_MovedFrom_State` as `MovedFrom_State`,
-            `NameSuffix`,
-            `OfficialRegDate`,
+            `Voters_NameSuffix` as `NameSuffix`,
+            `Voters_OfficialRegDate` as `OfficialRegDate`,
             `Parties_Description`,
-            `PlaceOfBirth`,
+            `Voters_PlaceOfBirth` as `PlaceOfBirth`,
             `ConsumerData_Presence_Of_Children_in_HH` as `Presence_Of_Children`,
             `Residence_Addresses_AddressLine`,
             `Residence_Addresses_ApartmentNum`,
             `Residence_Addresses_ApartmentType`,
             `Residence_Addresses_CassErrStatCode`,
-            cast(
+            try_cast(
                 `Residence_Addresses_CheckDigit` as int
             ) as `Residence_Addresses_CheckDigit`,
             `Residence_Addresses_City`,
@@ -86,27 +86,48 @@ with
             `Residence_Addresses_LatLongAccuracy`,
             `Residence_Addresses_Latitude`,
             `Residence_Addresses_Longitude`,
-            cast(
+            try_cast(
                 `Residence_Addresses_PrefixDirection` as int
             ) as `Residence_Addresses_PrefixDirection`,
             `Residence_Addresses_State`,
             `Residence_Addresses_StreetName`,
-            cast(
+            try_cast(
                 `Residence_Addresses_SuffixDirection` as int
             ) as `Residence_Addresses_SuffixDirection`,
             `Residence_Addresses_Zip`,
             `Residence_Addresses_ZipPlus4`,
             `Residence_HHParties_Description`,
-            cast(`Registered_Voter` as boolean) as `Registered_Voter`,
+            cast(true as boolean) as `Registered_Voter`,  -- always true for L2 voters
             `Voters_SequenceOddEven` as `SequenceOddEven`,
             `Voters_SequenceZigZag` as `SequenceZigZag`,
             `Voters_StateVoterID` as `StateVoterID`,
             `ConsumerDataLL_Veteran` as `Veteran_Status`,
             `VoterParties_Change_Changed_Party` as `VoterParties_Change_Changed_Party`,
-            -- `Voter_Status`, need to compute from General_YYYY, Primary_YYYY,
-            -- OtherElection_YYYY, AnyElection_YYYY
-            -- cast(`Voter_Status_UpdatedAt` as datetime) as `Voter_States_UpdatedAt`)
-            -- -- can use current timestamp
+            -- Possibly add dynamic columns for voter status in later iterations
+            -- sum(
+            -- (case when {{ '`General_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
+            -- + (case when {{ '`Primary_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
+            -- + (case when {{ '`OtherElection_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
+            -- + (case when {{ '`AnyElection_' ~ modules.datetime.datetime.now().strftime('%Y') ~ '`'}} is true then 1 else 0 end)
+            -- ) as `Voter_Status`,
+            (case when `AnyElection_2025` is true then 1 else 0 end)
+            + (case when `General_2024` is true then 1 else 0 end)
+            + (case when `Primary_2024` is true then 1 else 0 end)
+            + (case when `PresidentialPrimary_2024` is true then 1 else 0 end)
+            + (case when `OtherElection_2024` is true then 1 else 0 end)
+            + (case when `AnyElection_2023` is true then 1 else 0 end)
+            + (case when `General_2022` is true then 1 else 0 end)
+            + (case when `Primary_2022` is true then 1 else 0 end)
+            + (case when `OtherElection_2022` is true then 1 else 0 end)
+            + (
+                case when `AnyElection_2021` is true then 1 else 0 end
+            ) as `Voting_For_Voter_Status`,
+            (case when `AnyElection_2025` is true then 1 else 0 end)
+            + (case when `General_2024` is true then 1 else 0 end)
+            + (
+                case when `Primary_2024` is true then 1 else 0 end
+            ) as `Last_3_Elections_Voted`,
+            current_timestamp() as `Voter_States_UpdatedAt`,
             cast(
                 `VoterTelephones_CellConfidenceCode` as int
             ) as `VoterTelephones_CellConfidenceCode`,
@@ -235,7 +256,7 @@ with
             `EXT_District`,
             `Exempted_Village_School_District`,
             `Facilities_Improvement_District`,
-            `FIPS`,
+            `Voters_FIPS` as `FIPS`,
             `Fire_District`,
             `Fire_Maintenance_District`,
             `Fire_Protection_District`,
@@ -449,7 +470,7 @@ with
             tbl_updated.`Mailing_Addresses_Zip`,
             tbl_updated.`Mailing_Addresses_ZipPlus4`,
             tbl_updated.`Mailing_Families_FamilyID`,
-            tbl_updated.`Mailing_HHGender_Description`,
+            -- tbl_updated.`Mailing_HHGender_Description`,
             tbl_updated.`Marital_Status`,
             tbl_updated.`MovedFrom_Date`,
             tbl_updated.`MovedFrom_Party_Description`,
@@ -485,10 +506,18 @@ with
             tbl_updated.`StateVoterID`,
             tbl_updated.`Veteran_Status`,
             tbl_updated.`VoterParties_Change_Changed_Party`,
-            -- `Voter_Status`, need to compute from General_YYYY, Primary_YYYY,
-            -- OtherElection_YYYY, AnyElection_YYYY
-            -- cast(`Voter_Status_UpdatedAt` as datetime) as `Voter_States_UpdatedAt`)
-            -- -- can use current timestamp
+            case
+                when tbl_updated.`Last_3_Elections_Voted` = 0
+                then 'Unlikely'
+                when tbl_updated.`Voting_For_Voter_Status` = 0
+                then 'First Time'
+                when tbl_updated.`Voting_For_Voter_Status` = 10
+                then 'Super'
+                when tbl_updated.`Voting_For_Voter_Status` > 2
+                then 'Likely'
+                else 'Unknown'
+            end as `Voter_Status`,
+            tbl_updated.`Voter_States_UpdatedAt`,
             tbl_updated.`VoterTelephones_CellConfidenceCode`,
             tbl_updated.`VoterTelephones_CellPhoneFormatted`,
             tbl_updated.`VoterTelephones_LandlineConfidenceCode`,
@@ -767,7 +796,7 @@ with
             tbl_updated.`Water_Replacement_District`,
             tbl_updated.`Water_Replacement_SubDistrict`,
             tbl_updated.`Water_SubDistrict`,
-            tbl_updated.`Weed_District`
+            tbl_updated.`Weed_District`,
             {% if is_incremental() %}
                 -- For incremental runs, preserve existing created_at for existing
                 -- records,
