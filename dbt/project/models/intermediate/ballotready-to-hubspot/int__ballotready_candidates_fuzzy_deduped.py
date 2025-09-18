@@ -1,12 +1,18 @@
-import sys
 import os
-
-# Add the utils directory to the Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'utils'))
+import sys
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
-from fuzzy_matching_utils import create_fuzzy_matching_udf, add_match_type_column
+
+# Add the utils directory to the Python path
+sys.path.append(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "utils")
+)
+
+from fuzzy_matching_utils import (  # noqa: E402
+    add_match_type_column,
+    create_fuzzy_matching_udf,
+)
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -14,15 +20,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
         submission_method="serverless_cluster",
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="br_candidate_code", 
+        unique_key="br_candidate_code",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "ballotready", "hubspot", "fuzzy_deduped"],
-        create_notebook=True
+        create_notebook=True,
     )
 
     # Get the cleaned BallotReady candidates (filtered for HubSpot upload)
-    br_with_contest: DataFrame = dbt.ref("br_with_contest")
+    br_with_contest: DataFrame = dbt.ref("int__ballotready_final_candidacies")
     hubspot_candidate_codes: DataFrame = dbt.ref("int__hubspot_candidacy_codes")
 
     # Handle incremental logic: Only process new or updated records based on candidacy_updated_at
@@ -47,13 +53,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
         candidate_code_field_name="br_candidate_code",
         hubspot_code_field_name="hs_candidate_code",
         threshold=85,
-        top_n=1
+        top_n=1,
     )
-    
+
     # Apply fuzzy matching to all BR candidates
     fuzzy_results = br_with_contest.withColumn(
-        "fuzzy_results", 
-        udf_perform_fuzzy_matching(col("br_candidate_code"))
+        "fuzzy_results", udf_perform_fuzzy_matching(col("br_candidate_code"))
     )
 
     # Expand the struct fields from fuzzy_results - following TechSpeed pattern

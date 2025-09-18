@@ -38,3 +38,6 @@ poetry.lock
 # ignore tmp_data
 tmp_data/
 CLAUDE.md
+
+# Logs (including root level)
+logs/
