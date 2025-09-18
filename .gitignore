@@ -29,8 +29,12 @@ dbt/*/logs/
 
 # Environment variables
 .env
+.env.local
+
+# Python environment files
+.python-version
+poetry.lock
 
 # ignore tmp_data
 tmp_data/
-.python-version
 CLAUDE.md
