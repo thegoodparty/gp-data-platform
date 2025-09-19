@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: stg_historical__ballotready_records_sent_to_hubspot_historical
+  - name: stg_historical__ballotready_records_sent_to_hubspot
     description: >
       Historical tracking table for all BallotReady candidates processed for HubSpot upload.
       Maintains audit trail with fuzzy match results and viability scores.

@@ -697,7 +697,7 @@ sources:
     schema: historical
     description: Raw data loaded from historical schema, having past records of interest
     tables:
-      - name: ballotready_records_sent_to_hubspot_historical
+      - name: ballotready_records_sent_to_hubspot
         description: raw data load from ballotready records sent to hubspot
       - name: ballotready_records_sent_to_techspeed
         description: raw data load from ballotready records sent to techspeed

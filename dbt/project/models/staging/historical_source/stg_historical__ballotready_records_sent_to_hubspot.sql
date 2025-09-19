@@ -1,8 +1,6 @@
 with
     source as (
-        select *
-        from
-            {{ source("historical", "ballotready_records_sent_to_hubspot_historical") }}
+        select * from {{ source("historical", "ballotready_records_sent_to_hubspot") }}
     ),
     renamed as (
         select
