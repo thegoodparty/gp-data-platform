@@ -31,9 +31,8 @@ with
                 select hs_candidate_code from {{ ref("int__hubspot_candidacy_codes") }}
             )
             and t1.br_candidate_code is not null
-            and t1.phone not in (
-                select phone from {{ ref("int__hubspot_phone_numbers") }}
-            )
+            and t1.phone
+            not in (select phone from {{ ref("int__hubspot_phone_numbers") }})
     ),
 
     -- write formatted new batch data to a table

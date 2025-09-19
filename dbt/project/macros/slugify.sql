@@ -64,7 +64,7 @@
 
         Args:
             first_name_col: The first name column or expression
-            last_name_col: The last name column or expression  
+            last_name_col: The last name column or expression
             office_name_col: Optional office name column for additional context
 
         Example:
@@ -74,14 +74,40 @@
     {% if office_name_col %}
         case
             when {{ office_name_col }} is not null and {{ office_name_col }} != ''
-            then concat(
-                {{ slugify("concat(coalesce(" + first_name_col + ", ''), '-', coalesce(" + last_name_col + ", ''))") }},
-                '/',
-                {{ slugify(office_name_col) }}
-            )
-            else {{ slugify("concat(coalesce(" + first_name_col + ", ''), '-', coalesce(" + last_name_col + ", ''))") }}
+            then
+                concat(
+                    {{
+                        slugify(
+                            "concat(coalesce("
+                            + first_name_col
+                            + ", ''), '-', coalesce("
+                            + last_name_col
+                            + ", ''))"
+                        )
+                    }},
+                    '/',
+                    {{ slugify(office_name_col) }}
+                )
+            else
+                {{
+                    slugify(
+                        "concat(coalesce("
+                        + first_name_col
+                        + ", ''), '-', coalesce("
+                        + last_name_col
+                        + ", ''))"
+                    )
+                }}
         end
     {% else %}
-        {{ slugify("concat(coalesce(" + first_name_col + ", ''), '-', coalesce(" + last_name_col + ", ''))") }}
+        {{
+            slugify(
+                "concat(coalesce("
+                + first_name_col
+                + ", ''), '-', coalesce("
+                + last_name_col
+                + ", ''))"
+            )
+        }}
     {% endif %}
 {% endmacro %}
