@@ -74,27 +74,6 @@ sources:
         description: raw data load from Techspeed Google Drive
 
 
-  - name: model_predictions
-    schema: model_predictions
-    description: Raw data loaded from model predictions
-
-    tables:
-      - name: candidacy_ddhq_matches_20250826
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
-      - name: candidacy_ddhq_matches_20250909
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
-      - name: llm_l2_br_match_20250806
-        description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: llm_l2_br_match_20250811
-        description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: turnout_projections_even_years_20250709
-        description: raw data load from voter turnout projections for even years
-      - name: turnout_projections_model2odd
-        description: raw data load from voter turnout projections for odd years
-      - name: viability_scores
-        description: raw data load from model predictions
-
-
   - name: dbt_source
     schema: dbt_source
     description: Raw data loaded from dbt models
@@ -712,3 +691,33 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wy_vote_history_data_dictionary
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
+
+
+  - name: historical
+    schema: historical
+    description: Raw data loaded from historical schema, having past records of interest
+    tables:
+      - name: ballotready_records_sent_to_hubspot_historical
+        description: raw data load from ballotready records sent to hubspot
+      - name: ballotready_records_sent_to_techspeed
+        description: raw data load from ballotready records sent to techspeed
+
+
+  - name: model_predictions
+    schema: model_predictions
+    description: Raw data loaded from model predictions
+    tables:
+      - name: candidacy_ddhq_matches_20250826
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_ddhq_matches_20250909
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: llm_l2_br_match_20250806
+        description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: llm_l2_br_match_20250811
+        description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: turnout_projections_even_years_20250709
+        description: raw data load from voter turnout projections for even years
+      - name: turnout_projections_model2odd
+        description: raw data load from voter turnout projections for odd years
+      - name: viability_scores
+        description: raw data load from model predictions

@@ -11,36 +11,35 @@
 -- Historical tracking table for BallotReady records sent to HubSpot
 -- This table maintains an audit trail of all candidates that have been processed
 -- for HubSpot upload, including fuzzy match results and viability scores
+with
+    br_fuzzy_deduped as (
+        select * from {{ ref("int__ballotready_candidates_fuzzy_deduped") }}
+    ),
 
-with br_fuzzy_deduped as (
-    select * from {{ ref("int__ballotready_candidates_fuzzy_deduped") }}
-),
+    br_final_candidacies as (
+        select * from {{ ref("int__ballotready_final_candidacies") }}
+    ),
 
-br_final_candidacies as (
-    select * from {{ ref("int__ballotready_final_candidacies") }}
-),
+    -- Combine fuzzy match results with final candidacies
+    combined_records as (
+        select
+            fc.*,
+            fd.fuzzy_matched_hubspot_candidate_code,
+            fd.fuzzy_match_score,
+            fd.fuzzy_match_rank,
+            fd.fuzzy_matched_hubspot_contact_id,
+            fd.fuzzy_matched_first_name,
+            fd.fuzzy_matched_last_name,
+            fd.fuzzy_matched_state,
+            fd.fuzzy_matched_office_type,
+            fd.match_type,
+            -- Placeholder for future viability score calculation
+            null as viability_score
+        from br_final_candidacies fc
+        left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
+    )
 
--- Combine fuzzy match results with final candidacies
-combined_records as (
-    select 
-        fc.*,
-        fd.fuzzy_matched_hubspot_candidate_code,
-        fd.fuzzy_match_score,
-        fd.fuzzy_match_rank,
-        fd.fuzzy_matched_hubspot_contact_id,
-        fd.fuzzy_matched_first_name,
-        fd.fuzzy_matched_last_name,
-        fd.fuzzy_matched_state,
-        fd.fuzzy_matched_office_type,
-        fd.match_type,
-        -- Placeholder for future viability score calculation
-        null as viability_score
-    from br_final_candidacies fc
-    left join br_fuzzy_deduped fd 
-        on fc.br_candidate_code = fd.br_candidate_code
-)
-
-select 
+select
     candidacy_id,
     ballotready_race_id,
     cast(election_date as date) as election_date,
@@ -61,8 +60,8 @@ select
     email,
     city,
     -- Apply district transformation here (from notebook)
-    case  
-        when district like '%, %' 
+    case
+        when district like '%, %'
         then left(district, position(', ' in district) - 1)
         else district
     end as district,
@@ -90,11 +89,13 @@ select
     viability_score,
     current_timestamp() as upload_timestamp
 from combined_records
-
-{% if is_incremental() %}
-    -- Only include records that haven't been processed yet
-    where candidacy_id not in (
-        select candidacy_id from {{ this }}
-        where candidacy_id is not null
+-- Only include records that haven't been processed yet
+where
+    candidacy_id not in (
+        select candidacy_id
+        from {{ ref("stg_historical__ballotready_records_sent_to_hubspot") }}
     )
-{% endif %}
+    {% if is_incremental() %}
+        and candidacy_id
+        not in (select candidacy_id from {{ this }} where candidacy_id is not null)
+    {% endif %}
