@@ -81,7 +81,7 @@ with
                 then 'State'
                 else level
             end as office_level,
-            tier as candidate_id_tier,
+            tier as geographic_tier,
             number_of_seats as number_of_seats_available,
             case
                 when is_primary = 'false'
@@ -215,9 +215,7 @@ with
                 then 'Wyoming'
                 else state
             end as state,
-            replace(
-                replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
-            ) as phone,
+            trim(regexp_replace(phone, '[^0-9]', '')) as phone,
             email,
             case
                 when official_office_name like '% County%'
@@ -397,6 +395,11 @@ with
                 then regexp_extract(official_office_name, ' - Position ([^\\s(]+)')
                 else ''
             end as seat,
+            {{
+                generate_candidate_slug(
+                    "first_name", "last_name", "official_office_name"
+                )
+            }} as candidate_slug,
             {{ map_ballotready_office_type("candidate_office") }} as office_type,
             'Self-Filer Lead' as type,
             'jesse@goodparty.org' as contact_owner,
@@ -440,7 +443,10 @@ with
                             )
                         )
                     )
-            end as br_contest_id
+            end as br_contest_id,
+            candidacy_id,
+            race_id as ballotready_race_id,
+            parties
         from br_new
         -- what follows is the core substance of who is being selected for uploading
         -- to HubSpot

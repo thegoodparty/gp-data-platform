@@ -29,6 +29,11 @@ dbt/*/logs/
 
 # Environment variables
 .env
+.env.local
 
 # ignore tmp_data
 tmp_data/
+CLAUDE.md
+
+# Logs (including root level)
+logs/
