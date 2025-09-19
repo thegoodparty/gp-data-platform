@@ -39,15 +39,6 @@ For integration with VS Code, use the output path from `poetry env info --execut
 /Users/my_user_name/Library/Caches/pypoetry/virtualenvs/dbt-goodparty-gN6X-qpi-py3.13/bin/python
 ```
 
-**Important setup requirements:**
-- You must use Python **3.13 or higher** for your local environment.
-- You must install **Poetry version 2.1.1 or higher** using **regular `pip`**, not `pipx` (e.g. `pip install poetry==2.1.1`).
-- You should **not modify the `pyproject.toml` manually** to change Python constraints.
-- You must explicitly tell Poetry which Python version to use:
-```bash
-poetry env use python3.13
-```
-
 ### Pre-commit Hooks
 
 This project uses pre-commit hooks to ensure code quality and consistency. The hooks include:
