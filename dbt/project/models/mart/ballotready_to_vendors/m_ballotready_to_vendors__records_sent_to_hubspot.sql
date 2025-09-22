@@ -23,7 +23,41 @@ with
     -- Combine fuzzy match results with final candidacies
     combined_records as (
         select
-            fc.*,
+            fc.id,
+            fc.election_date,
+            fc.official_office_name,
+            fc.candidate_office,
+            fc.office_level,
+            fc.geographic_tier,
+            fc.number_of_seats_available,
+            fc.election_type,
+            fc.party_affiliation,
+            fc.party_list,
+            fc.parties,
+            fc.first_name,
+            fc.middle_name,
+            fc.last_name,
+            fc.state,
+            fc.phone,
+            fc.email,
+            fc.city,
+            fc.district,
+            fc.seat,
+            fc.office_type,
+            fc.type,
+            fc.contact_owner,
+            fc.owner_name,
+            fc.candidate_id_source,
+            fc.candidacy_id,
+            fc.ballotready_race_id,
+            fc.br_contest_id,
+            fc.br_candidate_code,
+            fc.uncontested,
+            fc.number_of_candidates,
+            fc.candidate_slug,
+            fc.candidacy_created_at,
+            fc.candidacy_updated_at,
+            fc.created_at,
             fd.fuzzy_matched_hubspot_candidate_code,
             fd.fuzzy_match_score,
             fd.fuzzy_match_rank,
@@ -34,7 +68,7 @@ with
             fd.fuzzy_matched_office_type,
             fd.match_type,
             -- Placeholder for future viability score calculation
-            null as viability_score
+            cast(null as string) as viability_score
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
     )
@@ -99,3 +133,5 @@ where
         and candidacy_id
         not in (select candidacy_id from {{ this }} where candidacy_id is not null)
     {% endif %}
+qualify
+    row_number() over (partition by candidacy_id order by candidacy_updated_at desc) = 1
