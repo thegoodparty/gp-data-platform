@@ -16,7 +16,7 @@ with
             cs.uncontested,
             cs.numcands as number_of_candidates,
             cs.number_of_seats_available
-        from {{ ref("int__ballotready_cleancandidacies") }} br
+        from {{ ref("int__ballotready_clean_candidacies") }} br
         left join
             {{ ref("int__candidacies_contest_final_counts") }} cs
             on br.br_contest_id = cs.contest_id
@@ -85,6 +85,8 @@ with
             uncontested,
             number_of_candidates,
             candidate_slug,
+            candidacy_created_at,
+            candidacy_updated_at,
             current_timestamp() as created_at
         from br_new_candidacies
     )

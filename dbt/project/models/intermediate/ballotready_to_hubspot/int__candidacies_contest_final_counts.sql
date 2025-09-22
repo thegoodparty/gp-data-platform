@@ -8,7 +8,7 @@ with
             br_contest_id as contest_id,
             number_of_seats_available,
             count(last_name) as numcands
-        from {{ ref("int__ballotready_cleancandidacies") }}
+        from {{ ref("int__ballotready_clean_candidacies") }}
         where official_office_name is not null and election_date is not null
         group by contest_id, number_of_seats_available
     ),

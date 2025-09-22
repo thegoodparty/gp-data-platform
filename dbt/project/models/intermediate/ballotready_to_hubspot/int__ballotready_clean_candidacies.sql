@@ -446,7 +446,9 @@ with
             end as br_contest_id,
             candidacy_id,
             race_id as ballotready_race_id,
-            parties
+            parties,
+            candidacy_created_at,
+            candidacy_updated_at
         from br_new
         -- what follows is the core substance of who is being selected for uploading
         -- to HubSpot
