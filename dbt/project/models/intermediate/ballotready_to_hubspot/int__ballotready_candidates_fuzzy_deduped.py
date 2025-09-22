@@ -2,7 +2,7 @@ from typing import Callable
 
 import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.functions import col, pandas_udf, when
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -189,8 +189,6 @@ def add_match_type_column(
     Returns:
         DataFrame with added match_type column
     """
-    from pyspark.sql.functions import col, when
-
     return df.withColumn(
         "match_type",
         when(col(match_indicator_col).isNotNull(), "fuzzy").otherwise("none"),
@@ -207,7 +205,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "ballotready", "hubspot", "fuzzy_deduped"],
-        create_notebook=True,
     )
 
     # Get the cleaned BallotReady candidates (filtered for HubSpot upload)
@@ -235,8 +232,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         hubspot_df=hubspot_candidate_codes_pd,
         candidate_code_field_name="br_candidate_code",
         hubspot_code_field_name="hs_candidate_code",
-        threshold=85,
-        top_n=1,
+        threshold=DEFAULT_FUZZY_THRESHOLD,
+        top_n=DEFAULT_TOP_N_MATCHES,
     )
 
     # Apply fuzzy matching to all BR candidates
