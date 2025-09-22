@@ -65,7 +65,7 @@ with
             -- Only future elections (at least 3 days out for TechSpeed processing)
             and election_day > current_date + interval 3 day
             -- Only records not already sent to TechSpeed
-            and candidacy_id in (
+            and candidacy_id not in (
                 select candidacy_id
                 from {{ ref("stg_historical__ballotready_records_sent_to_techspeed") }}
             )
@@ -120,10 +120,3 @@ select
     candidacy_updated_at,
     current_timestamp() as upload_datetime
 from br_for_techspeed
-
-{% if is_incremental() %}
-    -- Only include new records not already processed
-    where
-        candidacy_id
-        not in (select candidacy_id from {{ this }} where candidacy_id is not null)
-{% endif %}
