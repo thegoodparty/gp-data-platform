@@ -1,4 +1,9 @@
-{{ config(auto_liquid_cluster=true, tags=["intermediate", "hubspot"]) }}
+{{
+    config(
+        materialized="view",
+        tags=["intermediate", "hubspot", "phone_numbers"],
+    )
+}}
 
 -- Extract unique phone numbers from HubSpot contacts for deduplication
 select distinct
