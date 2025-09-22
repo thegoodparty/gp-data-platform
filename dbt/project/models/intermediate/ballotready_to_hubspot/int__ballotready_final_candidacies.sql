@@ -55,7 +55,9 @@ with
             candidate_office,
             office_level,
             cast(geographic_tier as int) as geographic_tier,
-            cast(number_of_seats_available as int) as number_of_seats_available,
+            cast(
+                cast(number_of_seats_available as float) as int
+            ) as number_of_seats_available,
             election_type,
             party_affiliation,
             party_list,

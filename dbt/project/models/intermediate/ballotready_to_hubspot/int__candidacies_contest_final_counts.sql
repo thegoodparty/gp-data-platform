@@ -33,7 +33,7 @@ with
             ) as contest_id,
             count(properties_lastname) as numcands,
             cast(
-                properties_number_of_seats_available as int
+                cast(properties_number_of_seats_available as float) as int
             ) as number_of_seats_available
         from {{ ref("int__hubspot_ytd_candidacies") }}
         where
