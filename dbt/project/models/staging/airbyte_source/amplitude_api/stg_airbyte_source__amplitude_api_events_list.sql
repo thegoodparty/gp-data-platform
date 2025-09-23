@@ -20,8 +20,7 @@ with
             {{ adapter.quote("flow_hidden") }},
             {{ adapter.quote("in_waitroom") }},
             {{ adapter.quote("totals_delta") }},
-            {{ adapter.quote("clusters_hidden") }},
-            {{ adapter.quote("timeline_hidden") }}
+            {{ adapter.quote("clusters_hidden") }}
 
         from source
     )
