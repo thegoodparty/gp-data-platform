@@ -53,6 +53,11 @@ with
             parties,
             urls,
             election_result,
+            {{
+                generate_candidate_office_from_position(
+                    "position_name", "normalized_position_name"
+                )
+            }} as candidate_office,
             candidacy_created_at,
             candidacy_updated_at
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
@@ -74,8 +79,32 @@ with
                     select candidacy_id from {{ this }} where candidacy_id is not null
                 )
             {% endif %}
+    ),
+    with_office_type as (
+        select *, {{ map_ballotready_office_type("candidate_office") }} as office_type
+        from br_for_techspeed
+    ),
+    with_candidate_code as (
+        select
+            *,
+            {{
+                generate_candidate_code(
+                    "first_name", "last_name", "state", "office_type"
+                )
+            }} as candidate_code
+        from with_office_type
+    ),
+    dedup_from_hubspot as (
+        select *
+        from with_candidate_code
+        -- Ommit existing candidates already present in Hubspot from BR subset to be
+        -- shared with TechSpeed
+        where
+            candidate_code not in (
+                select hubspot_candidate_code
+                from {{ ref("int__hubspot_candidate_codes") }}
+            )
     )
-
 select
     id,
     candidacy_id,
@@ -119,4 +148,4 @@ select
     candidacy_created_at,
     candidacy_updated_at,
     current_timestamp() as upload_datetime
-from br_for_techspeed
+from dedup_from_hubspot

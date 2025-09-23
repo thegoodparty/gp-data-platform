@@ -166,3 +166,62 @@
             )
     end
 {% endmacro %}
+
+
+{% macro generate_candidate_office_from_position(
+    position_name_col, normalized_position_name_col
+) %}
+    case
+        when {{ position_name_col }} like '%Village President%'
+        then 'Village President'
+        when {{ position_name_col }} like '%Town Chair%'
+        then 'Town Chair'
+        when {{ position_name_col }} like '%Water Supply District%'
+        then 'Water Supply Board'
+        when {{ normalized_position_name_col }} = 'City Legislature'
+        then 'City Council'
+        when {{ normalized_position_name_col }} = 'Local School Board'
+        then 'School Board'
+        when {{ normalized_position_name_col }} = 'City Executive//Mayor'
+        then 'Mayor'
+        when {{ normalized_position_name_col }} = 'Township Treasurer//Fiscal Officer'
+        then 'Treasurer'
+        when {{ normalized_position_name_col }} = 'Township Trustee//Township Council'
+        then 'Township Council'
+        when {{ normalized_position_name_col }} = 'Parks and Recreation District Board'
+        then 'Parks and Recreation Board'
+        when
+            {{ normalized_position_name_col }}
+            = 'Local Higher Education Board//Community College Board'
+        then 'Community College Board'
+        when {{ normalized_position_name_col }} = 'City Clerk//Ward Officer'
+        then 'City Clerk'
+        when {{ normalized_position_name_col }} = 'Library District Board'
+        then 'Library Board'
+        when {{ normalized_position_name_col }} = 'Fire District Board'
+        then 'Fire Board'
+        when {{ normalized_position_name_col }} = 'Township Highway Superintendent'
+        then 'Highway Superintendent'
+        when {{ normalized_position_name_col }} = 'Township Constable'
+        then 'Constable'
+        when {{ normalized_position_name_col }} = 'City Treasurer//Finance Officer'
+        then 'Treasurer'
+        when {{ normalized_position_name_col }} = 'State Trial Court Judge - General'
+        then 'Trial Court Judge'
+        when {{ normalized_position_name_col }} = 'Township Clerk/Treasurer (Joint)'
+        then 'Township Clerk'
+        when {{ normalized_position_name_col }} = 'Local Court Judge'
+        then 'Judge'
+        when {{ normalized_position_name_col }} = 'State Senator'
+        then 'State Senate'
+        when {{ normalized_position_name_col }} = 'City Assessor//Lister'
+        then 'City Assessor'
+        when {{ normalized_position_name_col }} = 'County Legislature//Executive Board'
+        then 'County Legislature'
+        when
+            {{ normalized_position_name_col }}
+            = 'Harbor District Board//Port District Board'
+        then 'Port Board'
+        else {{ normalized_position_name_col }}
+    end
+{% endmacro %}
