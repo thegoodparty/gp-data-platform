@@ -1,6 +1,24 @@
 version: 2
 
 models:
+  - name: int__ballotready_viability_scoring
+    description: >
+      Calculates viability scores for BallotReady candidates using MLflow model.
+      Takes final candidacies and applies machine learning model to predict
+      candidate viability based on contest characteristics and historical data.
+    meta:
+      owner: tristan.aubert@goodparty.org
+      source_systems: [BallotReady]
+    columns:
+      - name: br_candidate_code
+        description: BallotReady candidate identifier for joining back to pipeline
+        tests:
+          - not_null
+          - unique
+      - name: viability_rating_2_0
+        description: Numeric viability score from 0-5 (scaled from 0-1 probability)
+      - name: score_viability_automated
+        description: Categorical viability rating (No Chance, Unlikely to Win, Has a Chance, Likely to Win, Frontrunner)
   - name: int__ballotready_final_candidacies
     description: >
       Final filtered set of BallotReady candidacies to be uploaded to HubSpot,
