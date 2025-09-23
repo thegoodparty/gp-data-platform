@@ -43,8 +43,10 @@ models:
         description: Type of match performed (exact, fuzzy, none)
       - name: fuzzy_match_score
         description: Similarity score for fuzzy matches (0-100)
-      - name: viability_score
-        description: Calculated viability score for candidate (placeholder)
+      - name: viability_rating_2_0
+        description: Numeric viability score from 0-5 (scaled from ML model probability)
+      - name: score_viability_automated
+        description: Categorical viability rating (No Chance, Unlikely to Win, Has a Chance, Likely to Win, Frontrunner)
       - name: upload_timestamp
         description: Timestamp when record was processed for HubSpot
         tests:
