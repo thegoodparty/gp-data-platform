@@ -1,0 +1,458 @@
+version: 2
+
+models:
+  - name: stg_airbyte_source__amplitude_api_active_users
+    description: "Staging model for Amplitude Active Users Counts stream - tracks daily active user counts with incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: date
+        description: "Date for the active users count (YYYY-MM-DD format)"
+        tests:
+          - not_null
+      - name: statistics
+        description: "JSON object containing active users statistics and metrics"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__amplitude_api_annotations
+    description: "Staging model for Amplitude Annotations stream - contains chart annotations and notes"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the annotation in Amplitude"
+        tests:
+          - not_null
+          - unique
+      - name: date
+        description: "Date when the annotation was created (YYYY-MM-DD format)"
+        tests:
+          - not_null
+      - name: label
+        description: "Display label for the annotation"
+        tests:
+          - not_null
+      - name: details
+        description: "Additional details and description for the annotation"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__amplitude_api_average_session_length
+    description: "Staging model for Amplitude Average Session Length stream - tracks daily average session duration with incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: date
+        description: "Date for the session length data (YYYY-MM-DD format)"
+        tests:
+          - not_null
+      - name: length
+        description: "Average session length in seconds for the given date"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 86400
+                inclusive: true
+              config:
+                where: "length is not null"
+
+  - name: stg_airbyte_source__amplitude_api_cohorts
+    description: "Staging model for Amplitude Cohorts stream - contains user cohort definitions and metadata"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the cohort in Amplitude"
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Display name of the cohort"
+        tests:
+          - not_null
+      - name: size
+        description: "Number of users in the cohort"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 10000000
+                inclusive: true
+              config:
+                where: "size is not null"
+      - name: type
+        description: "Type of cohort analysis"
+        tests:
+          - not_null
+      - name: appId
+        description: "Amplitude application ID this cohort belongs to"
+        tests:
+          - not_null
+      - name: hidden
+        description: "Whether the cohort is hidden from users"
+      - name: owners
+        description: "JSON array of user IDs who own this cohort"
+        tests:
+          - not_null
+      - name: edit_id
+        description: "ID of the last edit made to this cohort"
+      - name: lastMod
+        description: "Timestamp when the cohort was last modified"
+        tests:
+          - not_null
+      - name: viewers
+        description: "JSON array of user IDs who can view this cohort"
+        tests:
+          - not_null
+      - name: archived
+        description: "Whether the cohort is archived"
+      - name: chart_id
+        description: "ID of the chart associated with this cohort"
+      - name: finished
+        description: "Whether the cohort computation is finished"
+      - name: metadata
+        description: "JSON object containing additional cohort metadata"
+      - name: createdAt
+        description: "Timestamp when the cohort was created"
+        tests:
+          - not_null
+      - name: published
+        description: "Whether the cohort is published"
+      - name: definition
+        description: "JSON object defining the cohort criteria"
+        tests:
+          - not_null
+      - name: popularity
+        description: "Popularity score of the cohort"
+      - name: view_count
+        description: "Number of times this cohort has been viewed"
+      - name: description
+        description: "Description of the cohort"
+      - name: last_viewed
+        description: "Timestamp when the cohort was last viewed"
+      - name: location_id
+        description: "Location ID associated with the cohort"
+      - name: lastComputed
+        description: "Timestamp when the cohort was last computed"
+      - name: shortcut_ids
+        description: "JSON array of shortcut IDs for this cohort"
+        tests:
+          - not_null
+      - name: is_predictive
+        description: "Whether this is a predictive cohort"
+      - name: is_official_content
+        description: "Whether this is official Amplitude content"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__amplitude_api_events
+    description: "Staging model for Amplitude Events stream - contains individual user events with incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: app
+        description: "Amplitude application ID"
+        tests:
+          - not_null
+      - name: dma
+        description: "Designated Market Area code"
+      - name: adid
+        description: "Android advertising ID"
+      - name: city
+        description: "City name where the event occurred"
+      - name: data
+        description: "JSON object containing event data and properties"
+        tests:
+          - not_null
+      - name: idfa
+        description: "iOS advertising identifier"
+      - name: plan
+        description: "User's subscription plan"
+        tests:
+          - not_null
+      - name: uuid
+        description: "Unique identifier for the event"
+        tests:
+          - not_null
+          - unique
+      - name: groups
+        description: "JSON object containing group information"
+        tests:
+          - not_null
+      - name: paying
+        description: "Whether the user has a paying subscription"
+      - name: region
+        description: "Region code where the event occurred"
+      - name: _schema
+        description: "Schema version for the event data"
+      - name: country
+        description: "Country code where the event occurred"
+      - name: library
+        description: "Amplitude library used to track the event"
+        tests:
+          - not_null
+      - name: os_name
+        description: "Operating system name"
+      - name: user_id
+        description: "User identifier provided by the application"
+      - name: event_id
+        description: "Unique identifier for the event"
+        tests:
+          - not_null
+      - name: language
+        description: "Language code for the user's locale"
+      - name: platform
+        description: "Platform where the event occurred"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['iOS', 'Android', 'Web', 'Desktop', 'Server']
+              config:
+                where: "platform is not null"
+      - name: data_type
+        description: "Type of data in the event"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['session', 'event', 'user', 'group']
+              config:
+                where: "data_type is not null"
+      - name: device_id
+        description: "Unique device identifier"
+        tests:
+          - not_null
+      - name: source_id
+        description: "Source ID for the event"
+      - name: _insert_id
+        description: "Insert ID for deduplication"
+        tests:
+          - not_null
+      - name: event_time
+        description: "Timestamp when the event occurred (Unix timestamp)"
+        tests:
+          - not_null
+      - name: event_type
+        description: "Type/category of the event"
+        tests:
+          - not_null
+      - name: ip_address
+        description: "IP address of the user"
+      - name: os_version
+        description: "Operating system version"
+      - name: partner_id
+        description: "Partner ID for attribution"
+      - name: session_id
+        description: "Session identifier for grouping events"
+        tests:
+          - not_null
+      - name: _insert_key
+        description: "Insert key for deduplication"
+      - name: device_type
+        description: "Type of device (phone, tablet, desktop, etc.)"
+      - name: sample_rate
+        description: "Sampling rate applied to the event"
+      - name: amplitude_id
+        description: "Amplitude's internal user ID"
+        tests:
+          - not_null
+      - name: device_brand
+        description: "Brand of the device"
+      - name: device_model
+        description: "Model of the device"
+      - name: location_lat
+        description: "Latitude coordinate of the event location"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -90
+                max_value: 90
+                inclusive: true
+              config:
+                where: "location_lat is not null"
+      - name: location_lng
+        description: "Longitude coordinate of the event location"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -180
+                max_value: 180
+                inclusive: true
+              config:
+                where: "location_lng is not null"
+      - name: version_name
+        description: "Application version name"
+      - name: device_family
+        description: "Device family (iPhone, Samsung Galaxy, etc.)"
+      - name: start_version
+        description: "Version when the user first started using the app"
+      - name: device_carrier
+        description: "Mobile carrier for the device"
+      - name: processed_time
+        description: "Timestamp when the event was processed by Amplitude"
+      - name: user_properties
+        description: "JSON object containing user properties"
+      - name: event_properties
+        description: "JSON object containing event-specific properties"
+      - name: group_properties
+        description: "JSON object containing group properties"
+      - name: client_event_time
+        description: "Client-side timestamp when the event occurred"
+      - name: client_upload_time
+        description: "Client-side timestamp when the event was uploaded"
+      - name: server_upload_time
+        description: "Server-side timestamp when the event was uploaded"
+      - name: user_creation_time
+        description: "Timestamp when the user was created"
+      - name: device_manufacturer
+        description: "Manufacturer of the device"
+      - name: amplitude_event_type
+        description: "Amplitude's internal event type classification"
+      - name: is_attribution_event
+        description: "Whether this is an attribution event"
+      - name: server_received_time
+        description: "Timestamp when Amplitude received the event"
+      - name: global_user_properties
+        description: "JSON object containing global user properties"
+      - name: amplitude_attribution_ids
+        description: "JSON array of attribution IDs"
+
+  - name: stg_airbyte_source__amplitude_api_events_list
+    description: "Staging model for Amplitude Events List stream - contains metadata about tracked events"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the event in Amplitude"
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Name of the event type"
+        tests:
+          - not_null
+      - name: value
+        description: "Value associated with the event"
+      - name: hidden
+        description: "Whether the event is hidden from charts"
+      - name: totals
+        description: "Total count of occurrences for this event"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000000000
+                inclusive: true
+              config:
+                where: "totals is not null"
+      - name: deleted
+        description: "Whether the event has been deleted"
+      - name: display
+        description: "Display name for the event in charts"
+      - name: autohidden
+        description: "Whether the event is automatically hidden"
+      - name: non_active
+        description: "Whether the event is considered non-active"
+      - name: flow_hidden
+        description: "Whether the event is hidden in flow charts"
+      - name: in_waitroom
+        description: "Whether the event is in the waitroom"
+      - name: totals_delta
+        description: "Change in totals since last update"
+      - name: clusters_hidden
+        description: "Whether the event is hidden in cluster analysis"
+      - name: timeline_hidden
+        description: "Whether the event is hidden in timeline views"
