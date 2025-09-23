@@ -454,5 +454,3 @@ models:
         description: "Change in totals since last update"
       - name: clusters_hidden
         description: "Whether the event is hidden in cluster analysis"
-      - name: timeline_hidden
-        description: "Whether the event is hidden in timeline views"
