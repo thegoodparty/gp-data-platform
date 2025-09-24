@@ -11,6 +11,18 @@ sources:
         error_after: { count: 31, period: day }
 
     tables:
+      - name: amplitude_api_active_users
+        description: raw data load from amplitude api active users
+      - name: amplitude_api_annotations
+        description: raw data load from amplitude api annotations
+      - name: amplitude_api_average_session_length
+        description: raw data load from amplitude api average session length
+      - name: amplitude_api_cohorts
+        description: raw data load from amplitude api cohorts
+      - name: amplitude_api_events
+        description: raw data load from amplitude api events
+      - name: amplitude_api_events_list
+        description: raw data load from amplitude api events list
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue
