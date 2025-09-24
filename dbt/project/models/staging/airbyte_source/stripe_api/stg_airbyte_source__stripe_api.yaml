@@ -1,0 +1,685 @@
+version: 2
+
+models:
+  - name: stg_airbyte_source__stripe_api_accounts
+    description: "Staging model for Stripe Accounts stream - contains account information and settings with Full Refresh sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_application_fees
+    description: "Staging model for Stripe Application Fees stream - contains application fees charged on transactions with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_application_fees_refunds
+    description: "Staging model for Stripe Application Fee Refunds stream - contains refunded application fees with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_balance_transactions
+    description: "Staging model for Stripe Balance Transactions stream - contains account balance movements with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_charges
+    description: "Staging model for Stripe Charges stream - contains payment charge transactions with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the charge"
+        tests:
+          - not_null
+          - unique
+      - name: amount
+        description: "Amount charged in smallest currency unit (e.g., cents for USD)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 99999999
+                inclusive: true
+              config:
+                where: "amount is not null"
+      - name: currency
+        description: "Three-letter ISO currency code"
+        tests:
+          - not_null
+      - name: created
+        description: "Unix timestamp when the charge was created"
+        tests:
+          - not_null
+      - name: customer
+        description: "ID of the customer who was charged"
+      - name: paid
+        description: "Whether the charge was paid successfully"
+        tests:
+          - not_null
+      - name: status
+        description: "Status of the charge"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['succeeded', 'pending', 'failed']
+              config:
+                where: "status is not null"
+      - name: livemode
+        description: "Whether this charge was created in live mode"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_customers
+    description: "Staging model for Stripe Customers stream - contains customer records and account information with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the customer"
+        tests:
+          - not_null
+          - unique
+      - name: email
+        description: "Customer's email address"
+      - name: name
+        description: "Customer's full name"
+      - name: phone
+        description: "Customer's phone number"
+      - name: created
+        description: "Unix timestamp when the customer was created"
+        tests:
+          - not_null
+      - name: currency
+        description: "Three-letter ISO currency code for the customer's default currency"
+      - name: livemode
+        description: "Whether this customer was created in live mode"
+        tests:
+          - not_null
+      - name: delinquent
+        description: "Whether the customer has any unpaid invoices"
+      - name: is_deleted
+        description: "Whether the customer has been deleted"
+      - name: tax_exempt
+        description: "Customer's tax exemption status"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['none', 'exempt', 'reverse']
+              config:
+                where: "tax_exempt is not null"
+
+  - name: stg_airbyte_source__stripe_api_customer_balance_transactions
+    description: "Staging model for Stripe Customer Balance Transactions stream - contains customer account balance changes with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_events
+    description: "Staging model for Stripe Events stream - contains webhook events and API activity logs with Incremental sync. Note: Access guaranteed only for last 30 days"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the event"
+        tests:
+          - not_null
+          - unique
+      - name: type
+        description: "Type of event (e.g., charge.succeeded, customer.created)"
+        tests:
+          - not_null
+      - name: created
+        description: "Unix timestamp when the event was created"
+        tests:
+          - not_null
+      - name: livemode
+        description: "Whether this event was created in live mode"
+        tests:
+          - not_null
+      - name: data
+        description: "JSON object containing the event data"
+        tests:
+          - not_null
+      - name: object
+        description: "Type of object that triggered the event"
+        tests:
+          - not_null
+      - name: api_version
+        description: "Stripe API version used when the event was created"
+      - name: pending_webhooks
+        description: "Number of webhooks that have not yet been successfully delivered"
+
+  - name: stg_airbyte_source__stripe_api_invoice_items
+    description: "Staging model for Stripe Invoice Items stream - contains invoice line items and billing details with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_invoice_line_items
+    description: "Staging model for Stripe Invoice Line Items stream - contains detailed billing breakdowns with Full Refresh sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_invoices
+    description: "Staging model for Stripe Invoices stream - contains invoice records and billing information with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_payouts
+    description: "Staging model for Stripe Payouts stream - contains payout transactions to connected accounts with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_persons
+    description: "Staging model for Stripe Persons stream - contains person records for connected accounts with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_plans
+    description: "Staging model for Stripe Plans stream - contains subscription plans and pricing tiers with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the plan"
+        tests:
+          - not_null
+          - unique
+      - name: amount
+        description: "Amount in smallest currency unit (e.g., cents for USD)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 99999999
+                inclusive: true
+              config:
+                where: "amount is not null"
+      - name: currency
+        description: "Three-letter ISO currency code"
+        tests:
+          - not_null
+      - name: interval
+        description: "Billing interval for the plan"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['day', 'week', 'month', 'year']
+              config:
+                where: "interval is not null"
+      - name: active
+        description: "Whether the plan is currently active"
+        tests:
+          - not_null
+      - name: created
+        description: "Unix timestamp when the plan was created"
+        tests:
+          - not_null
+      - name: livemode
+        description: "Whether this plan was created in live mode"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_prices
+    description: "Staging model for Stripe Prices stream - contains pricing information for products with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_products
+    description: "Staging model for Stripe Products stream - contains product catalog and inventory information with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_promotion_codes
+    description: "Staging model for Stripe Promotion Codes stream - contains promotion codes and discount campaigns with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_refunds
+    description: "Staging model for Stripe Refunds stream - contains refund transactions and processing details with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_subscription_items
+    description: "Staging model for Stripe Subscription Items stream - contains subscription line items and plan details with Full Refresh sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_subscription_schedule
+    description: "Staging model for Stripe Subscription Schedule stream - contains subscription scheduling and recurring payment plans with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_subscriptions
+    description: "Staging model for Stripe Subscriptions stream - contains subscription records and recurring billing information with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the subscription"
+        tests:
+          - not_null
+          - unique
+      - name: status
+        description: "Status of the subscription"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['incomplete', 'incomplete_expired', 'trialing', 'active', 'past_due', 'canceled', 'unpaid']
+              config:
+                where: "status is not null"
+      - name: customer
+        description: "ID of the customer who owns the subscription"
+        tests:
+          - not_null
+      - name: created
+        description: "Unix timestamp when the subscription was created"
+        tests:
+          - not_null
+      - name: current_period_start
+        description: "Unix timestamp for the start of the current period"
+        tests:
+          - not_null
+      - name: current_period_end
+        description: "Unix timestamp for the end of the current period"
+        tests:
+          - not_null
+      - name: livemode
+        description: "Whether this subscription was created in live mode"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_transactions
+    description: "Staging model for Stripe Transactions stream - contains financial transactions and payment processing records with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_transfers
+    description: "Staging model for Stripe Transfers stream - contains transfer transactions between accounts with Incremental sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+
+  - name: stg_airbyte_source__stripe_api_transfer_reversals
+    description: "Staging model for Stripe Transfer Reversals stream - contains transfer reversal transactions and dispute handling with Full Refresh sync"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from Stripe API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
