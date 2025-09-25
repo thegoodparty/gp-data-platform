@@ -37,4 +37,6 @@ CLAUDE.md
 
 # Logs (including root level) and things I don't want to commit
 logs/
+
+# Local environment setup scripts
 dbt/setup_env.sh
