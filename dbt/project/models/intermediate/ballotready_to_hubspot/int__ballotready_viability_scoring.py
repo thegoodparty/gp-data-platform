@@ -54,7 +54,7 @@ def model(dbt, spark):
         .when(F.col("number_of_candidates") == "", None)
         .otherwise(F.col("number_of_candidates").cast("int") - 1)
         .alias("properties_number_of_opponents"),
-        F.when(F.col("uncontested") == true, "Yes")
+        F.when(F.col("uncontested"), "Yes")
         .otherwise("No")
         .alias("properties_open_seat_"),
         F.col("party_affiliation").alias("properties_candidate_party"),
