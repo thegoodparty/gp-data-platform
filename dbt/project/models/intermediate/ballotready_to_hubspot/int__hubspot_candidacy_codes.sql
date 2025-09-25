@@ -7,6 +7,7 @@ select
             "properties_firstname",
             "properties_lastname",
             "properties_state",
+            "properties_city",
             "properties_office_type",
         )
     }} as hs_candidate_code

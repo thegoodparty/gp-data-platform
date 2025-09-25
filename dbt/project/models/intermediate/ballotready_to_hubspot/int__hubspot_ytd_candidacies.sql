@@ -8,6 +8,7 @@ select
     properties_product_user,
     properties_election_date,
     properties_state,
+    properties_city,
     properties_office_type,
     properties_official_office_name,
     properties_number_of_seats_available,
