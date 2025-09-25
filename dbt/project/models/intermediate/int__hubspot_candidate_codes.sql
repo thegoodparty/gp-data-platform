@@ -6,32 +6,17 @@ with
             properties_firstname,
             properties_lastname,
             properties_state,
+            properties_city,
             properties_office_type,
-            lower(
-                concat_ws(
-                    '__',
-                    regexp_replace(
-                        regexp_replace(trim(properties_firstname), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim(properties_lastname), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim(properties_state), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim(properties_office_type), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    )
+            {{
+                generate_candidate_code(
+                    "properties_firstname",
+                    "properties_lastname",
+                    "properties_state",
+                    "properties_city",
+                    "properties_office_type",
                 )
-            ) as hubspot_candidate_code,
+            }} as hubspot_candidate_code,
             `updatedAt` as updated_at
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
         where
@@ -63,5 +48,6 @@ select
     properties_firstname,
     properties_lastname,
     properties_state,
+    properties_city,
     properties_office_type
 from candidates

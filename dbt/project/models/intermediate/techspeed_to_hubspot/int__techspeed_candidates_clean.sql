@@ -189,42 +189,11 @@ with
     candidates_deduped_on_name_state_office_type as (
         select
             *,
-            case
-                when first_name is null
-                then null
-                when last_name is null
-                then null
-                when state is null
-                then null
-                when office_type is null
-                then null
-                else
-                    lower(
-                        concat_ws(
-                            '__',
-                            regexp_replace(
-                                regexp_replace(trim(first_name), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            ),
-                            regexp_replace(
-                                regexp_replace(trim(last_name), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            ),
-                            regexp_replace(
-                                regexp_replace(trim(state), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            ),
-                            regexp_replace(
-                                regexp_replace(trim(office_type), ' ', '-'),
-                                '[^a-zA-Z0-9-]',
-                                ''
-                            )
-                        )
-                    )
-            end as techspeed_candidate_code
+            {{
+                generate_candidate_code(
+                    "first_name", "last_name", "state", "city", "office_type"
+                )
+            }} as techspeed_candidate_code
         from candidates_w_extracted_last_name
         qualify
             -- qualify over the techspeed_candidate_code, and order by the source file
