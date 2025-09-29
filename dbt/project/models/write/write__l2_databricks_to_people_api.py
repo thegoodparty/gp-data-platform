@@ -35,6 +35,7 @@ VOTER_COLUMN_LIST: list = [
     "CountyVoterID",
     "Education_Of_Person",
     "Estimated_Income_Amount",
+    "Estimated_Income_Amount_Int",
     "EthnicGroups_EthnicGroup1Desc",
     "Ethnic_Description",
     "Homeowner_Probability_Model",

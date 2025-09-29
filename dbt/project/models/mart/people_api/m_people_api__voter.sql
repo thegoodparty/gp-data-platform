@@ -32,6 +32,11 @@ with
             `Voters_CountyVoterID` as `CountyVoterID`,
             `ConsumerData_Education_Of_Person` as `Education_Of_Person`,
             `ConsumerData_Estimated_Income_Amount` as `Estimated_Income_Amount`,
+            cast(
+                regexp_replace(
+                    `ConsumerData_Estimated_Income_Amount`, '[^0-9.]', ''
+                ) as int
+            ) as `Estimated_Income_Amount_Int`,
             `EthnicGroups_EthnicGroup1Desc`,
             `Ethnic_Description`,
             `ConsumerData_Homeowner_Probability_Model` as `Homeowner_Probability_Model`,
@@ -449,6 +454,7 @@ with
             tbl_updated.`CountyVoterID`,
             tbl_updated.`Education_Of_Person`,
             tbl_updated.`Estimated_Income_Amount`,
+            tbl_updated.`Estimated_Income_Amount_Int`,
             tbl_updated.`EthnicGroups_EthnicGroup1Desc`,
             tbl_updated.`Ethnic_Description`,
             tbl_updated.`Homeowner_Probability_Model`,
