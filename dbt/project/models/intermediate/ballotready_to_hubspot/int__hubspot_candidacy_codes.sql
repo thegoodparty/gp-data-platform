@@ -16,4 +16,5 @@ where
     properties_firstname is not null
     and properties_lastname is not null
     and properties_state is not null
+    and properties_city is not null
     and properties_office_type is not null

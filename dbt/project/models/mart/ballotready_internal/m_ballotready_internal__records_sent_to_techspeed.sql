@@ -23,6 +23,7 @@ with
             mtfcc,
             geo_id,
             position_name,
+            position_name as official_office_name,
             sub_area_name,
             sub_area_value,
             sub_area_name_secondary,
