@@ -34,7 +34,7 @@ with
             `ConsumerData_Estimated_Income_Amount` as `Estimated_Income_Amount`,
             cast(
                 regexp_replace(
-                    `ConsumerData_Estimated_Income_Amount`, '[^0-9]', ''
+                    `ConsumerData_Estimated_Income_Amount`, '[^0-9.]', ''
                 ) as int
             ) as `Estimated_Income_Amount_Int`,
             `EthnicGroups_EthnicGroup1Desc`,
