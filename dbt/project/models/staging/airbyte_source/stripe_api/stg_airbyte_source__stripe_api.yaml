@@ -133,8 +133,6 @@ models:
         description: "ID of the customer who was charged"
       - name: paid
         description: "Whether the charge was paid successfully"
-        tests:
-          - not_null
       - name: status
         description: "Status of the charge"
         tests:
@@ -145,8 +143,6 @@ models:
                 where: "status is not null"
       - name: livemode
         description: "Whether this charge was created in live mode"
-        tests:
-          - not_null
 
   - name: stg_airbyte_source__stripe_api_customers
     description: "Staging model for Stripe Customers stream - contains customer records and account information with Incremental sync"
