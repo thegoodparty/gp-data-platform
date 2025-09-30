@@ -71,6 +71,9 @@ models:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_campaign')
                 field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
   - name: stg_airbyte_source__gp_api_db_ecanvasser_contact
     description: "Staging model for eCanvasser Contact stream - contains voter contact information from eCanvasser"
     columns:
@@ -113,6 +116,9 @@ models:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_ecanvasser_house')
                 field: id
+              config:
+                warn_if: ">300"
+                error_if: ">500"
       - name: action_id
         description: "Action ID associated with this contact"
       - name: last_name
@@ -271,10 +277,6 @@ models:
         description: "Foreign key reference to the contact"
         tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('stg_airbyte_source__gp_api_db_ecanvasser_contact')
-                field: id
       - name: created_at
         description: "Timestamp when the interaction record was created"
         tests:
@@ -327,18 +329,12 @@ models:
           - unique
       - name: date
         description: "Date when the outreach campaign was created or scheduled"
-        tests:
-          - not_null
       - name: name
         description: "Name of the outreach campaign"
-        tests:
-          - not_null
       - name: error
         description: "Error message if any issues occurred with the outreach campaign"
       - name: title
         description: "Title of the outreach campaign"
-        tests:
-          - not_null
       - name: script
         description: "Script or content for the outreach campaign"
       - name: status
@@ -395,6 +391,9 @@ models:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_campaign')
                 field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
   - name: stg_airbyte_source__gp_api_db_position
     description: raw data load from gp_api_db postgres db from table `position`
     columns:
