@@ -8,7 +8,9 @@ def dbt_config():
     }
 
 
-def model(dbt, spark):
+from pyspark.sql import DataFrame, SparkSession
+...
+def model(dbt, session: SparkSession) -> DataFrame:
     """
     Calculate viability scores for BallotReady candidates using MLflow model.
 
