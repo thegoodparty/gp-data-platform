@@ -1,4 +1,11 @@
 models:
+  - name: stg_airbyte_source__gp_api_db_campaign
+    description: raw data load from gp_api_db postgres db from table `campaign`
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+          - unique
   - name: stg_airbyte_source__gp_api_db_campaign_position
     description: raw data load from gp_api_db postgres db from table `campaign_position`
     columns:
@@ -15,13 +22,279 @@ models:
       - name: top_issue_id
         data_tests:
           - not_null
-  - name: stg_airbyte_source__gp_api_db_campaign
-    description: raw data load from gp_api_db postgres db from table `campaign`
+  - name: stg_airbyte_source__gp_api_db_ecanvasser
+    description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:
-      - name: id
-        data_tests:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
           - not_null
           - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from gp_api_db"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the eCanvasser instance"
+        tests:
+          - not_null
+          - unique
+      - name: error
+        description: "Error message if any issues occurred with the eCanvasser sync"
+      - name: api_key
+        description: "API key used for eCanvasser authentication"
+        tests:
+          - not_null
+      - name: last_sync
+        description: "Timestamp of the last successful sync with eCanvasser"
+      - name: created_at
+        description: "Timestamp when the eCanvasser record was created"
+        tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the eCanvasser record was last updated"
+        tests:
+          - not_null
+      - name: campaign_id
+        description: "Foreign key reference to the campaign this eCanvasser belongs to"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
+  - name: stg_airbyte_source__gp_api_db_ecanvasser_contact
+    description: "Staging model for eCanvasser Contact stream - contains voter contact information from eCanvasser"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from gp_api_db"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the contact"
+        tests:
+          - not_null
+          - unique
+      - name: type
+        description: "Type of contact (e.g., voter, volunteer, donor)"
+      - name: donor
+        description: "Whether this contact is a donor"
+      - name: email
+        description: "Email address of the contact"
+      - name: gender
+        description: "Gender of the contact"
+      - name: deceased
+        description: "Whether the contact is deceased"
+      - name: house_id
+        description: "Foreign key reference to the house record"
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_ecanvasser_house')
+                field: id
+              config:
+                warn_if: ">300"
+                error_if: ">500"
+      - name: action_id
+        description: "Action ID associated with this contact"
+      - name: last_name
+        description: "Last name of the contact"
+        tests:
+          - not_null
+      - name: volunteer
+        description: "Whether this contact is a volunteer"
+      - name: created_at
+        description: "Timestamp when the contact record was created"
+        tests:
+          - not_null
+      - name: created_by
+        description: "User ID who created this contact record"
+      - name: first_name
+        description: "First name of the contact"
+        tests:
+          - not_null
+      - name: home_phone
+        description: "Home phone number of the contact"
+      - name: updated_at
+        description: "Timestamp when the contact record was last updated"
+        tests:
+          - not_null
+      - name: mobile_phone
+        description: "Mobile phone number of the contact"
+      - name: organization
+        description: "Organization associated with the contact"
+      - name: date_of_birth
+        description: "Date of birth of the contact"
+      - name: ecanvasser_id
+        description: "Foreign key reference to the eCanvasser instance"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_ecanvasser')
+                field: id
+      - name: year_of_birth
+        description: "Year of birth of the contact"
+      - name: ecanvasserHouseId
+        description: "eCanvasser house ID (alternative reference)"
+      - name: unique_identifier
+        description: "Unique identifier for the contact within eCanvasser"
+      - name: last_interaction_id
+        description: "ID of the last interaction with this contact"
+  - name: stg_airbyte_source__gp_api_db_ecanvasser_house
+    description: "Staging model for eCanvasser House stream - contains household information from eCanvasser"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from gp_api_db"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the house"
+        tests:
+          - not_null
+          - unique
+      - name: address
+        description: "Full address of the house"
+        tests:
+          - not_null
+      - name: latitude
+        description: "Latitude coordinate of the house location"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -90
+                max_value: 90
+                inclusive: true
+              config:
+                where: "latitude is not null"
+      - name: longitude
+        description: "Longitude coordinate of the house location"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -180
+                max_value: 180
+                inclusive: true
+              config:
+                where: "longitude is not null"
+      - name: created_at
+        description: "Timestamp when the house record was created"
+        tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the house record was last updated"
+        tests:
+          - not_null
+      - name: ecanvasser_id
+        description: "Foreign key reference to the eCanvasser instance"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_ecanvasser')
+                field: id
+  - name: stg_airbyte_source__gp_api_db_ecanvasser_interaction
+    description: "Staging model for eCanvasser Interaction stream - contains interaction records between contacts and canvassers"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from gp_api_db"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the interaction"
+        tests:
+          - not_null
+          - unique
+      - name: date
+        description: "Date when the interaction occurred"
+        tests:
+          - not_null
+      - name: type
+        description: "Type of interaction (e.g., door knock, phone call, text)"
+        tests:
+          - not_null
+      - name: notes
+        description: "Notes from the interaction"
+      - name: rating
+        description: "Rating or score given to the interaction"
+      - name: source
+        description: "Source of the interaction (e.g., mobile app, web)"
+      - name: status
+        description: "Status of the interaction (e.g., completed, pending)"
+        tests:
+          - not_null
+      - name: contact_id
+        description: "Foreign key reference to the contact"
+        tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp when the interaction record was created"
+        tests:
+          - not_null
+      - name: created_by
+        description: "User ID who created this interaction record"
+      - name: updated_at
+        description: "Timestamp when the interaction record was last updated"
+        tests:
+          - not_null
+      - name: ecanvasser_id
+        description: "Foreign key reference to the eCanvasser instance"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_ecanvasser')
+                field: id
   - name: stg_airbyte_source__gp_api_db_election_type
     description: raw data load from gp_api_db postgres db from table `election_type`
     columns:
@@ -29,6 +302,81 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__gp_api_db_outreach
+    description: "Staging model for Outreach stream - contains outreach campaign information and configuration"
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from gp_api_db"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: id
+        description: "Unique identifier for the outreach campaign"
+        tests:
+          - not_null
+          - unique
+      - name: date
+        description: "Date when the outreach campaign was created or scheduled"
+      - name: name
+        description: "Name of the outreach campaign"
+      - name: error
+        description: "Error message if any issues occurred with the outreach campaign"
+      - name: title
+        description: "Title of the outreach campaign"
+      - name: script
+        description: "Script or content for the outreach campaign"
+      - name: status
+        description: "Status of the outreach campaign (e.g., active, completed, paused)"
+        tests:
+          - not_null
+      - name: message
+        description: "Message content for the outreach campaign"
+      - name: createdAt
+        description: "Timestamp when the outreach campaign was created"
+        tests:
+          - not_null
+      - name: did_state
+        description: "State information for the outreach campaign"
+      - name: image_url
+        description: "URL of the image associated with the outreach campaign"
+      - name: updatedAt
+        description: "Timestamp when the outreach campaign was last updated"
+        tests:
+          - not_null
+      - name: campaignId
+        description: "Foreign key reference to the campaign"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+      - name: project_id
+        description: "Project ID associated with the outreach campaign"
+      - name: identity_id
+        description: "Identity ID of the user who created the outreach campaign"
+      - name: outreach_type
+        description: "Type of outreach (e.g., phone, text, email, door-to-door)"
+        tests:
+          - not_null
+      - name: phone_list_id
+        description: "ID of the phone list used for the outreach campaign"
+      - name: audience_request
+        description: "Audience request parameters for the outreach campaign"
+      - name: voter_file_filter_id
+        description: "ID of the voter file filter applied to the outreach campaign"
   - name: stg_airbyte_source__gp_api_db_path_to_victory
     description: raw data load from gp_api_db postgres db from table `path_to_victory`
     columns:
@@ -43,6 +391,9 @@ models:
               arguments:
                 to: ref('stg_airbyte_source__gp_api_db_campaign')
                 field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
   - name: stg_airbyte_source__gp_api_db_position
     description: raw data load from gp_api_db postgres db from table `position`
     columns:

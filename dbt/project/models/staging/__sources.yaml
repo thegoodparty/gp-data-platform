@@ -53,9 +53,19 @@ sources:
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position
         description: raw data load from gp_api_db postgres db from table `campaign_position`
+      - name: gp_api_db_ecanvasser
+        description: raw data load from gp_api_db postgres db from table `ecanvas`
+      - name: gp_api_db_ecanvasser_contact
+        description: raw data load from gp_api_db postgres db from table `ecanvas_contact`
+      - name: gp_api_db_ecanvasser_house
+        description: raw data load from gp_api_db postgres db from table `ecanvasser_house`
+      - name: gp_api_db_ecanvasser_interaction
+        description: raw data load from gp_api_db postgres db from table `ecanvasser_interaction`
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
         freshness: null
+      - name: gp_api_db_outreach
+        description: raw data load from gp_api_db postgres db from table `outreach`
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
       - name: gp_api_db_position
