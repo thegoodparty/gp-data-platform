@@ -92,7 +92,9 @@ def _join_woe(df: DataFrame, col_name: str, spark: SparkSession) -> DataFrame:
     return df
 
 
-def model(dbt, spark):
+from pyspark.sql import DataFrame, SparkSession
+...
+def model(dbt, session: SparkSession) -> DataFrame:
     """
     Calculate viability scores for BallotReady candidates using MLflow model.
 
