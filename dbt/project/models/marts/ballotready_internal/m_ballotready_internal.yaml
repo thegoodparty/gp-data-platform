@@ -45,13 +45,30 @@ models:
         description: Similarity score for fuzzy matches (0-100)
       - name: viability_rating_2_0
         description: Numeric viability score from 0-5 (scaled from ML model probability)
+        tests:
+          - is_numeric
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 5
+              strictly: false
       - name: score_viability_automated
         description: Categorical viability rating (No Chance, Unlikely to Win, Has a Chance, Likely to Win, Frontrunner)
+        tests:
+        - accepted_values:
+            arguments:
+              values:
+                - "No Chance"
+                - "Unlikely to Win"
+                - "Has a Chance"
+                - "Likely to Win"
+                - "Frontrunner"
+            config:
+              where: "data_type is not null"
+
       - name: upload_timestamp
         description: Timestamp when record was processed for HubSpot
         tests:
           - not_null
-
   - name: m_ballotready_internal__records_sent_to_techspeed
     description: >
       Historical tracking table for BallotReady candidates sent to TechSpeed for data enrichment.
