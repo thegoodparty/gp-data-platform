@@ -32,14 +32,8 @@ models:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       gemini_api_key: "{{ env_var('DBT_GEMINI_API_KEY') }}"
 
-  - name: int__ddhq_election_results_embeddings_single
-    description: Intermediate model that creates embeddings for the election results
-    config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      gemini_api_key: "{{ env_var('DBT_GEMINI_API_KEY') }}"
-
-  - name: int__ddhq_election_results_embeddings_batch
-    description: Intermediate model that creates embeddings for the election results
+  - name: int__general_candidacy_embeddings_for_ddhq
+    description: Intermediate model that creates embeddings for the general candidacy data
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       gemini_api_key: "{{ env_var('DBT_GEMINI_API_KEY') }}"
