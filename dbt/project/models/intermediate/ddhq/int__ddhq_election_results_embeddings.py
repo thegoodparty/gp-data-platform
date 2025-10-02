@@ -1,14 +1,13 @@
-import asyncio
 import logging
 import time
 from typing import List, Optional
 
-import httpx
 import numpy as np
+import requests
 from google import genai
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import array, lit
-from tqdm.asyncio import tqdm as atqdm
+from pyspark.sql.functions import monotonically_increasing_id
+from tqdm import tqdm
 
 GEMINI_PRICING = {
     "gemini-2.5-flash": {"input": 0.075, "output": 0.30},
@@ -150,33 +149,29 @@ class GeminiEmbeddingClient:
                         f"Failed to create single embedding after {self.max_retries} attempts: {str(e)}"
                     )
 
-    async def _create_embeddings_parallel(
+    def _create_embeddings_sequential(
         self,
         texts: List[str],
         model: str = "gemini-embedding-001",
         batch_size: int = 100,
-        max_concurrent_batches: int = 2,
         rate_limit_delay: float = 2.0,
         adaptive_rate_limiting: bool = True,
-        stagger_delay: float = 0.1,
     ) -> np.ndarray:
         """
-        Create embeddings using parallel batch processing with adaptive rate limiting.
+        Create embeddings using sequential batch processing with adaptive rate limiting.
 
         Args:
             texts: List of texts to embed
             model: Embedding model to use
             batch_size: Number of texts to process per batch
-            max_concurrent_batches: Maximum number of concurrent batches
             rate_limit_delay: Base delay between batches (seconds)
             adaptive_rate_limiting: Whether to adapt delays based on 429 errors
-            stagger_delay: Delay to stagger batch start times (seconds)
 
         Returns:
             numpy array of embeddings
         """
         self.logger.info(
-            f"Creating embeddings for {len(texts)} texts using {model} (parallel)"
+            f"Creating embeddings for {len(texts)} texts using {model} (sequential)"
         )
 
         # Split texts into batches
@@ -186,88 +181,75 @@ class GeminiEmbeddingClient:
             batches.append((i // batch_size, batch))
 
         total_batches = len(batches)
-        self.logger.info(
-            f"Processing {total_batches} batches with max {max_concurrent_batches} concurrent"
-        )
+        self.logger.info(f"Processing {total_batches} batches sequentially")
 
         # Adaptive rate limiting state
         current_delay = rate_limit_delay
         consecutive_429s = 0
 
-        # Process batches in parallel with concurrency limit and progress bar
-        semaphore = asyncio.Semaphore(max_concurrent_batches)
-        progress_bar = atqdm(
+        # Process batches sequentially with progress bar
+        progress_bar = tqdm(
             total=total_batches, desc="Processing batches", unit="batch"
         )
 
-        async def process_batch_with_retry(
-            batch_num: int, batch_texts: List[str]
-        ) -> tuple:
-            """Process a single batch with adaptive retry logic"""
-            nonlocal current_delay, consecutive_429s
+        all_embeddings = []
 
-            async with semaphore:
-                last_exception = None
-
-                # Add staggered start delay for each batch
-                stagger_wait = batch_num * stagger_delay
-                if stagger_wait > 0:
-                    await asyncio.sleep(stagger_wait)
+        try:
+            for batch_num, batch_texts in batches:
+                last_exception: Exception | None = None
 
                 # Add rate limiting delay before processing
                 if batch_num > 0:  # Don't delay the first batch
-                    await asyncio.sleep(current_delay)
+                    time.sleep(current_delay)
 
                 for attempt in range(self.max_retries):
                     try:
-                        async with httpx.AsyncClient(timeout=60.0) as client:
-                            batch_embeddings = []
+                        batch_embeddings = []
 
-                            for text in batch_texts:
-                                # Use Gemini REST API directly for async calls
-                                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
-                                headers = {
-                                    "Content-Type": "application/json",
-                                    "x-goog-api-key": self.api_key,
-                                }
-                                data = {
-                                    "content": {"parts": [{"text": text}]},
-                                    "taskType": "RETRIEVAL_DOCUMENT",
-                                }
+                        for text in batch_texts:
+                            # Use Gemini REST API directly for sync calls
+                            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
+                            headers = {
+                                "Content-Type": "application/json",
+                                "x-goog-api-key": self.api_key,
+                            }
+                            data = {
+                                "content": {"parts": [{"text": text}]},
+                                "taskType": "RETRIEVAL_DOCUMENT",
+                            }
 
-                                response = await client.post(
-                                    url, json=data, headers=headers
-                                )
-                                response.raise_for_status()
-
-                                result = response.json()
-                                embedding = result["embedding"]["values"]
-                                batch_embeddings.append(embedding)
-
-                            # Reset consecutive 429s on success
-                            if adaptive_rate_limiting and consecutive_429s > 0:
-                                consecutive_429s = 0
-                                current_delay = max(
-                                    rate_limit_delay, current_delay * 0.8
-                                )  # Gradually reduce delay
-                                self.logger.debug(
-                                    f"Reduced rate limit delay to {current_delay:.2f}s after success"
-                                )
-
-                            progress_bar.update(1)
-                            self.logger.debug(
-                                f"Batch {batch_num + 1} completed successfully ({len(batch_embeddings)} embeddings)"
+                            response = requests.post(
+                                url, json=data, headers=headers, timeout=60.0
                             )
-                            return (
-                                batch_num,
-                                batch_embeddings,
-                                batch_texts,
-                            )  # Include texts for cost tracking
+                            response.raise_for_status()
 
-                    except httpx.HTTPStatusError as e:
+                            result = response.json()
+                            embedding = result["embedding"]["values"]
+                            batch_embeddings.append(embedding)
+
+                        # Reset consecutive 429s on success
+                        if adaptive_rate_limiting and consecutive_429s > 0:
+                            consecutive_429s = 0
+                            current_delay = max(
+                                rate_limit_delay, current_delay * 0.8
+                            )  # Gradually reduce delay
+                            self.logger.debug(
+                                f"Reduced rate limit delay to {current_delay:.2f}s after success"
+                            )
+
+                        all_embeddings.extend(batch_embeddings)
+                        # Track cost for this batch
+                        self._track_embedding_cost(batch_texts, model)
+
+                        progress_bar.update(1)
+                        self.logger.debug(
+                            f"Batch {batch_num + 1} completed successfully ({len(batch_embeddings)} embeddings)"
+                        )
+                        break  # Success, exit retry loop
+
+                    except requests.exceptions.HTTPError as e:
                         last_exception = e
 
-                        # For all other HTTP errors, retry with exponential backoff
                         # Special handling for 429 errors with adaptive rate limiting
                         if e.response.status_code == 429:
                             consecutive_429s += 1
@@ -288,7 +270,7 @@ class GeminiEmbeddingClient:
                         )
 
                         if attempt < self.max_retries - 1:
-                            await asyncio.sleep(retry_delay)
+                            time.sleep(retry_delay)
                             continue
                         else:
                             progress_bar.update(1)  # Update progress even on failure
@@ -304,62 +286,39 @@ class GeminiEmbeddingClient:
 
                         if attempt < self.max_retries - 1:
                             delay = self.base_delay * (2**attempt)
-                            await asyncio.sleep(delay)
+                            time.sleep(delay)
                         else:
                             progress_bar.update(1)  # Update progress even on failure
                             raise RuntimeError(
                                 f"Failed to create embeddings for batch {batch_num + 1} after {self.max_retries} attempts. Last error: {str(last_exception)}"
                             )
-            return ()
 
-        # Execute all batches concurrently
-        tasks = [
-            process_batch_with_retry(batch_num, batch_texts)
-            for batch_num, batch_texts in batches
-        ]
-
-        try:
-            results = await asyncio.gather(*tasks)
             progress_bar.close()
 
-            # Sort results by batch number and flatten
-            results.sort(key=lambda x: x[0])
-            all_embeddings = []
-            for _, batch_embeddings, batch_texts in results:
-                all_embeddings.extend(batch_embeddings)
-                # Track cost for this batch
-                self._track_embedding_cost(batch_texts, model)
-
             self.logger.info(
-                f"Successfully created {len(all_embeddings)} embeddings using parallel processing"
+                f"Successfully created {len(all_embeddings)} embeddings using sequential processing"
             )
             return np.array(all_embeddings)
 
         except Exception as e:
             progress_bar.close()
-            self.logger.error(f"Parallel embedding generation failed: {str(e)}")
-            raise RuntimeError(f"Parallel embedding generation failed: {str(e)}")
+            self.logger.error(f"Sequential embedding generation failed: {str(e)}")
+            raise RuntimeError(f"Sequential embedding generation failed: {str(e)}")
 
     def create_embeddings(
         self,
         texts: List[str],
-        parallel: bool = True,
         batch_size: int = 100,
-        max_concurrent_batches: int = 2,
         rate_limit_delay: float = 2.0,
-        stagger_delay: float = 0.1,
         **kwargs,
     ) -> np.ndarray:
         """
-        Create embeddings with automatic parallel/sync selection and rate limiting.
+        Create embeddings with sequential processing and rate limiting.
 
         Args:
             texts: List of texts to embed
-            parallel: Whether to use parallel processing
             batch_size: Number of texts per batch
-            max_concurrent_batches: Max concurrent batches (lower = fewer 429s)
             rate_limit_delay: Base delay between batches in seconds
-            stagger_delay: Delay to stagger batch start times (seconds)
             **kwargs: Additional arguments
 
         Returns:
@@ -369,16 +328,12 @@ class GeminiEmbeddingClient:
         if len(texts) == 1:
             return self._create_single_embedding(texts[0], **kwargs).reshape(1, -1)
 
-        # For multiple texts, always use parallel processing (more efficient)
-        return asyncio.run(
-            self._create_embeddings_parallel(
-                texts,
-                batch_size=batch_size,
-                max_concurrent_batches=max_concurrent_batches,
-                rate_limit_delay=rate_limit_delay,
-                stagger_delay=stagger_delay,
-                **kwargs,
-            )
+        # For multiple texts, use sequential processing
+        return self._create_embeddings_sequential(
+            texts,
+            batch_size=batch_size,
+            rate_limit_delay=rate_limit_delay,
+            **kwargs,
         )
 
 
@@ -399,44 +354,74 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ddhq_election_results: DataFrame = dbt.ref("int__ddhq_election_results_clean")
     # candidacy_clean_for_ddhq: DataFrame = dbt.ref("int__general_candidacy_clean_for_ddhq")
 
+    # TODO: handle incrementality
+    if dbt.is_incremental:
+        existing_table = session.table(f"{dbt.this}")
+        max_updated_at_row = existing_table.agg(
+            {"_airbyte_extracted_at": "max"}
+        ).collect()[0]
+        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
+
+        if max_updated_at:
+            ddhq_election_results = ddhq_election_results.filter(
+                ddhq_election_results["_airbyte_extracted_at"] >= max_updated_at
+            )
+
+    # downsample in dev testing, there are 40k total for ddhq_name_race_texts
+    ddhq_election_results = ddhq_election_results.limit(
+        100
+    )  # (100, 71 s), (1000, 410 s), (10k, 51m or 2.5k s)
+    # candidacy_name_race_texts = candidacy_name_race_texts[:1000]
+
     ddhq_name_race_texts: List[str] = (
         ddhq_election_results.select("name_race").toPandas()["name_race"].tolist()
     )
     # candidacy_name_race_texts: List[str] = candidacy_clean_for_ddhq.select("name_race").toPandas()['name_race'].tolist()
 
-    # downsample in dev testing
-    ddhq_name_race_texts = ddhq_name_race_texts[:1000]
-    # candidacy_name_race_texts = candidacy_name_race_texts[:1000]
     embedding_client = GeminiEmbeddingClient(api_key=gemini_api_key)
 
-    ddhq_name_race_embeddings: List[np.ndarray] = embedding_client.create_embeddings(
-        texts=ddhq_name_race_texts,
-        parallel=True,
-        batch_size=100,
-        max_concurrent_batches=50,
+    ddhq_name_race_embeddings_original: List[np.ndarray] = (
+        embedding_client.create_embeddings(
+            texts=ddhq_name_race_texts,
+            batch_size=100,
+        )
     )
     # candidacy_name_race_embeddings: List[np.ndarray] = embedding_client.create_embeddings(
     #     texts=candidacy_name_race_texts,
-    #     parallel=True,
     #     batch_size=100,
-    #     max_concurrent_batches=50
     # )
 
     # Convert to list of arrays if it's a 2D numpy array
     if (
-        isinstance(ddhq_name_race_embeddings, np.ndarray)
-        and len(ddhq_name_race_embeddings.shape) == 2
+        isinstance(ddhq_name_race_embeddings_original, np.ndarray)
+        and len(ddhq_name_race_embeddings_original.shape) == 2
     ):
         ddhq_name_race_embeddings = [
-            ddhq_name_race_embeddings[i]
-            for i in range(ddhq_name_race_embeddings.shape[0])
+            ddhq_name_race_embeddings_original[i]
+            for i in range(ddhq_name_race_embeddings_original.shape[0])
         ]
     # if isinstance(candidacy_name_race_embeddings, np.ndarray) and len(candidacy_name_race_embeddings.shape) == 2:
     # candidacy_name_race_embeddings = [candidacy_name_race_embeddings[i] for i in range(candidacy_name_race_embeddings.shape[0])]
 
+    # Add row index to preserve order
     ddhq_election_results = ddhq_election_results.withColumn(
-        "name_race_embedding", array(*[lit(e) for e in ddhq_name_race_embeddings])
+        "row_index", monotonically_increasing_id()
     )
+
+    # Create embeddings DataFrame with matching indices
+    embeddings_data = [
+        (i, embedding.tolist()) for i, embedding in enumerate(ddhq_name_race_embeddings)
+    ]
+    embeddings_df = session.createDataFrame(
+        embeddings_data, ["row_index", "name_race_embedding"]
+    )
+
+    # Join on row index to distribute embeddings across rows
+    ddhq_election_results = ddhq_election_results.join(
+        embeddings_df, "row_index", "left"
+    )
+    ddhq_election_results = ddhq_election_results.drop("row_index")
+
     # candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.withColumn("name_race_embedding", array(*[lit(e) for e in candidacy_name_race_embeddings]))
 
     return ddhq_election_results
