@@ -8,7 +8,7 @@ with
             br_contest_id as contest_id,
             number_of_seats_available,
             count(last_name) as numcands
-        from {{ ref("int__ballotready_cleancandidacies") }}
+        from {{ ref("int__ballotready_clean_candidacies") }}
         where official_office_name is not null and election_date is not null
         group by contest_id, number_of_seats_available
     ),
@@ -33,7 +33,7 @@ with
             ) as contest_id,
             count(properties_lastname) as numcands,
             cast(
-                properties_number_of_seats_available as int
+                cast(properties_number_of_seats_available as float) as int
             ) as number_of_seats_available
         from {{ ref("int__hubspot_ytd_candidacies") }}
         where

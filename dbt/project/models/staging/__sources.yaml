@@ -11,6 +11,18 @@ sources:
         error_after: { count: 31, period: day }
 
     tables:
+      - name: amplitude_api_active_users
+        description: raw data load from amplitude api active users
+      - name: amplitude_api_annotations
+        description: raw data load from amplitude api annotations
+      - name: amplitude_api_average_session_length
+        description: raw data load from amplitude api average session length
+      - name: amplitude_api_cohorts
+        description: raw data load from amplitude api cohorts
+      - name: amplitude_api_events
+        description: raw data load from amplitude api events
+      - name: amplitude_api_events_list
+        description: raw data load from amplitude api events list
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue
@@ -41,9 +53,19 @@ sources:
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position
         description: raw data load from gp_api_db postgres db from table `campaign_position`
+      - name: gp_api_db_ecanvasser
+        description: raw data load from gp_api_db postgres db from table `ecanvas`
+      - name: gp_api_db_ecanvasser_contact
+        description: raw data load from gp_api_db postgres db from table `ecanvas_contact`
+      - name: gp_api_db_ecanvasser_house
+        description: raw data load from gp_api_db postgres db from table `ecanvasser_house`
+      - name: gp_api_db_ecanvasser_interaction
+        description: raw data load from gp_api_db postgres db from table `ecanvasser_interaction`
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
         freshness: null
+      - name: gp_api_db_outreach
+        description: raw data load from gp_api_db postgres db from table `outreach`
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
       - name: gp_api_db_position
@@ -68,31 +90,58 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
+      - name: stripe_api_accounts
+        description: Stripe account information and settings
+      - name: stripe_api_application_fees
+        description: Stripe application fees charged on transactions
+      - name: stripe_api_application_fees_refunds
+        description: Stripe application fee refund transactions
+      - name: stripe_api_balance_transactions
+        description: Stripe balance transaction history and account movements
+      - name: stripe_api_charges
+        description: Stripe charge transactions and payment processing details
+      - name: stripe_api_customers
+        description: Stripe customer records and account information
+      - name: stripe_api_customer_balance_transactions
+        description: Stripe customer balance transaction history and credit movements
+      - name: stripe_api_events
+        description: Stripe webhook events and API activity logs
+      - name: stripe_api_invoice_items
+        description: Stripe invoice line items and billing details
+      - name: stripe_api_invoice_line_items
+        description: Stripe invoice line items and detailed billing breakdowns
+      - name: stripe_api_invoices
+        description: Stripe invoice records and billing information
+      - name: stripe_api_payouts
+        description: Stripe payout transactions to connected accounts
+      - name: stripe_api_persons
+        description: Stripe person records for connected accounts and representatives
+      - name: stripe_api_plans
+        description: Stripe subscription plans and pricing tiers
+      - name: stripe_api_prices
+        description: Stripe pricing information for products and services
+      - name: stripe_api_products
+        description: Stripe product catalog and inventory information
+      - name: stripe_api_promotion_codes
+        description: Stripe promotion codes and discount campaigns
+      - name: stripe_api_refunds
+        description: Stripe refund transactions and processing details
+      - name: stripe_api_subscription_items
+        description: Stripe subscription line items and plan details
+      - name: stripe_api_subscription_schedule
+        description: Stripe subscription scheduling and recurring payment plans
+      - name: stripe_api_subscriptions
+        description: Stripe subscription records and recurring billing information
+      - name: stripe_api_transactions
+        description: Stripe financial transactions and payment processing records
+      - name: stripe_api_transfers
+        description: Stripe transfer transactions between accounts
+      - name: stripe_api_transfer_reversals
+        description: Stripe transfer reversal transactions and dispute handling
       - name: techspeed_gdrive_candidates
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
-
-
-  - name: model_predictions
-    schema: model_predictions
-    description: Raw data loaded from model predictions
-
-    tables:
-      - name: candidacy_ddhq_matches_20250826
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
-      - name: candidacy_ddhq_matches_20250909
-        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
-      - name: llm_l2_br_match_20250806
-        description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: llm_l2_br_match_20250811
-        description: output of gemini string matching between L2 districts and BallotReady office positions
-      - name: turnout_projections_even_years_20250709
-        description: raw data load from voter turnout projections for even years
-      - name: turnout_projections_model2odd
-        description: raw data load from voter turnout projections for odd years
-      - name: viability_scores
-        description: raw data load from model predictions
 
 
   - name: dbt_source
@@ -712,3 +761,35 @@ sources:
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
       - name: l2_s3_wy_vote_history_data_dictionary
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
+
+
+  - name: historical
+    schema: historical
+    description: Raw data loaded from historical schema, having past records of interest
+    tables:
+      - name: ballotready_records_sent_to_hubspot
+        description: raw data load from ballotready records sent to hubspot
+      - name: ballotready_records_sent_to_techspeed
+        description: raw data load from ballotready records sent to techspeed
+
+
+  - name: model_predictions
+    schema: model_predictions
+    description: Raw data loaded from model predictions
+    tables:
+      - name: candidacy_ddhq_matches_20250826
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_ddhq_matches_20250909
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_ddhq_matches_20250916
+        description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
+      - name: llm_l2_br_match_20250806
+        description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: llm_l2_br_match_20250811
+        description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: turnout_projections_even_years_20250709
+        description: raw data load from voter turnout projections for even years
+      - name: turnout_projections_model2odd
+        description: raw data load from voter turnout projections for odd years
+      - name: viability_scores
+        description: raw data load from model predictions

@@ -17,59 +17,11 @@ with
             distinct
             election_day as election_date,
             position_name as official_office_name,
-            case
-                when position_name like '%Village President%'
-                then 'Village President'
-                when position_name like '%Town Chair%'
-                then 'Town Chair'
-                when position_name like '%Water Supply District%'
-                then 'Water Supply Board'
-                when normalized_position_name = 'City Legislature'
-                then 'City Council'
-                when normalized_position_name = 'Local School Board'
-                then 'School Board'
-                when normalized_position_name = 'City Executive//Mayor'
-                then 'Mayor'
-                when normalized_position_name = 'Township Treasurer//Fiscal Officer'
-                then 'Treasurer'
-                when normalized_position_name = 'Township Trustee//Township Council'
-                then 'Township Council'
-                when normalized_position_name = 'Parks and Recreation District Board'
-                then 'Parks and Recreation Board'
-                when
-                    normalized_position_name
-                    = 'Local Higher Education Board//Community College Board'
-                then 'Community College Board'
-                when normalized_position_name = 'City Clerk//Ward Officer'
-                then 'City Clerk'
-                when normalized_position_name = 'Library District Board'
-                then 'Library Board'
-                when normalized_position_name = 'Fire District Board'
-                then 'Fire Board'
-                when normalized_position_name = 'Township Highway Superintendent'
-                then 'Highway Superintendent'
-                when normalized_position_name = 'Township Constable'
-                then 'Constable'
-                when normalized_position_name = 'City Treasurer//Finance Officer'
-                then 'Treasurer'
-                when normalized_position_name = 'State Trial Court Judge - General'
-                then 'Trial Court Judge'
-                when normalized_position_name = 'Township Clerk/Treasurer (Joint)'
-                then 'Township Clerk'
-                when normalized_position_name = 'Local Court Judge'
-                then 'Judge'
-                when normalized_position_name = 'State Senator'
-                then 'State Senate'
-                when normalized_position_name = 'City Assessor//Lister'
-                then 'City Assessor'
-                when normalized_position_name = 'County Legislature//Executive Board'
-                then 'County Legislature'
-                when
-                    normalized_position_name
-                    = 'Harbor District Board//Port District Board'
-                then 'Port Board'
-                else normalized_position_name
-            end as candidate_office,
+            {{
+                generate_candidate_office_from_position(
+                    "position_name", "normalized_position_name"
+                )
+            }} as candidate_office,
             case
                 when level = 'local'
                 then 'Local'
@@ -81,7 +33,7 @@ with
                 then 'State'
                 else level
             end as office_level,
-            tier as candidate_id_tier,
+            tier as geographic_tier,
             number_of_seats as number_of_seats_available,
             case
                 when is_primary = 'false'
@@ -215,9 +167,7 @@ with
                 then 'Wyoming'
                 else state
             end as state,
-            replace(
-                replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
-            ) as phone,
+            trim(regexp_replace(phone, '[^0-9]', '')) as phone,
             email,
             case
                 when official_office_name like '% County%'
@@ -397,6 +347,11 @@ with
                 then regexp_extract(official_office_name, ' - Position ([^\\s(]+)')
                 else ''
             end as seat,
+            {{
+                generate_candidate_slug(
+                    "first_name", "last_name", "official_office_name"
+                )
+            }} as candidate_slug,
             {{ map_ballotready_office_type("candidate_office") }} as office_type,
             'Self-Filer Lead' as type,
             'jesse@goodparty.org' as contact_owner,
@@ -440,7 +395,12 @@ with
                             )
                         )
                     )
-            end as br_contest_id
+            end as br_contest_id,
+            candidacy_id,
+            race_id as ballotready_race_id,
+            parties,
+            candidacy_created_at,
+            candidacy_updated_at
         from br_new
         -- what follows is the core substance of who is being selected for uploading
         -- to HubSpot

@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: m_people_api__voter
+    description: >
+      This model creates the voter table in the mart layer using the hubspot data
+    columns:
+      - name: id
+        description: Unique identifier for a voter
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+      - name: LALVOTERID
+        description: Unique identifier for a voter
+        data_type: varchar
+        tests:
+          - not_null
+          - unique
+      - name: Voter_Status
+        description: Status of the voter
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - First Time
+                  - Unlikely
+                  - Likely
+                  - Super
+                  - Unknown

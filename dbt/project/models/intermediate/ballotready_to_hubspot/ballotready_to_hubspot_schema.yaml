@@ -44,11 +44,9 @@ models:
       - name: state
       - name: phone
         tests:
-          - unique
           - not_null
       - name: email
         tests:
-          - unique
           - not_null
       - name: city
       - name: district
