@@ -338,12 +338,11 @@ class GeminiEmbeddingClient:
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
-    unique_key = ["gp_candidacy_id", "election_type", "election_date"]
     dbt.config(
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
-        unique_key=unique_key,
+        unique_key=["gp_candidacy_id", "election_type", "election_date"],
         incremental_strategy="merge",
         on_schema_change="append_new_columns",
         tags=["intermediate", "general", "candidacy", "embeddings", "ddhq"],
@@ -368,16 +367,20 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
         # Filter out rows where the unique key (gp_candidacy_id, election_type, election_date) already exists in the target table
-        existing_keys_df = session.table(f"{dbt.this}").select(*unique_key).distinct()
+        existing_keys_df = (
+            session.table(f"{dbt.this}")
+            .select("gp_candidacy_id", "election_type", "election_date")
+            .distinct()
+        )
         candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.join(
             existing_keys_df,
             on=[
-                candidacy_clean_for_ddhq[unique_key[0]]
-                == existing_keys_df[unique_key[0]],
-                candidacy_clean_for_ddhq[unique_key[1]]
-                == existing_keys_df[unique_key[1]],
-                candidacy_clean_for_ddhq[unique_key[2]]
-                == existing_keys_df[unique_key[2]],
+                candidacy_clean_for_ddhq["gp_candidacy_id"]
+                == existing_keys_df["gp_candidacy_id"],
+                candidacy_clean_for_ddhq["election_type"]
+                == existing_keys_df["election_type"],
+                candidacy_clean_for_ddhq["election_date"]
+                == existing_keys_df["election_date"],
             ],
             how="left_anti",
         )
