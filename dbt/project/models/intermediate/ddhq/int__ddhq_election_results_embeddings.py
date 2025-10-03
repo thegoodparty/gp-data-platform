@@ -338,11 +338,12 @@ class GeminiEmbeddingClient:
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
+    unique_key = ["candidate_id", "candidate", "race_id"]
     dbt.config(
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
-        unique_key=["candidate_id", "candidate", "race_id"],
+        unique_key=unique_key,
         incremental_strategy="merge",
         on_schema_change="append_new_columns",
         tags=["intermediate", "ddhq", "election_results", "embeddings"],
@@ -364,6 +365,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ddhq_election_results = ddhq_election_results.filter(
                 ddhq_election_results["_airbyte_extracted_at"] >= max_updated_at
             )
+
+        # Filter out rows where the unique key (gp_candidacy_id, election_type, election_date) already exists in the target table
+        existing_keys_df = session.table(f"{dbt.this}").select(*unique_key).distinct()
+        ddhq_election_results = ddhq_election_results.join(
+            existing_keys_df,
+            on=[
+                ddhq_election_results[unique_key[0]] == existing_keys_df[unique_key[0]],
+                ddhq_election_results[unique_key[1]] == existing_keys_df[unique_key[1]],
+                ddhq_election_results[unique_key[2]] == existing_keys_df[unique_key[2]],
+            ],
+            how="left_anti",
+        )
 
     # # downsample in dev testing
     # ddhq_election_results = ddhq_election_results.limit(

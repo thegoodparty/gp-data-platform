@@ -338,11 +338,12 @@ class GeminiEmbeddingClient:
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
+    unique_key = ["gp_candidacy_id", "election_type", "election_date"]
     dbt.config(
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
-        unique_key=["gp_candidacy_id", "election_type", "election_date"],
+        unique_key=unique_key,
         incremental_strategy="merge",
         on_schema_change="append_new_columns",
         tags=["intermediate", "general", "candidacy", "embeddings", "ddhq"],
@@ -360,10 +361,26 @@ def model(dbt, session: SparkSession) -> DataFrame:
         max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
         max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
 
+        # only pick up new rows
         if max_updated_at:
             candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.filter(
                 candidacy_clean_for_ddhq["updated_at"] >= max_updated_at
             )
+
+        # Filter out rows where the unique key (gp_candidacy_id, election_type, election_date) already exists in the target table
+        existing_keys_df = session.table(f"{dbt.this}").select(*unique_key).distinct()
+        candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.join(
+            existing_keys_df,
+            on=[
+                candidacy_clean_for_ddhq[unique_key[0]]
+                == existing_keys_df[unique_key[0]],
+                candidacy_clean_for_ddhq[unique_key[1]]
+                == existing_keys_df[unique_key[1]],
+                candidacy_clean_for_ddhq[unique_key[2]]
+                == existing_keys_df[unique_key[2]],
+            ],
+            how="left_anti",
+        )
 
     # # downsample in dev testing
     # candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.limit(
