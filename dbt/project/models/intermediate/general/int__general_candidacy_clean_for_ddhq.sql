@@ -106,6 +106,9 @@ with
             {% if is_incremental() %}
                 and updated_at > (select max(updated_at) from {{ this }})
             {% endif %}
+        qualify
+            row_number() over (partition by gp_candidacy_id order by updated_at desc)
+            = 1
     ),
     primary_candidacies as (
         select
