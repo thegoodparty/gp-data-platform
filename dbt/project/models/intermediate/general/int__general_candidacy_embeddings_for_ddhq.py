@@ -355,7 +355,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "int__general_candidacy_clean_for_ddhq"
     )
 
-    # TODO: handle incrementality
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
         max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
@@ -366,10 +365,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 candidacy_clean_for_ddhq["updated_at"] >= max_updated_at
             )
 
-    # downsample in dev testing
-    candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.limit(
-        1000
-    )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
+    # # downsample in dev testing
+    # candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.limit(
+    #     1000
+    # )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
 
     candidacy_name_race_texts: List[str] = (
         candidacy_clean_for_ddhq.select("name_race").toPandas()["name_race"].tolist()

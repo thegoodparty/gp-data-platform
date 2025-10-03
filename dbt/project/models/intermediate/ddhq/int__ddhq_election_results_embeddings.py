@@ -352,9 +352,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     gemini_api_key = dbt.config.get("gemini_api_key")
 
     ddhq_election_results: DataFrame = dbt.ref("int__ddhq_election_results_clean")
-    # candidacy_clean_for_ddhq: DataFrame = dbt.ref("int__general_candidacy_clean_for_ddhq")
 
-    # TODO: handle incrementality
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
         max_updated_at_row = existing_table.agg(
@@ -367,16 +365,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 ddhq_election_results["_airbyte_extracted_at"] >= max_updated_at
             )
 
-    # downsample in dev testing, there are 40k total for ddhq_name_race_texts
-    ddhq_election_results = ddhq_election_results.limit(
-        100
-    )  # (100, 71 s), (1000, 410 s), (10k, 51m or 2.5k s)
-    # candidacy_name_race_texts = candidacy_name_race_texts[:1000]
-
+    # # downsample in dev testing
+    # ddhq_election_results = ddhq_election_results.limit(
+    #     1000
+    # )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
     ddhq_name_race_texts: List[str] = (
         ddhq_election_results.select("name_race").toPandas()["name_race"].tolist()
     )
-    # candidacy_name_race_texts: List[str] = candidacy_clean_for_ddhq.select("name_race").toPandas()['name_race'].tolist()
 
     embedding_client = GeminiEmbeddingClient(api_key=gemini_api_key)
 
@@ -386,10 +381,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             batch_size=100,
         )
     )
-    # candidacy_name_race_embeddings: List[np.ndarray] = embedding_client.create_embeddings(
-    #     texts=candidacy_name_race_texts,
-    #     batch_size=100,
-    # )
 
     # Convert to list of arrays if it's a 2D numpy array
     if (
@@ -400,8 +391,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ddhq_name_race_embeddings_original[i]
             for i in range(ddhq_name_race_embeddings_original.shape[0])
         ]
-    # if isinstance(candidacy_name_race_embeddings, np.ndarray) and len(candidacy_name_race_embeddings.shape) == 2:
-    # candidacy_name_race_embeddings = [candidacy_name_race_embeddings[i] for i in range(candidacy_name_race_embeddings.shape[0])]
 
     # Add row index to preserve order
     ddhq_election_results = ddhq_election_results.withColumn(
@@ -421,7 +410,5 @@ def model(dbt, session: SparkSession) -> DataFrame:
         embeddings_df, "row_index", "left"
     )
     ddhq_election_results = ddhq_election_results.drop("row_index")
-
-    # candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.withColumn("name_race_embedding", array(*[lit(e) for e in candidacy_name_race_embeddings]))
 
     return ddhq_election_results
