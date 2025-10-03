@@ -369,6 +369,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # ddhq_election_results = ddhq_election_results.limit(
     #     1000
     # )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
+
+    # Add row index converting to pandas to preserve order
+    ddhq_election_results = ddhq_election_results.withColumn(
+        "row_index", monotonically_increasing_id()
+    )
+
     ddhq_name_race_texts: List[str] = (
         ddhq_election_results.select("name_race").toPandas()["name_race"].tolist()
     )
@@ -389,11 +395,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ddhq_name_race_embeddings[i]
             for i in range(ddhq_name_race_embeddings.shape[0])
         ]
-
-    # Add row index to preserve order
-    ddhq_election_results = ddhq_election_results.withColumn(
-        "row_index", monotonically_increasing_id()
-    )
 
     # Create embeddings DataFrame with matching indices
     embeddings_data = [
