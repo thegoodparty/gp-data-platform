@@ -376,7 +376,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     embedding_client = GeminiEmbeddingClient(api_key=gemini_api_key)
 
-    candidacy_name_race_embeddings_original: List[np.ndarray] = (
+    candidacy_name_race_embeddings: List[np.ndarray] = (
         embedding_client.create_embeddings(
             texts=candidacy_name_race_texts,
             batch_size=100,
@@ -385,12 +385,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Convert to list of arrays if it's a 2D numpy array
     if (
-        isinstance(candidacy_name_race_embeddings_original, np.ndarray)
-        and len(candidacy_name_race_embeddings_original.shape) == 2
+        isinstance(candidacy_name_race_embeddings, np.ndarray)
+        and len(candidacy_name_race_embeddings.shape) == 2
     ):
         candidacy_name_race_embeddings = [
-            candidacy_name_race_embeddings_original[i]
-            for i in range(candidacy_name_race_embeddings_original.shape[0])
+            candidacy_name_race_embeddings[i]
+            for i in range(candidacy_name_race_embeddings.shape[0])
         ]
 
     # Add row index to preserve order
