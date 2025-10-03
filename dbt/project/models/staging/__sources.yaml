@@ -92,10 +92,13 @@ sources:
         description: raw data load from HubSpot data model
       - name: stripe_api_accounts
         description: Stripe account information and settings
+        freshness: null
       - name: stripe_api_application_fees
         description: Stripe application fees charged on transactions
+        freshness: null
       - name: stripe_api_application_fees_refunds
         description: Stripe application fee refund transactions
+        freshness: null
       - name: stripe_api_balance_transactions
         description: Stripe balance transaction history and account movements
       - name: stripe_api_charges
@@ -116,6 +119,7 @@ sources:
         description: Stripe payout transactions to connected accounts
       - name: stripe_api_persons
         description: Stripe person records for connected accounts and representatives
+        freshness: null
       - name: stripe_api_plans
         description: Stripe subscription plans and pricing tiers
       - name: stripe_api_prices
@@ -124,6 +128,7 @@ sources:
         description: Stripe product catalog and inventory information
       - name: stripe_api_promotion_codes
         description: Stripe promotion codes and discount campaigns
+        freshness: null
       - name: stripe_api_refunds
         description: Stripe refund transactions and processing details
       - name: stripe_api_subscription_items
@@ -134,10 +139,13 @@ sources:
         description: Stripe subscription records and recurring billing information
       - name: stripe_api_transactions
         description: Stripe financial transactions and payment processing records
+        freshness: null
       - name: stripe_api_transfers
         description: Stripe transfer transactions between accounts
+        freshness: null
       - name: stripe_api_transfer_reversals
         description: Stripe transfer reversal transactions and dispute handling
+        freshness: null
       - name: techspeed_gdrive_candidates
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_marketing_data_enrichment
