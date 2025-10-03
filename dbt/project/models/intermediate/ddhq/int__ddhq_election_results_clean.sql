@@ -19,7 +19,7 @@ with
             date,
             votes,
             race_id,
-            initcap(regexp_replace(trim(candidate), '\s+', ' ')) as candidate,
+            initcap(regexp_replace(trim(candidate), '\\s+', ' ')) as candidate,
             is_winner,
             trim(cast(race_name as string)) as race_name,
             upper(substr(race_name, 1, 2)) as extracted_state,
