@@ -6,7 +6,7 @@ import numpy as np
 import requests
 from google import genai
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import monotonically_increasing_id
+from pyspark.sql.functions import lit, monotonically_increasing_id
 from tqdm import tqdm
 
 GEMINI_PRICING = {
@@ -384,7 +384,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # # downsample in dev testing
     # ddhq_election_results = ddhq_election_results.limit(
-    #     1000
+    #     10000
     # )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
 
     # Add row index converting to pandas to preserve order
@@ -395,6 +395,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ddhq_name_race_texts: List[str] = (
         ddhq_election_results.select("name_race").toPandas()["name_race"].tolist()
     )
+
+    # Check if there are any texts to process
+    if not ddhq_name_race_texts:
+        # Return the original DataFrame with null embeddings if no new data
+        ddhq_election_results = ddhq_election_results.withColumn(
+            "name_race_embedding", lit(None).cast("array<double>")
+        )
+        return ddhq_election_results
 
     embedding_client = GeminiEmbeddingClient(api_key=gemini_api_key)
 
