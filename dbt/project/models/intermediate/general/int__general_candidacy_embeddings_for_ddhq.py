@@ -356,15 +356,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     if dbt.is_incremental:
-        existing_table = session.table(f"{dbt.this}")
-        max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
-        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
-
-        # only pick up new rows
-        if max_updated_at:
-            candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.filter(
-                candidacy_clean_for_ddhq["updated_at"] >= max_updated_at
-            )
+        # Not that we don't need to filter by a timestamp since the loading job limits the rows to 10k and there's no guarantee on
+        # distinguishing between new and old rows by a timestamp
 
         # Filter out rows where the unique key (gp_candidacy_id, election_type, election_date) already exists in the target table
         existing_keys_df = (
@@ -385,10 +378,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
             how="left_anti",
         )
 
-    # # downsample in dev testing
-    # candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.limit(
-    #     10000
-    # )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
+    # downsample to 10000 rows, as additional rows cause driver failure after 2 hours
+    # processing rate is roughly 10k rows per hour
+    candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.limit(10000)
 
     # Add row index converting to pandas to preserve order
     candidacy_clean_for_ddhq = candidacy_clean_for_ddhq.withColumn(

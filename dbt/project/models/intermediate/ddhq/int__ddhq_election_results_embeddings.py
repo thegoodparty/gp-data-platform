@@ -354,16 +354,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ddhq_election_results: DataFrame = dbt.ref("int__ddhq_election_results_clean")
 
     if dbt.is_incremental:
-        existing_table = session.table(f"{dbt.this}")
-        max_updated_at_row = existing_table.agg(
-            {"_airbyte_extracted_at": "max"}
-        ).collect()[0]
-        max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
-
-        if max_updated_at:
-            ddhq_election_results = ddhq_election_results.filter(
-                ddhq_election_results["_airbyte_extracted_at"] >= max_updated_at
-            )
 
         # Filter out rows where the unique key (gp_candidacy_id, election_type, election_date) already exists in the target table
         existing_keys_df = (
@@ -382,10 +372,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
             how="left_anti",
         )
 
-    # # downsample in dev testing
-    # ddhq_election_results = ddhq_election_results.limit(
-    #     10000
-    # )  # Adjust limit as needed (100, 71 s), (1000, 380 s)
+    # downsample to 10000 rows, as additional rows cause driver failure after 2 hours
+    # processing rate is roughly 10k rows per hour
+    ddhq_election_results = ddhq_election_results.limit(10000)
 
     # Add row index converting to pandas to preserve order
     ddhq_election_results = ddhq_election_results.withColumn(
