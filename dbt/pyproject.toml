@@ -17,6 +17,8 @@ dependencies = [
     "pytest (>=8.3.5,<9.0.0)",
     "apache-airflow (==3.0.4)",
     "thefuzz (<1.0.0)",
+    "google-genai (>=1.40.0,<2.0.0)",
+    "tqdm (>=4.67.1,<5.0.0)",
 ]
 
 

@@ -93,6 +93,44 @@ with
             tbl_ddhq_matches.ddhq_race_name,
             tbl_ddhq_matches.ddhq_candidate_party,
             tbl_ddhq_matches.ddhq_is_winner,
+            case
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
+                then
+                    case
+                        when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                        then 'Won General'
+                        when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                        then 'Lost General'
+                        else tbl_ddhq_matches.ddhq_is_winner
+                    end
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%runoff%'
+                then 'Runoff'
+                else null
+            end as ddhq_general_election_result,
+            case
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%primary%'
+                then
+                    case
+                        when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                        then 'Won Primary'
+                        when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                        then 'Lost Primary'
+                        else tbl_ddhq_matches.ddhq_is_winner
+                    end
+                else null
+            end as ddhq_primary_election_result,
+            case
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%runoff%'
+                then
+                    case
+                        when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                        then 'Won Runoff'
+                        when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                        then 'Lost Runoff'
+                        else tbl_ddhq_matches.ddhq_is_winner
+                    end
+                else null
+            end as ddhq_runoff_election_result,
             tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_election_type,
             tbl_ddhq_matches.ddhq_date,

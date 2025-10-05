@@ -19,7 +19,7 @@ with
             date,
             votes,
             race_id,
-            initcap(regexp_replace(trim(candidate), '\s+', ' ')) as candidate,
+            initcap(regexp_replace(trim(candidate), '\\s+', ' ')) as candidate,
             is_winner,
             trim(cast(race_name as string)) as race_name,
             upper(substr(race_name, 1, 2)) as extracted_state,
@@ -51,7 +51,15 @@ with
         {% endif %}
     ),
     filtered_election_results as (
-        select *
+        select
+            *,
+            concat(
+                'name: ',
+                case when candidate is not null then candidate else '' end,
+                ' | ',
+                'race: ',  -- note that in DDHQ the state is already included in the race name
+                case when race_name is not null then race_name else '' end
+            ) as name_race
         from election_results
         where
             candidate_id is not null
@@ -76,6 +84,7 @@ select
     candidate,
     is_winner,
     race_name,
+    name_race,
     extracted_state,
     candidate_id,
     election_type,

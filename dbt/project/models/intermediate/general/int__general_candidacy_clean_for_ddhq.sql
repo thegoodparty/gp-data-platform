@@ -4,7 +4,7 @@
         unique_key="gp_candidacy_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
-        tags=["mart", "general", "candidacy", "hubspot", "ddhq"],
+        tags=["intermdiate", "general", "candidacy", "hubspot", "ddhq"],
     )
 }}
 
@@ -106,6 +106,9 @@ with
             {% if is_incremental() %}
                 and updated_at > (select max(updated_at) from {{ this }})
             {% endif %}
+        qualify
+            row_number() over (partition by gp_candidacy_id order by updated_at desc)
+            = 1
     ),
     primary_candidacies as (
         select
@@ -157,6 +160,30 @@ with
             ddhq_unique_election_dates
             on cast(election_fixed_candidacies.election_date as date)
             = ddhq_unique_election_dates.date
+    ),
+    set_name_race as (
+        select
+            *,
+            concat(
+                'name: ',
+                case
+                    when (first_name is not null and last_name is not null)
+                    then concat(first_name, ' ', last_name)
+                    else ''
+                end,
+                ' | ',
+                'race: ',
+                case when state is not null then concat(state, ' ') else '' end,
+                case
+                    when candidate_office is not null
+                    then candidate_office
+                    when official_office_name is not null
+                    then official_office_name
+                    else ''
+                end
+            ) as name_race  -- note that in DDHQ the state is already included in the race name
+        from election_fixed_candidacies_in_ddhq_dates
     )
+
 select *
-from election_fixed_candidacies_in_ddhq_dates
+from set_name_race
