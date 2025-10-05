@@ -241,6 +241,12 @@ models:
       - dbt_utils.fewer_rows_than:
           arguments:
             compare_model: ref('int__general_candidacy')
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - gp_candidacy_id
+              - election_type
+              - election_date
 
   - name: int__general_states_zip_code_range
     description: >

@@ -1,7 +1,7 @@
 {{
     config(
         materialized="incremental",
-        unique_key="gp_candidacy_id",
+        unique_key=["gp_candidacy_id", "election_type", "election_date"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["intermdiate", "general", "candidacy", "hubspot", "ddhq"],
@@ -187,3 +187,9 @@ with
 
 select *
 from set_name_race
+qualify
+    row_number() over (
+        partition by gp_candidacy_id, election_type, election_date
+        order by updated_at desc
+    )
+    = 1
