@@ -72,19 +72,7 @@ def _faiss_similarity_search(
     Perform similarity search using FAISS for cosine similarity on normalized vectors.
     Returns the closest vector_a for each vector_b.
     """
-    # Collect candidacy data (database) to driver
-    candidacy_rows = candidacy_table.select(
-        candidacy_id_col, candidacy_vector_col, original_candidacy_vector_col
-    ).collect()
-    candidacy_ids = [row[candidacy_id_col] for row in candidacy_rows]
-    candidacy_vectors = np.array(
-        [row[candidacy_vector_col] for row in candidacy_rows], dtype=np.float32
-    )
-    candidacy_original_vectors = [
-        row[original_candidacy_vector_col] for row in candidacy_rows
-    ]  # List for later
-
-    # Collect DDHQ election results data (queries) to driver
+    # Collect DDHQ election results data (database) to driver
     ddhq_rows = ddhq_table.select(
         ddhq_id_col, ddhq_vector_col, original_ddhq_vector_col
     ).collect()
@@ -96,42 +84,63 @@ def _faiss_similarity_search(
         row[original_ddhq_vector_col] for row in ddhq_rows
     ]  # List for later
 
+    # Collect candidacy data (queries) to driver
+    candidacy_rows = candidacy_table.select(
+        candidacy_id_col, candidacy_vector_col, original_candidacy_vector_col
+    ).collect()
+    candidacy_ids = [row[candidacy_id_col] for row in candidacy_rows]
+    candidacy_vectors = np.array(
+        [row[candidacy_vector_col] for row in candidacy_rows], dtype=np.float32
+    )
+    candidacy_original_vectors = [
+        row[original_candidacy_vector_col] for row in candidacy_rows
+    ]  # List for later
+
     # Ensure normalization (idempotent if already normalized)
     faiss.normalize_L2(candidacy_vectors)
     faiss.normalize_L2(ddhq_vectors)
 
-    d = candidacy_vectors.shape[1]  # Dimension (3072)
+    d = ddhq_vectors.shape[1]  # Dimension (3072)
 
     if use_approximate:
         # Approximate: IVFFlat for faster search
         quantizer = faiss.IndexFlatIP(d)
         index = faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT)
-        index.train(candidacy_vectors)  # Train on database vectors
-        index.add(candidacy_vectors)
+        index.train(ddhq_vectors)  # Train on database vectors
+        index.add(ddhq_vectors)
         index.nprobe = nprobe  # Tune for accuracy vs. speed
     else:
         # Exact: FlatIP for brute-force
         index = faiss.IndexFlatIP(d)
-        index.add(candidacy_vectors)
+        index.add(ddhq_vectors)
 
     # Search for top-1 nearest neighbor (k=1)
     k = 1
-    distances, indexes = index.search(ddhq_vectors, k)  # D: similarities, I: indices
+    distances, indexes = index.search(candidacy_vectors, k)
 
     # Assemble results
     results = []
-    for i in range(len(ddhq_ids)):
+    for i in range(len(candidacy_ids)):
         match_idx = indexes[i][0]
         similarity = float(distances[i][0])
+        # TODO: build schema here for when there is a match, and when there isn't
         if similarity >= similarity_threshold:
             results.append(
                 {
-                    "id_a": candidacy_ids[match_idx],
-                    "vector_a": candidacy_original_vectors[
-                        match_idx
-                    ],  # Original HubSpot vector
-                    "id_b": ddhq_ids[i],
-                    "vector_b": ddhq_original_vectors[i],  # Original DDHQ vector
+                    "id_a": ddhq_ids[match_idx],
+                    "vector_a": ddhq_original_vectors[match_idx],
+                    "id_b": candidacy_ids[i],
+                    "vector_b": candidacy_original_vectors[i],
+                    "similarity": similarity,
+                }
+            )
+        else:
+            results.append(
+                {
+                    "id_a": ddhq_ids[match_idx],
+                    "vector_a": ddhq_original_vectors[match_idx],
+                    "id_b": candidacy_ids[i],
+                    "vector_b": candidacy_original_vectors[i],
                     "similarity": similarity,
                 }
             )
@@ -169,9 +178,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Get configuration values
     confidence_threshold = int(dbt.config.get("confidence_threshold", 70))
     max_matches_per_candidate = int(dbt.config.get("max_matches_per_candidate", 10))
-    similarity_threshold = float(
-        dbt.config.get("similarity_threshold", 0.885)
-    )  # LSH threshold for cosine sim > 0.8
+    similarity_threshold = float(dbt.config.get("similarity_threshold", 0.885))
 
     logger.info(
         f"Starting DDHQ candidacy matching with confidence_threshold={confidence_threshold}, max_matches_per_candidate={max_matches_per_candidate}, similarity_threshold={similarity_threshold}"
@@ -180,10 +187,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Load source data
     hubspot_data: DataFrame = dbt.ref("int__general_candidacy_embeddings_for_ddhq")
     ddhq_data: DataFrame = dbt.ref("int__ddhq_election_results_embeddings")
-
-    # Downsample during dev
-    hubspot_data = hubspot_data.limit(1000)
-    ddhq_data = ddhq_data.limit(10000)
 
     # Select HubSpot columns for processing
     hubspot_clean = hubspot_data.select(
