@@ -1,6 +1,7 @@
 import logging
 from ast import List
 
+import faiss
 import numpy as np
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, udf
@@ -22,24 +23,113 @@ if not logger.handlers:
 
 
 @udf(returnType=ArrayType(DoubleType()))
-def normalize_vector(vec: List) -> List:
+def _normalize_vector(vec: List) -> List:
     """Normalize a vector to unit length (L2 norm). Input and output are lists of floats."""
     vec_array = np.array(vec)
     norm = np.linalg.norm(vec_array).tolist()
     if norm == 0:
-        return np.zeros_like(vec_array).tolist()  # Return zero vector if norm is zero
-    return (vec_array / norm).tolist()
+        return np.zeros_like(vec_array, dtype=np.float32).tolist()
+    return (vec_array / norm).astype(np.float32).tolist()
 
 
 @udf(returnType=FloatType())
-def cosine_similarity(vec1: List, vec2: List) -> float:
+def _dot_product(vec1: List, vec2: List) -> float:
     """Compute dot product between two normalized vectors (cosine similarity)."""
     vec1_array = np.array(vec1)
     vec2_array = np.array(vec2)
-    return float(
-        np.dot(vec1_array, vec2_array)
-        / (np.linalg.norm(vec1_array) * np.linalg.norm(vec2_array))
-    )
+    return float(np.dot(vec1_array, vec2_array))
+
+
+@udf(returnType=FloatType())
+def _cosine_similarity(vec1: list, vec2: list) -> float:
+    """Compute cosine similarity between two vectors."""
+    if not vec1 or not vec2 or len(vec1) != len(vec2):
+        return 0.0
+    vec1_array = np.array(vec1, dtype=np.float32)
+    vec2_array = np.array(vec2, dtype=np.float32)
+    norm1 = np.linalg.norm(vec1_array)
+    norm2 = np.linalg.norm(vec2_array)
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return float(np.dot(vec1_array, vec2_array) / (norm1 * norm2))
+
+
+def _faiss_similarity_search(
+    table_a: DataFrame,  # HubSpot (database vectors)
+    table_b: DataFrame,  # DDHQ (query vectors)
+    vector_col_a: str = "hubspot_embedding_normalized",
+    vector_col_b: str = "ddhq_embedding_normalized",
+    id_col_a: str = "hubspot_name_race",
+    id_col_b: str = "ddhq_name_race",
+    original_vector_col_a: str = "hubspot_embedding",  # If you want to return originals
+    original_vector_col_b: str = "ddhq_embedding",
+    use_approximate: bool = True,  # Toggle exact vs. approx
+    nlist: int = 245,  # For approx: ~sqrt(N)
+    nprobe: int = 10,  # For approx: start with 10-20
+) -> DataFrame:
+    """
+    Perform similarity search using FAISS for cosine similarity on normalized vectors.
+    Returns the closest vector_a for each vector_b.
+    """
+    # Collect HubSpot data (database) to driver
+    a_rows = table_a.select(id_col_a, vector_col_a, original_vector_col_a).collect()
+    a_ids = [row[id_col_a] for row in a_rows]
+    a_vectors = np.array([row[vector_col_a] for row in a_rows], dtype=np.float32)
+    a_original_vectors = [
+        row[original_vector_col_a] for row in a_rows
+    ]  # List for later
+
+    # Collect DDHQ data (queries) to driver
+    b_rows = table_b.select(id_col_b, vector_col_b, original_vector_col_b).collect()
+    b_ids = [row[id_col_b] for row in b_rows]
+    b_vectors = np.array([row[vector_col_b] for row in b_rows], dtype=np.float32)
+    b_original_vectors = [
+        row[original_vector_col_b] for row in b_rows
+    ]  # List for later
+
+    # Ensure normalization (idempotent if already normalized)
+    faiss.normalize_L2(a_vectors)
+    faiss.normalize_L2(b_vectors)
+
+    d = a_vectors.shape[1]  # Dimension (~3000)
+
+    if use_approximate:
+        # Approximate: IVFFlat for faster search
+        quantizer = faiss.IndexFlatIP(d)
+        index = faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT)
+        index.train(a_vectors)  # Train on database vectors
+        index.add(a_vectors)
+        index.nprobe = nprobe  # Tune for accuracy vs. speed
+    else:
+        # Exact: FlatIP for brute-force
+        index = faiss.IndexFlatIP(d)
+        index.add(a_vectors)
+
+    # Search for top-1 nearest neighbor (k=1)
+    k = 1
+    distances, indexes = index.search(b_vectors, k)  # D: similarities, I: indices
+
+    # Assemble results
+    results = []
+    for i in range(len(b_ids)):
+        match_idx = indexes[i][0]
+        similarity = float(distances[i][0])
+        results.append(
+            {
+                "id_a": a_ids[match_idx],
+                "vector_a": a_original_vectors[match_idx],  # Original HubSpot vector
+                "id_b": b_ids[i],
+                "vector_b": b_original_vectors[i],  # Original DDHQ vector
+                "similarity": similarity,
+            }
+        )
+
+    # Convert back to Spark DataFrame
+    result_df = table_a.sparkSession.createDataFrame(
+        results
+    )  # Use session from params if needed
+
+    return result_df
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -80,8 +170,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ddhq_data: DataFrame = dbt.ref("int__ddhq_election_results_embeddings")
 
     # Downsample during dev
-    hubspot_data = hubspot_data.limit(100)
-    ddhq_data = ddhq_data.limit(1000)
+    hubspot_data = hubspot_data.limit(10000)
+    ddhq_data = ddhq_data.limit(10000)
 
     # Select HubSpot columns for processing
     hubspot_clean = hubspot_data.select(
@@ -97,50 +187,73 @@ def model(dbt, session: SparkSession) -> DataFrame:
         col("election_date").alias("hubspot_election_date"),
         col("election_type").alias("hubspot_election_type"),
         col("is_uncontested").alias("hubspot_is_uncontested"),
+        col("name_race").alias("hubspot_name_race"),
         col("name_race_embedding").alias("hubspot_embedding"),
     )
 
-    # # Select DDHQ columns for processing
-    # ddhq_clean = ddhq_data.select(
-    #     col("candidate").alias("ddhq_candidate"),
-    #     col("race_name").alias("ddhq_race_name"),
-    #     col("candidate_party").alias("ddhq_candidate_party"),
-    #     col("is_winner").alias("ddhq_is_winner"),
-    #     col("race_id").alias("ddhq_race_id"),
-    #     col("candidate_id").alias("ddhq_candidate_id"),
-    #     col("election_type").alias("ddhq_election_type"),
-    #     col("date").alias("ddhq_date"),
-    #     col("is_uncontested").alias("ddhq_is_uncontested"),
-    #     col("name_race_embedding").alias("ddhq_embedding"),
-    # )
+    # Select DDHQ columns for processing
+    ddhq_clean = ddhq_data.select(
+        col("candidate").alias("ddhq_candidate"),
+        col("race_name").alias("ddhq_race_name"),
+        col("candidate_party").alias("ddhq_candidate_party"),
+        col("is_winner").alias("ddhq_is_winner"),
+        col("race_id").alias("ddhq_race_id"),
+        col("candidate_id").alias("ddhq_candidate_id"),
+        col("election_type").alias("ddhq_election_type"),
+        col("date").alias("ddhq_date"),
+        col("is_uncontested").alias("ddhq_is_uncontested"),
+        col("name_race_embedding").alias("ddhq_embedding"),
+        col("name_race").alias("ddhq_name_race"),
+    )
 
     # Normalize vectors in both tables
     hubspot_normalized = hubspot_clean.withColumn(
-        "hubspot_embedding_normalized", normalize_vector(col("hubspot_embedding"))
+        "hubspot_embedding_normalized", _normalize_vector(col("hubspot_embedding"))
     ).select(
         col("hubspot_gp_candidacy_id"),
         col("hubspot_embedding"),
         col("hubspot_embedding_normalized"),
+        col("hubspot_name_race"),
     )
-
-    hubspot_normalized = hubspot_normalized.withColumn(
-        "hubspot_embedding_cosine_similarity",
-        cosine_similarity(
-            col("hubspot_embedding"), col("hubspot_embedding_normalized")
-        ),
+    ddhq_normalized = ddhq_clean.withColumn(
+        "ddhq_embedding_normalized", _normalize_vector(col("ddhq_embedding"))
     ).select(
-        col("hubspot_gp_candidacy_id"),
-        col("hubspot_embedding"),
-        col("hubspot_embedding_normalized"),
-        col("hubspot_embedding_cosine_similarity"),
+        col("ddhq_candidate"),
+        col("ddhq_race_id"),
+        col("ddhq_embedding"),
+        col("ddhq_embedding_normalized"),
+        col("ddhq_name_race"),
     )
 
-    # ddhq_normalized = ddhq_clean.withColumn(
-    #     "ddhq_embedding_normalized",
-    #     normalize_vector(col("ddhq_embedding"))
-    # ).select(ddhq_clean["ddhq_race_id"], ddhq_clean["ddhq_embedding"], "ddhq_embedding_normalized")
+    similarity_results = _faiss_similarity_search(
+        table_a=hubspot_normalized,
+        table_b=ddhq_normalized,
+        vector_col_a="hubspot_embedding_normalized",
+        vector_col_b="ddhq_embedding_normalized",
+        id_col_a="hubspot_name_race",
+        id_col_b="ddhq_name_race",
+        original_vector_col_a="hubspot_embedding",
+        original_vector_col_b="ddhq_embedding",
+        use_approximate=True,
+        nlist=245,
+        nprobe=10,
+    )
 
-    return hubspot_normalized
+    return similarity_results
+
+    # hubspot_normalized = hubspot_normalized.withColumn(
+    #     "hubspot_embedding_cosine_similarity",
+    #     _cosine_similarity(
+    #         col("hubspot_embedding"), col("hubspot_embedding_normalized")
+    #     ),
+    # ).select(
+    #     col("hubspot_gp_candidacy_id"),
+    #     col("hubspot_embedding"),
+    #     col("hubspot_embedding_normalized"),
+    #     col("hubspot_embedding_cosine_similarity"),
+    # )
+    # return hubspot_normalized
+
     # # Select and rename columns for clarity
     # logger.info("Selecting and renaming columns")
     # result_columns = filtered_matches.select(
