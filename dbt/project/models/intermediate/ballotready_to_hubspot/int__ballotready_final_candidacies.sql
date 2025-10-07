@@ -91,6 +91,8 @@ with
             candidacy_updated_at,
             current_timestamp() as created_at
         from br_new_candidacies
+        qualify
+            row_number() over (partition by id order by candidacy_updated_at desc) = 1
     )
 select *
 from br_new_candidacies_final
