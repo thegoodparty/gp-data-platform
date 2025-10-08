@@ -6,7 +6,7 @@ Database tables typically cannot have column names with spaces or special charac
 handle these column aliases. This allows us to maintain the exact column naming requirements
 for downstream systems (like HubSpot) while working within database constraints.
 
-If this were materialized as a table, the column names would need to be converted to valid
+If this were materialized as a table, the column names would need to be converted to valid,
 database identifiers (e.g., snake_case), which would break the expected schema for HubSpot integration.
 */
 {{ config(materialized="view") }}
