@@ -102,7 +102,7 @@ with
         where
             candidate_code not in (
                 select hubspot_candidate_code
-                from {{ ref("int__hubspot_candidate_codes") }}
+                from {{ ref("int__hubspot_candidacy_codes") }}
             )
     )
 select

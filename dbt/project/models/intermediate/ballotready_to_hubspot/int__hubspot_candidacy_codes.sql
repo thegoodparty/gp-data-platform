@@ -9,7 +9,14 @@ select
             "properties_state",
             "properties_office_type",
         )
-    }} as hs_candidate_code
+    }} as hubspot_candidate_code,
+    id as hubspot_contact_id,
+    hubspot_candidate_code,
+    updated_at,
+    properties_firstname,
+    properties_lastname,
+    properties_state,
+    properties_office_type
 from {{ ref("int__hubspot_ytd_candidacies") }}
 where
     properties_firstname is not null

@@ -102,7 +102,9 @@ def wrap_perform_fuzzy_matching(
                             "fuzzy_matched_hubspot_candidate_code": matched_code,
                             "fuzzy_match_score": score,
                             "fuzzy_match_rank": rank,
-                            "fuzzy_matched_hubspot_contact_id": hubspot_data.get("id"),
+                            "fuzzy_matched_hubspot_contact_id": hubspot_data.get(
+                                "hubspot_contact_id"
+                            ),
                             "fuzzy_matched_first_name": hubspot_data.get(
                                 "properties_firstname"
                             ),
@@ -150,7 +152,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     techspeed_candidates_w_hubspot: DataFrame = dbt.ref(
         "int__techspeed_candidates_w_hubspot"
     )
-    hubspot_candidate_codes: DataFrame = dbt.ref("int__hubspot_candidate_codes")
+    hubspot_candidate_codes: DataFrame = dbt.ref("int__hubspot_candidacy_codes")
 
     # Handle incremental logic: Only process new or updated records based on _airbyte_extracted_at
     if dbt.is_incremental:
