@@ -5,7 +5,7 @@ models:
     description: >
       Calculates viability scores for BallotReady candidates using MLflow model.
       Takes final candidacies and applies machine learning model to predict
-      candidate viability based on contest characteristics and historical data.
+      candidate viability based on contest characteristics and historical data..
     meta:
       owner: tristan.aubert@goodparty.org
       source_systems: [BallotReady]
