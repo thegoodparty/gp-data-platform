@@ -195,6 +195,8 @@ with
             tbl_contacts.email_contacts as email_contacts,
             tbl_companies.properties_open_seat_ as is_open_seat,
             tbl_companies.properties_general_election_result as candidacy_result,
+            tbl_companies.properties_verified_candidate as verified_candidate,
+            tbl_companies.properties_pledge_status as pledge_status,
             tbl_engagements.company_id_association,
             tbl_engagements.contact_id_association,
             tbl_gp_db_campaign.id as product_campaign_id,
@@ -322,6 +324,8 @@ select
     name_match,
     win_number,
     win_number_model,
-    product_campaign_id
+    product_campaign_id,
+    verified_candidate,
+    pledge_status
 from ranked_matches
 where 1 = 1 and row_rank = 1 and row_rank_gp_candidacy_id = 1
