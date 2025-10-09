@@ -1,25 +1,34 @@
 {{ config(auto_liquid_cluster=true, tags=["intermediate", "hubspot"]) }}
 
 -- get the unique candidacies from the hubspot data
-select
-    {{
-        generate_candidate_code(
-            "properties_firstname",
-            "properties_lastname",
-            "properties_state",
-            "properties_office_type",
-        )
-    }} as hubspot_candidate_code,
-    id as hubspot_contact_id,
-    hubspot_candidate_code,
-    updated_at,
-    properties_firstname,
-    properties_lastname,
-    properties_state,
-    properties_office_type
-from {{ ref("int__hubspot_ytd_candidacies") }}
+with
+    candidacies_with_codes as (
+        select
+            {{
+                generate_candidate_code(
+                    "properties_firstname",
+                    "properties_lastname",
+                    "properties_state",
+                    "properties_office_type",
+                )
+            }} as hubspot_candidate_code,
+            id as hubspot_contact_id,
+            updated_at,
+            properties_firstname,
+            properties_lastname,
+            properties_state,
+            properties_office_type
+        from {{ ref("int__hubspot_ytd_candidacies") }}
+        where
+            properties_firstname is not null
+            and properties_lastname is not null
+            and properties_state is not null
+            and properties_office_type is not null
+    )
+
+select *
+from candidacies_with_codes
 where
-    properties_firstname is not null
-    and properties_lastname is not null
-    and properties_state is not null
-    and properties_office_type is not null
+    -- filter out cases where hubspot_candidate_code has fields
+    -- that filter out to empty strings
+    hubspot_candidate_code not ilike '%____%'
