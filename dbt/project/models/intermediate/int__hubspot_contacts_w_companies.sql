@@ -195,7 +195,7 @@ with
             tbl_contacts.email_contacts as email_contacts,
             tbl_companies.properties_open_seat_ as is_open_seat,
             tbl_companies.properties_general_election_result as candidacy_result,
-            tbl_companies.properties_verified_candidate as verified_candidate,
+            tbl_companies.properties_verified_candidates as verified_candidate,
             tbl_companies.properties_pledge_status as pledge_status,
             tbl_engagements.company_id_association,
             tbl_engagements.contact_id_association,
