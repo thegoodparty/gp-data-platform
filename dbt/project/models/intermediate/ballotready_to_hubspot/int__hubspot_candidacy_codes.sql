@@ -30,5 +30,5 @@ select *
 from candidacies_with_codes
 where
     -- filter out cases where hubspot_candidate_code has fields
-    -- that filter out to empty strings
-    hubspot_candidate_code not ilike '%____%'
+    -- that filter out to empty strings. Note that underscores (_) must be escaped (\)
+    hubspot_candidate_code not ilike '%\_\_\_\_%'
