@@ -26,6 +26,8 @@ with
             and trim(properties_lastname) <> ''
             and trim(properties_state) is not null
             and trim(properties_state) <> ''
+            and trim(properties_city) is not null
+            and trim(properties_city) <> ''
             and trim(properties_office_type) is not null
             and trim(properties_office_type) <> ''
             and (
