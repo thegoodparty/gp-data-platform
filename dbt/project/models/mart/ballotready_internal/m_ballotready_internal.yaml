@@ -63,7 +63,7 @@ models:
                 - "Likely to Win"
                 - "Frontrunner"
             config:
-              where: "data_type is not null"
+              where: "score_viability_automated is not null"
 
       - name: upload_timestamp
         description: Timestamp when record was processed for HubSpot
