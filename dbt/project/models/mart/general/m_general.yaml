@@ -121,10 +121,18 @@ models:
         #   - not_null
 
       - name: party_affiliation
-        description: Candidate’s political party
+        description: Candidate's political party
         data_type: varchar
         # tests:
         #   - not_null
+
+      - name: verified_candidate
+        description: Indicates whether the candidate has been verified
+        data_type: varchar
+
+      - name: pledge_status
+        description: Status of the candidate's pledge
+        data_type: varchar
 
       - name: state
         description: U.S. state for the candidacy
