@@ -7,6 +7,7 @@ select
             "properties_firstname",
             "properties_lastname",
             "properties_state",
+            "properties_city",
             "properties_office_type",
         )
     }} as hs_candidate_code
@@ -15,4 +16,5 @@ where
     properties_firstname is not null
     and properties_lastname is not null
     and properties_state is not null
+    and properties_city is not null
     and properties_office_type is not null
