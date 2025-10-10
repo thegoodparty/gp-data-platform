@@ -1,6 +1,7 @@
 {{ config(tags=["intermediate", "hubspot"]) }}
 -- pulling in current year results from hubspot
 select
+    id,
     properties_firstname,
     properties_lastname,
     properties_phone,
@@ -11,7 +12,7 @@ select
     properties_office_type,
     properties_official_office_name,
     properties_number_of_seats_available,
-    id
+    {{ adapter.quote("updatedAt") }} as updated_at
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     (properties_type like '%Self-Filer Lead%' or properties_product_user = 'yes')

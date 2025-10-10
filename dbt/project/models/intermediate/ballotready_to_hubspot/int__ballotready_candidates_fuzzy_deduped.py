@@ -43,7 +43,7 @@ def get_fuzzy_match_schema(
 def create_fuzzy_matching_udf(
     hubspot_df: pd.DataFrame,
     candidate_code_field_name: str = "candidate_code",
-    hubspot_code_field_name: str = "hs_candidate_code",
+    hubspot_code_field_name: str = "hubspot_candidate_code",
     threshold: int = DEFAULT_FUZZY_THRESHOLD,
     top_n: int = DEFAULT_TOP_N_MATCHES,
 ) -> Callable:
@@ -153,7 +153,7 @@ def _create_match_result(
         "fuzzy_matched_hubspot_candidate_code": matched_code,
         "fuzzy_match_score": score,
         "fuzzy_match_rank": rank,
-        "fuzzy_matched_hubspot_contact_id": hubspot_data.get("id"),
+        "fuzzy_matched_hubspot_contact_id": hubspot_data.get("hubspot_contact_id"),
         "fuzzy_matched_first_name": hubspot_data.get("properties_firstname"),
         "fuzzy_matched_last_name": hubspot_data.get("properties_lastname"),
         "fuzzy_matched_state": hubspot_data.get("properties_state"),
@@ -231,7 +231,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     udf_perform_fuzzy_matching = create_fuzzy_matching_udf(
         hubspot_df=hubspot_candidate_codes_pd,
         candidate_code_field_name="br_candidate_code",
-        hubspot_code_field_name="hs_candidate_code",
+        hubspot_code_field_name="hubspot_candidate_code",
         threshold=DEFAULT_FUZZY_THRESHOLD,
         top_n=DEFAULT_TOP_N_MATCHES,
     )

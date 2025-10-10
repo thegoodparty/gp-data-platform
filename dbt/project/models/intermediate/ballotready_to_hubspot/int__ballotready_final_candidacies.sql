@@ -28,7 +28,8 @@ with
         from br_with_contest t1
         where
             t1.br_candidate_code not in (
-                select hs_candidate_code from {{ ref("int__hubspot_candidacy_codes") }}
+                select hubspot_candidate_code
+                from {{ ref("int__hubspot_candidacy_codes") }}
             )
             and t1.br_candidate_code is not null
             and t1.phone
@@ -91,6 +92,8 @@ with
             candidacy_updated_at,
             current_timestamp() as created_at
         from br_new_candidacies
+        qualify
+            row_number() over (partition by id order by candidacy_updated_at desc) = 1
     )
 select *
 from br_new_candidacies_final

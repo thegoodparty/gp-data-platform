@@ -54,7 +54,7 @@ with
                 when
                     techspeed_candidate_code in (
                         select hubspot_candidate_code
-                        from {{ ref("int__hubspot_candidate_codes") }}
+                        from {{ ref("int__hubspot_candidacy_codes") }}
                     )
                 then 'in_hubspot'
                 else uploaded
