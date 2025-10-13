@@ -1,6 +1,43 @@
 version: 2
 
 models:
+  - name: m_people_api__district
+    description: >
+      This model creates the district table in the mart layer using the election_api district table.
+    tests:
+      - dbt_utils.equality:
+          arguments:
+            compare_model: ref('m_election_api__district')
+
+  - name: m_people_api__districtvoter
+    description: >
+      This model creates the district voter table in the mart layer using the voter table.
+    columns:
+      - name: voter_id
+        description: Unique identifier for a district voter
+        data_type: uuid
+        tests:
+          - not_null
+        relationships:
+          arguments:
+            to: ref('m_people_api__voter')
+            field: id
+      - name: district_id
+        description: Unique identifier for a district
+        data_type: uuid
+        tests:
+          - not_null
+        relationships:
+          arguments:
+            to: ref('m_people_api__district')
+            field: id
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - voter_id
+              - district_id
+
   - name: m_people_api__voter
     description: >
       This model creates the voter table in the mart layer using the hubspot data

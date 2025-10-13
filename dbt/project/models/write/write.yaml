@@ -58,7 +58,7 @@ models:
               - source_file_name
               - loaded_at
 
-  - name: write__l2_databricks_to_people_api
+  - name: write__people_api_db
     description: >
       This model writes data from Databricks to the people api database.
     config:
