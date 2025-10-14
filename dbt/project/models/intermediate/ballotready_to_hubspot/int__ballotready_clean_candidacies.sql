@@ -167,7 +167,6 @@ with
                 then 'Wyoming'
                 else state
             end as state,
-            city,
             trim(regexp_replace(phone, '[^0-9]', '')) as phone,
             email,
             case
