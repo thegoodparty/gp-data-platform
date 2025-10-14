@@ -158,6 +158,11 @@
                         '[^a-zA-Z0-9-]',
                         ''
                     ),
+                    regexp_replace(
+                        regexp_replace(trim({{ office_type_col }}), ' ', '-'),
+                        '[^a-zA-Z0-9-]',
+                        ''
+                    ),
                     {% if city_col is not none %}
                         regexp_replace(
                             regexp_replace(trim({{ city_col }}), ' ', '-'),
@@ -165,11 +170,6 @@
                             ''
                         ),
                     {% endif %}
-                    regexp_replace(
-                        regexp_replace(trim({{ office_type_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    )
                 )
             )
     end
