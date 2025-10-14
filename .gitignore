@@ -37,3 +37,4 @@ CLAUDE.md
 
 # Logs (including root level)
 logs/
+dbt/setup_env.sh
