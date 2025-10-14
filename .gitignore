@@ -35,6 +35,6 @@ dbt/*/logs/
 tmp_data/
 CLAUDE.md
 
-# Logs (including root level)
+# Logs (including root level) and things I don't want to commit
 logs/
 dbt/setup_env.sh
