@@ -10,6 +10,7 @@ with
                     "properties_lastname",
                     "properties_state",
                     "properties_office_type",
+                    "properties_city",
                 )
             }} as hubspot_candidate_code,
             id as hubspot_contact_id,
@@ -17,13 +18,15 @@ with
             properties_firstname,
             properties_lastname,
             properties_state,
-            properties_office_type
+            properties_office_type,
+            properties_city
         from {{ ref("int__hubspot_ytd_candidacies") }}
         where
             properties_firstname is not null
             and properties_lastname is not null
             and properties_state is not null
             and properties_office_type is not null
+            and properties_city is not null
     )
 
 select *
