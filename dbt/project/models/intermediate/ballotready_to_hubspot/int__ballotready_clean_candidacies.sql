@@ -1,4 +1,4 @@
-{{ config(auto_liquid_cluster=true, tags=["intermediate", "ballotready"]) }}
+{{ config(materialized="view", tags=["intermediate", "ballotready"]) }}
 
 -- First step in extracting of BallotReady data for updating to hubspot
 -- This file reads new ballotReady data and applies relevant field transformations
@@ -419,7 +419,11 @@ with
             *,
             {{
                 generate_candidate_code(
-                    "first_name", "last_name", "state", "office_type"
+                    "first_name",
+                    "last_name",
+                    "state",
+                    "office_type",
+                    "city",
                 )
             }} as br_candidate_code
         from br_formatted
