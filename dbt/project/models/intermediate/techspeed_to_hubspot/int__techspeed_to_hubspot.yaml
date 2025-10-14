@@ -85,7 +85,7 @@ models:
           - unique
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
-                regex: '^[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+$'
+                regex: '^[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+__[a-z0-9-]+$'
       - name: district
         description: "Cleaned district name without prefixes"
         tests:
