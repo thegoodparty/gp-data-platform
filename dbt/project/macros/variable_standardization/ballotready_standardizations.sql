@@ -141,36 +141,60 @@
         {% if city_col is not none %} when {{ city_col }} is null then null {% endif %}
         else
             lower(
-                concat_ws(
-                    '__',
-                    regexp_replace(
-                        regexp_replace(trim({{ first_name_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim({{ last_name_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim({{ state_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim({{ office_type_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    {% if city_col is not none %}
+                {% if city_col is not none %}
+                    concat_ws(
+                        '__',
+                        regexp_replace(
+                            regexp_replace(trim({{ first_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ last_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ state_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
                         regexp_replace(
                             regexp_replace(trim({{ city_col }}), ' ', '-'),
                             '[^a-zA-Z0-9-]',
                             ''
                         ),
-                    {% endif %}
-                )
+                        regexp_replace(
+                            regexp_replace(trim({{ office_type_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        )
+                    )
+                {% else %}
+                    concat_ws(
+                        '__',
+                        regexp_replace(
+                            regexp_replace(trim({{ first_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ last_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ state_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ office_type_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        )
+                    )
+                {% endif %}
             )
     end
 {% endmacro %}
