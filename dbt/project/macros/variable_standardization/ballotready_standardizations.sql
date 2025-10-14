@@ -124,10 +124,10 @@
 
 {#
   This macro maps Ballotready columns
-  Usage: {{ generate_candidate_code([column_name]) }}
+  Usage: {{ generate_candidate_code(first_name_col, last_name_col, state_col, office_type_col, city_col=none) }}
   #}
 {% macro generate_candidate_code(
-    first_name_col, last_name_col, state_col, office_type_col
+    first_name_col, last_name_col, state_col, office_type_col, city_col=none
 ) %}
     case
         when {{ first_name_col }} is null
@@ -138,31 +138,63 @@
         then null
         when {{ office_type_col }} is null
         then null
+        {% if city_col is not none %} when {{ city_col }} is null then null {% endif %}
         else
             lower(
-                concat_ws(
-                    '__',
-                    regexp_replace(
-                        regexp_replace(trim({{ first_name_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim({{ last_name_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim({{ state_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
-                    ),
-                    regexp_replace(
-                        regexp_replace(trim({{ office_type_col }}), ' ', '-'),
-                        '[^a-zA-Z0-9-]',
-                        ''
+                {% if city_col is not none %}
+                    concat_ws(
+                        '__',
+                        regexp_replace(
+                            regexp_replace(trim({{ first_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ last_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ state_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ city_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ office_type_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        )
                     )
-                )
+                {% else %}
+                    concat_ws(
+                        '__',
+                        regexp_replace(
+                            regexp_replace(trim({{ first_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ last_name_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ state_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        ),
+                        regexp_replace(
+                            regexp_replace(trim({{ office_type_col }}), ' ', '-'),
+                            '[^a-zA-Z0-9-]',
+                            ''
+                        )
+                    )
+                {% endif %}
             )
     end
 {% endmacro %}
