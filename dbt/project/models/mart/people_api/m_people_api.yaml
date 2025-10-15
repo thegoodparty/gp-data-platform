@@ -4,10 +4,35 @@ models:
   - name: m_people_api__district
     description: >
       This model creates the district table in the mart layer using the election_api district table.
-    tests:
-      - dbt_utils.equality:
-          arguments:
-            compare_model: ref('m_election_api__district')
+    columns:
+      - name: id
+        description: Unique identifier for a district
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: id
+      - name: name
+        description: Name of the district
+        data_type: string
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: l2_district_name
+      - name: type
+        description: Type of district
+        data_type: string
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: l2_district_type
 
   - name: m_people_api__districtvoter
     description: >
