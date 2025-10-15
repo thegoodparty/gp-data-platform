@@ -408,6 +408,50 @@ UPSERT_QUERY = (
     + update_set_query_str
 )
 
+DISTRICT_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."District" (
+        id,
+        created_at,
+        updated_at,
+        type,
+        name,
+        state
+    )
+    SELECT
+        id::uuid,
+        created_at,
+        updated_at,
+        type,
+        name,
+        state::\"USState\"
+    FROM {staging_schema}."District"
+    WHERE state not in ('US') -- ignore US federal district (presidental election)
+    ON CONFLICT (id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at,
+        type = EXCLUDED.type,
+        name = EXCLUDED.name,
+        state = EXCLUDED.state
+"""
+
+DISTRICT_VOTER_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."DistrictVoter" (
+        voter_id,
+        district_id,
+        created_at,
+        updated_at
+    )
+    SELECT
+        voter_id::uuid,
+        district_id::uuid,
+        created_at,
+        updated_at
+    FROM {staging_schema}."DistrictVoter"
+    ON CONFLICT (voter_id, district_id) DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        updated_at = EXCLUDED.updated_at
+"""
+
 
 def _execute_sql_query(
     query: str,
@@ -535,6 +579,93 @@ def _load_data_to_postgres(
     return df.count()
 
 
+def _load_table_to_postgres(
+    df: DataFrame,
+    table_name: str,
+    upsert_query: str,
+    db_host: str,
+    db_port: int,
+    db_user: str,
+    db_pw: str,
+    db_name: str,
+    staging_schema: str,
+    db_schema: str,
+) -> int:
+    """
+    Load a DataFrame to PostgreSQL via JDBC and execute an upsert query.
+
+    Args:
+        df: DataFrame to load
+        table_name: Name of the table
+        upsert_query: SQL query to execute for upserting data from staging to the target table
+        db_host: Database host
+        db_port: Database port
+        db_user: Database user
+        db_pw: Database password
+        db_name: Database name
+        staging_schema: Schema for staging tables
+        db_schema: Target schema for the final tables
+
+    Returns:
+        Number of rows loaded
+    """
+    logging.info(f"Writing {table_name} data to PostgreSQL via JDBC")
+
+    # Construct JDBC URL
+    jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
+
+    # make a wake up call to the database
+    _execute_sql_query(
+        f'SELECT * FROM {db_schema}."{table_name}" LIMIT 1;',
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+        return_results=False,
+    )
+
+    df.write.format("jdbc").option("url", jdbc_url).option(
+        "dbtable", f'{staging_schema}."{table_name}"'
+    ).option("user", db_user).option("password", db_pw).option(
+        "driver", "org.postgresql.Driver"
+    ).mode(
+        "overwrite"
+    ).save()
+
+    # turn off synchronous_commit, increase working memory parallelization for the large upsert query in the session
+    upsert_query_w_config = (
+        "SET synchronous_commit = off; "
+        "SET work_mem = '128MB'; "
+        "SET max_parallel_workers_per_gather = 8; "
+        + upsert_query.format(
+            db_schema=db_schema,
+            staging_schema=staging_schema,
+        )
+        + ";"
+    )
+    _execute_sql_query(
+        upsert_query_w_config,
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # turn synchronous_commit back on
+    _execute_sql_query(
+        "SET synchronous_commit = on;",
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    return df.count()
+
+
 def model(dbt, session: SparkSession) -> DataFrame:
     """
     This model loads data from Databricks to the people api database.
@@ -561,6 +692,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     dbt_env_name = dbt.config.get("dbt_environment")
 
     voter_table: DataFrame = dbt.ref("m_people_api__voter")
+    district_table: DataFrame = dbt.ref("m_people_api__district")
+    district_voter_table: DataFrame = dbt.ref("m_people_api__districtvoter")
 
     # downsample for non-prod environment with three least populous states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
@@ -568,12 +701,83 @@ def model(dbt, session: SparkSession) -> DataFrame:
     filter_list = ["WY", "ND", "VT"]
     if dbt_env_name != "prod":
         voter_table = voter_table.filter(col("State").isin(filter_list))
+        district_voter_table = district_voter_table.filter(
+            col("state").isin(filter_list)
+        )
+
+    # incremental runs
+    if dbt.is_incremental:
+        # Get the max updated_at value from the existing data
+        jdbc_props = {
+            "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
+            "user": db_user,
+            "password": db_pw,
+            "driver": "org.postgresql.Driver",
+        }
+
+        max_updated_at = {}
+        to_load = zip(
+            [
+                "District",
+                "DistrictVoter",
+            ],
+            [
+                district_table,
+                district_voter_table,
+            ],
+        )
+        for table, df in to_load:
+            query = (
+                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
+            )
+            max_updated_at_df = (
+                session.read.format("jdbc")
+                .options(**jdbc_props)
+                .option("query", query)
+                .load()
+            )
+            max_updated_at[table] = max_updated_at_df.collect()[0]["max_updated_at"]
+
+            if max_updated_at[table]:
+                df = df.filter(df.updated_at > max_updated_at[table])
+
+    # Load non-state-specific tables using a loop
+    table_configs = [
+        ("District", district_table, DISTRICT_UPSERT_QUERY),
+        ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
+    ]
+
+    # initialize list to capture metadata about data loads
+    load_id = str(uuid4())
+    load_details: List[Dict[str, Any]] = []
+
+    for table_name, df, upsert_query in table_configs:
+        num_rows_loaded = _load_table_to_postgres(
+            df=df,
+            table_name=table_name,
+            upsert_query=upsert_query,
+            db_host=db_host,
+            db_port=db_port,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_name=db_name,
+            staging_schema=staging_schema,
+            db_schema=db_schema,
+        )
+
+        # add to load_details
+        load_details.append(
+            {
+                "id": str(uuid4()),
+                "load_id": load_id,
+                "loaded_at": datetime.now(),
+                "state_id": None,
+                "num_rows_loaded": num_rows_loaded,
+            }
+        )
 
     # count (forces cache and preceding filters) the dataframe and enforce filter before for-loop filtering
     voter_table.count()
-
-    # initialize list to capture metadata about data loads
-    load_details: List[Dict[str, Any]] = []
 
     # Create a staging schema if it doesn't exist
     _execute_sql_query(
@@ -596,7 +800,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     state_list: List[str] = [row.State for row in state_counts]
 
     # load data state by state since job may time out
-    load_id = str(uuid4())
     for state_id in state_list:
         state_df = voter_table.filter(col("State") == state_id)
 
@@ -607,12 +810,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 SELECT MAX(updated_at) FROM {db_schema}."Voter"
                 WHERE "State" = '{state_id}'
             """
-            max_updated_at = _execute_sql_query(
+            max_updated_at_voter = _execute_sql_query(
                 query, db_host, db_port, db_user, db_pw, db_name, return_results=True
             )[0][0]
-            if max_updated_at:
+            if max_updated_at_voter:
                 # postgres rounds down microseconds, so add 2 seconds as a safe buffer
-                max_updated_at = max_updated_at + timedelta(seconds=2)
+                max_updated_at = max_updated_at_voter + timedelta(seconds=2)  # type: ignore
                 state_df = state_df.filter(col("updated_at") > max_updated_at)
 
         num_rows_loaded = _load_data_to_postgres(

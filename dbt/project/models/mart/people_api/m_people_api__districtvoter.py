@@ -360,6 +360,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             col("type"),
             col("created_at"),
             col("updated_at"),
+            col("name"),
+            col("state"),
         )
     )
 
