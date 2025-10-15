@@ -246,28 +246,41 @@
 {{
     config(
         materialized="incremental",
-        unique_key="voter_id",
+        incremental_strategy="merge",
+        unique_key=["voter_id", "type"],
         on_schema_change="append_new_columns",
-        auto_liquid_cluster=True,
+        liquid_clustered_by=["voter_id", "type", "updated_at"],
         tags=["mart", "people_api", "district_voter"],
     )
 }}
 
+-- downsample for dev/testing
+{% set columns = columns[:10] %} -- crashes sometimes when pushed for more than 40 columns
+
 with
     new_voter_rows as (
-        select *
+        select
+            id,
+            created_at,
+            updated_at,
+            {{ adapter.quote("State") }},
+        {% for column in columns %}
+            `{{ column }}`{% if not loop.last %},{% endif %}
+        {% endfor %}
         from {{ ref("m_people_api__voter") }}
         {% if is_incremental() %}
             where updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
     ),
     districts_from_voters as (
-        {% for column in columns[:6] %}
+        {% for column in columns %} -- (40, 113 s + 113 s), (80, 543s + 577), (100, 972s + 567s), (240, 1477s + 1835s)
             select
                 id,
                 "{{ column }}" as type,
                 cast(`{{ column }}` as string) as name,
-                {{ adapter.quote("State") }} as state
+                {{ adapter.quote("State") }} as state,
+                created_at,
+                updated_at
             from new_voter_rows
             where `{{ column }}` is not null
             {% if not loop.last %}
@@ -279,6 +292,8 @@ with
         select
             tbl_district_voters.id as voter_id,
             tbl_district.id as district_id,
+            tbl_district_voters.created_at,
+            tbl_district_voters.updated_at,
             tbl_district_voters.type,
             tbl_district_voters.name,
             tbl_district_voters.state
@@ -294,22 +309,24 @@ select
     tbl_district_voters.voter_id,
     tbl_district_voters.district_id,
     tbl_district_voters.type,
-    tbl_district_voters.name,
-    tbl_district_voters.state,
-    {% if is_incremental() %}
-        -- For incremental runs, preserve existing created_at for existing
-        -- records, set current timestamp for new records
-        coalesce(tbl_existing.created_at, current_timestamp()) as created_at,
-    {% else %}
-        -- For full refresh, set created_at to current timestamp for all records
-        current_timestamp() as created_at,
-    {% endif %}
-    -- Always set updated_at to current timestamp
-    current_timestamp() as updated_at
+    created_at,
+    updated_at
+    -- tbl_district_voters.name,
+    -- tbl_district_voters.state,
+    -- {% if is_incremental() %}
+    --     -- For incremental runs, preserve existing created_at for existing
+    --     -- records, set current timestamp for new records
+    --     coalesce(tbl_existing.created_at, current_timestamp()) as created_at,
+    -- {% else %}
+    --     -- For full refresh, set created_at to current timestamp for all records
+    --     current_timestamp() as created_at,
+    -- {% endif %}
+    -- -- Always set updated_at to current timestamp
+    -- current_timestamp() as updated_at
 from add_district_id as tbl_district_voters
-{% if is_incremental() %}
-    left join
-        {{ this }} as tbl_existing
-        on tbl_district_voters.voter_id = tbl_existing.voter_id
-{% endif %}
+-- {% if is_incremental() %}
+--     left join
+--         {{ this }} as tbl_existing
+--         on tbl_district_voters.voter_id = tbl_existing.voter_id
+-- {% endif %}
 where tbl_district_voters.district_id is not null

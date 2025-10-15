@@ -31,12 +31,29 @@ models:
           arguments:
             to: ref('m_people_api__district')
             field: id
+      - name: type
+        description: Type of district
+        data_type: string
+        tests:
+          - not_null
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - unique_combination_sampled:
           arguments:
             combination_of_columns:
               - voter_id
               - district_id
+            sample_size: 50000
+          config:
+            severity: error
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - voter_id
+              - type
+            sample_size: 50000
+          config:
+            severity: error
+
 
   - name: m_people_api__voter
     description: >
