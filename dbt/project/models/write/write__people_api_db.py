@@ -736,10 +736,22 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .option("query", query)
                 .load()
             )
-            max_updated_at[table] = max_updated_at_df.collect()[0]["max_updated_at"]
+
+            # Handle empty table case
+            try:
+                max_updated_at[table] = max_updated_at_df.collect()[0]["max_updated_at"]
+            except IndexError:
+                # Table is empty, set max_updated_at to None
+                max_updated_at[table] = None
 
             if max_updated_at[table]:
-                df = df.filter(df.updated_at > max_updated_at[table])
+                # Update the DataFrame in place
+                if table == "District":
+                    district_table = df.filter(df.updated_at > max_updated_at[table])
+                elif table == "DistrictVoter":
+                    district_voter_table = df.filter(
+                        df.updated_at > max_updated_at[table]
+                    )
 
     # Load non-state-specific tables using a loop
     table_configs = [

@@ -12,6 +12,7 @@ from pyspark.sql.types import StringType, StructField, StructType
 THIS_SCHEMA = StructType(
     [
         StructField(name="voter_id", dataType=StringType(), nullable=False),
+        StructField("district_id", StringType(), False),
         StructField("type", StringType(), False),
         StructField("name", StringType(), False),
         StructField("state", StringType(), False),
