@@ -67,7 +67,7 @@ models:
             combination_of_columns:
               - voter_id
               - district_id
-            sample_size: 50000
+            sample_size: 100000
           config:
             severity: error
       - unique_combination_sampled:
@@ -75,10 +75,9 @@ models:
             combination_of_columns:
               - voter_id
               - type
-            sample_size: 50000
+            sample_size: 100000
           config:
             severity: error
-
 
   - name: m_people_api__voter
     description: >
@@ -96,6 +95,14 @@ models:
         tests:
           - not_null
           - unique
+      - name: State
+        description: Two-letter state postal code
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true) }}"
       - name: Voter_Status
         description: Status of the voter
         data_type: varchar
