@@ -20,7 +20,11 @@ with
         select * from {{ ref("int__ballotready_final_candidacies") }}
     ),
 
-    -- Combine fuzzy match results with final candidacies
+    br_viability_scores as (
+        select * from {{ ref("int__ballotready_viability_scoring") }}
+    ),
+
+    -- Combine fuzzy match results and viability scores with final candidacies
     combined_records as (
         select
             fc.id,
@@ -67,10 +71,12 @@ with
             fd.fuzzy_matched_state,
             fd.fuzzy_matched_office_type,
             fd.match_type,
-            -- Placeholder for future viability score calculation
-            cast(null as string) as viability_score
+            -- Viability scores from int__ballotready_viability_scoring
+            vs.viability_rating_2_0,
+            vs.score_viability_automated
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
+        left join br_viability_scores vs on fc.br_candidate_code = vs.br_candidate_code
     )
 
 select
@@ -119,8 +125,9 @@ select
     fuzzy_matched_last_name,
     fuzzy_matched_state,
     fuzzy_matched_office_type,
-    -- Viability score placeholder
-    viability_score,
+    -- Viability scores
+    viability_rating_2_0,
+    score_viability_automated,
     current_timestamp() as upload_timestamp
 from combined_records
 -- Only include records that haven't been processed yet
