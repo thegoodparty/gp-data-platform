@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import psycopg2
@@ -389,7 +389,7 @@ update_set_query = [
 update_set_query_str = ", ".join(update_set_query)
 
 # Note that the value list under `INSERT` and `SELECT` must be in the same order
-UPSERT_QUERY = (
+VOTER_UPSERT_QUERY = (
     """
     INSERT INTO {db_schema}."{table_name}" (
         "id",
@@ -453,22 +453,33 @@ DISTRICT_VOTER_UPSERT_QUERY = """
 """
 
 
+def _connect_db(
+    db_name: str,
+    db_user: str,
+    db_pw: str,
+    db_host: str,
+    db_port: int,
+) -> psycopg2.extensions.connection:
+    """Connect to the PostgreSQL database."""
+    try:
+        conn: psycopg2.extensions.connection = psycopg2.connect(
+            dbname=db_name, user=db_user, password=db_pw, host=db_host, port=db_port
+        )
+        return conn
+    except Exception as e:
+        logging.error(f"Error connecting to database: {e}")
+        raise e
+
+
 def _execute_sql_query(
     query: str,
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    database: str,
+    conn: psycopg2.extensions.connection,
     return_results: bool = False,
 ) -> List[Tuple[Any, ...]]:
     """
     Execute a SQL query and return the results. Not that the results should be None if no results are returned.
     """
     try:
-        conn = psycopg2.connect(
-            dbname=database, user=user, password=password, host=host, port=port
-        )
         cursor = conn.cursor()
         cursor.execute(query)
         if return_results:
@@ -480,16 +491,13 @@ def _execute_sql_query(
         logging.error(f"Error executing query: {query}")
         logging.error(f"Error: {e}")
         raise e
-    finally:
-        cursor.close()
-        conn.close()
 
     return results
 
 
 def _load_data_to_postgres(
     df: DataFrame,
-    state_id: str,
+    table_name: str,
     upsert_query: str,
     db_host: str,
     db_port: int,
@@ -498,14 +506,14 @@ def _load_data_to_postgres(
     db_name: str,
     staging_schema: str,
     db_schema: str,
+    state_id: Optional[str] = None,
 ) -> int:
     """
     Load a DataFrame to PostgreSQL via JDBC and execute an upsert query.
 
     Args:
         df: DataFrame to load
-        state_id: State ID
-        source_file_name: Name of the source file
+        table_name: Name of the target table
         upsert_query: SQL query to execute for upserting data from staging to the target table
         db_host: Database host
         db_port: Database port
@@ -514,25 +522,39 @@ def _load_data_to_postgres(
         db_name: Database name
         staging_schema: Schema for staging tables
         db_schema: Target schema for the final tables
+        state_id: Optional state ID for state-specific staging table naming
 
     Returns:
         Number of rows loaded
     """
-    table_name = "Voter"
-    staging_table_name = f"Voter_{state_id.upper()}"
-    logging.info(f"Writing {state_id} data to PostgreSQL via JDBC")
+    # Determine staging table name
+    if state_id:
+        staging_table_name = f"{table_name}_{state_id.upper()}"
+        logging.info(f"Writing {state_id} data to PostgreSQL via JDBC")
+    else:
+        staging_table_name = table_name
+        logging.info(f"Writing {table_name} data to PostgreSQL via JDBC")
 
     # Construct JDBC URL
     jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
 
+    # connect to the database
+    try:
+        conn = _connect_db(
+            db_name=db_name,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_host=db_host,
+            db_port=db_port,
+        )
+    except Exception as e:
+        logging.error(f"Error connecting to database: {e}")
+        raise e
+
     # make a wake up call to the database
     _execute_sql_query(
         f'SELECT * FROM {db_schema}."{table_name}" LIMIT 1;',
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
+        conn=conn,
         return_results=False,
     )
 
@@ -544,125 +566,45 @@ def _load_data_to_postgres(
         "overwrite"
     ).save()
 
-    # turn off synchronous_commit, increase working memory parallelization for the large upsert query in the session
-    upsert_query_w_config = (
-        "SET synchronous_commit = off; "
-        "SET work_mem = '128MB'; "
-        "SET max_parallel_workers_per_gather = 8; "
-        + upsert_query.format(
+    # Build upsert query with configuration
+    config_parts = [
+        "SET synchronous_commit = off;",
+        "SET work_mem = '128MB';",
+        "SET maintenance_work_mem = '2GB';",
+        "SET max_parallel_workers_per_gather = 8;",
+    ]
+
+    # Format the upsert query based on whether we have state-specific parameters
+    if state_id:
+        formatted_upsert_query = upsert_query.format(
             db_schema=db_schema,
             staging_schema=staging_schema,
             table_name=table_name,
             staging_table_name=staging_table_name,
         )
-        + ";"
-    )
-    _execute_sql_query(
-        upsert_query_w_config,
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-    )
-
-    # turn synchronous_commit back on
-    _execute_sql_query(
-        "SET synchronous_commit = on;",
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-    )
-
-    return df.count()
-
-
-def _load_table_to_postgres(
-    df: DataFrame,
-    table_name: str,
-    upsert_query: str,
-    db_host: str,
-    db_port: int,
-    db_user: str,
-    db_pw: str,
-    db_name: str,
-    staging_schema: str,
-    db_schema: str,
-) -> int:
-    """
-    Load a DataFrame to PostgreSQL via JDBC and execute an upsert query.
-
-    Args:
-        df: DataFrame to load
-        table_name: Name of the table
-        upsert_query: SQL query to execute for upserting data from staging to the target table
-        db_host: Database host
-        db_port: Database port
-        db_user: Database user
-        db_pw: Database password
-        db_name: Database name
-        staging_schema: Schema for staging tables
-        db_schema: Target schema for the final tables
-
-    Returns:
-        Number of rows loaded
-    """
-    logging.info(f"Writing {table_name} data to PostgreSQL via JDBC")
-
-    # Construct JDBC URL
-    jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
-
-    # make a wake up call to the database
-    _execute_sql_query(
-        f'SELECT * FROM {db_schema}."{table_name}" LIMIT 1;',
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-        return_results=False,
-    )
-
-    df.write.format("jdbc").option("url", jdbc_url).option(
-        "dbtable", f'{staging_schema}."{table_name}"'
-    ).option("user", db_user).option("password", db_pw).option(
-        "driver", "org.postgresql.Driver"
-    ).mode(
-        "overwrite"
-    ).save()
-
-    # turn off synchronous_commit, increase working memory parallelization for the large upsert query in the session
-    upsert_query_w_config = (
-        "SET synchronous_commit = off; "
-        "SET work_mem = '128MB'; "
-        "SET max_parallel_workers_per_gather = 8; "
-        + upsert_query.format(
+    else:
+        formatted_upsert_query = upsert_query.format(
             db_schema=db_schema,
             staging_schema=staging_schema,
         )
-        + ";"
-    )
+
+    upsert_query_w_config = " ".join(config_parts) + " " + formatted_upsert_query + ";"
+
     _execute_sql_query(
-        upsert_query_w_config,
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
+        query=upsert_query_w_config,
+        conn=conn,
+        return_results=False,
     )
 
     # turn synchronous_commit back on
     _execute_sql_query(
-        "SET synchronous_commit = on;",
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
+        query="SET synchronous_commit = on;",
+        conn=conn,
+        return_results=False,
     )
 
+    # close the connection
+    conn.close()
     return df.count()
 
 
@@ -678,7 +620,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         incremental_strategy="append",
         unique_key="id",
         on_schema_change="fail",
-        tags=["l2", "databricks", "people_api", "load"],
+        enable=True,
+        tags=["l2", "databricks", "people_api", "write", "weekly"],
     )
 
     # get dbt configs
@@ -698,73 +641,147 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # downsample for non-prod environment with three least populous states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-    filter_list = ["WY", "ND", "VT"]
+    filter_list = ["WY", "ND", "VT", "DC", "AK", "SD"]  # 17.6 MM rows in DistrictVoter
     if dbt_env_name != "prod":
         voter_table = voter_table.filter(col("State").isin(filter_list))
         district_voter_table = district_voter_table.filter(
             col("state").isin(filter_list)
         )
 
-    # incremental runs
-    if dbt.is_incremental:
-        # Get the max updated_at value from the existing data
-        jdbc_props = {
-            "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
-            "user": db_user,
-            "password": db_pw,
-            "driver": "org.postgresql.Driver",
-        }
+    # initialize list to capture metadata about data loads
+    load_id = str(uuid4())
+    load_details: List[Dict[str, Any]] = []
 
-        max_updated_at = {}
-        to_load = zip(
-            [
-                "District",
-                "DistrictVoter",
-            ],
-            [
-                district_table,
-                district_voter_table,
-            ],
+    # count (forces cache and preceding filters) the dataframe and enforce filter before for-loop filtering
+    voter_table.count()
+    try:
+        conn = _connect_db(
+            db_name=db_name,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_host=db_host,
+            db_port=db_port,
         )
-        for table, df in to_load:
-            query = (
-                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
-            )
-            max_updated_at_df = (
-                session.read.format("jdbc")
-                .options(**jdbc_props)
-                .option("query", query)
-                .load()
-            )
+    except Exception as e:
+        logging.error(f"Error connecting to database: {e}")
+        raise e
 
-            # Handle empty table case
-            try:
-                max_updated_at[table] = max_updated_at_df.collect()[0]["max_updated_at"]
-            except IndexError:
-                # Table is empty, set max_updated_at to None
-                max_updated_at[table] = None
+    # Create a staging schema if it doesn't exist
+    _execute_sql_query(
+        f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
+        conn=conn,
+        return_results=False,
+    )
 
-            if max_updated_at[table]:
-                # Update the DataFrame in place
-                if table == "District":
-                    district_table = df.filter(df.updated_at > max_updated_at[table])
-                elif table == "DistrictVoter":
-                    district_voter_table = df.filter(
-                        df.updated_at > max_updated_at[table]
-                    )
+    # get the list of states to load, ordered by number of rows per state (ascending)
+    state_counts = (
+        voter_table.groupBy("State")
+        .agg(count("*").alias("row_count"))
+        .orderBy(asc("row_count"))
+        .select("State")
+        .collect()
+    )
+    state_list: List[str] = [row.State for row in state_counts]
 
-    # Load non-state-specific tables using a loop
+    # load data state by state since job may time out
+    for state_id in state_list:
+        state_df = voter_table.filter(col("State") == state_id)
+
+        # check for the latest updated_at for the state in the destination db
+        query = f"""
+            SELECT MAX(updated_at) FROM {db_schema}."Voter"
+            WHERE "State" = '{state_id}'
+        """
+        conn = _connect_db(
+            db_name=db_name,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_host=db_host,
+            db_port=db_port,
+        )
+        max_updated_at_voter = _execute_sql_query(query, conn, return_results=True)[0][
+            0
+        ]
+        conn.close()
+        if max_updated_at_voter:
+            # postgres rounds down microseconds, so add 2 seconds as a safe buffer
+            max_updated_at = max_updated_at_voter + timedelta(seconds=2)  # type: ignore
+            state_df = state_df.filter(
+                col("updated_at") > max_updated_at
+            )  # TODO: add back in after testing
+
+            # force filter to be applied
+            row_count = state_df.count()
+            if row_count == 0:
+                logging.info(f"No rows to load for {state_id}")
+                continue  # TODO: add back in after some testing
+            state_df.cache()
+
+        num_rows_loaded = _load_data_to_postgres(
+            df=state_df,
+            table_name="Voter",
+            upsert_query=VOTER_UPSERT_QUERY,
+            db_host=db_host,
+            db_port=db_port,
+            db_user=db_user,
+            db_pw=db_pw,
+            db_name=db_name,
+            staging_schema=staging_schema,
+            db_schema=db_schema,
+            state_id=state_id,
+        )
+
+        # add to load_details
+        load_details.append(
+            {
+                "id": str(uuid4()),
+                "load_id": load_id,
+                "loaded_at": datetime.now(),
+                "table": "Voter",
+                "state_id": state_id,
+                "num_rows_loaded": num_rows_loaded,
+            }
+        )
+
+    # Get the max updated_at value from the existing data
+    jdbc_props = {
+        "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
+        "user": db_user,
+        "password": db_pw,
+        "driver": "org.postgresql.Driver",
+    }
+
+    # Process and load non-state-specific tables using a single loop
     table_configs = [
         ("District", district_table, DISTRICT_UPSERT_QUERY),
         ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
     ]
 
-    # initialize list to capture metadata about data loads
-    load_id = str(uuid4())
-    load_details: List[Dict[str, Any]] = []
-
     for table_name, df, upsert_query in table_configs:
-        num_rows_loaded = _load_table_to_postgres(
+        # Get the max updated_at value from the existing data
+        query = (
+            f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table_name}"'
+        )
+        max_updated_at_df = (
+            session.read.format("jdbc")
+            .options(**jdbc_props)
+            .option("query", query)
+            .load()
+        )
+
+        # Handle empty table case
+        try:
+            max_updated_at = max_updated_at_df.collect()[0]["max_updated_at"]
+        except IndexError:
+            # Table is empty, set max_updated_at to None
+            max_updated_at = None
+
+        # Filter DataFrame if max_updated_at exists
+        if max_updated_at:
+            df = df.filter(df.updated_at > max_updated_at)
+
+        # Load data to PostgreSQL
+        num_rows_loaded = _load_data_to_postgres(
             df=df,
             table_name=table_name,
             upsert_query=upsert_query,
@@ -783,73 +800,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 "id": str(uuid4()),
                 "load_id": load_id,
                 "loaded_at": datetime.now(),
+                "table": table_name,
                 "state_id": None,
-                "num_rows_loaded": num_rows_loaded,
-            }
-        )
-
-    # count (forces cache and preceding filters) the dataframe and enforce filter before for-loop filtering
-    voter_table.count()
-
-    # Create a staging schema if it doesn't exist
-    _execute_sql_query(
-        f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
-        db_host,
-        db_port,
-        db_user,
-        db_pw,
-        db_name,
-    )
-
-    # get the list of states to load, ordered by number of rows per state (ascending)
-    state_counts = (
-        voter_table.groupBy("State")
-        .agg(count("*").alias("row_count"))
-        .orderBy(asc("row_count"))
-        .select("State")
-        .collect()
-    )
-    state_list: List[str] = [row.State for row in state_counts]
-
-    # load data state by state since job may time out
-    for state_id in state_list:
-        state_df = voter_table.filter(col("State") == state_id)
-
-        # handle incremental loading
-        if dbt.is_incremental:
-            # check for the latest updated_at for the state in the destination db
-            query = f"""
-                SELECT MAX(updated_at) FROM {db_schema}."Voter"
-                WHERE "State" = '{state_id}'
-            """
-            max_updated_at_voter = _execute_sql_query(
-                query, db_host, db_port, db_user, db_pw, db_name, return_results=True
-            )[0][0]
-            if max_updated_at_voter:
-                # postgres rounds down microseconds, so add 2 seconds as a safe buffer
-                max_updated_at = max_updated_at_voter + timedelta(seconds=2)  # type: ignore
-                state_df = state_df.filter(col("updated_at") > max_updated_at)
-
-        num_rows_loaded = _load_data_to_postgres(
-            df=state_df,
-            state_id=state_id,
-            upsert_query=UPSERT_QUERY,
-            db_host=db_host,
-            db_port=db_port,
-            db_user=db_user,
-            db_pw=db_pw,
-            db_name=db_name,
-            staging_schema=staging_schema,
-            db_schema=db_schema,
-        )
-
-        # add to load_details
-        load_details.append(
-            {
-                "id": str(uuid4()),
-                "load_id": load_id,
-                "loaded_at": datetime.now(),
-                "state_id": state_id,
                 "num_rows_loaded": num_rows_loaded,
             }
         )
@@ -859,6 +811,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             StructField("id", StringType(), True),
             StructField("load_id", StringType(), True),
             StructField("loaded_at", TimestampType(), True),
+            StructField("table", StringType(), True),
             StructField("state_id", StringType(), True),
             StructField("num_rows_loaded", IntegerType(), True),
         ]

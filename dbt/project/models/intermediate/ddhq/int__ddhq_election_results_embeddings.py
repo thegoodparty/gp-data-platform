@@ -345,6 +345,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         unique_key=["candidate_id", "candidate", "race_id"],
         incremental_strategy="merge",
         on_schema_change="append_new_columns",
+        enable=False,
         tags=["intermediate", "ddhq", "election_results", "embeddings"],
     )
 

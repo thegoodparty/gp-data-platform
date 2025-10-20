@@ -296,7 +296,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     if voter_df_count == 0:
         return session.createDataFrame(data=[], schema=THIS_SCHEMA)
 
-    # Downsample for dev/testing (takes about 300 seconds with all columns)
+    # Downsample for dev/testing
     district_columns = DISTRICT_COLUMNS  # [:150]
 
     # Create district voter records by unpivoting the district columns
