@@ -83,7 +83,7 @@ models:
         tests:
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
-                value_set: "{{ get_us_states_list(include_DC=true, include_US=true) }}"
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
