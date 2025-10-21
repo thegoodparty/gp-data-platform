@@ -354,10 +354,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             col("voter_id"),
             col("district_id"),
             col("type"),
-            col("created_at"),
-            col("updated_at"),
             col("name"),
             col("state"),
+            col("created_at"),
+            col("updated_at"),
         )
     )
 
