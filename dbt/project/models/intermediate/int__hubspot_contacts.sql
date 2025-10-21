@@ -9,7 +9,17 @@
 }}
 
 select
+    -- identifiers and relations
     tbl_hs_contacts.id,
+    case
+        when tbl_hs_contacts.companies is null
+        then null
+        when trim(tbl_hs_contacts.companies) = ''
+        then null
+        when trim(tbl_hs_contacts.companies) = '[]'
+        then null
+        else from_json(tbl_hs_contacts.companies, 'array<string>')
+    end as companies,  -- type is array<string>
 
     -- Personal information
     tbl_hs_contacts.properties_full_name as full_name,
