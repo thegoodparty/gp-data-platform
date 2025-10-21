@@ -479,6 +479,7 @@ def _execute_sql_query(
     """
     Execute a SQL query and return the results. Not that the results should be None if no results are returned.
     """
+    cursor = None
     try:
         cursor = conn.cursor()
         cursor.execute(query)
@@ -491,6 +492,9 @@ def _execute_sql_query(
         logging.error(f"Error executing query: {query}")
         logging.error(f"Error: {e}")
         raise e
+    finally:
+        if cursor:
+            cursor.close()
 
     return results
 
@@ -539,6 +543,7 @@ def _load_data_to_postgres(
     jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
 
     # connect to the database
+    conn = None
     try:
         conn = _connect_db(
             db_name=db_name,
@@ -547,65 +552,69 @@ def _load_data_to_postgres(
             db_host=db_host,
             db_port=db_port,
         )
+
+        # make a wake up call to the database
+        _execute_sql_query(
+            f'SELECT * FROM {db_schema}."{table_name}" LIMIT 1;',
+            conn=conn,
+            return_results=False,
+        )
+
+        df.write.format("jdbc").option("url", jdbc_url).option(
+            "dbtable", f'{staging_schema}."{staging_table_name}"'
+        ).option("user", db_user).option("password", db_pw).option(
+            "driver", "org.postgresql.Driver"
+        ).mode(
+            "overwrite"
+        ).save()
+
+        # Build upsert query with configuration
+        config_parts = [
+            "SET synchronous_commit = off;",
+            "SET work_mem = '128MB';",
+            "SET maintenance_work_mem = '2GB';",
+            "SET max_parallel_workers_per_gather = 8;",
+        ]
+
+        # Format the upsert query based on whether we have state-specific parameters
+        if state_id:
+            formatted_upsert_query = upsert_query.format(
+                db_schema=db_schema,
+                staging_schema=staging_schema,
+                table_name=table_name,
+                staging_table_name=staging_table_name,
+            )
+        else:
+            formatted_upsert_query = upsert_query.format(
+                db_schema=db_schema,
+                staging_schema=staging_schema,
+            )
+
+        upsert_query_w_config = (
+            " ".join(config_parts) + " " + formatted_upsert_query + ";"
+        )
+
+        _execute_sql_query(
+            query=upsert_query_w_config,
+            conn=conn,
+            return_results=False,
+        )
+
+        # turn synchronous_commit back on
+        _execute_sql_query(
+            query="SET synchronous_commit = on;",
+            conn=conn,
+            return_results=False,
+        )
+
+        return df.count()
     except Exception as e:
-        logging.error(f"Error connecting to database: {e}")
+        logging.error(f"Error in _load_data_to_postgres: {e}")
         raise e
-
-    # make a wake up call to the database
-    _execute_sql_query(
-        f'SELECT * FROM {db_schema}."{table_name}" LIMIT 1;',
-        conn=conn,
-        return_results=False,
-    )
-
-    df.write.format("jdbc").option("url", jdbc_url).option(
-        "dbtable", f'{staging_schema}."{staging_table_name}"'
-    ).option("user", db_user).option("password", db_pw).option(
-        "driver", "org.postgresql.Driver"
-    ).mode(
-        "overwrite"
-    ).save()
-
-    # Build upsert query with configuration
-    config_parts = [
-        "SET synchronous_commit = off;",
-        "SET work_mem = '128MB';",
-        "SET maintenance_work_mem = '2GB';",
-        "SET max_parallel_workers_per_gather = 8;",
-    ]
-
-    # Format the upsert query based on whether we have state-specific parameters
-    if state_id:
-        formatted_upsert_query = upsert_query.format(
-            db_schema=db_schema,
-            staging_schema=staging_schema,
-            table_name=table_name,
-            staging_table_name=staging_table_name,
-        )
-    else:
-        formatted_upsert_query = upsert_query.format(
-            db_schema=db_schema,
-            staging_schema=staging_schema,
-        )
-
-    upsert_query_w_config = " ".join(config_parts) + " " + formatted_upsert_query + ";"
-
-    _execute_sql_query(
-        query=upsert_query_w_config,
-        conn=conn,
-        return_results=False,
-    )
-
-    # turn synchronous_commit back on
-    _execute_sql_query(
-        query="SET synchronous_commit = on;",
-        conn=conn,
-        return_results=False,
-    )
-
-    # close the connection
-    conn.close()
-    return df.count()
+    finally:
+        # ensure connection is always closed
+        if conn:
+            conn.close()
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -654,6 +663,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # count (forces cache and preceding filters) the dataframe and enforce filter before for-loop filtering
     voter_table.count()
+
+    # Create a staging schema if it doesn't exist
+    conn = None
     try:
         conn = _connect_db(
             db_name=db_name,
@@ -662,16 +674,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
             db_host=db_host,
             db_port=db_port,
         )
+        _execute_sql_query(
+            f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
+            conn=conn,
+            return_results=False,
+        )
     except Exception as e:
         logging.error(f"Error connecting to database: {e}")
         raise e
-
-    # Create a staging schema if it doesn't exist
-    _execute_sql_query(
-        f"CREATE SCHEMA IF NOT EXISTS {staging_schema};",
-        conn=conn,
-        return_results=False,
-    )
+    finally:
+        # ensure connection is closed after creating staging schema
+        if conn:
+            conn.close()
 
     # get the list of states to load, ordered by number of rows per state (ascending)
     state_counts = (
