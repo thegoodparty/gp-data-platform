@@ -628,8 +628,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         materialized="incremental",
         incremental_strategy="append",
         unique_key="id",
-        on_schema_change="fail",
-        enable=True,
+        on_schema_change="append_new_columns",
+        enabled=True,
         tags=["l2", "databricks", "people_api", "write", "weekly"],
     )
 
@@ -720,15 +720,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if max_updated_at_voter:
             # postgres rounds down microseconds, so add 2 seconds as a safe buffer
             max_updated_at = max_updated_at_voter + timedelta(seconds=2)  # type: ignore
-            state_df = state_df.filter(
-                col("updated_at") > max_updated_at
-            )  # TODO: add back in after testing
+            state_df = state_df.filter(col("updated_at") > max_updated_at)
 
             # force filter to be applied
             row_count = state_df.count()
             if row_count == 0:
                 logging.info(f"No rows to load for {state_id}")
-                continue  # TODO: add back in after some testing
+                continue
             state_df.cache()
 
         num_rows_loaded = _load_data_to_postgres(

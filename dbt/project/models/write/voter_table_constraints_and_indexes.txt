@@ -1,7 +1,7 @@
 -- Voter table constraints and indexes as of 2025-10-19
 -- See up-to-date schema at https://github.com/thegoodparty/people-api/tree/develop/prisma/schema
 
--- constraints and keys
+-- constraints and keys; change schemas throughout for different environments (blue/green)
 ALTER TABLE public."Voter" ADD CONSTRAINT Voter_pkey PRIMARY KEY (id);
 CREATE UNIQUE INDEX "Voter_LALVOTERID_key" ON public."Voter" USING btree ("LALVOTERID");
 ALTER TABLE public."District" ADD CONSTRAINT District_pkey PRIMARY KEY (id);

@@ -8,7 +8,7 @@ snapshots:
       - nationwide_uniform
       - uniform
       - snapshot
-      - infrequent
+      - weekly
     config:
       unique_key: LALVOTERID
       strategy: check
