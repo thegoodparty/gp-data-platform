@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict
 
 import psycopg2
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import current_date, date_add, date_sub
 from pyspark.sql.types import (
     IntegerType,
@@ -485,7 +485,7 @@ def _load_data_to_postgres(
     return df.count()  # number of rows loaded
 
 
-def model(dbt, session) -> DataFrame:
+def model(dbt, session: SparkSession) -> DataFrame:
     """
     This model loads data for the mart that services the election API. The tables are written
     to the postgres database directly from spark since Airbyte does not support reads from

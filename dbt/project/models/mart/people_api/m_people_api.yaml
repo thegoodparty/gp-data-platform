@@ -1,6 +1,84 @@
 version: 2
 
 models:
+  - name: m_people_api__district
+    description: >
+      This model creates the district table in the mart layer using the election_api district table.
+    columns:
+      - name: id
+        description: Unique identifier for a district
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: id
+      - name: name
+        description: Name of the district
+        data_type: string
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: l2_district_name
+      - name: type
+        description: Type of district
+        data_type: string
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: l2_district_type
+
+  - name: m_people_api__districtvoter
+    description: >
+      This model creates the district voter table in the mart layer using the voter table.
+    columns:
+      - name: voter_id
+        description: Unique identifier for a district voter
+        data_type: uuid
+        tests:
+          - not_null
+        relationships:
+          arguments:
+            to: ref('m_people_api__voter')
+            field: id
+      - name: district_id
+        description: Unique identifier for a district
+        data_type: uuid
+        tests:
+          - not_null
+        relationships:
+          arguments:
+            to: ref('m_people_api__district')
+            field: id
+      - name: type
+        description: Type of district
+        data_type: string
+        tests:
+          - not_null
+    tests:
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - voter_id
+              - district_id
+            sample_size: 100000
+          config:
+            severity: error
+      - unique_combination_sampled:
+          arguments:
+            combination_of_columns:
+              - voter_id
+              - type
+            sample_size: 100000
+          config:
+            severity: error
+
   - name: m_people_api__voter
     description: >
       This model creates the voter table in the mart layer using the hubspot data
@@ -17,6 +95,14 @@ models:
         tests:
           - not_null
           - unique
+      - name: State
+        description: Two-letter state postal code
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true) }}"
       - name: Voter_Status
         description: Status of the voter
         data_type: varchar
