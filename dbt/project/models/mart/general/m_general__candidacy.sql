@@ -36,6 +36,7 @@ with
             tbl_contacts.contact_id,
             tbl_contacts.candidate_id_source,
             tbl_contacts.candidate_id_tier,
+            tbl_contacts.extra_companies,
 
             -- Personal information
             tbl_contacts.first_name,
