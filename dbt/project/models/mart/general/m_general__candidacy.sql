@@ -148,7 +148,7 @@ with
                 when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
                 then tbl_ddhq_election_results_source.votes
                 else null
-            end as ddhq_general_election_results_votes,
+            end as ddhq_votes,
             case
                 when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
                 then tbl_ddhq_election_results_source.total_number_of_ballots_in_race
