@@ -171,7 +171,7 @@ models:
             compare_model: ref('stg_airbyte_source__ballotready_api_place')
 
   - name: int__position_fast_facts
-    description: "Intermediate model that adds fun facts to positions"
+    description: "Intermediate model that adds fast facts to positions"
     columns:
       - name: database_id
         description: "Database ID of the position"
