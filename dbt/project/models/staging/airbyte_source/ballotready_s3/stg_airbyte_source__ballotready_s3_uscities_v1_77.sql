@@ -50,7 +50,7 @@ with
             age_median,
             cast(cbsa_metro as boolean) as cbsa_metro,
             city_ascii,
-            home_value,
+            cast(nullif(home_value, '') as int) as home_value,
             cast(nullif(population, '') as int) as population,
             race_asian,
             race_black,
