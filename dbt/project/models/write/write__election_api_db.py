@@ -222,11 +222,10 @@ PLACE_UPSERT_QUERY = """
         city_largest,
         county_name,
         population,
-        --    try_cast(population as int) as population_int,
-        CASE WHEN density = '' THEN NULL ELSE density::real END,
-        CASE WHEN income_household_median = '' THEN NULL ELSE income_household_median::integer END,
-        CASE WHEN unemployment_rate = '' THEN NULL ELSE unemployment_rate::real END,
-        CASE WHEN home_value = '' THEN NULL ELSE home_value::integer END,
+        density,
+        income_household_median,
+        unemployment_rate,
+        home_value,
         parent_id::uuid
     FROM {staging_schema}."Place"
     ON CONFLICT (id) DO UPDATE SET
