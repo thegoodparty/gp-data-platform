@@ -51,7 +51,7 @@ with
             cast(cbsa_metro as boolean) as cbsa_metro,
             city_ascii,
             home_value,
-            population,
+            cast(nullif(population, '') as int) as population,
             race_asian,
             race_black,
             race_other,

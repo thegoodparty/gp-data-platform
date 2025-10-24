@@ -153,8 +153,8 @@ models:
                 to: ref('stg_airbyte_source__ballotready_api_race')
                 field: database_id
 
-  - name: int__place_fun_facts
-    description: "Intermediate model that adds fun facts to places"
+  - name: int__place_fast_facts
+    description: "Intermediate model that adds fast facts to places"
     columns:
       - name: database_id
         description: "Database ID of the place"
@@ -170,7 +170,7 @@ models:
           arguments:
             compare_model: ref('stg_airbyte_source__ballotready_api_place')
 
-  - name: int__position_fun_facts
+  - name: int__position_fast_facts
     description: "Intermediate model that adds fun facts to positions"
     columns:
       - name: database_id

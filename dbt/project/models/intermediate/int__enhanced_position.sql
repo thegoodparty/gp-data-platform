@@ -23,20 +23,20 @@ with
             tbl_position.mtfcc,
             tbl_position.`state`,
             tbl_position.slug,
-            tbl_fun_facts.city as city_largest,
-            tbl_fun_facts.county_name as county_name,
-            try_cast(tbl_fun_facts.population as int) as population,
-            try_cast(tbl_fun_facts.density as float) as density,
+            tbl_fast_facts.city as city_largest,
+            tbl_fast_facts.county_name as county_name,
+            try_cast(tbl_fast_facts.population as int) as population,
+            try_cast(tbl_fast_facts.density as float) as density,
             try_cast(
-                tbl_fun_facts.income_household_median as int
+                tbl_fast_facts.income_household_median as int
             ) as income_household_median,
-            try_cast(tbl_fun_facts.unemployment_rate as float) as unemployment_rate,
-            try_cast(tbl_fun_facts.home_value as int) as home_value
+            try_cast(tbl_fast_facts.unemployment_rate as float) as unemployment_rate,
+            try_cast(tbl_fast_facts.home_value as int) as home_value
         -- parent_id is self-referential, it is added in an additional layer
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
-            {{ ref("int__position_fun_facts") }} as tbl_fun_facts
-            on tbl_position.database_id = tbl_fun_facts.database_id
+            {{ ref("int__position_fast_facts") }} as tbl_fast_facts
+            on tbl_position.database_id = tbl_fast_facts.database_id
         {% if is_incremental() %}
             where tbl_position.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
