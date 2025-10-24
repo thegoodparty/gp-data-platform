@@ -181,9 +181,9 @@ with
             on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
-            {% if is_incremental() %}
-                and tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
-            {% endif %}
+        {% if is_incremental() %}
+            where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
+        {% endif %}
     )
 select *
 from candidacies
