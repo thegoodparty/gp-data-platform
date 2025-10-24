@@ -93,6 +93,7 @@ with
 
             -- DDHQ matches
             tbl_ddhq_matches.ddhq_candidate,
+            tbl_ddhq_matches.ddhq_candidate_id,
             tbl_ddhq_matches.ddhq_race_name,
             tbl_ddhq_matches.ddhq_candidate_party,
             tbl_ddhq_matches.ddhq_is_winner,
@@ -142,6 +143,23 @@ with
             tbl_ddhq_matches.top_10_candidates as ddhq_top_10_candidates,
             tbl_ddhq_matches.has_match as ddhq_has_match,
 
+            -- adding back some DDHQ data
+            case
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
+                then tbl_ddhq_election_results_source.votes
+                else null
+            end as ddhq_votes,
+            case
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
+                then tbl_ddhq_election_results_source.total_number_of_ballots_in_race
+                else null
+            end as ddhq_ballots_cast,
+            case
+                when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
+                then tbl_ddhq_election_results_source.number_of_seats_in_election
+                else null
+            end as ddhq_number_of_seats_in_election,
+
             -- Metadata
             tbl_contacts.created_at,
             tbl_contacts.updated_at
@@ -157,9 +175,15 @@ with
         left join
             {{ ref("int__hubspot_contest") }} as tbl_contest
             on tbl_contest.contact_id = tbl_contacts.contact_id
-        {% if is_incremental() %}
-            where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
-        {% endif %}
+        left join
+            {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+            as tbl_ddhq_election_results_source
+            on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
+            and tbl_ddhq_election_results_source.candidate_id
+            = tbl_ddhq_matches.ddhq_candidate_id
+            {% if is_incremental() %}
+                and tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
+            {% endif %}
     )
 select *
 from candidacies

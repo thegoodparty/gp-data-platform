@@ -3,13 +3,13 @@ snapshots:
     relation: ref('int__l2_nationwide_uniform')
     description: >
       "Snapshot of the int__l2_nationwide_uniform table. Use `check_cols` strategy since in the source data there is no `updated_at`. The relevant `loaded_at` column is updated for each new dataset"
-    tags:
-      - l2
-      - nationwide_uniform
-      - uniform
-      - snapshot
-      - weekly
     config:
+      tags:
+        - l2
+        - nationwide_uniform
+        - uniform
+        - snapshot
+        - weekly
       unique_key: LALVOTERID
       strategy: check
       check_cols:

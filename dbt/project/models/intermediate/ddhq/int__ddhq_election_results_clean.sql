@@ -44,11 +44,19 @@ with
             _ab_source_file_last_modified,
             total_number_of_ballots_in_race
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
-        {% if is_incremental() %}
-            where
-                _airbyte_extracted_at
+        where
+            race_id is not null and candidate_id is not null
+            {% if is_incremental() %}
+                and _airbyte_extracted_at
                 > (select max(_airbyte_extracted_at) from {{ this }})
-        {% endif %}
+            {% endif %}
+        -- dedup since source has duplicates
+        qualify
+            row_number() over (
+                partition by race_id, candidate_id
+                order by _airbyte_extracted_at desc, votes desc
+            )
+            = 1
     ),
     filtered_election_results as (
         select
