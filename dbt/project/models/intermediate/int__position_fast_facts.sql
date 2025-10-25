@@ -3,7 +3,7 @@
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
-        tags=["intermediate", "ballotready", "place_fun_facts"],
+        tags=["intermediate", "ballotready", "position_fast_facts"],
     )
 }}
 
@@ -23,12 +23,12 @@ with
     ),
     joined_by_geo_id as (
         select
-            tbl_place.database_id,
-            tbl_place.geo_id,
-            tbl_place.name,
-            tbl_place.slug,
-            tbl_place.state,
-            tbl_place.updated_at,
+            tbl_position.database_id,
+            tbl_position.geo_id,
+            tbl_position.name,
+            tbl_position.slug,
+            tbl_position.state,
+            tbl_position.updated_at,
             tbl_cities.county_name,
             tbl_cities.county_fips,
             tbl_cities.city,
@@ -39,13 +39,13 @@ with
             tbl_cities.home_value,
             tbl_cities.unemployment_rate,
             tbl_cities.income_household_median
-        from {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place
+        from {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_position
         left join
             deduped_cities as tbl_cities
-            on substring(tbl_place.geo_id, 1, 5) = tbl_cities.county_fips
-            and tbl_place.state = tbl_cities.state_id
+            on substring(tbl_position.geo_id, 1, 5) = tbl_cities.county_fips
+            and tbl_position.state = tbl_cities.state_id
         {% if is_incremental() %}
-            where tbl_place.updated_at > (select max(updated_at) from {{ this }})
+            where tbl_position.updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
     ),
     unmatched as (select * from joined_by_geo_id where county_fips is null),
