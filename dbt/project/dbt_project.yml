@@ -63,3 +63,6 @@ models:
 # Shared folder use is deprecated due to governance concerns.
 flags:
   use_user_folder_for_python: True
+
+dbt-cloud:
+    project-id: 70471823438007
