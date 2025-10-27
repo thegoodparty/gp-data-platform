@@ -145,7 +145,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .when(col("number_of_candidates") == "", None)
         .otherwise(col("number_of_candidates").cast("int") - 1)
         .alias("properties_number_of_opponents"),
-        when(col("uncontested"), "Yes").otherwise("No").alias("properties_open_seat_"),
+        when(col("uncontested") == "Uncontested", "Yes")
+        .otherwise("No")
+        .alias("properties_open_seat_"),
         col("party").alias("properties_candidate_party"),
         col("official_office_name").alias("properties_official_office_name"),
         col("candidate_office").alias("properties_candidate_office"),
