@@ -107,6 +107,7 @@ sources:
         description: Stripe customer records and account information
       - name: stripe_api_customer_balance_transactions
         description: Stripe customer balance transaction history and credit movements
+        freshness: null
       - name: stripe_api_events
         description: Stripe webhook events and API activity logs
       - name: stripe_api_invoice_items
@@ -122,10 +123,13 @@ sources:
         freshness: null
       - name: stripe_api_plans
         description: Stripe subscription plans and pricing tiers
+        freshness: null
       - name: stripe_api_prices
         description: Stripe pricing information for products and services
+        freshness: null
       - name: stripe_api_products
         description: Stripe product catalog and inventory information
+        freshness: null
       - name: stripe_api_promotion_codes
         description: Stripe promotion codes and discount campaigns
         freshness: null
@@ -135,6 +139,7 @@ sources:
         description: Stripe subscription line items and plan details
       - name: stripe_api_subscription_schedule
         description: Stripe subscription scheduling and recurring payment plans
+        freshness: null
       - name: stripe_api_subscriptions
         description: Stripe subscription records and recurring billing information
       - name: stripe_api_transactions
