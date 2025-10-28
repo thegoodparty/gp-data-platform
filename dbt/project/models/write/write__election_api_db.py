@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict
 
 import psycopg2
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import current_date, date_add, date_sub
 from pyspark.sql.types import (
     IntegerType,
@@ -221,11 +221,11 @@ PLACE_UPSERT_QUERY = """
         state,
         city_largest,
         county_name,
-        CASE WHEN population = '' THEN NULL ELSE population::integer END,
-        CASE WHEN density = '' THEN NULL ELSE density::real END,
-        CASE WHEN income_household_median = '' THEN NULL ELSE income_household_median::integer END,
-        CASE WHEN unemployment_rate = '' THEN NULL ELSE unemployment_rate::real END,
-        CASE WHEN home_value = '' THEN NULL ELSE home_value::integer END,
+        population,
+        density,
+        income_household_median,
+        unemployment_rate,
+        home_value,
         parent_id::uuid
     FROM {staging_schema}."Place"
     ON CONFLICT (id) DO UPDATE SET
@@ -485,7 +485,7 @@ def _load_data_to_postgres(
     return df.count()  # number of rows loaded
 
 
-def model(dbt, session) -> DataFrame:
+def model(dbt, session: SparkSession) -> DataFrame:
     """
     This model loads data for the mart that services the election API. The tables are written
     to the postgres database directly from spark since Airbyte does not support reads from
