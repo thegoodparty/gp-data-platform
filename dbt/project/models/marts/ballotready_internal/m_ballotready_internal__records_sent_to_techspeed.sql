@@ -83,7 +83,7 @@ with
             *,
             {{
                 generate_candidate_code(
-                    "first_name", "last_name", "state", "city", "office_type"
+                    "first_name", "last_name", "state", "office_type", "city"
                 )
             }} as candidate_code
         from with_office_type
