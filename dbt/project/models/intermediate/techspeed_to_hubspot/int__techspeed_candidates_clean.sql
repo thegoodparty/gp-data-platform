@@ -191,7 +191,7 @@ with
             *,
             {{
                 generate_candidate_code(
-                    "first_name", "last_name", "state", "city", "office_type"
+                    "first_name", "last_name", "state", "office_type", "city"
                 )
             }} as techspeed_candidate_code
         from candidates_w_extracted_last_name

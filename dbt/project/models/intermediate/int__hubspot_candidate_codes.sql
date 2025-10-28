@@ -13,8 +13,8 @@ with
                     "properties_firstname",
                     "properties_lastname",
                     "properties_state",
-                    "properties_city",
                     "properties_office_type",
+                    "properties_city",
                 )
             }} as hubspot_candidate_code,
             `updatedAt` as updated_at
