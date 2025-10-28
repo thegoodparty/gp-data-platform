@@ -6,9 +6,6 @@ models:
       Historical tracking table for all BallotReady candidates processed for Vendors upload.
       Maintains audit trail with fuzzy match results and viability scores.
       Used to prevent duplicate sends and track processing history.
-    meta:
-      owner: tristan.aubert@goodparty.org
-      source_systems: [BallotReady, HubSpot, Vendors]
     columns:
       - name: candidacy_id
         description: Unique identifier for the candidacy from BallotReady
@@ -73,9 +70,6 @@ models:
     description: >
       Historical tracking table for BallotReady candidates sent to TechSpeed for data enrichment.
       Tracks candidates with missing contact information that need external data augmentation.
-    meta:
-      owner: tristan.aubert@goodparty.org
-      source_systems: [BallotReady, TechSpeed]
     columns:
       - name: candidacy_id
         description: Unique identifier for the candidacy from BallotReady
