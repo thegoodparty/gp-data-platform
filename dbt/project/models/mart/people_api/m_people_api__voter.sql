@@ -1,10 +1,15 @@
+/*
+Deduplication for this voter data is done by comparing each row against a snapshot. With the current size of
+220 MM rows/voters and ~350 columns, this processes takes nearly 5 hours. For this reason, it is tagged "weekly"
+for infrequent runs.
+*/
 {{
     config(
         materialized="incremental",
         unique_key="LALVOTERID",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
-        tags=["mart", "people_api", "voter"],
+        tags=["mart", "people_api", "voter", "weekly"],
     )
 }}
 
@@ -418,13 +423,16 @@ with
             `Water_Replacement_District`,
             `Water_Replacement_SubDistrict`,
             `Water_SubDistrict`,
-            `Weed_District`
-        from {{ ref("int__l2_nationwide_uniform") }}
+            `Weed_District`,
+            dbt_valid_from
+        from {{ ref("snapshot__int__l2_nationwide_uniform") }}
         where
             1 = 1
             {% if is_incremental() %}
-                and loaded_at > (select max(updated_at) from {{ this }})
+                and dbt_valid_from > (select max(updated_at) from {{ this }})  -- use dbt_valid_from to get true updated_at
             {% endif %}
+        qualify
+            row_number() over (partition by lalvoterid order by dbt_valid_from desc) = 1
     ),
     /*
         Note that here we need to list each column individually since we need to
@@ -806,14 +814,15 @@ with
             {% if is_incremental() %}
                 -- For incremental runs, preserve existing created_at for existing
                 -- records,
-                -- set current timestamp for new records
-                coalesce(tbl_existing.created_at, current_timestamp()) as created_at,
+                coalesce(
+                    tbl_existing.created_at, tbl_updated.`dbt_valid_from`
+                ) as created_at,
             {% else %}
-                -- For full refresh, set created_at to current timestamp for all records
-                current_timestamp() as created_at,
+                -- For full refresh, set created_at to dbt_valid_from for all records
+                tbl_updated.`dbt_valid_from` as created_at,
             {% endif %}
-            -- Always set updated_at to current timestamp
-            current_timestamp() as updated_at
+            -- Always set updated_at to dbt_valid_from
+            tbl_updated.`dbt_valid_from` as updated_at
         from updated_voters as tbl_updated
         {% if is_incremental() %}
             left join
