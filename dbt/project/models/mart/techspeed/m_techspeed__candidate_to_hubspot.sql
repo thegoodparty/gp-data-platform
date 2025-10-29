@@ -119,6 +119,11 @@ with
             current_timestamp as added_to_mart_at,
             _ab_source_file_url
         from {{ ref("int__techspeed_candidates_fuzzy_deduped") }}
+        where
+            fuzzy_matched_hubspot_candidate_code not in (
+                select fuzzy_matched_hubspot_candidate_code
+                from {{ ref("m_ballotready_internal__records_sent_to_hubspot") }}
+            )
     )
 
 select
