@@ -210,6 +210,18 @@ with
                     }}
             end as techspeed_candidate_code
         from candidates_w_extracted_last_name
+        where
+            -- Filter out records with null or empty required fields for candidate code
+            trim(first_name) is not null
+            and trim(first_name) <> ''
+            and trim(last_name) is not null
+            and trim(last_name) <> ''
+            and trim(state) is not null
+            and trim(state) <> ''
+            and trim(city) is not null
+            and trim(city) <> ''
+            and trim(office_type) is not null
+            and trim(office_type) <> ''
         qualify
             -- qualify over the techspeed_candidate_code, and order by the source file
             -- url in ascending order. This is to ensure that we only keep the record
@@ -219,7 +231,6 @@ with
                 partition by techspeed_candidate_code order by _ab_source_file_url asc
             )
             = 1
-            and techspeed_candidate_code != '________'  -- account for case where all fields are null
     ),
     -- deduplicate on phone number, and order by the source file url
     -- in ascending order. This is to ensure that we only keep the record the
