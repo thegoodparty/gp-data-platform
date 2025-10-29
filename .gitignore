@@ -41,3 +41,6 @@ logs/
 
 # Local environment setup scripts
 dbt/setup_env.sh
+
+#debug scripts
+dbt/project/models/intermediate/techspeed_to_hubspot/int__techspeed_viability_scoring_DEBUG.py
