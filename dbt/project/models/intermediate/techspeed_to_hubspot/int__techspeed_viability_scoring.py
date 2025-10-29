@@ -136,10 +136,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .otherwise("Non-Partisan")
         .alias("properties_partisan_np"),
         col("type").alias("properties_type"),
-        when(col("type") == "incumbent", "Incumbent")
-        .when(col("type") == "challenger", "Challenger")
-        .otherwise("Open")
-        .alias("properties_incumbent"),
+        col("candidate_type").alias("properties_incumbent"),
         col("number_of_seats_available").alias("properties_seats_available"),
         when(col("number_of_candidates").isNull(), None)
         .when(col("number_of_candidates") == "", None)
@@ -184,7 +181,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             "is_incumbent",
             when(col("properties_incumbent") == "Incumbent", True)
             .when(col("properties_incumbent") == "Challenger", False)
-            .otherwise(None),
+            .otherwise(False),  # Treat NULL/unknown as non-incumbent
         )
         .withColumn(
             "open_seat",
