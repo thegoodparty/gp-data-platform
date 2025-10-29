@@ -22,6 +22,7 @@ airflow/logs
 dbt/*/target/
 dbt/*/dbt_packages/
 dbt/*/logs/
+dbt/project/dbt_internal_packages/
 # end dbt Cloud content
 
 # ignore .venv
@@ -35,5 +36,14 @@ dbt/*/logs/
 tmp_data/
 CLAUDE.md
 
-# Logs (including root level)
+# Logs (including root level) and things I don't want to commit
 logs/
+
+# Local environment setup scripts
+dbt/setup_env.sh
+
+#debug scripts
+dbt/project/models/intermediate/techspeed_to_hubspot/int__techspeed_viability_scoring_DEBUG.py
+
+# Disabled model files (kept locally for reference, not in repo)
+*.disabled
