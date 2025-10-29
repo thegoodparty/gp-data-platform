@@ -119,6 +119,7 @@ with
             current_timestamp as added_to_mart_at,
             _ab_source_file_url
         from {{ ref("int__techspeed_candidates_fuzzy_deduped") }}
+        -- remove candidates that have already been found in ballotready
         where
             fuzzy_matched_hubspot_candidate_code not in (
                 select fuzzy_matched_hubspot_candidate_code
