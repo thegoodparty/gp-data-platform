@@ -107,7 +107,6 @@ with
             `Residence_Addresses_Zip`,
             `Residence_Addresses_ZipPlus4`,
             `Residence_HHParties_Description`,
-            cast(true as boolean) as `Registered_Voter`,  -- always true for L2 voters
             `Voters_SequenceOddEven` as `SequenceOddEven`,
             `Voters_SequenceZigZag` as `SequenceZigZag`,
             `Voters_StateVoterID` as `StateVoterID`,
@@ -514,7 +513,6 @@ with
             tbl_updated.`Residence_Addresses_Zip`,
             tbl_updated.`Residence_Addresses_ZipPlus4`,
             tbl_updated.`Residence_HHParties_Description`,
-            tbl_updated.`Registered_Voter`,
             tbl_updated.`SequenceOddEven`,
             tbl_updated.`SequenceZigZag`,
             tbl_updated.`StateVoterID`,
