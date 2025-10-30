@@ -9,6 +9,10 @@ ALTER TABLE public."DistrictVoter" ADD CONSTRAINT DistrictVoter_pkey PRIMARY KEY
 ALTER TABLE public."DistrictVoter" ADD CONSTRAINT DistrictVoter_district_id_fkey FOREIGN KEY (district_id) REFERENCES public."District"(id) ON UPDATE CASCADE ON DELETE CASCADE;
 ALTER TABLE public."DistrictVoter" ADD CONSTRAINT DistrictVoter_voter_id_fkey FOREIGN KEY (voter_id) REFERENCES public."Voter"(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
+-- indexes used for incremental loading
+CREATE INDEX "Voter_State_idx" ON public."Voter" USING btree ("State");
+CREATE INDEX "Voter_State_updated_at_idx" ON public."Voter" USING btree ("State", "updated_at");
+
 -- indexes
 CREATE INDEX "Voter_Law_Enforcement_District_idx" ON public."Voter" USING btree ("Law_Enforcement_District");
 CREATE INDEX "Voter_Road_Maintenance_District_idx" ON public."Voter" USING btree ("Road_Maintenance_District");
@@ -37,7 +41,6 @@ CREATE INDEX "Voter_Proposed_Elementary_School_District_idx" ON public."Voter" U
 CREATE INDEX "Voter_Facilities_Improvement_District_idx" ON public."Voter" USING btree ("Facilities_Improvement_District");
 CREATE INDEX "Voter_Congressional_Township_idx" ON public."Voter" USING btree ("Congressional_Township");
 CREATE INDEX "Voter_Water_Agency_idx" ON public."Voter" USING btree ("Water_Agency");
-CREATE INDEX "Voter_State_idx" ON public."Voter" USING btree ("State");
 CREATE INDEX "Voter_Community_Planning_Area_idx" ON public."Voter" USING btree ("Community_Planning_Area");
 CREATE INDEX "Voter_VotingPerformanceMinorElection_idx" ON public."Voter" USING btree ("VotingPerformanceMinorElection");
 CREATE INDEX "Voter_Water_Public_Utility_District_idx" ON public."Voter" USING btree ("Water_Public_Utility_District");
@@ -254,7 +257,6 @@ CREATE INDEX "Voter_Rural_Service_District_idx" ON public."Voter" USING btree ("
 CREATE INDEX "Voter_Library_District_idx" ON public."Voter" USING btree ("Library_District");
 CREATE INDEX "Voter_Borough_Ward_idx" ON public."Voter" USING btree ("Borough_Ward");
 CREATE INDEX "Voter_Aquatic_District_idx" ON public."Voter" USING btree ("Aquatic_District");
-CREATE INDEX "Voter_Registered_Voter_idx" ON public."Voter" USING btree ("Registered_Voter");
 CREATE INDEX "Voter_Unified_School_SubDistrict_idx" ON public."Voter" USING btree ("Unified_School_SubDistrict");
 CREATE INDEX "Voter_Levee_District_idx" ON public."Voter" USING btree ("Levee_District");
 CREATE INDEX "Voter_Flood_Control_Zone_idx" ON public."Voter" USING btree ("Flood_Control_Zone");
