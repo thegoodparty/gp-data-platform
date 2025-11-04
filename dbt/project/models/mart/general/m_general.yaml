@@ -251,6 +251,86 @@ models:
           config:
             where: "prod_db_user_id is not null"
 
+  - name: m_general__candidate_v2
+    description: >
+      This model creates the candidate v2 object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidate_id
+        description: Internally generated unique identifier for candidates
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: hubspot_contact_id
+        description: Unique identifier from HubSpot for the contact
+        tests:
+          - not_null
+      - name: prod_db_user_id
+        description: Identifier for the candidate in the production database
+      - name: candidate_id_tier
+        description: Internal confidence/priority tier
+        data_type: integer
+      - name: first_name
+        description: Candidate's given name
+        data_type: varchar
+      - name: last_name
+        description: Candidate's family name
+        data_type: varchar
+      - name: full_name
+        description: Full campaign or legal name
+        data_type: varchar
+      - name: birth_date
+        description: Candidate's date of birth
+        data_type: date
+      - name: state
+        description: U.S. state for the candidate
+        data_type: varchar
+      - name: email
+        description: Primary contact email
+        data_type: varchar
+      - name: phone_number
+        description: Primary contact phone number
+        data_type: varchar
+      - name: street_address
+        description: Candidate's address (if available)
+        data_type: varchar
+      - name: website_url
+        description: Candidate's campaign website
+        data_type: varchar
+      - name: linkedin_url
+        description: Candidate's LinkedIn profile
+        data_type: varchar
+      - name: twitter_handle
+        description: Candidate's Twitter (X) handle
+        data_type: varchar
+      - name: facebook_url
+        description: Candidate's Facebook page
+        data_type: varchar
+      - name: instagram_handle
+        description: Candidate's Instagram handle
+        data_type: varchar
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - relationships:
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "contact_id"
+            column_name: hubspot_contact_id
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+
   - name: m_general__contest
     description: >
       This model creates the contest object in the mart layer using the hubspot data
