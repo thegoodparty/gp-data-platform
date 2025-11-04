@@ -272,6 +272,14 @@ models:
       - name: candidate_id_tier
         description: Internal confidence/priority tier
         data_type: integer
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: null
+                inclusive: true
+              config:
+                where: "candidate_id_tier is not null"
       - name: first_name
         description: Candidate's given name
         data_type: varchar
@@ -284,12 +292,35 @@ models:
       - name: birth_date
         description: Candidate's date of birth
         data_type: date
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "birth_date <= current_date()"
+                config:
+                  where: "birth_date is not null"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "birth_date >= date('1900-01-01')"
+                config:
+                  where: "birth_date is not null"
       - name: state
         description: U.S. state for the candidate
         data_type: varchar
+        tests:
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+              config:
+                where: "state is not null"
       - name: email
         description: Primary contact email
         data_type: varchar
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+              config:
+                where: "email is not null"
       - name: phone_number
         description: Primary contact phone number
         data_type: varchar
@@ -299,15 +330,33 @@ models:
       - name: website_url
         description: Candidate's campaign website
         data_type: varchar
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^https?://.*
+              config:
+                where: "website_url is not null"
       - name: linkedin_url
         description: Candidate's LinkedIn profile
         data_type: varchar
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^https?://.*
+              config:
+                where: "linkedin_url is not null"
       - name: twitter_handle
         description: Candidate's Twitter (X) handle
         data_type: varchar
       - name: facebook_url
         description: Candidate's Facebook page
         data_type: varchar
+        tests:
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^https?://.*
+              config:
+                where: "facebook_url is not null"
       - name: instagram_handle
         description: Candidate's Instagram handle
         data_type: varchar
@@ -325,11 +374,24 @@ models:
             to: ref('int__hubspot_contacts_w_companies')
             field: "contact_id"
             column_name: hubspot_contact_id
+      - relationships:
+          arguments:
+            to: ref('stg_airbyte_source__gp_api_db_user')
+            field: "id"
+            column_name: prod_db_user_id
+          config:
+            where: "prod_db_user_id is not null"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
             config:
               where: "updated_at is not null and created_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+            config:
+              error_if: ">0"
+              warn_if: ">0"
 
   - name: m_general__contest
     description: >
