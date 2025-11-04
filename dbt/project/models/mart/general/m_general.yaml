@@ -449,3 +449,36 @@ models:
             expression: "updated_at >= created_at"
             config:
               where: "updated_at is not null and created_at is not null"
+
+  - name: m_general__election_stage
+    description: >
+      This model creates the election stage object in the mart layer using DDHQ data
+    columns:
+      - name: gp_election_stage_id
+        description: Internally generated unique identifier for election stages
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        tests:
+          - not_null
+      - name: election_stage
+        description: Type of election stage (e.g., primary, general, runoff)
+        data_type: varchar
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_type: date
+      - name: ddhq_race_name
+        description: Name of the race from DDHQ
+        data_type: varchar
+      - name: total_votes_cast
+        description: Total votes cast in the election stage
+        data_type: bigint
+      - name: _airbyte_extracted_at
+        description: Timestamp when the record was extracted from Airbyte
+        tests:
+          - not_null
