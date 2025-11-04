@@ -74,5 +74,7 @@ models:
         description: "Year of the election"
         tests:
           - dbt_utils.accepted_range:
-              min_value: 2010
-              max_value: 2199
+              arguments:
+                min_value: 2010
+                max_value: 2199
+                inclusive: true
