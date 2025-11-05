@@ -13,7 +13,8 @@ with
         select
             {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
             as gp_election_stage_id,
-            -- for gp_election_id, need to roll up all election stages into a election
+            -- TODO: for gp_election_id, need to roll up all election stages into a
+            -- election
             -- br_race_id, -- will require matching br with ddhq data
             tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_election_type as election_stage,
