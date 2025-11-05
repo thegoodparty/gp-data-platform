@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: int__gp_ai_start_election_match
+    description: Intermediate model that starts the election match process for GP AI
+    columns:
+      - name: id
+        description: Unique identifier for the election match process
+        tests:
+          - not_null
+          - unique
