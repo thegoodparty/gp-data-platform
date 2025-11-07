@@ -122,8 +122,10 @@ def _create_election_match_request(
         "Content-Type": "application/json",
     }
     payload = {
-        "hubspot_table": f"{schema}.{candidacy_table_name}",
-        "ddhq_table": f"{schema}.{election_results_table_name}",
+        # "hubspot_table": f"{schema}.{candidacy_table_name}",
+        # "ddhq_table": f"{schema}.{election_results_table_name}",
+        "hubspot_table": f"{candidacy_table_name}",
+        "ddhq_table": f"{election_results_table_name}",
         "embedding_batch_size": 100,
         "embedding_max_workers": 80,
         "matching_batch_size": 1000,
@@ -156,18 +158,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # get dbt configs
-    # dbt_cloud_env_type = dbt.config.get("dbt_cloud_env_type")  # may don't need this, since will write to dev anyways
-    # maybe just use dbt.schema
     gp_ai_api_key = dbt.config.get("gp_ai_api_key")
     gp_ai_url = dbt.config.get("gp_ai_url")
 
     # make the following references to maintain lineage
     candidacy_table_name = "m_general__candidacy"
     election_results_table_name = "stg_airbyte_source__ddhq_gdrive_election_results"
-    candidacy_table = dbt.ref(
+    candidacy_table: DataFrame = dbt.ref(
         "m_general__candidacy"
     )  # dbt ref only supports string literals
-    election_results_table = dbt.ref(
+    election_results_table: DataFrame = dbt.ref(
         "stg_airbyte_source__ddhq_gdrive_election_results"
     )  # dbt ref only supports string literals
 

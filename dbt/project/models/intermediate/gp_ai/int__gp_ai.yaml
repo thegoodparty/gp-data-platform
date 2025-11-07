@@ -6,7 +6,6 @@ models:
     config:
       gp_ai_api_key: "{{ env_var('DBT_GP_AI_API_KEY') }}"
       gp_ai_url: "{{ env_var('DBT_GP_AI_URL') }}"
-      # dbt_cloud_env_type: "{{ env_var('DBT_CLOUD_ENVIRONMENT_TYPE') }}"
     columns:
       - name: run_id
         description: Unique identifier for the election match process
