@@ -3,9 +3,22 @@ version: 2
 models:
   - name: int__gp_ai_start_election_match
     description: Intermediate model that starts the election match process for GP AI
+    config:
+      gp_ai_api_key: "{{ env_var('DBT_GP_AI_API_KEY') }}"
+      gp_ai_url: "{{ env_var('DBT_GP_AI_URL') }}"
+      # dbt_cloud_env_type: "{{ env_var('DBT_CLOUD_ENVIRONMENT_TYPE') }}"
     columns:
-      - name: id
+      - name: run_id
         description: Unique identifier for the election match process
         tests:
           - not_null
           - unique
+      - name: s3_output.files.parquet
+        description: S3 path to the parquet output file
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_like(run_id, '^[0-9]{8}_[0-9]{6}$')"
