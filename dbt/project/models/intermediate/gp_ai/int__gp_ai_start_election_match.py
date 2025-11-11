@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 from pyspark.sql import DataFrame, SparkSession
@@ -61,6 +62,8 @@ RESPONSE_DATA_SCHEMA = StructType(
             ),
             True,
         ),
+        StructField("raw_response", StringType(), True),
+        StructField("created_at", TimestampType(), True),
     ]
 )
 
@@ -122,10 +125,10 @@ def _create_election_match_request(
         "Content-Type": "application/json",
     }
     payload = {
-        # "hubspot_table": f"{schema}.{candidacy_table_name}",
-        # "ddhq_table": f"{schema}.{election_results_table_name}",
-        "hubspot_table": f"{candidacy_table_name}",
-        "ddhq_table": f"{election_results_table_name}",
+        "hubspot_table": f"{schema}.{candidacy_table_name}",
+        "ddhq_table": f"{schema}.{election_results_table_name}",
+        # "hubspot_table": f"{candidacy_table_name}",
+        # "ddhq_table": f"{election_results_table_name}",
         "embedding_batch_size": 100,
         "embedding_max_workers": 80,
         "matching_batch_size": 1000,
@@ -138,6 +141,8 @@ def _create_election_match_request(
     response_data["estimated_completion"] = datetime.strptime(
         response_data["estimated_completion"], "%Y-%m-%dT%H:%M:%S.%fZ"
     )
+    response_data["created_at"] = datetime.now(ZoneInfo("UTC"))
+    response_data["raw_response"] = response.json()
     return response_data
 
 
@@ -154,7 +159,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         unique_key="run_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
-        tags=["intermediate", "gp_ai", "election_match"],
+        tags=["intermediate", "gp_ai", "election_match", "start"],
     )
 
     # get dbt configs
@@ -178,25 +183,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
             0
         ][0]
         max_updated_at_election_results = election_results_table.agg(
-            {"updated_at": "max"}
+            {"_airbyte_extracted_at": "max"}
         ).collect()[0][0]
         max_updated_source = max(
             max_updated_at_candidacy, max_updated_at_election_results
         )
 
-        # get the max run_id from this table
+        # get the max created_at from this table
         this_table: DataFrame = session.table(f"{dbt.this}")
-        max_run_id = this_table.agg({"run_id": "max"}).collect()[0][0]
-        max_updated_target = (
-            datetime.strptime(max_run_id, "%Y%m%d_%H%M%S") if max_run_id else None
-        )
+        max_created_at = this_table.agg({"created_at": "max"}).collect()[0][0]
 
-        if max_updated_target is None or max_updated_source > max_updated_target:
+        if max_created_at is None or max_updated_source > max_created_at:
             # start the election match process
             response_data = _create_election_match_request(
                 gp_ai_url=gp_ai_url,
                 gp_ai_api_key=gp_ai_api_key,
-                schema=dbt.this.schema,
+                # schema=dbt.this.schema,
+                schema="dbt",
                 candidacy_table_name=candidacy_table_name,
                 election_results_table_name=election_results_table_name,
             )
@@ -212,7 +215,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     response_data = _create_election_match_request(
         gp_ai_url=gp_ai_url,
         gp_ai_api_key=gp_ai_api_key,
-        schema=dbt.this.schema,
+        # schema=dbt.this.schema,
+        schema="dbt",
         candidacy_table_name=candidacy_table_name,
         election_results_table_name=election_results_table_name,
     )
