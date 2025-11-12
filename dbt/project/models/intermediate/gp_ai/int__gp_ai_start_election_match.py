@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -127,8 +128,6 @@ def _create_election_match_request(
     payload = {
         "hubspot_table": f"{schema}.{candidacy_table_name}",
         "ddhq_table": f"{schema}.{election_results_table_name}",
-        # "hubspot_table": f"{candidacy_table_name}",
-        # "ddhq_table": f"{election_results_table_name}",
         "embedding_batch_size": 100,
         "embedding_max_workers": 80,
         "matching_batch_size": 1000,
@@ -138,11 +137,12 @@ def _create_election_match_request(
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
     response_data = response.json()
+    raw_response_json = json.dumps(response_data)
     response_data["estimated_completion"] = datetime.strptime(
         response_data["estimated_completion"], "%Y-%m-%dT%H:%M:%S.%fZ"
     )
     response_data["created_at"] = datetime.now(ZoneInfo("UTC"))
-    response_data["raw_response"] = response.json()
+    response_data["raw_response"] = raw_response_json
     return response_data
 
 

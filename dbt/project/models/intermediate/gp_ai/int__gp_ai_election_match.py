@@ -30,7 +30,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="append",
-        unique_key=["hubspot_gp_candidacy_id"],
+        unique_key=["gp_candidacy_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "gp_ai", "election_match", "fetch"],
@@ -96,8 +96,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 )
 
         # trigger a cache to ensure the parquet file is loaded
-        parquet_df.count()
         parquet_df.cache()
+        parquet_df.count()
     except AnalysisException:
         # parquet file not found (e.g., PATH_NOT_FOUND error), return empty dataframe
         # This can happen when the election match job hasn't completed yet
