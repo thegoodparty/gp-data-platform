@@ -29,7 +29,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
-        incremental_strategy="append",
+        incremental_strategy="merge",
         unique_key=["gp_candidacy_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
