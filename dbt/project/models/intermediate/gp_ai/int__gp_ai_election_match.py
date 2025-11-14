@@ -1,6 +1,7 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit, row_number
 from pyspark.sql.types import (
+    IntegerType,
     StringType,
     StructField,
     StructType,
@@ -13,8 +14,9 @@ from pyspark.sql.window import Window
 EMPTY_SCHEMA = StructType(
     [
         StructField("gp_candidacy_id", StringType(), True),
-        StructField("ddhq_race_id", StringType(), True),
-        StructField("ddhq_candidate_id", StringType(), True),
+        StructField("ddhq_race_id", IntegerType(), True),
+        StructField("ddhq_candidate_id", IntegerType(), True),
+        StructField("ddhq_election_type", StringType(), True),
         StructField("run_id", StringType(), True),
         StructField("has_match", StringType(), True),
     ]
