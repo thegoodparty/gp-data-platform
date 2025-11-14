@@ -1,6 +1,10 @@
+/*
+Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
+DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
+*/
 {{
     config(
-        materialized="incremental",
+        materialized="table",
         unique_key="gp_candidacy_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
@@ -181,9 +185,11 @@ with
             on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
-        {% if is_incremental() %}
-            where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
-        {% endif %}
+    -- TODO: add incrementality once DDHQ matches are incremental
+    -- see note at start of file for why incremental is not supported
+    -- {% if is_incremental() %}
+    -- where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
+    -- {% endif %}
     )
 select *
 from candidacies
