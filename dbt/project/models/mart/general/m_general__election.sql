@@ -13,23 +13,6 @@ with
         select
             -- Identifiers
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
-            /*
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "tbl_contest.official_office_name",
-                        "tbl_contest.candidate_office",
-                        "tbl_contest.office_level",
-                        "tbl_contest.office_type",
-                        "tbl_contest.state",
-                        "tbl_contest.city",
-                        "tbl_contest.district",
-                        "tbl_contest.seat_name",
-                        "tbl_contest.election_date"
-                    ]
-                )
-            }} as gp_election_id,
-            */
             tbl_contest.official_office_name,
             tbl_contest.candidate_office,
             tbl_contest.office_level,

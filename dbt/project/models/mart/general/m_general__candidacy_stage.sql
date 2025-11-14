@@ -24,7 +24,12 @@ with
             -- ddhq_candidacy_id, -- maybe some combination of `ddhq_candidate_id` and
             -- `ddhq_race_id`
             tbl_contacts.gp_candidacy_id,
-            -- tbl_ddhq_matches.gp_election_stage_id,
+            tbl_ddhq_election_results_source.race_id,
+            {{
+                generate_salted_uuid(
+                    fields=["tbl_ddhq_election_results_source.race_id"]
+                )
+            }} as gp_election_stage_id,
             -- as candidacy_stage_result,
             tbl_ddhq_matches.ddhq_candidate,
             tbl_ddhq_matches.ddhq_candidate_party,
