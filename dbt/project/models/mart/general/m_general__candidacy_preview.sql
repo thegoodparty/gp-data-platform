@@ -89,7 +89,7 @@ with
 
             -- Assessments
             viability_scores.viability_rating_2_0 as viability_score,
-            cast(cast(tbl_contacts.win_number as float) as int) as win_number,
+            cast(cast(tbl_contacts.win_number as double) as bigint) as win_number,
             tbl_contacts.win_number_model,
 
             -- DDHQ matches
