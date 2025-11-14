@@ -13,6 +13,23 @@ with
         select
             -- Identifiers
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
+            /*
+            {{
+                generate_salted_uuid(
+                    fields=[
+                        "tbl_contest.official_office_name",
+                        "tbl_contest.candidate_office",
+                        "tbl_contest.office_level",
+                        "tbl_contest.office_type",
+                        "tbl_contest.state",
+                        "tbl_contest.city",
+                        "tbl_contest.district",
+                        "tbl_contest.seat_name",
+                        "tbl_contest.election_date"
+                    ]
+                )
+            }} as gp_election_id,
+            */
             tbl_contest.official_office_name,
             tbl_contest.candidate_office,
             tbl_contest.office_level,
@@ -34,23 +51,7 @@ with
             tbl_contest.updated_at
         from {{ ref("int__hubspot_contest") }} tbl_contest
         where
-            tbl_contest.official_office_name is not null
-            and tbl_contest.official_office_name <> ''
-            and tbl_contest.candidate_office is not null
-            and tbl_contest.candidate_office <> ''
-            and tbl_contest.office_level is not null
-            and tbl_contest.office_level <> ''
-            and tbl_contest.office_type is not null
-            and tbl_contest.office_type <> ''
-            and tbl_contest.state is not null
-            and tbl_contest.state <> ''
-            and tbl_contest.city is not null
-            and tbl_contest.city <> ''
-            and tbl_contest.district is not null
-            and tbl_contest.district <> ''
-            and tbl_contest.seat_name is not null
-            and tbl_contest.seat_name <> ''
-            and tbl_contest.election_date is not null
+            1 = 1
             {% if is_incremental() %}
                 and tbl_contest.updated_at >= (select max(updated_at) from {{ this }})
             {% endif %}

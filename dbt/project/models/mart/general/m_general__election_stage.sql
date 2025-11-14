@@ -13,8 +13,7 @@ with
         select
             {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
             as gp_election_stage_id,
-            -- TODO: for gp_election_id, need to roll up all election stages into a
-            -- election
+            {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
             -- br_race_id, -- will require matching br with ddhq data
             tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_election_type as election_stage,
@@ -32,6 +31,12 @@ with
             on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
+        left join
+            {{ ref("m_general__candidacy") }} as tbl_candidacy
+            on tbl_candidacy.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
+        left join
+            {{ ref("int__hubspot_contest") }} as tbl_contest
+            on tbl_contest.contact_id = tbl_candidacy.contact_id
         where
             1 = 1
             and tbl_ddhq_matches.ddhq_race_id is not null
@@ -45,6 +50,14 @@ with
                 partition by gp_election_stage_id order by _airbyte_extracted_at desc
             )
             = 1
+    ),
+    elections_with_gp_election_id as (
+        select *
+        from elections
+        where
+            gp_election_id
+            in (select gp_election_id from {{ ref("m_general__election") }})
     )
+
 select *
-from elections
+from elections_with_gp_election_id
