@@ -1,6 +1,7 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit, row_number
 from pyspark.sql.types import (
+    BooleanType,
     IntegerType,
     StringType,
     StructField,
@@ -18,7 +19,7 @@ EMPTY_SCHEMA = StructType(
         StructField("ddhq_candidate_id", IntegerType(), True),
         StructField("ddhq_election_type", StringType(), True),
         StructField("run_id", StringType(), True),
-        StructField("has_match", StringType(), True),
+        StructField("has_match", BooleanType(), True),
     ]
 )
 
