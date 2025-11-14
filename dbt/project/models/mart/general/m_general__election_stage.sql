@@ -19,7 +19,8 @@ with
             tbl_ddhq_matches.ddhq_election_type as election_stage,
             tbl_ddhq_matches.ddhq_date as ddhq_election_stage_date,
             tbl_ddhq_matches.ddhq_race_name,
-            tbl_ddhq_election_results_source.votes as total_votes_cast,
+            tbl_ddhq_election_results_source.total_number_of_ballots_in_race
+            as total_votes_cast,
             -- TODO: add total_votes_counted, reporting_percentage
             tbl_ddhq_election_results_source._airbyte_extracted_at
         from

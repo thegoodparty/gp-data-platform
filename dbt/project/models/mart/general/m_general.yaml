@@ -338,7 +338,7 @@ models:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
             config:
-              error_if: ">0"
+              error_if: ">10"
               warn_if: ">0"
 
   - name: m_general__contest

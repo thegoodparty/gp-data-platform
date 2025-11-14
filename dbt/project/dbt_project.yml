@@ -6,6 +6,9 @@ config-version: 2
 # This setting configures which "profile" dbt uses for this project.
 profile: "default"
 
+dbt-cloud:
+    project-id: 70471823438007
+
 # These configurations specify where dbt should look for different types of files.
 # The `model-paths` config, for example, states that models in this project can be
 # found in the "models/" directory. You probably won't need to change these!
