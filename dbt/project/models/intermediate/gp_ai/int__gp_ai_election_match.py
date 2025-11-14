@@ -12,9 +12,11 @@ from pyspark.sql.window import Window
 
 EMPTY_SCHEMA = StructType(
     [
+        StructField("gp_candidacy_id", StringType(), True),
         StructField("ddhq_race_id", StringType(), True),
         StructField("ddhq_candidate_id", StringType(), True),
         StructField("run_id", StringType(), True),
+        StructField("has_match", StringType(), True),
     ]
 )
 
