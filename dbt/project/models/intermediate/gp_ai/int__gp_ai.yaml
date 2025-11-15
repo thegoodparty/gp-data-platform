@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: int__gp_ai_start_election_match
+    description: Intermediate model that starts the election match process for GP AI
+    config:
+      gp_ai_api_key: "{{ env_var('DBT_GP_AI_API_KEY') }}"
+      gp_ai_url: "{{ env_var('DBT_GP_AI_URL') }}"
+    columns:
+      - name: run_id
+        description: Unique identifier for the election match process
+        tests:
+          - not_null
+          - unique
+      - name: s3_output.files.parquet
+        description: S3 path to the parquet output file
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_like(run_id, '^[0-9]{8}_[0-9]{6}$')"
+
+  - name: int__gp_ai_election_match
+    description: Intermediate model that fetches and loads the parquet output file from the int__gp_ai_start_election_match model. This model reads the election match results from S3 and loads them into the data warehouse.
+    columns:
+      - name: gp_candidacy_id
+        description: Unique identifier for the candidacy in the HubSpot data
+        data_tests:
+          - not_null
+          - unique
+      - name: run_id
+        description: Unique identifier for the election match process run, linking back to int__gp_ai_start_election_match
+        data_tests:
+          - not_null
+      - name: ddhq_race_id
+        description: Unique identifier for the race in the DDHQ data
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
+      - name: ddhq_candidate_id
+        description: Unique identifier for the candidate in the DDHQ data
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
