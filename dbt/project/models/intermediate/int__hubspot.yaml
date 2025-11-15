@@ -70,3 +70,11 @@ models:
         description: "Office level of the contact"
         tests:
           - not_null
+      - name: election_year
+        description: "Year of the election"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2010
+                max_value: 2199
+                inclusive: true

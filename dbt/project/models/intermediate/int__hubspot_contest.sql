@@ -42,6 +42,7 @@ select
         -- properties_candidate_seat,  # add in once updated in hubspot
         ''
     ) as seat_name,
+    properties_population as population,
 
     -- election context
     properties_number_opponents as number_of_opponents,
@@ -49,6 +50,8 @@ select
     properties_uncontested as uncontested,
     properties_open_seat as open_seat,
     properties_start_date as term_start_date,
+    properties_election_date as election_date,
+    cast(left(properties_election_date, 4) as integer) as election_year,
 
     -- election dates
     properties_filing_deadline as filing_deadline,
@@ -90,7 +93,6 @@ select
     `createdAt` as created_at
 
 -- TODO: add term_length_years when available
--- TODO: add tests
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     1 = 1

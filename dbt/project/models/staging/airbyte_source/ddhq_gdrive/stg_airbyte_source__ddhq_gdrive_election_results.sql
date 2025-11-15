@@ -10,17 +10,21 @@ with
             {{ adapter.quote("_airbyte_generation_id") }},
             cast({{ adapter.quote("date") }} as date) as date,
             {{ adapter.quote("votes") }},
-            try_cast({{ adapter.quote("race_id") }} as int) as race_id,
+            cast(try_cast({{ adapter.quote("race_id") }} as float) as int) as race_id,
             {{ adapter.quote("candidate") }},
             {{ adapter.quote("is_winner") }},
             {{ adapter.quote("race_name") }},
-            try_cast({{ adapter.quote("candidate_id") }} as int) as candidate_id,
+            cast(
+                try_cast({{ adapter.quote("candidate_id") }} as float) as int
+            ) as candidate_id,
             {{ adapter.quote("election_type") }},
             cast({{ adapter.quote("is_uncontested") }} as boolean) as is_uncontested,
             {{ adapter.quote("candidate_party") }},
             {{ adapter.quote("_ab_source_file_url") }},
-            try_cast(
-                {{ adapter.quote("number_of_seats_in_election") }} as int
+            cast(
+                try_cast(
+                    {{ adapter.quote("number_of_seats_in_election") }} as int
+                ) as float
             ) as number_of_seats_in_election,
             {{ adapter.quote("_ab_source_file_last_modified") }},
             {{ adapter.quote("total_number_of_ballots_in_race") }}
