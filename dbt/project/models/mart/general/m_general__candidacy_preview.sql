@@ -1,6 +1,10 @@
+/*
+Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
+DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
+*/
 {{
     config(
-        materialized="incremental",
+        materialized="table",
         unique_key="gp_candidacy_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
@@ -170,8 +174,7 @@ with
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
             on tbl_contacts.company_id = viability_scores.id
         left join
-            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251112") }}
-            as tbl_ddhq_matches
+            {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("int__hubspot_contest") }} as tbl_contest
@@ -182,9 +185,11 @@ with
             on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
-        {% if is_incremental() %}
-            where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
-        {% endif %}
+    -- TODO: add incrementality once DDHQ matches are incremental
+    -- see note at start of file for why incremental is not supported
+    -- {% if is_incremental() %}
+    -- where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
+    -- {% endif %}
     )
 select *
 from candidacies
