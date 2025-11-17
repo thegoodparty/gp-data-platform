@@ -54,6 +54,6 @@ select *
 from elections
 qualify
     row_number() over (
-        partition by gp_election_id order by has_ddhq_match asc, updated_at desc
+        partition by gp_election_id order by has_ddhq_match desc, updated_at desc
     )
     = 1

@@ -23,8 +23,8 @@ with
             {{ adapter.quote("_ab_source_file_url") }},
             cast(
                 try_cast(
-                    {{ adapter.quote("number_of_seats_in_election") }} as int
-                ) as float
+                    {{ adapter.quote("number_of_seats_in_election") }} as float
+                ) as int
             ) as number_of_seats_in_election,
             {{ adapter.quote("_ab_source_file_last_modified") }},
             {{ adapter.quote("total_number_of_ballots_in_race") }}
