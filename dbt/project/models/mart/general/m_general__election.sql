@@ -30,9 +30,19 @@ with
             tbl_contest.uncontested as is_uncontested,
             tbl_contest.number_of_opponents,
             tbl_contest.open_seat,
+            case
+                when tbl_ddhq_matches.ddhq_race_id is not null then true else false
+            end as has_ddhq_match,
             tbl_contest.created_at,
             tbl_contest.updated_at
-        from {{ ref("int__hubspot_contest") }} tbl_contest
+        from {{ ref("int__hubspot_contest") }} as tbl_contest
+        left join
+            {{ ref("m_general__candidacy") }} as tbl_candidacy
+            on tbl_candidacy.contact_id = tbl_contest.contact_id
+        left join
+            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
+            as tbl_ddhq_matches
+            on tbl_ddhq_matches.gp_candidacy_id = tbl_candidacy.gp_candidacy_id
         where
             1 = 1
             {% if is_incremental() %}
@@ -42,4 +52,8 @@ with
 
 select *
 from elections
-qualify row_number() over (partition by gp_election_id order by updated_at desc) = 1
+qualify
+    row_number() over (
+        partition by gp_election_id order by has_ddhq_match asc, updated_at desc
+    )
+    = 1

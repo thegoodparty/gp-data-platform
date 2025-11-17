@@ -24,14 +24,16 @@ with
             -- ddhq_candidacy_id, -- maybe some combination of `ddhq_candidate_id` and
             -- `ddhq_race_id`
             tbl_contacts.gp_candidacy_id,
-            tbl_ddhq_election_results_source.race_id,
-            {{
-                generate_salted_uuid(
-                    fields=["tbl_ddhq_election_results_source.race_id"]
-                )
-            }} as gp_election_stage_id,
+            case
+                when tbl_ddhq_matches.ddhq_race_id is not null
+                then
+                    {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
+                else null
+            end as gp_election_stage_id,
             -- as candidacy_stage_result,
             tbl_ddhq_matches.ddhq_candidate,
+            tbl_ddhq_matches.ddhq_candidate_id,
+            tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_candidate_party,
             tbl_ddhq_matches.ddhq_is_winner,
             tbl_ddhq_matches.llm_confidence as ddhq_llm_confidence,
@@ -39,7 +41,11 @@ with
             tbl_ddhq_matches.top_10_candidates as ddhq_top_10_candidates,
             tbl_ddhq_matches.has_match as ddhq_has_match,
             tbl_ddhq_election_results_source.votes as votes_received,
-            -- votes_percentage
+            -- need to confirm logic for votes_percentage:
+            -- tbl_ddhq_election_results_source.votes /
+            -- tbl_ddhq_election_results_source.total_number_of_ballots_in_race as
+            -- votes_percentage,
+            tbl_ddhq_election_results_source.date as ddhq_election_stage_date,
             tbl_contacts.created_at,
             tbl_contacts.updated_at
         from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts

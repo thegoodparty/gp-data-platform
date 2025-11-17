@@ -14,6 +14,7 @@ with
             {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
             as gp_election_stage_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
+            tbl_contest.contact_id as hubspot_contact_id,
             -- br_race_id, -- will require matching br with ddhq data
             tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_election_type as election_stage,
@@ -53,11 +54,10 @@ with
             = 1
     ),
     elections_with_gp_election_id as (
-        select *
-        from elections
-        where
-            gp_election_id
-            in (select gp_election_id from {{ ref("m_general__election") }})
+        select * from elections
+    -- where
+    -- gp_election_id
+    -- in (select gp_election_id from {{ ref("m_general__election") }})
     )
 
 select *
