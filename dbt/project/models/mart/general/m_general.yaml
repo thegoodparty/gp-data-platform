@@ -251,6 +251,183 @@ models:
           config:
             where: "prod_db_user_id is not null"
 
+  - name: m_general__candidacy_stage
+    description: >
+      This model creates the candidacy stage object in the mart layer using DDHQ data and matches
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Internally generated unique identifier for candidacy stages
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidacy_id
+        description: Identifier to link to candidacy
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__hubspot_contacts_w_companies')
+                field: "gp_candidacy_id"
+      - name: gp_election_stage_id
+        description: Identifier to link to election stage
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_general__election_stage')
+                field: gp_election_stage_id
+                config:
+                  where: "gp_election_stage_id is not null"
+      - name: ddhq_candidacy_id
+        description: DDHQ candidate identifier
+      - name: ddhq_candidate
+        description: Candidate name from DDHQ
+        data_type: varchar
+      - name: ddhq_race_id
+        description: DDHQ candidate identifier
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ddhq_gdrive_election_results')
+                field: "race_id"
+                config:
+                  where: "ddhq_race_id is not null"
+      - name: ddhq_candidate_id
+        description: DDHQ candidate identifier
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ddhq_gdrive_election_results')
+                field: "candidate_id"
+                config:
+                  where: "ddhq_candidate_id is not null"
+      - name: ddhq_candidate_party
+        description: Candidate party from DDHQ
+        data_type: varchar
+      - name: ddhq_is_winner
+        description: Whether the candidate won the election stage
+        data_type: boolean
+      - name: ddhq_llm_confidence
+        description: LLM confidence score for the match
+        data_type: float
+      - name: ddhq_llm_reasoning
+        description: LLM reasoning for the match
+        data_type: varchar
+      - name: ddhq_top_10_candidates
+        description: Top 10 candidate matches from LLM
+        data_type: varchar
+      - name: ddhq_has_match
+        description: Whether a match was found in DDHQ
+        data_type: boolean
+      - name: votes_received
+        description: Votes received by the candidate in the election stage
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+
+  - name: m_general__candidate_v2
+    description: >
+      This model creates the candidate v2 object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidate_id
+        description: Internally generated unique identifier for candidates
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: hubspot_contact_id
+        description: Unique identifier from HubSpot for the contact
+        tests:
+          - not_null
+      - name: prod_db_user_id
+        description: Identifier for the candidate in the production database
+      - name: first_name
+        description: Candidate's given name
+        data_type: varchar
+      - name: last_name
+        description: Candidate's family name
+        data_type: varchar
+      - name: full_name
+        description: Full campaign or legal name
+        data_type: varchar
+      - name: birth_date
+        description: Candidate's date of birth
+        data_type: date
+      - name: state
+        description: U.S. state for the candidate
+        data_type: varchar
+      - name: email
+        description: Primary contact email
+        data_type: varchar
+      - name: phone_number
+        description: Primary contact phone number
+        data_type: varchar
+      - name: street_address
+        description: Candidate's address (if available)
+        data_type: varchar
+      - name: website_url
+        description: Candidate's campaign website
+        data_type: varchar
+      - name: linkedin_url
+        description: Candidate's LinkedIn profile
+        data_type: varchar
+      - name: twitter_handle
+        description: Candidate's Twitter (X) handle
+        data_type: varchar
+      - name: facebook_url
+        description: Candidate's Facebook page
+        data_type: varchar
+      - name: instagram_handle
+        description: Candidate's Instagram handle
+        data_type: varchar
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - relationships:
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "contact_id"
+            column_name: hubspot_contact_id
+      - relationships:
+          arguments:
+            to: ref('stg_airbyte_source__gp_api_db_user')
+            field: "id"
+            column_name: prod_db_user_id
+          config:
+            where: "prod_db_user_id is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+            config:
+              error_if: ">10"
+              warn_if: ">0"
+
   - name: m_general__contest
     description: >
       This model creates the contest object in the mart layer using the hubspot data
@@ -264,3 +441,86 @@ models:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+  - name: m_general__election
+    description: >
+      This model creates the election object in the mart layer using the hubspot data
+    columns:
+      - name: gp_election_id
+        description: Internally generated unique identifier for elections
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: population
+        description: Population of candidate's district
+        data_type: bigint
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: null
+                inclusive: true
+              config:
+                where: "population is not null"
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+
+  - name: m_general__election_stage
+    description: >
+      This model creates the election stage object in the mart layer using DDHQ data
+    columns:
+      - name: gp_election_stage_id
+        description: Internally generated unique identifier for election stages
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_election_id
+        description: Identifier to link to election
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_general__election')
+                field: gp_election_id
+                # gp_election_id is a hash of hubspot_contact_id so we filter out where that column is null
+                config:
+                  where: "hubspot_contact_id is not null"
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        tests:
+          - not_null
+      - name: election_stage
+        description: Type of election stage (e.g., primary, general, runoff)
+        data_type: varchar
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_type: date
+      - name: ddhq_race_name
+        description: Name of the race from DDHQ
+        data_type: varchar
+      - name: total_votes_cast
+        description: Total votes cast in the election stage
+        data_type: bigint
+      - name: _airbyte_extracted_at
+        description: Timestamp when the record was extracted from Airbyte
+        tests:
+          - not_null

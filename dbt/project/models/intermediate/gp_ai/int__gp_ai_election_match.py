@@ -16,6 +16,7 @@ EMPTY_SCHEMA = StructType(
     [
         StructField("gp_candidacy_id", StringType(), True),
         StructField("ddhq_race_id", IntegerType(), True),
+        StructField("ddhq_candidate", StringType(), True),
         StructField("ddhq_candidate_id", IntegerType(), True),
         StructField("ddhq_election_type", StringType(), True),
         StructField("run_id", StringType(), True),

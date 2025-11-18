@@ -63,17 +63,17 @@ with
 
             -- DDHQ matches
             tbl_candidacy.gp_candidacy_id,
-            tbl_candidacy.ddhq_candidate,
-            tbl_candidacy.ddhq_race_name,
-            tbl_candidacy.ddhq_candidate_party,
-            tbl_candidacy.ddhq_is_winner,
-            tbl_candidacy.ddhq_race_id,
-            tbl_candidacy.ddhq_election_type,
-            tbl_candidacy.ddhq_date,
-            tbl_candidacy.ddhq_llm_confidence,
-            tbl_candidacy.ddhq_llm_reasoning,
-            tbl_candidacy.ddhq_top_10_candidates,
-            tbl_candidacy.ddhq_has_match,
+            tbl_ddhq_matches.ddhq_candidate,
+            tbl_ddhq_matches.ddhq_race_name,
+            tbl_ddhq_matches.ddhq_candidate_party,
+            tbl_ddhq_matches.ddhq_is_winner,
+            tbl_ddhq_matches.ddhq_race_id,
+            tbl_ddhq_matches.ddhq_election_type,
+            tbl_ddhq_matches.ddhq_date,
+            tbl_ddhq_matches.llm_confidence as ddhq_llm_confidence,
+            tbl_ddhq_matches.llm_reasoning as ddhq_llm_reasoning,
+            tbl_ddhq_matches.top_10_candidates as ddhq_top_10_candidates,
+            tbl_ddhq_matches.has_match as ddhq_has_match,
 
             -- metadata
             tbl_contest.created_at,
@@ -81,8 +81,12 @@ with
 
         from {{ ref("int__hubspot_contest") }} as tbl_contest
         left join
-            {{ ref("m_general__candidacy") }} as tbl_candidacy
-            on tbl_contest.contact_id = tbl_candidacy.contact_id
+            {{ ref("m_general__candidacy_v2") }} as tbl_candidacy
+            on tbl_contest.contact_id = tbl_candidacy.hubspot_contact_id
+        left join
+            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
+            as tbl_ddhq_matches
+            on tbl_candidacy.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         where
             tbl_contest.contest_status is not null
             {% if is_incremental() %}
