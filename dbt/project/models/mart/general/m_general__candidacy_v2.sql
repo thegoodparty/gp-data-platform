@@ -52,7 +52,7 @@ with
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
             on tbl_contacts.company_id = viability_scores.id
         {% if is_incremental() %}
-            where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
+            where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
     )
 select *

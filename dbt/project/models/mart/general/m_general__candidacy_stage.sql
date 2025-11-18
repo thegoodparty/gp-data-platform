@@ -60,7 +60,7 @@ with
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
         {% if is_incremental() %}
-            where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
+            where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
         qualify
             row_number() over (

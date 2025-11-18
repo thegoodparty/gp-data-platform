@@ -45,7 +45,7 @@ with
             and tbl_ddhq_matches.ddhq_candidate_id is not null
             {% if is_incremental() %}
                 and _airbyte_extracted_at
-                > (select max(_airbyte_extracted_at) from {{ this }})
+                >= (select max(_airbyte_extracted_at) from {{ this }})
             {% endif %}
         qualify
             row_number() over (
