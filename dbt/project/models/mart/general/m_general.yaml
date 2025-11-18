@@ -501,6 +501,7 @@ models:
               arguments:
                 to: ref('m_general__election')
                 field: gp_election_id
+                # gp_election_id is a hash of hubspot_contact_id so we filter out where that column is null
                 config:
                   where: "hubspot_contact_id is not null"
       - name: ddhq_race_id
