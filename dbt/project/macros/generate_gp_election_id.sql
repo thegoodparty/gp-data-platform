@@ -11,7 +11,7 @@
                 "coalesce(" ~ prefix ~ "city, '')",
                 "coalesce(" ~ prefix ~ "district, '')",
                 "coalesce(" ~ prefix ~ "seat_name, '')",
-                "coalesce(" ~ prefix ~ "election_date, '')",
+                "coalesce(try_cast(" ~ prefix ~ "election_date as string), '')",
             ]
         )
     }}
