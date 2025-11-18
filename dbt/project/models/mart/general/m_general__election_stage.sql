@@ -34,17 +34,17 @@ with
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
         left join
-            {{ ref("m_general__candidacy") }} as tbl_candidacy
+            {{ ref("m_general__candidacy_v2") }} as tbl_candidacy
             on tbl_candidacy.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("int__hubspot_contest") }} as tbl_contest
-            on tbl_contest.contact_id = tbl_candidacy.contact_id
+            on tbl_contest.contact_id = tbl_candidacy.hubspot_contact_id
         where
             1 = 1
             and tbl_ddhq_matches.ddhq_race_id is not null
             and tbl_ddhq_matches.ddhq_candidate_id is not null
             {% if is_incremental() %}
-                and _airbyte_extracted_at
+                and tbl_ddhq_election_results_source._airbyte_extracted_at
                 >= (select max(_airbyte_extracted_at) from {{ this }})
             {% endif %}
         qualify

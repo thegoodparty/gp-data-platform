@@ -18,6 +18,7 @@ with
             tbl_candidates.gp_candidate_id as gp_candidate_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
             tbl_contacts.product_campaign_id,
+            tbl_contacts.contact_id as hubspot_contact_id,
             tbl_contacts.extra_companies as hubspot_company_ids,
             tbl_contacts.candidate_id_source,
 

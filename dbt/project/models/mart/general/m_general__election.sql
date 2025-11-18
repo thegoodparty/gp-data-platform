@@ -37,8 +37,8 @@ with
             tbl_contest.updated_at
         from {{ ref("int__hubspot_contest") }} as tbl_contest
         left join
-            {{ ref("m_general__candidacy") }} as tbl_candidacy
-            on tbl_candidacy.contact_id = tbl_contest.contact_id
+            {{ ref("m_general__candidacy_v2") }} as tbl_candidacy
+            on tbl_candidacy.hubspot_contact_id = tbl_contest.contact_id
         left join
             {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
             as tbl_ddhq_matches

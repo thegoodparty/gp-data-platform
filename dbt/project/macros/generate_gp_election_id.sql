@@ -3,15 +3,15 @@
     {{
         generate_salted_uuid(
             fields=[
-                prefix ~ "official_office_name",
-                prefix ~ "candidate_office",
-                prefix ~ "office_level",
-                prefix ~ "office_type",
-                prefix ~ "state",
-                prefix ~ "city",
-                prefix ~ "district",
-                prefix ~ "seat_name",
-                prefix ~ "election_date",
+                "coalesce(" ~ prefix ~ "official_office_name, '')",
+                "coalesce(" ~ prefix ~ "candidate_office, '')",
+                "coalesce(" ~ prefix ~ "office_level, '')",
+                "coalesce(" ~ prefix ~ "office_type, '')",
+                "coalesce(" ~ prefix ~ "state, '')",
+                "coalesce(" ~ prefix ~ "city, '')",
+                "coalesce(" ~ prefix ~ "district, '')",
+                "coalesce(" ~ prefix ~ "seat_name, '')",
+                "coalesce(" ~ prefix ~ "election_date, '')",
             ]
         )
     }}
