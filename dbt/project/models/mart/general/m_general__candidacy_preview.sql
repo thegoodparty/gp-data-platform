@@ -31,9 +31,11 @@ the "-- depends_on:" comments are used
     {% set election_match_count_query %}
         select count(*) as cnt from {{ election_match_ref }}
     {% endset %}
-    {% set election_match_count_result = run_query(election_match_count_query) %}
-    {% if election_match_count_result and election_match_count_result.rows | length > 0 %}
-        {% set election_match_count = election_match_count_result.rows[0][0] %}
+    {% if execute %}
+        {% set election_match_count_result = run_query(election_match_count_query) %}
+        {% if election_match_count_result and election_match_count_result.rows | length > 0 %}
+            {% set election_match_count = election_match_count_result.rows[0][0] %}
+        {% endif %}
     {% endif %}
 {% endif %}
 
