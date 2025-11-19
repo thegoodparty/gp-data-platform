@@ -22,6 +22,27 @@ models:
       - name: top_issue_id
         data_tests:
           - not_null
+  - name: stg_airbyte_source__gp_api_db_domain
+    description: raw data load from gp_api_db postgres db from table `domain`
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: name
+      - name: price
+      - name: status
+      - name: created_at
+      - name: payment_id
+      - name: updated_at
+      - name: website_id
+      - name: operation_id
+      - name: email_forwarding_domain_id
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:
@@ -394,6 +415,35 @@ models:
               config:
                 warn_if: ">5"
                 error_if: ">10"
+  - name: stg_airbyte_source__gp_api_db_tcr_compliance
+    description: raw data load from gp_api_db postgres db from table `tcr_compliance`
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: ein
+      - name: email
+      - name: phone
+      - name: status
+      - name: created_at
+      - name: filing_url
+      - name: updated_at
+      - name: campaign_id
+      - name: tdlc_number
+      - name: postalAddress
+      - name: committee_name
+      - name: website_domain
+      - name: peerly_identity_id
+      - name: matching_contact_fields
+      - name: peerly_registration_link
+      - name: peerly_identity_profile_link
+      - name: peerly_10dlc_brand_submission_key
   - name: stg_airbyte_source__gp_api_db_position
     description: raw data load from gp_api_db postgres db from table `position`
     columns:
@@ -421,3 +471,56 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__gp_api_db_website
+    description: raw data load from gp_api_db postgres db from table `website`
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: status
+      - name: content
+      - name: created_at
+      - name: updated_at
+      - name: campaign_id
+      - name: vanity_path
+  - name: stg_airbyte_source__gp_api_db_website_contact
+    description: raw data load from gp_api_db postgres db from table `website_contact`
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: name
+      - name: email
+      - name: phone
+      - name: message
+      - name: created_at
+      - name: updated_at
+      - name: website_id
+      - name: sms_consent
+  - name: stg_airbyte_source__gp_api_db_website_view
+    description: raw data load from gp_api_db postgres db from table `website_view`
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: created_at
+      - name: visitor_id
+      - name: website_id
