@@ -66,6 +66,8 @@ sources:
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
         freshness: null
+      - name: gp_api_db_tcr_compliance
+        description: raw data load from gp_api_db postgres db from table `tcr_compliance`
       - name: gp_api_db_outreach
         description: raw data load from gp_api_db postgres db from table `outreach`
       - name: gp_api_db_path_to_victory
@@ -78,6 +80,12 @@ sources:
         freshness: null
       - name: gp_api_db_user
         description: raw data load from gp_api_db postgres db from table `user`
+      - name: gp_api_db_website
+        description: raw data load from gp_api_db postgres db from table `website`
+      - name: gp_api_db_website_contact
+        description: raw data load from gp_api_db postgres db from table `website_contact`
+      - name: gp_api_db_website_view
+        description: raw data load from gp_api_db postgres db from table `website_view`
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts
