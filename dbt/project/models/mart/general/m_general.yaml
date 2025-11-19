@@ -354,6 +354,10 @@ models:
         description: Unique identifier from HubSpot for the contact
         tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('int__hubspot_contacts_w_companies')
+                field: contact_id
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
       - name: first_name
@@ -404,11 +408,6 @@ models:
         tests:
           - not_null
     tests:
-      - relationships:
-          arguments:
-            to: ref('int__hubspot_contacts_w_companies')
-            field: "contact_id"
-            column_name: hubspot_contact_id
       - relationships:
           arguments:
             to: ref('stg_airbyte_source__gp_api_db_user')
