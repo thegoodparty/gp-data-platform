@@ -1,9 +1,17 @@
+-- depends_on: {{ ref("int__hubspot_contacts_w_companies") }}
+-- depends_on: {{ ref("stg_model_predictions__viability_scores") }}
+-- depends_on: {{ ref("int__hubspot_contest") }}
+-- depends_on: {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+-- depends_on: {{ ref("int__gp_ai_election_match") }}
 /*
 Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
 DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
 
 This model will only return results when int__gp_ai_election_match has a count greater than 0.
 If the count is 0, the model will log a warning and return empty results.
+
+To inger all dependencies for the model since there is a ref() placed within a conditional block.,
+the "-- depends_on:" comments are used
 */
 {{
     config(
@@ -13,28 +21,21 @@ If the count is 0, the model will log a warning and return empty results.
         auto_liquid_cluster=true,
         tags=["mart", "general", "candidacy", "hubspot"],
         schema="preview",
-        pre_hook="""
-            {% set election_match_count_query %}
-                select count(*) as cnt from {{ ref('int__gp_ai_election_match') }}
-            {% endset %}
-            {% set election_match_count_result = run_query(election_match_count_query) %}
-            {% if election_match_count_result.rows | length == 0 or election_match_count_result.rows[0][0] == 0 %}
-                {% do log("WARNING: m_general__candidacy_preview will return empty results - int__gp_ai_election_match has 0 rows", info=True) %}
-            {% endif %}
-        """,
     )
 }}
 
 -- Check if int__gp_ai_election_match has any rows
-{% set election_match_count_query %}
-    select count(*) as cnt from {{ ref('int__gp_ai_election_match') }}
-{% endset %}
-{% set election_match_count_result = run_query(election_match_count_query) %}
-{% set election_match_count = (
-    election_match_count_result.rows[0][0]
-    if election_match_count_result.rows | length > 0
-    else 0
-) %}
+{% set election_match_count = 0 %}
+{% set election_match_ref = ref("int__gp_ai_election_match") %}
+{% if election_match_ref %}
+    {% set election_match_count_query %}
+        select count(*) as cnt from {{ election_match_ref }}
+    {% endset %}
+    {% set election_match_count_result = run_query(election_match_count_query) %}
+    {% if election_match_count_result and election_match_count_result.rows | length > 0 %}
+        {% set election_match_count = election_match_count_result.rows[0][0] %}
+    {% endif %}
+{% endif %}
 
 {% if election_match_count == 0 %}
     -- Return empty result set when int__gp_ai_election_match has no rows
