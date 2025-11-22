@@ -16,7 +16,7 @@ with
         select *
         from {{ ref("m_general__candidacy_v2") }}
         {% if is_incremental() %}
-            where updated_at > (select max(updated_at) from {{ this }})
+            where updated_at >= (select max(updated_at) from {{ this }})
         {% endif %}
     ),
     candidates as (select * from {{ ref("m_general__candidate_v2") }})
