@@ -26,10 +26,16 @@ with
             tbl_contacts.party_affiliation,
             tbl_contacts.is_incumbent,
             tbl_contacts.is_open_seat,
+            tbl_contacts.candidate_office,
+            tbl_contacts.official_office_name,
+            tbl_contacts.office_level,
             tbl_contacts.candidacy_result,
             tbl_contacts.pledge_status,
             tbl_contacts.verified_candidate,
             tbl_contacts.is_partisan,
+            tbl_contacts.primary_election_date,
+            tbl_contacts.general_election_date,
+            tbl_contacts.runoff_election_date,
 
             -- assessments
             viability_scores.viability_rating_2_0 as viability_score,

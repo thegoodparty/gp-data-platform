@@ -167,10 +167,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     gp_ai_url = dbt.config.get("gp_ai_url")
 
     # make the following references to maintain lineage
-    candidacy_table_name = "m_general__candidacy"
+    # candidacy_table_name = "m_general__candidacy"
+    candidacy_table_name = "int__gp_ai_candidacies"
     election_results_table_name = "stg_airbyte_source__ddhq_gdrive_election_results"
+    # candidacy_table: DataFrame = dbt.ref(
+    #     "m_general__candidacy"
+    # )  # dbt ref only supports string literals
     candidacy_table: DataFrame = dbt.ref(
-        "m_general__candidacy"
+        "int__gp_ai_candidacies"
     )  # dbt ref only supports string literals
     election_results_table: DataFrame = dbt.ref(
         "stg_airbyte_source__ddhq_gdrive_election_results"
