@@ -1,5 +1,5 @@
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, lit, row_number
+from pyspark.sql.functions import col, lit
 from pyspark.sql.types import (
     BooleanType,
     IntegerType,
@@ -10,7 +10,6 @@ from pyspark.sql.types import (
     TimestampType,
 )
 from pyspark.sql.utils import AnalysisException
-from pyspark.sql.window import Window
 
 EMPTY_SCHEMA = StructType(
     [
@@ -50,15 +49,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         this_table: DataFrame = session.table(f"{dbt.this}")
 
     # get only the latest row by created_at
-    window_spec = Window.orderBy(col("created_at").desc())
-    start_election_match_table = (
-        start_election_match_table.withColumn("rn", row_number().over(window_spec))
-        .filter(col("rn") == 1)
-        .drop("rn")
-    )
-
-    # collect the single parquet file path to process
-    row = start_election_match_table.select(
+    latest_df = start_election_match_table.orderBy(col("created_at").desc()).limit(1)
+    row = latest_df.select(
         "run_id", col("s3_output.files.parquet").alias("parquet_path")
     ).first()
 
