@@ -640,14 +640,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_name = dbt.config.get("people_db_name")
     db_schema = dbt.config.get("people_db_schema")
     db_user = dbt.config.get("people_db_user")
-    db_pw = dbt.config.get("people_db_pw")
     dbt_env_name = dbt.config.get("dbt_environment")
+    db_pw = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env_name}", key="people-db-password"
+    )
 
     voter_table: DataFrame = dbt.ref("m_people_api__voter")
     district_table: DataFrame = dbt.ref("m_people_api__district")
     district_voter_table: DataFrame = dbt.ref("m_people_api__districtvoter")
 
-    # downsample for non-prod environment with three least populous states
+    # downsample for non-prod environment with low-population states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
     filter_list = ["WY", "ND", "VT", "DC", "AK", "SD"]  # 17.6 MM rows in DistrictVoter

@@ -265,10 +265,13 @@ def model(dbt, session) -> DataFrame:
         tags=["ballotready", "stance", "api", "pandas_udf"],
     )
 
-    # Get API token from environment variables
-    ce_api_token = dbt.config.get("ce_api_token")
+    # Get API token from Databricks secrets
+    dbt_env = dbt.config.get("dbt_environment")
+    ce_api_token = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env}", key="civic-engine-api-token"
+    )
     if not ce_api_token:
-        raise ValueError("Missing required config parameter: ce_api_token")
+        raise ValueError("Missing required secret: civic-engine-api-token")
 
     # Get candidacies
     candidacies: DataFrame = dbt.ref("int__ballotready_candidacy")

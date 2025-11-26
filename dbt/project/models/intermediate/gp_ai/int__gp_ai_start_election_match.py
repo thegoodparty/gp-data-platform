@@ -163,7 +163,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # get dbt configs
-    gp_ai_api_key = dbt.config.get("gp_ai_api_key")
+    dbt_env = dbt.config.get("dbt_environment")
+    gp_ai_api_key = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env}", key="gp-ai-api-key"
+    )
     gp_ai_url = dbt.config.get("gp_ai_url")
 
     # make the following references to maintain lineage
