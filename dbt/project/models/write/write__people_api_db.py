@@ -649,10 +649,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     district_table: DataFrame = dbt.ref("m_people_api__district")
     district_voter_table: DataFrame = dbt.ref("m_people_api__districtvoter")
 
-    # downsample for non-prod environment to Wyoming only for faster testing
+    # downsample for non-prod environment with low-population states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-    filter_list = ["WY"]
+    filter_list = ["WY", "ND", "VT", "DC", "AK", "SD"]  # 17.6 MM rows in DistrictVoter
     if dbt_env_name != "prod":
         voter_table = voter_table.filter(col("State").isin(filter_list))
         district_voter_table = district_voter_table.filter(

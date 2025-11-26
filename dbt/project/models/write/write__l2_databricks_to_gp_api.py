@@ -1031,13 +1031,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         col("source_file_type") == "uniform"
     )
 
-    # downsample for non-prod environment to Wyoming only for faster testing
-    filter_list = ["WY"]
-    if dbt_env != "prod":
-        loaded_to_databricks = loaded_to_databricks.filter(
-            col("state_id").isin(filter_list)
-        )
-
     # cache the dataframe and enforce filter before for-loop filtering
     loaded_to_databricks.cache()
     loaded_to_databricks.count()
