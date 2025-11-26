@@ -508,8 +508,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_port = int(dbt.config.get("election_db_port"))
     db_user = dbt.config.get("election_db_user")
     dbt_env = dbt.config.get("dbt_environment")
-    if dbt_env != 'dev':
-        raise ValueError("dbt_env must be dev")
     db_pw = dbutils.secrets.get(
         scope=f"dbt-secrets-{dbt_env}",
         key="election-db-password"
