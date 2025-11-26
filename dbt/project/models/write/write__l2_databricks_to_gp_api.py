@@ -1021,7 +1021,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_host = dbt.config.get("voter_db_host")
     db_port = int(dbt.config.get("voter_db_port"))
     db_user = dbt.config.get("voter_db_user")
-    db_pw = dbt.config.get("voter_db_pw")
+    dbt_env = dbt.config.get("dbt_environment")
+    db_pw = dbutils.secrets.get(
+        scope=f"dbt-secrets-{dbt_env}",
+        key="voter-db-password"
+    )
     db_name = dbt.config.get("voter_db_name")
     db_schema = dbt.config.get("voter_db_schema")
 
@@ -1029,6 +1033,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
     loaded_to_databricks: DataFrame = dbt.ref("load__l2_s3_to_databricks").filter(
         col("source_file_type") == "uniform"
     )
+
+    # downsample for non-prod environment to Wyoming only for faster testing
+    filter_list = ["WY"]
+    if dbt_env != "prod":
+        loaded_to_databricks = loaded_to_databricks.filter(
+            col("state_id").isin(filter_list)
+        )
 
     # cache the dataframe and enforce filter before for-loop filtering
     loaded_to_databricks.cache()
