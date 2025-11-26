@@ -267,9 +267,8 @@ def model(dbt, session) -> DataFrame:
 
     # Get API token from Databricks secrets
     dbt_env = dbt.config.get("dbt_environment")
-    ce_api_token = dbutils.secrets.get(
-        scope=f"dbt-secrets-{dbt_env}",
-        key="civic-engine-api-token"
+    ce_api_token = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env}", key="civic-engine-api-token"
     )
     if not ce_api_token:
         raise ValueError("Missing required secret: civic-engine-api-token")

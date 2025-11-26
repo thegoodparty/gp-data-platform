@@ -641,9 +641,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_schema = dbt.config.get("people_db_schema")
     db_user = dbt.config.get("people_db_user")
     dbt_env_name = dbt.config.get("dbt_environment")
-    db_pw = dbutils.secrets.get(
-        scope=f"dbt-secrets-{dbt_env_name}",
-        key="people-db-password"
+    db_pw = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env_name}", key="people-db-password"
     )
 
     voter_table: DataFrame = dbt.ref("m_people_api__voter")

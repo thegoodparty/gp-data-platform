@@ -1022,10 +1022,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_port = int(dbt.config.get("voter_db_port"))
     db_user = dbt.config.get("voter_db_user")
     dbt_env = dbt.config.get("dbt_environment")
-    db_pw = dbutils.secrets.get(
-        scope=f"dbt-secrets-{dbt_env}",
-        key="voter-db-password"
-    )
+    db_pw = dbutils.secrets.get(scope=f"dbt-secrets-{dbt_env}", key="voter-db-password")  # type: ignore[name-defined]
     db_name = dbt.config.get("voter_db_name")
     db_schema = dbt.config.get("voter_db_schema")
 
