@@ -3,6 +3,7 @@
 -- depends_on: {{ ref("int__hubspot_contest") }}
 -- depends_on: {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
 -- depends_on: {{ ref("int__gp_ai_election_match") }}
+-- depends_on: {{ ref('stg_model_predictions__candidacy_ddhq_matches_20251201') }}
 /*
 Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
 DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
