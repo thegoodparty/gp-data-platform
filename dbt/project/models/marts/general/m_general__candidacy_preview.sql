@@ -231,5 +231,9 @@ the "-- depends_on:" comments are used
     select *
     from candidacies
     qualify
-        row_number() over (partition by gp_candidacy_id order by updated_at desc) = 1
+        row_number() over (
+            partition by gp_candidacy_id
+            order by ddhq_general_election_result desc, updated_at desc
+        )
+        = 1
 {% endif %}
