@@ -26,22 +26,21 @@ models:
     description: Intermediate model that fetches and loads the parquet output file from the int__gp_ai_start_election_match model. This model reads the election match results from S3 and loads them into the data warehouse.
     columns:
       - name: gp_candidacy_id
-        description: Unique identifier for the candidacy in the HubSpot data
+        description: Unique identifier for the candidacy in the HubSpot data. Can have multiple matches for the same candidacy in different races.
         data_tests:
           - not_null
-          - unique
       - name: run_id
         description: Unique identifier for the election match process run, linking back to int__gp_ai_start_election_match
         data_tests:
           - not_null
       - name: ddhq_race_id
-        description: Unique identifier for the race in the DDHQ data
+        description: Unique identifier for the race in the DDHQ data. Can have multiple matches for the same candidacy in different races.
         data_tests:
           - not_null:
               config:
                 where: "has_match is true"
       - name: ddhq_candidate_id
-        description: Unique identifier for the candidate in the DDHQ data
+        description: Unique identifier for the candidate in the DDHQ data. Can have multiple matches for the same candidacy in different races.
         data_tests:
           - not_null:
               config:
