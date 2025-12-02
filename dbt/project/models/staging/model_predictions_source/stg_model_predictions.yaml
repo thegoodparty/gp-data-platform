@@ -40,7 +40,7 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_model_predictions__candidacy_ddhq_matches_20251201
+  - name: stg_model_predictions__candidacy_ddhq_matches_20251202
     description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
     columns:
       - name: gp_candidacy_id

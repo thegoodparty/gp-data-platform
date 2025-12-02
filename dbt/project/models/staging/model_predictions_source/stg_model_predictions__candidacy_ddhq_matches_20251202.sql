@@ -1,7 +1,7 @@
 with
     source as (
         select *
-        from {{ source("model_predictions", "candidacy_ddhq_matches_20251201") }}
+        from {{ source("model_predictions", "candidacy_ddhq_matches_20251202") }}
     ),
     renamed as (
         select
