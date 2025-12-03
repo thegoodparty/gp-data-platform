@@ -196,6 +196,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         if max_created_at is None or max_updated_source > max_created_at:
             # start the election match process
+            # Note that `schema` is hardcoded to `dbt` since the upstream schema location cannot be referenced across enviroments,
+            # particularly when using the selector "state:modified"
             response_data = _create_election_match_request(
                 gp_ai_url=gp_ai_url,
                 gp_ai_api_key=gp_ai_api_key,
