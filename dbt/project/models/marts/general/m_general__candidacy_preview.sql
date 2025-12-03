@@ -3,6 +3,7 @@
 -- depends_on: {{ ref("int__hubspot_contest") }}
 -- depends_on: {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
 -- depends_on: {{ ref("int__gp_ai_election_match") }}
+-- depends_on: {{ ref('stg_model_predictions__candidacy_ddhq_matches_20251202') }}
 /*
 Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
 DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
@@ -208,7 +209,8 @@ the "-- depends_on:" comments are used
                 {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
                 on tbl_contacts.company_id = viability_scores.id
             left join
-                {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
+                {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251202") }}
+                as tbl_ddhq_matches
                 on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
             left join
                 {{ ref("int__hubspot_contest") }} as tbl_contest
@@ -229,5 +231,9 @@ the "-- depends_on:" comments are used
     select *
     from candidacies
     qualify
-        row_number() over (partition by gp_candidacy_id order by updated_at desc) = 1
+        row_number() over (
+            partition by gp_candidacy_id
+            order by ddhq_general_election_result desc, updated_at desc
+        )
+        = 1
 {% endif %}
