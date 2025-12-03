@@ -166,13 +166,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     gp_ai_api_key = dbt.config.get("gp_ai_api_key")
     gp_ai_url = dbt.config.get("gp_ai_url")
 
-    # make the following references to maintain lineage
-    # candidacy_table_name = "m_general__candidacy"
     candidacy_table_name = "int__gp_ai_candidacies"
     election_results_table_name = "stg_airbyte_source__ddhq_gdrive_election_results"
-    # candidacy_table: DataFrame = dbt.ref(
-    #     "m_general__candidacy"
-    # )  # dbt ref only supports string literals
+
+    # make the following references to maintain lineage
     candidacy_table: DataFrame = dbt.ref(
         "int__gp_ai_candidacies"
     )  # dbt ref only supports string literals
@@ -202,8 +199,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             response_data = _create_election_match_request(
                 gp_ai_url=gp_ai_url,
                 gp_ai_api_key=gp_ai_api_key,
-                # schema="dbt",
-                schema="dbt_hugh",
+                schema="dbt",
                 candidacy_table_name=candidacy_table_name,
                 election_results_table_name=election_results_table_name,
             )
@@ -219,8 +215,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     response_data = _create_election_match_request(
         gp_ai_url=gp_ai_url,
         gp_ai_api_key=gp_ai_api_key,
-        # schema="dbt",
-        schema="dbt_hugh",
+        schema="dbt",
         candidacy_table_name=candidacy_table_name,
         election_results_table_name=election_results_table_name,
     )

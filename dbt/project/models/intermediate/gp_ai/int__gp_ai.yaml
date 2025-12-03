@@ -45,3 +45,9 @@ models:
           - not_null:
               config:
                 where: "has_match is true"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - gp_candidacy_id
+              - ddhq_race_id

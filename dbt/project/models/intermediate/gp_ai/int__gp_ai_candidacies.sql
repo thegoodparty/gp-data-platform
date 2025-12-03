@@ -1,6 +1,3 @@
--- create a data table that joins m_general_candidacy_v2 with m_general_candidate_v2
--- as the source
--- table for the int__gp_ai_start_election_match job
 {{
     config(
         materialized="incremental",

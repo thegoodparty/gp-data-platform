@@ -109,9 +109,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     output_df: DataFrame = parquet_df.withColumn("run_id", lit(run_id).cast("string"))
     output_df = output_df.withColumn("parquet_path", lit(parquet_path).cast("string"))
 
-    # only take the latest instance of each hubspot_gp_candidacy_id
+    # only take the latest instance of each hubspot_gp_candidacy_id and ddhq_race_id combination
     output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
-        subset=["hubspot_gp_candidacy_id"]
+        subset=["hubspot_gp_candidacy_id", "ddhq_race_id"]
     )
 
     # rename columns to remove "hubspot_" prefix
