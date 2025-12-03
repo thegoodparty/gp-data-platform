@@ -1,0 +1,526 @@
+version: 2
+
+models:
+  - name: m_general__candidacy
+    description: >
+      This model creates the candidacies object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidacy_id
+        description: Internally generated unique identifier for candidacies
+        # data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: candidacy_id
+        description: Unique identifier for a person running in an election from source
+        # data_type: varchar
+        tests:
+          - not_null
+
+      - name: gp_user_id
+        description: Identifier to link to specific GoodParty user product
+        data_type: uuid
+        tests:
+          - not_null
+
+      - name: candidate_id_source
+        description: Identifier from which source the data originated from (BallotReady, Techspeed, Product, Other)
+        # data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: gp_contest_id
+        description: Identifier to link contest
+        # data_type: uuid
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: companies_id_main
+        description: Need to know person in growth system
+        # data_type: varchar
+        # tests:
+          # - unique
+          # - not_null
+
+      - name: first_name
+        description: Candidate’s given name
+        data_type: varchar
+
+      - name: last_name
+        description: Candidate’s family name
+        data_type: varchar
+
+      - name: full_name
+        description: Full campaign or legal name
+        data_type: varchar
+
+      - name: birth_date
+        description: Candidate’s date of birth
+        data_type: date
+
+      - name: email
+        description: Primary contact email
+        data_type: varchar
+
+      - name: phone_number
+        description: Primary contact phone number
+        data_type: varchar
+
+      - name: street_address
+        description: Candidate’s address (if available)
+        data_type: varchar
+
+      - name: website_url
+        description: Candidate’s campaign website
+        data_type: varchar
+
+      - name: linkedin_url
+        description: Candidate’s LinkedIn profile
+        data_type: varchar
+
+      - name: instagram_handle
+        description: Candidate’s Instagram handle
+        data_type: varchar
+
+      - name: twitter_handle
+        description: Candidate’s Twitter (X) handle
+        data_type: varchar
+
+      - name: facebook_url
+        description: Candidate’s Facebook page
+        data_type: varchar
+
+      - name: official_office_name
+        description: Formal office title the candidate is running for
+        data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: candidate_office
+        description: Simplified/standardized office name
+        data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: office_type
+        description: Executive, legislative, judicial, etc.
+        data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: office_level
+        description: Local, state, or federal
+        data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: party_affiliation
+        description: Candidate's political party
+        data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: verified_candidate
+        description: Indicates whether the candidate has been verified
+        data_type: varchar
+
+      - name: pledge_status
+        description: Status of the candidate's pledge
+        data_type: varchar
+
+      - name: state
+        description: U.S. state for the candidacy
+        data_type: varchar
+        # tests:
+        #   - not_null
+
+      - name: city
+        description: City for contest
+        data_type: varchar
+
+      - name: district
+        description: Electoral district, if applicable
+        data_type: varchar
+
+      - name: seat
+        description: Specific seat being contested by candidate (if applicable)
+        data_type: varchar
+
+      - name: population
+        description: Population of candidate’s district
+        data_type: bigint
+
+      - name: filing_deadline
+        description: Official last date to file for the election
+        data_type: date
+
+      - name: primary_election_date
+        description: Date of primary election, if applicable
+        data_type: date
+
+      - name: general_election_date
+        description: Date of general election
+        data_type: date
+        # tests:
+        #   - not_null
+
+      - name: runoff_election_date
+        description: Date of runoff if applicable
+        data_type: date
+
+      - name: is_partisan
+        description: Indicates if race is Partisan, nonpartisan
+        data_type: boolean
+
+      - name: is_incumbent
+        description: Is the candidacy Incumbent, challenger
+        data_type: boolean
+
+      - name: uncontested
+        description: Whether the number of open seats is less than or equal to number of candidates running
+        data_type: boolean
+
+      - name: number_of_opponents
+        description: How many other candidates in the race
+        data_type: integer
+
+      - name: seats_available
+        description: Total number of seats in race
+        data_type: integer
+
+      - name: open_seat
+        description: Whether this race is for an open seat
+        data_type: boolean
+
+      - name: candidate_id_tier
+        description: Internal confidence/priority tier
+        data_type: integer
+
+      - name: candidacy_result
+        description: Latest result of this candidate's campaign (won, lost primary, etc.)
+        data_type: varchar
+
+  - name: m_general__candidate
+    description: >
+      This model creates the candidate object in the mart layer using the hubspot data
+    columns:
+      - name: hubspot_contact_id
+        description: Unique identifier from HubSpot for the contact
+        tests:
+          - not_null
+      - name: gp_candidate_id_v1
+        description: Internally generated unique identifier for candidates
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidacy_id
+        description: Internally generated unique identifier for candidacies
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: prod_db_user_id
+        description: Identifier for the candidate in the production database
+    tests:
+      - relationships:
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "contact_id"
+            column_name: hubspot_contact_id
+      - relationships:
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "gp_candidacy_id"
+            column_name: gp_candidacy_id
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - prod_db_user_id
+              - gp_candidacy_id
+          config:
+            where: "prod_db_user_id is not null"
+
+  - name: m_general__candidacy_stage
+    description: >
+      This model creates the candidacy stage object in the mart layer using DDHQ data and matches
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Internally generated unique identifier for candidacy stages
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidacy_id
+        description: Identifier to link to candidacy
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__hubspot_contacts_w_companies')
+                field: "gp_candidacy_id"
+      - name: gp_election_stage_id
+        description: Identifier to link to election stage
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_general__election_stage')
+                field: gp_election_stage_id
+                config:
+                  where: "gp_election_stage_id is not null"
+      - name: ddhq_candidacy_id
+        description: DDHQ candidate identifier
+      - name: ddhq_candidate
+        description: Candidate name from DDHQ
+        data_type: varchar
+      - name: ddhq_race_id
+        description: DDHQ candidate identifier
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ddhq_gdrive_election_results')
+                field: "race_id"
+                config:
+                  where: "ddhq_race_id is not null"
+      - name: ddhq_candidate_id
+        description: DDHQ candidate identifier
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ddhq_gdrive_election_results')
+                field: "candidate_id"
+                config:
+                  where: "ddhq_candidate_id is not null"
+      - name: ddhq_candidate_party
+        description: Candidate party from DDHQ
+        data_type: varchar
+      - name: ddhq_is_winner
+        description: Whether the candidate won the election stage
+        data_type: boolean
+      - name: ddhq_llm_confidence
+        description: LLM confidence score for the match
+        data_type: float
+      - name: ddhq_llm_reasoning
+        description: LLM reasoning for the match
+        data_type: varchar
+      - name: ddhq_top_10_candidates
+        description: Top 10 candidate matches from LLM
+        data_type: varchar
+      - name: ddhq_has_match
+        description: Whether a match was found in DDHQ
+        data_type: boolean
+      - name: votes_received
+        description: Votes received by the candidate in the election stage
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+
+  - name: m_general__candidate_v2
+    description: >
+      This model creates the candidate v2 object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidate_id
+        description: Internally generated unique identifier for candidates
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: hubspot_contact_id
+        description: Unique identifier from HubSpot for the contact
+        tests:
+          - not_null
+      - name: prod_db_user_id
+        description: Identifier for the candidate in the production database
+      - name: first_name
+        description: Candidate's given name
+        data_type: varchar
+      - name: last_name
+        description: Candidate's family name
+        data_type: varchar
+      - name: full_name
+        description: Full campaign or legal name
+        data_type: varchar
+      - name: birth_date
+        description: Candidate's date of birth
+        data_type: date
+      - name: state
+        description: U.S. state for the candidate
+        data_type: varchar
+      - name: email
+        description: Primary contact email
+        data_type: varchar
+      - name: phone_number
+        description: Primary contact phone number
+        data_type: varchar
+      - name: street_address
+        description: Candidate's address (if available)
+        data_type: varchar
+      - name: website_url
+        description: Candidate's campaign website
+        data_type: varchar
+      - name: linkedin_url
+        description: Candidate's LinkedIn profile
+        data_type: varchar
+      - name: twitter_handle
+        description: Candidate's Twitter (X) handle
+        data_type: varchar
+      - name: facebook_url
+        description: Candidate's Facebook page
+        data_type: varchar
+      - name: instagram_handle
+        description: Candidate's Instagram handle
+        data_type: varchar
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - relationships:
+          arguments:
+            to: ref('int__hubspot_contacts_w_companies')
+            field: "contact_id"
+            column_name: hubspot_contact_id
+      - relationships:
+          arguments:
+            to: ref('stg_airbyte_source__gp_api_db_user')
+            field: "id"
+            column_name: prod_db_user_id
+          config:
+            where: "prod_db_user_id is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+            config:
+              error_if: ">10"
+              warn_if: ">0"
+
+  - name: m_general__contest
+    description: >
+      This model creates the contest object in the mart layer using the hubspot data
+    columns:
+      - name: gp_contest_id
+        description: Internally generated unique identifier for contests
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+  - name: m_general__election
+    description: >
+      This model creates the election object in the mart layer using the hubspot data
+    columns:
+      - name: gp_election_id
+        description: Internally generated unique identifier for elections
+        data_type: uuid
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: population
+        description: Population of candidate's district
+        data_type: bigint
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: null
+                inclusive: true
+              config:
+                where: "population is not null"
+      - name: created_at
+        description: Timestamp when the record was first created
+        tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
+
+  - name: m_general__election_stage
+    description: >
+      This model creates the election stage object in the mart layer using DDHQ data
+    columns:
+      - name: gp_election_stage_id
+        description: Internally generated unique identifier for election stages
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_election_id
+        description: Identifier to link to election
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_general__election')
+                field: gp_election_id
+                # gp_election_id is a hash of hubspot_contact_id so we filter out where that column is null
+                config:
+                  where: "hubspot_contact_id is not null"
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        tests:
+          - not_null
+      - name: election_stage
+        description: Type of election stage (e.g., primary, general, runoff)
+        data_type: varchar
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_type: date
+      - name: ddhq_race_name
+        description: Name of the race from DDHQ
+        data_type: varchar
+      - name: total_votes_cast
+        description: Total votes cast in the election stage
+        data_type: bigint
+      - name: _airbyte_extracted_at
+        description: Timestamp when the record was extracted from Airbyte
+        tests:
+          - not_null

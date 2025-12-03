@@ -198,56 +198,6 @@ models:
         description: Latest result of this candidate's campaign (won, lost primary, etc.)
         data_type: varchar
 
-
-  - name: int__general_candidacy_clean_for_ddhq
-    description: >
-      This model creates the candidacies object in preparation of the mart layer using the candidacy data. This
-      intermediate model will be used in the generation of embeddings and eventually LLM calls to match
-      DDHQ election results with the candidacies object.
-    columns:
-      - name: gp_candidacy_id
-        description: Internally generated unique identifier for candidacies
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('int__general_candidacy')
-                field: "gp_candidacy_id"
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
-      - name: state
-        description: U.S. state for the candidacy, also known as the state_postal_code more accurately elsewhere
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: [
-                  "AL", 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-                  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-                  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-                  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-                  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
-                  'DC', 'US'
-                ]
-      - name: election_type
-        description: Type of election
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ["primary", "general", "runoff"]
-    tests:
-      - dbt_utils.fewer_rows_than:
-          arguments:
-            compare_model: ref('int__general_candidacy')
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - gp_candidacy_id
-              - election_type
-              - election_date
-
   - name: int__general_states_zip_code_range
     description: >
         "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Candidacies."
