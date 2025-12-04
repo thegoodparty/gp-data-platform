@@ -4,6 +4,7 @@
 -- depends_on: {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
 -- depends_on: {{ ref("int__gp_ai_election_match") }}
 -- depends_on: {{ ref('stg_model_predictions__candidacy_ddhq_matches_20251202') }}
+-- depends_on: {{ ref('stg_model_predictions__candidacy_br_matches_20251204') }}
 /*
 Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
 DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
@@ -202,7 +203,15 @@ the "-- depends_on:" comments are used
 
                 -- Metadata
                 tbl_contacts.created_at,
-                tbl_contacts.updated_at
+                tbl_contacts.updated_at,
+
+                -- placeholder for later ballotready matches
+                null as br_has_match,
+                null as br_match_score,
+                null as br_match_type,
+                null as br_general_election_result,
+                null as br_primary_election_result,
+                null as br_runoff_election_result
 
             from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
             left join
@@ -227,6 +236,61 @@ the "-- depends_on:" comments are used
         -- {% if is_incremental() %}
         -- where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
         -- {% endif %}
+        ),
+        unmatched_candidacies as (
+            select *
+            from candidacies
+            where ddhq_has_match is null or ddhq_has_match = 'false'
+        ),
+        br_matched as (
+            select
+                tbl_candidacies.*,
+                final_match_status as br_has_match,
+                match_score as br_match_score,
+                match_type as br_match_type,
+                case
+                    when lower(tbl_ddhq_matches.final_election_result) like '%general%'
+                    then
+                        case
+                            when tbl_br_matches.final_election_result = 'GENERAL_WIN'
+                            then 'Won General'
+                            when tbl_br_matches.final_election_result = 'LOSS'
+                            then 'Lost General'
+                            else tbl_br_matches.final_election_result
+                        end
+                    when tbl_br_matches.br_is_runoff is true
+                    then 'Runoff'
+                    else null
+                end as br_general_election_result,
+                case
+                    when lower(tbl_ddhq_matches.ddhq_election_type) like '%primary%'
+                    then
+                        case
+                            when tbl_ddhq_matches.ddhq_is_winner = 'PRIMARY_WIN'
+                            then 'Won Primary'
+                            when tbl_ddhq_matches.ddhq_is_winner = 'LOSS'
+                            then 'Lost Primary'
+                            else tbl_ddhq_matches.ddhq_is_winner
+                        end
+                    else null
+                end as br_primary_election_result,
+                case
+                    when tbl_br_matches.br_is_runoff is true
+                    then
+                        case
+                            when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                            then 'Won Runoff'
+                            when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                            then 'Lost Runoff'
+                            else tbl_ddhq_matches.ddhq_is_winner
+                        end
+                    else null
+                end as br_runoff_election_result
+            from unmatched_candidacies as tbl_candidacies
+            left join
+                {{ ref("stg_model_predictions__candidacy_br_matches_20251204") }}
+                as tbl_br_matches
+                on tbl_candidacies.contact_id = tbl_br_matches.hubspot_contact_id
         )
     select *
     from candidacies
