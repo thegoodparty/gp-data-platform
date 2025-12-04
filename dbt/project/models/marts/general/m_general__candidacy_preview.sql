@@ -206,12 +206,12 @@ the "-- depends_on:" comments are used
                 tbl_contacts.updated_at,
 
                 -- placeholder for later ballotready matches
-                null as br_has_match,
-                null as br_match_score,
-                null as br_match_type,
-                null as br_general_election_result,
-                null as br_primary_election_result,
-                null as br_runoff_election_result
+                cast(null as string) as br_has_match,
+                cast(null as int) as br_match_score,
+                cast(null as string) as br_match_type,
+                cast(null as string) as br_general_election_result,
+                cast(null as string) as br_primary_election_result,
+                cast(null as string) as br_runoff_election_result
 
             from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
             left join
@@ -237,19 +237,42 @@ the "-- depends_on:" comments are used
         -- where tbl_contacts.updated_at > (select max(updated_at) from {{ this }})
         -- {% endif %}
         ),
-        unmatched_candidacies as (
+        ddhq_matched as (
             select *
             from candidacies
-            where ddhq_has_match is null or ddhq_has_match = 'false'
+            where ddhq_general_election_result is not null
+            qualify
+                row_number() over (
+                    partition by gp_candidacy_id
+                    order by ddhq_general_election_result desc, updated_at desc
+                )
+                = 1
+        ),
+        ddhq_unmatched_candidacies as (
+            select *
+            from candidacies
+            where ddhq_general_election_result is null
+            qualify
+                row_number() over (
+                    partition by gp_candidacy_id order by updated_at desc
+                )
+                = 1
         ),
         br_matched as (
             select
-                tbl_candidacies.*,
+                tbl_candidacies.* except (
+                    br_has_match,
+                    br_match_score,
+                    br_match_type,
+                    br_general_election_result,
+                    br_primary_election_result,
+                    br_runoff_election_result
+                ),
                 final_match_status as br_has_match,
                 match_score as br_match_score,
                 match_type as br_match_type,
                 case
-                    when lower(tbl_ddhq_matches.final_election_result) like '%general%'
+                    when lower(tbl_br_matches.final_election_result) like '%general%'
                     then
                         case
                             when tbl_br_matches.final_election_result = 'GENERAL_WIN'
@@ -258,19 +281,17 @@ the "-- depends_on:" comments are used
                             then 'Lost General'
                             else tbl_br_matches.final_election_result
                         end
-                    when tbl_br_matches.br_is_runoff is true
-                    then 'Runoff'
                     else null
                 end as br_general_election_result,
                 case
-                    when lower(tbl_ddhq_matches.ddhq_election_type) like '%primary%'
+                    when lower(tbl_br_matches.final_election_result) like '%primary%'
                     then
                         case
-                            when tbl_ddhq_matches.ddhq_is_winner = 'PRIMARY_WIN'
+                            when tbl_br_matches.final_election_result = 'PRIMARY_WIN'
                             then 'Won Primary'
-                            when tbl_ddhq_matches.ddhq_is_winner = 'LOSS'
+                            when tbl_br_matches.final_election_result = 'LOSS'
                             then 'Lost Primary'
-                            else tbl_ddhq_matches.ddhq_is_winner
+                            else tbl_br_matches.final_election_result
                         end
                     else null
                 end as br_primary_election_result,
@@ -278,26 +299,43 @@ the "-- depends_on:" comments are used
                     when tbl_br_matches.br_is_runoff is true
                     then
                         case
-                            when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                            when tbl_br_matches.final_election_result = 'RUNOFF_WIN'
                             then 'Won Runoff'
-                            when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                            when tbl_br_matches.final_election_result = 'RUNOFF_LOSS'
                             then 'Lost Runoff'
-                            else tbl_ddhq_matches.ddhq_is_winner
+                            else tbl_br_matches.final_election_result
                         end
                     else null
                 end as br_runoff_election_result
-            from unmatched_candidacies as tbl_candidacies
+            from ddhq_unmatched_candidacies as tbl_candidacies
             left join
                 {{ ref("stg_model_predictions__candidacy_br_matches_20251204") }}
                 as tbl_br_matches
                 on tbl_candidacies.contact_id = tbl_br_matches.hubspot_contact_id
+            qualify
+                row_number() over (
+                    partition by gp_candidacy_id
+                    order by br_general_election_result desc, updated_at desc
+                )
+                = 1
+        ),
+        unioned_tables as (
+            select *
+            from ddhq_matched
+            union all
+            select *
+            from br_matched
         )
     select *
-    from candidacies
+    from unioned_tables
     qualify
         row_number() over (
             partition by gp_candidacy_id
-            order by ddhq_general_election_result desc, updated_at desc
+            order by
+                ddhq_general_election_result desc,
+                br_general_election_result desc,
+                updated_at desc
         )
         = 1
+
 {% endif %}

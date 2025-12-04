@@ -1,6 +1,13 @@
 version: 2
 
 models:
+  - name: m_general__candidacy_preview
+    columns:
+      - name: gp_candidacy_id
+        tests:
+          - not_null
+          - unique
+
   - name: m_general__candidacy
     description: >
       This model creates the candidacies object in the mart layer using the hubspot data
