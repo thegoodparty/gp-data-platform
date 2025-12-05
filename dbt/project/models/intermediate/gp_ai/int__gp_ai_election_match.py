@@ -1,5 +1,5 @@
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, lit, row_number
+from pyspark.sql.functions import col, lit
 from pyspark.sql.types import (
     BooleanType,
     IntegerType,
@@ -10,7 +10,6 @@ from pyspark.sql.types import (
     TimestampType,
 )
 from pyspark.sql.utils import AnalysisException
-from pyspark.sql.window import Window
 
 EMPTY_SCHEMA = StructType(
     [
@@ -36,7 +35,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key=["gp_candidacy_id"],
+        unique_key=["gp_candidacy_id", "ddhq_race_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "gp_ai", "election_match", "fetch"],
@@ -50,15 +49,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         this_table: DataFrame = session.table(f"{dbt.this}")
 
     # get only the latest row by created_at
-    window_spec = Window.orderBy(col("created_at").desc())
-    start_election_match_table = (
-        start_election_match_table.withColumn("rn", row_number().over(window_spec))
-        .filter(col("rn") == 1)
-        .drop("rn")
-    )
-
-    # collect the single parquet file path to process
-    row = start_election_match_table.select(
+    latest_df = start_election_match_table.orderBy(col("created_at").desc()).limit(1)
+    row = latest_df.select(
         "run_id", col("s3_output.files.parquet").alias("parquet_path")
     ).first()
 
@@ -117,9 +109,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     output_df: DataFrame = parquet_df.withColumn("run_id", lit(run_id).cast("string"))
     output_df = output_df.withColumn("parquet_path", lit(parquet_path).cast("string"))
 
-    # only take the latest instance of each hubspot_gp_candidacy_id
+    # only take the latest instance of each hubspot_gp_candidacy_id and ddhq_race_id combination
     output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
-        subset=["hubspot_gp_candidacy_id"]
+        subset=["hubspot_gp_candidacy_id", "ddhq_race_id"]
     )
 
     # rename columns to remove "hubspot_" prefix

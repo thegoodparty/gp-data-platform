@@ -169,11 +169,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
     gp_ai_url = dbt.config.get("gp_ai_url")
 
-    # make the following references to maintain lineage
-    candidacy_table_name = "m_general__candidacy"
+    candidacy_table_name = "int__gp_ai_candidacies"
     election_results_table_name = "stg_airbyte_source__ddhq_gdrive_election_results"
+
+    # make the following references to maintain lineage
     candidacy_table: DataFrame = dbt.ref(
-        "m_general__candidacy"
+        "int__gp_ai_candidacies"
     )  # dbt ref only supports string literals
     election_results_table: DataFrame = dbt.ref(
         "stg_airbyte_source__ddhq_gdrive_election_results"
@@ -198,6 +199,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         if max_created_at is None or max_updated_source > max_created_at:
             # start the election match process
+            # Note that `schema` is hardcoded to `dbt` since the upstream schema location cannot be referenced across enviroments,
+            # particularly when using the selector "state:modified"
             response_data = _create_election_match_request(
                 gp_ai_url=gp_ai_url,
                 gp_ai_api_key=gp_ai_api_key,
