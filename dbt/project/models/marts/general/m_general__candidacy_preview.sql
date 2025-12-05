@@ -268,9 +268,9 @@ the "-- depends_on:" comments are used
                     br_primary_election_result,
                     br_runoff_election_result
                 ),
-                final_match_status as br_has_match,
-                match_score as br_match_score,
-                match_type as br_match_type,
+                tbl_br_matches.final_match_status as br_has_match,
+                tbl_br_matches.match_score as br_match_score,
+                tbl_br_matches.match_type as br_match_type,
                 case
                     when lower(tbl_br_matches.final_election_result) like '%general%'
                     then
