@@ -1,5 +1,13 @@
 models:
 
+  - name: stg_model_predictions__candidacy_br_matches_20251204
+    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
+    columns:
+      - name: gp_candidacy_id
+        description: unique id
+        data_tests:
+          - not_null
+
   - name: stg_model_predictions__candidacy_br_matches_prenov2025_20251205
     description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
     columns:
