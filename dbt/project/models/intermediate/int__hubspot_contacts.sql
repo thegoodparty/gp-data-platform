@@ -37,6 +37,8 @@ select
     tbl_hs_contacts.properties_address as street_address,
     tbl_hs_contacts.properties_candidate_id_source as candidate_id_source,
     tbl_hs_contacts.properties_candidate_id_tier as candidate_id_tier,
+    tbl_hs_contacts.properties_pledge_status as pledge_status,
+    tbl_hs_contacts.properties_verified_candidate_status as verified_candidate_status,
 
     -- Office information
     tbl_hs_contacts.properties_official_office_name as official_office_name,
