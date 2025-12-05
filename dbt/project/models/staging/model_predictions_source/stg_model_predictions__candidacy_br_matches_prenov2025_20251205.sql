@@ -1,6 +1,12 @@
 with
     source as (
-        select * from {{ source("model_predictions", "candidacy_br_matches_20251204") }}
+        select *
+        from
+            {{
+                source(
+                    "model_predictions", "candidacy_br_matches_prenov2025_20251205"
+                )
+            }}
     ),
     renamed as (
         select

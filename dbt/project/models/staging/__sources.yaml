@@ -801,7 +801,9 @@ sources:
     description: Raw data loaded from model predictions
     tables:
       - name: candidacy_br_matches_20251204
-        description: output of gemini string matching between BallotReady election results and candidacies sourced from m_general__candidacy
+        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_br_matches_prenov2025_20251205
+        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
       - name: candidacy_ddhq_matches_20250826
         description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
       - name: candidacy_ddhq_matches_20250909
