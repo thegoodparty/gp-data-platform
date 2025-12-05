@@ -256,10 +256,13 @@ def model(dbt, session) -> DataFrame:
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
-    # Get API token from environment variable
-    ce_api_token = dbt.config.get("ce_api_token")
+    # Get API token from Databricks secrets
+    dbt_env = dbt.config.get("dbt_environment")
+    ce_api_token = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env}", key="civic-engine-api-token"
+    )
     if not ce_api_token:
-        raise ValueError("CE_API_TOKEN environment variable must be set")
+        raise ValueError("Missing required secret: civic-engine-api-token")
 
     # Get references to required models
     candidacies: DataFrame = dbt.ref(
