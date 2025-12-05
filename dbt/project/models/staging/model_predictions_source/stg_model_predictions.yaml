@@ -1,5 +1,21 @@
 models:
 
+  - name: stg_model_predictions__candidacy_br_matches_20251204
+    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
+    columns:
+      - name: hubspot_contact_id
+        description: HubSpot contact id
+        data_tests:
+          - not_null
+
+  - name: stg_model_predictions__candidacy_br_matches_prenov2025_20251205
+    description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
+    columns:
+      - name: hubspot_contact_id
+        description: HubSpot contact id
+        data_tests:
+          - not_null
+
   - name: stg_model_predictions__candidacy_ddhq_matches_20250826
     description: gemini outputs to string match DDHQ election results and candidacies sourced from m_general__candidacy
     columns:
