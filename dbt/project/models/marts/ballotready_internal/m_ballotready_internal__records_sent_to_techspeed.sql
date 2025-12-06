@@ -1,9 +1,11 @@
+/*
+    Materializing this incrementally saves us < 3 seconds *when there are no new
+    records to process*, so building the whole table until we know it's a
+    performance bottleneck
+*/
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="candidacy_id",
-        auto_liquid_cluster=true,
+        materialized="table",
         tags=["mart", "ballotready", "techspeed", "historical"],
     )
 }}
@@ -74,11 +76,6 @@ with
                 select candidacy_id
                 from {{ ref("stg_historical__ballotready_records_sent_to_techspeed") }}
             )
-            {% if is_incremental() %}
-                and candidacy_id not in (
-                    select candidacy_id from {{ this }} where candidacy_id is not null
-                )
-            {% endif %}
     ),
     with_office_type as (
         select *, {{ map_ballotready_office_type("candidate_office") }} as office_type

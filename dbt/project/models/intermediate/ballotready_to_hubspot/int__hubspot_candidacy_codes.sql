@@ -1,6 +1,10 @@
-{{ config(auto_liquid_cluster=true, tags=["intermediate", "hubspot"]) }}
+{{ config(tags=["intermediate", "hubspot"]) }}
 
 -- get the unique candidacies from the hubspot data
+/*
+    TOCOMMENT: Any reason we can't apply this compound key upstream to
+    stg_airbyte_source__hubspot_api_contacts
+*/
 with
     candidacies_with_codes as (
         select
