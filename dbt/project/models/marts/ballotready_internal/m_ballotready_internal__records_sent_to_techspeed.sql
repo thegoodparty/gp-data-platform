@@ -1,3 +1,8 @@
+/*
+    Materializing this incrementally saves us < 3 seconds *when there are no new
+    records to process*, so building the whole table until we know it's a
+    performance bottleneck
+*/
 {{
     config(
         materialized="table",
