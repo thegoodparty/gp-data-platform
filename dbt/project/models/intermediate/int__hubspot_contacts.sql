@@ -1,3 +1,7 @@
+-- dbt build timings:
+-- incremental: 16s build, 3s tests
+-- table: 10s build, 3s tests
+-- view: 3s build, 3s tests
 {{
     config(
         auto_liquid_cluster=true,
