@@ -1,4 +1,4 @@
-{{ config(auto_liquid_cluster=true, tags=["intermediate", "hubspot"]) }}
+{{ config(tags=["intermediate", "hubspot"]) }}
 
 -- get the unique candidacies from the hubspot data
 with
