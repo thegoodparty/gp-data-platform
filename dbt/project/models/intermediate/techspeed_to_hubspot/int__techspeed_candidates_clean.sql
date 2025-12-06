@@ -1,3 +1,4 @@
+-- TODO: ensure this needs to be incremental
 {{
     config(
         materialized="incremental",
