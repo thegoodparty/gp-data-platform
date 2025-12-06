@@ -23,6 +23,7 @@ with
             mtfcc,
             geo_id,
             position_name,
+            position_name as official_office_name,
             sub_area_name,
             sub_area_value,
             sub_area_name_secondary,
@@ -58,6 +59,7 @@ with
                     "position_name", "normalized_position_name"
                 )
             }} as candidate_office,
+            {{ extract_city_from_office_name("official_office_name") }} as city,
             candidacy_created_at,
             candidacy_updated_at
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
@@ -89,7 +91,7 @@ with
             *,
             {{
                 generate_candidate_code(
-                    "first_name", "last_name", "state", "office_type"
+                    "first_name", "last_name", "state", "office_type", "city"
                 )
             }} as candidate_code
         from with_office_type
