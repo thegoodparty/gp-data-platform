@@ -34,4 +34,7 @@ from candidacies_with_codes
 where
     -- filter out cases where hubspot_candidate_code has fields
     -- that filter out to empty strings. Note that underscores (_) must be escaped (\)
+    -- Should we be keeping records where *any* field is populated, or records
+    -- where *all* field are populated? The logic of this model vs.
+    -- int__hubspot_candidate_codes seems to diverge
     hubspot_candidate_code not ilike '%\_\_\_\_%'

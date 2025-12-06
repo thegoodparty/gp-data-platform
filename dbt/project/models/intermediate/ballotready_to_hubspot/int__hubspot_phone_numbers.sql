@@ -1,6 +1,5 @@
 {{
     config(
-        materialized="view",
         tags=["intermediate", "hubspot", "phone_numbers"],
     )
 }}
