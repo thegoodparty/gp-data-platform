@@ -55,6 +55,7 @@ with
                     "position_name", "normalized_position_name"
                 )
             }} as candidate_office,
+            {{ extract_city_from_office_name("official_office_name") }} as city,
             candidacy_created_at,
             candidacy_updated_at
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
@@ -81,7 +82,7 @@ with
             *,
             {{
                 generate_candidate_code(
-                    "first_name", "last_name", "state", "office_type"
+                    "first_name", "last_name", "state", "city", "office_type"
                 )
             }} as candidate_code
         from with_office_type
