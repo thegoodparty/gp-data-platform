@@ -45,6 +45,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # get the start election match table to extract parquet file paths
     start_election_match_table: DataFrame = dbt.ref("int__gp_ai_start_election_match")
 
+    latest_manual_ddhq_matches: DataFrame = dbt.ref(
+        "stg_model_predictions__candidacy_ddhq_matches_20251202"
+    )
+
     # prepare incremental loads
     if dbt.is_incremental:
         this_table: DataFrame = session.table(f"{dbt.this}")
@@ -65,10 +69,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # if no row found, return empty dataframe
     if not row:
         if dbt.is_incremental:
-            return this_table.limit(0)
+            if this_table.count() == 0:
+                # if the table is empty and there is no parquet file, fallback to the latest match loaded
+                return latest_manual_ddhq_matches
+            else:
+                return this_table.limit(0)
         else:
-            # return empty dataframe - schema will be inferred on first run
-            return session.createDataFrame([], EMPTY_SCHEMA)
+            # if the table is empty and there is no parquet file, fallback to the latest match loaded
+            return latest_manual_ddhq_matches
 
     run_id: str = row.run_id
     parquet_path: str = row.parquet_path
@@ -108,10 +116,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # parquet file not found (e.g., PATH_NOT_FOUND error), return empty dataframe
         # This can happen when the election match job hasn't completed yet
         if dbt.is_incremental:
-            return this_table.limit(0)
+            if this_table.count() == 0:
+                # if the table is empty and there is no parquet file, fallback to the latest match loaded
+                return latest_manual_ddhq_matches
+            else:
+                return this_table.limit(0)
         else:
-            # return empty dataframe - schema will be inferred on first run
-            return session.createDataFrame([], EMPTY_SCHEMA)
+            # if the table is empty and there is no parquet file, fallback to the latest match loaded
+            return latest_manual_ddhq_matches
 
     # add or overwrite run_id column to track which run this data came from
     output_df: DataFrame = parquet_df.withColumn("run_id", lit(run_id).cast("string"))
