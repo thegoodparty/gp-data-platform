@@ -71,12 +71,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             if this_table.count() == 0:
                 # if the table is empty and there is no parquet file, fallback to the latest match loaded
-                return latest_manual_ddhq_matches
+                # add run_id column to match expected schema
+                return latest_manual_ddhq_matches.withColumn(
+                    "run_id", lit("manual_run").cast("string")
+                )
             else:
                 return this_table.limit(0)
         else:
             # if the table is empty and there is no parquet file, fallback to the latest match loaded
-            return latest_manual_ddhq_matches
+            # add run_id column to match expected schema
+            return latest_manual_ddhq_matches.withColumn(
+                "run_id", lit("manual_run").cast("string")
+            )
 
     run_id: str = row.run_id
     parquet_path: str = row.parquet_path
@@ -118,12 +124,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             if this_table.count() == 0:
                 # if the table is empty and there is no parquet file, fallback to the latest match loaded
-                return latest_manual_ddhq_matches
+                # add run_id column to match expected schema
+                return latest_manual_ddhq_matches.withColumn(
+                    "run_id", lit("manual_run").cast("string")
+                )
             else:
                 return this_table.limit(0)
         else:
             # if the table is empty and there is no parquet file, fallback to the latest match loaded
-            return latest_manual_ddhq_matches
+            # add run_id column to match expected schema
+            return latest_manual_ddhq_matches.withColumn(
+                "run_id", lit("manual_run").cast("string")
+            )
 
     # add or overwrite run_id column to track which run this data came from
     output_df: DataFrame = parquet_df.withColumn("run_id", lit(run_id).cast("string"))

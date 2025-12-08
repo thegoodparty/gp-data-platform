@@ -2,11 +2,16 @@ version: 2
 
 models:
   - name: m_general__candidacy_preview
+    description: This model creates the candidacy preview object in the mart layer using the hubspot data
     columns:
       - name: gp_candidacy_id
-        tests:
+        description: Internally generated unique identifier for candidacies
+        data_tests:
           - not_null
           - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
   - name: m_general__candidacy
     description: >

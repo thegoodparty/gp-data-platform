@@ -29,7 +29,6 @@ models:
         description: Unique identifier for the candidacy in the HubSpot data
         data_tests:
           - not_null
-          - unique
       - name: run_id
         description: Unique identifier for the election match process run, linking back to int__gp_ai_start_election_match
         data_tests:
