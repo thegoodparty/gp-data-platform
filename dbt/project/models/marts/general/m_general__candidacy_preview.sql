@@ -184,11 +184,11 @@ with
             cast(null as string) as br_primary_election_result,
             cast(null as string) as br_runoff_election_result,
 
-        -- placeholder for later manual llm matches
-        -- cast(null as string) as manual_llm_general_election_result--,
-        -- cast(null as string) as manual_llm_election_decision_result_page,
-        -- cast(null as int) as manual_llm_votes_received,
-        -- cast(null as int) as manual_llm_votes_in_race
+            -- placeholder for later manual llm matches
+            cast(null as string) as manual_llm_general_election_result,
+            cast(null as string) as manual_llm_election_decision_result_page,
+            cast(null as int) as manual_llm_votes_received,
+            cast(null as int) as manual_llm_votes_in_race
         from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
         left join
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
@@ -239,7 +239,11 @@ with
                 br_match_type,
                 br_general_election_result,
                 br_primary_election_result,
-                br_runoff_election_result
+                br_runoff_election_result,
+                manual_llm_general_election_result,
+                manual_llm_election_decision_result_page,
+                manual_llm_votes_received,
+                manual_llm_votes_in_race
             ),
             tbl_br_matches.final_match_status as br_has_match,
             tbl_br_matches.match_score as br_match_score,
@@ -284,7 +288,11 @@ with
                         else tbl_br_matches.final_election_result
                     end
                 else null
-            end as br_runoff_election_result
+            end as br_runoff_election_result,
+            tbl_candidacies.manual_llm_general_election_result,
+            tbl_candidacies.manual_llm_election_decision_result_page,
+            tbl_candidacies.manual_llm_votes_received,
+            tbl_candidacies.manual_llm_votes_in_race
         from ddhq_unmatched_candidacies as tbl_candidacies
         left join
             {{ ref("stg_model_predictions__candidacy_br_matches_20251204") }}
@@ -308,7 +316,11 @@ with
                 br_match_type,
                 br_general_election_result,
                 br_primary_election_result,
-                br_runoff_election_result
+                br_runoff_election_result,
+                manual_llm_general_election_result,
+                manual_llm_election_decision_result_page,
+                manual_llm_votes_received,
+                manual_llm_votes_in_race
             ),
             tbl_br_matches_prenov2025.final_match_status as br_has_match,
             tbl_br_matches_prenov2025.match_score as br_match_score,
@@ -361,7 +373,11 @@ with
                         else tbl_br_matches_prenov2025.final_election_result
                     end
                 else null
-            end as br_runoff_election_result
+            end as br_runoff_election_result,
+            tbl_br_unmatched_candidacies.manual_llm_general_election_result,
+            tbl_br_unmatched_candidacies.manual_llm_election_decision_result_page,
+            tbl_br_unmatched_candidacies.manual_llm_votes_received,
+            tbl_br_unmatched_candidacies.manual_llm_votes_in_race
         from br_unmatched_candidacies as tbl_br_unmatched_candidacies
         left join
             {{ ref("stg_model_predictions__candidacy_br_matches_prenov2025_20251205") }}
@@ -375,36 +391,42 @@ with
             )
             = 1
     ),
-    /*
-    -- br_unmatched_prenov2025 as (
-    --     select * from candidacies where br_general_election_result is null
-    -- ),
-    -- manual_llm_matched as (
-        -- select
-        -- tbl_br_unmatched_prenov2025.*
-            -- tbl_br_unmatched_prenov2025.* except (
-            --     manual_llm_general_election_result,
-            --     manual_llm_election_decision_result_page,
-            --     manual_llm_votes_received,
-            --     manual_llm_votes_in_race
-            -- ),
-            -- case
-            --     when tbl_manual_llm_matches.manual_llm_general_election_result = 'W'
-            --     then 'Won General'
-            --     when tbl_manual_llm_matches.manual_llm_general_election_result = 'L'
-            --     then 'Lost General'
-            --     else null
-            -- end as manual_llm_general_election_result,
-            -- tbl_manual_llm_matches.manual_llm_election_decision_result_page,
-            -- tbl_manual_llm_matches.manual_llm_votes_received,
-            -- tbl_manual_llm_matches.manual_llm_votes_in_race
-        -- from br_unmatched_prenov2025 as tbl_br_unmatched_prenov2025
-        -- left join
-        --     {{ ref("stg_model_predictions__manual_llm_election_results_20251208") }}
-        --     as tbl_manual_llm_matches
-        --     on tbl_manual_llm_matches.hubspot_contact_id = tbl_manual_llm_matches.hubspot_contact_id
-    -- ),
-    */
+    br_unmatched_prenov2025 as (
+        select * from candidacies where br_general_election_result is null
+    ),
+    manual_llm_matched as (
+        select
+            tbl_br_unmatched_prenov2025.* except (
+                manual_llm_general_election_result,
+                manual_llm_election_decision_result_page,
+                manual_llm_votes_received,
+                manual_llm_votes_in_race
+            ),
+            case
+                when tbl_manual_llm_matches.manual_llm_general_election_result = 'W'
+                then 'Won General'
+                when tbl_manual_llm_matches.manual_llm_general_election_result = 'L'
+                then 'Lost General'
+                else null
+            end as manual_llm_general_election_result,
+            tbl_manual_llm_matches.manual_llm_election_decision_result_page,
+            tbl_manual_llm_matches.manual_llm_votes_received,
+            tbl_manual_llm_matches.manual_llm_votes_in_race
+        from br_unmatched_prenov2025 as tbl_br_unmatched_prenov2025
+        left join
+            {{ ref("stg_model_predictions__manual_llm_election_results_20251208") }}
+            as tbl_manual_llm_matches
+            on tbl_br_unmatched_prenov2025.contact_id
+            = tbl_manual_llm_matches.hubspot_contact_id
+        qualify
+            row_number() over (
+                partition by gp_candidacy_id
+                order by
+                    tbl_br_unmatched_prenov2025.manual_llm_general_election_result desc,
+                    updated_at desc
+            )
+            = 1
+    ),
     unioned_tables as (
         select *
         from ddhq_matched
@@ -414,9 +436,9 @@ with
         union all
         select *
         from br_matched_prenov2025
-    -- union all
-    -- select *
-    -- from manual_llm_matched
+        union all
+        select *
+        from manual_llm_matched
     )
 select *
 from unioned_tables
@@ -426,7 +448,7 @@ qualify
         order by
             ddhq_general_election_result desc,
             br_general_election_result desc,
-            -- manual_llm_general_election_result desc,
+            manual_llm_general_election_result desc,
             updated_at desc
     )
     = 1
