@@ -55,12 +55,7 @@ with
                     techspeed_candidate_code in (
                         select hubspot_candidate_code
                         from {{ ref("int__hubspot_ytd_candidacies") }}
-                        where
-                            properties_firstname is not null
-                            and properties_lastname is not null
-                            and properties_state is not null
-                            and properties_office_type is not null
-                            and properties_city is not null
+                        where hubspot_candidate_code is not null
                     )
                 then 'in_hubspot'
                 else uploaded

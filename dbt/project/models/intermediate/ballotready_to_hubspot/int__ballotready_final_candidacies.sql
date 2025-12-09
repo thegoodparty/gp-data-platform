@@ -10,16 +10,11 @@
 -- Creates the final set of BallotReady candidacies to be uploaded to HubSpot
 -- Add in the contested results
 with
-    -- Existing HubSpot candidate codes for deduplication (requires all fields for valid code)
+    -- Existing HubSpot candidate codes for deduplication
     hubspot_candidate_codes as (
         select hubspot_candidate_code
         from {{ ref("int__hubspot_ytd_candidacies") }}
-        where
-            properties_firstname is not null
-            and properties_lastname is not null
-            and properties_state is not null
-            and properties_office_type is not null
-            and properties_city is not null
+        where hubspot_candidate_code is not null
     ),
 
     -- Existing HubSpot phone numbers for deduplication (any contact with a phone)

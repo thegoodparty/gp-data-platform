@@ -94,18 +94,13 @@ with
     dedup_from_hubspot as (
         select *
         from with_candidate_code
-        -- Ommit existing candidates already present in Hubspot from BR subset to be
+        -- Omit existing candidates already present in Hubspot from BR subset to be
         -- shared with TechSpeed
         where
             candidate_code not in (
                 select hubspot_candidate_code
                 from {{ ref("int__hubspot_ytd_candidacies") }}
-                where
-                    properties_firstname is not null
-                    and properties_lastname is not null
-                    and properties_state is not null
-                    and properties_office_type is not null
-                    and properties_city is not null
+                where hubspot_candidate_code is not null
             )
     )
 select
