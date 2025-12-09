@@ -22,109 +22,47 @@ with
         select
             -- We don't want to hand values over to hubspot with string
             -- values of 'null'. We just want the empty string
-            case
-                when f.candidate_id_source is null then '' else f.candidate_id_source
-            end as `Candidate ID Source`,
-            case
-                when f.first_name is null then '' else f.first_name
-            end as `First Name`,
-            case when f.last_name is null then '' else f.last_name end as `Last Name`,
-            case
-                when f.candidate_type is null then '' else f.candidate_type
-            end as `Candidate Type`,
-            case when f.party is null then '' else f.party end as `Party Affiliation`,
-            case when f.email is null then '' else f.email end as `Email`,
-            case when f.phone is null then '' else f.phone end as `Phone Number`,
-            case
-                when f.candidate_id_tier is null then '' else f.candidate_id_tier
-            end as `Candidate ID Tier`,
-            case
-                when f.website_url is null then '' else f.website_url
-            end as `Website URL`,
-            case
-                when f.linkedin_url is null then '' else f.linkedin_url
-            end as `LinkedIn URL`,
-            case
-                when f.instagram_handle is null then '' else f.instagram_handle
-            end as `Instagram Handle`,
-            case
-                when f.twitter_handle is null then '' else f.twitter_handle
-            end as `Twitter Handle`,
-            case
-                when f.facebook_url is null then '' else f.facebook_url
-            end as `Facebook URL`,
-            case
-                when f.birth_date is null then '' else f.birth_date
-            end as `Birth Date`,
-            case
-                when f.street_address is null then '' else f.street_address
-            end as `Street Address`,
-            case when f.state is null then '' else f.state end as `State/Region`,
+            coalesce(f.candidate_id_source, '') as `Candidate ID Source`,
+            coalesce(f.first_name, '') as `First Name`,
+            coalesce(f.last_name, '') as `Last Name`,
+            coalesce(f.candidate_type, '') as `Candidate Type`,
+            coalesce(f.party, '') as `Party Affiliation`,
+            coalesce(f.email, '') as `Email`,
+            coalesce(f.phone, '') as `Phone Number`,
+            coalesce(f.candidate_id_tier, '') as `Candidate ID Tier`,
+            coalesce(f.website_url, '') as `Website URL`,
+            coalesce(f.linkedin_url, '') as `LinkedIn URL`,
+            coalesce(f.instagram_handle, '') as `Instagram Handle`,
+            coalesce(f.twitter_handle, '') as `Twitter Handle`,
+            coalesce(f.facebook_url, '') as `Facebook URL`,
+            coalesce(f.birth_date, '') as `Birth Date`,
+            coalesce(f.street_address, '') as `Street Address`,
+            coalesce(f.state, '') as `State/Region`,
             -- Postal codes must be zero-padded up to 5 digits
-            case
-                when f.postal_code is null
-                then ''
-                else right(concat('00000', cast(f.postal_code as varchar(10))), 5)
-            end as postal_code,
-            case when f.district is null then '' else f.district end as `District`,
-            case when f.city is null then '' else f.city end as `City`,
+            coalesce(
+                right(concat('00000', cast(f.postal_code as varchar(10))), 5), ''
+            ) as postal_code,
+            coalesce(f.district, '') as `District`,
+            coalesce(f.city, '') as `City`,
             f.population,
-            case
-                when f.official_office_name is null then '' else f.official_office_name
-            end as `Official Office Name`,
-            case
-                when f.candidate_office is null then '' else f.candidate_office
-            end as `Candidate Office`,
-            case
-                when f.office_type is null then '' else f.office_type
-            end as `Office Type`,
-            case
-                when f.office_level is null then '' else f.office_level
-            end as `Office Level`,
-            case
-                when f.filing_deadline is null then '' else f.filing_deadline
-            end as `Filing Deadline`,
-            case
-                when f.ballotready_race_id is null then '' else f.ballotready_race_id
-            end as br_race_id,
-            case
-                when f.primary_election_date is null
-                then ''
-                else cast(f.primary_election_date as string)
-            end as `Primary Election Date`,
-            case
-                when f.general_election_date is null
-                then ''
-                else cast(f.general_election_date as string)
-            end as `General Election Date`,
-            case
-                when f.election_date is null
-                then ''
-                else cast(f.election_date as string)
-            end as `Election Date`,
-            case
-                when f.election_type is null then '' else f.election_type
-            end as `Election Type`,
-            case
-                when f.uncontested is null then '' else f.uncontested
-            end as `Uncontested`,
-            case
-                when f.number_of_candidates is null then '' else f.number_of_candidates
-            end as `Number of Candidates`,
-            case
-                when f.number_of_seats_available is null
-                then ''
-                else f.number_of_seats_available
-            end as `Number of Seats Available`,
-            case when f.open_seat is null then '' else f.open_seat end as `Open Seat`,
-            case when f.partisan is null then '' else f.partisan end as `Partisan Type`,
-            case when f.type is null then '' else f.type end as `Type`,
-            case
-                when f.contact_owner is null then '' else f.contact_owner
-            end as `Contact Owner`,
-            case
-                when f.owner_name is null then '' else f.owner_name
-            end as `Owner Name`,
+            coalesce(f.official_office_name, '') as `Official Office Name`,
+            coalesce(f.candidate_office, '') as `Candidate Office`,
+            coalesce(f.office_type, '') as `Office Type`,
+            coalesce(f.office_level, '') as `Office Level`,
+            coalesce(f.filing_deadline, '') as `Filing Deadline`,
+            coalesce(f.ballotready_race_id, '') as br_race_id,
+            coalesce(cast(f.primary_election_date as string), '') as `Primary Election Date`,
+            coalesce(cast(f.general_election_date as string), '') as `General Election Date`,
+            coalesce(cast(f.election_date as string), '') as `Election Date`,
+            coalesce(f.election_type, '') as `Election Type`,
+            coalesce(f.uncontested, '') as `Uncontested`,
+            coalesce(f.number_of_candidates, '') as `Number of Candidates`,
+            coalesce(f.number_of_seats_available, '') as `Number of Seats Available`,
+            coalesce(f.open_seat, '') as `Open Seat`,
+            coalesce(f.partisan, '') as `Partisan Type`,
+            coalesce(f.type, '') as `Type`,
+            coalesce(f.contact_owner, '') as `Contact Owner`,
+            coalesce(f.owner_name, '') as `Owner Name`,
             f.fuzzy_results_techspeed_candidate_code,
             f.fuzzy_matched_hubspot_candidate_code,
             f.fuzzy_match_score,
