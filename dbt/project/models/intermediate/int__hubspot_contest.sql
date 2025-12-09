@@ -1,13 +1,3 @@
-/*
-    TOCOMMENT: This runs about 3x faster as a table vs. an incremental model,
-    but still only takes ~3 seconds to build as a table, so materializing as a
-    view until we know it's a bottleneck. In fact, the run+test combination
-    still runs faster on a view than a table, so we're probably not gaining much
-    by materializing at all.
-    
-    Also: should auto_liquid_cluster be switched to "true" for basically all
-    models in the dbt project?
-*/
 {{
     config(
         auto_liquid_cluster=true,
