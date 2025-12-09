@@ -12,7 +12,6 @@ models:
       election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
       election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
       election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
-      election_db_pw: "{{ env_var('DBT_ELECTION_DB_PW') }}"
       staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
     meta:
       owner: "Data Engineering Team"
@@ -41,7 +40,6 @@ models:
       voter_db_name: "{{ env_var('DBT_VOTER_DB_NAME') }}"
       voter_db_schema: "{{ env_var('DBT_VOTER_DB_SCHEMA') }}"
       voter_db_user: "{{ env_var('DBT_VOTER_DB_USER') }}"
-      voter_db_pw: "{{ env_var('DBT_VOTER_DB_PW') }}"
     meta:
       owner: "Data Engineering Team"
       contains_pii: false
@@ -69,4 +67,3 @@ models:
       people_db_name: "{{ env_var('DBT_PEOPLE_DB_NAME') }}"
       people_db_schema: "{{ env_var('DBT_PEOPLE_DB_SCHEMA') }}"
       people_db_user: "{{ env_var('DBT_PEOPLE_DB_USER') }}"
-      people_db_pw: "{{ env_var('DBT_PEOPLE_DB_PW') }}"

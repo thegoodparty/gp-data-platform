@@ -507,7 +507,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     db_host = dbt.config.get("election_db_host")
     db_port = int(dbt.config.get("election_db_port"))
     db_user = dbt.config.get("election_db_user")
-    db_pw = dbt.config.get("election_db_pw")
+    dbt_env = dbt.config.get("dbt_environment")
+    db_pw = dbutils.secrets.get(  # type: ignore[name-defined]
+        scope=f"dbt-secrets-{dbt_env}", key="election-db-password"
+    )
     db_name = dbt.config.get("election_db_name")
     db_schema = dbt.config.get("election_db_schema")
 

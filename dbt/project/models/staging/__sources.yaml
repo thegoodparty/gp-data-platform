@@ -800,6 +800,10 @@ sources:
     schema: model_predictions
     description: Raw data loaded from model predictions
     tables:
+      - name: candidacy_br_matches_20251204
+        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
+      - name: candidacy_br_matches_prenov2025_20251205
+        description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
       - name: candidacy_ddhq_matches_20250826
         description: output of gemini string matching between DDHQ election results and candidacies sourced from m_general__candidacy
       - name: candidacy_ddhq_matches_20250909
@@ -816,6 +820,8 @@ sources:
         description: output of gemini string matching between L2 districts and BallotReady office positions
       - name: llm_l2_br_match_20250811
         description: output of gemini string matching between L2 districts and BallotReady office positions
+      - name: manual_llm_election_results_20251208
+        description: manually orchestrated LLM election decision results for candidacies sourced from m_general__candidacy
       - name: turnout_projections_even_years_20250709
         description: raw data load from voter turnout projections for even years
       - name: turnout_projections_model2odd

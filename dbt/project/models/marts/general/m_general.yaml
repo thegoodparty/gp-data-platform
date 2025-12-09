@@ -1,6 +1,18 @@
 version: 2
 
 models:
+  - name: m_general__candidacy_preview
+    description: This model creates the candidacy preview object in the mart layer using the hubspot data
+    columns:
+      - name: gp_candidacy_id
+        description: Internally generated unique identifier for candidacies
+        data_tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
   - name: m_general__candidacy
     description: >
       This model creates the candidacies object in the mart layer using the hubspot data
@@ -354,6 +366,10 @@ models:
         description: Unique identifier from HubSpot for the contact
         tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('int__hubspot_contacts_w_companies')
+                field: contact_id
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
       - name: first_name
@@ -404,11 +420,6 @@ models:
         tests:
           - not_null
     tests:
-      - relationships:
-          arguments:
-            to: ref('int__hubspot_contacts_w_companies')
-            field: "contact_id"
-            column_name: hubspot_contact_id
       - relationships:
           arguments:
             to: ref('stg_airbyte_source__gp_api_db_user')
