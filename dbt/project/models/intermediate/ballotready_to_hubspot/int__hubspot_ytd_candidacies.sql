@@ -26,10 +26,4 @@ select
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     (properties_type like '%Self-Filer Lead%' or properties_product_user = 'yes')
-    /*
-        TOCOMMENT: This may be an antipattern to have current date-dependent
-        logic in an intermediate model like this. On Jan 1 of each year, all
-        downstream models will change in a potentially unexpected way. Maybe we
-        should just apply a filter for the current year downstream?
-    */
     and year(properties_election_date) = year(current_date)
