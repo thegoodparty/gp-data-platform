@@ -128,6 +128,22 @@ models:
                 to: ref('int__enhanced_position')
                 field: br_database_id
 
+  - name: stg_model_predictions__manual_llm_election_results_20251208
+    description: manually orchestrated LLM election decision results for candidacies sourced from m_general__candidacy
+    columns:
+      - name: hubspot_contact_id
+        description: HubSpot contact id
+        data_tests:
+          - not_null
+      - name: manual_llm_general_election_result
+        description: Manual LLM general election result
+      - name: manual_llm_election_decision_result_page
+        description: Manual LLM election decision result page
+      - name: manual_llm_votes_received
+        description: Manual LLM votes received
+      - name: manual_llm_votes_in_race
+        description: Manual LLM votes in race
+
   - name: stg_model_predictions__viability_scores
     description: Viability scores data load from model predictions
     columns:
