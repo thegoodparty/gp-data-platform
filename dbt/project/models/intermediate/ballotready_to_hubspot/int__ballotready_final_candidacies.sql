@@ -46,12 +46,7 @@ with
             and t1.br_candidate_code not in (
                 select hubspot_candidate_code from hubspot_candidate_codes
             )
-            and (
-                t1.phone is null
-                or t1.phone not in (
-                    select phone from hubspot_phones where phone is not null
-                )
-            )
+            and t1.phone not in (select phone from hubspot_phones)
     ),
 
     -- write formatted new batch data to a table
