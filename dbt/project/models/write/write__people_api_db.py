@@ -87,7 +87,6 @@ VOTER_COLUMN_LIST: list = [
     "Residence_Addresses_Zip",
     "Residence_Addresses_ZipPlus4",
     "Residence_HHParties_Description",
-    "Registered_Voter",
     "SequenceOddEven",
     "SequenceZigZag",
     "StateVoterID",

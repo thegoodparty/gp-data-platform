@@ -254,7 +254,6 @@ CREATE INDEX "Voter_Rural_Service_District_idx" ON public."Voter" USING btree ("
 CREATE INDEX "Voter_Library_District_idx" ON public."Voter" USING btree ("Library_District");
 CREATE INDEX "Voter_Borough_Ward_idx" ON public."Voter" USING btree ("Borough_Ward");
 CREATE INDEX "Voter_Aquatic_District_idx" ON public."Voter" USING btree ("Aquatic_District");
-CREATE INDEX "Voter_Registered_Voter_idx" ON public."Voter" USING btree ("Registered_Voter");
 CREATE INDEX "Voter_Unified_School_SubDistrict_idx" ON public."Voter" USING btree ("Unified_School_SubDistrict");
 CREATE INDEX "Voter_Levee_District_idx" ON public."Voter" USING btree ("Levee_District");
 CREATE INDEX "Voter_Flood_Control_Zone_idx" ON public."Voter" USING btree ("Flood_Control_Zone");
