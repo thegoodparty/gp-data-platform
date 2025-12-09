@@ -10,7 +10,7 @@
 
 -- Historical tracking table for BallotReady records sent to HubSpot
 -- This table maintains an audit trail of all candidates that have been processed
--- for HubSpot upload, including fuzzy match results
+-- for HubSpot upload, including fuzzy match results and viability scores
 with
     br_fuzzy_deduped as (
         select * from {{ ref("int__ballotready_candidates_fuzzy_deduped") }}
@@ -66,7 +66,9 @@ with
             fd.fuzzy_matched_last_name,
             fd.fuzzy_matched_state,
             fd.fuzzy_matched_office_type,
-            fd.match_type
+            fd.match_type,
+            -- Placeholder for future viability score calculation
+            cast(null as string) as viability_score
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
     )
@@ -117,6 +119,8 @@ select
     fuzzy_matched_last_name,
     fuzzy_matched_state,
     fuzzy_matched_office_type,
+    -- Viability score placeholder
+    viability_score,
     current_timestamp() as upload_timestamp
 from combined_records
 -- Only include records that haven't been processed yet

@@ -104,10 +104,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     dbt.config(
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="techspeed_candidate_code",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=True,
         tags=["intermediate", "techspeed", "viability"],
     )
