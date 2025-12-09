@@ -84,11 +84,7 @@ with
             number_of_seats_available,
             open_seat,
             partisan,
-            case
-                when (population = '' or population is null)
-                then null
-                else cast(trim(regexp_replace(population, '[^0-9]', '')) as integer)
-            end as population,
+            try_cast(trim(regexp_replace(population, '[^0-9]', '')) as integer) as population,
             ballotready_race_id,
             type,
             contact_owner,

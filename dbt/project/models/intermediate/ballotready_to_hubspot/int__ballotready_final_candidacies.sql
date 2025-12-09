@@ -10,6 +10,26 @@
 -- Creates the final set of BallotReady candidacies to be uploaded to HubSpot
 -- Add in the contested results
 with
+    -- Existing HubSpot candidate codes for deduplication (requires all fields for valid code)
+    hubspot_candidate_codes as (
+        select hubspot_candidate_code
+        from {{ ref("int__hubspot_ytd_candidacies") }}
+        where
+            properties_firstname is not null
+            and properties_lastname is not null
+            and properties_state is not null
+            and properties_office_type is not null
+            and properties_city is not null
+    ),
+
+    -- Existing HubSpot phone numbers for deduplication (any contact with a phone)
+    hubspot_phones as (
+        select distinct
+            nullif(trim(regexp_replace(properties_phone, '[^0-9]', '')), '') as phone
+        from {{ ref("int__hubspot_ytd_candidacies") }}
+        where properties_phone is not null
+    ),
+
     br_with_contest as (
         select
             br.* except (number_of_seats_available),
@@ -27,13 +47,16 @@ with
         select t1.*
         from br_with_contest t1
         where
-            t1.br_candidate_code not in (
-                select hubspot_candidate_code
-                from {{ ref("int__hubspot_candidacy_codes") }}
+            t1.br_candidate_code is not null
+            and t1.br_candidate_code not in (
+                select hubspot_candidate_code from hubspot_candidate_codes
             )
-            and t1.br_candidate_code is not null
-            and t1.phone
-            not in (select phone from {{ ref("int__hubspot_phone_numbers") }})
+            and (
+                t1.phone is null
+                or t1.phone not in (
+                    select phone from hubspot_phones where phone is not null
+                )
+            )
     ),
 
     -- write formatted new batch data to a table

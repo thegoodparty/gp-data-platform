@@ -130,71 +130,52 @@
     first_name_col, last_name_col, state_col, office_type_col, city_col=none
 ) %}
     case
-        when {{ first_name_col }} is null
+        when
+            {{ first_name_col }} is null
+            or nullif(trim({{ first_name_col }}), '') is null
+            or {{ last_name_col }} is null
+            or nullif(trim({{ last_name_col }}), '') is null
+            or {{ state_col }} is null
+            or nullif(trim({{ state_col }}), '') is null
+            or {{ office_type_col }} is null
+            or nullif(trim({{ office_type_col }}), '') is null
+            {% if city_col is not none %}
+            or {{ city_col }} is null
+            or nullif(trim({{ city_col }}), '') is null
+            {% endif %}
         then null
-        when {{ last_name_col }} is null
-        then null
-        when {{ state_col }} is null
-        then null
-        when {{ office_type_col }} is null
-        then null
-        {% if city_col is not none %} when {{ city_col }} is null then null {% endif %}
         else
             lower(
-                {% if city_col is not none %}
-                    concat_ws(
-                        '__',
-                        regexp_replace(
-                            regexp_replace(trim({{ first_name_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        ),
-                        regexp_replace(
-                            regexp_replace(trim({{ last_name_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        ),
-                        regexp_replace(
-                            regexp_replace(trim({{ state_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        ),
+                concat_ws(
+                    '__',
+                    regexp_replace(
+                        regexp_replace(trim({{ first_name_col }}), ' ', '-'),
+                        '[^a-zA-Z0-9-]',
+                        ''
+                    ),
+                    regexp_replace(
+                        regexp_replace(trim({{ last_name_col }}), ' ', '-'),
+                        '[^a-zA-Z0-9-]',
+                        ''
+                    ),
+                    regexp_replace(
+                        regexp_replace(trim({{ state_col }}), ' ', '-'),
+                        '[^a-zA-Z0-9-]',
+                        ''
+                    ),
+                    {% if city_col is not none %}
                         regexp_replace(
                             regexp_replace(trim({{ city_col }}), ' ', '-'),
                             '[^a-zA-Z0-9-]',
                             ''
                         ),
-                        regexp_replace(
-                            regexp_replace(trim({{ office_type_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        )
+                    {% endif %}
+                    regexp_replace(
+                        regexp_replace(trim({{ office_type_col }}), ' ', '-'),
+                        '[^a-zA-Z0-9-]',
+                        ''
                     )
-                {% else %}
-                    concat_ws(
-                        '__',
-                        regexp_replace(
-                            regexp_replace(trim({{ first_name_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        ),
-                        regexp_replace(
-                            regexp_replace(trim({{ last_name_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        ),
-                        regexp_replace(
-                            regexp_replace(trim({{ state_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        ),
-                        regexp_replace(
-                            regexp_replace(trim({{ office_type_col }}), ' ', '-'),
-                            '[^a-zA-Z0-9-]',
-                            ''
-                        )
-                    )
-                {% endif %}
+                )
             )
     end
 {% endmacro %}

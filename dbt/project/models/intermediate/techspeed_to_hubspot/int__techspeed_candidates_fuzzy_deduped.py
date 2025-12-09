@@ -149,7 +149,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
     techspeed_candidates_w_hubspot: DataFrame = dbt.ref(
         "int__techspeed_candidates_w_hubspot"
     )
-    hubspot_candidate_codes: DataFrame = dbt.ref("int__hubspot_candidacy_codes")
+    hubspot_ytd_candidacies: DataFrame = dbt.ref("int__hubspot_ytd_candidacies")
+    # Filter and rename to match expected schema for fuzzy matching
+    hubspot_candidate_codes: DataFrame = (
+        hubspot_ytd_candidacies.filter(
+            col("properties_firstname").isNotNull()
+            & col("properties_lastname").isNotNull()
+            & col("properties_state").isNotNull()
+            & col("properties_office_type").isNotNull()
+            & col("properties_city").isNotNull()
+        )
+        .withColumnRenamed("id", "hubspot_contact_id")
+    )
     hubspot_candidate_codes = hubspot_candidate_codes.toPandas()
 
     udf_perform_fuzzy_matching = wrap_perform_fuzzy_matching(
