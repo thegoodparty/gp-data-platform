@@ -151,10 +151,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
     hubspot_ytd_candidacies: DataFrame = dbt.ref("int__hubspot_ytd_candidacies")
     # Filter to valid candidate codes and rename id field
-    hubspot_candidate_codes: DataFrame = (
-        hubspot_ytd_candidacies.filter(col("hubspot_candidate_code").isNotNull())
-        .withColumnRenamed("id", "hubspot_contact_id")
-    )
+    hubspot_candidate_codes: DataFrame = hubspot_ytd_candidacies.filter(
+        col("hubspot_candidate_code").isNotNull()
+    ).withColumnRenamed("id", "hubspot_contact_id")
     hubspot_candidate_codes = hubspot_candidate_codes.toPandas()
 
     udf_perform_fuzzy_matching = wrap_perform_fuzzy_matching(

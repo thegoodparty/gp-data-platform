@@ -42,9 +42,8 @@ with
         select t1.*
         from br_with_contest t1
         where
-            t1.br_candidate_code not in (
-                select hubspot_candidate_code from hubspot_candidate_codes
-            )
+            t1.br_candidate_code
+            not in (select hubspot_candidate_code from hubspot_candidate_codes)
             and t1.phone not in (select phone from hubspot_phones)
     ),
 

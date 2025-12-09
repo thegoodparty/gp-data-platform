@@ -9,7 +9,8 @@ select
     -- identifiers and relations
     tbl_hs_contacts.id,
     case
-        when tbl_hs_contacts.companies is null
+        when
+            tbl_hs_contacts.companies is null
             or trim(tbl_hs_contacts.companies) = ''
             or trim(tbl_hs_contacts.companies) = '[]'
         then null

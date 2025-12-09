@@ -84,7 +84,9 @@ with
             number_of_seats_available,
             open_seat,
             partisan,
-            try_cast(trim(regexp_replace(population, '[^0-9]', '')) as integer) as population,
+            try_cast(
+                trim(regexp_replace(population, '[^0-9]', '')) as integer
+            ) as population,
             ballotready_race_id,
             type,
             contact_owner,

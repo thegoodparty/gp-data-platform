@@ -208,10 +208,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     br_with_contest: DataFrame = dbt.ref("int__ballotready_final_candidacies")
     hubspot_ytd_candidacies: DataFrame = dbt.ref("int__hubspot_ytd_candidacies")
     # Filter to valid candidate codes and rename id field
-    hubspot_candidate_codes: DataFrame = (
-        hubspot_ytd_candidacies.filter(col("hubspot_candidate_code").isNotNull())
-        .withColumnRenamed("id", "hubspot_contact_id")
-    )
+    hubspot_candidate_codes: DataFrame = hubspot_ytd_candidacies.filter(
+        col("hubspot_candidate_code").isNotNull()
+    ).withColumnRenamed("id", "hubspot_contact_id")
 
     # Get HubSpot candidate codes as pandas for fuzzy matching
     hubspot_candidate_codes_pd = hubspot_candidate_codes.toPandas()

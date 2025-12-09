@@ -8,7 +8,7 @@ select
             "properties_lastname",
             "properties_state",
             "properties_office_type",
-            "properties_city"
+            "properties_city",
         )
     }} as hubspot_candidate_code,
     properties_firstname,

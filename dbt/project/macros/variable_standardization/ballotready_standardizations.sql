@@ -136,7 +136,7 @@
             or nullif(trim({{ state_col }}), '') is null
             or nullif(trim({{ office_type_col }}), '') is null
             {% if city_col is not none %}
-            or nullif(trim({{ city_col }}), '') is null
+                or nullif(trim({{ city_col }}), '') is null
             {% endif %}
         then null
         else
