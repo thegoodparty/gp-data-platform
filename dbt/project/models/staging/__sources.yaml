@@ -63,6 +63,7 @@ sources:
         description: raw data load from gp_api_db postgres db from table `ecanvasser_house`
       - name: gp_api_db_ecanvasser_interaction
         description: raw data load from gp_api_db postgres db from table `ecanvasser_interaction`
+        freshness: null
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
         freshness: null
