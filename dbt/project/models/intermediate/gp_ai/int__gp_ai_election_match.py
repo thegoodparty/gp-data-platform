@@ -1,27 +1,10 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
 from pyspark.sql.types import (
-    BooleanType,
-    IntegerType,
-    StringType,
-    StructField,
-    StructType,
     TimestampNTZType,
     TimestampType,
 )
 from pyspark.sql.utils import AnalysisException
-
-EMPTY_SCHEMA = StructType(
-    [
-        StructField("gp_candidacy_id", StringType(), True),
-        StructField("ddhq_race_id", IntegerType(), True),
-        StructField("ddhq_candidate", StringType(), True),
-        StructField("ddhq_candidate_id", IntegerType(), True),
-        StructField("ddhq_election_type", StringType(), True),
-        StructField("run_id", StringType(), True),
-        StructField("has_match", BooleanType(), True),
-    ]
-)
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
