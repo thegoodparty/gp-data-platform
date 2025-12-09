@@ -131,16 +131,11 @@
 ) %}
     case
         when
-            {{ first_name_col }} is null
-            or nullif(trim({{ first_name_col }}), '') is null
-            or {{ last_name_col }} is null
+            nullif(trim({{ first_name_col }}), '') is null
             or nullif(trim({{ last_name_col }}), '') is null
-            or {{ state_col }} is null
             or nullif(trim({{ state_col }}), '') is null
-            or {{ office_type_col }} is null
             or nullif(trim({{ office_type_col }}), '') is null
             {% if city_col is not none %}
-            or {{ city_col }} is null
             or nullif(trim({{ city_col }}), '') is null
             {% endif %}
         then null
