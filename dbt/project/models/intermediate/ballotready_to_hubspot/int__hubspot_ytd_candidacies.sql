@@ -2,6 +2,15 @@
 -- pulling in current year results from hubspot
 select
     id,
+    {{
+        generate_candidate_code(
+            "properties_firstname",
+            "properties_lastname",
+            "properties_state",
+            "properties_office_type",
+            "properties_city",
+        )
+    }} as hubspot_candidate_code,
     properties_firstname,
     properties_lastname,
     properties_phone,
@@ -13,12 +22,8 @@ select
     properties_office_type,
     properties_official_office_name,
     properties_number_of_seats_available,
-    {{ adapter.quote("updatedAt") }} as updated_at
+    updated_at
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     (properties_type like '%Self-Filer Lead%' or properties_product_user = 'yes')
-    and properties_election_date
-    between date_trunc('year', current_date) and date_trunc(
-        'year', current_date + interval 1 year
-    )
-    - interval 1 day
+    and year(properties_election_date) = year(current_date)

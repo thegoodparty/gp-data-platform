@@ -1,8 +1,5 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="contact_id",
-        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["intermediate", "candidacy", "contest", "hubspot"],
     )
@@ -89,16 +86,12 @@ select
     cast(null as string) as contest_results,
 
     -- metadata
-    `updatedAt` as updated_at,
-    `createdAt` as created_at
+    updated_at,
+    created_at
 
--- TODO: add term_length_years when available
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     1 = 1
     and properties_official_office_name is not null
     and properties_office_type is not null
     and properties_candidate_office is not null
-    {% if is_incremental() %}
-        and `updatedAt` >= (select max(updated_at) from {{ this }})
-    {% endif %}

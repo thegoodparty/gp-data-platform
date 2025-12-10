@@ -1,4 +1,4 @@
-{{ config(materialized="view", tags=["intermediate", "hubspot", "ballotready"]) }}
+{{ config(tags=["intermediate", "hubspot", "ballotready"]) }}
 -- this file calculates whether races are contested or not by combining BallotReady
 -- and Hubspot upstream data
 -- count of ballotready candidates per contest

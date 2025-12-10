@@ -1,8 +1,5 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="id",
-        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["intermediate", "candidacy", "contacts", "hubspot"],
     )
@@ -12,11 +9,10 @@ select
     -- identifiers and relations
     tbl_hs_contacts.id,
     case
-        when tbl_hs_contacts.companies is null
-        then null
-        when trim(tbl_hs_contacts.companies) = ''
-        then null
-        when trim(tbl_hs_contacts.companies) = '[]'
+        when
+            tbl_hs_contacts.companies is null
+            or trim(tbl_hs_contacts.companies) = ''
+            or trim(tbl_hs_contacts.companies) = '[]'
         then null
         else from_json(tbl_hs_contacts.companies, 'array<string>')
     end as companies,  -- type is array<string>
@@ -72,8 +68,8 @@ select
     tbl_hs_contacts.properties_number_opponents as number_of_opponents,
 
     -- Metadata
-    tbl_hs_contacts.`createdAt` as created_at,
-    tbl_hs_contacts.`updatedAt` as updated_at
+    tbl_hs_contacts.created_at,
+    tbl_hs_contacts.updated_at
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }} tbl_hs_contacts
 left join
     {{ ref("clean_states") }} as tbl_states
@@ -82,6 +78,3 @@ where
     1 = 1
     and tbl_hs_contacts.properties_firstname is not null
     and tbl_hs_contacts.properties_lastname is not null
-    {% if is_incremental() %}
-        and tbl_hs_contacts.`updatedAt` >= (select max(updated_at) from {{ this }})
-    {% endif %}
