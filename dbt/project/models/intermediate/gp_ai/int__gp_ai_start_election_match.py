@@ -180,6 +180,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "stg_airbyte_source__ddhq_gdrive_election_results"
     )  # dbt ref only supports string literals
 
+    # Note that `schema` is hardcoded to `dbt` since the upstream schema location cannot be referenced across enviroments,
+    # particularly when using the selector "state:modified"
+    if dbt_env == "prod":
+        intermediate_schema = "dbt"
+    else:
+        intermediate_schema = dbt.this.schema
+
     # if incremental, check if the most recent run is done after latest updates to candidacy and election_results table
     if dbt.is_incremental:
         # get the max updated_at from source tables
@@ -199,13 +206,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         if max_created_at is None or max_updated_source > max_created_at:
             # start the election match process
-            # Note that `schema` is hardcoded to `dbt` since the upstream schema location cannot be referenced across enviroments,
-            # particularly when using the selector "state:modified"
             response_data = _create_election_match_request(
                 gp_ai_url=gp_ai_url,
                 gp_ai_api_key=gp_ai_api_key,
-                schema=dbt.this.schema,
-                # schema="dbt",
+                schema=intermediate_schema,
                 candidacy_table_name=candidacy_table_name,
                 election_results_table_name=election_results_table_name,
             )
@@ -221,8 +225,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     response_data = _create_election_match_request(
         gp_ai_url=gp_ai_url,
         gp_ai_api_key=gp_ai_api_key,
-        schema=dbt.this.schema,
-        # schema="dbt",
+        schema=intermediate_schema,
         candidacy_table_name=candidacy_table_name,
         election_results_table_name=election_results_table_name,
     )
