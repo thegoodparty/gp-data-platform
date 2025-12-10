@@ -204,7 +204,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             response_data = _create_election_match_request(
                 gp_ai_url=gp_ai_url,
                 gp_ai_api_key=gp_ai_api_key,
-                schema="dbt",
+                schema=dbt.this.schema,
+                # schema="dbt",
                 candidacy_table_name=candidacy_table_name,
                 election_results_table_name=election_results_table_name,
             )
@@ -220,7 +221,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     response_data = _create_election_match_request(
         gp_ai_url=gp_ai_url,
         gp_ai_api_key=gp_ai_api_key,
-        schema="dbt",
+        schema=dbt.this.schema,
+        # schema="dbt",
         candidacy_table_name=candidacy_table_name,
         election_results_table_name=election_results_table_name,
     )
