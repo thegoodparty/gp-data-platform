@@ -9,7 +9,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
-from thefuzz import fuzz, process
+from rapidfuzz import fuzz, process
 
 FUZZ_MATCH_SCHEMA = StructType(
     [
@@ -92,7 +92,7 @@ def wrap_perform_fuzzy_matching(
             )
 
             # Filter by threshold and add to results
-            for rank, (matched_code, score) in enumerate(matches, 1):
+            for rank, (matched_code, score, _idx) in enumerate(matches, 1):
                 if score >= threshold:
                     hubspot_data = hubspot_lookup[matched_code]
 
@@ -141,10 +141,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     dbt.config(
         submission_method="all_purpose_cluster",
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="techspeed_candidate_code",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=True,
         tags=["intermediate", "techspeed", "hubspot", "fuzzy_deduped"],
     )
@@ -152,21 +149,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     techspeed_candidates_w_hubspot: DataFrame = dbt.ref(
         "int__techspeed_candidates_w_hubspot"
     )
-    hubspot_candidate_codes: DataFrame = dbt.ref("int__hubspot_candidacy_codes")
-
-    # Handle incremental logic: Only process new or updated records based on _airbyte_extracted_at
-    if dbt.is_incremental:
-        existing_table = session.table(f"{dbt.this}")
-        max_extracted_at_row = existing_table.agg(
-            {"_airbyte_extracted_at": "max"}
-        ).collect()[0]
-        max_extracted_at = max_extracted_at_row[0] if max_extracted_at_row else None
-
-        if max_extracted_at:
-            techspeed_candidates_w_hubspot = techspeed_candidates_w_hubspot.filter(
-                col("_airbyte_extracted_at") > max_extracted_at
-            )
-
+    hubspot_ytd_candidacies: DataFrame = dbt.ref("int__hubspot_ytd_candidacies")
+    # Filter to valid candidate codes and rename id field
+    hubspot_candidate_codes: DataFrame = hubspot_ytd_candidacies.filter(
+        col("hubspot_candidate_code").isNotNull()
+    ).withColumnRenamed("id", "hubspot_contact_id")
     hubspot_candidate_codes = hubspot_candidate_codes.toPandas()
 
     udf_perform_fuzzy_matching = wrap_perform_fuzzy_matching(

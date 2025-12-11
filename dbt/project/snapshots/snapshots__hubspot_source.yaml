@@ -1,18 +1,18 @@
 snapshots:
   - name: snapshot__hubspot_api_companies
-    relation: ref('stg_airbyte_source__hubspot_api_companies')
+    relation: source("airbyte_source", "hubspot_api_companies")
     config:
       strategy: timestamp
       unique_key: id
       updated_at: updatedAt
   - name: snapshot__hubspot_api_contacts
-    relation: ref('stg_airbyte_source__hubspot_api_contacts')
+    relation: source("airbyte_source", "hubspot_api_contacts")
     config:
       strategy: timestamp
       unique_key: id
       updated_at: updatedAt
   - name: snapshot__hubspot_api_deals
-    relation: ref('stg_airbyte_source__hubspot_api_deals')
+    relation: source("airbyte_source", "hubspot_api_deals")
     config:
       strategy: timestamp
       unique_key: id

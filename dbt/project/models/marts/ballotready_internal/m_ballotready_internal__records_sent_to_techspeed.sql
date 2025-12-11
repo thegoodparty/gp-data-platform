@@ -1,9 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="candidacy_id",
-        auto_liquid_cluster=true,
+        materialized="table",
         tags=["mart", "ballotready", "techspeed", "historical"],
     )
 }}
@@ -74,11 +71,6 @@ with
                 select candidacy_id
                 from {{ ref("stg_historical__ballotready_records_sent_to_techspeed") }}
             )
-            {% if is_incremental() %}
-                and candidacy_id not in (
-                    select candidacy_id from {{ this }} where candidacy_id is not null
-                )
-            {% endif %}
     ),
     with_office_type as (
         select *, {{ map_ballotready_office_type("candidate_office") }} as office_type
@@ -97,12 +89,13 @@ with
     dedup_from_hubspot as (
         select *
         from with_candidate_code
-        -- Ommit existing candidates already present in Hubspot from BR subset to be
+        -- Omit existing candidates already present in Hubspot from BR subset to be
         -- shared with TechSpeed
         where
             candidate_code not in (
                 select hubspot_candidate_code
-                from {{ ref("int__hubspot_candidacy_codes") }}
+                from {{ ref("int__hubspot_ytd_candidacies") }}
+                where hubspot_candidate_code is not null
             )
     )
 select
