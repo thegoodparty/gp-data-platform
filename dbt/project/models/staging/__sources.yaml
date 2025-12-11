@@ -4,8 +4,8 @@ sources:
   - name: airbyte_source
     schema: airbyte_source
     description: Raw data loaded from Airbyte
-    loaded_at_field: "_airbyte_extracted_at"
     config:
+      loaded_at_field: "_airbyte_extracted_at"
       freshness:
         warn_after: { count: 10, period: day }
         error_after: { count: 31, period: day }
@@ -63,10 +63,12 @@ sources:
         description: raw data load from gp_api_db postgres db from table `ecanvasser_house`
       - name: gp_api_db_ecanvasser_interaction
         description: raw data load from gp_api_db postgres db from table `ecanvasser_interaction`
-        freshness: null
+        config:
+          freshness: null
       - name: gp_api_db_election_type
         description: raw data load from gp_api_db postgres db from table `election_type`
-        freshness: null
+        config:
+          freshness: null
       - name: gp_api_db_tcr_compliance
         description: raw data load from gp_api_db postgres db from table `tcr_compliance`
       - name: gp_api_db_outreach
@@ -75,10 +77,12 @@ sources:
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
       - name: gp_api_db_position
         description: raw data load from gp_api_db postgres db from table `position`
-        freshness: null
+        config:
+          freshness: null
       - name: gp_api_db_top_issue
         description: raw data load from gp_api_db postgres db from table `top_issues`
-        freshness: null
+        config:
+          freshness: null
       - name: gp_api_db_user
         description: raw data load from gp_api_db postgres db from table `user`
       - name: gp_api_db_website
@@ -103,13 +107,16 @@ sources:
         description: raw data load from HubSpot data model
       - name: stripe_api_accounts
         description: Stripe account information and settings
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_application_fees
         description: Stripe application fees charged on transactions
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_application_fees_refunds
         description: Stripe application fee refund transactions
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_balance_transactions
         description: Stripe balance transaction history and account movements
       - name: stripe_api_charges
@@ -118,7 +125,8 @@ sources:
         description: Stripe customer records and account information
       - name: stripe_api_customer_balance_transactions
         description: Stripe customer balance transaction history and credit movements
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_events
         description: Stripe webhook events and API activity logs
       - name: stripe_api_invoice_items
@@ -131,37 +139,46 @@ sources:
         description: Stripe payout transactions to connected accounts
       - name: stripe_api_persons
         description: Stripe person records for connected accounts and representatives
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_plans
         description: Stripe subscription plans and pricing tiers
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_prices
         description: Stripe pricing information for products and services
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_products
         description: Stripe product catalog and inventory information
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_promotion_codes
         description: Stripe promotion codes and discount campaigns
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_refunds
         description: Stripe refund transactions and processing details
       - name: stripe_api_subscription_items
         description: Stripe subscription line items and plan details
       - name: stripe_api_subscription_schedule
         description: Stripe subscription scheduling and recurring payment plans
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_subscriptions
         description: Stripe subscription records and recurring billing information
       - name: stripe_api_transactions
         description: Stripe financial transactions and payment processing records
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_transfers
         description: Stripe transfer transactions between accounts
-        freshness: null
+        config:
+          freshness: null
       - name: stripe_api_transfer_reversals
         description: Stripe transfer reversal transactions and dispute handling
-        freshness: null
+        config:
+          freshness: null
       - name: techspeed_gdrive_candidates
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_marketing_data_enrichment
