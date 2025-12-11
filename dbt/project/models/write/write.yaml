@@ -13,9 +13,9 @@ models:
       election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
       election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
       staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: true
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: true
     columns:
       - name: id
         description: "Unique identifier for the loading job"
@@ -40,9 +40,9 @@ models:
       voter_db_name: "{{ env_var('DBT_VOTER_DB_NAME') }}"
       voter_db_schema: "{{ env_var('DBT_VOTER_DB_SCHEMA') }}"
       voter_db_user: "{{ env_var('DBT_VOTER_DB_USER') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: id
         description: "Unique identifier for the loaded table and job"

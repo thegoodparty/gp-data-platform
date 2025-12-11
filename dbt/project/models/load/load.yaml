@@ -17,9 +17,9 @@ models:
       # current env vars listed in docs are not available
       # dbt_cloud_account_id: "{{ env_var('DBT_CLOUD_ACCOUNT_ID') }}"
       # dbt_cloud_account: "{{ env_var('DBT_CLOUD_ACCOUNT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: id
         description: "Unique identifier for the loaded file and job"
@@ -41,9 +41,9 @@ models:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
       l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: id
         description: "Unique identifier for the loaded table and job"
