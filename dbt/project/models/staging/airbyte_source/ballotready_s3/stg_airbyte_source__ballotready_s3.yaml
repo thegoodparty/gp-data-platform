@@ -19,6 +19,12 @@ models:
                   - WON
                   - LOST
                   - RUNOFF
+                  - GENERAL_WIN
+                  - PRIMARY_WIN
+                  - LOSS
+                  - ''
+              config:
+                where: "election_result is not null"
 
   - name: stg_airbyte_source__ballotready_s3_office_holders_v3
     description: Office Holders data load from ballotready csvs in s3 bucket
