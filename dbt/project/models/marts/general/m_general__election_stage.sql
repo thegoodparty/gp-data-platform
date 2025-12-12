@@ -24,9 +24,10 @@ with
             as total_votes_cast,
             -- TODO: add total_votes_counted, reporting_percentage
             tbl_ddhq_election_results_source._airbyte_extracted_at
-        from
-            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
-            as tbl_ddhq_matches
+        -- from
+        -- {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
+        -- as tbl_ddhq_matches
+        from {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
             as tbl_ddhq_election_results_source
