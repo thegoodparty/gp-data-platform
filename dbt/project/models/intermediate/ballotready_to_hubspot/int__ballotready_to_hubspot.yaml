@@ -6,9 +6,10 @@ models:
       Final filtered set of BallotReady candidacies to be uploaded to HubSpot,
       including contested status and number of candidates per contest.
       Only includes records not already present in HubSpot.
-    meta:
-      owner: tristan.aubert@goodparty.org
-      source_systems: [BallotReady]
+    config:
+      meta:
+        owner: tristan.aubert@goodparty.org
+        source_systems: [BallotReady]
     columns:
       - name: id
         description: Deterministic UUID based on key candidate fields.

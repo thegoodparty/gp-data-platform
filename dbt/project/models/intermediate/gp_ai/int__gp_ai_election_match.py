@@ -1,28 +1,10 @@
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, lit, row_number
+from pyspark.sql.functions import col, lit
 from pyspark.sql.types import (
-    BooleanType,
-    IntegerType,
-    StringType,
-    StructField,
-    StructType,
     TimestampNTZType,
     TimestampType,
 )
 from pyspark.sql.utils import AnalysisException
-from pyspark.sql.window import Window
-
-EMPTY_SCHEMA = StructType(
-    [
-        StructField("gp_candidacy_id", StringType(), True),
-        StructField("ddhq_race_id", IntegerType(), True),
-        StructField("ddhq_candidate", StringType(), True),
-        StructField("ddhq_candidate_id", IntegerType(), True),
-        StructField("ddhq_election_type", StringType(), True),
-        StructField("run_id", StringType(), True),
-        StructField("has_match", BooleanType(), True),
-    ]
-)
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -36,7 +18,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key=["gp_candidacy_id"],
+        unique_key=["gp_candidacy_id", "ddhq_race_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "gp_ai", "election_match", "fetch"],
@@ -54,15 +36,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         this_table: DataFrame = session.table(f"{dbt.this}")
 
     # get only the latest row by created_at
-    window_spec = Window.orderBy(col("created_at").desc())
-    start_election_match_table = (
-        start_election_match_table.withColumn("rn", row_number().over(window_spec))
-        .filter(col("rn") == 1)
-        .drop("rn")
-    )
-
-    # collect the single parquet file path to process
-    row = start_election_match_table.select(
+    latest_df = start_election_match_table.orderBy(col("created_at").desc()).limit(1)
+    row = latest_df.select(
         "run_id", col("s3_output.files.parquet").alias("parquet_path")
     ).first()
 
@@ -71,17 +46,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             if this_table.count() == 0:
                 # if the table is empty and there is no parquet file, fallback to the latest match loaded
-                # add run_id column to match expected schema
-                return latest_manual_ddhq_matches.withColumn(
+                # add run_id column to match expected schema and deduplicate
+                fallback_df = latest_manual_ddhq_matches.withColumn(
                     "run_id", lit("manual_run").cast("string")
+                )
+                return fallback_df.dropDuplicates(
+                    subset=["gp_candidacy_id", "ddhq_race_id"]
                 )
             else:
                 return this_table.limit(0)
         else:
             # if the table is empty and there is no parquet file, fallback to the latest match loaded
-            # add run_id column to match expected schema
-            return latest_manual_ddhq_matches.withColumn(
+            # add run_id column to match expected schema and deduplicate
+            fallback_df = latest_manual_ddhq_matches.withColumn(
                 "run_id", lit("manual_run").cast("string")
+            )
+            return fallback_df.dropDuplicates(
+                subset=["gp_candidacy_id", "ddhq_race_id"]
             )
 
     run_id: str = row.run_id
@@ -124,27 +105,28 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             if this_table.count() == 0:
                 # if the table is empty and there is no parquet file, fallback to the latest match loaded
-                # add run_id column to match expected schema
-                return latest_manual_ddhq_matches.withColumn(
+                # add run_id column to match expected schema and deduplicate
+                fallback_df = latest_manual_ddhq_matches.withColumn(
                     "run_id", lit("manual_run").cast("string")
+                )
+                return fallback_df.dropDuplicates(
+                    subset=["gp_candidacy_id", "ddhq_race_id"]
                 )
             else:
                 return this_table.limit(0)
         else:
             # if the table is empty and there is no parquet file, fallback to the latest match loaded
-            # add run_id column to match expected schema
-            return latest_manual_ddhq_matches.withColumn(
+            # add run_id column to match expected schema and deduplicate
+            fallback_df = latest_manual_ddhq_matches.withColumn(
                 "run_id", lit("manual_run").cast("string")
+            )
+            return fallback_df.dropDuplicates(
+                subset=["gp_candidacy_id", "ddhq_race_id"]
             )
 
     # add or overwrite run_id column to track which run this data came from
     output_df: DataFrame = parquet_df.withColumn("run_id", lit(run_id).cast("string"))
     output_df = output_df.withColumn("parquet_path", lit(parquet_path).cast("string"))
-
-    # only take the latest instance of each hubspot_gp_candidacy_id
-    output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
-        subset=["hubspot_gp_candidacy_id"]
-    )
 
     # rename columns to remove "hubspot_" prefix
     output_df = output_df.withColumnRenamed("hubspot_row_index", "row_index")
@@ -169,4 +151,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     output_df = output_df.withColumnRenamed("hubspot_embedding_text", "embedding_text")
     output_df = output_df.withColumnRenamed("hubspot_election_date", "election_date")
     output_df = output_df.withColumnRenamed("hubspot_election_type", "election_type")
+
+    # Final deduplication on renamed columns to ensure uniqueness
+    # Order by run_id desc to keep the latest run's data for each combination
+    output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
+        subset=["gp_candidacy_id", "ddhq_race_id"]
+    )
+
     return output_df
