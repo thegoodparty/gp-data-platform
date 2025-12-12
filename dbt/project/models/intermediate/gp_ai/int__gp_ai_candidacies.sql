@@ -1,21 +1,12 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="gp_candidacy_id",
-        on_schema_change="append_new_columns",
-        auto_liquid_cluster=true,
+        materialized="view",
         tags=["intermediate", "gp_ai", "candidacies"],
     )
 }}
 
 with
-    candidacies as (
-        select *
-        from {{ ref("m_general__candidacy_v2") }}
-        {% if is_incremental() %}
-            where updated_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
-    ),
+    candidacies as (select * from {{ ref("m_general__candidacy_v2") }}),
     candidates as (select * from {{ ref("m_general__candidate_v2") }})
 
 select
