@@ -46,17 +46,23 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             if this_table.count() == 0:
                 # if the table is empty and there is no parquet file, fallback to the latest match loaded
-                # add run_id column to match expected schema
-                return latest_manual_ddhq_matches.withColumn(
+                # add run_id column to match expected schema and deduplicate
+                fallback_df = latest_manual_ddhq_matches.withColumn(
                     "run_id", lit("manual_run").cast("string")
+                )
+                return fallback_df.dropDuplicates(
+                    subset=["gp_candidacy_id", "ddhq_race_id"]
                 )
             else:
                 return this_table.limit(0)
         else:
             # if the table is empty and there is no parquet file, fallback to the latest match loaded
-            # add run_id column to match expected schema
-            return latest_manual_ddhq_matches.withColumn(
+            # add run_id column to match expected schema and deduplicate
+            fallback_df = latest_manual_ddhq_matches.withColumn(
                 "run_id", lit("manual_run").cast("string")
+            )
+            return fallback_df.dropDuplicates(
+                subset=["gp_candidacy_id", "ddhq_race_id"]
             )
 
     run_id: str = row.run_id
@@ -99,27 +105,28 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             if this_table.count() == 0:
                 # if the table is empty and there is no parquet file, fallback to the latest match loaded
-                # add run_id column to match expected schema
-                return latest_manual_ddhq_matches.withColumn(
+                # add run_id column to match expected schema and deduplicate
+                fallback_df = latest_manual_ddhq_matches.withColumn(
                     "run_id", lit("manual_run").cast("string")
+                )
+                return fallback_df.dropDuplicates(
+                    subset=["gp_candidacy_id", "ddhq_race_id"]
                 )
             else:
                 return this_table.limit(0)
         else:
             # if the table is empty and there is no parquet file, fallback to the latest match loaded
-            # add run_id column to match expected schema
-            return latest_manual_ddhq_matches.withColumn(
+            # add run_id column to match expected schema and deduplicate
+            fallback_df = latest_manual_ddhq_matches.withColumn(
                 "run_id", lit("manual_run").cast("string")
+            )
+            return fallback_df.dropDuplicates(
+                subset=["gp_candidacy_id", "ddhq_race_id"]
             )
 
     # add or overwrite run_id column to track which run this data came from
     output_df: DataFrame = parquet_df.withColumn("run_id", lit(run_id).cast("string"))
     output_df = output_df.withColumn("parquet_path", lit(parquet_path).cast("string"))
-
-    # only take the latest instance of each hubspot_gp_candidacy_id and ddhq_race_id combination
-    output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
-        subset=["hubspot_gp_candidacy_id", "ddhq_race_id"]
-    )
 
     # rename columns to remove "hubspot_" prefix
     output_df = output_df.withColumnRenamed("hubspot_row_index", "row_index")
@@ -144,4 +151,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     output_df = output_df.withColumnRenamed("hubspot_embedding_text", "embedding_text")
     output_df = output_df.withColumnRenamed("hubspot_election_date", "election_date")
     output_df = output_df.withColumnRenamed("hubspot_election_type", "election_type")
+
+    # Final deduplication on renamed columns to ensure uniqueness
+    # Order by run_id desc to keep the latest run's data for each combination
+    output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
+        subset=["gp_candidacy_id", "ddhq_race_id"]
+    )
+
     return output_df
