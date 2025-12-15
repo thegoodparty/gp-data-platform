@@ -51,8 +51,12 @@ with
             coalesce(f.office_level, '') as `Office Level`,
             coalesce(f.filing_deadline, '') as `Filing Deadline`,
             coalesce(f.ballotready_race_id, '') as br_race_id,
-            coalesce(cast(f.primary_election_date as string), '') as `Primary Election Date`,
-            coalesce(cast(f.general_election_date as string), '') as `General Election Date`,
+            coalesce(
+                cast(f.primary_election_date as string), ''
+            ) as `Primary Election Date`,
+            coalesce(
+                cast(f.general_election_date as string), ''
+            ) as `General Election Date`,
             coalesce(cast(f.election_date as string), '') as `Election Date`,
             coalesce(f.election_type, '') as `Election Type`,
             coalesce(f.uncontested, '') as `Uncontested`,
