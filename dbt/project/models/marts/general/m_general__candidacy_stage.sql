@@ -47,10 +47,6 @@ with
             tbl_contacts.created_at,
             tbl_contacts.updated_at
         from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
-        -- left join
-        -- {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
-        -- as tbl_ddhq_matches
-        -- on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
