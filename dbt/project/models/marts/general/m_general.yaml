@@ -250,11 +250,15 @@ models:
             to: ref('int__hubspot_contacts_w_companies')
             field: "contact_id"
             column_name: hubspot_contact_id
+          config:
+            where: "hubspot_contact_id is not null"
       - relationships:
           arguments:
             to: ref('int__hubspot_contacts_w_companies')
             field: "gp_candidacy_id"
             column_name: gp_candidacy_id
+          config:
+            where: "gp_candidacy_id is not null"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
@@ -370,6 +374,8 @@ models:
               arguments:
                 to: ref('int__hubspot_contacts_w_companies')
                 field: contact_id
+              config:
+                where: "hubspot_contact_id is not null"
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
       - name: first_name

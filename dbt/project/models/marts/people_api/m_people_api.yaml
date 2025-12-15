@@ -8,7 +8,7 @@ models:
       - name: id
         description: Unique identifier for a district
         data_type: uuid
-        tests:
+        data_tests:
           - not_null
           - unique
           - relationships:
@@ -18,7 +18,7 @@ models:
       - name: name
         description: Name of the district
         data_type: string
-        tests:
+        data_tests:
           - not_null
           - relationships:
               arguments:
@@ -41,27 +41,27 @@ models:
       - name: voter_id
         description: Unique identifier for a district voter
         data_type: uuid
-        tests:
+        data_tests:
           - not_null
-        relationships:
-          arguments:
-            to: ref('m_people_api__voter')
-            field: id
+          - relationships:
+              arguments:
+                to: ref('m_people_api__voter')
+                field: id
       - name: district_id
         description: Unique identifier for a district
         data_type: uuid
-        tests:
+        data_tests:
           - not_null
-        relationships:
-          arguments:
-            to: ref('m_people_api__district')
-            field: id
+          - relationships:
+              arguments:
+                to: ref('m_people_api__district')
+                field: id
       - name: type
         description: Type of district
         data_type: string
         tests:
           - not_null
-    tests:
+    data_tests:
       - unique_combination_sampled:
           arguments:
             combination_of_columns:
