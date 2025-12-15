@@ -38,12 +38,12 @@ def _score_using_model(
     client = mlflow.tracking.MlflowClient()
     latest_model_version = max(
         client.search_model_versions(
-            f"name='goodparty_data_catalog.sandbox.{modelname}'"
+            f"name='goodparty_data_catalog.model_predictions.{modelname}'"
         ),
         key=lambda x: x.version,
     ).version
     model = mlflow.sklearn.load_model(
-        f"models:/goodparty_data_catalog.sandbox.{modelname}/{latest_model_version}"
+        f"models:/goodparty_data_catalog.model_predictions.{modelname}/{latest_model_version}"
     )
 
     # Initialize score column
@@ -71,7 +71,9 @@ def _join_woe(df: DataFrame, col_name: str, spark: SparkSession) -> DataFrame:
     Returns:
         DataFrame with WoE values joined for the specified column
     """
-    woe_df = spark.table(f"sandbox.viability_br_{col_name}_woe")
+    woe_df = spark.table(
+        f"goodparty_data_catalog.model_predictions.viability_br_{col_name}_woe"
+    )
 
     # Get valid categories
     valid_cats = [
