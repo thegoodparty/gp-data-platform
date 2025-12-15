@@ -8,9 +8,9 @@ models:
       candidacies_v3 csv file does not contain all the fields needed.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: true
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: true
     columns:
       - name: database_id
         description: "Unique identifier for the candidacy in the CivicEngine database"
@@ -30,9 +30,9 @@ models:
       from various organizations.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: candidacy_id
         description: "Unique identifier for the candidacy in the CivicEngine database"
@@ -47,9 +47,9 @@ models:
       from various organizations.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: database_id
         description: "Unique identifier for the normalized position in the CivicEngine database"
@@ -67,9 +67,9 @@ models:
       This model retrieves and processes geofence data from the CivicEngine API.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: created_at
         description: "Timestamp when the geofence was created in the CivicEngine system"
@@ -96,9 +96,9 @@ models:
       It is used to retrieve the issue data for the [`stance`](https://developers.civicengine.com/docs/api/graphql/reference/objects/stance) table.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: database_id
         description: "Unique identifier for the issue in the CivicEngine database"
@@ -125,9 +125,9 @@ models:
       to retrieve ids on which to query the normalized position data.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: database_id
         description: "Unique identifier for the normalized position in the CivicEngine database"
@@ -147,18 +147,18 @@ models:
       from various organizations.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
 
   - name: int__ballotready_person
     description: >
       This model retrieves and processes person data from the CivicEngine API.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: database_id
         description: "Unique identifier for the person in the CivicEngine database"
@@ -177,9 +177,9 @@ models:
       See https://developers.civicengine.com/docs/api/graphql/reference/objects/position-election-frequency
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: database_id
         description: "Unique identifier for the position election frequency in the CivicEngine database"
@@ -194,9 +194,9 @@ models:
       on various issues.
     config:
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

@@ -15,7 +15,7 @@ with
             {{ adapter.quote("is_winner") }},
             {{ adapter.quote("race_name") }},
             cast(
-                try_cast({{ adapter.quote("candidate_id") }} as float) as int
+                cast({{ adapter.quote("candidate_id") }} as float) as int
             ) as candidate_id,
             {{ adapter.quote("election_type") }},
             cast({{ adapter.quote("is_uncontested") }} as boolean) as is_uncontested,
