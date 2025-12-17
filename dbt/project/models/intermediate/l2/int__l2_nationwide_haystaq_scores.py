@@ -54,9 +54,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Alabama
     if state_allowlist is None or "AL" in state_allowlist:
-        al_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_al_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("AL")
-        )
+        al_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_al_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("AL"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "AL")
@@ -68,9 +68,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Alaska
     if state_allowlist is None or "AK" in state_allowlist:
-        ak_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ak_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("AK")
-        )
+        ak_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ak_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("AK"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "AK")
@@ -82,9 +82,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Arizona
     if state_allowlist is None or "AZ" in state_allowlist:
-        az_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_az_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("AZ")
-        )
+        az_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_az_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("AZ"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "AZ")
@@ -96,9 +96,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Arkansas
     if state_allowlist is None or "AR" in state_allowlist:
-        ar_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ar_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("AR")
-        )
+        ar_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ar_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("AR"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "AR")
@@ -110,9 +110,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # California
     if state_allowlist is None or "CA" in state_allowlist:
-        ca_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ca_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("CA")
-        )
+        ca_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ca_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("CA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "CA")
@@ -124,9 +124,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Colorado
     if state_allowlist is None or "CO" in state_allowlist:
-        co_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_co_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("CO")
-        )
+        co_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_co_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("CO"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "CO")
@@ -138,9 +138,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Connecticut
     if state_allowlist is None or "CT" in state_allowlist:
-        ct_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ct_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("CT")
-        )
+        ct_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ct_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("CT"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "CT")
@@ -152,9 +152,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Delaware
     if state_allowlist is None or "DE" in state_allowlist:
-        de_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_de_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("DE")
-        )
+        de_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_de_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("DE"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "DE")
@@ -166,9 +166,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Washington DC
     if state_allowlist is None or "DC" in state_allowlist:
-        dc_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_dc_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("DC")
-        )
+        dc_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_dc_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("DC"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "DC")
@@ -180,9 +180,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Florida
     if state_allowlist is None or "FL" in state_allowlist:
-        fl_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_fl_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("FL")
-        )
+        fl_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_fl_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("FL"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "FL")
@@ -194,9 +194,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Georgia
     if state_allowlist is None or "GA" in state_allowlist:
-        ga_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ga_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("GA")
-        )
+        ga_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ga_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("GA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "GA")
@@ -208,9 +208,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Hawaii
     if state_allowlist is None or "HI" in state_allowlist:
-        hi_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_hi_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("HI")
-        )
+        hi_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_hi_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("HI"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "HI")
@@ -222,9 +222,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Idaho
     if state_allowlist is None or "ID" in state_allowlist:
-        id_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_id_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("ID")
-        )
+        id_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_id_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("ID"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "ID")
@@ -236,9 +236,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Illinois
     if state_allowlist is None or "IL" in state_allowlist:
-        il_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_il_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("IL")
-        )
+        il_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_il_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("IL"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "IL")
@@ -250,9 +250,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Indiana
     if state_allowlist is None or "IN" in state_allowlist:
-        in_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_in_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("IN")
-        )
+        in_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_in_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("IN"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "IN")
@@ -264,9 +264,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Iowa
     if state_allowlist is None or "IA" in state_allowlist:
-        ia_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ia_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("IA")
-        )
+        ia_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ia_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("IA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "IA")
@@ -278,9 +278,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Kansas
     if state_allowlist is None or "KS" in state_allowlist:
-        ks_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ks_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("KS")
-        )
+        ks_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ks_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("KS"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "KS")
@@ -292,9 +292,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Kentucky
     if state_allowlist is None or "KY" in state_allowlist:
-        ky_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ky_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("KY")
-        )
+        ky_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ky_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("KY"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "KY")
@@ -306,9 +306,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Louisiana
     if state_allowlist is None or "LA" in state_allowlist:
-        la_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_la_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("LA")
-        )
+        la_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_la_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("LA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "LA")
@@ -320,9 +320,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Maine
     if state_allowlist is None or "ME" in state_allowlist:
-        me_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_me_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("ME")
-        )
+        me_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_me_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("ME"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "ME")
@@ -334,9 +334,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Maryland
     if state_allowlist is None or "MD" in state_allowlist:
-        md_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_md_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MD")
-        )
+        md_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_md_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MD"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MD")
@@ -348,9 +348,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Massachusetts
     if state_allowlist is None or "MA" in state_allowlist:
-        ma_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ma_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MA")
-        )
+        ma_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ma_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MA")
@@ -362,9 +362,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Michigan
     if state_allowlist is None or "MI" in state_allowlist:
-        mi_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_mi_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MI")
-        )
+        mi_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_mi_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MI"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MI")
@@ -376,9 +376,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Minnesota
     if state_allowlist is None or "MN" in state_allowlist:
-        mn_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_mn_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MN")
-        )
+        mn_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_mn_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MN"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MN")
@@ -390,9 +390,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Mississippi
     if state_allowlist is None or "MS" in state_allowlist:
-        ms_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ms_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MS")
-        )
+        ms_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ms_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MS"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MS")
@@ -404,9 +404,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Missouri
     if state_allowlist is None or "MO" in state_allowlist:
-        mo_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_mo_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MO")
-        )
+        mo_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_mo_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MO"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MO")
@@ -418,9 +418,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Montana
     if state_allowlist is None or "MT" in state_allowlist:
-        mt_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_mt_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("MT")
-        )
+        mt_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_mt_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("MT"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "MT")
@@ -432,9 +432,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Nebraska
     if state_allowlist is None or "NE" in state_allowlist:
-        ne_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ne_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NE")
-        )
+        ne_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ne_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NE"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NE")
@@ -446,9 +446,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Nevada
     if state_allowlist is None or "NV" in state_allowlist:
-        nv_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_nv_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NV")
-        )
+        nv_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_nv_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NV"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NV")
@@ -460,9 +460,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # New Hampshire
     if state_allowlist is None or "NH" in state_allowlist:
-        nh_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_nh_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NH")
-        )
+        nh_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_nh_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NH"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NH")
@@ -474,9 +474,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # New Jersey
     if state_allowlist is None or "NJ" in state_allowlist:
-        nj_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_nj_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NJ")
-        )
+        nj_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_nj_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NJ"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NJ")
@@ -488,9 +488,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # New Mexico
     if state_allowlist is None or "NM" in state_allowlist:
-        nm_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_nm_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NM")
-        )
+        nm_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_nm_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NM"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NM")
@@ -502,9 +502,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # New York
     if state_allowlist is None or "NY" in state_allowlist:
-        ny_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ny_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NY")
-        )
+        ny_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ny_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NY"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NY")
@@ -516,9 +516,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # North Carolina
     if state_allowlist is None or "NC" in state_allowlist:
-        nc_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_nc_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("NC")
-        )
+        nc_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_nc_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("NC"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "NC")
@@ -530,9 +530,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # North Dakota
     if state_allowlist is None or "ND" in state_allowlist:
-        nd_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_nd_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("ND")
-        )
+        nd_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_nd_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("ND"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "ND")
@@ -544,9 +544,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Ohio
     if state_allowlist is None or "OH" in state_allowlist:
-        oh_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_oh_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("OH")
-        )
+        oh_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_oh_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("OH"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "OH")
@@ -558,9 +558,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Oklahoma
     if state_allowlist is None or "OK" in state_allowlist:
-        ok_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ok_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("OK")
-        )
+        ok_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ok_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("OK"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "OK")
@@ -572,9 +572,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Oregon
     if state_allowlist is None or "OR" in state_allowlist:
-        or_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_or_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("OR")
-        )
+        or_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_or_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("OR"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "OR")
@@ -586,9 +586,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Pennsylvania
     if state_allowlist is None or "PA" in state_allowlist:
-        pa_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_pa_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("PA")
-        )
+        pa_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_pa_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("PA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "PA")
@@ -600,9 +600,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Rhode Island
     if state_allowlist is None or "RI" in state_allowlist:
-        ri_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ri_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("RI")
-        )
+        ri_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ri_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("RI"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "RI")
@@ -614,9 +614,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # South Carolina
     if state_allowlist is None or "SC" in state_allowlist:
-        sc_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_sc_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("SC")
-        )
+        sc_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_sc_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("SC"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "SC")
@@ -628,9 +628,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # South Dakota
     if state_allowlist is None or "SD" in state_allowlist:
-        sd_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_sd_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("SD")
-        )
+        sd_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_sd_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("SD"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "SD")
@@ -642,9 +642,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Tennessee
     if state_allowlist is None or "TN" in state_allowlist:
-        tn_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_tn_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("TN")
-        )
+        tn_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_tn_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("TN"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "TN")
@@ -656,9 +656,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Texas
     if state_allowlist is None or "TX" in state_allowlist:
-        tx_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_tx_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("TX")
-        )
+        tx_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_tx_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("TX"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "TX")
@@ -670,9 +670,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Utah
     if state_allowlist is None or "UT" in state_allowlist:
-        ut_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_ut_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("UT")
-        )
+        ut_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_ut_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("UT"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "UT")
@@ -684,9 +684,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Vermont
     if state_allowlist is None or "VT" in state_allowlist:
-        vt_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_vt_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("VT")
-        )
+        vt_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_vt_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("VT"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "VT")
@@ -698,9 +698,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Virginia
     if state_allowlist is None or "VA" in state_allowlist:
-        va_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_va_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("VA")
-        )
+        va_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_va_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("VA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "VA")
@@ -712,9 +712,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Washington
     if state_allowlist is None or "WA" in state_allowlist:
-        wa_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_wa_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("WA")
-        )
+        wa_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_wa_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("WA"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "WA")
@@ -726,9 +726,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # West Virginia
     if state_allowlist is None or "WV" in state_allowlist:
-        wv_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_wv_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("WV")
-        )
+        wv_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_wv_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("WV"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "WV")
@@ -740,9 +740,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Wisconsin
     if state_allowlist is None or "WI" in state_allowlist:
-        wi_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_wi_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("WI")
-        )
+        wi_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_wi_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("WI"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "WI")
@@ -754,9 +754,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Wyoming
     if state_allowlist is None or "WY" in state_allowlist:
-        wy_df: DataFrame = dbt.ref("stg_dbt_source__l2_s3_wy_haystaq_dna_scores").withColumn(
-            "state_postal_code", lit("WY")
-        )
+        wy_df: DataFrame = dbt.ref(
+            "stg_dbt_source__l2_s3_wy_haystaq_dna_scores"
+        ).withColumn("state_postal_code", lit("WY"))
         if dbt.is_incremental and this_df is not None:
             max_loaded_at = (
                 this_df.filter(col("state_postal_code") == "WY")
@@ -780,4 +780,3 @@ def model(dbt, session: SparkSession) -> DataFrame:
             return session.createDataFrame(data=[], schema=df.schema)
 
     return df
-
