@@ -289,7 +289,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     if dbt.is_incremental:
         this_df: DataFrame = session.table(f"{dbt.this}")
         max_updated_at = this_df.agg({"updated_at": "max"}).collect()[0][0]
-        voter_df = voter_df.filter(col("updated_at") > max_updated_at)
+        if max_updated_at is not None:
+            voter_df = voter_df.filter(col("updated_at") > max_updated_at)
 
     # check if count is 0, exit early
     voter_df_count = voter_df.count()

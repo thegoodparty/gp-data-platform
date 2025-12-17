@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
@@ -390,7 +390,7 @@ update_set_query_str = ", ".join(update_set_query)
 # Note that the value list under `INSERT` and `SELECT` must be in the same order
 VOTER_UPSERT_QUERY = (
     """
-    INSERT INTO {db_schema}."{table_name}" (
+    INSERT INTO {db_schema}."Voter" (
         "id",
     """
     + voter_column_list_str
@@ -445,7 +445,7 @@ DISTRICT_VOTER_UPSERT_QUERY = """
         district_id::uuid,
         created_at,
         updated_at
-    FROM {staging_schema}."DistrictVoter"
+    FROM {staging_schema}."{staging_table_name}"
     ON CONFLICT (voter_id, district_id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at
@@ -580,7 +580,6 @@ def _load_data_to_postgres(
             formatted_upsert_query = upsert_query.format(
                 db_schema=db_schema,
                 staging_schema=staging_schema,
-                table_name=table_name,
                 staging_table_name=staging_table_name,
             )
         else:
@@ -651,7 +650,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # downsample for non-prod environment with low-population states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
     # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-    filter_list = ["WY", "ND", "VT", "DC", "AK", "SD"]  # 17.6 MM rows in DistrictVoter
+    filter_list = [
+        "WY",
+        "ND",
+        "VT",
+        "DC",
+        "AK",
+        "SD",
+        "TX",
+    ]  # X MM rows in DistrictVoter
     if dbt_env_name != "prod":
         voter_table = voter_table.filter(col("State").isin(filter_list))
         district_voter_table = district_voter_table.filter(
@@ -698,77 +705,85 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
     state_list: List[str] = [row.State for row in state_counts]
 
-    # load data state by state since job may time out
-    for state_id in state_list:
-        state_df = voter_table.filter(col("State") == state_id)
+    # load state-specific tables
+    # Process and load non-state-specific tables using a single loop
+    table_configs = [
+        ("Voter", voter_table, VOTER_UPSERT_QUERY),
+        ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
+    ]
 
-        # check for the latest updated_at for the state in the destination db
-        query = f"""
-            SELECT MAX(updated_at) FROM {db_schema}."Voter"
-            WHERE "State" = '{state_id}'
-        """
-        conn = _connect_db(
-            db_name=db_name,
-            db_user=db_user,
-            db_pw=db_pw,
-            db_host=db_host,
-            db_port=db_port,
-        )
-        max_updated_at_voter = _execute_sql_query(query, conn, return_results=True)[0][
-            0
-        ]
-        conn.close()
-        if max_updated_at_voter:
-            # postgres rounds down microseconds, so add 2 seconds as a safe buffer
-            max_updated_at = max_updated_at_voter + timedelta(seconds=2)  # type: ignore
-            state_df = state_df.filter(col("updated_at") > max_updated_at)
+    for table_name, df, upsert_query in table_configs:
+        # load data state by state since job may time out
+        for state_id in state_list:
+            state_df = df.filter(col("State") == state_id)
 
-            # force filter to be applied
-            row_count = state_df.count()
-            if row_count == 0:
-                logging.info(f"No rows to load for {state_id}")
-                continue
-            state_df.cache()
+            # # check for the latest updated_at for the state in the destination db
+            # query = f"""
+            #     SELECT MAX(updated_at) FROM {db_schema}."{table_name}"
+            #     WHERE "State" = '{state_id}'
+            # """
+            # conn = _connect_db(
+            #     db_name=db_name,
+            #     db_user=db_user,
+            #     db_pw=db_pw,
+            #     db_host=db_host,
+            #     db_port=db_port,
+            # )
+            # max_updated_at_voter = _execute_sql_query(query, conn, return_results=True)[0][
+            #     0
+            # ]
+            # conn.close()
+            # if max_updated_at_voter:
+            #     # postgres rounds down microseconds, so add 2 seconds as a safe buffer
+            #     max_updated_at = max_updated_at_voter + timedelta(seconds=2)  # type: ignore
+            #     state_df = state_df.filter(col("updated_at") > max_updated_at)
 
-        num_rows_loaded = _load_data_to_postgres(
-            df=state_df,
-            table_name="Voter",
-            upsert_query=VOTER_UPSERT_QUERY,
-            db_host=db_host,
-            db_port=db_port,
-            db_user=db_user,
-            db_pw=db_pw,
-            db_name=db_name,
-            staging_schema=staging_schema,
-            db_schema=db_schema,
-            state_id=state_id,
-        )
+            #     # force filter to be applied
+            #     row_count = state_df.count()
+            #     if row_count == 0:
+            #         logging.info(f"No rows to load for {state_id}")
+            #         continue
+            #     state_df.cache()
 
-        # add to load_details
-        load_details.append(
-            {
-                "id": str(uuid4()),
-                "load_id": load_id,
-                "loaded_at": datetime.now(),
-                "table": "Voter",
-                "state_id": state_id,
-                "num_rows_loaded": num_rows_loaded,
-            }
-        )
+            num_rows_loaded = _load_data_to_postgres(
+                df=state_df,
+                table_name=table_name,
+                upsert_query=upsert_query,
+                db_host=db_host,
+                db_port=db_port,
+                db_user=db_user,
+                db_pw=db_pw,
+                db_name=db_name,
+                staging_schema=staging_schema,
+                db_schema=db_schema,
+                state_id=state_id,
+            )
 
-    # Get the max updated_at value from the existing data
+            # add to load_details
+            load_details.append(
+                {
+                    "id": str(uuid4()),
+                    "load_id": load_id,
+                    "loaded_at": datetime.now(),
+                    "table": table_name,
+                    "state_id": state_id,
+                    "num_rows_loaded": num_rows_loaded,
+                }
+            )
+
+    # Process and load non-state-specific tables using a single loop
+    table_configs = [
+        ("District", district_table, DISTRICT_UPSERT_QUERY),
+        # ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
+    ]
+
+    # set up call to get the max updated_at value from the existing data
     jdbc_props = {
         "url": f"jdbc:postgresql://{db_host}:{db_port}/{db_name}",
         "user": db_user,
         "password": db_pw,
         "driver": "org.postgresql.Driver",
     }
-
-    # Process and load non-state-specific tables using a single loop
-    table_configs = [
-        ("District", district_table, DISTRICT_UPSERT_QUERY),
-        ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
-    ]
 
     for table_name, df, upsert_query in table_configs:
         # Get the max updated_at value from the existing data
