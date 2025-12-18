@@ -134,6 +134,36 @@ models:
           arguments:
             expression: "techspeed_candidate_code = fuzzy_results_techspeed_candidate_code"
 
+  - name: int__techspeed_viability_scoring
+    description: "Viability scores for TechSpeed candidates using the viabilityWithOpponentData model"
+    columns:
+      - name: techspeed_candidate_code
+        description: "Generated unique code for the candidate"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref("int__techspeed_candidates_fuzzy_deduped")
+                field: techspeed_candidate_code
+      - name: viability_rating_2_0
+        description: "Numeric viability score (0-5 scale)"
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 5
+      - name: score_viability_automated
+        description: "Categorical viability rating based on numeric score"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['No Chance', 'Unlikely to Win', 'Has a Chance', 'Likely to Win', 'Frontrunner']
+      - name: updated_at
+        description: "Timestamp when the viability score was calculated"
+        tests:
+          - not_null
+
   - name: int__techspeed_candidates_w_hubspot
     description: "Techspeed candidates with HubSpot integration status"
     columns:

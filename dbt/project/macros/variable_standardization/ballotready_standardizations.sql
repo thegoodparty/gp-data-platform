@@ -175,6 +175,142 @@
     end
 {% endmacro %}
 
+{#
+  This macro extracts city from BallotReady official_office_name
+  Usage: {{ extract_city_from_office_name(column_name) }}
+  #}
+{% macro extract_city_from_office_name(office_name_col) %}
+    case
+        when {{ office_name_col }} like '% County%'
+        then
+            left(
+                {{ office_name_col }}, position(' County' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% City%'
+        then left({{ office_name_col }}, position(' City' in {{ office_name_col }}) - 1)
+        when {{ office_name_col }} like '% Village%'
+        then
+            left(
+                {{ office_name_col }}, position(' Village' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Town%'
+        then left({{ office_name_col }}, position(' Town' in {{ office_name_col }}) - 1)
+        when {{ office_name_col }} like '% Fire%'
+        then left({{ office_name_col }}, position(' Fire' in {{ office_name_col }}) - 1)
+        when {{ office_name_col }} like '% Public Library%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Public Library' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Library%'
+        then
+            left(
+                {{ office_name_col }}, position(' Library' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Community College%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Community College' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Water District%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Water District' in {{ office_name_col }}) - 1
+            )
+        when
+            position(' District' in {{ office_name_col }}) > 0
+            and (
+                regexp_extract(trim({{ office_name_col }}), '- District [^ ]+$', 0) = ''
+                or position(' District' in {{ office_name_col }})
+                < length({{ office_name_col }})
+                - length(
+                    regexp_extract(trim({{ office_name_col }}), '- District [^ ]+$', 0)
+                )
+                + 1
+            )
+        then
+            left(
+                {{ office_name_col }},
+                position(' District' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Independent School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Independent School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Elementary School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Elementary School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Area Unified School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Area Unified School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Area School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Area School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Area Public School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Area Public School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Union School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Union School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% City School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' City School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Unified School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Unified School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Public School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Public School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Community School%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Community School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% School%'
+        then
+            left(
+                {{ office_name_col }}, position(' School' in {{ office_name_col }}) - 1
+            )
+        when {{ office_name_col }} like '% Park District%'
+        then
+            left(
+                {{ office_name_col }},
+                position(' Park District' in {{ office_name_col }}) - 1
+            )
+        else ''
+    end
+{% endmacro %}
+
 
 {% macro generate_candidate_office_from_position(
     position_name_col, normalized_position_name_col
