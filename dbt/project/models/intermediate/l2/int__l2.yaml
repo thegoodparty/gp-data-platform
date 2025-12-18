@@ -41,6 +41,24 @@ models:
           - not_null
           - unique
 
+  - name: int__l2_nationwide_uniform_w_haystaq
+    description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      # optional: comma/space-separated list like \"AK,AL\" for iterative runs
+      l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+    columns:
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: haystaq_flags_loaded_at
+        description: "loaded_at from Haystaq flags source (per-state DNA flags tables)"
+      - name: haystaq_scores_loaded_at
+        description: "loaded_at from Haystaq scores source (per-state DNA scores tables)"
+
   - name: int__zip_code_to_br_office
     description: "Zip code to BR office mapping"
     columns:
