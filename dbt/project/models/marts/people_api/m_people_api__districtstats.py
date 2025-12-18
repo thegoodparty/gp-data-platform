@@ -67,6 +67,47 @@ OUTPUT_SCHEMA = StructType(
 )
 
 
+def _aggregate_buckets(
+    df: DataFrame, district_col: str, category_col: str
+) -> DataFrame:
+    """
+    Aggregate counts per category for each district.
+    Returns DataFrame with district_id, label, count columns.
+    """
+    return (
+        df.groupBy(district_col, category_col)
+        .agg(F.count("*").alias("count"))
+        .withColumnRenamed(category_col, "label")
+        .withColumnRenamed(district_col, "district_id")
+    )
+
+
+def _buckets_to_array(df: DataFrame, bucket_name: str) -> DataFrame:
+    """
+    Convert bucket counts to array of structs per district.
+    Input: DataFrame with district_id, label, count, total_constituents
+    Output: DataFrame with district_id, {bucket_name} (array of bucket structs)
+    """
+    # Calculate percent and create bucket struct
+    df_with_percent = df.withColumn(
+        "percent", F.round((F.col("count") / F.col("total_constituents")) * 100, 2)
+    ).withColumn("label", F.coalesce(F.col("label"), F.lit("Unknown")))
+
+    # Create struct and collect as array per district
+    return (
+        df_with_percent.withColumn(
+            "bucket_entry",
+            F.struct(
+                F.col("label").alias("label"),
+                F.col("count").alias("count"),
+                F.col("percent").alias("percent"),
+            ),
+        )
+        .groupBy("district_id")
+        .agg(F.sort_array(F.collect_list("bucket_entry"), asc=False).alias(bucket_name))
+    )
+
+
 def _get_age_bucket_label(age_int_col):
     """Create a column expression that maps age to bucket labels."""
     return (
@@ -130,45 +171,100 @@ def _get_income_bucket_label(income_int_col):
     )
 
 
-def _aggregate_buckets(
-    df: DataFrame, district_col: str, category_col: str
+def _process_age_buckets(
+    voters_with_buckets: DataFrame, district_totals: DataFrame
+) -> DataFrame:
+    """Process age bucket aggregation."""
+    age_counts = _aggregate_buckets(voters_with_buckets, "district_id", "age_bucket")
+    age_counts_with_total = age_counts.join(
+        district_totals.select("district_id", "total_constituents"),
+        on="district_id",
+        how="inner",
+    )
+    return _buckets_to_array(age_counts_with_total, "age")
+
+
+def _process_homeowner_buckets(
+    voters_with_buckets: DataFrame, district_totals: DataFrame
 ) -> DataFrame:
     """
-    Aggregate counts per category for each district.
-    Returns DataFrame with district_id, label, count columns.
+    Process homeowner bucket aggregation with label mapping:
+    "Home Owner" / "Probable Home Owner" -> "Yes", "Renter" -> "No", else -> "Unknown"
     """
-    return (
-        df.groupBy(district_col, category_col)
-        .agg(F.count("*").alias("count"))
-        .withColumnRenamed(category_col, "label")
-        .withColumnRenamed(district_col, "district_id")
+    homeowner_counts = _aggregate_buckets(
+        voters_with_buckets, "district_id", "Homeowner_Probability_Model"
     )
-
-
-def _buckets_to_array(df: DataFrame, bucket_name: str) -> DataFrame:
-    """
-    Convert bucket counts to array of structs per district.
-    Input: DataFrame with district_id, label, count, total_constituents
-    Output: DataFrame with district_id, {bucket_name} (array of bucket structs)
-    """
-    # Calculate percent and create bucket struct
-    df_with_percent = df.withColumn(
-        "percent", F.round((F.col("count") / F.col("total_constituents")) * 100, 2)
-    ).withColumn("label", F.coalesce(F.col("label"), F.lit("Unknown")))
-
-    # Create struct and collect as array per district
-    return (
-        df_with_percent.withColumn(
-            "bucket_entry",
-            F.struct(
-                F.col("label").alias("label"),
-                F.col("count").alias("count"),
-                F.col("percent").alias("percent"),
-            ),
-        )
-        .groupBy("district_id")
-        .agg(F.sort_array(F.collect_list("bucket_entry"), asc=False).alias(bucket_name))
+    # Map labels to simplified categories
+    homeowner_counts = homeowner_counts.withColumn(
+        "label",
+        F.when(F.col("label").isin("Home Owner", "Probable Home Owner"), F.lit("Yes"))
+        .when(F.col("label") == "Renter", F.lit("No"))
+        .otherwise(F.lit("Unknown")),
     )
+    # Re-aggregate to combine mapped labels
+    homeowner_counts = homeowner_counts.groupBy("district_id", "label").agg(
+        F.sum("count").alias("count")
+    )
+    homeowner_counts_with_total = homeowner_counts.join(
+        district_totals.select("district_id", "total_constituents"),
+        on="district_id",
+        how="inner",
+    )
+    return _buckets_to_array(homeowner_counts_with_total, "homeowner")
+
+
+def _process_education_buckets(
+    voters_with_buckets: DataFrame, district_totals: DataFrame
+) -> DataFrame:
+    """Process education bucket aggregation, removing 'Likely' from labels."""
+    education_counts = _aggregate_buckets(
+        voters_with_buckets, "district_id", "Education_Of_Person"
+    )
+    # Remove "Likely" from labels and trim whitespace
+    education_counts = education_counts.withColumn(
+        "label",
+        F.trim(F.regexp_replace(F.col("label"), "Likely", "")),
+    )
+    # Re-aggregate to combine labels that become identical after transformation
+    education_counts = education_counts.groupBy("district_id", "label").agg(
+        F.sum("count").alias("count")
+    )
+    education_counts_with_total = education_counts.join(
+        district_totals.select("district_id", "total_constituents"),
+        on="district_id",
+        how="inner",
+    )
+    return _buckets_to_array(education_counts_with_total, "education")
+
+
+def _process_presence_of_children_buckets(
+    voters_with_buckets: DataFrame, district_totals: DataFrame
+) -> DataFrame:
+    """Process presence of children bucket aggregation."""
+    children_counts = _aggregate_buckets(
+        voters_with_buckets, "district_id", "Presence_Of_Children"
+    )
+    children_counts_with_total = children_counts.join(
+        district_totals.select("district_id", "total_constituents"),
+        on="district_id",
+        how="inner",
+    )
+    return _buckets_to_array(children_counts_with_total, "presenceOfChildren")
+
+
+def _process_income_buckets(
+    voters_with_buckets: DataFrame, district_totals: DataFrame
+) -> DataFrame:
+    """Process estimated income range bucket aggregation."""
+    income_counts = _aggregate_buckets(
+        voters_with_buckets, "district_id", "income_bucket"
+    )
+    income_counts_with_total = income_counts.join(
+        district_totals.select("district_id", "total_constituents"),
+        on="district_id",
+        how="inner",
+    )
+    return _buckets_to_array(income_counts_with_total, "estimatedIncomeRange")
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -256,83 +352,18 @@ def model(dbt, session: SparkSession) -> DataFrame:
         ).alias("total_constituents_with_cell_phone"),
     )
 
-    # Compute age buckets
-    age_counts = _aggregate_buckets(voters_with_buckets, "district_id", "age_bucket")
-    age_counts_with_total = age_counts.join(
-        district_totals.select("district_id", "total_constituents"),
-        on="district_id",
-        how="inner",
+    # Compute all bucket aggregations using helper functions
+    age_buckets_df = _process_age_buckets(voters_with_buckets, district_totals)
+    homeowner_buckets_df = _process_homeowner_buckets(
+        voters_with_buckets, district_totals
     )
-    age_buckets_df = _buckets_to_array(age_counts_with_total, "age")
-
-    # Compute homeowner buckets with label mapping:
-    # "Home Owner" / "Probable Home Owner" -> "Yes", "Renter" -> "No", else -> "Unknown"
-    homeowner_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Homeowner_Probability_Model"
+    education_buckets_df = _process_education_buckets(
+        voters_with_buckets, district_totals
     )
-    # Map labels to simplified categories
-    homeowner_counts = homeowner_counts.withColumn(
-        "label",
-        F.when(F.col("label").isin("Home Owner", "Probable Home Owner"), F.lit("Yes"))
-        .when(F.col("label") == "Renter", F.lit("No"))
-        .otherwise(F.lit("Unknown")),
+    children_buckets_df = _process_presence_of_children_buckets(
+        voters_with_buckets, district_totals
     )
-    # Re-aggregate to combine mapped labels (e.g., "Home Owner" + "Probable Home Owner" -> "Yes")
-    homeowner_counts = homeowner_counts.groupBy("district_id", "label").agg(
-        F.sum("count").alias("count")
-    )
-    homeowner_counts_with_total = homeowner_counts.join(
-        district_totals.select("district_id", "total_constituents"),
-        on="district_id",
-        how="inner",
-    )
-    homeowner_buckets_df = _buckets_to_array(homeowner_counts_with_total, "homeowner")
-
-    # Compute education buckets
-    education_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Education_Of_Person"
-    )
-    # Remove "Likely" from labels and trim whitespace
-    education_counts = education_counts.withColumn(
-        "label",
-        F.trim(F.regexp_replace(F.col("label"), "Likely", "")),
-    )
-    # Re-aggregate to combine labels that become identical after transformation
-    education_counts = education_counts.groupBy("district_id", "label").agg(
-        F.sum("count").alias("count")
-    )
-    education_counts_with_total = education_counts.join(
-        district_totals.select("district_id", "total_constituents"),
-        on="district_id",
-        how="inner",
-    )
-    education_buckets_df = _buckets_to_array(education_counts_with_total, "education")
-
-    # Compute presence of children buckets
-    children_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Presence_Of_Children"
-    )
-    children_counts_with_total = children_counts.join(
-        district_totals.select("district_id", "total_constituents"),
-        on="district_id",
-        how="inner",
-    )
-    children_buckets_df = _buckets_to_array(
-        children_counts_with_total, "presenceOfChildren"
-    )
-
-    # Compute income buckets
-    income_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "income_bucket"
-    )
-    income_counts_with_total = income_counts.join(
-        district_totals.select("district_id", "total_constituents"),
-        on="district_id",
-        how="inner",
-    )
-    income_buckets_df = _buckets_to_array(
-        income_counts_with_total, "estimatedIncomeRange"
-    )
+    income_buckets_df = _process_income_buckets(voters_with_buckets, district_totals)
 
     # Join all bucket dataframes together
     result_df = (
