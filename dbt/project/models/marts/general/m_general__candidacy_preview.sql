@@ -194,8 +194,7 @@ with
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
             on tbl_contacts.company_id = viability_scores.id
         left join
-            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251202") }}
-            as tbl_ddhq_matches
+            {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("int__hubspot_contest") }} as tbl_contest

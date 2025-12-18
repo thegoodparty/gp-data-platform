@@ -21,8 +21,6 @@ with
                 )
             }} as gp_candidacy_stage_id,
             -- br_candidacy_id, -- need to match ddhq with br for this
-            -- ddhq_candidacy_id, -- maybe some combination of `ddhq_candidate_id` and
-            -- `ddhq_race_id`
             tbl_contacts.gp_candidacy_id,
             case
                 when tbl_ddhq_matches.ddhq_race_id is not null
@@ -50,8 +48,7 @@ with
             tbl_contacts.updated_at
         from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
         left join
-            {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
-            as tbl_ddhq_matches
+            {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
