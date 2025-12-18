@@ -116,3 +116,48 @@ models:
                   - Likely
                   - Super
                   - Unknown
+
+  - name: m_people_api__districtstats
+    description: >
+      District statistics aggregating voter demographic data per district.
+      Computes bucket distributions for age, homeowner status, education,
+      presence of children, and estimated income range for each district.
+    columns:
+      - name: district_id
+        description: Unique identifier for a district (primary key)
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('m_people_api__district')
+              field: id
+      - name: computed_at
+        description: Timestamp when the statistics were computed
+        data_type: timestamp
+        data_tests:
+          - not_null
+      - name: total_constituents
+        description: Total number of constituents in the district
+        data_type: bigint
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: total_constituents_with_cell_phone
+        description: Number of constituents with a cell phone on file
+        data_type: bigint
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: buckets
+        description: >
+          Struct containing demographic bucket distributions (age, homeowner,
+          education, presenceOfChildren, estimatedIncomeRange). Each bucket
+          contains arrays of {label, count, percent} structs.
+        data_type: struct
+        data_tests:
+          - not_null

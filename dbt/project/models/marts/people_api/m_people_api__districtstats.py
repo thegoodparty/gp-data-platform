@@ -70,13 +70,62 @@ OUTPUT_SCHEMA = StructType(
 def _get_age_bucket_label(age_int_col):
     """Create a column expression that maps age to bucket labels."""
     return (
-        F.when((F.col(age_int_col) >= 18) & (F.col(age_int_col) <= 24), F.lit("18-24"))
-        .when((F.col(age_int_col) >= 25) & (F.col(age_int_col) <= 34), F.lit("25-34"))
-        .when((F.col(age_int_col) >= 35) & (F.col(age_int_col) <= 44), F.lit("35-44"))
-        .when((F.col(age_int_col) >= 45) & (F.col(age_int_col) <= 54), F.lit("45-54"))
-        .when((F.col(age_int_col) >= 55) & (F.col(age_int_col) <= 64), F.lit("55-64"))
-        .when((F.col(age_int_col) >= 65) & (F.col(age_int_col) <= 74), F.lit("65-74"))
-        .when(F.col(age_int_col) >= 75, F.lit("75+"))
+        F.when((F.col(age_int_col) >= 18) & (F.col(age_int_col) <= 25), F.lit("18-25"))
+        .when((F.col(age_int_col) >= 26) & (F.col(age_int_col) <= 35), F.lit("26-35"))
+        .when((F.col(age_int_col) >= 36) & (F.col(age_int_col) <= 50), F.lit("36-50"))
+        .when((F.col(age_int_col) >= 51) & (F.col(age_int_col) <= 200), F.lit("51-200"))
+        .otherwise(F.lit("Unknown"))
+    )
+
+
+def _get_income_bucket_label(income_int_col):
+    """Create a column expression that maps estimated income (integer) to bucket labels."""
+    return (
+        F.when(
+            (F.col(income_int_col) >= 1000) & (F.col(income_int_col) < 15000),
+            F.lit("1k–15k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 15000) & (F.col(income_int_col) < 25000),
+            F.lit("15k–25k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 25000) & (F.col(income_int_col) < 35000),
+            F.lit("25k–35k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 35000) & (F.col(income_int_col) < 50000),
+            F.lit("35k–50k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 50000) & (F.col(income_int_col) < 75000),
+            F.lit("50k–75k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 75000) & (F.col(income_int_col) < 100000),
+            F.lit("75k–100k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 100000) & (F.col(income_int_col) < 125000),
+            F.lit("100k–125k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 125000) & (F.col(income_int_col) < 150000),
+            F.lit("125k–150k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 150000) & (F.col(income_int_col) < 175000),
+            F.lit("150k–175k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 175000) & (F.col(income_int_col) < 200000),
+            F.lit("175k–200k"),
+        )
+        .when(
+            (F.col(income_int_col) >= 200000) & (F.col(income_int_col) < 250000),
+            F.lit("200k–250k"),
+        )
+        .when(F.col(income_int_col) >= 250000, F.lit("250k+"))
         .otherwise(F.lit("Unknown"))
     )
 
@@ -177,7 +226,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             F.col("Homeowner_Probability_Model"),
             F.col("Education_Of_Person"),
             F.col("Presence_Of_Children"),
-            F.col("Estimated_Income_Amount"),
+            F.col("Estimated_Income_Amount_Int"),
             F.col("VoterTelephones_CellPhoneFormatted"),
         ),
         on="voter_id",
@@ -188,9 +237,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     if voters_with_districts.limit(1).count() == 0:
         return session.createDataFrame([], OUTPUT_SCHEMA)
 
-    # Add age bucket label column
+    # Add age and income bucket label columns
     voters_with_buckets = voters_with_districts.withColumn(
         "age_bucket", _get_age_bucket_label("Age_Int")
+    ).withColumn(
+        "income_bucket", _get_income_bucket_label("Estimated_Income_Amount_Int")
     )
 
     # Compute total constituents per district
@@ -214,9 +265,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
     age_buckets_df = _buckets_to_array(age_counts_with_total, "age")
 
-    # Compute homeowner buckets
+    # Compute homeowner buckets with label mapping:
+    # "Home Owner" / "Probable Home Owner" -> "Yes", "Renter" -> "No", else -> "Unknown"
     homeowner_counts = _aggregate_buckets(
         voters_with_buckets, "district_id", "Homeowner_Probability_Model"
+    )
+    # Map labels to simplified categories
+    homeowner_counts = homeowner_counts.withColumn(
+        "label",
+        F.when(F.col("label").isin("Home Owner", "Probable Home Owner"), F.lit("Yes"))
+        .when(F.col("label") == "Renter", F.lit("No"))
+        .otherwise(F.lit("Unknown")),
+    )
+    # Re-aggregate to combine mapped labels (e.g., "Home Owner" + "Probable Home Owner" -> "Yes")
+    homeowner_counts = homeowner_counts.groupBy("district_id", "label").agg(
+        F.sum("count").alias("count")
     )
     homeowner_counts_with_total = homeowner_counts.join(
         district_totals.select("district_id", "total_constituents"),
@@ -228,6 +291,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Compute education buckets
     education_counts = _aggregate_buckets(
         voters_with_buckets, "district_id", "Education_Of_Person"
+    )
+    # Remove "Likely" from labels and trim whitespace
+    education_counts = education_counts.withColumn(
+        "label",
+        F.trim(F.regexp_replace(F.col("label"), "Likely", "")),
+    )
+    # Re-aggregate to combine labels that become identical after transformation
+    education_counts = education_counts.groupBy("district_id", "label").agg(
+        F.sum("count").alias("count")
     )
     education_counts_with_total = education_counts.join(
         district_totals.select("district_id", "total_constituents"),
@@ -251,7 +323,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Compute income buckets
     income_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Estimated_Income_Amount"
+        voters_with_buckets, "district_id", "income_bucket"
     )
     income_counts_with_total = income_counts.join(
         district_totals.select("district_id", "total_constituents"),
