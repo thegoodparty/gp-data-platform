@@ -25,11 +25,17 @@ def _cast_flag_columns(df: DataFrame) -> DataFrame:
     return df
 
 
+def _filter_incremental_new_rows(df: DataFrame, max_loaded_at) -> DataFrame:
+    if max_loaded_at is None:
+        return df
+    return df.filter(col("loaded_at") > max_loaded_at)
+
+
 def model(dbt, session: SparkSession) -> DataFrame:
     """
     Union all per-state Haystaq flags tables into a nationwide table.
 
-    This intentionally mirrors `int__l2_nationwide_uniform.py`:
+    This mirrors `int__l2_nationwide_uniform.py`:
     - explicit refs per state (literal `dbt.ref(...)`)
     - per-state incremental filtering by `loaded_at`
     """
@@ -63,7 +69,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            al_df = al_df.filter(col("loaded_at") > max_loaded_at)
+            al_df = _filter_incremental_new_rows(al_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(al_df))
 
     # Alaska
@@ -77,7 +83,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ak_df = ak_df.filter(col("loaded_at") > max_loaded_at)
+            ak_df = _filter_incremental_new_rows(ak_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ak_df))
 
     # Arizona
@@ -91,7 +97,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            az_df = az_df.filter(col("loaded_at") > max_loaded_at)
+            az_df = _filter_incremental_new_rows(az_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(az_df))
 
     # Arkansas
@@ -105,7 +111,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ar_df = ar_df.filter(col("loaded_at") > max_loaded_at)
+            ar_df = _filter_incremental_new_rows(ar_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ar_df))
 
     # California
@@ -119,7 +125,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ca_df = ca_df.filter(col("loaded_at") > max_loaded_at)
+            ca_df = _filter_incremental_new_rows(ca_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ca_df))
 
     # Colorado
@@ -133,7 +139,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            co_df = co_df.filter(col("loaded_at") > max_loaded_at)
+            co_df = _filter_incremental_new_rows(co_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(co_df))
 
     # Connecticut
@@ -147,7 +153,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ct_df = ct_df.filter(col("loaded_at") > max_loaded_at)
+            ct_df = _filter_incremental_new_rows(ct_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ct_df))
 
     # Delaware
@@ -161,7 +167,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            de_df = de_df.filter(col("loaded_at") > max_loaded_at)
+            de_df = _filter_incremental_new_rows(de_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(de_df))
 
     # Washington DC
@@ -175,7 +181,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            dc_df = dc_df.filter(col("loaded_at") > max_loaded_at)
+            dc_df = _filter_incremental_new_rows(dc_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(dc_df))
 
     # Florida
@@ -189,7 +195,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            fl_df = fl_df.filter(col("loaded_at") > max_loaded_at)
+            fl_df = _filter_incremental_new_rows(fl_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(fl_df))
 
     # Georgia
@@ -203,7 +209,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ga_df = ga_df.filter(col("loaded_at") > max_loaded_at)
+            ga_df = _filter_incremental_new_rows(ga_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ga_df))
 
     # Hawaii
@@ -217,7 +223,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            hi_df = hi_df.filter(col("loaded_at") > max_loaded_at)
+            hi_df = _filter_incremental_new_rows(hi_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(hi_df))
 
     # Idaho
@@ -231,7 +237,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            id_df = id_df.filter(col("loaded_at") > max_loaded_at)
+            id_df = _filter_incremental_new_rows(id_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(id_df))
 
     # Illinois
@@ -245,7 +251,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            il_df = il_df.filter(col("loaded_at") > max_loaded_at)
+            il_df = _filter_incremental_new_rows(il_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(il_df))
 
     # Indiana
@@ -259,7 +265,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            in_df = in_df.filter(col("loaded_at") > max_loaded_at)
+            in_df = _filter_incremental_new_rows(in_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(in_df))
 
     # Iowa
@@ -273,7 +279,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ia_df = ia_df.filter(col("loaded_at") > max_loaded_at)
+            ia_df = _filter_incremental_new_rows(ia_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ia_df))
 
     # Kansas
@@ -287,7 +293,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ks_df = ks_df.filter(col("loaded_at") > max_loaded_at)
+            ks_df = _filter_incremental_new_rows(ks_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ks_df))
 
     # Kentucky
@@ -301,7 +307,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ky_df = ky_df.filter(col("loaded_at") > max_loaded_at)
+            ky_df = _filter_incremental_new_rows(ky_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ky_df))
 
     # Louisiana
@@ -315,7 +321,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            la_df = la_df.filter(col("loaded_at") > max_loaded_at)
+            la_df = _filter_incremental_new_rows(la_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(la_df))
 
     # Maine
@@ -329,7 +335,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            me_df = me_df.filter(col("loaded_at") > max_loaded_at)
+            me_df = _filter_incremental_new_rows(me_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(me_df))
 
     # Maryland
@@ -343,7 +349,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            md_df = md_df.filter(col("loaded_at") > max_loaded_at)
+            md_df = _filter_incremental_new_rows(md_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(md_df))
 
     # Massachusetts
@@ -357,7 +363,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ma_df = ma_df.filter(col("loaded_at") > max_loaded_at)
+            ma_df = _filter_incremental_new_rows(ma_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ma_df))
 
     # Michigan
@@ -371,7 +377,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mi_df = mi_df.filter(col("loaded_at") > max_loaded_at)
+            mi_df = _filter_incremental_new_rows(mi_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(mi_df))
 
     # Minnesota
@@ -385,7 +391,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mn_df = mn_df.filter(col("loaded_at") > max_loaded_at)
+            mn_df = _filter_incremental_new_rows(mn_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(mn_df))
 
     # Mississippi
@@ -399,7 +405,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ms_df = ms_df.filter(col("loaded_at") > max_loaded_at)
+            ms_df = _filter_incremental_new_rows(ms_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ms_df))
 
     # Missouri
@@ -413,7 +419,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mo_df = mo_df.filter(col("loaded_at") > max_loaded_at)
+            mo_df = _filter_incremental_new_rows(mo_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(mo_df))
 
     # Montana
@@ -427,7 +433,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mt_df = mt_df.filter(col("loaded_at") > max_loaded_at)
+            mt_df = _filter_incremental_new_rows(mt_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(mt_df))
 
     # Nebraska
@@ -441,7 +447,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ne_df = ne_df.filter(col("loaded_at") > max_loaded_at)
+            ne_df = _filter_incremental_new_rows(ne_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ne_df))
 
     # Nevada
@@ -455,7 +461,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nv_df = nv_df.filter(col("loaded_at") > max_loaded_at)
+            nv_df = _filter_incremental_new_rows(nv_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(nv_df))
 
     # New Hampshire
@@ -469,7 +475,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nh_df = nh_df.filter(col("loaded_at") > max_loaded_at)
+            nh_df = _filter_incremental_new_rows(nh_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(nh_df))
 
     # New Jersey
@@ -483,7 +489,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nj_df = nj_df.filter(col("loaded_at") > max_loaded_at)
+            nj_df = _filter_incremental_new_rows(nj_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(nj_df))
 
     # New Mexico
@@ -497,7 +503,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nm_df = nm_df.filter(col("loaded_at") > max_loaded_at)
+            nm_df = _filter_incremental_new_rows(nm_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(nm_df))
 
     # New York
@@ -511,7 +517,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ny_df = ny_df.filter(col("loaded_at") > max_loaded_at)
+            ny_df = _filter_incremental_new_rows(ny_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ny_df))
 
     # North Carolina
@@ -525,7 +531,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nc_df = nc_df.filter(col("loaded_at") > max_loaded_at)
+            nc_df = _filter_incremental_new_rows(nc_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(nc_df))
 
     # North Dakota
@@ -539,7 +545,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nd_df = nd_df.filter(col("loaded_at") > max_loaded_at)
+            nd_df = _filter_incremental_new_rows(nd_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(nd_df))
 
     # Ohio
@@ -553,7 +559,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            oh_df = oh_df.filter(col("loaded_at") > max_loaded_at)
+            oh_df = _filter_incremental_new_rows(oh_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(oh_df))
 
     # Oklahoma
@@ -567,7 +573,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ok_df = ok_df.filter(col("loaded_at") > max_loaded_at)
+            ok_df = _filter_incremental_new_rows(ok_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ok_df))
 
     # Oregon
@@ -581,7 +587,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            or_df = or_df.filter(col("loaded_at") > max_loaded_at)
+            or_df = _filter_incremental_new_rows(or_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(or_df))
 
     # Pennsylvania
@@ -595,7 +601,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            pa_df = pa_df.filter(col("loaded_at") > max_loaded_at)
+            pa_df = _filter_incremental_new_rows(pa_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(pa_df))
 
     # Rhode Island
@@ -609,7 +615,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ri_df = ri_df.filter(col("loaded_at") > max_loaded_at)
+            ri_df = _filter_incremental_new_rows(ri_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ri_df))
 
     # South Carolina
@@ -623,7 +629,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            sc_df = sc_df.filter(col("loaded_at") > max_loaded_at)
+            sc_df = _filter_incremental_new_rows(sc_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(sc_df))
 
     # South Dakota
@@ -637,7 +643,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            sd_df = sd_df.filter(col("loaded_at") > max_loaded_at)
+            sd_df = _filter_incremental_new_rows(sd_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(sd_df))
 
     # Tennessee
@@ -651,7 +657,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            tn_df = tn_df.filter(col("loaded_at") > max_loaded_at)
+            tn_df = _filter_incremental_new_rows(tn_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(tn_df))
 
     # Texas
@@ -665,7 +671,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            tx_df = tx_df.filter(col("loaded_at") > max_loaded_at)
+            tx_df = _filter_incremental_new_rows(tx_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(tx_df))
 
     # Utah
@@ -679,7 +685,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ut_df = ut_df.filter(col("loaded_at") > max_loaded_at)
+            ut_df = _filter_incremental_new_rows(ut_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(ut_df))
 
     # Vermont
@@ -693,7 +699,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            vt_df = vt_df.filter(col("loaded_at") > max_loaded_at)
+            vt_df = _filter_incremental_new_rows(vt_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(vt_df))
 
     # Virginia
@@ -707,7 +713,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            va_df = va_df.filter(col("loaded_at") > max_loaded_at)
+            va_df = _filter_incremental_new_rows(va_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(va_df))
 
     # Washington
@@ -721,7 +727,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wa_df = wa_df.filter(col("loaded_at") > max_loaded_at)
+            wa_df = _filter_incremental_new_rows(wa_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(wa_df))
 
     # West Virginia
@@ -735,7 +741,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wv_df = wv_df.filter(col("loaded_at") > max_loaded_at)
+            wv_df = _filter_incremental_new_rows(wv_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(wv_df))
 
     # Wisconsin
@@ -749,7 +755,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wi_df = wi_df.filter(col("loaded_at") > max_loaded_at)
+            wi_df = _filter_incremental_new_rows(wi_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(wi_df))
 
     # Wyoming
@@ -763,7 +769,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wy_df = wy_df.filter(col("loaded_at") > max_loaded_at)
+            wy_df = _filter_incremental_new_rows(wy_df, max_loaded_at)
         per_state_dfs.append(_cast_flag_columns(wy_df))
 
     if not per_state_dfs:

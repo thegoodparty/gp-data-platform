@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
@@ -23,7 +23,9 @@ def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
         .otherwise(None),
     )
 
-    window_spec = Window.partitionBy("source_file_type").orderBy(col("loaded_at").desc())
+    window_spec = Window.partitionBy("source_file_type").orderBy(
+        col("loaded_at").desc()
+    )
     return (
         df.withColumn("rn", row_number().over(window_spec))
         .filter(col("rn") == 1)
@@ -80,9 +82,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             this_table = session.table(f"{dbt.this}")
             this_table_state_files = this_table.filter(col("state_id") == state_id)
-            this_table_latest_files = _filter_latest_loaded_files(this_table_state_files)
+            this_table_latest_files = _filter_latest_loaded_files(
+                this_table_state_files
+            )
             this_table_latest_files_names = [
-                file.source_file_name for file in this_table_latest_files.toLocalIterator()
+                file.source_file_name
+                for file in this_table_latest_files.toLocalIterator()
             ]
 
             files_to_load_list: List[
