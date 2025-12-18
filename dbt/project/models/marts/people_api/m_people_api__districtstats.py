@@ -114,7 +114,7 @@ def _get_age_bucket_label(age_int_col):
         F.when((F.col(age_int_col) >= 18) & (F.col(age_int_col) <= 25), F.lit("18-25"))
         .when((F.col(age_int_col) >= 26) & (F.col(age_int_col) <= 35), F.lit("26-35"))
         .when((F.col(age_int_col) >= 36) & (F.col(age_int_col) <= 50), F.lit("36-50"))
-        .when((F.col(age_int_col) >= 51) & (F.col(age_int_col) <= 200), F.lit("51-200"))
+        .when((F.col(age_int_col) >= 51), F.lit("51+"))
         .otherwise(F.lit("Unknown"))
     )
 
@@ -216,16 +216,45 @@ def _process_homeowner_buckets(
 def _process_education_buckets(
     voters_with_buckets: DataFrame, district_totals: DataFrame
 ) -> DataFrame:
-    """Process education bucket aggregation, removing 'Likely' from labels."""
+    """
+    Process education bucket aggregation with label mapping:
+    - "Did Not Complete High School Likely" -> "None"
+    - "Unknown" -> "Unknown"
+    - "Attended Vocational/Technical School Likely" -> "Technical School"
+    - "Completed Graduate School Likely" -> "Graduate Degree"
+    - "Completed College Likely" -> "College Degree"
+    - "Completed High School Likely" -> "High School Diploma"
+    - "Attended But Did Not Complete College Likely" -> "Some College"
+    - else -> "Unknown"
+    """
     education_counts = _aggregate_buckets(
         voters_with_buckets, "district_id", "Education_Of_Person"
     )
-    # Remove "Likely" from labels and trim whitespace
+    # Map labels to human-readable categories
     education_counts = education_counts.withColumn(
         "label",
-        F.trim(F.regexp_replace(F.col("label"), "Likely", "")),
+        F.when(F.col("label") == "Did Not Complete High School Likely", F.lit("None"))
+        .when(F.col("label") == "Unknown", F.lit("Unknown"))
+        .when(
+            F.col("label") == "Attended Vocational/Technical School Likely",
+            F.lit("Technical School"),
+        )
+        .when(
+            F.col("label") == "Completed Graduate School Likely",
+            F.lit("Graduate Degree"),
+        )
+        .when(F.col("label") == "Completed College Likely", F.lit("College Degree"))
+        .when(
+            F.col("label") == "Completed High School Likely",
+            F.lit("High School Diploma"),
+        )
+        .when(
+            F.col("label") == "Attended But Did Not Complete College Likely",
+            F.lit("Some College"),
+        )
+        .otherwise(F.lit("Unknown")),
     )
-    # Re-aggregate to combine labels that become identical after transformation
+    # Re-aggregate to combine mapped labels
     education_counts = education_counts.groupBy("district_id", "label").agg(
         F.sum("count").alias("count")
     )
@@ -240,9 +269,23 @@ def _process_education_buckets(
 def _process_presence_of_children_buckets(
     voters_with_buckets: DataFrame, district_totals: DataFrame
 ) -> DataFrame:
-    """Process presence of children bucket aggregation."""
+    """
+    Process presence of children bucket aggregation with label mapping:
+    "Y" -> "Yes", "N" -> "No", else -> "Unknown"
+    """
     children_counts = _aggregate_buckets(
         voters_with_buckets, "district_id", "Presence_Of_Children"
+    )
+    # Map labels to human-readable categories
+    children_counts = children_counts.withColumn(
+        "label",
+        F.when(F.col("label") == "Y", F.lit("Yes"))
+        .when(F.col("label") == "N", F.lit("No"))
+        .otherwise(F.lit("Unknown")),
+    )
+    # Re-aggregate to combine mapped labels
+    children_counts = children_counts.groupBy("district_id", "label").agg(
+        F.sum("count").alias("count")
     )
     children_counts_with_total = children_counts.join(
         district_totals.select("district_id", "total_constituents"),

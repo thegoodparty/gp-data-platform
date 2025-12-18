@@ -161,3 +161,50 @@ models:
         data_type: struct
         data_tests:
           - not_null
+    data_tests:
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.age
+          accepted_values:
+            - "18-25"
+            - "26-35"
+            - "36-50"
+            - "51+"
+            - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.estimatedIncomeRange
+          accepted_values:
+            - "1k–15k"
+            - "15k–25k"
+            - "25k–35k"
+            - "35k–50k"
+            - "50k–75k"
+            - "75k–100k"
+            - "100k–125k"
+            - "125k–150k"
+            - "150k–175k"
+            - "175k–200k"
+            - "200k–250k"
+            - "250k+"
+            - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.education
+          accepted_values:
+            - "None"
+            - "High School Diploma"
+            - "Technical School"
+            - "Some College"
+            - "College Degree"
+            - "Graduate Degree"
+            - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.homeowner
+          accepted_values:
+            - "Yes"
+            - "No"
+            - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.presenceOfChildren
+          accepted_values:
+            - "Yes"
+            - "No"
+            - "Unknown"
