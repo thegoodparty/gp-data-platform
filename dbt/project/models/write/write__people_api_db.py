@@ -437,16 +437,19 @@ DISTRICT_VOTER_UPSERT_QUERY = """
     INSERT INTO {db_schema}."DistrictVoter" (
         voter_id,
         district_id,
+        \"State\",
         created_at,
         updated_at
     )
     SELECT
         voter_id::uuid,
         district_id::uuid,
+        State::\"USState\",
         created_at,
         updated_at
     FROM {staging_schema}."DistrictVoter"
     ON CONFLICT (voter_id, district_id) DO UPDATE SET
+        \"State\" = EXCLUDED.\"State\",
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at
 """
