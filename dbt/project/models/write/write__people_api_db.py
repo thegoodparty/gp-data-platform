@@ -685,6 +685,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         district_voter_table = district_voter_table.filter(
             col("state").isin(filter_list)
         )
+        # Filter district_stats_table to only include districts from filtered district_voter_table
+        # This ensures data consistency: DistrictStats should only exist for districts
+        # that have corresponding DistrictVoter records in non-prod environments
+        filtered_district_ids = district_voter_table.select("district_id").distinct()
+        district_stats_table = district_stats_table.join(
+            filtered_district_ids, on="district_id", how="inner"
+        )
 
     # initialize list to capture metadata about data loads
     load_id = str(uuid4())

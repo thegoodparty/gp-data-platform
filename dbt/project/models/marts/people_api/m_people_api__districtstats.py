@@ -353,7 +353,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             # Filter to only include updated districts
             districtvoter_df = districtvoter_df.join(
                 other=updated_district_ids,
-                on=districtvoter_df.district_id == updated_district_ids.district_id,
+                on="district_id",
                 how="inner",
             )
 
