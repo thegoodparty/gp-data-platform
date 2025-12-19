@@ -5,7 +5,7 @@ and estimated income range for each district.
 
 Output schema matches:
     - district_id: String (primary key)
-    - computed_at: DateTime
+    - updated_at: DateTime
     - total_constituents: Int
     - total_constituents_with_cell_phone: Int
     - buckets: Struct containing:
@@ -59,7 +59,7 @@ BUCKETS_SCHEMA = StructType(
 OUTPUT_SCHEMA = StructType(
     [
         StructField("district_id", StringType(), False),
-        StructField("computed_at", TimestampType(), False),
+        StructField("updated_at", TimestampType(), False),
         StructField("total_constituents", LongType(), False),
         StructField("total_constituents_with_cell_phone", LongType(), False),
         StructField("buckets", BUCKETS_SCHEMA, False),
@@ -332,28 +332,28 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Apply incremental logic - only process districts that have updated voters
     if dbt.is_incremental:
         this_df: DataFrame = session.table(f"{dbt.this}")
-        max_computed_at = this_df.agg({"computed_at": "max"}).collect()[0][0]
-        if max_computed_at:
+        max_updated_at = this_df.agg({"updated_at": "max"}).collect()[0][0]
+        if max_updated_at:
             # Get districts with updated voters
             updated_voter_ids = (
-                voter_df.filter(F.col("updated_at") > max_computed_at)
+                voter_df.filter(F.col("updated_at") > max_updated_at)
                 .select("id")
                 .distinct()
             )
             # Get distinct district IDs for updated voters
             updated_district_ids = (
                 districtvoter_df.join(
-                    updated_voter_ids,
-                    districtvoter_df.voter_id == updated_voter_ids.id,
-                    "inner",
+                    other=updated_voter_ids,
+                    on=districtvoter_df.voter_id == updated_voter_ids.id,
+                    how="inner",
                 )
                 .select("district_id")
                 .distinct()
             )
             # Filter to only include updated districts
             districtvoter_df = districtvoter_df.join(
-                updated_district_ids,
-                on="district_id",
+                other=updated_district_ids,
+                on=districtvoter_df.district_id == updated_district_ids.district_id,
                 how="inner",
             )
 
@@ -429,10 +429,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 F.col("estimatedIncomeRange").alias("estimatedIncomeRange"),
             ),
         )
-        .withColumn("computed_at", F.current_timestamp())
+        .withColumn("updated_at", F.current_timestamp())
         .select(
             "district_id",
-            "computed_at",
+            "updated_at",
             "total_constituents",
             "total_constituents_with_cell_phone",
             "buckets",

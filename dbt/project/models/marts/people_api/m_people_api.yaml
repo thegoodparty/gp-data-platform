@@ -132,7 +132,7 @@ models:
           - relationships:
               to: ref('m_people_api__district')
               field: id
-      - name: computed_at
+      - name: updated_at
         description: Timestamp when the statistics were computed
         data_type: timestamp
         data_tests:

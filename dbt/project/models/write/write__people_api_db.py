@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import asc, col, count
+from pyspark.sql.functions import asc, col, count, to_json
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -451,6 +451,28 @@ DISTRICT_VOTER_UPSERT_QUERY = """
         updated_at = EXCLUDED.updated_at
 """
 
+DISTRICT_STATS_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."DistrictStats" (
+        district_id,
+        updated_at,
+        total_constituents,
+        total_constituents_with_cell_phone,
+        buckets
+    )
+    SELECT
+        district_id::uuid,
+        updated_at,
+        total_constituents,
+        total_constituents_with_cell_phone,
+        buckets::jsonb
+    FROM {staging_schema}."DistrictStats"
+    ON CONFLICT (district_id) DO UPDATE SET
+        updated_at = EXCLUDED.updated_at,
+        total_constituents = EXCLUDED.total_constituents,
+        total_constituents_with_cell_phone = EXCLUDED.total_constituents_with_cell_phone,
+        buckets = EXCLUDED.buckets
+"""
+
 
 def _connect_db(
     db_name: str,
@@ -647,6 +669,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     voter_table: DataFrame = dbt.ref("m_people_api__voter")
     district_table: DataFrame = dbt.ref("m_people_api__district")
     district_voter_table: DataFrame = dbt.ref("m_people_api__districtvoter")
+    district_stats_table: DataFrame = dbt.ref("m_people_api__districtstats")
+
+    # Convert buckets struct to JSON string for PostgreSQL JSONB storage
+    district_stats_table = district_stats_table.withColumn(
+        "buckets", to_json(col("buckets"))
+    )
 
     # downsample for non-prod environment with low-population states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
@@ -767,6 +795,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Process and load non-state-specific tables using a single loop
     table_configs = [
         ("District", district_table, DISTRICT_UPSERT_QUERY),
+        ("DistrictStats", district_stats_table, DISTRICT_STATS_UPSERT_QUERY),
         ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
     ]
 
