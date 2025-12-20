@@ -50,6 +50,8 @@ models:
     # Applies to all files under models/marts/
     marts:
       +materialized: table
+      civics:
+        +schema: mart_civics
     staging:
       airbyte_source:
         stripe_api:
