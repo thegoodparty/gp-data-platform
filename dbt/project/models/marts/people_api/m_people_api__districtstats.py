@@ -367,6 +367,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             F.col("Presence_Of_Children"),
             F.col("Estimated_Income_Amount_Int"),
             F.col("VoterTelephones_CellPhoneFormatted"),
+            F.col("updated_at"),
         ),
         on="voter_id",
         how="inner",
@@ -383,7 +384,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         "income_bucket", _get_income_bucket_label("Estimated_Income_Amount_Int")
     )
 
-    # Compute total constituents per district
+    # Compute total constituents per district and max updated_at from voters
     district_totals = voters_with_buckets.groupBy("district_id").agg(
         F.count("*").alias("total_constituents"),
         F.sum(
@@ -393,6 +394,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 1,
             ).otherwise(0)
         ).alias("total_constituents_with_cell_phone"),
+        F.max(F.col("updated_at")).alias("updated_at"),
     )
 
     # Compute all bucket aggregations using helper functions
@@ -418,25 +420,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # Create the final buckets struct
-    final_df = (
-        result_df.withColumn(
-            "buckets",
-            F.struct(
-                F.col("age").alias("age"),
-                F.col("homeowner").alias("homeowner"),
-                F.col("education").alias("education"),
-                F.col("presenceOfChildren").alias("presenceOfChildren"),
-                F.col("estimatedIncomeRange").alias("estimatedIncomeRange"),
-            ),
-        )
-        .withColumn("updated_at", F.current_timestamp())
-        .select(
-            "district_id",
-            "updated_at",
-            "total_constituents",
-            "total_constituents_with_cell_phone",
-            "buckets",
-        )
+    final_df = result_df.withColumn(
+        "buckets",
+        F.struct(
+            F.col("age").alias("age"),
+            F.col("homeowner").alias("homeowner"),
+            F.col("education").alias("education"),
+            F.col("presenceOfChildren").alias("presenceOfChildren"),
+            F.col("estimatedIncomeRange").alias("estimatedIncomeRange"),
+        ),
+    ).select(
+        "district_id",
+        "updated_at",
+        "total_constituents",
+        "total_constituents_with_cell_phone",
+        "buckets",
     )
 
     return final_df
