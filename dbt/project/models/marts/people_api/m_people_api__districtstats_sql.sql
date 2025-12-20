@@ -2,11 +2,12 @@
     config(
         materialized="table",
         on_schema_change="fail",
-        http_path="/sql/1.0/warehouses/466d83d2fa307198",
         tags=["mart", "people_api", "district_stats"],
     )
 }}
 
+-- databricks_compute='serverless_medium', -- 310 s
+-- default xxs serverless compute: 1950 s
 /*
 This model creates district statistics by aggregating voter demographic data per district.
 It computes bucket distributions for age, homeowner status, education, presence of children,

@@ -130,8 +130,9 @@ models:
           - not_null
           - unique
           - relationships:
-              to: ref('m_people_api__district')
-              field: id
+              arguments:
+                to: ref('m_people_api__district')
+                field: id
       - name: updated_at
         description: Timestamp when the statistics were computed
         data_type: timestamp
@@ -143,16 +144,18 @@ models:
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              inclusive: true
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: total_constituents_with_cell_phone
         description: Number of constituents with a cell phone on file
         data_type: bigint
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              inclusive: true
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: buckets
         description: >
           Struct containing demographic bucket distributions (age, homeowner,

@@ -1,7 +1,7 @@
 """
 This model creates district statistics by aggregating voter demographic data per district.
 It computes bucket distributions for age, homeowner status, education, presence of children,
-and estimated income range for each district.
+and estimated income range for each district. It takes about 850 s for a full build
 
 Output schema matches:
     - district_id: String (primary key)
@@ -358,7 +358,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
 
     # Join districtvoter with voter data to get demographics per district
-    voters_with_districts = districtvoter_df.join(
+    # Select only needed columns from districtvoter_df to avoid column name conflicts
+    voters_with_districts = districtvoter_df.select("voter_id", "district_id").join(
         voter_df.select(
             F.col("id").alias("voter_id"),
             F.col("Age_Int"),
