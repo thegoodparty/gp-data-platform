@@ -1,7 +1,10 @@
 {{
     config(
-        materialized="table",
+        materialized="incremental",
+        incremental_strategy="merge",
+        unique_key="district_id",
         on_schema_change="fail",
+        enabled=false,
         tags=["mart", "people_api", "district_stats"],
     )
 }}
@@ -33,6 +36,36 @@ Output schema matches:
 See: https://github.com/thegoodparty/people-api/tree/develop/prisma/schema/DistrictStats.prisma
 */
 with
+    -- Incremental logic: filter to only districts with updated voters
+    {% if is_incremental() %}
+        max_updated_at as (select max(updated_at) as max_updated_at from {{ this }}),
+        updated_voter_ids as (
+            select distinct voter.id as voter_id
+            from {{ ref("m_people_api__voter") }} as voter
+            cross join max_updated_at
+            where
+                max_updated_at.max_updated_at is null
+                or voter.updated_at > max_updated_at.max_updated_at
+        ),
+        updated_district_ids as (
+            select distinct districtvoter.district_id
+            from {{ ref("m_people_api__districtvoter") }} as districtvoter
+            inner join
+                updated_voter_ids on districtvoter.voter_id = updated_voter_ids.voter_id
+        ),
+        filtered_districtvoter as (
+            select districtvoter.*
+            from {{ ref("m_people_api__districtvoter") }} as districtvoter
+            inner join
+                updated_district_ids
+                on districtvoter.district_id = updated_district_ids.district_id
+        ),
+    {% else %}
+        filtered_districtvoter as (
+            select * from {{ ref("m_people_api__districtvoter") }}
+        ),
+    {% endif %}
+
     -- Join districtvoter with voter data to get demographics per district
     voters_with_districts as (
         select
@@ -45,7 +78,7 @@ with
             voter.estimated_income_amount_int,
             voter.votertelephones_cellphoneformatted,
             voter.updated_at
-        from {{ ref("m_people_api__districtvoter") }} as districtvoter
+        from filtered_districtvoter as districtvoter
         inner join
             {{ ref("m_people_api__voter") }} as voter
             on districtvoter.voter_id = voter.id
