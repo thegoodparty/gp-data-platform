@@ -65,3 +65,4 @@ models:
 # Shared folder use is deprecated due to governance concerns.
 flags:
   use_user_folder_for_python: True
+  state_modified_compare_more_unrendered_values: True
