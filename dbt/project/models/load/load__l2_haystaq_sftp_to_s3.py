@@ -114,10 +114,10 @@ def _extract_and_load_w_params(
 
             # Files look like: ak_haystaqdnaflags_20251005.tab.zip
             state_lower = state_id.lower()
-            suffix = "haystaqdnaflags" if haystaq_kind == "flags" else "haystaqdnascores"
-            zip_pattern_str = (
-                "^" + state_lower + "_" + suffix + r"_(\d{8})\.tab\.zip$"
+            suffix = (
+                "haystaqdnaflags" if haystaq_kind == "flags" else "haystaqdnascores"
             )
+            zip_pattern_str = "^" + state_lower + "_" + suffix + r"_(\d{8})\.tab\.zip$"
             zip_pattern = re.compile(zip_pattern_str, flags=re.IGNORECASE)
 
             try:
@@ -165,7 +165,9 @@ def _extract_and_load_w_params(
                 logging.warning(
                     f"Permission denied for temp dir {databricks_volume_directory}; falling back to default temp directory."
                 )
-                temp_dir_ctx = TemporaryDirectory(prefix=f"temp_{state_id}_{haystaq_kind}_")
+                temp_dir_ctx = TemporaryDirectory(
+                    prefix=f"temp_{state_id}_{haystaq_kind}_"
+                )
 
             with temp_dir_ctx as temp_dir:
                 local_zip_path = os.path.join(temp_dir, source_zip_file_name)
@@ -201,30 +203,36 @@ def _extract_and_load_w_params(
                         f"Expected 1 .tab in {source_zip_file_name}, got {len(tab_names)}: {tab_names}"
                     )
 
-                extracted_tab_name = os.path.basename(tab_names[0])
+                extracted_tab_member = tab_names[0]
+                extracted_tab_name = os.path.basename(extracted_tab_member)
                 if extracted_tab_name.lower() != tab_file_name.lower():
                     logging.warning(
                         f"Extracted tab name {extracted_tab_name} does not match expected {tab_file_name}; uploading extracted name."
                     )
                     tab_file_name = extracted_tab_name
 
-                local_tab_path = os.path.join(temp_dir, extracted_tab_name)
+                # `ZipFile.extractall` preserves any directory structure inside the zip, so the
+                # extracted file may not live at the root of `temp_dir`.
+                local_tab_path = os.path.join(temp_dir, extracted_tab_member)
                 if not os.path.isfile(local_tab_path):
                     raise FileNotFoundError(
                         f"Extracted tab file not found at {local_tab_path}"
                     )
 
                 s3_key = f"{s3_state_prefix}{tab_file_name}"
-                s3_client.upload_file(Filename=local_tab_path, Bucket=s3_bucket, Key=s3_key)
+                s3_client.upload_file(
+                    Filename=local_tab_path, Bucket=s3_bucket, Key=s3_key
+                )
 
                 # Delete older versions for this state/type (keep only the latest by filename)
-                tab_pattern_str = (
-                    "^" + state_lower + "_" + suffix + r"_(\d{8})\.tab$"
-                )
+                tab_pattern_str = "^" + state_lower + "_" + suffix + r"_(\d{8})\.tab$"
                 tab_pattern = re.compile(tab_pattern_str, flags=re.IGNORECASE)
                 for key in s3_keys:
                     key_basename = os.path.basename(key)
-                    if re.match(tab_pattern, key_basename) and key_basename.lower() != tab_file_name.lower():
+                    if (
+                        re.match(tab_pattern, key_basename)
+                        and key_basename.lower() != tab_file_name.lower()
+                    ):
                         s3_client.delete_object(Bucket=s3_bucket, Key=key)
 
             return {
@@ -236,7 +244,9 @@ def _extract_and_load_w_params(
             }
 
         except Exception as e:
-            logging.error(f"Error processing state {state_id} ({haystaq_kind}): {str(e)}")
+            logging.error(
+                f"Error processing state {state_id} ({haystaq_kind}): {str(e)}"
+            )
             error_details = traceback.format_exc()
             logging.error(f"Full exception details:\n{error_details}")
             raise Exception(
@@ -353,7 +363,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     for state_id in state_list:
         flags_result = extract_flags(state_id)
         if flags_result["state_id"] is not None:
-            all_load_details.append({"state_id": state_id, "load_details": flags_result})
+            all_load_details.append(
+                {"state_id": state_id, "load_details": flags_result}
+            )
 
         scores_result = extract_scores(state_id)
         if scores_result["state_id"] is not None:
@@ -369,7 +381,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 name="load_details",
                 dataType=StructType(
                     [
-                        StructField(name="state_id", dataType=StringType(), nullable=True),
+                        StructField(
+                            name="state_id", dataType=StringType(), nullable=True
+                        ),
                         StructField("source_file_names", ArrayType(StringType()), True),
                         StructField("source_zip_file", StringType(), True),
                         StructField("loaded_at", TimestampType(), True),
@@ -388,8 +402,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     states_loaded.cache()
     states_loaded.count()
     states_loaded = states_loaded.filter(col("load_details.state_id").isNotNull())
-    states_loaded = states_loaded.filter(col("load_details.source_file_names").isNotNull())
-    states_loaded = states_loaded.filter(col("load_details.source_zip_file").isNotNull())
+    states_loaded = states_loaded.filter(
+        col("load_details.source_file_names").isNotNull()
+    )
+    states_loaded = states_loaded.filter(
+        col("load_details.source_zip_file").isNotNull()
+    )
 
     exploded_states = states_loaded.select(
         col("load_id"),
