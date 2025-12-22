@@ -8,7 +8,7 @@ with
             c.id as campaign_id,
             c.slug as campaign_slug,
 
-            c.data:hubspotid::string as hubspot_id
+            c.data:hubspotid::string as hubspot_id,
 
             u.id as user_id,
             u.email as user_email,
@@ -40,7 +40,7 @@ with
             c.details:state::string as campaign_state,
             c.details:office::string as campaign_office,
             c.details:party::string as campaign_party,
-            c.details:level::string as election_level,
+            c.details:level::string as election_level
 
         from campaigns c
         left join users u on c.user_id = u.id
