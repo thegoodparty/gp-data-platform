@@ -107,13 +107,25 @@
     {{ log("", info=true) }}
 
     {# Column header #}
+    {% set col_name_header = "Column Name" | truncate(40, True, "...") %}
+    {% set col_type_header = "Data Type" | truncate(20, True, "...") %}
+    {% set non_null_header = "Non-Null" | truncate(12, True, "...") %}
+    {% set pct_header = "% Populated" | truncate(12, True, "...") %}
     {{
         log(
-            "| " ~ "Column Name"
-            | truncate(40, True, "...") ~ " | " ~ "Data Type"
-            | truncate(20, True, "...") ~ " | " ~ "Non-Null"
-            | truncate(12, True, "...") ~ " | " ~ "% Populated"
-            | truncate(12, True, "...") ~ " |",
+            "| "
+            ~ col_name_header
+            ~ " " * (40 - col_name_header | length)
+            ~ " | "
+            ~ col_type_header
+            ~ " " * (20 - col_type_header | length)
+            ~ " | "
+            ~ non_null_header
+            ~ " " * (12 - non_null_header | length)
+            ~ " | "
+            ~ pct_header
+            ~ " " * (12 - pct_header | length)
+            ~ " |",
             info=true,
         )
     }}
