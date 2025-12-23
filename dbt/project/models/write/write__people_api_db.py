@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import asc, col, count
+from pyspark.sql.functions import asc, col, count, to_json
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -437,18 +437,43 @@ DISTRICT_VOTER_UPSERT_QUERY = """
     INSERT INTO {db_schema}."DistrictVoter" (
         voter_id,
         district_id,
+        \"State\",
         created_at,
         updated_at
     )
     SELECT
         voter_id::uuid,
         district_id::uuid,
+        State::\"USState\",
         created_at,
         updated_at
     FROM {staging_schema}."DistrictVoter"
     ON CONFLICT (voter_id, district_id) DO UPDATE SET
+        \"State\" = EXCLUDED.\"State\",
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at
+"""
+
+DISTRICT_STATS_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."DistrictStats" (
+        district_id,
+        updated_at,
+        total_constituents,
+        total_constituents_with_cell_phone,
+        buckets
+    )
+    SELECT
+        district_id::uuid,
+        updated_at,
+        total_constituents,
+        total_constituents_with_cell_phone,
+        buckets::jsonb
+    FROM {staging_schema}."DistrictStats"
+    ON CONFLICT (district_id) DO UPDATE SET
+        updated_at = EXCLUDED.updated_at,
+        total_constituents = EXCLUDED.total_constituents,
+        total_constituents_with_cell_phone = EXCLUDED.total_constituents_with_cell_phone,
+        buckets = EXCLUDED.buckets
 """
 
 
@@ -647,6 +672,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     voter_table: DataFrame = dbt.ref("m_people_api__voter")
     district_table: DataFrame = dbt.ref("m_people_api__district")
     district_voter_table: DataFrame = dbt.ref("m_people_api__districtvoter")
+    district_stats_table: DataFrame = dbt.ref("m_people_api__districtstats")
+
+    # Convert buckets struct to JSON string for PostgreSQL JSONB storage
+    district_stats_table = district_stats_table.withColumn(
+        "buckets", to_json(col("buckets"))
+    )
 
     # downsample for non-prod environment with low-population states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
@@ -656,6 +687,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         voter_table = voter_table.filter(col("State").isin(filter_list))
         district_voter_table = district_voter_table.filter(
             col("state").isin(filter_list)
+        )
+        # Filter district_stats_table to only include districts from filtered district_voter_table
+        # This ensures data consistency: DistrictStats should only exist for districts
+        # that have corresponding DistrictVoter records in non-prod environments
+        filtered_district_ids = district_voter_table.select("district_id").distinct()
+        district_stats_table = district_stats_table.join(
+            filtered_district_ids, on="district_id", how="inner"
         )
 
     # initialize list to capture metadata about data loads
@@ -767,6 +805,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Process and load non-state-specific tables using a single loop
     table_configs = [
         ("District", district_table, DISTRICT_UPSERT_QUERY),
+        ("DistrictStats", district_stats_table, DISTRICT_STATS_UPSERT_QUERY),
         ("DistrictVoter", district_voter_table, DISTRICT_VOTER_UPSERT_QUERY),
     ]
 
