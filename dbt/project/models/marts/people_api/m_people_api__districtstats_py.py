@@ -322,6 +322,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         incremental_strategy="merge",
         unique_key="district_id",
         on_schema_change="fail",
+        enabled=False,
         tags=["mart", "people_api", "district_stats"],
     )
 

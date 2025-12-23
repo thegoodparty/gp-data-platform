@@ -4,7 +4,6 @@
         incremental_strategy="merge",
         unique_key="district_id",
         on_schema_change="fail",
-        enabled=false,
         tags=["mart", "people_api", "district_stats"],
     )
 }}

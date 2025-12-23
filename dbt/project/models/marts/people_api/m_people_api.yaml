@@ -217,7 +217,7 @@ models:
               - "No"
               - "Unknown"
 
-  - name: m_people_api__districtstats_sql
+  - name: m_people_api__districtstats_py
     tests:
       - dbt_utils.equality:
           arguments:
