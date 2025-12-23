@@ -10,6 +10,7 @@ with
 
             c.data:hubspotid::string as hubspot_id,
 
+            u.id as fake_id,
             u.id as user_id,
             u.email as user_email,
             u.first_name as user_first_name,
