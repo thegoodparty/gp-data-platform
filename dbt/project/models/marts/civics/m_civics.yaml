@@ -1,0 +1,158 @@
+version: 2
+
+models:
+  - name: users
+    description: >
+      Goodparty.org application users, with aggregate campaign counts appended.
+
+      Grain: One row per user.
+
+      Limitations: Win/loss outcome data requires future work and is not included in this MVP.
+
+    columns:
+      - name: user_id
+        description: Primary key - unique user identifier from gp-api production database
+        data_tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: User's email address (primary contact, unique identifier)
+
+      - name: first_name
+        description: User's first name
+
+      - name: last_name
+        description: User's last name
+
+      - name: phone
+        description: User's phone number
+
+      - name: zip
+        description: User's zip code
+
+      - name: created_at
+        description: Timestamp when user account was created (signup date)
+
+      - name: updated_at
+        description: Timestamp when user account was last updated
+
+      - name: campaign_count
+        description: Total number of campaigns created by this user
+
+      - name: non_demo_campaign_count
+        description: Number of non-demo campaigns (use for production counts)
+
+      - name: verified_campaign_count
+        description: Number of verified campaigns
+
+      - name: active_campaign_count
+        description: Number of active campaigns
+
+      - name: pro_campaign_count
+        description: Number of pro-tier campaigns
+
+      - name: pledged_campaign_count
+        description: Number of campaigns where candidate took the GoodParty pledge
+
+      - name: first_campaign_created_at
+        description: Timestamp of user's first campaign creation
+
+      - name: last_campaign_created_at
+        description: Timestamp of user's most recent campaign creation
+
+      - name: has_campaign
+        description: Whether user has created at least one campaign
+        data_tests:
+          - not_null
+
+      - name: has_verified_campaign
+        description: Whether user has at least one verified campaign
+        data_tests:
+          - not_null
+
+      - name: has_pledged_campaign
+        description: Whether user has at least one pledged campaign
+        data_tests:
+          - not_null
+
+  - name: campaigns
+    description: >
+      Goodparty.org application campaigns.
+
+      One row per campaign with user information denormalized.
+
+      Grain: One row per campaign.
+
+      Limitations: Win/loss outcome data requires future work and is not included in this MVP.
+
+    columns:
+      - name: campaign_id
+        description: Primary key - unique campaign identifier from gp-api production database
+        data_tests:
+          - unique
+          - not_null
+
+      - name: campaign_slug
+        description: URL-friendly campaign identifier used in app URLs
+
+      - name: user_id
+        description: Foreign key to user table - the user who owns this campaign
+        data_tests:
+          - not_null
+
+      - name: user_email
+        description: User's email address (primary contact)
+
+      - name: user_first_name
+        description: User's first name
+
+      - name: user_last_name
+        description: User's last name
+
+      - name: user_phone
+        description: User's phone number
+
+      - name: user_zip
+        description: User's zip code
+
+      - name: user_created_at
+        description: Timestamp when user account was created (signup date)
+
+      - name: created_at
+        description: Timestamp when this campaign was created
+
+      - name: updated_at
+        description: Timestamp when this campaign was last updated
+
+      - name: is_verified
+        description: Whether the campaign has been verified by GoodParty staff
+        data_tests:
+          - not_null
+
+      - name: is_active
+        description: Whether the campaign is currently active
+
+      - name: is_pro
+        description: Whether the campaign is on pro tier
+
+      - name: is_demo
+        description: Whether the campaign is a demo/test account (exclude from production counts)
+
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+
+      - name: election_date
+        description: Date of the election the campaign is targeting
+
+      - name: campaign_state
+        description: U.S. state where the campaign is running
+
+      - name: campaign_office
+        description: Political office the candidate is running for
+
+      - name: campaign_party
+        description: Political party affiliation
+
+      - name: election_level
+        description: Level of election (local, state, federal)
