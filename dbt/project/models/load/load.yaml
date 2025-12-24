@@ -80,9 +80,9 @@ models:
       # folders live alongside VM2Uniform on the SFTP server
       l2_haystaq_flags_sftp_dir: "/L2-Haystaq Issue Model Flags for Voters"
       l2_haystaq_scores_sftp_dir: "/L2-Haystaq Issue Model Scores"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: id
         description: "Unique identifier for the loaded file and job"
@@ -106,9 +106,9 @@ models:
       l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
       # optional override if your user doesn't have CREATE TABLE on the shared source schema
       l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
-    meta:
-      owner: "Data Engineering Team"
-      contains_pii: false
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
     columns:
       - name: id
         description: "Unique identifier for the loaded table and job"
