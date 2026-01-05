@@ -22,6 +22,7 @@ airflow/logs
 dbt/*/target/
 dbt/*/dbt_packages/
 dbt/*/logs/
+dbt/project/dbt_internal_packages/
 # end dbt Cloud content
 
 # ignore .venv
@@ -35,5 +36,5 @@ dbt/*/logs/
 tmp_data/
 CLAUDE.md
 
-# Logs (including root level)
+# Logs (including root level) and things I don't want to commit
 logs/
