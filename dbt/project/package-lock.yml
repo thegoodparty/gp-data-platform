@@ -8,7 +8,10 @@ packages:
   - name: codegen
     package: dbt-labs/codegen
     version: 0.13.1
+  - name: audit_helper
+    package: dbt-labs/audit_helper
+    version: 0.12.2
   - name: dbt_date
     package: godatadriven/dbt_date
-    version: 0.12.0
-sha1_hash: ef017c9e5e6d3ff86ae392b3ebaf2dc13f336362
+    version: 0.17.0
+sha1_hash: e5452d3743e39fb7f17006824974a54d8712dbad

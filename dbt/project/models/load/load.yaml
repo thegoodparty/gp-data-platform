@@ -64,3 +64,68 @@ models:
             combination_of_columns:
               - source_file_name
               - loaded_at
+
+  - name: load__l2_haystaq_sftp_to_s3
+    description: >
+      This model loads Haystaq issue model data from the L2 SFTP server to S3.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      l2_sftp_host: "{{ env_var('DBT_L2_SFTP_HOST') }}"
+      l2_sftp_port: "{{ env_var('DBT_L2_SFTP_PORT') }}"
+      l2_sftp_user: "{{ env_var('DBT_L2_SFTP_USER') }}"
+      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
+      # optional: comma/space-separated list like "AK,AL" for iterative runs
+      l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+      # folders live alongside VM2Uniform on the SFTP server
+      l2_haystaq_flags_sftp_dir: "/L2-Haystaq Issue Model Flags for Voters"
+      l2_haystaq_scores_sftp_dir: "/L2-Haystaq Issue Model Scores"
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
+    columns:
+      - name: id
+        description: "Unique identifier for the loaded file and job"
+        tests:
+          - not_null
+          - unique
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - source_file_name
+              - source_zip_file
+              - loaded_at
+
+  - name: load__l2_haystaq_s3_to_databricks
+    description: >
+      This model loads Haystaq issue model data from S3 to Databricks.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
+      # optional override if your user doesn't have CREATE TABLE on the shared source schema
+      l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
+      meta:
+        owner: "Data Engineering Team"
+        contains_pii: false
+    columns:
+      - name: id
+        description: "Unique identifier for the loaded table and job"
+        tests:
+          - not_null
+          - unique
+      - name: source_file_name
+        description: "Name of the source file"
+        tests:
+          - not_null
+      - name: source_s3_path
+        description: "S3 path of the source file"
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - source_file_name
+              - loaded_at

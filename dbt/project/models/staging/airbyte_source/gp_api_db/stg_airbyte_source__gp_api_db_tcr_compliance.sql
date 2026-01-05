@@ -22,7 +22,6 @@ with
             {{ adapter.quote("committee_name") }},
             {{ adapter.quote("website_domain") }},
             {{ adapter.quote("peerly_identity_id") }},
-            {{ adapter.quote("matching_contact_fields") }},
             {{ adapter.quote("peerly_registration_link") }},
             {{ adapter.quote("peerly_identity_profile_link") }},
             {{ adapter.quote("peerly_10dlc_brand_submission_key") }}

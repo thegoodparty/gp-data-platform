@@ -116,3 +116,109 @@ models:
                   - Likely
                   - Super
                   - Unknown
+
+  - name: m_people_api__districtstats
+    description: >
+      District statistics aggregating voter demographic data per district.
+      Computes bucket distributions for age, homeowner status, education,
+      presence of children, and estimated income range for each district.
+    columns:
+      - name: district_id
+        description: Unique identifier for a district (primary key)
+        data_type: string
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('m_people_api__district')
+                field: id
+      - name: updated_at
+        description: Timestamp when the statistics were computed
+        data_type: timestamp
+        data_tests:
+          - not_null
+      - name: total_constituents
+        description: Total number of constituents in the district
+        data_type: bigint
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: total_constituents_with_cell_phone
+        description: Number of constituents with a cell phone on file
+        data_type: bigint
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: buckets
+        description: >
+          Struct containing demographic bucket distributions (age, homeowner,
+          education, presenceOfChildren, estimatedIncomeRange). Each bucket
+          contains arrays of {label, count, percent} structs.
+        data_type: struct
+        data_tests:
+          - not_null
+    data_tests:
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.age
+          arguments:
+            accepted_values:
+              - "18-25"
+              - "26-35"
+              - "36-50"
+              - "51+"
+              - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.estimatedIncomeRange
+          arguments:
+            accepted_values:
+            - "1k–15k"
+            - "15k–25k"
+            - "25k–35k"
+            - "35k–50k"
+            - "50k–75k"
+            - "75k–100k"
+            - "100k–125k"
+            - "125k–150k"
+            - "150k–175k"
+            - "175k–200k"
+            - "200k–250k"
+            - "250k+"
+            - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.education
+          arguments:
+            accepted_values:
+              - "None"
+              - "High School Diploma"
+              - "Technical School"
+              - "Some College"
+              - "College Degree"
+              - "Graduate Degree"
+              - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.homeowner
+          arguments:
+            accepted_values:
+              - "Yes"
+              - "No"
+              - "Unknown"
+      - bucket_labels_accepted_values:
+          bucket_path: buckets.presenceOfChildren
+          arguments:
+            accepted_values:
+              - "Yes"
+              - "No"
+              - "Unknown"
+
+  - name: m_people_api__districtstats_py
+    tests:
+      - dbt_utils.equality:
+          arguments:
+            compare_model: ref('m_people_api__districtstats')
