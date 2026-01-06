@@ -183,6 +183,10 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
+        config:
+          freshness:
+            warn_after: {count: 30, period: day}
+            error_after: {count: 90, period: day}
 
 
   - name: dbt_source
