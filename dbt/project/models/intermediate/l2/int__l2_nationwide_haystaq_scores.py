@@ -63,7 +63,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            al_df = al_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                al_df = al_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(al_df))
 
     # Alaska
@@ -77,7 +78,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ak_df = ak_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ak_df = ak_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ak_df))
 
     # Arizona
@@ -91,7 +93,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            az_df = az_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                az_df = az_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(az_df))
 
     # Arkansas
@@ -105,7 +108,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ar_df = ar_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ar_df = ar_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ar_df))
 
     # California
@@ -119,7 +123,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ca_df = ca_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ca_df = ca_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ca_df))
 
     # Colorado
@@ -133,7 +138,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            co_df = co_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                co_df = co_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(co_df))
 
     # Connecticut
@@ -147,7 +153,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ct_df = ct_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ct_df = ct_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ct_df))
 
     # Delaware
@@ -161,7 +168,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            de_df = de_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                de_df = de_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(de_df))
 
     # Washington DC
@@ -175,7 +183,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            dc_df = dc_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                dc_df = dc_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(dc_df))
 
     # Florida
@@ -189,7 +198,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            fl_df = fl_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                fl_df = fl_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(fl_df))
 
     # Georgia
@@ -203,7 +213,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ga_df = ga_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ga_df = ga_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ga_df))
 
     # Hawaii
@@ -217,7 +228,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            hi_df = hi_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                hi_df = hi_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(hi_df))
 
     # Idaho
@@ -231,7 +243,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            id_df = id_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                id_df = id_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(id_df))
 
     # Illinois
@@ -245,7 +258,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            il_df = il_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                il_df = il_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(il_df))
 
     # Indiana
@@ -259,7 +273,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            in_df = in_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                in_df = in_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(in_df))
 
     # Iowa
@@ -273,7 +288,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ia_df = ia_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ia_df = ia_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ia_df))
 
     # Kansas
@@ -287,7 +303,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ks_df = ks_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ks_df = ks_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ks_df))
 
     # Kentucky
@@ -301,7 +318,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ky_df = ky_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ky_df = ky_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ky_df))
 
     # Louisiana
@@ -315,7 +333,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            la_df = la_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                la_df = la_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(la_df))
 
     # Maine
@@ -329,7 +348,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            me_df = me_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                me_df = me_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(me_df))
 
     # Maryland
@@ -343,7 +363,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            md_df = md_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                md_df = md_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(md_df))
 
     # Massachusetts
@@ -357,7 +378,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ma_df = ma_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ma_df = ma_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ma_df))
 
     # Michigan
@@ -371,7 +393,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mi_df = mi_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                mi_df = mi_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(mi_df))
 
     # Minnesota
@@ -385,7 +408,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mn_df = mn_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                mn_df = mn_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(mn_df))
 
     # Mississippi
@@ -399,7 +423,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ms_df = ms_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ms_df = ms_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ms_df))
 
     # Missouri
@@ -413,7 +438,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mo_df = mo_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                mo_df = mo_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(mo_df))
 
     # Montana
@@ -427,7 +453,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            mt_df = mt_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                mt_df = mt_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(mt_df))
 
     # Nebraska
@@ -441,7 +468,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ne_df = ne_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ne_df = ne_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ne_df))
 
     # Nevada
@@ -455,7 +483,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nv_df = nv_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                nv_df = nv_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(nv_df))
 
     # New Hampshire
@@ -469,7 +498,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nh_df = nh_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                nh_df = nh_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(nh_df))
 
     # New Jersey
@@ -483,7 +513,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nj_df = nj_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                nj_df = nj_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(nj_df))
 
     # New Mexico
@@ -497,7 +528,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nm_df = nm_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                nm_df = nm_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(nm_df))
 
     # New York
@@ -511,7 +543,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ny_df = ny_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ny_df = ny_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ny_df))
 
     # North Carolina
@@ -525,7 +558,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nc_df = nc_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                nc_df = nc_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(nc_df))
 
     # North Dakota
@@ -539,7 +573,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            nd_df = nd_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                nd_df = nd_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(nd_df))
 
     # Ohio
@@ -553,7 +588,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            oh_df = oh_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                oh_df = oh_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(oh_df))
 
     # Oklahoma
@@ -567,7 +603,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ok_df = ok_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ok_df = ok_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ok_df))
 
     # Oregon
@@ -581,7 +618,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            or_df = or_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                or_df = or_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(or_df))
 
     # Pennsylvania
@@ -595,7 +633,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            pa_df = pa_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                pa_df = pa_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(pa_df))
 
     # Rhode Island
@@ -609,7 +648,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ri_df = ri_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ri_df = ri_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ri_df))
 
     # South Carolina
@@ -623,7 +663,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            sc_df = sc_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                sc_df = sc_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(sc_df))
 
     # South Dakota
@@ -637,7 +678,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            sd_df = sd_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                sd_df = sd_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(sd_df))
 
     # Tennessee
@@ -651,7 +693,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            tn_df = tn_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                tn_df = tn_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(tn_df))
 
     # Texas
@@ -665,7 +708,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            tx_df = tx_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                tx_df = tx_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(tx_df))
 
     # Utah
@@ -679,7 +723,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            ut_df = ut_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                ut_df = ut_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(ut_df))
 
     # Vermont
@@ -693,7 +738,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            vt_df = vt_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                vt_df = vt_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(vt_df))
 
     # Virginia
@@ -707,7 +753,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            va_df = va_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                va_df = va_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(va_df))
 
     # Washington
@@ -721,7 +768,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wa_df = wa_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                wa_df = wa_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(wa_df))
 
     # West Virginia
@@ -735,7 +783,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wv_df = wv_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                wv_df = wv_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(wv_df))
 
     # Wisconsin
@@ -749,7 +798,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wi_df = wi_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                wi_df = wi_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(wi_df))
 
     # Wyoming
@@ -763,7 +813,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 .agg({"loaded_at": "max"})
                 .collect()[0][0]
             )
-            wy_df = wy_df.filter(col("loaded_at") > max_loaded_at)
+            if max_loaded_at is not None:
+                wy_df = wy_df.filter(col("loaded_at") > max_loaded_at)
         per_state_dfs.append(_cast_score_columns(wy_df))
 
     if not per_state_dfs:
