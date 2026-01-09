@@ -807,6 +807,216 @@ sources:
       - name: l2_s3_wy_vote_history_data_dictionary
         description: raw data load for Wyoming starting from sftp server to s3 bucket, and finally to databricks
 
+  - name: dbt_source_haystaq
+    schema: "{{ var('l2_haystaq_databricks_schema', 'dbt_source') }}"
+    description: Raw Haystaq issue model tables loaded by dbt from S3 into Databricks
+
+    tables:
+      - name: l2_s3_al_haystaq_dna_flags
+        description: raw data load for Alabama Haystaq DNA flags
+      - name: l2_s3_al_haystaq_dna_scores
+        description: raw data load for Alabama Haystaq DNA scores
+      - name: l2_s3_ak_haystaq_dna_flags
+        description: raw data load for Alaska Haystaq DNA flags
+      - name: l2_s3_ak_haystaq_dna_scores
+        description: raw data load for Alaska Haystaq DNA scores
+      - name: l2_s3_az_haystaq_dna_flags
+        description: raw data load for Arizona Haystaq DNA flags
+      - name: l2_s3_az_haystaq_dna_scores
+        description: raw data load for Arizona Haystaq DNA scores
+      - name: l2_s3_ar_haystaq_dna_flags
+        description: raw data load for Arkansas Haystaq DNA flags
+      - name: l2_s3_ar_haystaq_dna_scores
+        description: raw data load for Arkansas Haystaq DNA scores
+      - name: l2_s3_ca_haystaq_dna_flags
+        description: raw data load for California Haystaq DNA flags
+      - name: l2_s3_ca_haystaq_dna_scores
+        description: raw data load for California Haystaq DNA scores
+      - name: l2_s3_co_haystaq_dna_flags
+        description: raw data load for Colorado Haystaq DNA flags
+      - name: l2_s3_co_haystaq_dna_scores
+        description: raw data load for Colorado Haystaq DNA scores
+      - name: l2_s3_ct_haystaq_dna_flags
+        description: raw data load for Connecticut Haystaq DNA flags
+      - name: l2_s3_ct_haystaq_dna_scores
+        description: raw data load for Connecticut Haystaq DNA scores
+      - name: l2_s3_de_haystaq_dna_flags
+        description: raw data load for Delaware Haystaq DNA flags
+      - name: l2_s3_de_haystaq_dna_scores
+        description: raw data load for Delaware Haystaq DNA scores
+      - name: l2_s3_dc_haystaq_dna_flags
+        description: raw data load for Washington DC Haystaq DNA flags
+      - name: l2_s3_dc_haystaq_dna_scores
+        description: raw data load for Washington DC Haystaq DNA scores
+      - name: l2_s3_fl_haystaq_dna_flags
+        description: raw data load for Florida Haystaq DNA flags
+      - name: l2_s3_fl_haystaq_dna_scores
+        description: raw data load for Florida Haystaq DNA scores
+      - name: l2_s3_ga_haystaq_dna_flags
+        description: raw data load for Georgia Haystaq DNA flags
+      - name: l2_s3_ga_haystaq_dna_scores
+        description: raw data load for Georgia Haystaq DNA scores
+      - name: l2_s3_hi_haystaq_dna_flags
+        description: raw data load for Hawaii Haystaq DNA flags
+      - name: l2_s3_hi_haystaq_dna_scores
+        description: raw data load for Hawaii Haystaq DNA scores
+      - name: l2_s3_id_haystaq_dna_flags
+        description: raw data load for Idaho Haystaq DNA flags
+      - name: l2_s3_id_haystaq_dna_scores
+        description: raw data load for Idaho Haystaq DNA scores
+      - name: l2_s3_il_haystaq_dna_flags
+        description: raw data load for Illinois Haystaq DNA flags
+      - name: l2_s3_il_haystaq_dna_scores
+        description: raw data load for Illinois Haystaq DNA scores
+      - name: l2_s3_in_haystaq_dna_flags
+        description: raw data load for Indiana Haystaq DNA flags
+      - name: l2_s3_in_haystaq_dna_scores
+        description: raw data load for Indiana Haystaq DNA scores
+      - name: l2_s3_ia_haystaq_dna_flags
+        description: raw data load for Iowa Haystaq DNA flags
+      - name: l2_s3_ia_haystaq_dna_scores
+        description: raw data load for Iowa Haystaq DNA scores
+      - name: l2_s3_ks_haystaq_dna_flags
+        description: raw data load for Kansas Haystaq DNA flags
+      - name: l2_s3_ks_haystaq_dna_scores
+        description: raw data load for Kansas Haystaq DNA scores
+      - name: l2_s3_ky_haystaq_dna_flags
+        description: raw data load for Kentucky Haystaq DNA flags
+      - name: l2_s3_ky_haystaq_dna_scores
+        description: raw data load for Kentucky Haystaq DNA scores
+      - name: l2_s3_la_haystaq_dna_flags
+        description: raw data load for Louisiana Haystaq DNA flags
+      - name: l2_s3_la_haystaq_dna_scores
+        description: raw data load for Louisiana Haystaq DNA scores
+      - name: l2_s3_me_haystaq_dna_flags
+        description: raw data load for Maine Haystaq DNA flags
+      - name: l2_s3_me_haystaq_dna_scores
+        description: raw data load for Maine Haystaq DNA scores
+      - name: l2_s3_md_haystaq_dna_flags
+        description: raw data load for Maryland Haystaq DNA flags
+      - name: l2_s3_md_haystaq_dna_scores
+        description: raw data load for Maryland Haystaq DNA scores
+      - name: l2_s3_ma_haystaq_dna_flags
+        description: raw data load for Massachusetts Haystaq DNA flags
+      - name: l2_s3_ma_haystaq_dna_scores
+        description: raw data load for Massachusetts Haystaq DNA scores
+      - name: l2_s3_mi_haystaq_dna_flags
+        description: raw data load for Michigan Haystaq DNA flags
+      - name: l2_s3_mi_haystaq_dna_scores
+        description: raw data load for Michigan Haystaq DNA scores
+      - name: l2_s3_mn_haystaq_dna_flags
+        description: raw data load for Minnesota Haystaq DNA flags
+      - name: l2_s3_mn_haystaq_dna_scores
+        description: raw data load for Minnesota Haystaq DNA scores
+      - name: l2_s3_ms_haystaq_dna_flags
+        description: raw data load for Mississippi Haystaq DNA flags
+      - name: l2_s3_ms_haystaq_dna_scores
+        description: raw data load for Mississippi Haystaq DNA scores
+      - name: l2_s3_mo_haystaq_dna_flags
+        description: raw data load for Missouri Haystaq DNA flags
+      - name: l2_s3_mo_haystaq_dna_scores
+        description: raw data load for Missouri Haystaq DNA scores
+      - name: l2_s3_mt_haystaq_dna_flags
+        description: raw data load for Montana Haystaq DNA flags
+      - name: l2_s3_mt_haystaq_dna_scores
+        description: raw data load for Montana Haystaq DNA scores
+      - name: l2_s3_ne_haystaq_dna_flags
+        description: raw data load for Nebraska Haystaq DNA flags
+      - name: l2_s3_ne_haystaq_dna_scores
+        description: raw data load for Nebraska Haystaq DNA scores
+      - name: l2_s3_nv_haystaq_dna_flags
+        description: raw data load for Nevada Haystaq DNA flags
+      - name: l2_s3_nv_haystaq_dna_scores
+        description: raw data load for Nevada Haystaq DNA scores
+      - name: l2_s3_nh_haystaq_dna_flags
+        description: raw data load for New Hampshire Haystaq DNA flags
+      - name: l2_s3_nh_haystaq_dna_scores
+        description: raw data load for New Hampshire Haystaq DNA scores
+      - name: l2_s3_nj_haystaq_dna_flags
+        description: raw data load for New Jersey Haystaq DNA flags
+      - name: l2_s3_nj_haystaq_dna_scores
+        description: raw data load for New Jersey Haystaq DNA scores
+      - name: l2_s3_nm_haystaq_dna_flags
+        description: raw data load for New Mexico Haystaq DNA flags
+      - name: l2_s3_nm_haystaq_dna_scores
+        description: raw data load for New Mexico Haystaq DNA scores
+      - name: l2_s3_ny_haystaq_dna_flags
+        description: raw data load for New York Haystaq DNA flags
+      - name: l2_s3_ny_haystaq_dna_scores
+        description: raw data load for New York Haystaq DNA scores
+      - name: l2_s3_nc_haystaq_dna_flags
+        description: raw data load for North Carolina Haystaq DNA flags
+      - name: l2_s3_nc_haystaq_dna_scores
+        description: raw data load for North Carolina Haystaq DNA scores
+      - name: l2_s3_nd_haystaq_dna_flags
+        description: raw data load for North Dakota Haystaq DNA flags
+      - name: l2_s3_nd_haystaq_dna_scores
+        description: raw data load for North Dakota Haystaq DNA scores
+      - name: l2_s3_oh_haystaq_dna_flags
+        description: raw data load for Ohio Haystaq DNA flags
+      - name: l2_s3_oh_haystaq_dna_scores
+        description: raw data load for Ohio Haystaq DNA scores
+      - name: l2_s3_ok_haystaq_dna_flags
+        description: raw data load for Oklahoma Haystaq DNA flags
+      - name: l2_s3_ok_haystaq_dna_scores
+        description: raw data load for Oklahoma Haystaq DNA scores
+      - name: l2_s3_or_haystaq_dna_flags
+        description: raw data load for Oregon Haystaq DNA flags
+      - name: l2_s3_or_haystaq_dna_scores
+        description: raw data load for Oregon Haystaq DNA scores
+      - name: l2_s3_pa_haystaq_dna_flags
+        description: raw data load for Pennsylvania Haystaq DNA flags
+      - name: l2_s3_pa_haystaq_dna_scores
+        description: raw data load for Pennsylvania Haystaq DNA scores
+      - name: l2_s3_ri_haystaq_dna_flags
+        description: raw data load for Rhode Island Haystaq DNA flags
+      - name: l2_s3_ri_haystaq_dna_scores
+        description: raw data load for Rhode Island Haystaq DNA scores
+      - name: l2_s3_sc_haystaq_dna_flags
+        description: raw data load for South Carolina Haystaq DNA flags
+      - name: l2_s3_sc_haystaq_dna_scores
+        description: raw data load for South Carolina Haystaq DNA scores
+      - name: l2_s3_sd_haystaq_dna_flags
+        description: raw data load for South Dakota Haystaq DNA flags
+      - name: l2_s3_sd_haystaq_dna_scores
+        description: raw data load for South Dakota Haystaq DNA scores
+      - name: l2_s3_tn_haystaq_dna_flags
+        description: raw data load for Tennessee Haystaq DNA flags
+      - name: l2_s3_tn_haystaq_dna_scores
+        description: raw data load for Tennessee Haystaq DNA scores
+      - name: l2_s3_tx_haystaq_dna_flags
+        description: raw data load for Texas Haystaq DNA flags
+      - name: l2_s3_tx_haystaq_dna_scores
+        description: raw data load for Texas Haystaq DNA scores
+      - name: l2_s3_ut_haystaq_dna_flags
+        description: raw data load for Utah Haystaq DNA flags
+      - name: l2_s3_ut_haystaq_dna_scores
+        description: raw data load for Utah Haystaq DNA scores
+      - name: l2_s3_vt_haystaq_dna_flags
+        description: raw data load for Vermont Haystaq DNA flags
+      - name: l2_s3_vt_haystaq_dna_scores
+        description: raw data load for Vermont Haystaq DNA scores
+      - name: l2_s3_va_haystaq_dna_flags
+        description: raw data load for Virginia Haystaq DNA flags
+      - name: l2_s3_va_haystaq_dna_scores
+        description: raw data load for Virginia Haystaq DNA scores
+      - name: l2_s3_wa_haystaq_dna_flags
+        description: raw data load for Washington Haystaq DNA flags
+      - name: l2_s3_wa_haystaq_dna_scores
+        description: raw data load for Washington Haystaq DNA scores
+      - name: l2_s3_wv_haystaq_dna_flags
+        description: raw data load for West Virginia Haystaq DNA flags
+      - name: l2_s3_wv_haystaq_dna_scores
+        description: raw data load for West Virginia Haystaq DNA scores
+      - name: l2_s3_wi_haystaq_dna_flags
+        description: raw data load for Wisconsin Haystaq DNA flags
+      - name: l2_s3_wi_haystaq_dna_scores
+        description: raw data load for Wisconsin Haystaq DNA scores
+      - name: l2_s3_wy_haystaq_dna_flags
+        description: raw data load for Wyoming Haystaq DNA flags
+      - name: l2_s3_wy_haystaq_dna_scores
+        description: raw data load for Wyoming Haystaq DNA scores
+
 
   - name: historical
     schema: historical

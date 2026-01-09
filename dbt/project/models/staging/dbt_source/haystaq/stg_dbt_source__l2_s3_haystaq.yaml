@@ -1,0 +1,665 @@
+version: 2
+
+models:
+  - name: stg_dbt_source__l2_s3_al_haystaq_dna_flags
+    description: "Staging model for AL Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_al_haystaq_dna_scores
+    description: "Staging model for AL Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ak_haystaq_dna_flags
+    description: "Staging model for AK Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ak_haystaq_dna_scores
+    description: "Staging model for AK Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_az_haystaq_dna_flags
+    description: "Staging model for AZ Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_az_haystaq_dna_scores
+    description: "Staging model for AZ Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ar_haystaq_dna_flags
+    description: "Staging model for AR Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ar_haystaq_dna_scores
+    description: "Staging model for AR Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ca_haystaq_dna_flags
+    description: "Staging model for CA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ca_haystaq_dna_scores
+    description: "Staging model for CA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_co_haystaq_dna_flags
+    description: "Staging model for CO Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_co_haystaq_dna_scores
+    description: "Staging model for CO Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ct_haystaq_dna_flags
+    description: "Staging model for CT Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ct_haystaq_dna_scores
+    description: "Staging model for CT Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_de_haystaq_dna_flags
+    description: "Staging model for DE Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_de_haystaq_dna_scores
+    description: "Staging model for DE Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_dc_haystaq_dna_flags
+    description: "Staging model for DC Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_dc_haystaq_dna_scores
+    description: "Staging model for DC Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_fl_haystaq_dna_flags
+    description: "Staging model for FL Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_fl_haystaq_dna_scores
+    description: "Staging model for FL Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ga_haystaq_dna_flags
+    description: "Staging model for GA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ga_haystaq_dna_scores
+    description: "Staging model for GA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_hi_haystaq_dna_flags
+    description: "Staging model for HI Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_hi_haystaq_dna_scores
+    description: "Staging model for HI Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_id_haystaq_dna_flags
+    description: "Staging model for ID Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_id_haystaq_dna_scores
+    description: "Staging model for ID Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_il_haystaq_dna_flags
+    description: "Staging model for IL Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_il_haystaq_dna_scores
+    description: "Staging model for IL Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_in_haystaq_dna_flags
+    description: "Staging model for IN Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_in_haystaq_dna_scores
+    description: "Staging model for IN Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ia_haystaq_dna_flags
+    description: "Staging model for IA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ia_haystaq_dna_scores
+    description: "Staging model for IA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ks_haystaq_dna_flags
+    description: "Staging model for KS Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ks_haystaq_dna_scores
+    description: "Staging model for KS Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ky_haystaq_dna_flags
+    description: "Staging model for KY Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ky_haystaq_dna_scores
+    description: "Staging model for KY Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_la_haystaq_dna_flags
+    description: "Staging model for LA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_la_haystaq_dna_scores
+    description: "Staging model for LA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_me_haystaq_dna_flags
+    description: "Staging model for ME Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_me_haystaq_dna_scores
+    description: "Staging model for ME Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_md_haystaq_dna_flags
+    description: "Staging model for MD Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_md_haystaq_dna_scores
+    description: "Staging model for MD Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ma_haystaq_dna_flags
+    description: "Staging model for MA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ma_haystaq_dna_scores
+    description: "Staging model for MA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_mi_haystaq_dna_flags
+    description: "Staging model for MI Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_mi_haystaq_dna_scores
+    description: "Staging model for MI Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_mn_haystaq_dna_flags
+    description: "Staging model for MN Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_mn_haystaq_dna_scores
+    description: "Staging model for MN Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ms_haystaq_dna_flags
+    description: "Staging model for MS Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ms_haystaq_dna_scores
+    description: "Staging model for MS Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_mo_haystaq_dna_flags
+    description: "Staging model for MO Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_mo_haystaq_dna_scores
+    description: "Staging model for MO Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_mt_haystaq_dna_flags
+    description: "Staging model for MT Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_mt_haystaq_dna_scores
+    description: "Staging model for MT Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ne_haystaq_dna_flags
+    description: "Staging model for NE Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ne_haystaq_dna_scores
+    description: "Staging model for NE Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_nv_haystaq_dna_flags
+    description: "Staging model for NV Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_nv_haystaq_dna_scores
+    description: "Staging model for NV Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_nh_haystaq_dna_flags
+    description: "Staging model for NH Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_nh_haystaq_dna_scores
+    description: "Staging model for NH Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_nj_haystaq_dna_flags
+    description: "Staging model for NJ Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_nj_haystaq_dna_scores
+    description: "Staging model for NJ Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_nm_haystaq_dna_flags
+    description: "Staging model for NM Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_nm_haystaq_dna_scores
+    description: "Staging model for NM Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ny_haystaq_dna_flags
+    description: "Staging model for NY Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ny_haystaq_dna_scores
+    description: "Staging model for NY Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_nc_haystaq_dna_flags
+    description: "Staging model for NC Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_nc_haystaq_dna_scores
+    description: "Staging model for NC Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_nd_haystaq_dna_flags
+    description: "Staging model for ND Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_nd_haystaq_dna_scores
+    description: "Staging model for ND Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_oh_haystaq_dna_flags
+    description: "Staging model for OH Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_oh_haystaq_dna_scores
+    description: "Staging model for OH Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ok_haystaq_dna_flags
+    description: "Staging model for OK Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ok_haystaq_dna_scores
+    description: "Staging model for OK Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_or_haystaq_dna_flags
+    description: "Staging model for OR Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_or_haystaq_dna_scores
+    description: "Staging model for OR Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_pa_haystaq_dna_flags
+    description: "Staging model for PA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_pa_haystaq_dna_scores
+    description: "Staging model for PA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ri_haystaq_dna_flags
+    description: "Staging model for RI Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ri_haystaq_dna_scores
+    description: "Staging model for RI Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_sc_haystaq_dna_flags
+    description: "Staging model for SC Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_sc_haystaq_dna_scores
+    description: "Staging model for SC Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_sd_haystaq_dna_flags
+    description: "Staging model for SD Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_sd_haystaq_dna_scores
+    description: "Staging model for SD Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_tn_haystaq_dna_flags
+    description: "Staging model for TN Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_tn_haystaq_dna_scores
+    description: "Staging model for TN Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_tx_haystaq_dna_flags
+    description: "Staging model for TX Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_tx_haystaq_dna_scores
+    description: "Staging model for TX Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_ut_haystaq_dna_flags
+    description: "Staging model for UT Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_ut_haystaq_dna_scores
+    description: "Staging model for UT Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_vt_haystaq_dna_flags
+    description: "Staging model for VT Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_vt_haystaq_dna_scores
+    description: "Staging model for VT Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_va_haystaq_dna_flags
+    description: "Staging model for VA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_va_haystaq_dna_scores
+    description: "Staging model for VA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_wa_haystaq_dna_flags
+    description: "Staging model for WA Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_wa_haystaq_dna_scores
+    description: "Staging model for WA Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_wv_haystaq_dna_flags
+    description: "Staging model for WV Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_wv_haystaq_dna_scores
+    description: "Staging model for WV Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_wi_haystaq_dna_flags
+    description: "Staging model for WI Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_wi_haystaq_dna_scores
+    description: "Staging model for WI Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+
+  - name: stg_dbt_source__l2_s3_wy_haystaq_dna_flags
+    description: "Staging model for WY Haystaq DNA flags"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
+  - name: stg_dbt_source__l2_s3_wy_haystaq_dna_scores
+    description: "Staging model for WY Haystaq DNA scores"
+    columns:
+      - name: LALVOTERID
+        description: "The ID of the voter"
+        data_tests: [not_null, unique]
