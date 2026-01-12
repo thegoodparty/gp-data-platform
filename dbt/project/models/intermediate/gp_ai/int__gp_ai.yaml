@@ -74,6 +74,10 @@ models:
           - not_null:
               config:
                 where: "has_match is true"
+      - name: election_date
+        description: Date of the election. Used in join conditions in downstream models along with election_type. This test ensures the column is not null to prevent silent join failures.
+        data_tests:
+          - not_null
       - name: election_type
         description: Type of election (general, primary, or runoff). Used in join conditions in downstream models. This test ensures only expected values exist to prevent silent join failures.
         data_tests:
