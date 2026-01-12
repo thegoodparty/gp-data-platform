@@ -79,4 +79,5 @@ models:
           arguments:
             combination_of_columns:
               - gp_candidacy_id
-              - ddhq_race_id
+              - election_date
+              - election_type

@@ -155,7 +155,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Final deduplication on renamed columns to ensure uniqueness
     # Order by run_id desc to keep the latest run's data for each combination
     output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
-        subset=["gp_candidacy_id", "ddhq_race_id"]
+        subset=["gp_candidacy_id", "election_date", "election_type"]
     )
 
     return output_df

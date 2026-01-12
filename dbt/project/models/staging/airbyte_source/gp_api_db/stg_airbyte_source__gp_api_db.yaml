@@ -440,7 +440,6 @@ models:
       - name: committee_name
       - name: website_domain
       - name: peerly_identity_id
-      - name: matching_contact_fields
       - name: peerly_registration_link
       - name: peerly_identity_profile_link
       - name: peerly_10dlc_brand_submission_key

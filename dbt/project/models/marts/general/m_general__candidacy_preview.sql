@@ -196,6 +196,23 @@ with
         left join
             {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
+            and (
+                (
+                    lower(tbl_ddhq_matches.election_type) = 'general'
+                    and tbl_contacts.general_election_date
+                    = tbl_ddhq_matches.election_date
+                )
+                or (
+                    lower(tbl_ddhq_matches.election_type) = 'primary'
+                    and tbl_contacts.primary_election_date
+                    = tbl_ddhq_matches.election_date
+                )
+                or (
+                    lower(tbl_ddhq_matches.election_type) = 'runoff'
+                    and tbl_contacts.runoff_election_date
+                    = tbl_ddhq_matches.election_date
+                )
+            )
         left join
             {{ ref("int__hubspot_contest") }} as tbl_contest
             on tbl_contest.contact_id = tbl_contacts.contact_id
