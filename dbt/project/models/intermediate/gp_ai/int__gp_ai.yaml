@@ -82,8 +82,6 @@ models:
                 - general
                 - primary
                 - runoff
-              config:
-                quote: false
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
