@@ -455,16 +455,35 @@ with
         union all
         select *
         from manual_llm_matched
+    ),
+    final_with_ranking as (
+        select *
+        from unioned_tables
+        qualify
+            row_number() over (
+                partition by gp_candidacy_id
+                order by
+                    ddhq_general_election_result desc,
+                    br_general_election_result desc,
+                    manual_llm_general_election_result desc,
+                    updated_at desc
+            )
+            = 1
     )
-select *
-from unioned_tables
-qualify
-    row_number() over (
-        partition by gp_candidacy_id
-        order by
-            ddhq_general_election_result desc,
-            br_general_election_result desc,
-            manual_llm_general_election_result desc,
-            updated_at desc
-    )
-    = 1
+select
+    *,
+    coalesce(
+        ddhq_general_election_result,
+        br_general_election_result,
+        manual_llm_general_election_result
+    ) as coalesced_general_election_result,
+    case
+        when ddhq_general_election_result is not null
+        then 'ddhq'
+        when br_general_election_result is not null
+        then 'ballotready'
+        when manual_llm_general_election_result is not null
+        then 'manual_llm'
+        else null
+    end as general_election_result_source
+from final_with_ranking
