@@ -1,6 +1,54 @@
 version: 2
 
 models:
+  - name: int__l2_district_aggregations
+    description: "District aggregations with voter counts per district (state, district type, and district name)"
+    columns:
+  - name: int__l2_district_aggregations
+    description: Intermediate model that aggregates L2 district data for downstream use.
+    columns:
+      - name: id
+        description: Internally generated unique identifier for the district aggregation.
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: state_postal_code
+        description: "Uppercase two-letter state postal code"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: district_type
+        description: "Type of district (e.g., US_Congressional_District, State_Senate_District)"
+        tests:
+          - not_null
+      - name: district_name
+        description: "The actual district identifier/name"
+        tests:
+          - not_null
+      - name: voter_count
+        description: "Number of distinct voters in this district"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              arguments:
+                column_type: BIGINT
+      - name: loaded_at
+        description: "Timestamp from the source L2 uniform data"
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state_postal_code
+              - district_type
+              - district_name
+
   - name: int__l2_nationwide_uniform
     description: "Combined uniform voter file data from all states"
     columns:
