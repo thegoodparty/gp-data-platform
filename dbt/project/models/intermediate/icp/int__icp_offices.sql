@@ -43,7 +43,7 @@ select
 
     -- ICP-Office-Win Flag
     case
-        when l2_match.is_matched = false or l2_match.l2_district_name is null
+        when l2_match.is_matched is not true or l2_match.l2_district_name is null
         then null
         when district_counts.voter_count is null
         then null
@@ -54,7 +54,7 @@ select
 
     -- ICP-Office-Serve Flag
     case
-        when l2_match.is_matched = false or l2_match.l2_district_name is null
+        when l2_match.is_matched is not true or l2_match.l2_district_name is null
         then null
         when district_counts.voter_count is null
         then null

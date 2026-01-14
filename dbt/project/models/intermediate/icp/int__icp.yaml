@@ -54,7 +54,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 0
-                row_condition: "voter_count is not null"
+              row_condition: "voter_count is not null"
       - name: icp_office_win
         description: "ICP-Office-Win flag (true for districts with 500-50,000 voters)"
         tests:
