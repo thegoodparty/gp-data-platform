@@ -66,7 +66,7 @@ select
 from position
 
 inner join
-    normalized on position.normalized_position.databaseid = normalized.database_id
+    normalized on position.normalized_position.`databaseId` = normalized.database_id
 
 left join l2_match on position.database_id = l2_match.br_database_id
 
