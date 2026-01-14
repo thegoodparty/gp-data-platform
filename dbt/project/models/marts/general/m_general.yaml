@@ -521,6 +521,8 @@ models:
                 # gp_election_id is a hash of hubspot_contact_id so we filter out where that column is null
                 config:
                   where: "hubspot_contact_id is not null"
+                  warn_if: ">50"
+                  error_if: ">100"
       - name: ddhq_race_id
         description: DDHQ race identifier
         tests:

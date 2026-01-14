@@ -18,7 +18,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key=["gp_candidacy_id", "ddhq_race_id"],
+        unique_key=["gp_candidacy_id", "election_date", "election_type"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "gp_ai", "election_match", "fetch"],
@@ -51,7 +51,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     "run_id", lit("manual_run").cast("string")
                 )
                 return fallback_df.dropDuplicates(
-                    subset=["gp_candidacy_id", "ddhq_race_id"]
+                    subset=["gp_candidacy_id", "election_date", "election_type"]
                 )
             else:
                 return this_table.limit(0)
@@ -62,7 +62,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 "run_id", lit("manual_run").cast("string")
             )
             return fallback_df.dropDuplicates(
-                subset=["gp_candidacy_id", "ddhq_race_id"]
+                subset=["gp_candidacy_id", "election_date", "election_type"]
             )
 
     run_id: str = row.run_id
@@ -110,7 +110,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                     "run_id", lit("manual_run").cast("string")
                 )
                 return fallback_df.dropDuplicates(
-                    subset=["gp_candidacy_id", "ddhq_race_id"]
+                    subset=["gp_candidacy_id", "election_date", "election_type"]
                 )
             else:
                 return this_table.limit(0)
@@ -121,7 +121,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 "run_id", lit("manual_run").cast("string")
             )
             return fallback_df.dropDuplicates(
-                subset=["gp_candidacy_id", "ddhq_race_id"]
+                subset=["gp_candidacy_id", "election_date", "election_type"]
             )
 
     # add or overwrite run_id column to track which run this data came from
@@ -155,7 +155,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Final deduplication on renamed columns to ensure uniqueness
     # Order by run_id desc to keep the latest run's data for each combination
     output_df = output_df.orderBy(col("run_id").desc()).dropDuplicates(
-        subset=["gp_candidacy_id", "ddhq_race_id"]
+        subset=["gp_candidacy_id", "election_date", "election_type"]
     )
 
     return output_df
