@@ -2,9 +2,6 @@ version: 2
 
 models:
   - name: int__l2_district_aggregations
-    description: "District aggregations with voter counts per district (state, district type, and district name)"
-    columns:
-  - name: int__l2_district_aggregations
     description: Intermediate model that aggregates L2 district data for downstream use.
     columns:
       - name: id
