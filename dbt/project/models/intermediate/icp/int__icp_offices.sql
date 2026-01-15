@@ -47,8 +47,6 @@ select
         then null
         when district_counts.voter_count is null
         then null
-        when normalized.name not in ({{ get_icp_office_normalized_position_names() }})
-        then null
         when
             (
                 district_counts.voter_count between 500 and 50000
