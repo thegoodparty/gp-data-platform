@@ -47,7 +47,14 @@ select
         then null
         when district_counts.voter_count is null
         then null
-        when district_counts.voter_count between 500 and 50000
+        when normalized.name not in ({{ get_icp_office_normalized_position_names() }})
+        then null
+        when
+            (
+                district_counts.voter_count between 500 and 50000
+                and normalized.name
+                in ({{ get_icp_office_normalized_position_names() }})
+            )
         then true
         else false
     end as icp_office_win,
@@ -58,7 +65,12 @@ select
         then null
         when district_counts.voter_count is null
         then null
-        when district_counts.voter_count between 1000 and 100000
+        when
+            (
+                district_counts.voter_count between 1000 and 100000
+                and normalized.name
+                in ({{ get_icp_office_normalized_position_names() }})
+            )
         then true
         else false
     end as icp_office_serve
@@ -76,26 +88,4 @@ left join
     and l2_match.l2_district_type = district_counts.district_type
     and position.state = district_counts.state_postal_code
 
-where
-    position.judicial = false
-    and position.appointed = false
-    and normalized.name in (
-        'State Representative',
-        'State Senator',
-        'City Legislature',
-        'County Legislature//Executive Board',
-        'Township Trustee//Township Council',
-        'City Executive//Mayor',
-        'Township Supervisor',
-        'Township Mayor',
-        'County Executive Head',
-        'City Legislature Chair//President of Council',
-        'County Legislature/Township Supervisor (Joint)//Executive Board/Township Supervisor (Joint)',
-        'County Legislative Chair (non-executive)',
-        'City Board of Selectmen',
-        'Town Meeting Board',
-        'City Ward Moderator',
-        'City Vice-Mayor//Mayor Pro Tem',
-        'County Vice Mayor',
-        'Township Executive'
-    )
+where position.judicial = false and position.appointed = false
