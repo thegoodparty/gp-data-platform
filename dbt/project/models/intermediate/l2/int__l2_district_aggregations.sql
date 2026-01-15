@@ -50,7 +50,10 @@ with
                             )
                         }}
                     from {{ ref("int__l2_nationwide_uniform") }}
-                    where loaded_at > (select max(loaded_at) from {{ this }})
+                    where
+                        loaded_at > coalesce(
+                            (select max(loaded_at) from {{ this }}), '1900-01-01'
+                        )
                 ) unpivot (
                     district_value for district_column_name
                     in ({{ get_l2_district_columns(use_backticks=false) }})
