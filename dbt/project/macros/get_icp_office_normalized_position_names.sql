@@ -8,7 +8,7 @@
     Returns:
         string: SQL IN clause with quoted position type names
     -#}
-    {%- set position_types = [
+    {%- set normalized_names = [
         "State Representative",
         "State Senator",
         "City Legislature",
@@ -30,8 +30,8 @@
     ] -%}
 
     {%- set quoted_types = [] -%}
-    {%- for position_type in position_types -%}
-        {%- do quoted_types.append("'" ~ position_type ~ "'") -%}
+    {%- for normalized_name in normalized_names -%}
+        {%- do quoted_types.append("'" ~ normalized_name ~ "'") -%}
     {%- endfor -%}
 
     {{ quoted_types | join(", ") }}
