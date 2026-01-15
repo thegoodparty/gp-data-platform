@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: int__icp_offices
+    description: "ICP offices with voter counts per district (state, district type, and district name)"
+    columns:
+      - name: br_database_position_id
+        description: "BallotReady database position ID"
+        tests:
+          - not_null
+          - unique
+      - name: br_position_id
+        description: "BallotReady position ID"
+        tests:
+          - not_null
+          - unique
+      - name: state
+        description: "State"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: br_position_name
+        description: "BallotReady position name"
+        tests:
+          - not_null
+      - name: normalized_position_type
+        description: "Normalized position type"
+        tests:
+          - not_null
+      - name: l2_district_name
+        description: "L2 district name"
+      - name: l2_district_type
+        description: "L2 district type"
+      - name: is_matched
+        description: "Flag indicating if position is matched to L2 district"
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_matched is not null"
+      - name: voter_count
+        description: "Number of voters in the district"
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+              row_condition: "voter_count is not null"
+      - name: icp_office_win
+        description: "ICP-Office-Win flag (true for districts with 500-50,000 voters)"
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "icp_office_win is not null"
+      - name: icp_office_serve
+        description: "ICP-Office-Serve flag (true for districts with 1,000-100,000 voters)"
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "icp_office_serve is not null"

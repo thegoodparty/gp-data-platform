@@ -83,10 +83,11 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values:
-                - general
-                - primary
-                - runoff
+              arguments:
+                values:
+                  - general
+                  - primary
+                  - runoff
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
