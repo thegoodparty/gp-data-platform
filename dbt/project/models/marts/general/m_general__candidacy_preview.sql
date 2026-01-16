@@ -15,7 +15,7 @@ the "-- depends_on:" comments are used
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
         tags=["mart", "general", "candidacy", "hubspot"],
-        schema="preview",
+        schema="dbt_preview",
     )
 }}
 

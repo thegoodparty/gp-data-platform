@@ -52,10 +52,12 @@ models:
       +materialized: table
       civics:
         +schema: mart_civics
+      mban2026:
+        +schema: mart_mban2026
     staging:
       airbyte_source:
         stripe_api:
-          +schema: stripe
+          +schema: dbt_stripe
       dbt_source:
         l2_s3:
           # There are about 300 static view models in this folder, so we need to add a tag to exclude them from recurring dbt jobs.
