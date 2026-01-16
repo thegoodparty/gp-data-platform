@@ -76,6 +76,19 @@ models:
         data_tests:
           - not_null
 
+      - name: is_serve_user
+        description: >
+          Whether the user is a "Serve" user. A user is considered a Serve user
+          if they have created a poll through an elected office and the poll has
+          been completed (is_completed = true).  This approximates a user
+          creating a poll and viewing their results, which is the current
+          definition for Serve platform usage. Note: Whether users actually
+          viewed their results is tracked in Amplitude, not in the product
+          database, so this flag uses poll completion as a proxy for viewing
+          results.
+        data_tests:
+          - not_null
+
   - name: campaigns
     description: >
       Goodparty.org application campaigns.

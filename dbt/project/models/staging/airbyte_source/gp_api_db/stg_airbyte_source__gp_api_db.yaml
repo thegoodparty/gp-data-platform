@@ -43,6 +43,45 @@ models:
       - name: website_id
       - name: operation_id
       - name: email_forwarding_domain_id
+  - name: stg_airbyte_source__gp_api_db_elected_office
+    description: raw data load from gp_api_db postgres db from table `elected_office`
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Unique identifier for the elected office record"
+        tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: "Foreign key reference to the user who holds this elected office"
+        tests:
+          - not_null
+      - name: is_active
+        description: "Whether the elected office term is currently active"
+      - name: created_at
+        description: "Timestamp when the elected office record was created"
+        tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the elected office record was last updated"
+        tests:
+          - not_null
+      - name: campaign_id
+        description: "Foreign key reference to the campaign associated with this elected office"
+      - name: elected_date
+        description: "Date when the user was elected to office"
+      - name: sworn_in_date
+        description: "Date when the user was sworn in to office"
+      - name: term_end_date
+        description: "Date when the elected office term ends"
+      - name: term_start_date
+        description: "Date when the elected office term started"
+      - name: term_length_days
+        description: "Length of the elected office term in days"
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:
