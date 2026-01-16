@@ -33,7 +33,7 @@ with
                     coalesce(residence_addresses_apartmenttype, ''),
                     coalesce(residence_addresses_city, ''),
                     coalesce(residence_addresses_state, ''),
-                    coalesce(nullif(residence_addresses_zip, ''), '')
+                    coalesce(cast(residence_addresses_zip as string), '')
                 ),
                 256
             ) as residence_household_hash,
@@ -77,7 +77,7 @@ with
             round(residence_addresses_latitude, 3) as residence_addresses_latitude,
             round(residence_addresses_longitude, 3) as residence_addresses_longitude,
             residence_addresses_state,
-            nullif(residence_addresses_zip, '') as residence_addresses_zip,
+            cast(residence_addresses_zip as string) as residence_addresses_zip,
             residence_hhparties_description,
 
             -- Voter turnout (all boolean flags)
