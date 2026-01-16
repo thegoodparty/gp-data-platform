@@ -7,19 +7,16 @@ while maintaining analytical utility for educational purposes.
 De-identification approach:
 - Names removed entirely (cannot be reverse-engineered via hash lookups)
 - Phone numbers and email addresses removed
+- Phone confidence scores removed (CellConfidenceCode, LandlineConfidenceCode)
 - Address lines hashed into household identifiers (mailing_household_hash, residence_household_hash)
 - Voter ID (LALVOTERID) retained for record linkage
 - Geographic aggregates (city, state, zip only) retained - detailed address components removed
 - Coordinates rounded to 3 decimal places (~100m precision) for privacy
+- String versions of numeric fields removed (Age, Estimated_Income_Amount) to retain only integer versions
+- Sequence/ordering fields removed (SequenceOddEven, SequenceZigZag) to prevent household ordering inference
 */
 with
-    source_voters as (
-        select *
-        from {{ ref("m_people_api__voter") }}
-        {% if target.name != "production" and target.name != "prod" %}
-            order by rand() limit 100000
-        {% endif %}
-    ),
+    source_voters as (select * from {{ ref("m_people_api__voter") }}),
 
     deid_voters as (
         select
@@ -62,7 +59,6 @@ with
             -- Demographics (non-identifying)
             `AbsenteeTypes_Description`,
             `Active`,
-            `Age`,
             `Age_Int`,
             `Gender`,
             `Business_Owner`,
@@ -70,7 +66,6 @@ with
             `CountyEthnic_Description`,
             `CountyEthnic_LALEthnicCode`,
             `Education_Of_Person`,
-            `Estimated_Income_Amount`,
             `Estimated_Income_Amount_Int`,
             `EthnicGroups_EthnicGroup1Desc`,
             `Ethnic_Description`,
@@ -84,14 +79,10 @@ with
             `Parties_Description`,
             `PlaceOfBirth`,
             `Presence_Of_Children`,
-            `SequenceOddEven`,
-            `SequenceZigZag`,
             `Veteran_Status`,
             `VoterParties_Change_Changed_Party`,
             `Voter_Status`,
             `Voter_Status_UpdatedAt`,
-            `VoterTelephones_CellConfidenceCode`,
-            `VoterTelephones_LandlineConfidenceCode`,
 
             `Mailing_Addresses_City`,
             `Mailing_Addresses_State`,

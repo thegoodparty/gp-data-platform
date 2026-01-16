@@ -12,11 +12,14 @@ models:
       **De-identification Strategy:**
       - Names (First, Middle, Last) removed entirely to prevent reverse hash lookups
       - Contact information (phone numbers, email) removed
+      - Phone confidence scores removed (CellConfidenceCode, LandlineConfidenceCode)
       - Physical address lines hashed into household identifiers (mailing_household_hash, residence_household_hash)
       - Voter ID (LALVOTERID) retained for record linkage
       - Geographic aggregates (city, state, zip only) retained for analysis
       - Detailed address components removed (street names, apartment numbers, zip+4, etc.)
       - Coordinates rounded to 3 decimal places (~100m precision) to balance utility and privacy
+      - String versions of numeric fields removed (Age, Estimated_Income_Amount) to retain only integer versions
+      - Sequence/ordering fields removed (SequenceOddEven, SequenceZigZag) to prevent household ordering inference
 
       **Data Source:** m_people_api__voter (L2 Political nationwide voter file)
 
