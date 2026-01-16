@@ -1,20 +1,3 @@
-/*
-De-identified voter data for Analytics program (MBAN 2026).
-
-This model provides nationwide voter data with PII removed or hashed to protect individual privacy
-while maintaining analytical utility for educational purposes.
-
-De-identification approach:
-- Names removed entirely
-- Phone numbers and email addresses removed
-- Phone confidence scores removed as superfluous (CellConfidenceCode, LandlineConfidenceCode)
-- Address lines hashed into household identifiers (mailing_household_hash, residence_household_hash)
-- Voter ID (LALVOTERID) retained for future record linkage
-- Geographic aggregates (city, state, zip only) retained - detailed address components removed
-- Coordinates rounded to 3 decimal places (~100m precision)
-- String versions of numeric fields removed as superfluous (Age, Estimated_Income_Amount) to retain only integer versions
-- Sequence/ordering fields removed (SequenceOddEven, SequenceZigZag)
-*/
 with
     source_voters as (select * from {{ ref("m_people_api__voter") }}),
 
