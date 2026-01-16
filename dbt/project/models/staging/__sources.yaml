@@ -55,6 +55,8 @@ sources:
         description: raw data load from gp_api_db postgres db from table `campaign_position`
       - name: gp_api_db_domain
         description: raw data load from gp_api_db postgres db from table `domain`
+      - name: gp_api_db_elected_office
+        description: raw data load from gp_api_db postgres db from table `elected_office`
       - name: gp_api_db_ecanvasser
         description: raw data load from gp_api_db postgres db from table `ecanvas`
       - name: gp_api_db_ecanvasser_contact

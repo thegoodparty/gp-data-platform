@@ -3,6 +3,23 @@ with
 
     campaigns as (select * from {{ ref("stg_airbyte_source__gp_api_db_campaign") }}),
 
+    elected_offices as (
+        select * from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }}
+    ),
+
+    polls as (select * from {{ ref("stg_airbyte_source__gp_api_db_poll") }}),
+
+    serve_users as (
+        /*
+            For metrics, this is our proxy for whether the user is a "serve"
+            user
+        */
+        select distinct eo.user_id
+        from elected_offices eo
+        inner join polls p on eo.id = p.elected_office_id
+        where p.is_completed = true
+    ),
+
     campaign_stats as (
         select
             user_id,
@@ -44,9 +61,12 @@ with
 
             coalesce(cs.campaign_count > 0, false) as has_campaign,
             coalesce(cs.verified_campaign_count > 0, false) as has_verified_campaign,
-            coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign
+            coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign,
+
+            case when su.user_id is not null then true else false end as is_serve_user
         from users u
         left join campaign_stats cs on u.id = cs.user_id
+        left join serve_users su on u.id = su.user_id
     )
 
 select *
