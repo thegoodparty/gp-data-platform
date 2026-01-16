@@ -1,0 +1,125 @@
+version: 2
+
+models:
+  - name: deid_voters
+    description: |
+      De-identified nationwide voter data for MBAN Analytics program (2026).
+
+      This dataset provides comprehensive voter information with personally identifiable
+      information (PII) removed or hashed to protect individual privacy while maintaining
+      analytical utility for educational purposes.
+
+      **De-identification Strategy:**
+      - Names (First, Middle, Last) removed entirely to prevent reverse hash lookups
+      - Contact information (phone numbers, email) removed
+      - Physical address lines hashed into household identifiers (mailing_household_hash, residence_household_hash)
+      - Voter ID (LALVOTERID) retained for record linkage
+      - Geographic aggregates (city, state, zip only) retained for analysis
+      - Detailed address components removed (street names, apartment numbers, zip+4, etc.)
+      - Coordinates rounded to 3 decimal places (~100m precision) to balance utility and privacy
+
+      **Data Source:** m_people_api__voter (L2 Political nationwide voter file)
+
+      **Use Cases:**
+      - Voter turnout analysis and modeling
+      - Demographic and geographic voting pattern analysis
+      - Electoral district analysis
+      - Educational analytics projects
+
+    columns:
+      - name: id
+        description: Unique identifier for voter record (salted UUID from LALVOTERID)
+        tests:
+          - not_null
+          - unique
+
+      - name: LALVOTERID
+        description: L2 Political voter ID (retained for linkage)
+        tests:
+          - not_null
+          - unique
+
+      - name: State
+        description: State postal code
+        tests:
+          - not_null
+
+      - name: mailing_household_hash
+        description: |
+          SHA-256 hash of concatenated mailing address components
+          (house number, address lines, apartment info, city, state, zip).
+          Provides household-level identifier without exposing actual address.
+        tests:
+          - not_null
+
+      - name: residence_household_hash
+        description: |
+          SHA-256 hash of concatenated residence address components
+          (house number, address lines, apartment info, city, state, zip).
+          Provides household-level identifier without exposing actual address.
+        tests:
+          - not_null
+
+      - name: Mailing_Families_FamilyID
+        description: Family identifier for mailing address
+
+      - name: Age_Int
+        description: Voter age as integer
+
+      - name: Gender
+        description: Voter gender
+
+      - name: Parties_Description
+        description: Political party affiliation
+
+      - name: Voter_Status
+        description: |
+          Voter engagement status based on recent turnout:
+          - First Time: No votes in last 10 elections
+          - Unlikely: No votes in last 3 elections
+          - Likely: 2 votes in last 3 elections
+          - Super: 3 votes in last 3 elections
+          - Unknown: Other patterns
+
+      - name: Residence_Addresses_Latitude
+        description: Residence latitude rounded to 3 decimal places (~100m precision)
+
+      - name: Residence_Addresses_Longitude
+        description: Residence longitude rounded to 3 decimal places (~100m precision)
+
+      - name: Residence_Addresses_City
+        description: Residence city
+
+      - name: Residence_Addresses_State
+        description: Residence state
+
+      - name: Residence_Addresses_Zip
+        description: Residence ZIP code
+
+      - name: US_Congressional_District
+        description: U.S. Congressional district
+
+      - name: State_Senate_District
+        description: State Senate district
+
+      - name: State_House_District
+        description: State House district
+
+      - name: General_2024
+        description: Voted in 2024 General election (boolean)
+
+      - name: General_2022
+        description: Voted in 2022 General election (boolean)
+
+      - name: General_2020
+        description: Voted in 2020 General election (boolean)
+
+      - name: created_at
+        description: Record creation timestamp
+        tests:
+          - not_null
+
+      - name: updated_at
+        description: Record last update timestamp
+        tests:
+          - not_null
