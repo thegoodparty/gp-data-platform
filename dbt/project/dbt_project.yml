@@ -52,7 +52,7 @@ models:
       +materialized: table
       civics:
         +schema: mart_civics
-      mart_mban2026:
+      mban2026:
         +schema: mart_mban2026
     staging:
       airbyte_source:
