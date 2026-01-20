@@ -51,11 +51,14 @@ with
             )
             = 1
     ),
+    -- Only include election_stages that have a matching election
+    valid_elections as (select gp_election_id from {{ ref("m_general__election") }}),
+
     elections_with_gp_election_id as (
-        select * from elections
-    -- where
-    -- gp_election_id
-    -- in (select gp_election_id from {{ ref("m_general__election") }})
+        select elections.*
+        from elections
+        inner join
+            valid_elections on elections.gp_election_id = valid_elections.gp_election_id
     )
 
 select *
