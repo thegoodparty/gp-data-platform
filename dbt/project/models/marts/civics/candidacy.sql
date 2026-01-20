@@ -15,7 +15,10 @@ with
         where
             general_election_date <= '2025-12-31'
             and general_election_date >= '1900-01-01'
-    )
+    ),
+
+    -- Only include candidacies that have a matching election in the archive
+    valid_elections as (select gp_election_id from {{ ref("election") }})
 
 select
     -- Identifiers
@@ -53,3 +56,7 @@ select
     updated_at
 
 from archived_candidacies
+-- Filter to only include records with valid election references (or null)
+where
+    gp_election_id is null
+    or gp_election_id in (select gp_election_id from valid_elections)

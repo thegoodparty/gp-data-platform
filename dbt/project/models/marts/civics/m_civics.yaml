@@ -198,6 +198,13 @@ models:
 
       - name: gp_election_id
         description: Foreign key to election table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('election')
+                field: gp_election_id
+              config:
+                where: "gp_election_id is not null"
 
       - name: product_campaign_id
         description: Campaign ID from the GoodParty product database
