@@ -15,7 +15,9 @@ with
         -- Historical archive: candidates from elections on or before 2025-12-31
         select candidate.*
         from {{ ref("m_general__candidate_v2") }} as candidate
-        inner join valid_candidates on candidate.hubspot_contact_id = valid_candidates.hubspot_contact_id
+        inner join
+            valid_candidates
+            on candidate.hubspot_contact_id = valid_candidates.hubspot_contact_id
     )
 
 select
