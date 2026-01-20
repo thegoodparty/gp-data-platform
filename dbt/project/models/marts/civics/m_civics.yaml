@@ -233,9 +233,6 @@ models:
       - name: office_level
         description: Level of office (local, state, federal)
 
-      - name: candidacy_result
-        description: Result of the candidacy (won, lost, etc.)
-
       - name: pledge_status
         description: Status of the candidate's GoodParty pledge
 
@@ -427,7 +424,20 @@ models:
         description: Candidate party from DDHQ
 
       - name: ddhq_is_winner
-        description: Whether the candidate won the election stage
+        description: Whether the candidate won the election stage (from DDHQ)
+
+      - name: candidacy_stage_result
+        description: >
+          Result of the candidacy stage (Won, Lost, etc.).
+          For general election stages: coalesced from HubSpot companies.general_election_result (primary)
+          and DDHQ ddhq_is_winner (fallback for non-GP candidates).
+          For primary/runoff stages: derived from DDHQ ddhq_is_winner only.
+
+      - name: candidacy_stage_result_source
+        description: >
+          Source of the candidacy_stage_result value.
+          Values: 'hubspot' (from HubSpot companies.general_election_result),
+          'ddhq' (from DDHQ ddhq_is_winner), or null if no result available.
 
       - name: ddhq_llm_confidence
         description: LLM confidence score for the DDHQ match
