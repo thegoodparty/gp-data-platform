@@ -23,7 +23,9 @@ with
         left join
             candidacy_companies as companies
             on stage.gp_candidacy_id = companies.gp_candidacy_id
-        where stage.ddhq_election_stage_date <= '2025-12-31'
+        where
+            stage.ddhq_election_stage_date <= '2025-12-31'
+            and stage.ddhq_election_stage_date >= '1900-01-01'
     ),
 
     -- Only include candidacy_stages that have a matching candidacy in the archive
