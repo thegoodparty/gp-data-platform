@@ -8,9 +8,13 @@
 with
     archived_election_stages as (
         -- Historical archive: election stages on or before 2025-12-31
+        -- Filter out invalid dates (e.g., years like 0028, 1024 which are data entry
+        -- errors)
         select *
         from {{ ref("m_general__election_stage") }}
-        where ddhq_election_stage_date <= '2025-12-31'
+        where
+            ddhq_election_stage_date <= '2025-12-31'
+            and ddhq_election_stage_date >= '1900-01-01'
     ),
 
     -- Only include election_stages that have a matching election in the archive

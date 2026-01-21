@@ -8,9 +8,11 @@
 with
     archived_elections as (
         -- Historical archive: elections on or before 2025-12-31
+        -- Filter out invalid dates (e.g., years like 0028, 1024 which are data entry
+        -- errors)
         select *
         from {{ ref("m_general__election") }}
-        where election_date <= '2025-12-31'
+        where election_date <= '2025-12-31' and election_date >= '1900-01-01'
     )
 
 select
