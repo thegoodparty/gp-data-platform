@@ -6,13 +6,23 @@
 }}
 
 with
+    -- Get one company_id per gp_candidacy_id to avoid duplicates
+    candidacy_companies as (
+        select gp_candidacy_id, company_id
+        from {{ ref("int__hubspot_contacts_w_companies") }}
+        where company_id is not null
+        qualify
+            row_number() over (partition by gp_candidacy_id order by updated_at desc)
+            = 1
+    ),
+
     archived_candidacy_stages as (
         -- Historical archive: election stages on or before 2025-12-31
-        select stage.*, contacts.company_id
+        select stage.*, companies.company_id
         from {{ ref("m_general__candidacy_stage") }} as stage
         left join
-            {{ ref("int__hubspot_contacts_w_companies") }} as contacts
-            on stage.gp_candidacy_id = contacts.gp_candidacy_id
+            candidacy_companies as companies
+            on stage.gp_candidacy_id = companies.gp_candidacy_id
         where stage.ddhq_election_stage_date <= '2025-12-31'
     ),
 
