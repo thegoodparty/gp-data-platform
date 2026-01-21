@@ -613,9 +613,6 @@ models:
                 to: ref('election')
                 field: gp_election_id
 
-      - name: hubspot_contact_id
-        description: Contact ID from HubSpot CRM
-
       - name: ddhq_race_id
         description: DDHQ race identifier
         data_tests:
@@ -640,7 +637,7 @@ models:
       - name: total_votes_cast
         description: Total votes cast in the election stage (may contain string values like 'uncontested')
 
-      - name: _airbyte_extracted_at
-        description: Timestamp when the record was extracted from Airbyte
+      - name: created_at
+        description: Timestamp when the record was created (from Airbyte extraction)
         data_tests:
           - not_null
