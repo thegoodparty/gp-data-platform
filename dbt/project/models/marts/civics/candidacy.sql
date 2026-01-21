@@ -18,10 +18,17 @@ with
     ),
 
     -- Only include candidacies that have a matching election in the archive
-    valid_elections as (select gp_election_id from {{ ref("election") }})
+    valid_elections as (select gp_election_id from {{ ref("election") }}),
+
+    filtered_candidacies as (
+        select *
+        from archived_candidacies
+        where
+            gp_election_id is null
+            or gp_election_id in (select gp_election_id from valid_elections)
+    )
 
 select
-    -- Identifiers
     gp_candidacy_id,
     candidacy_id,
     gp_candidate_id,
@@ -30,8 +37,6 @@ select
     hubspot_contact_id,
     hubspot_company_ids,
     candidate_id_source,
-
-    -- Candidacy information
     party_affiliation,
     is_incumbent,
     is_open_seat,
@@ -44,18 +49,10 @@ select
     primary_election_date,
     general_election_date,
     runoff_election_date,
-
-    -- Assessments
     viability_score,
     win_number,
     win_number_model,
-
-    -- Metadata
     created_at,
     updated_at
 
-from archived_candidacies
--- Filter to only include records with valid election references (or null)
-where
-    gp_election_id is null
-    or gp_election_id in (select gp_election_id from valid_elections)
+from filtered_candidacies
