@@ -139,6 +139,10 @@ sources:
         description: Stripe webhook events and API activity logs
       - name: stripe_api_invoice_items
         description: Stripe invoice line items and billing details
+        config:
+          freshness:
+            warn_after: { count: 60, period: day }
+            error_after: { count: 90, period: day }
       - name: stripe_api_invoice_line_items
         description: Stripe invoice line items and detailed billing breakdowns
       - name: stripe_api_invoices
