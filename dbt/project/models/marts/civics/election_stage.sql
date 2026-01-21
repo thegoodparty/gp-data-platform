@@ -19,13 +19,12 @@ with
 select
     stage.gp_election_stage_id,
     stage.gp_election_id,
-    stage.hubspot_contact_id,
     stage.ddhq_race_id,
     stage.election_stage,
     stage.ddhq_election_stage_date,
     stage.ddhq_race_name,
     stage.total_votes_cast,
-    stage._airbyte_extracted_at
+    stage._airbyte_extracted_at as created_at
 
 from archived_election_stages as stage
 inner join valid_elections as election on stage.gp_election_id = election.gp_election_id
