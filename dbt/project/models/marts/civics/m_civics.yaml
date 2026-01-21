@@ -424,7 +424,13 @@ models:
         description: Candidate party from DDHQ
 
       - name: ddhq_is_winner
-        description: Whether the candidate won the election stage (from DDHQ)
+        description: Whether the candidate won the election stage (from DDHQ, transformed to boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "ddhq_is_winner is not null"
 
       - name: candidacy_stage_result
         description: >
@@ -432,6 +438,14 @@ models:
           For general election stages: coalesced from HubSpot companies.general_election_result (primary)
           and DDHQ ddhq_is_winner (fallback for non-GP candidates).
           For primary/runoff stages: derived from DDHQ ddhq_is_winner only.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost']
+              config:
+                where: "candidacy_stage_result is not null"
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: candidacy_stage_result_source
         description: >

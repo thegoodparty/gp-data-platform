@@ -46,7 +46,13 @@ with
             stage.ddhq_candidate_id,
             stage.ddhq_race_id,
             stage.ddhq_candidate_party,
-            stage.ddhq_is_winner,
+            case
+                when stage.ddhq_is_winner = 'Y'
+                then true
+                when stage.ddhq_is_winner = 'N'
+                then false
+                else null
+            end as ddhq_is_winner,
             -- Coalesce HubSpot companies result with DDHQ result for comprehensive
             -- coverage
             -- HubSpot only has general election results, so only use it for general
@@ -58,9 +64,9 @@ with
                     else null
                 end,
                 case
-                    when stage.ddhq_is_winner = true
+                    when stage.ddhq_is_winner = 'Y'
                     then 'Won'
-                    when stage.ddhq_is_winner = false
+                    when stage.ddhq_is_winner = 'N'
                     then 'Lost'
                     else null
                 end

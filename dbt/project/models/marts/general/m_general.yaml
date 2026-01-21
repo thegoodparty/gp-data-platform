@@ -323,8 +323,14 @@ models:
         description: Candidate party from DDHQ
         data_type: varchar
       - name: ddhq_is_winner
-        description: Whether the candidate won the election stage
-        data_type: boolean
+        description: Whether the candidate won the election stage (Y/N string from DDHQ)
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Y', 'N']
+              config:
+                where: "ddhq_is_winner is not null"
       - name: ddhq_llm_confidence
         description: LLM confidence score for the match
         data_type: float
@@ -530,6 +536,14 @@ models:
       - name: election_stage
         description: Type of election stage (e.g., primary, general, runoff)
         data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
+              config:
+                where: "election_stage is not null"
+                warn_if: ">0"
+                error_if: ">100"
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_type: date
