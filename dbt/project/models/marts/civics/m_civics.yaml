@@ -170,6 +170,16 @@ models:
       - name: election_level
         description: Level of election (local, state, federal)
 
+      - name: ballotready_position_id
+        description: >
+          The numeric identifier for the political position (office) in BallotReady's
+          database. This ID is extracted from the base64-encoded `positionId` stored
+          in the campaign details, which originates from BallotReady's GraphQL API.
+          BallotReady is a third-party service that provides comprehensive election
+          and ballot data. This ID can be used to join with BallotReady position data
+          for additional office metadata such as filing deadlines, term lengths,
+          geographic boundaries, and partisan type.
+
   - name: candidacy
     description: >
       Historical archive of candidacies from the general mart with elections on or before 2025-12-31.

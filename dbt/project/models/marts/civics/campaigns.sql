@@ -40,7 +40,16 @@ with
             c.details:state::string as campaign_state,
             c.details:office::string as campaign_office,
             c.details:party::string as campaign_party,
-            c.details:level::string as election_level
+            c.details:level::string as election_level,
+
+            -- BallotReady Position ID (decoded from base64)
+            cast(
+                regexp_extract(
+                    cast(unbase64(c.details:positionid::string) as string),
+                    '/([0-9]+)$',
+                    1
+                ) as bigint
+            ) as ballotready_position_id
 
         from campaigns c
         left join users u on c.user_id = u.id
