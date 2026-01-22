@@ -52,6 +52,7 @@ models:
       +materialized: table
       civics:
         +schema: mart_civics
+        +tags: ["mart", "civics"]
       mban2026:
         +schema: mart_mban2026
     staging:
