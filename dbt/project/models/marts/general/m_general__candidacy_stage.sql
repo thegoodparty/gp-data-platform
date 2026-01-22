@@ -31,7 +31,13 @@ with
             tbl_ddhq_matches.ddhq_candidate_id,
             tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_candidate_party,
-            tbl_ddhq_matches.ddhq_is_winner,
+            case
+                when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                then true
+                when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                then false
+                else null
+            end as ddhq_is_winner,
             tbl_ddhq_matches.llm_confidence as ddhq_llm_confidence,
             tbl_ddhq_matches.llm_reasoning as ddhq_llm_reasoning,
             tbl_ddhq_matches.top_10_candidates as ddhq_top_10_candidates,

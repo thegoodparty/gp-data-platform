@@ -325,12 +325,12 @@ models:
         description: Candidate party from DDHQ
         data_type: varchar
       - name: ddhq_is_winner
-        description: Whether the candidate won the election stage (Y/N string from DDHQ)
-        data_type: varchar
+        description: Whether the candidate won the election stage (boolean, transformed from DDHQ Y/N)
+        data_type: boolean
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Y', 'N']
+                values: [true, false]
               config:
                 where: "ddhq_is_winner is not null"
       - name: ddhq_llm_confidence
