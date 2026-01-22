@@ -1,8 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="gp_candidacy_stage_id",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=true,
         tags=["mart", "general", "candidacy", "stage"],
     )
@@ -64,15 +62,7 @@ with
                 partition by gp_candidacy_stage_id order by updated_at desc
             )
             = 1
-    ),
-
-    -- Only include candidacy_stages that have a matching election_stage (or null)
-    valid_election_stages as (
-        select gp_election_stage_id from {{ ref("m_general__election_stage") }}
     )
 
 select *
 from candidacies
-where
-    gp_election_stage_id is null
-    or gp_election_stage_id in (select gp_election_stage_id from valid_election_stages)

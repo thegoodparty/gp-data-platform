@@ -1,8 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="gp_election_stage_id",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=true,
         tags=["mart", "general", "election_stage"],
     )
@@ -50,16 +48,7 @@ with
                 partition by gp_election_stage_id order by _airbyte_extracted_at desc
             )
             = 1
-    ),
-    -- Only include election_stages that have a matching election
-    valid_elections as (select gp_election_id from {{ ref("m_general__election") }}),
-
-    elections_with_gp_election_id as (
-        select elections.*
-        from elections
-        inner join
-            valid_elections on elections.gp_election_id = valid_elections.gp_election_id
     )
 
 select *
-from elections_with_gp_election_id
+from elections
