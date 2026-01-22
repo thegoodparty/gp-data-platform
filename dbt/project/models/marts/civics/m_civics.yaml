@@ -411,64 +411,62 @@ models:
               config:
                 where: "gp_election_stage_id is not null"
 
-      - name: ddhq_candidate
-        description: Candidate name from DDHQ match
+      - name: candidate_name
+        description: Name of the candidate
 
-      - name: ddhq_candidate_id
-        description: DDHQ candidate identifier
+      - name: source_candidate_id
+        description: Candidate identifier from the source system (e.g., DDHQ)
 
-      - name: ddhq_race_id
-        description: DDHQ race identifier
+      - name: source_race_id
+        description: Race identifier from the source system (e.g., DDHQ)
 
-      - name: ddhq_candidate_party
-        description: Candidate party from DDHQ
+      - name: candidate_party
+        description: Candidate's political party affiliation
 
-      - name: ddhq_is_winner
-        description: Whether the candidate won the election stage (from DDHQ, transformed to boolean)
+      - name: is_winner
+        description: Whether the candidate won the election stage (boolean)
         data_tests:
           - accepted_values:
               arguments:
                 values: [true, false]
               config:
-                where: "ddhq_is_winner is not null"
+                where: "is_winner is not null"
 
-      - name: candidacy_stage_result
+      - name: election_result
         description: >
-          Result of the candidacy stage (Won, Lost, etc.).
-          For general election stages: coalesced from HubSpot companies.general_election_result (primary)
-          and DDHQ ddhq_is_winner (fallback for non-GP candidates).
-          For primary/runoff stages: derived from DDHQ ddhq_is_winner only.
+          Result of the election (Won, Lost, etc.).
+          For general election stages: coalesced from HubSpot (primary) and DDHQ (fallback).
+          For primary/runoff stages: derived from DDHQ only.
         data_tests:
           - accepted_values:
               arguments:
                 values: ['Won', 'Lost']
               config:
-                where: "candidacy_stage_result is not null"
+                where: "election_result is not null"
                 warn_if: ">0"
                 error_if: ">100"
 
-      - name: candidacy_stage_result_source
+      - name: election_result_source
         description: >
-          Source of the candidacy_stage_result value.
-          Values: 'hubspot' (from HubSpot companies.general_election_result),
-          'ddhq' (from DDHQ ddhq_is_winner), or null if no result available.
+          Source of the election_result value.
+          Values: 'hubspot', 'ddhq', or null if no result available.
 
-      - name: ddhq_llm_confidence
-        description: LLM confidence score for the DDHQ match
+      - name: match_confidence
+        description: Confidence score for the candidate-to-source match
 
-      - name: ddhq_llm_reasoning
-        description: LLM reasoning for the DDHQ match
+      - name: match_reasoning
+        description: Reasoning for the candidate-to-source match
 
-      - name: ddhq_top_10_candidates
-        description: Top 10 candidate matches from LLM
+      - name: match_top_candidates
+        description: Top candidate matches considered during matching
 
-      - name: ddhq_has_match
-        description: Whether a DDHQ match was found
+      - name: has_match
+        description: Whether a match to source election data was found
 
       - name: votes_received
-        description: Number of votes received in this election stage (may contain string values like 'uncontested')
+        description: Number of votes received in this election stage
 
-      - name: ddhq_election_stage_date
+      - name: election_stage_date
         description: Date of the election stage
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
@@ -476,7 +474,7 @@ models:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
               config:
-                where: "ddhq_election_stage_date is not null"
+                where: "election_stage_date is not null"
 
       - name: created_at
         description: Timestamp when the record was created

@@ -41,17 +41,17 @@ with
             stage.gp_candidacy_stage_id,
             stage.gp_candidacy_id,
             stage.gp_election_stage_id,
-            stage.ddhq_candidate,
-            stage.ddhq_candidate_id,
-            stage.ddhq_race_id,
-            stage.ddhq_candidate_party,
+            stage.ddhq_candidate as candidate_name,
+            stage.ddhq_candidate_id as source_candidate_id,
+            stage.ddhq_race_id as source_race_id,
+            stage.ddhq_candidate_party as candidate_party,
             case
                 when stage.ddhq_is_winner = 'Y'
                 then true
                 when stage.ddhq_is_winner = 'N'
                 then false
                 else null
-            end as ddhq_is_winner,
+            end as is_winner,
             -- Coalesce HubSpot companies result with DDHQ result for comprehensive
             -- coverage
             -- HubSpot only has general election results, so only use it for general
@@ -69,7 +69,7 @@ with
                     then 'Lost'
                     else null
                 end
-            ) as candidacy_stage_result,
+            ) as election_result,
             -- Source of the election result
             case
                 when
@@ -79,13 +79,13 @@ with
                 when stage.ddhq_is_winner is not null
                 then 'ddhq'
                 else null
-            end as candidacy_stage_result_source,
-            stage.ddhq_llm_confidence,
-            stage.ddhq_llm_reasoning,
-            stage.ddhq_top_10_candidates,
-            stage.ddhq_has_match,
+            end as election_result_source,
+            stage.ddhq_llm_confidence as match_confidence,
+            stage.ddhq_llm_reasoning as match_reasoning,
+            stage.ddhq_top_10_candidates as match_top_candidates,
+            stage.ddhq_has_match as has_match,
             stage.votes_received,
-            stage.ddhq_election_stage_date,
+            stage.ddhq_election_stage_date as election_stage_date,
             stage.created_at,
             stage.updated_at
         from archived_candidacy_stages as stage
@@ -108,19 +108,19 @@ select
     gp_candidacy_stage_id,
     gp_candidacy_id,
     gp_election_stage_id,
-    ddhq_candidate,
-    ddhq_candidate_id,
-    ddhq_race_id,
-    ddhq_candidate_party,
-    ddhq_is_winner,
-    candidacy_stage_result,
-    candidacy_stage_result_source,
-    ddhq_llm_confidence,
-    ddhq_llm_reasoning,
-    ddhq_top_10_candidates,
-    ddhq_has_match,
+    candidate_name,
+    source_candidate_id,
+    source_race_id,
+    candidate_party,
+    is_winner,
+    election_result,
+    election_result_source,
+    match_confidence,
+    match_reasoning,
+    match_top_candidates,
+    has_match,
     votes_received,
-    ddhq_election_stage_date,
+    election_stage_date,
     created_at,
     updated_at
 
