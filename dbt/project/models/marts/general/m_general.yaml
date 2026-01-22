@@ -544,8 +544,6 @@ models:
                 values: ['general', 'primary', 'runoff']
               config:
                 where: "election_stage is not null"
-                warn_if: ">0"
-                error_if: ">100"
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_type: date
