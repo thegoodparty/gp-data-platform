@@ -5,16 +5,12 @@
 }}
 
 with
-    -- Only include candidates who have a candidacy with valid election dates
-    -- Filter out invalid dates (e.g., years like 0028, 1024 which are data entry
-    -- errors)
-    -- This ensures consistency with the candidacy table filtering
-    valid_candidates as (
-        select distinct hubspot_contact_id
-        from {{ ref("m_general__candidacy_v2") }}
-        where
-            general_election_date <= '2025-12-31'
-            and general_election_date >= '1900-01-01'
+    -- Only include candidates who have a candidacy in the civics mart
+    -- This ensures referential integrity with the candidacy table
+    valid_candidate_ids as (
+        select distinct gp_candidate_id
+        from {{ ref("candidacy") }}
+        where gp_candidate_id is not null
     ),
 
     archived_candidates as (
@@ -22,8 +18,8 @@ with
         select candidate.*
         from {{ ref("m_general__candidate_v2") }} as candidate
         inner join
-            valid_candidates
-            on candidate.hubspot_contact_id = valid_candidates.hubspot_contact_id
+            valid_candidate_ids
+            on candidate.gp_candidate_id = valid_candidate_ids.gp_candidate_id
     )
 
 select
