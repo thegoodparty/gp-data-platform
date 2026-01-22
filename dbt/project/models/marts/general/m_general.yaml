@@ -296,8 +296,6 @@ models:
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
-                warn_if: ">50"
-                error_if: ">100"
       - name: ddhq_candidacy_id
         description: DDHQ candidate identifier
       - name: ddhq_candidate
