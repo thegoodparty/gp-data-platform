@@ -60,9 +60,6 @@ with
             on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
-        {% if is_incremental() %}
-            where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
         qualify
             row_number() over (
                 partition by gp_candidacy_stage_id order by updated_at desc

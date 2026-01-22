@@ -36,13 +36,8 @@ with
             {{ ref("int__hubspot_contest") }} as tbl_contest
             on tbl_contest.contact_id = tbl_candidacy.hubspot_contact_id
         where
-            1 = 1
-            and tbl_ddhq_matches.ddhq_race_id is not null
+            tbl_ddhq_matches.ddhq_race_id is not null
             and tbl_ddhq_matches.ddhq_candidate_id is not null
-            {% if is_incremental() %}
-                and tbl_ddhq_election_results_source._airbyte_extracted_at
-                >= (select max(_airbyte_extracted_at) from {{ this }})
-            {% endif %}
         qualify
             row_number() over (
                 partition by gp_election_stage_id order by _airbyte_extracted_at desc
