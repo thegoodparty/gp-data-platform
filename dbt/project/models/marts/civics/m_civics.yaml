@@ -179,3 +179,280 @@ models:
           and ballot data. This ID can be used to join with BallotReady position data
           for additional office metadata such as filing deadlines, term lengths,
           geographic boundaries, and partisan type.
+
+  - name: elections
+    description: >
+      Elections represent a full election cycle for a specific position in a specific year.
+      Encompasses all stages (primary, general, runoff).
+
+      Grain: One row per position + year.
+
+      Example: "Seattle Mayor 2026" (the entire election cycle)
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - unique election identifier (UUID)
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_position_id
+        description: BallotReady position ID (closest equivalent to election in BR)
+
+      - name: election_year
+        description: Year of the election
+
+      - name: position_name
+        description: Full name of the position/office
+
+      - name: normalized_position_name
+        description: Standardized position name from BallotReady
+
+      - name: candidate_office
+        description: Candidate-friendly office title
+
+      - name: office_level
+        description: Office hierarchy level (local, city, county, state, federal)
+
+      - name: office_level_formatted
+        description: Office level with proper casing
+
+      - name: state_code
+        description: Two-letter state code
+
+      - name: state_name
+        description: Full state name
+
+      - name: city
+        description: City name if applicable
+
+      - name: sub_area_name
+        description: Sub-area type (e.g., District, Ward)
+
+      - name: sub_area_value
+        description: Sub-area value (e.g., district number)
+
+      - name: mtfcc
+        description: MAF/TIGER Feature Class Code for geographic classification
+
+      - name: number_of_seats
+        description: Number of seats available in this election
+
+      - name: is_judicial
+        description: Whether this is a judicial election
+
+      - name: created_at
+        description: Earliest candidacy creation timestamp for this election
+
+      - name: updated_at
+        description: Most recent candidacy update timestamp for this election
+
+  - name: election_stages
+    description: >
+      Election Stages represent individual phases within an election (primary, general, or runoff).
+
+      Grain: One row per election stage (race).
+
+      Example: "Seattle Mayor 2026 Primary" or "Seattle Mayor 2026 General"
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - unique election stage identifier (UUID)
+        data_tests:
+          - unique
+          - not_null
+
+      - name: gp_election_id
+        description: Foreign key to elections table
+        data_tests:
+          - not_null
+
+      - name: br_race_id
+        description: BallotReady race ID
+
+      - name: ddhq_race_id
+        description: DDHQ race ID (NULL placeholder for future integration)
+
+      - name: stage_type
+        description: Type of election stage - Primary, General, or Runoff
+
+      - name: election_date
+        description: Date of this election stage
+
+      - name: election_stage_name
+        description: Full name of the election stage
+
+      - name: is_primary
+        description: Whether this is a primary election stage
+
+      - name: is_runoff
+        description: Whether this is a runoff election stage
+
+      - name: is_retention
+        description: Whether this is a retention election
+
+      - name: created_at
+        description: Earliest candidacy creation timestamp for this stage
+
+      - name: updated_at
+        description: Most recent candidacy update timestamp for this stage
+
+  - name: candidates
+    description: >
+      Candidates represent individual persons who run or have run for office.
+
+      Grain: One row per unique person.
+
+      Example: "John Smith" (regardless of how many elections they've run in)
+
+    columns:
+      - name: gp_candidate_id
+        description: Primary key - unique candidate identifier (UUID)
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_candidate_id
+        description: BallotReady person/candidate ID
+
+      - name: first_name
+        description: Candidate's first name
+
+      - name: middle_name
+        description: Candidate's middle name
+
+      - name: last_name
+        description: Candidate's last name
+
+      - name: suffix
+        description: Candidate's name suffix (Jr., Sr., III, etc.)
+
+      - name: nickname
+        description: Candidate's nickname
+
+      - name: email
+        description: Candidate's email address (most recent)
+
+      - name: phone
+        description: Candidate's phone number (most recent)
+
+      - name: image_url
+        description: URL to candidate's profile image
+
+      - name: product_user_id
+        description: Foreign key to Win product user (NULL placeholder for future integration)
+
+      - name: hs_contact_id
+        description: HubSpot contact ID (NULL placeholder for future integration)
+
+      - name: created_at
+        description: Timestamp of first candidacy record
+
+      - name: updated_at
+        description: Timestamp of most recent candidacy record
+
+  - name: candidacies
+    description: >
+      Candidacies represent a specific instance of a candidate running for a particular
+      position in a particular year. A Candidacy comprises a Candidate and an Election.
+
+      Grain: One row per candidate + election (person + position + year).
+
+      Example: "John Smith for Seattle Mayor 2026"
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - unique candidacy identifier (UUID)
+        data_tests:
+          - unique
+          - not_null
+
+      - name: gp_candidate_id
+        description: Foreign key to candidates table
+        data_tests:
+          - not_null
+
+      - name: gp_election_id
+        description: Foreign key to elections table
+        data_tests:
+          - not_null
+
+      - name: br_candidate_id
+        description: BallotReady candidate/person ID
+
+      - name: br_position_id
+        description: BallotReady position ID
+
+      - name: party
+        description: Political party affiliation
+
+      - name: is_independent_or_nonpartisan
+        description: Whether candidate is Independent or Nonpartisan
+
+      - name: is_major_party
+        description: Whether candidate belongs to a major party (Democrat/Republican)
+
+      - name: civicengine_tier
+        description: BallotReady/CivicEngine tier classification
+
+      - name: product_campaign_id
+        description: Foreign key to Win product campaign (NULL placeholder for future integration)
+
+      - name: hs_company_id
+        description: HubSpot company ID (NULL placeholder for future integration)
+
+      - name: created_at
+        description: Earliest candidacy stage creation timestamp
+
+      - name: updated_at
+        description: Most recent candidacy stage update timestamp
+
+  - name: candidacy_stages
+    description: >
+      Candidacy Stages represent the intersection of a candidacy and a specific election stage.
+      Contains vendor-specific IDs and stage-specific results.
+
+      Grain: One row per candidacy per election stage.
+
+      Example: "John Smith for Seattle Mayor 2026, Primary Results"
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - unique candidacy stage identifier (UUID)
+        data_tests:
+          - unique
+          - not_null
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacies table
+        data_tests:
+          - not_null
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stages table
+        data_tests:
+          - not_null
+
+      - name: br_candidacy_id
+        description: BallotReady candidacy ID (candidacy-stage level)
+
+      - name: ddhq_candidacy_id
+        description: DDHQ candidacy ID (NULL placeholder for future integration)
+
+      - name: candidacy_stage_result
+        description: Result for this candidacy in this stage (WON, LOST, etc.)
+
+      - name: votes_received
+        description: Number of votes received in this stage (NULL placeholder for future DDHQ integration)
+
+      - name: vote_percentage
+        description: Percentage of votes received in this stage (NULL placeholder for future DDHQ integration)
+
+      - name: hs_contact_id
+        description: HubSpot contact ID (NULL placeholder for future integration)
+
+      - name: created_at
+        description: Record creation timestamp
+
+      - name: updated_at
+        description: Record last update timestamp
