@@ -1,0 +1,260 @@
+models:
+  - name: election_20260122
+    description: >
+      Historical archive of elections from the general mart with election dates
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "population is not null"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+
+  - name: election_stage_20260122
+    description: >
+      Historical archive of election stages (primary, general, runoff) from the
+      general mart with election stage dates on or before 2025-12-31.
+      Snapshot from 2026-01-22.
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('election_20260122')
+                field: gp_election_id
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Type of election stage (primary, general, runoff)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
+              config:
+                where: "election_stage is not null"
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+              config:
+                where: "ddhq_election_stage_date is not null"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+  - name: candidacy_20260122
+    description: >
+      Historical archive of candidacies from the general mart with elections
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - internally generated unique identifier for candidacies
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('candidate_20260122')
+                field: gp_candidate_id
+              config:
+                where: "gp_candidate_id is not null"
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('election_20260122')
+                field: gp_election_id
+              config:
+                where: "gp_election_id is not null"
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+              config:
+                warn_if: ">0"
+                error_if: ">10"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+
+  - name: candidate_20260122
+    description: >
+      Historical archive of candidates from the general mart with elections
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_candidate_id
+        description: Primary key - internally generated unique identifier for candidates
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM
+        data_tests:
+          - not_null
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+          config:
+            error_if: ">10"
+            warn_if: ">0"
+
+  - name: candidacy_stage_20260122
+    description: >
+      Historical archive of candidacy stages (primary, general, runoff results)
+      from the general mart with election stages on or before 2025-12-31.
+      Uses archived HubSpot data from 2026-01-22 for election results.
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('candidacy_20260122')
+                field: gp_candidacy_id
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('election_stage_20260122')
+                field: gp_election_stage_id
+              config:
+                where: "gp_election_stage_id is not null"
+      - name: is_winner
+        description: Whether the candidate won the election stage (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_winner is not null"
+      - name: election_result
+        description: Result of the election (Won, Lost, etc.)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost']
+              config:
+                where: "election_result is not null"
+                warn_if: ">0"
+                error_if: ">100"
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+              config:
+                where: "election_stage_date is not null"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
