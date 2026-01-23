@@ -4,16 +4,8 @@
     )
 }}
 
-with
-    archived_elections as (
-        -- Historical archive: elections on or before 2025-12-31
-        -- Filter out invalid dates (e.g., years like 0028, 1024 which are data entry
-        -- errors)
-        select *
-        from {{ ref("m_general__election") }}
-        where election_date <= '2025-12-31' and election_date >= '1900-01-01'
-    )
-
+-- Civics mart election table
+-- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
 select
     gp_election_id,
     official_office_name,
@@ -37,4 +29,4 @@ select
     created_at,
     updated_at
 
-from archived_elections
+from {{ ref("election_20260122") }}

@@ -86,6 +86,7 @@ select
     candidate_office,
     official_office_name,
     office_level,
+    candidacy_result,
     pledge_status,
     verified_candidate,
     is_partisan,

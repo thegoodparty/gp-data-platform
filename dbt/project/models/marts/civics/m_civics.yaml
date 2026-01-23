@@ -447,10 +447,12 @@ models:
           Result of the election (Won, Lost, etc.).
           For general election stages: coalesced from HubSpot (primary) and DDHQ (fallback).
           For primary/runoff stages: derived from DDHQ only.
+          HubSpot values include: Won General, Lost General, Runoff, Withdrew, Not on Ballot.
+          DDHQ values include: Won, Lost.
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost']
+                values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
               config:
                 where: "election_result is not null"
                 warn_if: ">0"

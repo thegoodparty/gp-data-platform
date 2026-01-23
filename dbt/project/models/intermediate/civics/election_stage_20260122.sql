@@ -61,6 +61,7 @@ with
         select
             stage.gp_election_stage_id,
             stage.gp_election_id,
+            stage.hubspot_contact_id,
             stage.ddhq_race_id,
             stage.election_stage,
             stage.ddhq_election_stage_date,
@@ -76,6 +77,7 @@ with
 select
     gp_election_stage_id,
     gp_election_id,
+    hubspot_contact_id,
     ddhq_race_id,
     election_stage,
     ddhq_election_stage_date,

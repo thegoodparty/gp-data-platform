@@ -4,24 +4,16 @@
     )
 }}
 
+-- Civics mart candidacy table
+-- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
+-- Filters to only include candidacies with valid elections for referential integrity
 with
-    archived_candidacies as (
-        -- Historical archive: elections on or before 2025-12-31
-        -- Filter out invalid dates (e.g., years like 0028, 1024 which are data entry
-        -- errors)
-        select *
-        from {{ ref("m_general__candidacy_v2") }}
-        where
-            general_election_date <= '2025-12-31'
-            and general_election_date >= '1900-01-01'
-    ),
-
     -- Only include candidacies that have a matching election in the archive
     valid_elections as (select gp_election_id from {{ ref("election") }}),
 
     filtered_candidacies as (
         select *
-        from archived_candidacies
+        from {{ ref("candidacy_20260122") }}
         where
             gp_election_id is null
             or gp_election_id in (select gp_election_id from valid_elections)
@@ -42,6 +34,7 @@ select
     candidate_office,
     official_office_name,
     office_level,
+    candidacy_result,
     pledge_status,
     verified_candidate,
     is_partisan,
