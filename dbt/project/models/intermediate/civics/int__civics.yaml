@@ -114,14 +114,7 @@ models:
               config:
                 where: "gp_candidate_id is not null"
       - name: gp_election_id
-        description: Foreign key to election table
-        data_tests:
-          - relationships:
-              arguments:
-                to: ref('election_20260122')
-                field: gp_election_id
-              config:
-                where: "gp_election_id is not null"
+        description: Foreign key to election table (referential integrity enforced at mart level)
       - name: general_election_date
         description: Date of the general election
         data_tests:
@@ -226,11 +219,14 @@ models:
               config:
                 where: "is_winner is not null"
       - name: election_result
-        description: Result of the election (Won, Lost, etc.)
+        description: >
+          Result of the election (Won, Lost, etc.).
+          HubSpot values: Won General, Lost General, Runoff, Withdrew, Not on Ballot.
+          DDHQ values: Won, Lost.
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost']
+                values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
               config:
                 where: "election_result is not null"
                 warn_if: ">0"
