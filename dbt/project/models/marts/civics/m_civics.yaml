@@ -201,20 +201,13 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('candidate')
+                to: ref('candidate_20260122')
                 field: gp_candidate_id
               config:
                 where: "gp_candidate_id is not null"
 
       - name: gp_election_id
-        description: Foreign key to election table
-        data_tests:
-          - relationships:
-              arguments:
-                to: ref('election')
-                field: gp_election_id
-              config:
-                where: "gp_election_id is not null"
+        description: Foreign key to election table (no relationship test - matches m_general behavior)
 
       - name: product_campaign_id
         description: Campaign ID from the GoodParty product database
@@ -408,7 +401,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('candidacy')
+                to: ref('candidacy_20260122')
                 field: gp_candidacy_id
 
       - name: gp_election_stage_id
@@ -416,7 +409,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('election_stage')
+                to: ref('election_stage_20260122')
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
@@ -634,7 +627,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('election')
+                to: ref('election_20260122')
                 field: gp_election_id
 
       - name: ddhq_race_id

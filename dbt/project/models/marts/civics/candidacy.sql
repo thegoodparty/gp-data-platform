@@ -6,19 +6,6 @@
 
 -- Civics mart candidacy table
 -- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
--- Filters to only include candidacies with valid elections for referential integrity
-with
-    -- Only include candidacies that have a matching election in the archive
-    valid_elections as (select gp_election_id from {{ ref("election") }}),
-
-    filtered_candidacies as (
-        select *
-        from {{ ref("candidacy_20260122") }}
-        where
-            gp_election_id is null
-            or gp_election_id in (select gp_election_id from valid_elections)
-    )
-
 select
     gp_candidacy_id,
     candidacy_id,
@@ -47,4 +34,4 @@ select
     created_at,
     updated_at
 
-from filtered_candidacies
+from {{ ref("candidacy_20260122") }}
