@@ -11,65 +11,56 @@
 with
     br_for_techspeed as (
         select
-            id,
-            candidacy_id,
-            election_id,
-            election_name,
-            election_day,
-            position_id,
+            ballotready_id as id,
+            ballotready_candidacy_id as candidacy_id,
+            ballotready_election_id as election_id,
+            election_stage_name as election_name,
+            election_date as election_day,
+            ballotready_position_id as position_id,
             mtfcc,
-            geo_id,
+            ballotready_geo_id as geo_id,
             position_name,
             position_name as official_office_name,
             sub_area_name,
             sub_area_value,
-            sub_area_name_secondary,
-            sub_area_value_secondary,
-            state,
-            level,
-            tier,
+            state_code as state,
+            office_level as level,
+            civicengine_tier as tier,
             is_judicial,
             is_retention,
             number_of_seats,
-            normalized_position_id,
+            ballotready_normalized_position_id as normalized_position_id,
             normalized_position_name,
-            race_id,
-            geofence_id,
-            geofence_is_not_exact,
+            ballotready_race_id as race_id,
+            ballotready_geofence_id as geofence_id,
             is_primary,
             is_runoff,
-            is_unexpired,
-            candidate_id,
-            first_name,
-            middle_name,
-            nickname,
-            last_name,
-            suffix,
-            phone,
-            email,
-            image_url,
-            parties,
-            urls,
-            election_result,
-            {{
-                generate_candidate_office_from_position(
-                    "position_name", "normalized_position_name"
-                )
-            }} as candidate_office,
-            {{ extract_city_from_office_name("official_office_name") }} as city,
+            ballotready_candidate_id as candidate_id,
+            candidate_first_name as first_name,
+            candidate_middle_name as middle_name,
+            candidate_nickname as nickname,
+            candidate_last_name as last_name,
+            candidate_suffix as suffix,
+            candidate_phone as phone,
+            candidate_email as email,
+            candidate_image_url as image_url,
+            raw_parties as parties,
+            raw_urls as urls,
+            result as election_result,
+            candidate_office,
+            city,
             candidacy_created_at,
             candidacy_updated_at
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where
             -- Records with missing contact info that need TechSpeed enrichment
-            (phone = '' or email = '')
+            (candidate_phone is null or candidate_email is null)
             -- Remove major party candidates
-            and not parties like '%Democrat%'
-            and not parties like '%Republican%'
+            and not is_major_party
             -- Only future elections (at least 3 days out for TechSpeed processing)
-            and election_day > current_date + interval 3 day
+            and election_date > current_date + interval 3 day
             -- Only records not already sent to TechSpeed
-            and candidacy_id not in (
+            and ballotready_candidacy_id not in (
                 select candidacy_id
                 from {{ ref("stg_historical__ballotready_records_sent_to_techspeed") }}
             )
@@ -112,8 +103,6 @@ select
     position_name,
     sub_area_name,
     sub_area_value,
-    sub_area_name_secondary,
-    sub_area_value_secondary,
     state,
     level,
     tier,
@@ -124,10 +113,8 @@ select
     normalized_position_name,
     race_id,
     geofence_id,
-    geofence_is_not_exact,
     is_primary,
     is_runoff,
-    is_unexpired,
     candidate_id,
     first_name,
     middle_name,

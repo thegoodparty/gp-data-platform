@@ -15,192 +15,61 @@ with
             -- ensure that there are not duplicates *within* the new BallotReady
             -- candidacies
             distinct
-            election_day as election_date,
+            election_date,
             position_name as official_office_name,
-            {{
-                generate_candidate_office_from_position(
-                    "position_name", "normalized_position_name"
-                )
-            }} as candidate_office,
-            case
-                when level = 'local'
-                then 'Local'
-                when level = 'city'
-                then 'City'
-                when level = 'county'
-                then 'County'
-                when level = 'state'
-                then 'State'
-                else level
-            end as office_level,
-            tier as geographic_tier,
+            candidate_office,
+            office_level_formatted as office_level,
+            civicengine_tier as geographic_tier,
             number_of_seats as number_of_seats_available,
+            election_type,
             case
-                when is_primary = 'false'
-                then 'General'
-                when is_primary = 'true'
-                then 'Primary'
-            end as election_type,
-            case
-                when parties like '%Independent%'
+                when party like '%Independent%'
                 then 'Independent'
-                when parties like '%Nonpartisan%'
+                when party like '%Nonpartisan%'
                 then 'Nonpartisan'
                 else ''
             end as party_affiliation,
             concat_ws(
-                '|',
-                transform(
-                    from_json(
-                        regexp_replace(parties, '=>', ':'),
-                        'array<struct<name:string, short_name:string>>'
-                    ),
-                    x -> x.name
-                )
+                '|', transform(parsed_parties, x -> x:name::string)
             ) as party_list,
-            parties,
-            first_name as first_name,
-            middle_name as middle_name,
-            last_name as last_name,
+            candidate_first_name as first_name,
+            candidate_middle_name as middle_name,
+            candidate_last_name as last_name,
+            state_name as state,
+            trim(regexp_replace(candidate_phone, '[^0-9]', '')) as phone,
+            candidate_email as email,
+            city,
             case
-                when trim(upper(state)) = 'AK'
-                then 'Alaska'
-                when trim(upper(state)) = 'AL'
-                then 'Alabama'
-                when trim(upper(state)) = 'AR'
-                then 'Arkansas'
-                when trim(upper(state)) = 'AZ'
-                then 'Arizona'
-                when trim(upper(state)) = 'CA'
-                then 'California'
-                when trim(upper(state)) = 'CO'
-                then 'Colorado'
-                when trim(upper(state)) = 'CT'
-                then 'Connecticut'
-                when trim(upper(state)) = 'DC'
-                then 'District of Columbia'
-                when trim(upper(state)) = 'DE'
-                then 'Delaware'
-                when trim(upper(state)) = 'FL'
-                then 'Florida'
-                when trim(upper(state)) = 'GA'
-                then 'Georgia'
-                when trim(upper(state)) = 'HI'
-                then 'Hawaii'
-                when trim(upper(state)) = 'IA'
-                then 'Iowa'
-                when trim(upper(state)) = 'ID'
-                then 'Idaho'
-                when trim(upper(state)) = 'IL'
-                then 'Illinois'
-                when trim(upper(state)) = 'IN'
-                then 'Indiana'
-                when trim(upper(state)) = 'KS'
-                then 'Kansas'
-                when trim(upper(state)) = 'KY'
-                then 'Kentucky'
-                when trim(upper(state)) = 'LA'
-                then 'Louisiana'
-                when trim(upper(state)) = 'MA'
-                then 'Massachusetts'
-                when trim(upper(state)) = 'MD'
-                then 'Maryland'
-                when trim(upper(state)) = 'ME'
-                then 'Maine'
-                when trim(upper(state)) = 'MI'
-                then 'Michigan'
-                when trim(upper(state)) = 'MN'
-                then 'Minnesota'
-                when trim(upper(state)) = 'MO'
-                then 'Missouri'
-                when trim(upper(state)) = 'MS'
-                then 'Mississippi'
-                when trim(upper(state)) = 'MT'
-                then 'Montana'
-                when trim(upper(state)) = 'NC'
-                then 'North Carolina'
-                when trim(upper(state)) = 'ND'
-                then 'North Dakota'
-                when trim(upper(state)) = 'NE'
-                then 'Nebraska'
-                when trim(upper(state)) = 'NH'
-                then 'New Hampshire'
-                when trim(upper(state)) = 'NJ'
-                then 'New Jersey'
-                when trim(upper(state)) = 'NM'
-                then 'New Mexico'
-                when trim(upper(state)) = 'NV'
-                then 'Nevada'
-                when trim(upper(state)) = 'NY'
-                then 'New York'
-                when trim(upper(state)) = 'OH'
-                then 'Ohio'
-                when trim(upper(state)) = 'OK'
-                then 'Oklahoma'
-                when trim(upper(state)) = 'OR'
-                then 'Oregon'
-                when trim(upper(state)) = 'PA'
-                then 'Pennsylvania'
-                when trim(upper(state)) = 'RI'
-                then 'Rhode Island'
-                when trim(upper(state)) = 'SC'
-                then 'South Carolina'
-                when trim(upper(state)) = 'SD'
-                then 'South Dakota'
-                when trim(upper(state)) = 'TN'
-                then 'Tennessee'
-                when trim(upper(state)) = 'TX'
-                then 'Texas'
-                when trim(upper(state)) = 'UT'
-                then 'Utah'
-                when trim(upper(state)) = 'VA'
-                then 'Virginia'
-                when trim(upper(state)) = 'VT'
-                then 'Vermont'
-                when trim(upper(state)) = 'WA'
-                then 'Washington'
-                when trim(upper(state)) = 'WI'
-                then 'Wisconsin'
-                when trim(upper(state)) = 'WV'
-                then 'West Virginia'
-                when trim(upper(state)) = 'WY'
-                then 'Wyoming'
-                else state
-            end as state,
-            trim(regexp_replace(phone, '[^0-9]', '')) as phone,
-            email,
-            {{ extract_city_from_office_name("official_office_name") }} as city,
-            case
-                when official_office_name like '%- District %'
-                then regexp_extract(official_office_name, '- District (.*)$')
-                when official_office_name like '% - Ward %'
-                then regexp_extract(official_office_name, ' - Ward (.*)$')
-                when official_office_name like '% - Place %'
-                then regexp_extract(official_office_name, ' - Place (.*)$')
-                when official_office_name like '% - Branch %'
-                then regexp_extract(official_office_name, ' - Branch (.*)$')
-                when official_office_name like '% - Subdistrict %'
-                then regexp_extract(official_office_name, ' - Subdistrict (.*)$')
-                when official_office_name like '% - Zone %'
-                then regexp_extract(official_office_name, ' - Zone (.*)$')
+                when position_name like '%- District %'
+                then regexp_extract(position_name, '- District (.*)$')
+                when position_name like '% - Ward %'
+                then regexp_extract(position_name, ' - Ward (.*)$')
+                when position_name like '% - Place %'
+                then regexp_extract(position_name, ' - Place (.*)$')
+                when position_name like '% - Branch %'
+                then regexp_extract(position_name, ' - Branch (.*)$')
+                when position_name like '% - Subdistrict %'
+                then regexp_extract(position_name, ' - Subdistrict (.*)$')
+                when position_name like '% - Zone %'
+                then regexp_extract(position_name, ' - Zone (.*)$')
                 else ''
             end as district,
             case
-                when official_office_name like '% - Seat %'
-                then regexp_extract(official_office_name, ' - Seat ([^,]+)')
-                when official_office_name like '% - Group %'
-                then regexp_extract(official_office_name, ' - Group ([^,]+)')
-                when official_office_name like '%, Seat %'
-                then regexp_extract(official_office_name, ', Seat ([^,]+)')
-                when official_office_name like '%: % - Seat %'
-                then regexp_extract(official_office_name, ' - Seat ([^,]+)')
-                when official_office_name like '% - Position %'
-                then regexp_extract(official_office_name, ' - Position ([^\\s(]+)')
+                when position_name like '% - Seat %'
+                then regexp_extract(position_name, ' - Seat ([^,]+)')
+                when position_name like '% - Group %'
+                then regexp_extract(position_name, ' - Group ([^,]+)')
+                when position_name like '%, Seat %'
+                then regexp_extract(position_name, ', Seat ([^,]+)')
+                when position_name like '%: % - Seat %'
+                then regexp_extract(position_name, ' - Seat ([^,]+)')
+                when position_name like '% - Position %'
+                then regexp_extract(position_name, ' - Position ([^\\s(]+)')
                 else ''
             end as seat,
             {{
                 generate_candidate_slug(
-                    "first_name", "last_name", "official_office_name"
+                    "candidate_first_name", "candidate_last_name", "position_name"
                 )
             }} as candidate_slug,
             {{ map_ballotready_office_type("candidate_office") }} as office_type,
@@ -212,7 +81,7 @@ with
             case
                 when position_name is null
                 then null
-                when election_day is null
+                when election_date is null
                 then null
                 when
                     regexp_replace(
@@ -224,7 +93,7 @@ with
                 then null
                 when
                     regexp_replace(
-                        regexp_replace(trim(election_day), ' ', '-'),
+                        regexp_replace(trim(election_date), ' ', '-'),
                         '[^a-zA-Z0-9-]',
                         ''
                     )
@@ -240,16 +109,16 @@ with
                                 ''
                             ),
                             regexp_replace(
-                                regexp_replace(trim(election_day), ' ', '-'),
+                                regexp_replace(trim(election_date), ' ', '-'),
                                 '[^a-zA-Z0-9-]',
                                 ''
                             )
                         )
                     )
             end as br_contest_id,
-            candidacy_id,
-            race_id as ballotready_race_id,
-            parties,
+            ballotready_candidacy_id as candidacy_id,
+            ballotready_race_id,
+            raw_parties as parties,
             candidacy_created_at,
             candidacy_updated_at
         from br_new
@@ -257,13 +126,12 @@ with
         -- to HubSpot
         where
             -- separate the records with both phones and emails
-            phone <> ''
-            and email <> ''
+            candidate_phone is not null
+            and candidate_email is not null
             -- remove any major party candidates
-            and not parties like '%Democrat%'
-            and not parties like '%Republican%'
+            and not is_major_party
             -- subset to candidates with future elections
-            and election_day > current_date
+            and election_date > current_date
     ),
     br_withcodes as (
         select
