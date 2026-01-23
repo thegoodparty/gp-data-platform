@@ -65,6 +65,9 @@ models:
               arguments:
                 to: ref('election_20260122')
                 field: gp_election_id
+              config:
+                warn_if: ">0"
+                error_if: ">50"
       - name: ddhq_race_id
         description: DDHQ race identifier
         data_tests:
@@ -210,6 +213,8 @@ models:
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
+                warn_if: ">0"
+                error_if: ">20"
       - name: is_winner
         description: Whether the candidate won the election stage (boolean)
         data_tests:

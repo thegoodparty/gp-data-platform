@@ -403,6 +403,9 @@ models:
               arguments:
                 to: ref('candidacy_20260122')
                 field: gp_candidacy_id
+              config:
+                warn_if: ">0"
+                error_if: ">10"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
@@ -413,6 +416,8 @@ models:
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: candidate_name
         description: Name of the candidate
@@ -629,6 +634,9 @@ models:
               arguments:
                 to: ref('election_20260122')
                 field: gp_election_id
+              config:
+                warn_if: ">0"
+                error_if: ">50"
 
       - name: ddhq_race_id
         description: DDHQ race identifier

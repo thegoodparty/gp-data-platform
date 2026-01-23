@@ -40,7 +40,9 @@ select
         end,
         ''
     ) as seat_name,
-    properties_population as population,
+    cast(
+        cast(nullif(trim(cast(properties_population as string)), '') as decimal) as int
+    ) as population,
 
     -- election context
     properties_number_opponents as number_of_opponents,
