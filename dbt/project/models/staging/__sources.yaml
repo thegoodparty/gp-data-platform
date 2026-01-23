@@ -200,6 +200,18 @@ sources:
             warn_after: {count: 30, period: day}
             error_after: {count: 90, period: day}
 
+  - name: archives
+    schema: archives
+    description: Archived snapshots of source data for historical reference
+    tables:
+      - name: airbyte_source__hubspot_api_companies_20260122
+        description: Archived snapshot of HubSpot companies data from 2026-01-22
+        config:
+          freshness: null
+      - name: airbyte_source__hubspot_api_contacts_20260122
+        description: Archived snapshot of HubSpot contacts data from 2026-01-22
+        config:
+          freshness: null
 
   - name: dbt_source
     schema: dbt_source
