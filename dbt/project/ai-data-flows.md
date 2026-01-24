@@ -887,3 +887,446 @@ The relationship between dbt and the AI matchers is **cyclical**, not linear. db
 - **Outputs** feed back into dbt via the `model_predictions` schema
 - Changes to dbt source models may require re-running the matchers
 - The cycle enables incremental enrichment of candidate/election data over time
+
+---
+
+## Appendix: Using LLM Results as Ground Truth for Splink Training
+
+### The Opportunity
+
+The current LLM-based matching produces high-quality match decisions with confidence scores and reasoning. These results can serve as **labeled training data** for a Splink probabilistic matching model, enabling a hybrid approach that dramatically reduces cost while maintaining precision.
+
+### Current State vs. Proposed Hybrid Approach
+
+**Current Flow (100% LLM):**
+```
+Candidates → Embeddings → FAISS → LLM Validation → Final Matches
+                                    (per-match)
+```
+
+**Proposed Hybrid Flow:**
+```
+Phase 1: LLM produces ground truth labels (one-time or periodic)
+Phase 2: Train Splink model on LLM-labeled data
+Phase 3: Splink handles bulk matching (fast, cheap, in Databricks)
+Phase 4: LLM validates only low-confidence Splink matches
+```
+
+### Why This Works for GoodParty's Use Case
+
+1. **You Already Have Labeled Data**: The existing `stg_model_predictions__candidacy_ddhq_matches` table contains `llm_confidence` (0-100) and `has_match` fields—these are essentially ground truth labels. High-confidence matches (≥90) can directly become training data.
+
+2. **Splink Needs Labeled Pairs**: Splink requires training data in the form of `(record_A, record_B, is_match)`. Your existing match results already have this structure.
+
+3. **Cost Reduction**: LLM calls are expensive per-match. Training data needs to be created once, then Splink runs cheaply at scale on Databricks/Spark.
+
+4. **Speed**: Splink is designed for probabilistic record linkage at scale and runs natively in Spark.
+
+5. **Explainability**: Splink provides field-level match weights, showing which features contributed to each match decision.
+
+### Implementation Path
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PHASE 1: Extract Ground Truth from Existing LLM Results       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  stg_model_predictions__candidacy_ddhq_matches                  │
+│       │                                                         │
+│       ▼                                                         │
+│  Filter: llm_confidence >= 90 AND has_match = true  → POSITIVE  │
+│  Filter: llm_confidence >= 90 AND has_match = false → NEGATIVE  │
+│       │                                                         │
+│       ▼                                                         │
+│  int__splink_training_labels                                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  PHASE 2: Train Splink Model (in Databricks)                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Splink learns match weights for:                               │
+│  - Name similarity (Jaro-Winkler, Levenshtein)                  │
+│  - Office/position match                                        │
+│  - State/city geographic alignment                              │
+│  - Party affiliation                                            │
+│  - Election date proximity                                      │
+│                                                                 │
+│  Output: Trained Splink model parameters                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  PHASE 3: Bulk Matching with Splink                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  m_general__candidacy  ──┐                                      │
+│                          ├──► Splink ──► match_probability      │
+│  stg_ddhq__election_*  ──┘                                      │
+│                                                                 │
+│  High probability (≥0.95): Auto-accept                          │
+│  Low probability (≤0.10): Auto-reject                           │
+│  Medium (0.10-0.95): Send to LLM for validation                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  PHASE 4: LLM Validation (Reduced Scope)                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Only ~10-20% of pairs (medium-confidence from Splink)          │
+│  sent to Gemini Flash for final decision                        │
+│                                                                 │
+│  Output: Final matches with dual confidence signals             │
+│  - splink_probability: Fast, cheap, explainable                 │
+│  - llm_confidence: Handles edge cases                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### New Components Required
+
+| Component | Location | Description |
+|-----------|----------|-------------|
+| `int__splink_training_labels` | dbt SQL/Python | Extracts high-confidence LLM results as labeled training pairs |
+| `int__splink_model_training` | Databricks notebook or dbt Python | Trains Splink on labeled pairs, outputs model parameters |
+| `int__splink_match_candidates` | dbt Python model | Runs Splink predictions at scale using trained model |
+| `int__llm_validation_queue` | dbt SQL | Filters medium-confidence Splink matches for LLM review |
+| Reduced LLM matcher | gp-ai-projects | Only validates uncertain matches (10-20% of volume) |
+
+### Training Data Extraction (SQL Example)
+
+```sql
+-- int__splink_training_labels.sql
+with high_confidence_matches as (
+    select
+        gp_candidacy_id,
+        first_name,
+        last_name,
+        candidate_office,
+        state,
+        election_date,
+        election_type,
+        ddhq_candidate,
+        ddhq_race_name,
+        ddhq_candidate_id,
+        ddhq_race_id,
+        llm_confidence,
+        has_match,
+        -- Splink requires explicit match labels
+        case
+            when llm_confidence >= 90 and has_match = true then 1
+            when llm_confidence >= 90 and has_match = false then 0
+            else null  -- exclude uncertain cases from training
+        end as is_match
+    from {{ ref('stg_model_predictions__candidacy_ddhq_matches_20251202') }}
+    where llm_confidence >= 90  -- only use high-confidence labels
+)
+select * from high_confidence_matches
+where is_match is not null
+```
+
+### Splink Model Configuration (Python Example)
+
+```python
+from splink import Linker, DuckDBAPI, SettingsCreator, block_on
+import splink.comparison_library as cl
+
+# Define comparison rules based on your matching fields
+settings = SettingsCreator(
+    link_type="link_only",
+    comparisons=[
+        cl.JaroWinklerAtThresholds("first_name", [0.9, 0.7]),
+        cl.JaroWinklerAtThresholds("last_name", [0.9, 0.7]),
+        cl.ExactMatch("state"),
+        cl.ExactMatch("election_date"),
+        cl.LevenshteinAtThresholds("candidate_office", [1, 3, 5]),
+    ],
+    blocking_rules_to_generate_predictions=[
+        block_on("state", "election_date"),
+        block_on("state", "last_name"),
+    ],
+)
+
+linker = Linker([hubspot_df, ddhq_df], settings, db_api=DuckDBAPI())
+
+# Train using labeled data from LLM results
+linker.training.estimate_probability_two_random_records_match(
+    training_labels_df,  # from int__splink_training_labels
+    "is_match"
+)
+linker.training.estimate_parameters_using_expectation_maximisation(
+    block_on("state", "election_date")
+)
+
+# Predict on full dataset
+predictions = linker.inference.predict(threshold_match_probability=0.1)
+```
+
+### Expected Benefits
+
+| Metric | Current (100% LLM) | Hybrid (Splink + LLM) | Improvement |
+|--------|-------------------|----------------------|-------------|
+| LLM API calls | 100% of pairs | 10-20% of pairs | 80-90% reduction |
+| Cost per 10K records | ~$7.00 | ~$0.70-1.40 | 5-10x cheaper |
+| Throughput | ~10K/min | ~50-100K/min | 5-10x faster |
+| Explainability | LLM reasoning only | Field weights + LLM reasoning | Enhanced |
+| Platform | External (ECS) | Native Databricks | Simplified ops |
+
+### Dual Confidence Signals
+
+The hybrid approach produces two complementary confidence measures:
+
+1. **Splink Probability**:
+   - Fast, deterministic, explainable
+   - Shows which fields contributed (name: +0.8, state: +0.2, office: -0.1)
+   - Good for automated decisions on clear cases
+
+2. **LLM Confidence** (for ambiguous cases):
+   - Handles edge cases, nicknames, typos
+   - Provides human-readable reasoning
+   - Resolves cases where Splink is uncertain
+
+Matches where **both agree** (high Splink + high LLM) have very high reliability.
+
+### Iterative Improvement Loop
+
+The hybrid system enables continuous improvement:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Continuous Improvement Cycle                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   1. Run Splink on new data                                     │
+│          │                                                      │
+│          ▼                                                      │
+│   2. LLM validates ambiguous cases                              │
+│          │                                                      │
+│          ▼                                                      │
+│   3. New LLM decisions added to training set                    │
+│          │                                                      │
+│          ▼                                                      │
+│   4. Periodically retrain Splink with expanded labels           │
+│          │                                                      │
+│          ▼                                                      │
+│   5. Splink improves → fewer ambiguous cases → less LLM usage   │
+│          │                                                      │
+│          └──────────────────► (repeat)                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Over time, the Splink model learns from LLM decisions, reducing the percentage of records that need LLM validation.
+
+---
+
+## Appendix: Stratified Sampling for Splink Training Data
+
+### The Case for Random/Stratified Sampling
+
+While using existing high-confidence LLM matches as training data is convenient, a **stratified random sample** with targeted LLM labeling may produce a better Splink model. Here's why:
+
+### Selection Bias in Existing Data
+
+The current LLM matches are biased toward "matchable" records—they've already passed through:
+- FAISS filtering (top 5 candidates only)
+- Temporal filtering (63% retention rate)
+- State/date partitioning
+
+This means the training data is missing:
+- Records that get filtered out early
+- True negatives (cases where no match exists in DDHQ)
+- Edge cases the current pipeline might miss
+
+A random sample would capture the full distribution of matching scenarios.
+
+### Stratified Sampling Strategy
+
+Rather than uniform random sampling, **stratify by ambiguity level** to maximize learning at the decision boundary:
+
+```
+Sample Distribution (example: 5,000 labeled pairs):
+├── 1,500 random pairs (unbiased baseline)
+├── 1,500 high-similarity pairs (FAISS score > 0.8)
+├── 1,000 medium-similarity pairs (FAISS 0.5-0.8)  ← ambiguous zone
+└── 1,000 low-similarity pairs (FAISS < 0.5)       ← true negatives
+```
+
+### Why Ambiguity Matters
+
+Splink needs to learn the **decision boundary**. Obvious cases don't teach it much:
+
+| Ambiguity Level | Example | Training Value |
+|-----------------|---------|----------------|
+| **Low (obvious match)** | "John Smith" → "John Smith" | Low |
+| **High (ambiguous)** | "Bob Johnson" → "Robert Johnson Jr." | **High** |
+| **High (ambiguous)** | "Maria Garcia" → "Maria Garcia-Lopez" | **High** |
+| **Low (obvious non-match)** | "John Smith" → "Sarah Williams" | Low |
+
+Oversampling ambiguous cases gives Splink better signal where it matters most.
+
+### Implementation Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 1: Generate Candidate Pairs (No LLM Yet)                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  m_general__candidacy  ──┐                                      │
+│                          ├──► Blocking ──► All candidate pairs  │
+│  stg_ddhq__election_*  ──┘    (state + date)                    │
+│                                                                 │
+│  Output: ~100K-1M candidate pairs with basic similarity scores  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 2: Stratified Random Sample                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Sample ~5,000-10,000 pairs:                                    │
+│                                                                 │
+│  • Random baseline (30%)                                        │
+│  • High name similarity, same state (25%)                       │
+│  • Partial name match, same office type (25%) ← ambiguous       │
+│  • Same state, different name (20%) ← likely negatives          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 3: LLM Labeling (One-Time Cost)                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Send sampled pairs to Gemini Flash for labeling:               │
+│                                                                 │
+│  Input:  "Is John Smith (CA Governor 2024) the same as          │
+│           Jonathan Smith (California Governor race)?"           │
+│                                                                 │
+│  Output: { is_match: true/false, confidence: 0-100, reason }    │
+│                                                                 │
+│  Cost: ~5,000 pairs × $0.00014/pair ≈ $0.70 total              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 4: Train Splink                                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Use 5,000 labeled pairs to learn:                              │
+│  • P(match | exact last name) = 0.85                            │
+│  • P(match | same state) = 0.60                                 │
+│  • P(match | similar office) = 0.70                             │
+│  • etc.                                                         │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 5: Apply to Full Dataset                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Splink scores all ~100K-1M pairs                               │
+│  Only send uncertain pairs (10-20%) to LLM                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Identifying Ambiguous Pairs (Pre-LLM Heuristics)
+
+Before sending pairs to the LLM for labeling, identify ambiguous cases using simple heuristics:
+
+```sql
+-- int__splink_sample_candidates.sql
+with candidate_pairs as (
+    select
+        h.gp_candidacy_id,
+        h.first_name as hubspot_first_name,
+        h.last_name as hubspot_last_name,
+        h.candidate_office as hubspot_office,
+        h.state as hubspot_state,
+        d.candidate as ddhq_candidate,
+        d.race_name as ddhq_race_name,
+        d.candidate_id as ddhq_candidate_id,
+
+        -- Simple similarity metrics for stratification
+        levenshtein(lower(h.last_name), lower(split_part(d.candidate, ' ', -1))) as last_name_distance,
+        levenshtein(lower(h.first_name), lower(split_part(d.candidate, ' ', 1))) as first_name_distance,
+
+        -- Ambiguity classification
+        case
+            when levenshtein(lower(h.last_name), lower(split_part(d.candidate, ' ', -1))) = 0
+                 and levenshtein(lower(h.first_name), lower(split_part(d.candidate, ' ', 1))) = 0
+            then 'exact_match'
+            when levenshtein(lower(h.last_name), lower(split_part(d.candidate, ' ', -1))) <= 2
+            then 'close_match'  -- ambiguous zone
+            when levenshtein(lower(h.last_name), lower(split_part(d.candidate, ' ', -1))) <= 5
+            then 'partial_match'  -- ambiguous zone
+            else 'different'
+        end as ambiguity_bucket
+
+    from {{ ref('m_general__candidacy') }} h
+    cross join {{ ref('stg_airbyte_source__ddhq_gdrive_election_results') }} d
+    where h.state = d.state
+      and h.election_date = d.election_date
+),
+
+stratified_sample as (
+    -- Random baseline (30%)
+    (select *, 'random' as sample_type from candidate_pairs order by random() limit 1500)
+    union all
+    -- Exact/close matches (25%)
+    (select *, 'high_similarity' as sample_type from candidate_pairs
+     where ambiguity_bucket in ('exact_match', 'close_match') order by random() limit 1250)
+    union all
+    -- Ambiguous zone (25%)
+    (select *, 'ambiguous' as sample_type from candidate_pairs
+     where ambiguity_bucket = 'partial_match' order by random() limit 1250)
+    union all
+    -- Likely negatives (20%)
+    (select *, 'likely_negative' as sample_type from candidate_pairs
+     where ambiguity_bucket = 'different' order by random() limit 1000)
+)
+
+select * from stratified_sample
+```
+
+### Hybrid Approach: Combine Existing + New Labels
+
+The best approach may combine existing high-confidence LLM matches with targeted new sampling:
+
+```
+Training Data Composition:
+├── 3,000 pairs from existing high-confidence LLM matches (≥90)
+│   └── Advantage: Free, already available
+├── 2,000 pairs from random sample (unbiased)
+│   └── Advantage: Captures full distribution
+└── 2,000 pairs from ambiguity-targeted sample (decision boundary)
+    └── Advantage: Maximizes learning at edge cases
+────────────────────────────────────────────────────────────────
+Total: 7,000 labeled pairs
+```
+
+### Cost Comparison
+
+| Approach | LLM Labeling Cost | Quality |
+|----------|-------------------|---------|
+| Existing high-confidence only | $0 (already done) | Good, but biased |
+| Pure random sample (5K) | ~$0.70 | Unbiased, but may miss edge cases |
+| Stratified sample (5K) | ~$0.70 | Best coverage of decision boundary |
+| Hybrid (3K existing + 4K new) | ~$0.56 | Best of both worlds |
+
+### Recommended Approach
+
+1. **Start with existing data**: Use high-confidence LLM matches (≥90) as initial training set
+2. **Train baseline Splink model**: Get a working model quickly
+3. **Identify gaps**: Run Splink on full dataset, find cases where it's uncertain
+4. **Targeted sampling**: Send a stratified sample of uncertain cases to LLM for labeling
+5. **Retrain**: Incorporate new labels and retrain Splink
+6. **Iterate**: Repeat steps 3-5 until model performance stabilizes
+
+This iterative approach minimizes upfront LLM costs while progressively improving model quality.
