@@ -742,3 +742,148 @@ zip_code_within_state_range as (
 | Election | `gp_election_id` | `position_id` | N/A | N/A | N/A |
 | Election Stage | `gp_election_stage_id` | `race_id` | `ddhq_race_id` | N/A | N/A |
 | Candidacy-Stage | `gp_candidacy_stage_id` | `candidacy_id` | `candidacy_id` | N/A | N/A |
+
+---
+
+## Appendix: Cyclical Data Flow
+
+The relationship between dbt and the AI matchers is **cyclical**, not linear. dbt models provide the source data that feeds the AI matchers, and the AI matchers produce results that flow back into dbt for downstream consumption.
+
+### HubSpot-DDHQ Cycle
+
+```
+                    ┌─────────────────────────────────────────────────────────┐
+                    │                                                         │
+                    ▼                                                         │
+┌─────────────────────────────────────┐                                       │
+│           dbt Project               │                                       │
+│                                     │                                       │
+│  m_general__candidacy ──────────────┼───► Source data for matching         │
+│  stg_...__ddhq_gdrive_election_...  │     (candidates + election results)  │
+│                                     │                                       │
+│         ▲                           │                                       │
+│         │                           │                                       │
+│  stg_model_predictions__            │                                       │
+│  candidacy_ddhq_matches_YYYYMMDD    │                                       │
+│         │                           │                                       │
+│         │  Match results with       │                                       │
+│         │  DDHQ IDs, confidence,    │                                       │
+│         │  win/loss outcomes        │                                       │
+│         │                           │                                       │
+└─────────┼───────────────────────────┘                                       │
+          │                                                                   │
+          │                                                                   │
+┌─────────┴───────────────────────────┐                                       │
+│      model_predictions schema       │                                       │
+│                                     │                                       │
+│  candidacy_ddhq_matches_YYYYMMDD ◄──┼───────────────────────────────────────┤
+│                                     │                                       │
+└─────────────────────────────────────┘                                       │
+          ▲                                                                   │
+          │  Upload parquet                                                   │
+          │                                                                   │
+┌─────────┴───────────────────────────┐                                       │
+│        gp-ai-projects               │                                       │
+│        hubspot_ddhq_match/          │                                       │
+│                                     │                                       │
+│  1. Extract from dbt models ◄───────┼───────────────────────────────────────┘
+│  2. Clean & filter                  │
+│  3. Generate embeddings             │
+│  4. FAISS search + LLM validate     │
+│  5. Output matches                  │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+### L2-BallotReady Cycle
+
+```
+                    ┌─────────────────────────────────────────────────────────┐
+                    │                                                         │
+                    ▼                                                         │
+┌─────────────────────────────────────┐                                       │
+│           dbt Project               │                                       │
+│                                     │                                       │
+│  int__enhanced_position ────────────┼───► BR positions for matching        │
+│  m_election_api__district ──────────┼───► L2 districts for vector store    │
+│                                     │                                       │
+│         ▲                           │                                       │
+│         │                           │                                       │
+│  stg_model_predictions__            │                                       │
+│  llm_l2_br_match_YYYYMMDD           │                                       │
+│         │                           │                                       │
+│         │  Match results with       │                                       │
+│         │  l2_district_name,        │                                       │
+│         │  confidence, reasoning    │                                       │
+│         │                           │                                       │
+│         ▼                           │                                       │
+│  int__zip_code_to_br_office         │                                       │
+│  (joins zip → L2 → BR)              │                                       │
+│                                     │                                       │
+└─────────┬───────────────────────────┘                                       │
+          │                                                                   │
+          │                                                                   │
+┌─────────┴───────────────────────────┐                                       │
+│      model_predictions schema       │                                       │
+│                                     │                                       │
+│  llm_l2_br_match_YYYYMMDD ◄─────────┼───────────────────────────────────────┤
+│                                     │                                       │
+└─────────────────────────────────────┘                                       │
+          ▲                                                                   │
+          │  Upload parquet                                                   │
+          │                                                                   │
+┌─────────┴───────────────────────────┐                                       │
+│        gp-ai-projects               │                                       │
+│        stitch_golden_data/          │                                       │
+│                                     │                                       │
+│  1. Build vector store from L2 ◄────┼───────────────────────────────────────┘
+│  2. Load BR positions from dbt      │
+│  3. Embedding search + LLM select   │
+│  4. Output matches                  │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+### Simplified Combined View
+
+```
+                              ┌───────────────────┐
+                              │   Raw Sources     │
+                              │  (HubSpot, DDHQ,  │
+                              │   BallotReady,    │
+                              │   L2 Voter File)  │
+                              └─────────┬─────────┘
+                                        │
+                                        ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                                                               │
+│                              dbt Project                                      │
+│                                                                               │
+│    ┌──────────────┐      ┌──────────────┐      ┌──────────────────────┐      │
+│    │   Staging    │ ───► │ Intermediate │ ───► │        Marts         │      │
+│    │   Models     │      │    Models    │      │  (m_general__...,    │      │
+│    └──────────────┘      └──────────────┘      │   m_election_api__..│      │
+│                                                 └──────────────────────┘      │
+│          ▲                                               │                    │
+│          │                                               │                    │
+│          │  Match results                                │  Source data       │
+│          │  (model_predictions)                          │  for matching      │
+│          │                                               │                    │
+└──────────┼───────────────────────────────────────────────┼────────────────────┘
+           │                                               │
+           │         ┌─────────────────────────┐           │
+           │         │                         │           │
+           └─────────┤    gp-ai-projects       ◄───────────┘
+                     │                         │
+                     │  • Embeddings (Gemini)  │
+                     │  • Vector Search (FAISS)│
+                     │  • LLM Validation       │
+                     │                         │
+                     └─────────────────────────┘
+```
+
+**Key Insight:** The AI matchers are not standalone processes. They are tightly coupled to the dbt project:
+- **Inputs** come from dbt mart/intermediate tables
+- **Outputs** feed back into dbt via the `model_predictions` schema
+- Changes to dbt source models may require re-running the matchers
+- The cycle enables incremental enrichment of candidate/election data over time
