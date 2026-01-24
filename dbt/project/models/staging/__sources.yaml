@@ -212,6 +212,10 @@ sources:
         description: Archived snapshot of HubSpot contacts data from 2026-01-22
         config:
           freshness: null
+      - name: airbyte_source__hubspot_api_engagements_20260122
+        description: Archived snapshot of HubSpot engagements data from 2026-01-22
+        config:
+          freshness: null
 
   - name: dbt_source
     schema: dbt_source

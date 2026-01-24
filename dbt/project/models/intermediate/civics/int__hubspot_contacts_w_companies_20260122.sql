@@ -14,7 +14,6 @@
 
 -- Archived HubSpot contacts with companies from 2026-01-22 snapshot
 -- This model uses archived staging data to ensure historical consistency
--- Note: Uses archived engagements logic simplified to use contacts.companies field
 with
     -- Extract company associations from the archived engagements
     extracted_engagements as (
@@ -28,7 +27,8 @@ with
             ) as contact_id_association
         from {{ ref("stg_archives__hubspot_api_companies_20260122") }} as tbl_companies
         left join
-            {{ ref("stg_airbyte_source__hubspot_api_engagements") }} as tbl_engagements
+            {{ ref("stg_archives__hubspot_api_engagements_20260122") }}
+            as tbl_engagements
             on tbl_companies.id
             = regexp_extract(tbl_engagements.associations_companyids, '\\[(\\d+)\\]', 1)
         where tbl_companies.id is not null
