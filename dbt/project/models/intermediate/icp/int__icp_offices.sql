@@ -24,7 +24,7 @@ with
     normalized as (select * from {{ ref("int__ballotready_normalized_position") }}),
 
     l2_match as (
-        select * from {{ ref("stg_model_predictions__llm_l2_br_match_20250811") }}
+        select * from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
     ),
 
     district_counts as (select * from {{ ref("int__l2_district_aggregations") }})
