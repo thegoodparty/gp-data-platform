@@ -44,7 +44,10 @@ select
         then null
         when district_counts.voter_count is null
         then null
-        when district_counts.voter_count between 500 and 50000
+        when
+            district_counts.voter_count between 500 and 50000
+            and position.judicial = false
+            and position.appointed = false
         then true
         else false
     end as icp_office_win,
@@ -55,7 +58,10 @@ select
         then null
         when district_counts.voter_count is null
         then null
-        when district_counts.voter_count between 1000 and 100000
+        when
+            district_counts.voter_count between 1000 and 100000
+            and position.judicial = false
+            and position.appointed = false
         then true
         else false
     end as icp_office_serve
@@ -69,5 +75,3 @@ left join
     on l2_match.l2_district_name = district_counts.district_name
     and l2_match.l2_district_type = district_counts.district_type
     and position.state = district_counts.state_postal_code
-
-where position.judicial = false and position.appointed = false
