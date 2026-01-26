@@ -17,7 +17,7 @@ with
         select
             {{
                 generate_salted_uuid(
-                    fields=["ballotready_race_id"], salt="civics_election_stage"
+                    fields=["br_race_id"], salt="civics_election_stage"
                 )
             }} as gp_election_stage_id,
 
@@ -25,7 +25,7 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "ballotready_position_id",
+                        "br_position_id",
                         "cast(year(election_date) as string)",
                     ],
                     salt="civics_election",
@@ -33,7 +33,7 @@ with
             }} as gp_election_id,
 
             -- BallotReady identifiers
-            ballotready_race_id as br_race_id,
+            br_race_id,
 
             -- DDHQ placeholder
             cast(null as bigint) as ddhq_race_id,
@@ -53,10 +53,10 @@ with
             candidacy_updated_at as updated_at
 
         from source
-        where ballotready_race_id is not null
+        where br_race_id is not null
         qualify
             row_number() over (
-                partition by ballotready_race_id order by candidacy_updated_at desc
+                partition by br_race_id order by candidacy_updated_at desc
             )
             = 1
     )

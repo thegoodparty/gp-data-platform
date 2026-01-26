@@ -6,16 +6,16 @@ with
 
     candidacies_cleaned as (
         select
-            -- identifiers
-            id as ballotready_id,
-            geo_id as ballotready_geo_id,
-            race_id as ballotready_race_id,
-            election_id as ballotready_election_id,
-            geofence_id as ballotready_geofence_id,
-            position_id as ballotready_position_id,
-            normalized_position_id as ballotready_normalized_position_id,
-            candidate_id as ballotready_candidate_id,
-            candidacy_id as ballotready_candidacy_id,
+            -- BallotReady identifiers
+            id as br_id,
+            geo_id as br_geo_id,
+            race_id as br_race_id,
+            election_id as br_election_id,
+            geofence_id as br_geofence_id,
+            position_id as br_position_id,
+            normalized_position_id as br_normalized_position_id,
+            candidate_id as br_candidate_id,
+            candidacy_id as br_candidacy_id,
 
             candidacy_created_at,
             candidacy_updated_at,

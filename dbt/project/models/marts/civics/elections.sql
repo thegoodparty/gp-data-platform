@@ -17,7 +17,7 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "ballotready_position_id",
+                        "br_position_id",
                         "cast(year(election_date) as string)",
                     ],
                     salt="civics_election",
@@ -25,7 +25,7 @@ with
             }} as gp_election_id,
 
             -- BallotReady identifiers
-            ballotready_position_id as br_position_id,
+            br_position_id,
 
             -- Election info
             year(election_date) as election_year,
@@ -54,10 +54,10 @@ with
             candidacy_updated_at as updated_at
 
         from source
-        where ballotready_position_id is not null
+        where br_position_id is not null
         qualify
             row_number() over (
-                partition by ballotready_position_id, year(election_date)
+                partition by br_position_id, year(election_date)
                 order by candidacy_updated_at desc
             )
             = 1

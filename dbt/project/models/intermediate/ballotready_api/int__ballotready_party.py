@@ -19,25 +19,25 @@ from pyspark.sql.types import (
 )
 
 
-def _base64_encode_id(candidacy_id: str) -> str:
+def _base64_encode_id(br_candidacy_id: str) -> str:
     """
     Encodes a candidacy ID into the format required by CivicEngine API.
 
     Args:
-        candidacy_id: The raw candidacy ID to encode.
+        br_candidacy_id: The raw candidacy ID to encode.
 
     Returns:
         The base64-encoded ID string with the proper prefix.
     """
     id_prefix = "gid://ballot-factory/Candidacy/"
-    prefixed_id = f"{id_prefix}{candidacy_id}"
+    prefixed_id = f"{id_prefix}{br_candidacy_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
     return encoded_id
 
 
 def _get_parties_batch(
-    candidacy_ids: List[str],
+    br_candidacy_ids: List[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
@@ -47,7 +47,7 @@ def _get_parties_batch(
     Fetches parties for a batch of candidacy IDs from the CivicEngine GraphQL API.
 
     Args:
-        candidacy_ids: List of candidacy IDs to fetch
+        br_candidacy_ids: List of candidacy IDs to fetch
         ce_api_token: API token for CivicEngine
         base_sleep: Base sleep time for backoff
         jitter_factor: Jitter factor for backoff
@@ -57,12 +57,12 @@ def _get_parties_batch(
         List of dictionaries containing party data
     """
     url = "https://bpi.civicengine.com/graphql"
-    if not candidacy_ids:
+    if not br_candidacy_ids:
         return []
     all_parties = []
 
     # Encode candidacy IDs for the GraphQL query
-    encoded_ids = [_base64_encode_id(str(cid)) for cid in candidacy_ids]
+    encoded_ids = [_base64_encode_id(str(cid)) for cid in br_candidacy_ids]
 
     # Build the GraphQL query
     query = """
@@ -116,7 +116,7 @@ def _get_parties_batch(
                         continue
 
                     candidacy_db_id = node.get("databaseId")
-                    encoded_candidacy_id = node.get("id")
+                    encoded_br_candidacy_id = node.get("id")
 
                     if not candidacy_db_id:
                         continue
@@ -127,9 +127,9 @@ def _get_parties_batch(
 
                     # process each party
                     for party in parties:
-                        # Add candidacy_id and encoded_candidacy_id to each party
-                        party["candidacy_id"] = int(candidacy_db_id)
-                        party["encoded_candidacy_id"] = encoded_candidacy_id
+                        # Add br_candidacy_id and encoded_br_candidacy_id to each party
+                        party["br_candidacy_id"] = int(candidacy_db_id)
+                        party["encoded_br_candidacy_id"] = encoded_br_candidacy_id
 
                         # handle timestamps with timezone for pandas -> arrow -> spark
                         party["createdAt"] = pd.to_datetime(party["createdAt"])
@@ -137,7 +137,7 @@ def _get_parties_batch(
                         all_parties.append(party)
 
                     logging.debug(
-                        f"Retrieved {len(all_parties)} endorsements for {len(candidacy_ids)} candidacies"
+                        f"Retrieved {len(all_parties)} endorsements for {len(br_candidacy_ids)} candidacies"
                     )
                 return all_parties
 
@@ -195,12 +195,12 @@ def _get_candidacy_parties_token(ce_api_token: str) -> Callable:
 
     @pandas_udf(returnType=party_schema)
     # @pandas_udf(returnType=StringType())
-    def get_candidacy_parties(candidacy_ids: pd.Series) -> pd.Series:
+    def get_candidacy_parties(br_candidacy_ids: pd.Series) -> pd.Series:
         """
         Pandas UDF to process candidacy IDs in batches and fetch their parties.
 
         Args:
-            candidacy_ids: Series of candidacy IDs
+            br_candidacy_ids: Series of candidacy IDs
 
         Returns:
             Series of party data
@@ -209,20 +209,20 @@ def _get_candidacy_parties_token(ce_api_token: str) -> Callable:
         parties_by_candidacy: Dict[int, List[Dict[str, Any]]] = {}
 
         # Process in batches
-        for i in range(0, len(candidacy_ids), batch_size):
-            batch = candidacy_ids.iloc[i : i + batch_size].tolist()
+        for i in range(0, len(br_candidacy_ids), batch_size):
+            batch = br_candidacy_ids.iloc[i : i + batch_size].tolist()
             batch_response = _get_parties_batch(batch, ce_api_token)
 
-            # Organize parties by candidacy_id
+            # Organize parties by br_candidacy_id
             for party in batch_response:
-                cid = party["candidacy_id"]
+                cid = party["br_candidacy_id"]
                 if cid not in parties_by_candidacy:
                     parties_by_candidacy[cid] = []
                 parties_by_candidacy[cid].append(party)
 
         # Create result series mapping each candidacy ID to its endorsements array
         result = pd.Series(
-            [parties_by_candidacy.get(int(cid), []) for cid in candidacy_ids]
+            [parties_by_candidacy.get(int(cid), []) for cid in br_candidacy_ids]
         )
         return pd.Series(result)
 
@@ -246,7 +246,7 @@ def model(dbt, session) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="candidacy_id",
+        unique_key="br_candidacy_id",
         on_schema_change="fail",
         tags=["ballotready", "party", "api", "pandas_udf"],
     )
@@ -274,7 +274,7 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
         existing_timestamps = existing_table.select(
-            "candidacy_id", "created_at"
+            "br_candidacy_id", "created_at"
         ).distinct()
 
         # Get maximum updated_at from existing table
@@ -311,7 +311,7 @@ def model(dbt, session) -> DataFrame:
         # Return empty DataFrame with correct schema
         schema = StructType(
             [
-                StructField("candidacy_id", IntegerType()),
+                StructField("br_candidacy_id", IntegerType()),
                 StructField("parties", party_schema),
                 StructField("created_at", TimestampType()),
                 StructField("updated_at", TimestampType()),
@@ -325,25 +325,25 @@ def model(dbt, session) -> DataFrame:
     # Process candidacies using the pandas UDF for parallel processing
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
-    # Create a DataFrame with just candidacy_ids for processing
+    # Create a DataFrame with just br_candidacy_ids for processing
     party = candidacies.select(
-        col("candidacy_id").cast("integer").alias("candidacy_id")
+        col("br_candidacy_id").cast("integer").alias("br_candidacy_id")
     )
 
     # Apply the pandas UDF to get parties for each candidacy
     get_candidacy_parties = _get_candidacy_parties_token(ce_api_token)
-    party = party.withColumn("parties", get_candidacy_parties("candidacy_id"))
+    party = party.withColumn("parties", get_candidacy_parties("br_candidacy_id"))
     logging.info(f"INFO: Processed {party.count()} candidacies with pandas UDF")
 
     # Add timestamp metadata
     current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
-        # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values
+        # Prepare a lookup DataFrame with existing br_candidacy_ids and their original created_at values
         existing_created_at_lookup = existing_timestamps
 
         # Left join with this lookup to preserve original created_at values for existing records
-        party = party.join(existing_created_at_lookup, on="candidacy_id", how="left")
+        party = party.join(existing_created_at_lookup, on="br_candidacy_id", how="left")
 
         # Use coalesce to keep original created_at for existing records, and set current time for new ones
         party = party.withColumn(

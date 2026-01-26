@@ -16,12 +16,12 @@ with
         select
             {{
                 generate_salted_uuid(
-                    fields=["ballotready_candidate_id"], salt="civics_candidate"
+                    fields=["br_candidate_id"], salt="civics_candidate"
                 )
             }} as gp_candidate_id,
 
             -- BallotReady identifier
-            ballotready_candidate_id as br_candidate_id,
+            br_candidate_id,
 
             -- Personal info
             candidate_first_name as first_name,
@@ -44,10 +44,10 @@ with
             candidacy_updated_at as updated_at
 
         from source
-        where ballotready_candidate_id is not null
+        where br_candidate_id is not null
         qualify
             row_number() over (
-                partition by ballotready_candidate_id order by candidacy_updated_at desc
+                partition by br_candidate_id order by candidacy_updated_at desc
             )
             = 1
     )

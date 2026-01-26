@@ -49,7 +49,7 @@ with
             fc.owner_name,
             fc.candidate_id_source,
             fc.candidacy_id,
-            fc.ballotready_race_id,
+            fc.br_race_id,
             fc.br_contest_id,
             fc.br_candidate_code,
             fc.uncontested,
@@ -75,7 +75,7 @@ with
 
 select
     candidacy_id,
-    ballotready_race_id,
+    br_race_id,
     cast(election_date as date) as election_date,
     official_office_name,
     candidate_office,

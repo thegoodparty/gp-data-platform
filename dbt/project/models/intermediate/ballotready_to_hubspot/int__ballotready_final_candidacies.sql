@@ -93,7 +93,7 @@ with
             owner_name,
             candidate_id_source,
             candidacy_id,
-            ballotready_race_id,
+            br_race_id,
             br_contest_id,
             br_candidate_code,
             uncontested,

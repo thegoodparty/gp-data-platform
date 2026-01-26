@@ -34,7 +34,7 @@ models:
         owner: "Data Engineering Team"
         contains_pii: false
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         description: "Unique identifier for the candidacy in the CivicEngine database"
         tests:
           - not_null
@@ -201,10 +201,10 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
-              - candidacy_id
+              - br_candidacy_id
               - stances.databaseId
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         description: "The id of the candidacy"
         tests:
           - not_null

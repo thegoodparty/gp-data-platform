@@ -116,8 +116,8 @@ with
                         )
                     )
             end as br_contest_id,
-            ballotready_candidacy_id as candidacy_id,
-            ballotready_race_id,
+            br_candidacy_id as candidacy_id,
+            br_race_id,
             raw_parties as parties,
             candidacy_created_at,
             candidacy_updated_at

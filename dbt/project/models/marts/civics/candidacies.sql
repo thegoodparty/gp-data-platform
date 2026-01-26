@@ -18,8 +18,8 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "ballotready_candidate_id",
-                        "ballotready_position_id",
+                        "br_candidate_id",
+                        "br_position_id",
                         "cast(year(election_date) as string)",
                     ],
                     salt="civics_candidacy",
@@ -29,7 +29,7 @@ with
             -- FK to candidate
             {{
                 generate_salted_uuid(
-                    fields=["ballotready_candidate_id"], salt="civics_candidate"
+                    fields=["br_candidate_id"], salt="civics_candidate"
                 )
             }} as gp_candidate_id,
 
@@ -37,7 +37,7 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "ballotready_position_id",
+                        "br_position_id",
                         "cast(year(election_date) as string)",
                     ],
                     salt="civics_election",
@@ -45,8 +45,8 @@ with
             }} as gp_election_id,
 
             -- BallotReady identifiers
-            ballotready_candidate_id as br_candidate_id,
-            ballotready_position_id as br_position_id,
+            br_candidate_id,
+            br_position_id,
 
             -- Party info
             party,
@@ -65,14 +65,10 @@ with
             candidacy_updated_at as updated_at
 
         from source
-        where
-            ballotready_candidate_id is not null and ballotready_position_id is not null
+        where br_candidate_id is not null and br_position_id is not null
         qualify
             row_number() over (
-                partition by
-                    ballotready_candidate_id,
-                    ballotready_position_id,
-                    year(election_date)
+                partition by br_candidate_id, br_position_id, year(election_date)
                 order by candidacy_updated_at desc
             )
             = 1

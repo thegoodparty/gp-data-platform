@@ -19,25 +19,25 @@ from pyspark.sql.types import (
 )
 
 
-def _base64_encode_id(candidacy_id: str) -> str:
+def _base64_encode_id(br_candidacy_id: str) -> str:
     """
     Encodes a candidacy ID into the format required by CivicEngine API.
 
     Args:
-        candidacy_id: The raw candidacy ID to encode.
+        br_candidacy_id: The raw candidacy ID to encode.
 
     Returns:
         The base64-encoded ID string with the proper prefix.
     """
     id_prefix = "gid://ballot-factory/Candidacy/"
-    prefixed_id = f"{id_prefix}{candidacy_id}"
+    prefixed_id = f"{id_prefix}{br_candidacy_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
     return encoded_id
 
 
 def _get_stances_batch(
-    candidacy_ids: List[str],
+    br_candidacy_ids: List[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
@@ -47,7 +47,7 @@ def _get_stances_batch(
     Queries the CivicEngine GraphQL API to get stance IDs for multiple candidacies. Uses the 'nodes' GraphQL query for efficient batch processing.
 
     Args:
-        candidacy_ids: List of candidacy IDs to get the stances for
+        br_candidacy_ids: List of candidacy IDs to get the stances for
         ce_api_token: Authentication token for the CivicEngine API
         base_sleep: Base number of seconds to sleep after making an API call
         jitter_factor: Random factor to apply to sleep time (0.5 means ±50% of base_sleep)
@@ -65,7 +65,7 @@ def _get_stances_batch(
     all_stances = []
 
     # Encode all candidacy IDs
-    encoded_ids = [_base64_encode_id(str(cid)) for cid in candidacy_ids]
+    encoded_ids = [_base64_encode_id(str(cid)) for cid in br_candidacy_ids]
 
     # Construct the payload with the nodes query
     payload = {
@@ -101,7 +101,7 @@ def _get_stances_batch(
     }
 
     try:
-        logging.debug(f"Sending request for {len(candidacy_ids)} candidacies")
+        logging.debug(f"Sending request for {len(br_candidacy_ids)} candidacies")
         response = requests.post(url, json=payload, headers=headers, timeout=timeout)
 
         # Calculate sleep time with jitter to avoid synchronized API calls
@@ -125,7 +125,7 @@ def _get_stances_batch(
                 continue
 
             candidacy_db_id = node.get("databaseId")
-            encoded_candidacy_id = node.get("id")
+            encoded_br_candidacy_id = node.get("id")
 
             if not candidacy_db_id:
                 continue
@@ -134,14 +134,14 @@ def _get_stances_batch(
             if not stances:
                 continue
 
-            # Add candidacy_id and encoded_candidacy_id to each stance
+            # Add br_candidacy_id and encoded_br_candidacy_id to each stance
             for stance in stances:
-                stance["candidacy_id"] = int(candidacy_db_id)
-                stance["encoded_candidacy_id"] = encoded_candidacy_id
+                stance["br_candidacy_id"] = int(candidacy_db_id)
+                stance["encoded_br_candidacy_id"] = encoded_br_candidacy_id
                 all_stances.append(stance)
 
         logging.debug(
-            f"Retrieved {len(all_stances)} stances for {len(candidacy_ids)} candidacies"
+            f"Retrieved {len(all_stances)} stances for {len(br_candidacy_ids)} candidacies"
         )
         return all_stances
 
@@ -172,8 +172,8 @@ stance_schema = ArrayType(
             StructField("locale", StringType(), True),
             StructField("referenceUrl", StringType(), True),
             StructField("statement", StringType(), True),
-            StructField("candidacy_id", IntegerType(), True),
-            StructField("encoded_candidacy_id", StringType(), True),
+            StructField("br_candidacy_id", IntegerType(), True),
+            StructField("encoded_br_candidacy_id", StringType(), True),
         ]
     )
 )
@@ -183,7 +183,7 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
     """Wraps the token in a pandas UDF for proper order of operations."""
 
     @pandas_udf(returnType=stance_schema)
-    def get_candidacy_stances(candidacy_ids: pd.Series) -> pd.Series:
+    def get_candidacy_stances(br_candidacy_ids: pd.Series) -> pd.Series:
         """
         Pandas UDF that processes batches of candidacy IDs and returns their stances.
 
@@ -192,7 +192,7 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
         batched for efficient API calls.
 
         Args:
-            candidacy_ids: Series of candidacy IDs to process
+            br_candidacy_ids: Series of candidacy IDs to process
 
         Returns:
             Series of stance arrays for each candidacy ID
@@ -204,23 +204,23 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
         stances_by_candidacy: Dict[int, List[Any]] = {}
 
         # Get unique candidacy IDs to avoid duplicate API calls
-        unique_candidacy_ids = candidacy_ids.unique().tolist()
+        unique_br_candidacy_ids = br_candidacy_ids.unique().tolist()
 
         # Set batch size for API calls
         batch_size = 100
 
         # Process candidacies in batches
-        for i in range(0, len(unique_candidacy_ids), batch_size):
-            batch = unique_candidacy_ids[i : i + batch_size]
-            batch_size_info = f"Batch {i//batch_size + 1}/{(len(unique_candidacy_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
+        for i in range(0, len(unique_br_candidacy_ids), batch_size):
+            batch = unique_br_candidacy_ids[i : i + batch_size]
+            batch_size_info = f"Batch {i//batch_size + 1}/{(len(unique_br_candidacy_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
             try:
                 batch_stances = _get_stances_batch(batch, ce_api_token)
 
-                # Organize stances by candidacy_id
+                # Organize stances by br_candidacy_id
                 for stance in batch_stances:
-                    cid = stance["candidacy_id"]
+                    cid = stance["br_candidacy_id"]
                     if cid not in stances_by_candidacy:
                         stances_by_candidacy[cid] = []
                     stances_by_candidacy[cid].append(stance)
@@ -229,7 +229,7 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
 
         # Create result series mapping each candidacy ID to its stances array
         result = pd.Series(
-            [stances_by_candidacy.get(int(cid), []) for cid in candidacy_ids]
+            [stances_by_candidacy.get(int(cid), []) for cid in br_candidacy_ids]
         )
         return result
 
@@ -260,7 +260,7 @@ def model(dbt, session) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="candidacy_id",
+        unique_key="br_candidacy_id",
         on_schema_change="fail",
         tags=["ballotready", "stance", "api", "pandas_udf"],
     )
@@ -284,7 +284,7 @@ def model(dbt, session) -> DataFrame:
             [],
             StructType(
                 [
-                    StructField("candidacy_id", IntegerType(), False),
+                    StructField("br_candidacy_id", IntegerType(), False),
                     StructField("stances", stance_schema, True),
                     StructField("created_at", TimestampType(), False),
                     StructField("updated_at", TimestampType(), False),
@@ -303,7 +303,7 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
         existing_timestamps = existing_table.select(
-            "candidacy_id", "created_at"
+            "br_candidacy_id", "created_at"
         ).distinct()
 
         # Get maximum updated_at from existing table
@@ -342,7 +342,7 @@ def model(dbt, session) -> DataFrame:
             [],
             StructType(
                 [
-                    StructField("candidacy_id", IntegerType(), nullable=False),
+                    StructField("br_candidacy_id", IntegerType(), nullable=False),
                     StructField("stances", stance_schema, True),
                     StructField("created_at", TimestampType(), False),
                     StructField("updated_at", TimestampType(), False),
@@ -357,25 +357,27 @@ def model(dbt, session) -> DataFrame:
     # Process candidacies using the pandas UDF for parallel processing
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
-    # Create a DataFrame with just candidacy_ids for processing
+    # Create a DataFrame with just br_candidacy_ids for processing
     stance = candidacies.select(
-        col("database_id").cast("integer").alias("candidacy_id")
+        col("database_id").cast("integer").alias("br_candidacy_id")
     )
 
     # Apply the pandas UDF to get stances for each candidacy
     get_candidacy_stances = _get_candidacy_stances_token(ce_api_token)
-    stance = stance.withColumn("stances", get_candidacy_stances("candidacy_id"))
+    stance = stance.withColumn("stances", get_candidacy_stances("br_candidacy_id"))
     logging.info(f"INFO: Processed {stance.count()} candidacies with pandas UDF")
 
     # Add timestamp metadata
     current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
-        # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values
+        # Prepare a lookup DataFrame with existing br_candidacy_ids and their original created_at values
         existing_created_at_lookup = existing_timestamps
 
         # Left join with this lookup to preserve original created_at values for existing records
-        stance = stance.join(existing_created_at_lookup, on="candidacy_id", how="left")
+        stance = stance.join(
+            existing_created_at_lookup, on="br_candidacy_id", how="left"
+        )
 
         # Use coalesce to keep original created_at for existing records, and set current time for new ones
         stance = stance.withColumn(

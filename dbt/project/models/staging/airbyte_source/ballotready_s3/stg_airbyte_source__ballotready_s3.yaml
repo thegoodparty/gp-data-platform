@@ -3,15 +3,15 @@ models:
   - name: stg_airbyte_source__ballotready_s3_candidacies_v3
     description: Candidacies data load from ballotready csvs in s3 bucket
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         data_tests:
           - not_null
           - unique
-      - name: id
+      - name: br_id
         data_tests:
           - not_null
           - unique
-      - name: election_result
+      - name: result
         data_tests:
           - accepted_values:
               arguments:
@@ -24,7 +24,7 @@ models:
                   - LOSS
                   - ''
               config:
-                where: "election_result is not null"
+                where: "result is not null"
 
   - name: stg_airbyte_source__ballotready_s3_office_holders_v3
     description: Office Holders data load from ballotready csvs in s3 bucket

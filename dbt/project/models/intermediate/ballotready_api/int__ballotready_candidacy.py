@@ -72,22 +72,22 @@ CANDIDACY_SCHEMA = StructType(
 )
 
 
-def _base64_encode_id(candidacy_id: int) -> str:
+def _base64_encode_id(br_candidacy_id: int) -> str:
     """Base64 encodes the candidacy id"""
     id_prefix = "gid://ballot-factory/Candidacy/"
-    prefixed_id = f"{id_prefix}{candidacy_id}"
+    prefixed_id = f"{id_prefix}{br_candidacy_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
     return encoded_id
 
 
 @pandas_udf(StringType())
-def _base64_encode_id_udf(candidacy_id: pd.Series) -> pd.Series:
-    return pd.Series([_base64_encode_id(x) for x in candidacy_id])
+def _base64_encode_id_udf(br_candidacy_id: pd.Series) -> pd.Series:
+    return pd.Series([_base64_encode_id(x) for x in br_candidacy_id])
 
 
 def _get_candidacy_batch(
-    candidacy_ids: List[int],
+    br_candidacy_ids: List[int],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
@@ -101,7 +101,9 @@ def _get_candidacy_batch(
     """
     url = "https://bpi.civicengine.com/graphql"
 
-    encoded_ids = [_base64_encode_id(candidacy_id) for candidacy_id in candidacy_ids]
+    encoded_ids = [
+        _base64_encode_id(br_candidacy_id) for br_candidacy_id in br_candidacy_ids
+    ]
 
     # Construct the payload with the nodes query
     payload = {
@@ -207,7 +209,7 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
     """
 
     @pandas_udf(CANDIDACY_SCHEMA)
-    def get_candidacy(candidacy_ids: pd.Series) -> pd.DataFrame:
+    def get_candidacy(br_candidacy_ids: pd.Series) -> pd.DataFrame:
         """
         Pandas UDF that processes batches of candidacy IDs and returns their candidacies.
 
@@ -218,13 +220,13 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
-        candidacies_by_candidacy_id: Dict[int, Dict[str, Any] | None] = {}
+        candidacies_by_br_candidacy_id: Dict[int, Dict[str, Any] | None] = {}
 
         batch_size = 100
 
-        for i in range(0, len(candidacy_ids), batch_size):
-            batch = candidacy_ids[i : i + batch_size]
-            batch_size_info = f"Batch {i//batch_size + 1}/{(len(candidacy_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
+        for i in range(0, len(br_candidacy_ids), batch_size):
+            batch = br_candidacy_ids[i : i + batch_size]
+            batch_size_info = f"Batch {i//batch_size + 1}/{(len(br_candidacy_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
             try:
@@ -232,7 +234,9 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
                 # process and organize candidacies by candidacy id
                 for candidacy in batch_candidacies:
                     if candidacy:
-                        candidacies_by_candidacy_id[candidacy["databaseId"]] = candidacy
+                        candidacies_by_br_candidacy_id[candidacy["databaseId"]] = (
+                            candidacy
+                        )
 
             except Exception as e:
                 logging.error(f"Error processing candidacy batch: {e}")
@@ -240,8 +244,8 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
 
         # create a list of dictionaries for each candidacy in order of input
         result_data: List[Dict[str, Any]] = []
-        for candidacy_id in candidacy_ids:
-            candidacy = candidacies_by_candidacy_id.get(int(candidacy_id), {})  # type: ignore
+        for br_candidacy_id in br_candidacy_ids:
+            candidacy = candidacies_by_br_candidacy_id.get(int(br_candidacy_id), {})  # type: ignore
             if candidacy:
                 result_data.append(candidacy)
             else:
@@ -305,14 +309,14 @@ def model(dbt, session) -> DataFrame:
             )
 
     # get distinct candidacy IDs
-    candidacy_ids = candidacies_s3.select("candidacy_id").distinct()
+    br_candidacy_ids = candidacies_s3.select("br_candidacy_id").distinct()
 
     # Trigger a cache to ensure these transformations are applied before the filter
-    # if candidacy_id is empty, return empty DataFrame
-    candidacy_ids.cache()
-    candidacy_ids_count = candidacy_ids.count()
+    # if br_candidacy_id is empty, return empty DataFrame
+    br_candidacy_ids.cache()
+    br_candidacy_ids_count = br_candidacy_ids.count()
 
-    if candidacy_ids_count == 0:
+    if br_candidacy_ids_count == 0:
         logging.info("INFO: No new or updated candidacies to process")
         return session.createDataFrame([], CANDIDACY_SCHEMA)
 
@@ -320,8 +324,8 @@ def model(dbt, session) -> DataFrame:
     # this is a slow operation; it helps to downsample during development with
     # dataframe.sample(False, 0.1).limit(1000)
     get_candidacy = _get_candidacy_token(ce_api_token)
-    candidacies = candidacy_ids.withColumn(
-        "candidacy", get_candidacy(col("candidacy_id"))
+    candidacies = br_candidacy_ids.withColumn(
+        "candidacy", get_candidacy(col("br_candidacy_id"))
     )
 
     candidacies = candidacies.select(

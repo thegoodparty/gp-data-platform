@@ -19,25 +19,25 @@ from pyspark.sql.types import (
 )
 
 
-def _base64_encode_id(candidacy_id: str) -> str:
+def _base64_encode_id(br_candidacy_id: str) -> str:
     """
     Encodes a candidacy ID into a base64 string for use with the GraphQL API.
 
     Args:
-        candidacy_id: The ID of the candidacy
+        br_candidacy_id: The ID of the candidacy
 
     Returns:
         A base64 encoded string
     """
     id_prefix = "gid://ballot-factory/Candidacy/"
-    prefixed_id = f"{id_prefix}{candidacy_id}"
+    prefixed_id = f"{id_prefix}{br_candidacy_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
     return encoded_id
 
 
 def _get_endorsements_batch(
-    candidacy_ids: List[str],
+    br_candidacy_ids: List[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
@@ -47,7 +47,7 @@ def _get_endorsements_batch(
     Fetches endorsements for a batch of candidacy IDs from the CivicEngine GraphQL API.
 
     Args:
-        candidacy_ids: List of candidacy IDs to fetch
+        br_candidacy_ids: List of candidacy IDs to fetch
         ce_api_token: API token for CivicEngine
         base_sleep: Base sleep time for backoff
         jitter_factor: Jitter factor for backoff
@@ -57,11 +57,11 @@ def _get_endorsements_batch(
         List of dictionaries containing endorsement data
     """
     url = "https://bpi.civicengine.com/graphql"
-    if not candidacy_ids:
+    if not br_candidacy_ids:
         return []
 
     # Encode candidacy IDs for the GraphQL query
-    encoded_ids = [_base64_encode_id(str(cid)) for cid in candidacy_ids]
+    encoded_ids = [_base64_encode_id(str(cid)) for cid in br_candidacy_ids]
 
     # Process candidacy IDs in batches
     all_endorsements = []
@@ -101,7 +101,7 @@ def _get_endorsements_batch(
     }
 
     try:
-        logging.debug(f"Sending request for {len(candidacy_ids)} candidacies")
+        logging.debug(f"Sending request for {len(br_candidacy_ids)} candidacies")
         response = requests.post(url, json=payload, headers=headers, timeout=timeout)
 
         # Calculate sleep time with jitter to avoid synchronized API calls
@@ -125,7 +125,7 @@ def _get_endorsements_batch(
                 continue
 
             candidacy_db_id = node.get("databaseId")
-            encoded_candidacy_id = node.get("id")
+            encoded_br_candidacy_id = node.get("id")
 
             if not candidacy_db_id:
                 continue
@@ -136,9 +136,9 @@ def _get_endorsements_batch(
 
             # process each endorsement
             for endorsement in endorsements:
-                # Add candidacy_id and encoded_candidacy_id to each stance
-                endorsement["candidacy_id"] = int(candidacy_db_id)
-                endorsement["encoded_candidacy_id"] = encoded_candidacy_id
+                # Add br_candidacy_id and encoded_br_candidacy_id to each stance
+                endorsement["br_candidacy_id"] = int(candidacy_db_id)
+                endorsement["encoded_br_candidacy_id"] = encoded_br_candidacy_id
 
                 # handle timestamps with timezone for pandas -> arrow -> spark
                 endorsement["createdAt"] = pd.to_datetime(endorsement["createdAt"])
@@ -146,7 +146,7 @@ def _get_endorsements_batch(
                 all_endorsements.append(endorsement)
 
         logging.debug(
-            f"Retrieved {len(all_endorsements)} endorsements for {len(candidacy_ids)} candidacies"
+            f"Retrieved {len(all_endorsements)} endorsements for {len(br_candidacy_ids)} candidacies"
         )
         return all_endorsements
 
@@ -178,8 +178,8 @@ endorsement_schema = ArrayType(
                     ]
                 ),
             ),
-            StructField("candidacy_id", IntegerType()),
-            StructField("encoded_candidacy_id", StringType()),
+            StructField("br_candidacy_id", IntegerType()),
+            StructField("encoded_br_candidacy_id", StringType()),
         ]
     )
 )
@@ -199,8 +199,8 @@ Sample output:
             "databaseId": 2227,
             "id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvT3JnYW5pemF0aW9uLzIyMjc="
         },
-        "candidacy_id": 851869,
-        "encoded_candidacy_id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvQ2FuZGlkYWN5Lzg1MTg2OQ=="
+        "br_candidacy_id": 851869,
+        "encoded_br_candidacy_id": "Z2lkOi8vYmFsbG90LWZhY3RvcnkvQ2FuZGlkYWN5Lzg1MTg2OQ=="
     },
     ...
 ]
@@ -219,35 +219,35 @@ def _get_candidacy_endorsements_token(ce_api_token: str) -> Callable:
     """
 
     @pandas_udf(returnType=endorsement_schema)
-    def get_candidacy_endorsements(candidacy_ids: pd.Series) -> pd.Series:
+    def get_candidacy_endorsements(br_candidacy_ids: pd.Series) -> pd.Series:
         """
         Pandas UDF to process candidacy IDs in batches and fetch their endorsements.
 
         Args:
-            candidacy_ids: Series of candidacy IDs
+            br_candidacy_ids: Series of candidacy IDs
 
         Returns:
             Series of endorsement data
         """
         # Create a map to store endorsements by candidacy ID
         endorsements_by_candidacy: Dict[int, List[Any]] = {}
-        candidacy_ids = candidacy_ids.tolist()
+        br_candidacy_ids = br_candidacy_ids.tolist()
 
         # Set batch size for API calls
         batch_size = 100
 
         # Process candidacies in batches
-        for i in range(0, len(candidacy_ids), batch_size):
-            batch = candidacy_ids[i : i + batch_size]
-            batch_size_info = f"Batch {i//batch_size + 1}/{(len(candidacy_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
+        for i in range(0, len(br_candidacy_ids), batch_size):
+            batch = br_candidacy_ids[i : i + batch_size]
+            batch_size_info = f"Batch {i//batch_size + 1}/{(len(br_candidacy_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
             try:
                 batch_response = _get_endorsements_batch(batch, ce_api_token)
 
-                # Organize endorsements by candidacy_id
+                # Organize endorsements by br_candidacy_id
                 for endorsement in batch_response:
-                    cid = endorsement["candidacy_id"]
+                    cid = endorsement["br_candidacy_id"]
                     if cid not in endorsements_by_candidacy:
                         endorsements_by_candidacy[cid] = []
                     endorsements_by_candidacy[cid].append(endorsement)
@@ -257,7 +257,7 @@ def _get_candidacy_endorsements_token(ce_api_token: str) -> Callable:
 
         # Create result series mapping each candidacy ID to its endorsements array
         result = pd.Series(
-            [endorsements_by_candidacy.get(int(cid), []) for cid in candidacy_ids]
+            [endorsements_by_candidacy.get(int(cid), []) for cid in br_candidacy_ids]
         )
         return result
 
@@ -281,7 +281,7 @@ def model(dbt, session) -> DataFrame:
         http_path="sql/protocolv1/o/3578414625112071/0409-211859-6hzpukya",  # required for .cache()
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="candidacy_id",
+        unique_key="br_candidacy_id",
         on_schema_change="fail",
         tags=["ballotready", "endorsement", "api", "pandas_udf"],
     )
@@ -309,7 +309,7 @@ def model(dbt, session) -> DataFrame:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
         existing_timestamps = existing_table.select(
-            "candidacy_id", "created_at"
+            "br_candidacy_id", "created_at"
         ).distinct()
 
         # Get maximum updated_at from existing table
@@ -346,7 +346,7 @@ def model(dbt, session) -> DataFrame:
         # Create empty DataFrame with the expected schema
         schema = StructType(
             [
-                StructField("candidacy_id", IntegerType()),
+                StructField("br_candidacy_id", IntegerType()),
                 StructField("endorsements", endorsement_schema),
                 StructField("created_at", TimestampType()),
                 StructField("updated_at", TimestampType()),
@@ -360,27 +360,27 @@ def model(dbt, session) -> DataFrame:
     # Process candidacies using the pandas UDF for parallel processing
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
-    # Create a DataFrame with just candidacy_ids for processing
+    # Create a DataFrame with just br_candidacy_ids for processing
     endorsement = candidacies.select(
-        col("candidacy_id").cast("integer").alias("candidacy_id")
+        col("br_candidacy_id").cast("integer").alias("br_candidacy_id")
     )
 
     # Apply the pandas UDF to get endorsements for each candidacy
     get_candidacy_endorsements = _get_candidacy_endorsements_token(ce_api_token)
     endorsement = endorsement.withColumn(
-        "endorsements", get_candidacy_endorsements("candidacy_id")
+        "endorsements", get_candidacy_endorsements("br_candidacy_id")
     )
 
     # Add timestamp metadata
     current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
-        # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values
+        # Prepare a lookup DataFrame with existing br_candidacy_ids and their original created_at values
         existing_created_at_lookup = existing_timestamps
 
         # Left join with this lookup to preserve original created_at values for existing records
         endorsement = endorsement.join(
-            existing_created_at_lookup, on="candidacy_id", how="left"
+            existing_created_at_lookup, on="br_candidacy_id", how="left"
         )
 
         # Use coalesce to keep original created_at for existing records, and set current time for new ones

@@ -18,25 +18,25 @@ from pyspark.sql.types import (
 )
 
 
-def _base64_encode_id(geofence_id: str) -> str:
+def _base64_encode_id(br_geofence_id: str) -> str:
     """
     Encodes a geofence ID into the format required by CivicEngine API.
 
     Args:
-        geofence_id: The raw geofence ID to encode.
+        br_geofence_id: The raw geofence ID to encode.
 
     Returns:
         The base64-encoded ID string with the proper prefix.
     """
     id_prefix = "gid://ballot-factory/Geofence/"
-    prefixed_id = f"{id_prefix}{geofence_id}"
+    prefixed_id = f"{id_prefix}{br_geofence_id}"
     encoded_bytes: bytes = b64encode(prefixed_id.encode("utf-8"))
     encoded_id: str = encoded_bytes.decode("utf-8")
     return encoded_id
 
 
 def _get_geofences_batch(
-    geofence_ids: List[str],
+    br_geofence_ids: List[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
@@ -46,7 +46,7 @@ def _get_geofences_batch(
     Fetches geofences for a batch of geo IDs using the CivicEngine API.
 
     Args:
-        geofence_ids: List of geofence IDs to fetch geofences for
+        br_geofence_ids: List of geofence IDs to fetch geofences for
         ce_api_token: Authentication token for the CivicEngine API
         base_sleep: Base number of seconds to sleep after making an API call
         jitter_factor: Random factor to apply to sleep time (0.5 means ±50% of base_sleep)
@@ -58,7 +58,9 @@ def _get_geofences_batch(
     url = "https://bpi.civicengine.com/graphql"
 
     # Encode all geo IDs
-    encoded_ids = [_base64_encode_id(str(geofence_id)) for geofence_id in geofence_ids]
+    encoded_ids = [
+        _base64_encode_id(str(br_geofence_id)) for br_geofence_id in br_geofence_ids
+    ]
 
     # Construct the payload with the nodes query
     payload = {
@@ -136,7 +138,7 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
     """Wraps the token in a pandas UDF for proper order of operations."""
 
     @pandas_udf(returnType=geofence_schema)
-    def get_geofence(geofence_ids: pd.Series) -> pd.DataFrame:
+    def get_geofence(br_geofence_ids: pd.Series) -> pd.DataFrame:
         """
         Pandas UDF that processes batches of geofence IDs and returns their geofences.
 
@@ -145,21 +147,21 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
         batched for efficient API calls.
 
         Args:
-            geofence_ids: Series of geofence IDs to process
+            br_geofence_ids: Series of geofence IDs to process
         """
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        geofences_by_geofence_id: Dict[int, Dict[str, Any] | None] = {}
+        geofences_by_br_geofence_id: Dict[int, Dict[str, Any] | None] = {}
 
         # Set batch size for API calls
         batch_size = 100
 
         # Process geo IDs in batches
-        for i in range(0, len(geofence_ids), batch_size):
-            batch = geofence_ids[i : i + batch_size]
-            batch_size_info = f"Batch {i//batch_size + 1}/{(len(geofence_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
+        for i in range(0, len(br_geofence_ids), batch_size):
+            batch = br_geofence_ids[i : i + batch_size]
+            batch_size_info = f"Batch {i//batch_size + 1}/{(len(br_geofence_ids) + batch_size - 1)//batch_size}, size: {len(batch)}"
             logging.debug(f"Processing {batch_size_info}")
 
             try:
@@ -180,18 +182,18 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
                     ...
                 ]
                 """
-                # Organize geofences by geofence_id
+                # Organize geofences by br_geofence_id
                 for geofence in batch_geofences:
-                    geofence_id = int(geofence["databaseId"])
-                    geofences_by_geofence_id[geofence_id] = geofence
+                    br_geofence_id = int(geofence["databaseId"])
+                    geofences_by_br_geofence_id[br_geofence_id] = geofence
             except Exception as e:
                 logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
 
         # Create a list of dictionaries for each geofence in order of input
         result_data: List[Dict[str, Any]] = []
-        for geofence_id in geofence_ids:
+        for br_geofence_id in br_geofence_ids:
             try:
-                geofence = geofences_by_geofence_id.get(int(geofence_id), {})  # type: ignore
+                geofence = geofences_by_br_geofence_id.get(int(br_geofence_id), {})  # type: ignore
                 if geofence:
                     result_data.append(
                         {
@@ -215,14 +217,14 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
                     )
                 else:
                     # Raise error for missing geofences since they are required
-                    encoded_id = _base64_encode_id(str(geofence_id))
+                    encoded_id = _base64_encode_id(str(br_geofence_id))
                     raise ValueError(
-                        f"No geofence data found for geofence_id: {geofence_id}, encoded_id: {encoded_id}"
+                        f"No geofence data found for br_geofence_id: {br_geofence_id}, encoded_id: {encoded_id}"
                     )
             except Exception as e:
-                encoded_id = _base64_encode_id(str(geofence_id))
+                encoded_id = _base64_encode_id(str(br_geofence_id))
                 logging.error(
-                    f"Failed to process geofence_id: {geofence_id}, encoded_id: {encoded_id}. Error: {str(e)}"
+                    f"Failed to process br_geofence_id: {br_geofence_id}, encoded_id: {encoded_id}. Error: {str(e)}"
                 )
                 # Append a row with nulls instead of raising an error
                 result_data.append(
@@ -306,15 +308,17 @@ def model(dbt, session) -> DataFrame:
 
         # get all unique geo id after the latest updated_at date
         geofence = (
-            candidacy_df.select("geofence_id", "candidacy_updated_at")
+            candidacy_df.select("br_geofence_id", "candidacy_updated_at")
             .filter(col("candidacy_updated_at") > latest_updated_at)
-            .dropDuplicates(["geofence_id"])
+            .dropDuplicates(["br_geofence_id"])
         )
     else:
-        geofence = candidacy_df.select("geofence_id").dropDuplicates(["geofence_id"])
+        geofence = candidacy_df.select("br_geofence_id").dropDuplicates(
+            ["br_geofence_id"]
+        )
 
     # Trigger a cache to ensure these transformations are applied before the filter
-    # if geofence_id is empty, return empty DataFrame
+    # if br_geofence_id is empty, return empty DataFrame
     geofence.cache()
     geofence_count = geofence.count()
     if geofence_count == 0:
@@ -328,7 +332,7 @@ def model(dbt, session) -> DataFrame:
     get_geofence = _get_geofence_token(ce_api_token)
 
     # First get the geofence data as a struct, then extract each field into its own column
-    geofence = geofence.withColumn("geofence_data", get_geofence(col("geofence_id")))
+    geofence = geofence.withColumn("geofence_data", get_geofence(col("br_geofence_id")))
     result = geofence.select(
         col("geofence_data.createdAt").alias("created_at"),
         col("geofence_data.databaseId").alias("database_id"),
