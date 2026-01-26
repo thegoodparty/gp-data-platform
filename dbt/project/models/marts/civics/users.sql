@@ -12,12 +12,13 @@ with
     serve_users as (
         /*
             For metrics, this is our proxy for whether the user is a "serve"
-            user
+            user. eo_activated_at is the earliest poll creation date.
         */
-        select distinct eo.user_id
+        select eo.user_id, min(p.created_at) as eo_activated_at
         from elected_offices eo
         inner join polls p on eo.id = p.elected_office_id
         where p.is_completed = true
+        group by eo.user_id
     ),
 
     campaign_stats as (
@@ -63,7 +64,8 @@ with
             coalesce(cs.verified_campaign_count > 0, false) as has_verified_campaign,
             coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign,
 
-            case when su.user_id is not null then true else false end as is_serve_user
+            case when su.user_id is not null then true else false end as is_serve_user,
+            su.eo_activated_at
         from users u
         left join campaign_stats cs on u.id = cs.user_id
         left join serve_users su on u.id = su.user_id
