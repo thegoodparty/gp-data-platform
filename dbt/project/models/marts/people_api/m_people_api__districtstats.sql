@@ -73,6 +73,16 @@ with
         where type = 'State'
     ),
 
+    {% if is_incremental() %}
+        -- Identify states with updated voters (for incremental runs)
+        updated_state_ids as (
+            select distinct state_districts.district_id
+            from {{ ref("m_people_api__voter") }} as voter
+            inner join updated_voter_ids on voter.id = updated_voter_ids.voter_id
+            inner join state_districts on voter.state = state_districts.state
+        ),
+    {% endif %}
+
     -- Join districtvoter with voter data to get demographics per district
     voters_with_districts as (
         -- Existing district-level voter associations
@@ -94,6 +104,7 @@ with
         union all
 
         -- State-level voter associations for statewide positions
+        -- For incremental: get ALL voters for states that have updated voters
         select
             state_districts.district_id,
             voter.id as voter_id,
@@ -107,7 +118,9 @@ with
         from {{ ref("m_people_api__voter") }} as voter
         inner join state_districts on voter.state = state_districts.state
         {% if is_incremental() %}
-            inner join updated_voter_ids on voter.id = updated_voter_ids.voter_id
+            inner join
+                updated_state_ids
+                on state_districts.district_id = updated_state_ids.district_id
         {% endif %}
     ),
 
