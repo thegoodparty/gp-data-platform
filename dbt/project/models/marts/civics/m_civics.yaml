@@ -89,6 +89,12 @@ models:
         data_tests:
           - not_null
 
+      - name: eo_activated_at
+        description: >
+          Timestamp when the user became a "Serve" user. This is the creation
+          timestamp of their first completed poll. NULL for users who are not
+          Serve users (is_serve_user = false).
+
   - name: campaigns
     description: >
       Goodparty.org application campaigns.

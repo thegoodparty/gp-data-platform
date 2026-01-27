@@ -68,7 +68,7 @@ with
             tbl_match.top_embedding_score
         from zip_code_within_state_range as tbl_zip
         left join
-            {{ ref("stg_model_predictions__llm_l2_br_match_20250811") }} as tbl_match
+            {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as tbl_match
             on lower(tbl_zip.exploded_district_name) = lower(tbl_match.l2_district_name)
             and lower(tbl_zip.district_type) = lower(tbl_match.l2_district_type)
             and lower(tbl_zip.state_postal_code) = lower(tbl_match.state)
