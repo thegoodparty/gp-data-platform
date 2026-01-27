@@ -130,19 +130,11 @@ with
         group by state_postal_code, district_type, district_name
     ),
 
-    -- Step 6: State-level aggregations for statewide positions (Governor, US Senate,
-    -- etc.)
-    -- These positions are matched to l2_district_type='State' and
-    -- l2_district_name=state_postal_code
-    state_aggregations as (
-        select
-            state_postal_code,
-            'State' as district_type,
-            state_postal_code as district_name,
-            count(distinct lalvoterid) as voter_count,
-            max(loaded_at) as loaded_at
-        from {{ ref("int__l2_nationwide_uniform") }}
+    -- Step 6: Identify states with new data (for incremental runs only)
+    states_with_new_data as (
         {% if is_incremental() %}
+            select distinct state_postal_code
+            from {{ ref("int__l2_nationwide_uniform") }}
             where
                 loaded_at > coalesce(
                     (
@@ -152,11 +144,33 @@ with
                     ),
                     '1900-01-01'
                 )
+        {% else %}
+            -- For full refresh, this CTE is not used
+            select null as state_postal_code where false
         {% endif %}
-        group by state_postal_code
     ),
 
-    -- Step 7: Combine district and state aggregations
+    -- Step 7: State-level aggregations for statewide positions (Governor, US Senate,
+    -- etc.)
+    -- These positions are matched to l2_district_type='State' and
+    -- l2_district_name=state_postal_code
+    -- For incremental runs, re-aggregate ALL voters for states with new data
+    state_aggregations as (
+        select
+            l2.state_postal_code,
+            'State' as district_type,
+            l2.state_postal_code as district_name,
+            count(distinct l2.lalvoterid) as voter_count,
+            max(l2.loaded_at) as loaded_at
+        from {{ ref("int__l2_nationwide_uniform") }} l2
+        {% if is_incremental() %}
+            inner join
+                states_with_new_data s on l2.state_postal_code = s.state_postal_code
+        {% endif %}
+        group by l2.state_postal_code
+    ),
+
+    -- Step 8: Combine district and state aggregations
     all_aggregations as (
         select *
         from district_aggregations
