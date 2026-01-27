@@ -92,7 +92,7 @@ select
     updated_at,
     created_at
 
-from {{ ref("stg_archives__hubspot_api_contacts_20260122") }}
+from {{ ref("int__hubspot_contacts_archive_2025") }}
 where
     1 = 1
     and properties_official_office_name is not null

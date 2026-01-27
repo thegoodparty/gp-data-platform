@@ -65,7 +65,7 @@ select
     -- Metadata
     tbl_hs_contacts.created_at,
     tbl_hs_contacts.updated_at
-from {{ ref("stg_archives__hubspot_api_contacts_20260122") }} tbl_hs_contacts
+from {{ ref("int__hubspot_contacts_archive_2025") }} tbl_hs_contacts
 left join
     {{ ref("clean_states") }} as tbl_states
     on trim(upper(tbl_hs_contacts.properties_state)) = tbl_states.state_raw

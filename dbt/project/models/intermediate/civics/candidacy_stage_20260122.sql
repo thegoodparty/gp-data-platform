@@ -98,7 +98,7 @@ with
             candidacy_companies as companies
             on tbl_contacts.gp_candidacy_id = companies.gp_candidacy_id
         left join
-            {{ ref("stg_archives__hubspot_api_companies_20260122") }} as hs_companies
+            {{ ref("int__hubspot_companies_archive_2025") }} as hs_companies
             on companies.company_id = hs_companies.id
         qualify
             row_number() over (

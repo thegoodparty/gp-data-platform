@@ -25,7 +25,7 @@ with
             regexp_extract(
                 tbl_engagements.associations_contactids, '\\[(\\d+)\\]', 1
             ) as contact_id_association
-        from {{ ref("stg_archives__hubspot_api_companies_20260122") }} as tbl_companies
+        from {{ ref("int__hubspot_companies_archive_2025") }} as tbl_companies
         left join
             {{ ref("stg_archives__hubspot_api_engagements_20260122") }}
             as tbl_engagements
@@ -157,19 +157,21 @@ with
             ) as filing_deadline,
             tbl_gp_db_campaign.details:`filingDeadline`::string
             as filing_deadline_gp_db,
+            -- Prioritize archived data over live GP DB for 2025 archive
             coalesce(
+                tbl_contacts.primary_election_date,
+                tbl_companies.properties_primary_date,
                 try_cast(
                     tbl_gp_db_campaign.details:`primaryElectionDate`::string as date
-                ),
-                tbl_contacts.primary_election_date,
-                tbl_companies.properties_primary_date
+                )
             ) as primary_election_date,
             tbl_gp_db_campaign.details:`primaryElectionDate`::string
             as primary_election_date_gp_db,
+            -- Prioritize archived data over live GP DB for 2025 archive
             coalesce(
-                try_cast(tbl_gp_db_campaign.details:`electionDate`::string as date),
                 tbl_contacts.general_election_date,
-                tbl_companies.properties_election_date
+                tbl_companies.properties_election_date,
+                try_cast(tbl_gp_db_campaign.details:`electionDate`::string as date)
             ) as general_election_date,
             tbl_gp_db_campaign.details:`electionDate`::string
             as general_election_date_gp_db,
@@ -244,7 +246,7 @@ with
             extracted_engagements as tbl_engagements
             on tbl_contacts.id = tbl_engagements.contact_id_association
         left join
-            {{ ref("stg_archives__hubspot_api_companies_20260122") }} as tbl_companies
+            {{ ref("int__hubspot_companies_archive_2025") }} as tbl_companies
             on tbl_companies.id = tbl_engagements.company_id_association
         left join
             {{ ref("clean_states") }} as tbl_states_company
