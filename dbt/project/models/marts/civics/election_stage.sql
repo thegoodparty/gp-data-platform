@@ -17,4 +17,4 @@ select
     total_votes_cast,
     created_at
 
-from {{ ref("election_stage_20260122") }}
+from {{ ref("election_stage_2025") }}

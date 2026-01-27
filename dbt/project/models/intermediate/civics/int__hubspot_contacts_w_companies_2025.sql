@@ -241,7 +241,7 @@ with
                 else 0
             end as name_match
 
-        from {{ ref("int__hubspot_contacts_20260122") }} as tbl_contacts
+        from {{ ref("int__hubspot_contacts_2025") }} as tbl_contacts
         left join
             extracted_engagements as tbl_engagements
             on tbl_contacts.id = tbl_engagements.contact_id_association

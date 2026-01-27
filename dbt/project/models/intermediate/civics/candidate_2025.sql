@@ -52,7 +52,7 @@ with
                 else 1
             end as user_rank
 
-        from {{ ref("int__hubspot_contacts_w_companies_20260122") }} as tbl_hs_contacts
+        from {{ ref("int__hubspot_contacts_w_companies_2025") }} as tbl_hs_contacts
         left join
             {{ ref("stg_airbyte_source__gp_api_db_user") }} as tbl_gp_user
             on tbl_hs_contacts.contact_id = tbl_gp_user.meta_data:hubspotid::string

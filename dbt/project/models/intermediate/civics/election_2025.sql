@@ -35,9 +35,9 @@ with
             end as has_ddhq_match,
             tbl_contest.created_at,
             tbl_contest.updated_at
-        from {{ ref("int__hubspot_contest_20260122") }} as tbl_contest
+        from {{ ref("int__hubspot_contest_2025") }} as tbl_contest
         left join
-            {{ ref("candidacy_20260122") }} as tbl_candidacy
+            {{ ref("candidacy_2025") }} as tbl_candidacy
             on tbl_candidacy.hubspot_contact_id = tbl_contest.contact_id
         left join
             {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}

@@ -12,7 +12,7 @@ with
     -- Get one company_id per gp_candidacy_id to avoid duplicates
     candidacy_companies as (
         select gp_candidacy_id, company_id
-        from {{ ref("int__hubspot_contacts_w_companies_20260122") }}
+        from {{ ref("int__hubspot_contacts_w_companies_2025") }}
         where company_id is not null
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
@@ -84,7 +84,7 @@ with
             tbl_ddhq_election_results_source.date as election_stage_date,
             tbl_contacts.created_at,
             tbl_contacts.updated_at
-        from {{ ref("int__hubspot_contacts_w_companies_20260122") }} as tbl_contacts
+        from {{ ref("int__hubspot_contacts_w_companies_2025") }} as tbl_contacts
         left join
             {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
             on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
@@ -116,11 +116,11 @@ with
     ),
 
     -- Only include candidacy_stages that have a matching candidacy in the archive
-    valid_candidacies as (select gp_candidacy_id from {{ ref("candidacy_20260122") }}),
+    valid_candidacies as (select gp_candidacy_id from {{ ref("candidacy_2025") }}),
 
     -- Only include candidacy_stages that have a matching election_stage in the archive
     valid_election_stages as (
-        select gp_election_stage_id from {{ ref("election_stage_20260122") }}
+        select gp_election_stage_id from {{ ref("election_stage_2025") }}
     ),
 
     -- Filter to valid records

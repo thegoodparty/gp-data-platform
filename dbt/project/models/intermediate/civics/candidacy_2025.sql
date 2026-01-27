@@ -45,12 +45,12 @@ with
             tbl_contacts.created_at,
             tbl_contacts.updated_at
 
-        from {{ ref("int__hubspot_contacts_w_companies_20260122") }} as tbl_contacts
+        from {{ ref("int__hubspot_contacts_w_companies_2025") }} as tbl_contacts
         left join
-            {{ ref("candidate_20260122") }} as tbl_candidates
+            {{ ref("candidate_2025") }} as tbl_candidates
             on tbl_contacts.contact_id = tbl_candidates.hubspot_contact_id
         left join
-            {{ ref("int__hubspot_contest_20260122") }} as tbl_contest
+            {{ ref("int__hubspot_contest_2025") }} as tbl_contest
             on tbl_contest.contact_id = tbl_contacts.contact_id
         left join
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores

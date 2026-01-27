@@ -201,7 +201,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('candidate_20260122')
+                to: ref('candidate_2025')
                 field: gp_candidate_id
               config:
                 where: "gp_candidate_id is not null"
@@ -401,7 +401,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('candidacy_20260122')
+                to: ref('candidacy_2025')
                 field: gp_candidacy_id
               config:
                 warn_if: ">0"
@@ -412,7 +412,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('election_stage_20260122')
+                to: ref('election_stage_2025')
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
@@ -632,7 +632,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('election_20260122')
+                to: ref('election_2025')
                 field: gp_election_id
               config:
                 warn_if: ">0"
