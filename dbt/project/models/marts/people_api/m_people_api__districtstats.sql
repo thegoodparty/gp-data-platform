@@ -10,6 +10,7 @@
 
 -- databricks_compute='serverless_medium', -- 310 s
 -- default xxs serverless compute: 1950 s
+-- default xs serverless compute: ~1070 s (18 min)
 /*
 This model creates district statistics by aggregating voter demographic data per district.
 It computes bucket distributions for age, homeowner status, education, presence of children,
@@ -65,8 +66,16 @@ with
         ),
     {% endif %}
 
+    -- Get state-level district IDs for statewide positions (Governor, US Senate, etc.)
+    state_districts as (
+        select id as district_id, state
+        from {{ ref("m_people_api__district") }}
+        where type = 'State'
+    ),
+
     -- Join districtvoter with voter data to get demographics per district
     voters_with_districts as (
+        -- Existing district-level voter associations
         select
             districtvoter.district_id,
             districtvoter.voter_id,
@@ -81,6 +90,25 @@ with
         inner join
             {{ ref("m_people_api__voter") }} as voter
             on districtvoter.voter_id = voter.id
+
+        union all
+
+        -- State-level voter associations for statewide positions
+        select
+            state_districts.district_id,
+            voter.id as voter_id,
+            voter.age_int,
+            voter.homeowner_probability_model,
+            voter.education_of_person,
+            voter.presence_of_children,
+            voter.estimated_income_amount_int,
+            voter.votertelephones_cellphoneformatted,
+            voter.updated_at
+        from {{ ref("m_people_api__voter") }} as voter
+        inner join state_districts on voter.state = state_districts.state
+        {% if is_incremental() %}
+            inner join updated_voter_ids on voter.id = updated_voter_ids.voter_id
+        {% endif %}
     ),
 
     -- Add age and income bucket label columns
