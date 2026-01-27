@@ -94,6 +94,10 @@ models:
           Timestamp when the user became a "Serve" user. This is the creation
           timestamp of their first completed poll. NULL for users who are not
           Serve users (is_serve_user = false).
+        data_tests:
+          - not_null:
+              config:
+                where: "is_serve_user = true"
 
   - name: campaigns
     description: >
