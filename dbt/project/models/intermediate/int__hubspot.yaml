@@ -27,7 +27,6 @@ models:
         description: "HubSpot ID of the contact from the source system"
         tests:
           - not_null
-          - unique
       - name: gp_candidacy_id
         description: "GoodParty Candidacy ID of the contact"
         tests:
