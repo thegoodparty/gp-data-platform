@@ -7,54 +7,54 @@
 
 -- Historical archive of candidacies from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
--- Inlines m_general__candidacy_v2 logic for self-contained archive
+-- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
     candidacies as (
         select
             -- Identifiers
-            tbl_contacts.gp_candidacy_id,
+            tbl_companies.gp_candidacy_id,
             'candidacy_id-tbd' as candidacy_id,
             tbl_candidates.gp_candidate_id as gp_candidate_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
-            tbl_contacts.product_campaign_id,
-            tbl_contacts.contact_id as hubspot_contact_id,
-            tbl_contacts.extra_companies as hubspot_company_ids,
-            tbl_contacts.candidate_id_source,
+            tbl_companies.product_campaign_id,
+            tbl_companies.contact_id as hubspot_contact_id,
+            tbl_companies.extra_companies as hubspot_company_ids,
+            tbl_companies.candidate_id_source,
 
             -- candidacy information
-            tbl_contacts.party_affiliation,
-            tbl_contacts.is_incumbent,
-            tbl_contacts.is_open_seat,
-            tbl_contacts.candidate_office,
-            tbl_contacts.official_office_name,
-            tbl_contacts.office_level,
-            tbl_contacts.candidacy_result,
-            tbl_contacts.pledge_status,
-            tbl_contacts.verified_candidate,
-            tbl_contacts.is_partisan,
-            tbl_contacts.primary_election_date,
-            tbl_contacts.general_election_date,
-            tbl_contacts.runoff_election_date,
+            tbl_companies.party_affiliation,
+            tbl_companies.is_incumbent,
+            tbl_companies.is_open_seat,
+            tbl_companies.candidate_office,
+            tbl_companies.official_office_name,
+            tbl_companies.office_level,
+            tbl_companies.candidacy_result,
+            tbl_companies.pledge_status,
+            tbl_companies.verified_candidate,
+            tbl_companies.is_partisan,
+            tbl_companies.primary_election_date,
+            tbl_companies.general_election_date,
+            tbl_companies.runoff_election_date,
 
             -- assessments
             viability_scores.viability_rating_2_0 as viability_score,
-            cast(cast(tbl_contacts.win_number as float) as int) as win_number,
-            tbl_contacts.win_number_model,
+            cast(cast(tbl_companies.win_number as float) as int) as win_number,
+            tbl_companies.win_number_model,
 
             -- loading data
-            tbl_contacts.created_at,
-            tbl_contacts.updated_at
+            tbl_companies.created_at,
+            tbl_companies.updated_at
 
-        from {{ ref("int__hubspot_contacts_w_companies_2025") }} as tbl_contacts
+        from {{ ref("int__hubspot_companies_w_contacts_2025") }} as tbl_companies
         left join
             {{ ref("candidate_2025") }} as tbl_candidates
-            on tbl_contacts.contact_id = tbl_candidates.hubspot_contact_id
+            on tbl_companies.contact_id = tbl_candidates.hubspot_contact_id
         left join
             {{ ref("int__hubspot_contest_2025") }} as tbl_contest
-            on tbl_contest.contact_id = tbl_contacts.contact_id
+            on tbl_contest.contact_id = tbl_companies.contact_id
         left join
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
-            on tbl_contacts.company_id = viability_scores.id
+            on tbl_companies.company_id = viability_scores.id
     ),
 
     -- Filter to elections on or before 2025-12-31

@@ -306,9 +306,7 @@ models:
                 regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
       - name: hubspot_contact_id
-        description: Contact ID from HubSpot CRM
-        data_tests:
-          - not_null
+        description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
 
       - name: prod_db_user_id
         description: User ID from the GoodParty production database
@@ -375,8 +373,9 @@ models:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
           config:
-            error_if: ">10"
-            warn_if: ">0"
+            # Companies without associated contacts may have null names
+            error_if: ">200"
+            warn_if: ">150"
 
   - name: candidacy_stage
     description: >

@@ -7,36 +7,36 @@
 
 -- Historical archive of candidates from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
--- Inlines m_general__candidate_v2 logic for self-contained archive
+-- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
     ranked_candidates as (
         select
-            tbl_hs_contacts.contact_id as hubspot_contact_id,
+            tbl_hs_companies.contact_id as hubspot_contact_id,
             tbl_gp_user.id as prod_db_user_id,
-            tbl_hs_contacts.candidate_id_tier,
+            tbl_hs_companies.candidate_id_tier,
 
             -- Candidate information
             -- Data source follows the following hierarchy:
             -- gp db -> hs.companies -> hs.contact
-            coalesce(tbl_gp_user.first_name, tbl_hs_contacts.first_name) as first_name,
-            coalesce(tbl_gp_user.last_name, tbl_hs_contacts.last_name) as last_name,
-            coalesce(tbl_gp_user.name, tbl_hs_contacts.full_name) as full_name,
-            tbl_hs_contacts.birth_date,
-            tbl_hs_contacts.state,
-            coalesce(tbl_gp_user.email, tbl_hs_contacts.email) as email,
-            coalesce(tbl_gp_user.phone, tbl_hs_contacts.phone_number) as phone_number,
-            tbl_hs_contacts.street_address,
+            coalesce(tbl_gp_user.first_name, tbl_hs_companies.first_name) as first_name,
+            coalesce(tbl_gp_user.last_name, tbl_hs_companies.last_name) as last_name,
+            coalesce(tbl_gp_user.name, tbl_hs_companies.full_name) as full_name,
+            tbl_hs_companies.birth_date,
+            tbl_hs_companies.state,
+            coalesce(tbl_gp_user.email, tbl_hs_companies.email) as email,
+            coalesce(tbl_gp_user.phone, tbl_hs_companies.phone_number) as phone_number,
+            tbl_hs_companies.street_address,
 
             -- Social media links
-            tbl_hs_contacts.website_url,
-            tbl_hs_contacts.linkedin_url,
-            tbl_hs_contacts.twitter_handle,
-            tbl_hs_contacts.facebook_url,
-            tbl_hs_contacts.instagram_handle,
+            tbl_hs_companies.website_url,
+            tbl_hs_companies.linkedin_url,
+            tbl_hs_companies.twitter_handle,
+            tbl_hs_companies.facebook_url,
+            tbl_hs_companies.instagram_handle,
 
             -- metadata timestamps
-            tbl_hs_contacts.created_at,
-            tbl_hs_contacts.updated_at,
+            tbl_hs_companies.created_at,
+            tbl_hs_companies.updated_at,
 
             -- Rank records by updated_at when prod_db_user_id is not null
             case
@@ -44,22 +44,22 @@ with
                 then
                     row_number() over (
                         partition by
-                            tbl_hs_contacts.contact_id,
-                            tbl_hs_contacts.gp_candidacy_id,
+                            tbl_hs_companies.contact_id,
+                            tbl_hs_companies.gp_candidacy_id,
                             tbl_gp_user.id
                         order by tbl_gp_user.updated_at desc
                     )
                 else 1
             end as user_rank
 
-        from {{ ref("int__hubspot_contacts_w_companies_2025") }} as tbl_hs_contacts
+        from {{ ref("int__hubspot_companies_w_contacts_2025") }} as tbl_hs_companies
         left join
             {{ ref("stg_airbyte_source__gp_api_db_user") }} as tbl_gp_user
-            on tbl_hs_contacts.contact_id = tbl_gp_user.meta_data:hubspotid::string
+            on tbl_hs_companies.contact_id = tbl_gp_user.meta_data:hubspotid::string
         qualify
             row_number() over (
-                partition by tbl_hs_contacts.gp_candidacy_id
-                order by tbl_hs_contacts.updated_at desc
+                partition by tbl_hs_companies.gp_candidacy_id
+                order by tbl_hs_companies.updated_at desc
             )
             = 1
     ),

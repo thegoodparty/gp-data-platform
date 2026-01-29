@@ -7,12 +7,12 @@
 
 -- Historical archive of candidacy stages from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
--- Inlines m_general__candidacy_stage logic for self-contained archive
+-- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
     -- Get one company_id per gp_candidacy_id to avoid duplicates
     candidacy_companies as (
         select gp_candidacy_id, company_id
-        from {{ ref("int__hubspot_contacts_w_companies_2025") }}
+        from {{ ref("int__hubspot_companies_w_contacts_2025") }}
         where company_id is not null
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
@@ -25,12 +25,12 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "tbl_contacts.gp_candidacy_id",
+                        "tbl_companies.gp_candidacy_id",
                         "tbl_ddhq_matches.ddhq_race_id",
                     ]
                 )
             }} as gp_candidacy_stage_id,
-            tbl_contacts.gp_candidacy_id,
+            tbl_companies.gp_candidacy_id,
             case
                 when tbl_ddhq_matches.ddhq_race_id is not null
                 then
@@ -82,12 +82,12 @@ with
             tbl_ddhq_matches.has_match,
             tbl_ddhq_election_results_source.votes as votes_received,
             tbl_ddhq_election_results_source.date as election_stage_date,
-            tbl_contacts.created_at,
-            tbl_contacts.updated_at
-        from {{ ref("int__hubspot_contacts_w_companies_2025") }} as tbl_contacts
+            tbl_companies.created_at,
+            tbl_companies.updated_at
+        from {{ ref("int__hubspot_companies_w_contacts_2025") }} as tbl_companies
         left join
             {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
-            on tbl_contacts.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
+            on tbl_companies.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
             as tbl_ddhq_election_results_source
@@ -96,7 +96,7 @@ with
             = tbl_ddhq_matches.ddhq_candidate_id
         left join
             candidacy_companies as companies
-            on tbl_contacts.gp_candidacy_id = companies.gp_candidacy_id
+            on tbl_companies.gp_candidacy_id = companies.gp_candidacy_id
         left join
             {{ ref("int__hubspot_companies_archive_2025") }} as hs_companies
             on companies.company_id = hs_companies.id
