@@ -348,13 +348,13 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "tbl_contacts.first_name",
-                        "tbl_contacts.last_name",
-                        "tbl_contacts.state",
-                        "tbl_contacts.party_affiliation",
-                        "tbl_contacts.candidate_office",
+                        "coalesce(tbl_contacts.first_name, '')",
+                        "coalesce(tbl_contacts.last_name, '')",
+                        "coalesce(tbl_contacts.state, '')",
+                        "coalesce(tbl_contacts.party_affiliation, '')",
+                        "coalesce(tbl_contacts.candidate_office, '')",
                         "tbl_contacts.general_election_date",
-                        "tbl_contacts.district",
+                        "coalesce(tbl_contacts.district, '')",
                     ]
                 )
             }} as gp_candidacy_id,
