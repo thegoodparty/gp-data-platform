@@ -9,16 +9,6 @@
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
-    -- Get one company_id per gp_candidacy_id to avoid duplicates
-    candidacy_companies as (
-        select gp_candidacy_id, company_id
-        from {{ ref("int__hubspot_companies_w_contacts_2025") }}
-        where company_id is not null
-        qualify
-            row_number() over (partition by gp_candidacy_id order by updated_at desc)
-            = 1
-    ),
-
     candidacy_stages as (
         select
             -- Identifiers
@@ -95,11 +85,8 @@ with
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
         left join
-            candidacy_companies as companies
-            on tbl_companies.gp_candidacy_id = companies.gp_candidacy_id
-        left join
             {{ ref("int__hubspot_companies_archive_2025") }} as hs_companies
-            on companies.company_id = hs_companies.id
+            on tbl_companies.company_id = hs_companies.id
         qualify
             row_number() over (
                 partition by gp_candidacy_stage_id order by updated_at desc

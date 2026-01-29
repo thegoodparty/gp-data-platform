@@ -59,24 +59,6 @@ select
     properties_general_election_date as general_election_date,
     cast(null as date) as runoff_election_date,
 
-    -- election results (archive snapshot - status computed at snapshot time)
-    -- Note: runoff_election_date is not available in source, so we use
-    -- general_election_date
-    case
-        when date('2026-01-22') < properties_filing_deadline
-        then 'not started'
-        when
-            date('2026-01-22') >= properties_filing_deadline
-            and date('2026-01-22') <= properties_general_election_date
-        then 'in progress'
-        when date('2026-01-22') > properties_general_election_date
-        then 'completed'
-    end as contest_status,
-    cast(null as string) as primary_results,
-    cast(null as string) as general_election_results,
-    cast(null as string) as runoff_election_results,
-    cast(null as string) as contest_results,
-
     -- metadata
     updated_at,
     created_at
