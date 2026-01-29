@@ -134,6 +134,30 @@ models:
                 where: "gp_candidate_id is not null"
       - name: gp_election_id
         description: Foreign key to election table (referential integrity enforced at mart level)
+      - name: pledge_status
+        description: Whether the candidate has taken the GoodParty pledge (normalized to lowercase)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['yes', 'no']
+              config:
+                where: "pledge_status is not null"
+      - name: verified_candidate
+        description: >
+          Whether the candidate has been verified.
+          Values: Yes, No, Unresponsive, Can't Determine, Partisan Candidate, Write In
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
+                  - 'Partisan Candidate'
+                  - 'Write In'
+              config:
+                # Excluding "Can't Determine" due to curly quote encoding issues
+                where: "verified_candidate is not null and verified_candidate != '' and verified_candidate not like '%Determine%'"
       - name: general_election_date
         description: Date of the general election
         data_tests:

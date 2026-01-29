@@ -216,8 +216,8 @@ with
                 cwc.properties_verified_candidates,
                 tbl_contacts.verified_candidate_status
             ) as verified_candidate,
-            coalesce(
-                cwc.properties_pledge_status, tbl_contacts.pledge_status
+            lower(
+                coalesce(cwc.properties_pledge_status, tbl_contacts.pledge_status)
             ) as pledge_status,
             tbl_gp_db_campaign.id as product_campaign_id,
             -- assessments
@@ -380,7 +380,7 @@ with
             cwoc.properties_open_seat_ as is_open_seat,
             cwoc.properties_general_election_result as candidacy_result,
             cwoc.properties_verified_candidates as verified_candidate,
-            cwoc.properties_pledge_status as pledge_status,
+            lower(cwoc.properties_pledge_status) as pledge_status,
             tbl_gp_db_campaign.id as product_campaign_id,
             tbl_gp_db_ptv.data:`winNumber`::string as win_number,
             null::string as win_number_model,
@@ -475,7 +475,7 @@ with
             null as is_open_seat,
             null as candidacy_result,
             tbl_contacts.verified_candidate_status as verified_candidate,
-            tbl_contacts.pledge_status,
+            lower(tbl_contacts.pledge_status) as pledge_status,
             null as product_campaign_id,
             null as win_number,
             null as win_number_model,
