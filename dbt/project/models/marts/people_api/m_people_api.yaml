@@ -216,6 +216,10 @@ models:
               - "Yes"
               - "No"
               - "Unknown"
+      # Verify state-level district stats exist for statewide positions (Governor, US Senate, etc.)
+      - state_level_districts_exist:
+          arguments:
+            district_type: "State"
 
   - name: m_people_api__districtstats_py
     tests:

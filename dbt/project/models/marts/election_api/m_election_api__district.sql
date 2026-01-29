@@ -38,6 +38,17 @@ with
             )
         where district_value is not null
     ),
+    -- State-level districts for statewide positions (Governor, US Senate, etc.)
+    state_districts as (
+        select distinct
+            state_postal_code as state,
+            'State' as l2_district_type,
+            state_postal_code as l2_district_name
+        from {{ ref("int__l2_nationwide_uniform") }}
+        {% if is_incremental() %}
+            where loaded_at >= (select max(updated_at) from {{ this }})
+        {% endif %}
+    ),
     unioned_w_id_districts as (
         select
             {{
@@ -62,6 +73,18 @@ with
                 )
             }} as id, l2_data_districts.*
         from l2_data_districts
+        union all
+        select
+            {{
+                generate_salted_uuid(
+                    fields=[
+                        "state_districts.state",
+                        "state_districts.l2_district_type",
+                        "state_districts.l2_district_name",
+                    ]
+                )
+            }} as id, state_districts.*
+        from state_districts
     ),
     districts as (select * from unioned_w_id_districts)
 
