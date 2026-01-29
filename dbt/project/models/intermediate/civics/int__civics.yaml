@@ -1,20 +1,4 @@
 models:
-  - name: int__hubspot_contacts_w_companies_2025
-    description: >
-      Archived HubSpot contacts with companies from 2026-01-22 snapshot.
-      Uses archived staging data to ensure historical consistency.
-    columns:
-      - name: win_number
-        description: >
-          Win number from path to victory (string, cast to int in candidacy).
-          May contain scientific notation (e.g., '6.3438487E7' = 63,438,487).
-        data_tests:
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^-?[0-9]+\.?[0-9]*([Ee]-?[0-9]+)?$
-              config:
-                where: "win_number is not null"
-                severity: warn
   - name: election_2025
     description: >
       Historical archive of elections from the general mart with election dates
