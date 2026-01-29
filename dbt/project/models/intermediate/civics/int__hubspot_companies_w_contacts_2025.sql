@@ -200,7 +200,7 @@ with
             ) as pledge_status,
             tbl_gp_db_campaign.id as product_campaign_id,
             -- assessments
-            tbl_gp_db_ptv.data:`winNumber`::string as win_number,
+            cast(cwc.properties_win_number as string) as win_number,
             null::string as win_number_model,
             -- Rank for selecting best contact when multiple exist
             row_number() over (
@@ -324,7 +324,7 @@ with
             cwoc.properties_verified_candidates as verified_candidate,
             lower(cwoc.properties_pledge_status) as pledge_status,
             tbl_gp_db_campaign.id as product_campaign_id,
-            tbl_gp_db_ptv.data:`winNumber`::string as win_number,
+            cast(cwoc.properties_win_number as string) as win_number,
             null::string as win_number_model,
             1 as contact_rank
         from companies_without_contacts cwoc

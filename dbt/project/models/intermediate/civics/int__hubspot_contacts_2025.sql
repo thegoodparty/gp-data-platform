@@ -18,7 +18,6 @@ select
     tbl_hs_contacts.properties_lastname as last_name,
     tbl_hs_contacts.properties_birth_date as birth_date,
     tbl_hs_contacts.properties_email as email,
-    tbl_hs_contacts.properties_email as email_contacts,
     tbl_hs_contacts.properties_phone as phone_number,
     tbl_hs_contacts.properties_website as website_url,
     tbl_hs_contacts.properties_instagram_handle as instagram_handle,
