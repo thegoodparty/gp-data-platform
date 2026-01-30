@@ -247,3 +247,67 @@ models:
 
       - name: outreach_updated_at
         description: Timestamp when the outreach campaign was last updated
+
+  - name: mban_election_results
+    description: |
+      DDHQ election results data for MBAN Analytics program (2026).
+
+      This dataset provides election results from Decision Desk HQ (DDHQ), including
+      candidate vote totals, winner status, and race-level information. It serves as
+      a pass-through of the staging table for direct analytical use.
+
+      **Data Source:** DDHQ Google Drive election results (stg_airbyte_source__ddhq_gdrive_election_results)
+
+      **Use Cases:**
+      - Historical election results analysis
+      - Winner/loser outcome analysis
+      - Vote share and margin calculations
+      - Contested vs uncontested race analysis
+      - Multi-seat election analysis
+
+    columns:
+      - name: race_id
+        description: Unique identifier for the race from DDHQ
+        data_tests:
+          - not_null
+
+      - name: candidate_id
+        description: Unique identifier for the candidate from DDHQ
+
+      - name: candidate
+        description: Name of the candidate
+
+      - name: candidate_party
+        description: Political party affiliation of the candidate
+
+      - name: race_name
+        description: Name/title of the race (e.g., "Mayor", "City Council District 1")
+
+      - name: election_type
+        description: |
+          Type of election (e.g., "General", "Primary", "Runoff").
+          Indicates the stage of the electoral process.
+
+      - name: date
+        description: Date of the election
+
+      - name: votes
+        description: Number of votes received by the candidate in this race
+
+      - name: is_winner
+        description: |
+          Whether the candidate won the race.
+          Boolean flag indicating victory status.
+
+      - name: is_uncontested
+        description: |
+          Whether the race was uncontested.
+          Boolean flag - true if only one candidate ran.
+
+      - name: number_of_seats_in_election
+        description: |
+          Number of seats available in this election.
+          Greater than 1 for multi-member districts or at-large elections.
+
+      - name: total_number_of_ballots_in_race
+        description: Total number of ballots cast in this race
