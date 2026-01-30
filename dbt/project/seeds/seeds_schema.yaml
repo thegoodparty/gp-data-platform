@@ -64,3 +64,16 @@ seeds:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: ^\\[([0-9]{5},[0-9]{5})\\]$
+  - name: us_states
+    description: "Lookup table for US state codes and full state names"
+    columns:
+      - name: state_code
+        description: "Two-letter state postal code"
+        tests:
+          - not_null
+          - unique
+      - name: state_name
+        description: "Full state name"
+        tests:
+          - not_null
+          - unique

@@ -4,6 +4,8 @@ with
         from goodparty_data_catalog.airbyte_source.ballotready_s3_candidacies_v3
     ),
 
+    us_states as (select * from {{ ref("us_states") }}),
+
     candidacies_cleaned as (
         select
             -- BallotReady identifiers
@@ -39,7 +41,7 @@ with
             -- position values
             position_name,
             state as state_code,
-            {{ state_code_to_name("state") }} as state_name,
+            us_states.state_name,
             number_of_seats,
             normalized_position_name,
             sub_area_name,
@@ -94,6 +96,7 @@ MAF/TIGER Feature Class Code (MTFCC) is a 5-digit code assigned by the Census Bu
             _ab_source_file_last_modified
 
         from candidacies
+        left join us_states on upper(trim(candidacies.state)) = us_states.state_code
     )
 
 select *
