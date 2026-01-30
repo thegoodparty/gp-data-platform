@@ -45,6 +45,6 @@ from matched_positions
 where
     district_id is not null
     and (
-        (lower(l2_district_type) = 'state' and confidence >= 100)
-        or (lower(l2_district_type) != 'state' and confidence >= 95)
+        (lower(l2_district_type) = 'state' and confidence >= 95)
+        or (lower(l2_district_type) != 'state' and confidence >= 90)
     )
