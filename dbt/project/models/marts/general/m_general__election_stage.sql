@@ -1,8 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="gp_election_stage_id",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=true,
         tags=["mart", "general", "election_stage"],
     )
@@ -38,25 +36,14 @@ with
             {{ ref("int__hubspot_contest") }} as tbl_contest
             on tbl_contest.contact_id = tbl_candidacy.hubspot_contact_id
         where
-            1 = 1
-            and tbl_ddhq_matches.ddhq_race_id is not null
+            tbl_ddhq_matches.ddhq_race_id is not null
             and tbl_ddhq_matches.ddhq_candidate_id is not null
-            {% if is_incremental() %}
-                and tbl_ddhq_election_results_source._airbyte_extracted_at
-                >= (select max(_airbyte_extracted_at) from {{ this }})
-            {% endif %}
         qualify
             row_number() over (
                 partition by gp_election_stage_id order by _airbyte_extracted_at desc
             )
             = 1
-    ),
-    elections_with_gp_election_id as (
-        select * from elections
-    -- where
-    -- gp_election_id
-    -- in (select gp_election_id from {{ ref("m_general__election") }})
     )
 
 select *
-from elections_with_gp_election_id
+from elections
