@@ -27,4 +27,4 @@ select
     created_at,
     updated_at
 
-from {{ ref("candidate_2025") }}
+from {{ ref("int__civics_candidate_2025") }}

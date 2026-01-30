@@ -47,7 +47,7 @@ with
 
         from {{ ref("int__hubspot_companies_w_contacts_2025") }} as tbl_companies
         left join
-            {{ ref("candidate_2025") }} as tbl_candidates
+            {{ ref("int__civics_candidate_2025") }} as tbl_candidates
             on tbl_companies.contact_id = tbl_candidates.hubspot_contact_id
         left join
             {{ ref("int__hubspot_contest_2025") }} as tbl_contest

@@ -30,7 +30,7 @@ with
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
         left join
-            {{ ref("candidacy_2025") }} as tbl_candidacy
+            {{ ref("int__civics_candidacy_2025") }} as tbl_candidacy
             on tbl_candidacy.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
         left join
             {{ ref("int__hubspot_contest_2025") }} as tbl_contest
@@ -55,7 +55,9 @@ with
     ),
 
     -- Only include election_stages that have a matching election in the archive
-    valid_elections as (select gp_election_id from {{ ref("election_2025") }}),
+    valid_elections as (
+        select gp_election_id from {{ ref("int__civics_election_2025") }}
+    ),
 
     filtered_election_stages as (
         select

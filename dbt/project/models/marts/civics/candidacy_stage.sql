@@ -26,4 +26,4 @@ select
     created_at,
     updated_at
 
-from {{ ref("candidacy_stage_2025") }}
+from {{ ref("int__civics_candidacy_stage_2025") }}

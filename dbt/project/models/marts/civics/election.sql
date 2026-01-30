@@ -29,4 +29,4 @@ select
     created_at,
     updated_at
 
-from {{ ref("election_2025") }}
+from {{ ref("int__civics_election_2025") }}

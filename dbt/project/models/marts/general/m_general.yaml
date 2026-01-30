@@ -252,6 +252,8 @@ models:
             column_name: hubspot_contact_id
           config:
             where: "hubspot_contact_id is not null"
+            warn_if: ">0"
+            error_if: ">1000"
       - relationships:
           arguments:
             to: ref('int__hubspot_contacts_w_companies')
@@ -259,6 +261,8 @@ models:
             column_name: gp_candidacy_id
           config:
             where: "gp_candidacy_id is not null"
+            warn_if: ">0"
+            error_if: ">1000"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
@@ -287,6 +291,9 @@ models:
               arguments:
                 to: ref('int__hubspot_contacts_w_companies')
                 field: "gp_candidacy_id"
+              config:
+                warn_if: ">0"
+                error_if: ">1000"
       - name: gp_election_stage_id
         description: Identifier to link to election stage
         tests:
