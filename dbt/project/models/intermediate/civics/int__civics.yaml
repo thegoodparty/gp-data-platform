@@ -137,11 +137,11 @@ models:
                   - 'Yes'
                   - 'No'
                   - 'Unresponsive'
+                  - "Can\\'t Determine"
                   - 'Partisan Candidate'
                   - 'Write In'
               config:
-                # Excluding "Can't Determine" due to curly quote encoding issues
-                where: "verified_candidate is not null and verified_candidate != '' and verified_candidate not like '%Determine%'"
+                where: "verified_candidate is not null and verified_candidate != ''"
       - name: general_election_date
         description: Date of the general election
         data_tests:
