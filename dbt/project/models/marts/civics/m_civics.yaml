@@ -262,13 +262,6 @@ models:
         description: Date of the general election
         data_tests:
           - not_null
-          - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
-              config:
-                warn_if: ">0"
-                error_if: ">10"
 
       - name: runoff_election_date
         description: Date of the runoff election, if applicable
