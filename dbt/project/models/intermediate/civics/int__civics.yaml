@@ -119,7 +119,10 @@ models:
       - name: gp_election_id
         description: Foreign key to election table (referential integrity enforced at mart level)
       - name: is_pledged
-        description: Whether the candidate has taken the GoodParty pledge (boolean)
+        description: >
+          Whether the candidate has taken the GoodParty pledge (boolean).
+          A pledged candidate agreed to 4 qualifying statements either on the
+          GoodParty website or via communication with the politics team.
         data_tests:
           - accepted_values:
               arguments:
@@ -128,7 +131,12 @@ models:
                 where: "is_pledged is not null"
       - name: verified_candidate
         description: >
-          Whether the candidate has been verified.
+          Verification status indicating the candidacy has been confirmed to exist.
+          Set automatically if candidate data came from Techspeed or BallotReady.
+          For inbound candidates, verification is done manually by the politics team
+          by checking for evidence of a legitimate campaign (campaign website,
+          filing information, Facebook page, etc.). Manual verification was
+          discontinued in 2026.
           Values: Yes, No, Unresponsive, Can't Determine, Partisan Candidate, Write In
         data_tests:
           - accepted_values:
@@ -141,7 +149,7 @@ models:
                   - 'Partisan Candidate'
                   - 'Write In'
               config:
-                where: "verified_candidate is not null and verified_candidate != ''"
+                where: "verified_candidate is not null"
       - name: general_election_date
         description: Date of the general election
         data_tests:

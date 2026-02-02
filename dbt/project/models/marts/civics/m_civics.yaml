@@ -237,10 +237,20 @@ models:
         description: Level of office (local, state, federal)
 
       - name: is_pledged
-        description: Whether the candidate has taken the GoodParty pledge (boolean)
+        description: >
+          Whether the candidate has taken the GoodParty pledge (boolean).
+          A pledged candidate agreed to 4 qualifying statements either on the
+          GoodParty website or via communication with the politics team.
 
       - name: verified_candidate
-        description: Whether the candidate has been verified
+        description: >
+          Verification status indicating the candidacy has been confirmed to exist.
+          Set automatically if candidate data came from Techspeed or BallotReady.
+          For inbound candidates, verification is done manually by the politics team
+          by checking for evidence of a legitimate campaign (campaign website,
+          filing information, Facebook page, etc.). Manual verification was
+          discontinued in 2026.
+          Values: Yes, No, Unresponsive, Can't Determine, Partisan Candidate, Write In
 
       - name: is_partisan
         description: Whether the race is partisan
