@@ -118,14 +118,14 @@ models:
                 where: "gp_candidate_id is not null"
       - name: gp_election_id
         description: Foreign key to election table (referential integrity enforced at mart level)
-      - name: pledge_status
-        description: Whether the candidate has taken the GoodParty pledge (normalized to lowercase)
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge (boolean)
         data_tests:
           - accepted_values:
               arguments:
-                values: ['yes', 'no']
+                values: [true, false]
               config:
-                where: "pledge_status is not null"
+                where: "is_pledged is not null"
       - name: verified_candidate
         description: >
           Whether the candidate has been verified.
@@ -282,3 +282,16 @@ models:
             expression: "updated_at >= created_at"
           config:
             where: "updated_at is not null and created_at is not null"
+
+  - name: int__hubspot_contacts_2025
+    description: >
+      Archived HubSpot contacts from 2026-01-22 snapshot. Source data for civics mart.
+    columns:
+      - name: pledge_status
+        description: Raw pledge status string from HubSpot (before boolean transformation)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['yes', 'no', 'Yes', 'No']
+              config:
+                where: "pledge_status is not null and trim(pledge_status) != ''"

@@ -22,7 +22,7 @@ select
     official_office_name,
     office_level,
     candidacy_result,
-    pledge_status,
+    is_pledged,
     verified_candidate,
     is_partisan,
     primary_election_date,

@@ -236,8 +236,8 @@ models:
       - name: office_level
         description: Level of office (local, state, federal)
 
-      - name: pledge_status
-        description: Status of the candidate's GoodParty pledge
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge (boolean)
 
       - name: verified_candidate
         description: Whether the candidate has been verified

@@ -195,9 +195,25 @@ with
                 cwc.properties_verified_candidates,
                 tbl_contacts.verified_candidate_status
             ) as verified_candidate,
-            lower(
-                coalesce(cwc.properties_pledge_status, tbl_contacts.pledge_status)
-            ) as pledge_status,
+            case
+                when
+                    lower(
+                        coalesce(
+                            cwc.properties_pledge_status, tbl_contacts.pledge_status
+                        )
+                    )
+                    = 'yes'
+                then true
+                when
+                    lower(
+                        coalesce(
+                            cwc.properties_pledge_status, tbl_contacts.pledge_status
+                        )
+                    )
+                    = 'no'
+                then false
+                else null
+            end as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
             -- assessments (coalesce HubSpot win_number with GP DB path_to_victory)
             coalesce(
@@ -325,7 +341,13 @@ with
             cwoc.properties_open_seat_ as is_open_seat,
             cwoc.properties_general_election_result as candidacy_result,
             cwoc.properties_verified_candidates as verified_candidate,
-            lower(cwoc.properties_pledge_status) as pledge_status,
+            case
+                when lower(cwoc.properties_pledge_status) = 'yes'
+                then true
+                when lower(cwoc.properties_pledge_status) = 'no'
+                then false
+                else null
+            end as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
             coalesce(
                 cast(cwoc.properties_win_number as string),
@@ -403,7 +425,13 @@ with
             null as is_open_seat,
             null as candidacy_result,
             tbl_contacts.verified_candidate_status as verified_candidate,
-            lower(tbl_contacts.pledge_status) as pledge_status,
+            case
+                when lower(tbl_contacts.pledge_status) = 'yes'
+                then true
+                when lower(tbl_contacts.pledge_status) = 'no'
+                then false
+                else null
+            end as is_pledged,
             null as product_campaign_id,
             null as win_number,
             null as win_number_model,
@@ -466,7 +494,7 @@ select
     is_open_seat,
     candidacy_result,
     verified_candidate,
-    pledge_status,
+    is_pledged,
     filing_deadline,
     primary_election_date,
     general_election_date,

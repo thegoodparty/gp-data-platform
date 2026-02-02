@@ -13,6 +13,14 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: properties_pledge_status
+        description: "Raw pledge status from HubSpot (expected values: yes, no, Yes, No, or null)"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['yes', 'no', 'Yes', 'No']
+              config:
+                where: "properties_pledge_status is not null and trim(properties_pledge_status) != ''"
   - name: stg_airbyte_source__hubspot_api_deals
     description: Deals data load from HubSpot API
     columns:
