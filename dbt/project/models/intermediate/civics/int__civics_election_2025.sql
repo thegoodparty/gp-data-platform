@@ -1,9 +1,4 @@
-{{
-    config(
-        materialized="table",
-        tags=["intermediate", "civics", "election", "archive"],
-    )
-}}
+{{ config(tags=["archive"]) }}
 
 -- Historical archive of elections from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
@@ -30,9 +25,7 @@ with
             tbl_contest.uncontested as is_uncontested,
             tbl_contest.number_of_opponents,
             tbl_contest.open_seat,
-            case
-                when tbl_ddhq_matches.ddhq_race_id is not null then true else false
-            end as has_ddhq_match,
+            tbl_ddhq_matches.ddhq_race_id is not null as has_ddhq_match,
             tbl_contest.created_at,
             tbl_contest.updated_at
         from {{ ref("int__hubspot_contest_2025") }} as tbl_contest

@@ -26,8 +26,6 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
-              config:
-                where: "population is not null"
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -63,9 +61,6 @@ models:
               arguments:
                 to: ref('int__civics_election_2025')
                 field: gp_election_id
-              config:
-                warn_if: ">0"
-                error_if: ">50"
       - name: ddhq_race_id
         description: DDHQ race identifier
         data_tests:
@@ -76,8 +71,6 @@ models:
           - accepted_values:
               arguments:
                 values: ['general', 'primary', 'runoff']
-              config:
-                where: "election_stage is not null"
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_tests:
@@ -85,8 +78,6 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
-              config:
-                where: "ddhq_election_stage_date is not null"
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -112,8 +103,6 @@ models:
               arguments:
                 to: ref('int__civics_candidate_2025')
                 field: gp_candidate_id
-              config:
-                where: "gp_candidate_id is not null"
       - name: gp_election_id
         description: Foreign key to election table (referential integrity enforced at mart level)
       - name: is_pledged
@@ -125,8 +114,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_pledged is not null"
       - name: verified_candidate
         description: >
           Verification status indicating the candidacy has been confirmed to exist.
@@ -233,10 +220,6 @@ models:
               arguments:
                 to: ref('int__civics_election_stage_2025')
                 field: gp_election_stage_id
-              config:
-                where: "gp_election_stage_id is not null"
-                warn_if: ">0"
-                error_if: ">20"
       - name: is_winner
         description: Whether the candidate won the election stage (boolean)
         data_tests:
@@ -252,10 +235,6 @@ models:
           - accepted_values:
               arguments:
                 values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
-              config:
-                where: "election_result is not null"
-                warn_if: ">0"
-                error_if: ">100"
       - name: election_stage_date
         description: Date of the election stage
         data_tests:
@@ -263,8 +242,6 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
-              config:
-                where: "election_stage_date is not null"
       - name: created_at
         description: Timestamp when the record was created
         data_tests:

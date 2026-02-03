@@ -545,8 +545,6 @@ models:
           - accepted_values:
               arguments:
                 values: ['general', 'primary', 'runoff']
-              config:
-                where: "election_stage is not null"
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_type: date

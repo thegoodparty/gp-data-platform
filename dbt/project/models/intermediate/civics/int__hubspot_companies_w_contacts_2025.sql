@@ -1,16 +1,4 @@
-{{
-    config(
-        materialized="table",
-        tags=[
-            "intermediate",
-            "civics",
-            "contacts",
-            "companies",
-            "hubspot",
-            "archive",
-        ],
-    )
-}}
+{{ config(tags=["archive"]) }}
 
 -- Archived HubSpot companies with contacts from 2025 snapshot
 -- Uses companies as the base table and joins contacts via the companies.contacts field

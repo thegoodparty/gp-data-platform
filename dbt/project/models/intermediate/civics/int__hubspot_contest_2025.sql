@@ -21,23 +21,15 @@ select
     properties_state as state,
     properties_city as city,
     properties_candidate_district as district,
+    -- Extract seat/group/position identifier from official_office_name
+    -- Examples: "City Council - Seat 3" → "3", "School Board, Seat A" → "A"
+    -- Each pattern has different capture rules:
+    -- - Seat/Group: capture until comma
+    -- - Position: capture until whitespace or parenthesis
     coalesce(
-        case
-            when properties_official_office_name like '% - Seat %'
-            then regexp_extract(properties_official_office_name, ' - Seat ([^,]+)')
-            when properties_official_office_name like '% - Group %'
-            then regexp_extract(properties_official_office_name, ' - Group ([^,]+)')
-            when properties_official_office_name like '%, Seat %'
-            then regexp_extract(properties_official_office_name, ', Seat ([^,]+)')
-            when properties_official_office_name like '%: % - Seat %'
-            then regexp_extract(properties_official_office_name, ' - Seat ([^,]+)')
-            when properties_official_office_name like '% - Position %'
-            then
-                regexp_extract(
-                    properties_official_office_name, ' - Position ([^\\s(]+)'
-                )
-            else null
-        end,
+        regexp_extract(properties_official_office_name, ' - (?:Seat|Group) ([^,]+)'),
+        regexp_extract(properties_official_office_name, ', Seat ([^,]+)'),
+        regexp_extract(properties_official_office_name, ' - Position ([^\\s(]+)'),
         ''
     ) as seat_name,
     cast(

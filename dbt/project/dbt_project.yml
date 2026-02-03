@@ -47,6 +47,8 @@ models:
       # set defaults for all .py models defined in this subfolder
       +submission_method: serverless_cluster
       +create_notebook: True
+      civics:
+        +materialized: table
     # Applies to all files under models/marts/
     marts:
       +materialized: table

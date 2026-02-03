@@ -1,9 +1,4 @@
-{{
-    config(
-        materialized="table",
-        tags=["intermediate", "civics", "candidate", "archive"],
-    )
-}}
+{{ config(tags=["archive"]) }}
 
 -- Historical archive of candidates from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
@@ -17,7 +12,7 @@ with
 
             -- Candidate information
             -- Data source follows the following hierarchy:
-            -- gp db -> hs.companies -> hs.contact
+            -- gp db -> hs.companies (which already includes hs.contact fallbacks)
             coalesce(tbl_gp_user.first_name, tbl_hs_companies.first_name) as first_name,
             coalesce(tbl_gp_user.last_name, tbl_hs_companies.last_name) as last_name,
             coalesce(tbl_gp_user.name, tbl_hs_companies.full_name) as full_name,
@@ -100,7 +95,6 @@ with
         where user_rank = 1
     ),
 
-    -- Filter to elections on or before 2025-12-31
     archived_candidates as (
         select *
         from candidates_with_id

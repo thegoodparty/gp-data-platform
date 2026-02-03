@@ -289,8 +289,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
 
   - name: candidate
     description: >
@@ -370,8 +368,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
@@ -502,8 +498,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
 
   - name: election
     description: >
@@ -608,8 +602,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
 
   - name: election_stage
     description: >
@@ -636,9 +628,6 @@ models:
               arguments:
                 to: ref('int__civics_election_2025')
                 field: gp_election_id
-              config:
-                warn_if: ">0"
-                error_if: ">50"
 
       - name: ddhq_race_id
         description: DDHQ race identifier
@@ -655,8 +644,6 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
-              config:
-                where: "ddhq_election_stage_date is not null"
 
       - name: ddhq_race_name
         description: Race name from DDHQ

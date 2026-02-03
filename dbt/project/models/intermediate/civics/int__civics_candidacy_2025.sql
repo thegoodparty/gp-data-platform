@@ -1,9 +1,4 @@
-{{
-    config(
-        materialized="table",
-        tags=["intermediate", "civics", "candidacy", "archive"],
-    )
-}}
+{{ config(tags=["archive"]) }}
 
 -- Historical archive of candidacies from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
