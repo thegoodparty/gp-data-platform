@@ -25,7 +25,14 @@ with
             tbl_companies.office_level,
             tbl_companies.candidacy_result,
             tbl_companies.is_pledged,
-            tbl_companies.verified_candidate,
+            case
+                when tbl_companies.verified_candidate = 'Yes' then true else false
+            end as is_verified,
+            case
+                when tbl_companies.verified_candidate != 'Yes'
+                then tbl_companies.verified_candidate
+                else null
+            end as verification_status_reason,
             tbl_companies.is_partisan,
             tbl_companies.primary_election_date,
             tbl_companies.general_election_date,
@@ -83,7 +90,8 @@ select
     office_level,
     candidacy_result,
     is_pledged,
-    verified_candidate,
+    is_verified,
+    verification_status_reason,
     is_partisan,
     primary_election_date,
     general_election_date,

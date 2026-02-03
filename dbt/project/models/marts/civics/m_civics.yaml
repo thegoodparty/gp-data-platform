@@ -241,15 +241,20 @@ models:
           A pledged candidate agreed to 4 qualifying statements either on the
           GoodParty website or via communication with the politics team.
 
-      - name: verified_candidate
+      - name: is_verified
         description: >
-          Verification status indicating the candidacy has been confirmed to exist.
-          Set automatically if candidate data came from Techspeed or BallotReady.
-          For inbound candidates, verification is done manually by the politics team
-          by checking for evidence of a legitimate campaign (campaign website,
-          filing information, Facebook page, etc.). Manual verification was
-          discontinued in 2026.
-          Values: Yes, No, Unresponsive, Can't Determine, Partisan Candidate, Write In
+          Whether the candidacy has been verified to exist (boolean).
+          True if verified, false otherwise. Set automatically if candidate data
+          came from Techspeed or BallotReady. For inbound candidates, verification
+          was done manually by the politics team by checking for evidence of a
+          legitimate campaign (campaign website, filing information, Facebook page,
+          etc.). Manual verification was discontinued in 2026.
+
+      - name: verification_status_reason
+        description: >
+          Reason why a candidacy is not verified. Only populated when is_verified
+          is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
+          Write In.
 
       - name: is_partisan
         description: Whether the race is partisan
@@ -432,19 +437,18 @@ models:
 
       - name: election_result
         description: >
-          Result of the election (Won, Lost, etc.).
-          For general election stages: coalesced from HubSpot (primary) and DDHQ (fallback).
-          For primary/runoff stages: derived from DDHQ only.
-          HubSpot values include: Won General, Lost General, Runoff, Withdrew, Not on Ballot.
-          DDHQ values include: Won, Lost.
+          Result of the election stage. Values:
+          - Won: Candidate won this election stage
+          - Lost: Candidate lost this election stage
+          - Runoff: Election stage resulted in a runoff
+          - Withdrew: Candidate withdrew from the race
+          - Not on Ballot: Candidate was not on the ballot for this stage
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
               config:
                 where: "election_result is not null"
-                warn_if: ">0"
-                error_if: ">100"
 
       - name: election_result_source
         description: >

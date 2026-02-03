@@ -115,27 +115,34 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-      - name: verified_candidate
+      - name: is_verified
         description: >
-          Verification status indicating the candidacy has been confirmed to exist.
-          Set automatically if candidate data came from Techspeed or BallotReady.
-          For inbound candidates, verification is done manually by the politics team
-          by checking for evidence of a legitimate campaign (campaign website,
-          filing information, Facebook page, etc.). Manual verification was
-          discontinued in 2026.
-          Values: Yes, No, Unresponsive, Can't Determine, Partisan Candidate, Write In
+          Whether the candidacy has been verified to exist (boolean).
+          True if verified, false otherwise. Set automatically if candidate data
+          came from Techspeed or BallotReady. For inbound candidates, verification
+          was done manually by the politics team by checking for evidence of a
+          legitimate campaign (campaign website, filing information, Facebook page,
+          etc.). Manual verification was discontinued in 2026.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: verification_status_reason
+        description: >
+          Reason why a candidacy is not verified. Only populated when is_verified
+          is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
+          Write In.
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - 'Yes'
                   - 'No'
                   - 'Unresponsive'
                   - "Can\\'t Determine"
                   - 'Partisan Candidate'
                   - 'Write In'
               config:
-                where: "verified_candidate is not null"
+                where: "verification_status_reason is not null"
       - name: general_election_date
         description: Date of the general election
         data_tests:
