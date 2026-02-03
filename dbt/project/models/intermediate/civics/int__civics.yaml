@@ -243,8 +243,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_winner is not null"
       - name: election_result
         description: >
           Result of the election (Won, Lost, etc.).
