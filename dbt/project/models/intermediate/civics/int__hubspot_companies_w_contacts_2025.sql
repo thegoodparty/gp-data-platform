@@ -191,9 +191,12 @@ with
             tbl_contacts.companies as extra_companies,
             cwc.properties_open_seat_ as is_open_seat,
             cwc.properties_general_election_result as candidacy_result,
-            coalesce(
-                cwc.properties_verified_candidates,
-                tbl_contacts.verified_candidate_status
+            nullif(
+                coalesce(
+                    cwc.properties_verified_candidates,
+                    tbl_contacts.verified_candidate_status
+                ),
+                ''
             ) as verified_candidate,
             case
                 when
@@ -340,7 +343,7 @@ with
             null as extra_companies,
             cwoc.properties_open_seat_ as is_open_seat,
             cwoc.properties_general_election_result as candidacy_result,
-            cwoc.properties_verified_candidates as verified_candidate,
+            nullif(cwoc.properties_verified_candidates, '') as verified_candidate,
             case
                 when lower(cwoc.properties_pledge_status) = 'yes'
                 then true
@@ -424,7 +427,7 @@ with
             tbl_contacts.companies as extra_companies,
             null as is_open_seat,
             null as candidacy_result,
-            tbl_contacts.verified_candidate_status as verified_candidate,
+            nullif(tbl_contacts.verified_candidate_status, '') as verified_candidate,
             case
                 when lower(tbl_contacts.pledge_status) = 'yes'
                 then true

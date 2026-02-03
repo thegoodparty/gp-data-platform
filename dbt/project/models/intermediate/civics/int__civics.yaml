@@ -40,8 +40,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
 
   - name: int__civics_election_stage_2025
     description: >
@@ -170,8 +168,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
 
   - name: int__civics_candidate_2025
     description: >
@@ -200,8 +196,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
@@ -285,8 +279,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-          config:
-            where: "updated_at is not null and created_at is not null"
 
   - name: int__hubspot_contacts_2025
     description: >
@@ -300,3 +292,42 @@ models:
                 values: ['yes', 'no', 'Yes', 'No']
               config:
                 where: "pledge_status is not null and trim(pledge_status) != ''"
+      - name: verified_candidate_status
+        description: >
+          Raw verification status from HubSpot contacts. Empty strings allowed
+          and converted to nulls in downstream int__hubspot_companies_w_contacts_2025.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
+                  - "Can\\'t Determine"
+                  - 'Partisan Candidate'
+                  - 'Write In'
+                  - ''
+              config:
+                where: "verified_candidate_status is not null"
+
+  - name: int__hubspot_companies_w_contacts_2025
+    description: >
+      Archived HubSpot companies joined with contacts from 2026-01-22 snapshot.
+      Upstream source for civics candidacy data. Empty strings in verified_candidate
+      are converted to nulls at this layer.
+    columns:
+      - name: verified_candidate
+        description: >
+          Verification status from HubSpot. Empty strings converted to nulls.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
+                  - "Can\\'t Determine"
+                  - 'Partisan Candidate'
+                  - 'Write In'
+              config:
+                where: "verified_candidate is not null"
