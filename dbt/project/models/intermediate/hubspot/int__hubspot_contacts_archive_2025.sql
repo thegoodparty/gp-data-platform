@@ -22,6 +22,6 @@ qualify
                 when year(properties_primary_election_date) = 2025
                 then properties_primary_election_date
             end desc nulls last,
-            updatedat desc
+            dbt_valid_from desc
     )
     = 1

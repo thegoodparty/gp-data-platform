@@ -97,27 +97,27 @@ with
             election_stage_date <= '2025-12-31' and election_stage_date >= '1900-01-01'
     ),
 
-    -- Only include candidacy_stages that have a matching candidacy in the archive
-    valid_candidacies as (
-        select gp_candidacy_id from {{ ref("int__civics_candidacy_2025") }}
-    ),
-
     -- Only include candidacy_stages that have a matching election_stage in the archive
     valid_election_stages as (
         select gp_election_stage_id from {{ ref("int__civics_election_stage_2025") }}
+    ),
+
+    -- Only include candidacy_stages that have a matching candidacy in the archive
+    valid_candidacies as (
+        select gp_candidacy_id from {{ ref("int__civics_candidacy_2025") }}
     ),
 
     -- Filter to valid records
     filtered_candidacy_stages as (
         select stage.*
         from archived_candidacy_stages as stage
-        inner join
-            valid_candidacies as candidacy
-            on stage.gp_candidacy_id = candidacy.gp_candidacy_id
         where
-            stage.gp_election_stage_id is null
-            or stage.gp_election_stage_id
-            in (select gp_election_stage_id from valid_election_stages)
+            stage.gp_candidacy_id in (select gp_candidacy_id from valid_candidacies)
+            and (
+                stage.gp_election_stage_id is null
+                or stage.gp_election_stage_id
+                in (select gp_election_stage_id from valid_election_stages)
+            )
     )
 
 select

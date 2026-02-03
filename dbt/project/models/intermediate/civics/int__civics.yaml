@@ -99,6 +99,7 @@ models:
       - name: gp_candidate_id
         description: Foreign key to candidate table
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('int__civics_candidate_2025')

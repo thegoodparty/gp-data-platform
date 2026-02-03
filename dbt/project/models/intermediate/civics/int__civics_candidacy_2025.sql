@@ -41,7 +41,7 @@ with
             tbl_companies.updated_at
 
         from {{ ref("int__hubspot_companies_w_contacts_2025") }} as tbl_companies
-        left join
+        inner join
             {{ ref("int__civics_candidate_2025") }} as tbl_candidates
             on tbl_companies.contact_id = tbl_candidates.hubspot_contact_id
         left join
@@ -53,6 +53,8 @@ with
     ),
 
     -- Filter to elections on or before 2025-12-31
+    -- INNER JOIN to candidates excludes companies without contacts and contacts
+    -- that deduplicate to another candidate
     archived_candidacies as (
         select *
         from candidacies

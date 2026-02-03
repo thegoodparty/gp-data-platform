@@ -199,12 +199,11 @@ models:
       - name: gp_candidate_id
         description: Foreign key to candidate table
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('int__civics_candidate_2025')
                 field: gp_candidate_id
-              config:
-                where: "gp_candidate_id is not null"
 
       - name: gp_election_id
         description: Foreign key to election table (no relationship test - matches m_general behavior)
@@ -401,9 +400,6 @@ models:
               arguments:
                 to: ref('int__civics_candidacy_2025')
                 field: gp_candidacy_id
-              config:
-                warn_if: ">0"
-                error_if: ">10"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
@@ -414,8 +410,6 @@ models:
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
-                warn_if: ">0"
-                error_if: ">20"
 
       - name: candidate_name
         description: Name of the candidate
@@ -435,8 +429,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_winner is not null"
 
       - name: election_result
         description: >
@@ -481,8 +473,6 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
-              config:
-                where: "election_stage_date is not null"
 
       - name: created_at
         description: Timestamp when the record was created
@@ -567,8 +557,6 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
-              config:
-                where: "population is not null"
 
       - name: seats_available
         description: Number of seats available in the election
