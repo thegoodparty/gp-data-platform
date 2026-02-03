@@ -1,9 +1,3 @@
-{{
-    config(
-        materialized="table",
-    )
-}}
-
 -- Civics mart election table
 -- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
 select
