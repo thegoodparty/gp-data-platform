@@ -237,9 +237,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     # Convert to pandas for ML model scoring
+    # Disable Arrow optimization to avoid ChunkedArray conversion error
+    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "false")
     df_toscore = df_hs.select(
         ["id", "techspeed_candidate_code"] + all_features
     ).toPandas()
+    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
     df_toscore[all_features] = df_toscore[all_features].astype(float)
 
     # Score using MLflow model

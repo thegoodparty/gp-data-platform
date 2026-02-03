@@ -213,7 +213,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ).withColumnRenamed("id", "hubspot_contact_id")
 
     # Get HubSpot candidate codes as pandas for fuzzy matching
+    # Disable Arrow optimization to avoid ChunkedArray conversion error
+    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "false")
     hubspot_candidate_codes_pd = hubspot_candidate_codes.toPandas()
+    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
 
     # Create the fuzzy matching UDF using our shared utility
     udf_perform_fuzzy_matching = create_fuzzy_matching_udf(
