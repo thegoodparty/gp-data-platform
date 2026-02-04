@@ -185,3 +185,492 @@ models:
           and ballot data. This ID can be used to join with BallotReady position data
           for additional office metadata such as filing deadlines, term lengths,
           geographic boundaries, and partisan type.
+
+  - name: candidacy
+    description: >
+      Historical archive of candidacies from the general mart with elections on or before 2025-12-31.
+
+      Grain: One row per candidacy.
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - internally generated unique identifier for candidacies
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_2025')
+                field: gp_candidate_id
+
+      - name: gp_election_id
+        description: Foreign key to election table (no relationship test - matches m_general behavior)
+
+      - name: product_campaign_id
+        description: Campaign ID from the GoodParty product database
+
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM
+
+      - name: candidate_id_source
+        description: Source system for the candidate data (BallotReady, Techspeed, Product, etc.)
+
+      - name: party_affiliation
+        description: Candidate's political party
+
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+
+      - name: candidate_office
+        description: Simplified/standardized office name
+
+      - name: official_office_name
+        description: Formal office title the candidate is running for
+
+      - name: office_level
+        description: Level of office (local, state, federal)
+
+      - name: candidacy_result
+        description: >
+          Result of the candidacy. Values:
+          - Won: Candidate won the election
+          - Lost: Candidate lost the election
+          - Runoff: Election resulted in a runoff
+          - Withdrew: Candidate withdrew from the race
+          - Not on Ballot: Candidate was not on the ballot
+          - Cannot Determine: Result could not be determined
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+              config:
+                where: "candidacy_result is not null"
+
+      - name: is_pledged
+        description: >
+          Whether the candidate has taken the GoodParty pledge (boolean).
+          A pledged candidate agreed to 4 qualifying statements either on the
+          GoodParty website or via communication with the politics team.
+
+      - name: is_verified
+        description: >
+          Whether the candidacy has been verified to exist (boolean).
+          True if verified, false otherwise. Set automatically if candidate data
+          came from Techspeed or BallotReady. For inbound candidates, verification
+          was done manually by the politics team by checking for evidence of a
+          legitimate campaign (campaign website, filing information, Facebook page,
+          etc.). Manual verification was discontinued in 2026.
+
+      - name: verification_status_reason
+        description: >
+          Reason why a candidacy is not verified. Only populated when is_verified
+          is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
+          Write In.
+
+      - name: is_partisan
+        description: Whether the race is partisan
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+
+      - name: runoff_election_date
+        description: Date of the runoff election, if applicable
+
+      - name: viability_score
+        description: Model-generated viability rating
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: win_number_model
+        description: Model version used for win number calculation
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: candidate
+    description: >
+      Historical archive of candidates from the general mart with elections on or before 2025-12-31.
+
+      Grain: One row per candidate.
+
+    columns:
+      - name: gp_candidate_id
+        description: Primary key - internally generated unique identifier for candidates
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+
+      - name: prod_db_user_id
+        description: User ID from the GoodParty production database
+
+      - name: candidate_id_tier
+        description: Internal confidence/priority tier for the candidate
+
+      - name: first_name
+        description: Candidate's first name
+
+      - name: last_name
+        description: Candidate's last name
+
+      - name: full_name
+        description: Candidate's full name
+
+      - name: birth_date
+        description: Candidate's date of birth
+
+      - name: state
+        description: U.S. state for the candidate
+
+      - name: email
+        description: Candidate's email address
+
+      - name: phone_number
+        description: Candidate's phone number
+
+      - name: street_address
+        description: Candidate's street address
+
+      - name: website_url
+        description: Candidate's campaign website
+
+      - name: linkedin_url
+        description: Candidate's LinkedIn profile URL
+
+      - name: twitter_handle
+        description: Candidate's Twitter handle
+
+      - name: facebook_url
+        description: Candidate's Facebook page URL
+
+      - name: instagram_handle
+        description: Candidate's Instagram handle
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+          config:
+            # Companies without associated contacts may have null names
+            error_if: ">200"
+            warn_if: ">150"
+
+  - name: candidacy_stage
+    description: >
+      Historical archive of candidacy stages (primary, general, runoff results) from the general mart
+      with election stages on or before 2025-12-31.
+
+      Grain: One row per candidacy stage (candidacy + election stage combination).
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_2025')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_2025')
+                field: gp_election_stage_id
+              config:
+                where: "gp_election_stage_id is not null"
+
+      - name: candidate_name
+        description: Name of the candidate
+
+      - name: source_candidate_id
+        description: Candidate identifier from the source system (e.g., DDHQ)
+
+      - name: source_race_id
+        description: Race identifier from the source system (e.g., DDHQ)
+
+      - name: candidate_party
+        description: Candidate's political party affiliation
+
+      - name: is_winner
+        description: Whether the candidate won the election stage (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: election_result
+        description: >
+          Result of the election stage. Values:
+          - Won: Candidate won this election stage
+          - Lost: Candidate lost this election stage
+          - Runoff: Election stage resulted in a runoff
+          - Withdrew: Candidate withdrew from the race
+          - Not on Ballot: Candidate was not on the ballot for this stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+              config:
+                where: "election_result is not null"
+
+      - name: election_result_source
+        description: >
+          Source of the election_result value.
+          Values: 'hubspot', 'ddhq', or null if no result available.
+
+      - name: match_confidence
+        description: Confidence score for the candidate-to-source match
+
+      - name: match_reasoning
+        description: Reasoning for the candidate-to-source match
+
+      - name: match_top_candidates
+        description: Top candidate matches considered during matching
+
+      - name: has_match
+        description: Whether a match to source election data was found
+
+      - name: votes_received
+        description: Number of votes received in this election stage
+
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: election
+    description: >
+      Historical archive of elections from the general mart with election dates on or before 2025-12-31.
+
+      Grain: One row per election.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: official_office_name
+        description: Formal office title for the election
+
+      - name: candidate_office
+        description: Simplified/standardized office name
+
+      - name: office_level
+        description: Level of office (local, state, federal)
+
+      - name: office_type
+        description: Type of office (executive, legislative, judicial, etc.)
+
+      - name: state
+        description: U.S. state for the election
+
+      - name: city
+        description: City for the election
+
+      - name: district
+        description: Electoral district
+
+      - name: seat_name
+        description: Specific seat name
+
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+
+      - name: election_year
+        description: Year of the election
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1900
+                max_value: 2025
+              config:
+                where: "election_year is not null"
+
+      - name: filing_deadline
+        description: Filing deadline for the election
+
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: seats_available
+        description: Number of seats available in the election
+
+      - name: term_start_date
+        description: Start date of the term
+
+      - name: is_uncontested
+        description: Whether the election is uncontested
+
+      - name: number_of_opponents
+        description: Number of opponents in the race (may contain string values like '10+')
+
+      - name: open_seat
+        description: Whether the election is for an open seat
+
+      - name: has_ddhq_match
+        description: Whether there is a DDHQ match for this election
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: election_stage
+    description: >
+      Historical archive of election stages (primary, general, runoff) from the general mart
+      with election stage dates on or before 2025-12-31.
+
+      Grain: One row per election stage.
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_2025')
+                field: gp_election_id
+
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: Type of election stage (primary, general, runoff)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
+
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+
+      - name: ddhq_race_name
+        description: Race name from DDHQ
+
+      - name: total_votes_cast
+        description: Total votes cast in the election stage (may contain string values like 'uncontested')
+
+      - name: created_at
+        description: Timestamp when the record was created (from Airbyte extraction)
+        data_tests:
+          - not_null

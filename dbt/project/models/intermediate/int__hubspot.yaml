@@ -78,3 +78,25 @@ models:
                 min_value: 2010
                 max_value: 2199
                 inclusive: true
+
+  - name: int__hubspot_companies_archive_2025
+    description: >
+      Archived HubSpot companies prioritizing 2025 election dates.
+      Selects from snapshot to get historical data with 2025 election dates.
+    columns:
+      - name: id
+        description: "HubSpot ID of the company"
+        data_tests:
+          - unique
+          - not_null
+
+  - name: int__hubspot_contacts_archive_2025
+    description: >
+      Archived HubSpot contacts prioritizing 2025 election dates.
+      Selects from snapshot to get historical data with 2025 election dates.
+    columns:
+      - name: id
+        description: "HubSpot ID of the contact"
+        data_tests:
+          - unique
+          - not_null
