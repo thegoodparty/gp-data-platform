@@ -644,6 +644,11 @@ models:
 
       - name: election_stage
         description: Type of election stage (primary, general, runoff)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
 
       - name: ddhq_election_stage_date
         description: Date of the election stage
