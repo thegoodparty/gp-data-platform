@@ -237,9 +237,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     # Convert to pandas for ML model scoring
-    # Disable Arrow optimization to avoid ChunkedArray conversion error
-    # Keep disabled until after createDataFrame() call below
-    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "false")
     df_toscore = df_hs.select(
         ["id", "techspeed_candidate_code"] + all_features
     ).toPandas()
@@ -254,10 +251,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
         df_toscore = _score_using_model(df_toscore, modelname, score_col)
 
     # Convert back to Spark DataFrame and calculate viability metrics
+    # Use to_dict('records') to bypass Arrow serialization and avoid ChunkedArray error
     df_scored = (
-        session.createDataFrame(df_toscore)
-        .withColumn("viability_rating_2_0", round(5 * col("y_score0a"), 2))
+        session.createDataFrame(df_toscore.to_dict("records"))
+        # Convert NaN to NULL and calculate viability score
         .withColumn(
+            "viability_rating_2_0",
+            when(col("y_score0a").isNull() | col("y_score0a").isNaN(), None).otherwise(
+                round(5 * col("y_score0a"), 2)
+            ),
+        ).withColumn(
             "score_viability_automated",
             when(col("viability_rating_2_0").isNull(), None)
             .when(col("viability_rating_2_0") < 1, "No Chance")
@@ -267,8 +270,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .otherwise("Frontrunner"),
         )
     )
-    # Re-enable Arrow optimization after pandas/spark conversions
-    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
 
     # Return final result with viability scores and updated_at for incremental loading
     df_scored = df_scored.withColumn("updated_at", current_timestamp())
