@@ -249,7 +249,7 @@ models:
               arguments:
                 values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
               config:
-                where: "candidacy_result is not null and candidacy_result != ''"
+                where: "candidacy_result is not null"
 
       - name: is_pledged
         description: >

@@ -88,7 +88,16 @@ select
     candidate_office,
     official_office_name,
     office_level,
-    candidacy_result,
+    -- Normalize candidacy_result: empty strings to NULL, Won/Lost General to Won/Lost
+    case
+        when candidacy_result = ''
+        then null
+        when candidacy_result = 'Won General'
+        then 'Won'
+        when candidacy_result = 'Lost General'
+        then 'Lost'
+        else candidacy_result
+    end as candidacy_result,
     is_pledged,
     is_verified,
     verification_status_reason,
