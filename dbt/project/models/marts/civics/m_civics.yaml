@@ -235,6 +235,22 @@ models:
       - name: office_level
         description: Level of office (local, state, federal)
 
+      - name: candidacy_result
+        description: >
+          Result of the candidacy. Values:
+          - Won: Candidate won the election
+          - Lost: Candidate lost the election
+          - Runoff: Election resulted in a runoff
+          - Withdrew: Candidate withdrew from the race
+          - Not on Ballot: Candidate was not on the ballot
+          - Cannot Determine: Result could not be determined
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+              config:
+                where: "candidacy_result is not null and candidacy_result != ''"
+
       - name: is_pledged
         description: >
           Whether the candidate has taken the GoodParty pledge (boolean).
