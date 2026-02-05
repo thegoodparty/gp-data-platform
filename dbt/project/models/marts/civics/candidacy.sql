@@ -23,6 +23,7 @@ select
     primary_election_date,
     general_election_date,
     runoff_election_date,
+    br_position_database_id,
     viability_score,
     win_number,
     win_number_model,

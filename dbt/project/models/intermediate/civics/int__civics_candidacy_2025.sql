@@ -38,6 +38,9 @@ with
             tbl_companies.general_election_date,
             tbl_companies.runoff_election_date,
 
+            -- BallotReady
+            tbl_companies.br_position_database_id,
+
             -- assessments
             viability_scores.viability_rating_2_0 as viability_score,
             cast(cast(tbl_companies.win_number as float) as int) as win_number,
@@ -105,6 +108,7 @@ select
     primary_election_date,
     general_election_date,
     runoff_election_date,
+    br_position_database_id,
     viability_score,
     win_number,
     win_number_model,

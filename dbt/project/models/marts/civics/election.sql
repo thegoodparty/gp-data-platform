@@ -20,6 +20,7 @@ select
     number_of_opponents,
     open_seat,
     has_ddhq_match,
+    br_position_database_id,
     created_at,
     updated_at
 
