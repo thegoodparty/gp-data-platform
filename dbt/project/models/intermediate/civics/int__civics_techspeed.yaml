@@ -32,6 +32,9 @@ models:
       - name: ballotready_candidacy_id
         description: BallotReady candidacy ID - NULL for TechSpeed-sourced records (future COALESCE target)
 
+      - name: candidacy_id
+        description: Placeholder candidacy ID to align with civics mart schema
+
       - name: gp_candidate_id
         description: Foreign key to candidate table
         data_tests:
@@ -40,6 +43,9 @@ models:
               arguments:
                 to: ref('int__civics_candidate_techspeed')
                 field: gp_candidate_id
+
+      - name: hubspot_company_ids
+        description: HubSpot company IDs (NULL for TechSpeed-sourced records)
 
       - name: candidate_code
         description: Deterministic linkage key (first_name__last_name__state__office_type__city)

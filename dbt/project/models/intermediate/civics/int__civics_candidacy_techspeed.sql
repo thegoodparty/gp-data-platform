@@ -84,6 +84,8 @@ with
 
             -- BallotReady ID: NULL today, COALESCE target when TS adds it
             cast(null as string) as ballotready_candidacy_id,
+            -- Civics mart field alignment (placeholder until available)
+            'candidacy_id-tbd' as candidacy_id,
 
             -- Candidate FK (matches int__civics_candidate_techspeed generation)
             -- Fields aligned with int__civics_candidate_2025.sql lines 64-75
@@ -111,6 +113,7 @@ with
             -- External IDs (NULL for TS-sourced records)
             cast(null as string) as product_campaign_id,
             cast(null as string) as hubspot_contact_id,
+            cast(null as string) as hubspot_company_ids,
 
             -- Source tracking
             'techspeed' as candidate_id_source,
@@ -168,6 +171,10 @@ with
             techspeed_candidate_code is not null
             -- Filter on parsed date (used in UUID) - ensures valid date format
             and general_election_date_parsed is not null
+    -- TODO(DATA-1388): Consider mirroring candidate null filters (first_name,
+    -- last_name, state)
+    -- to avoid potential FK orphaning if upstream data quality regresses. Leaving as-is
+    -- so relationship test surfaces any null-key cases.
     ),
 
     deduplicated as (
