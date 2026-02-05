@@ -2,6 +2,8 @@
 
 ## Models
 
+All models materialize as tables in the `mart_mban2026` schema.
+
 | Model | Grain | Description |
 |---|---|---|
 | `candidates_outreach` | hubspot_id x outreach_id | HubSpot candidacies with text outreach campaigns |
@@ -26,8 +28,8 @@ select
     cer.match_reasoning,
     cer.ddhq_race_id,
     cer.ddhq_candidate_id
-from candidates_outreach as co
-left join mban_candidacy_election_results as cer
+from mart_mban2026.candidates_outreach as co
+left join mart_mban2026.mban_candidacy_election_results as cer
     on co.hubspot_id = cer.hubspot_id
 ```
 
@@ -44,8 +46,8 @@ select
     er.is_winner,
     er.is_uncontested,
     er.total_number_of_ballots_in_race
-from mban_candidacy_election_results as cer
-left join mban_election_results as er
+from mart_mban2026.mban_candidacy_election_results as cer
+left join mart_mban2026.mban_election_results as er
     on cer.ddhq_race_id = er.race_id
     and cer.ddhq_candidate_id = er.candidate_id
 ```
@@ -66,10 +68,10 @@ select
     er.votes,
     er.is_winner,
     er.total_number_of_ballots_in_race
-from candidates_outreach as co
-left join mban_candidacy_election_results as cer
+from mart_mban2026.candidates_outreach as co
+left join mart_mban2026.mban_candidacy_election_results as cer
     on co.hubspot_id = cer.hubspot_id
-left join mban_election_results as er
+left join mart_mban2026.mban_election_results as er
     on cer.ddhq_race_id = er.race_id
     and cer.ddhq_candidate_id = er.candidate_id
 ```

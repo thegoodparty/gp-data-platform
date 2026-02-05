@@ -12,3 +12,4 @@ from {{ ref("int__hubspot_companies_w_contacts_2025") }} as mapping
 inner join
     {{ ref("int__gp_ai_election_match") }} as matches
     on mapping.gp_candidacy_id = matches.gp_candidacy_id
+where mapping.company_id is not null
