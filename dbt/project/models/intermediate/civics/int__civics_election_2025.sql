@@ -26,6 +26,7 @@ with
             tbl_contest.number_of_opponents,
             tbl_contest.open_seat,
             tbl_ddhq_matches.ddhq_race_id is not null as has_ddhq_match,
+            tbl_candidacy.br_position_database_id,
             tbl_contest.created_at,
             tbl_contest.updated_at
         from {{ ref("int__hubspot_contest_2025") }} as tbl_contest
@@ -71,6 +72,7 @@ select
     number_of_opponents,
     open_seat,
     has_ddhq_match,
+    br_position_database_id,
     created_at,
     updated_at
 

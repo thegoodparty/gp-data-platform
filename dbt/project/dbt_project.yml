@@ -71,3 +71,4 @@ models:
 flags:
   use_user_folder_for_python: True
   state_modified_compare_more_unrendered_values: True
+  use_managed_iceberg: True
