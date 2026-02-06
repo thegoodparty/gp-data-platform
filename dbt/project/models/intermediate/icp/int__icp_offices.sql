@@ -81,7 +81,7 @@ select
 
 from position
 
-inner join
+left join
     normalized_position
     on position.normalized_position.`databaseId` = normalized_position.database_id
 
