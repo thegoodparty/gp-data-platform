@@ -1,14 +1,21 @@
 version: 2
 
 models:
-  - name: win_users
+  - name: analytics_users
     description: >
-      User-grain view for Win product OKR metrics tracking.
+      Unified user-grain view for Win and Serve product OKR metrics tracking.
       Built incrementally: each version adds columns for a new metric.
+
+      File is named analytics_users to avoid dbt model name collision with
+      mart_civics.users. Alias renders as analytics.users in the warehouse.
 
       Grain: One row per user.
 
-      Source: mart_civics.users (Gold tier) + Amplitude events (Bronze tier).
+      Source: mart_civics.users (Gold tier) + Amplitude events (Bronze tier, added in v0.2+).
+
+      Tickets: DATA-1484 (Registrations), DATA-1485 (Onboarding CVR),
+      DATA-1486 (Pro CVR), DATA-1488 (1st Campaign Sent),
+      DATA-1491 (Activated Candidates Rate), DATA-1493 (Active Candidates).
 
     columns:
       - name: user_id
@@ -32,21 +39,68 @@ models:
       - name: zip
         description: User's zip code.
 
+      - name: is_win_user
+        description: >
+          Whether user is a Win product user (has created at least one campaign).
+          Source: mart_civics.users.has_campaign
+        data_tests:
+          - not_null
+
+      - name: is_serve_user
+        description: >
+          Whether user is a Serve product user (has completed a poll through
+          an elected office). Source: mart_civics.users.is_serve_user
+        data_tests:
+          - not_null
+
+      - name: eo_activated_at
+        description: >
+          Timestamp when user became a Serve user (first completed poll).
+          NULL for non-Serve users.
+
+      - name: campaign_count
+        description: Total number of campaigns created by this user.
+
+      - name: non_demo_campaign_count
+        description: Number of non-demo campaigns.
+
+      - name: verified_campaign_count
+        description: Number of verified campaigns.
+
+      - name: active_campaign_count
+        description: Number of active campaigns.
+
+      - name: pro_campaign_count
+        description: Number of pro-tier campaigns.
+
+      - name: pledged_campaign_count
+        description: Number of campaigns where candidate took the GoodParty pledge.
+
+      - name: first_campaign_created_at
+        description: Timestamp of user's first campaign creation.
+
+      - name: last_campaign_created_at
+        description: Timestamp of user's most recent campaign creation.
+
+      - name: has_verified_campaign
+        description: Whether user has at least one verified campaign.
+
+      - name: has_pledged_campaign
+        description: Whether user has at least one pledged campaign.
+
       - name: registered_at
         description: >
           Timestamp when user account was created (signup date).
+          Core column for the Registrations metric (DATA-1484).
           Source: mart_civics.users.created_at
         data_tests:
           - not_null
 
       - name: registration_month
-        description: >
-          Month truncation of registered_at for monthly registration counts.
-          Use for dashboard grouping: COUNT(*) GROUP BY registration_month.
+        description: Month truncation of registered_at for monthly counts.
 
       - name: registration_week
-        description: >
-          Week truncation of registered_at for weekly registration counts.
+        description: Week truncation of registered_at for weekly counts.
 
       - name: registration_year
         description: Year of registration for annual grouping.

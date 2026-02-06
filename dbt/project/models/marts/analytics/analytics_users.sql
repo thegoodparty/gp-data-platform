@@ -1,16 +1,19 @@
 {{ config(materialized="view", schema="analytics") }}
 
 /*
-    analytics.win_users — v0.1: Registrations (DATA-1484)
+    analytics.analytics_users — v0.1: Registrations (DATA-1484)
 
-    User-grain view for Win product OKR metrics.
+    Unified user-grain view for Win and Serve product OKR metrics.
     Built incrementally: each version adds columns for a new metric.
 
     Grain: One row per user.
     Refresh: Full refresh (view).
 
+    Note: File is named analytics_users.sql to avoid dbt model name collision
+    with mart_civics users model.
+
     Version History:
-    - v0.1: Registrations — created_at, registration period columns
+    - v0.1: Registrations + product flags (is_win_user, is_serve_user)
     - v0.2: (planned) Onboarding CVR — onboarding_completed_at, is_onboarded
     - v0.3: (planned) Pro CVR — pro_upgraded_at, is_pro
     - v0.4: (planned) 1st Campaign Sent — first_campaign_sent_at, is_activated
@@ -31,6 +34,23 @@ with
             last_name,
             phone,
             zip,
+
+            -- Product flags
+            has_campaign as is_win_user,
+            is_serve_user,
+            eo_activated_at,
+
+            -- Campaign stats (from mart_civics.users)
+            campaign_count,
+            non_demo_campaign_count,
+            verified_campaign_count,
+            active_campaign_count,
+            pro_campaign_count,
+            pledged_campaign_count,
+            first_campaign_created_at,
+            last_campaign_created_at,
+            has_verified_campaign,
+            has_pledged_campaign,
 
             -- v0.1: Registrations (DATA-1484)
             created_at as registered_at,
