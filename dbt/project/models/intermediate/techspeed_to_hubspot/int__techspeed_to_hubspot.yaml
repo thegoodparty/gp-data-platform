@@ -100,6 +100,14 @@ models:
         description: "Type of office the candidate is running for"
         tests:
           - not_null
+      - name: candidate_type
+        description: "Type of candidate (Incumbent/Challenger)"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Incumbent', 'Challenger']
+              config:
+                where: "candidate_type is not null"
       - name: election_date
         description: "Election date (general or primary)"
         tests:

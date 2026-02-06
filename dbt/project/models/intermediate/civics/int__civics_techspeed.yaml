@@ -11,7 +11,7 @@ models:
 
       Key design decisions:
       - UUID fields aligned with int__hubspot_companies_w_contacts_2025 for cross-source consistency
-      - ballotready_candidacy_id is NULL; will be populated via COALESCE when TS adds it
+      - br_candidacy_id is NULL; will be populated via COALESCE when TS adds it
       - candidate_code is the linkage key to BallotReady data
       - No HubSpot dependency
       - Election-level attributes (population, seats, etc.) NOT included — those belong in election table
@@ -29,11 +29,8 @@ models:
               arguments:
                 regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 
-      - name: ballotready_candidacy_id
+      - name: br_candidacy_id
         description: BallotReady candidacy ID - NULL for TechSpeed-sourced records (future COALESCE target)
-
-      - name: candidacy_id
-        description: Placeholder candidacy ID to align with civics mart schema
 
       - name: gp_candidate_id
         description: Foreign key to candidate table

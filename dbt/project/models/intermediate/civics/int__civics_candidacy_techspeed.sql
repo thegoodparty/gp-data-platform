@@ -63,11 +63,9 @@ with
             -- ISO on cast)
             -- TechSpeed: parse dates to DATE for format normalization, no coalesce on
             -- dates (NULL parity)
-            -- TODO(DATA-1388): UUID parity mismatches observed when HubSpot has NULL
-            -- district
-            -- but TechSpeed has a populated district. Consider backfilling/normalizing
-            -- HubSpot district values (preferred) or revisiting UUID inputs if parity
-            -- is required.
+            -- Keep district in UUID inputs so sub-district races remain distinct.
+            -- Cross-source parity drift here is expected when one source lacks
+            -- district.
             {{
                 generate_salted_uuid(
                     fields=[
@@ -83,17 +81,16 @@ with
             }} as gp_candidacy_id,
 
             -- BallotReady ID: NULL today, COALESCE target when TS adds it
-            cast(null as string) as ballotready_candidacy_id,
-            -- Civics mart field alignment (placeholder until available)
-            'candidacy_id-tbd' as candidacy_id,
+            cast(null as string) as br_candidacy_id,
 
             -- Candidate FK (matches int__civics_candidate_techspeed generation)
             -- Fields aligned with int__civics_candidate_2025.sql lines 64-75
             -- HubSpot: raw fields, birth_date is STRING in ISO format
             -- TechSpeed: parse birth_date to DATE then cast to string for format
             -- normalization
-            -- No coalesce - let NULLs pass through for parity with HubSpot's NULL
-            -- handling
+            -- Intentionally do not coalesce to '' so NULL vs empty-string
+            -- differences remain visible in ID semantics.
+            -- generate_salted_uuid/dbt_utils handles NULL inputs safely.
             {{
                 generate_salted_uuid(
                     fields=[
@@ -171,10 +168,11 @@ with
             techspeed_candidate_code is not null
             -- Filter on parsed date (used in UUID) - ensures valid date format
             and general_election_date_parsed is not null
-    -- TODO(DATA-1388): Consider mirroring candidate null filters (first_name,
-    -- last_name, state)
-    -- to avoid potential FK orphaning if upstream data quality regresses. Leaving as-is
-    -- so relationship test surfaces any null-key cases.
+            -- Keep aligned with int__civics_candidate_techspeed filters so
+            -- relationship tests cannot orphan gp_candidate_id references
+            and first_name is not null
+            and last_name is not null
+            and state is not null
     ),
 
     deduplicated as (
