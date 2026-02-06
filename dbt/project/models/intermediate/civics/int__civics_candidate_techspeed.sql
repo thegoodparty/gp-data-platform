@@ -27,9 +27,8 @@ with
             -- HubSpot: raw fields, birth_date is STRING in ISO format
             -- TechSpeed: parse birth_date to DATE then cast to string for format
             -- normalization
-            -- Intentionally do not coalesce to '' so NULL vs empty-string
-            -- differences remain visible in ID semantics.
-            -- generate_salted_uuid/dbt_utils handles NULL inputs safely.
+            -- generate_salted_uuid now normalizes NULL inputs to ''
+            -- before salting/hashing for consistent ID generation.
             {{
                 generate_salted_uuid(
                     fields=[

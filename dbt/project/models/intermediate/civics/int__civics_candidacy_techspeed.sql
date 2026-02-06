@@ -76,9 +76,8 @@ with
             -- HubSpot: raw fields, birth_date is STRING in ISO format
             -- TechSpeed: parse birth_date to DATE then cast to string for format
             -- normalization
-            -- Intentionally do not coalesce to '' so NULL vs empty-string
-            -- differences remain visible in ID semantics.
-            -- generate_salted_uuid/dbt_utils handles NULL inputs safely.
+            -- generate_salted_uuid now normalizes NULL inputs to ''
+            -- before salting/hashing for consistent ID generation.
             {{
                 generate_salted_uuid(
                     fields=[
@@ -129,8 +128,13 @@ with
             false as is_pledged,  -- TS records are leads, not pledged candidates
             true as is_verified,  -- TS data is verified by definition
             cast(null as string) as verification_status_reason,  -- Only populated when is_verified is false
-            -- Note: civics schema uses lowercase 'partisan'/'nonpartisan' strings
-            lower(partisan) as is_partisan,
+            case
+                when lower(partisan) = 'partisan'
+                then true
+                when lower(partisan) = 'nonpartisan'
+                then false
+                else null
+            end as is_partisan,
 
             -- Election result (NULL for TS — they don't track outcomes)
             cast(null as string) as candidacy_result,

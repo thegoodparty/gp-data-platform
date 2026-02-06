@@ -1,7 +1,15 @@
 {% macro generate_salted_uuid(fields, salt="salt_string") %}
     {% set salted_fields = [] %}
     {% for field in fields %}
-        {% do salted_fields.append("CONCAT(" ~ field ~ ", '" ~ salt ~ "')") %}
+        {% do salted_fields.append(
+            "CONCAT(COALESCE(CAST("
+            ~ field
+            ~ " AS "
+            ~ dbt.type_string()
+            ~ "), ''), '"
+            ~ salt
+            ~ "')"
+        ) %}
     {% endfor %}
     {{ format_as_uuid(dbt_utils.generate_surrogate_key(salted_fields)) }}
 {% endmacro %}
