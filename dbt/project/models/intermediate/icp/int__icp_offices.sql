@@ -41,6 +41,8 @@ select
     l2_match.l2_district_type,
     l2_match.is_matched,
     district_counts.voter_count,
+    position.judicial,
+    position.appointed,
     position.updated_at,
 
     -- ICP-Office-Win Flag

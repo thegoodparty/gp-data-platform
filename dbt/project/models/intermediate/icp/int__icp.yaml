@@ -46,6 +46,10 @@ models:
               arguments:
                 min_value: 0
               row_condition: "voter_count is not null"
+      - name: judicial
+        description: "Flag indicating if position is judicial"
+      - name: appointed
+        description: "Flag indicating if position is appointed"
       - name: icp_office_win
         description: "ICP-Office-Win flag (true for districts with 500-50,000 voters)"
         tests:
