@@ -1,0 +1,316 @@
+models:
+  - name: int__civics_election_2025
+    description: >
+      Historical archive of elections from the general mart with election dates
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_election_stage_2025
+    description: >
+      Historical archive of election stages (primary, general, runoff) from the
+      general mart with election stage dates on or before 2025-12-31.
+      Snapshot from 2026-01-22.
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_2025')
+                field: gp_election_id
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Type of election stage (primary, general, runoff)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_2025
+    description: >
+      Historical archive of candidacies from the general mart with elections
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - internally generated unique identifier for candidacies
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_2025')
+                field: gp_candidate_id
+      - name: gp_election_id
+        description: Foreign key to election table (referential integrity enforced at mart level)
+      - name: is_pledged
+        description: >
+          Whether the candidate has taken the GoodParty pledge (boolean).
+          A pledged candidate agreed to 4 qualifying statements either on the
+          GoodParty website or via communication with the politics team.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_verified
+        description: >
+          Whether the candidacy has been verified to exist (boolean).
+          True if verified, false otherwise. Set automatically if candidate data
+          came from Techspeed or BallotReady. For inbound candidates, verification
+          was done manually by the politics team by checking for evidence of a
+          legitimate campaign (campaign website, filing information, Facebook page,
+          etc.). Manual verification was discontinued in 2026.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: verification_status_reason
+        description: >
+          Reason why a candidacy is not verified. Only populated when is_verified
+          is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
+          Write In.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'No'
+                  - 'Unresponsive'
+                  - "Can\\'t Determine"
+                  - 'Partisan Candidate'
+                  - 'Write In'
+              config:
+                where: "verification_status_reason is not null"
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_candidate_2025
+    description: >
+      Historical archive of candidates from the general mart with elections
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_candidate_id
+        description: Primary key - internally generated unique identifier for candidates
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+          config:
+            # Companies without associated contacts may have null names
+            error_if: ">200"
+            warn_if: ">150"
+
+  - name: int__civics_candidacy_stage_2025
+    description: >
+      Historical archive of candidacy stages (primary, general, runoff results)
+      from the general mart with election stages on or before 2025-12-31.
+      Uses archived HubSpot data from 2026-01-22 for election results.
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_2025')
+                field: gp_candidacy_id
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_2025')
+                field: gp_election_stage_id
+      - name: is_winner
+        description: Whether the candidate won the election stage (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: election_result
+        description: >
+          Result of the election (Won, Lost, etc.).
+          HubSpot values: Won General, Lost General, Runoff, Withdrew, Not on Ballot.
+          DDHQ values: Won, Lost.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__hubspot_contacts_2025
+    description: >
+      Archived HubSpot contacts from 2026-01-22 snapshot. Source data for civics mart.
+    columns:
+      - name: pledge_status
+        description: Raw pledge status string from HubSpot (before boolean transformation)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['yes', 'no', 'Yes', 'No']
+              config:
+                where: "pledge_status is not null and trim(pledge_status) != ''"
+      - name: verified_candidate_status
+        description: >
+          Raw verification status from HubSpot contacts. Empty strings allowed
+          and converted to nulls in downstream int__hubspot_companies_w_contacts_2025.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
+                  - "Can\\'t Determine"
+                  - 'Partisan Candidate'
+                  - 'Write In'
+                  - ''
+              config:
+                where: "verified_candidate_status is not null"
+
+  - name: int__hubspot_companies_w_contacts_2025
+    description: >
+      Archived HubSpot companies joined with contacts from 2026-01-22 snapshot.
+      Upstream source for civics candidacy data. Empty strings in verified_candidate
+      are converted to nulls at this layer.
+    columns:
+      - name: verified_candidate
+        description: >
+          Verification status from HubSpot. Empty strings converted to nulls.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
+                  - "Can\\'t Determine"
+                  - 'Partisan Candidate'
+                  - 'Write In'
+              config:
+                where: "verified_candidate is not null"

@@ -1,8 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="gp_candidacy_stage_id",
-        on_schema_change="append_new_columns",
+        materialized="table",
         auto_liquid_cluster=true,
         tags=["mart", "general", "candidacy", "stage"],
     )
@@ -33,7 +31,13 @@ with
             tbl_ddhq_matches.ddhq_candidate_id,
             tbl_ddhq_matches.ddhq_race_id,
             tbl_ddhq_matches.ddhq_candidate_party,
-            tbl_ddhq_matches.ddhq_is_winner,
+            case
+                when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                then true
+                when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                then false
+                else null
+            end as ddhq_is_winner,
             tbl_ddhq_matches.llm_confidence as ddhq_llm_confidence,
             tbl_ddhq_matches.llm_reasoning as ddhq_llm_reasoning,
             tbl_ddhq_matches.top_10_candidates as ddhq_top_10_candidates,
@@ -56,9 +60,6 @@ with
             on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
-        {% if is_incremental() %}
-            where tbl_contacts.updated_at >= (select max(updated_at) from {{ this }})
-        {% endif %}
         qualify
             row_number() over (
                 partition by gp_candidacy_stage_id order by updated_at desc

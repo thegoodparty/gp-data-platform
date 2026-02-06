@@ -252,6 +252,8 @@ models:
             column_name: hubspot_contact_id
           config:
             where: "hubspot_contact_id is not null"
+            warn_if: ">0"
+            error_if: ">1000"
       - relationships:
           arguments:
             to: ref('int__hubspot_contacts_w_companies')
@@ -259,6 +261,8 @@ models:
             column_name: gp_candidacy_id
           config:
             where: "gp_candidacy_id is not null"
+            warn_if: ">0"
+            error_if: ">1000"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
@@ -287,6 +291,9 @@ models:
               arguments:
                 to: ref('int__hubspot_contacts_w_companies')
                 field: "gp_candidacy_id"
+              config:
+                warn_if: ">0"
+                error_if: ">1000"
       - name: gp_election_stage_id
         description: Identifier to link to election stage
         tests:
@@ -294,8 +301,6 @@ models:
               arguments:
                 to: ref('m_general__election_stage')
                 field: gp_election_stage_id
-                config:
-                  where: "gp_election_stage_id is not null"
       - name: ddhq_candidacy_id
         description: DDHQ candidate identifier
       - name: ddhq_candidate
@@ -323,8 +328,14 @@ models:
         description: Candidate party from DDHQ
         data_type: varchar
       - name: ddhq_is_winner
-        description: Whether the candidate won the election stage
+        description: Whether the candidate won the election stage (boolean, transformed from DDHQ Y/N)
         data_type: boolean
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "ddhq_is_winner is not null"
       - name: ddhq_llm_confidence
         description: LLM confidence score for the match
         data_type: float
@@ -530,6 +541,10 @@ models:
       - name: election_stage
         description: Type of election stage (e.g., primary, general, runoff)
         data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_type: date
