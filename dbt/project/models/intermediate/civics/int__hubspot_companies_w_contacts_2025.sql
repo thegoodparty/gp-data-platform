@@ -37,17 +37,16 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(tbl_contacts.first_name, '')",
-                        "coalesce(tbl_contacts.last_name, '')",
-                        "coalesce(cwc.properties_state, tbl_contacts.state, '')",
-                        "coalesce(cwc.properties_candidate_party, tbl_contacts.party_affiliation, '')",
-                        "coalesce(cwc.properties_candidate_office, tbl_contacts.candidate_office, '')",
-                        "coalesce(cwc.properties_election_date, tbl_contacts.general_election_date)",
-                        "coalesce(cwc.properties_candidate_district, tbl_contacts.district, '')",
+                        "tbl_contacts.first_name",
+                        "tbl_contacts.last_name",
+                        "tbl_contacts.state",
+                        "tbl_contacts.party_affiliation",
+                        "tbl_contacts.candidate_office",
+                        "tbl_contacts.general_election_date",
+                        "tbl_contacts.district",
                     ]
                 )
-            }}
-            as gp_candidacy_id,
+            }} as gp_candidacy_id,
             -- Prioritize company fields, fallback to contacts, then GP DB
             coalesce(
                 tbl_gp_db_campaign.data:name::string,
@@ -254,13 +253,13 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "''",
-                        "''",
-                        "coalesce(cwoc.properties_state, '')",
-                        "coalesce(cwoc.properties_candidate_party, '')",
-                        "coalesce(cwoc.properties_candidate_office, '')",
+                        "null",
+                        "null",
+                        "cwoc.properties_state",
+                        "cwoc.properties_candidate_party",
+                        "cwoc.properties_candidate_office",
                         "cwoc.properties_election_date",
-                        "coalesce(cwoc.properties_candidate_district, '')",
+                        "cwoc.properties_candidate_district",
                     ]
                 )
             }} as gp_candidacy_id,
@@ -391,13 +390,13 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(tbl_contacts.first_name, '')",
-                        "coalesce(tbl_contacts.last_name, '')",
-                        "coalesce(tbl_contacts.state, '')",
-                        "coalesce(tbl_contacts.party_affiliation, '')",
-                        "coalesce(tbl_contacts.candidate_office, '')",
+                        "tbl_contacts.first_name",
+                        "tbl_contacts.last_name",
+                        "tbl_contacts.state",
+                        "tbl_contacts.party_affiliation",
+                        "tbl_contacts.candidate_office",
                         "tbl_contacts.general_election_date",
-                        "coalesce(tbl_contacts.district, '')",
+                        "tbl_contacts.district",
                     ]
                 )
             }} as gp_candidacy_id,
