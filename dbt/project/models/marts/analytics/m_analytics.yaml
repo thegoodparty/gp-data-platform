@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: win_users
+    description: >
+      User-grain view for Win product OKR metrics tracking.
+      Built incrementally: each version adds columns for a new metric.
+
+      Grain: One row per user.
+
+      Source: mart_civics.users (Gold tier) + Amplitude events (Bronze tier).
+
+    columns:
+      - name: user_id
+        description: Primary key — unique user identifier from mart_civics.users.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: User's email address.
+
+      - name: first_name
+        description: User's first name.
+
+      - name: last_name
+        description: User's last name.
+
+      - name: phone
+        description: User's phone number.
+
+      - name: zip
+        description: User's zip code.
+
+      - name: registered_at
+        description: >
+          Timestamp when user account was created (signup date).
+          Source: mart_civics.users.created_at
+        data_tests:
+          - not_null
+
+      - name: registration_month
+        description: >
+          Month truncation of registered_at for monthly registration counts.
+          Use for dashboard grouping: COUNT(*) GROUP BY registration_month.
+
+      - name: registration_week
+        description: >
+          Week truncation of registered_at for weekly registration counts.
+
+      - name: registration_year
+        description: Year of registration for annual grouping.
+
+      - name: registration_quarter
+        description: Quarter of registration (1-4) for quarterly OKR reporting.
