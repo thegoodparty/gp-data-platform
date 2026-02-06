@@ -88,6 +88,15 @@ models:
       - name: has_pledged_campaign
         description: Whether user has at least one pledged campaign.
 
+      - name: is_pro
+        description: >
+          Whether user has upgraded at least one campaign to Pro tier.
+          Source: mart_civics.users.pro_campaign_count > 0.
+          Core column for Pro CVR metric (DATA-1486).
+          Pro CVR = count(is_pro = true) / count(*) for a given registration cohort.
+        data_tests:
+          - not_null
+
       - name: registered_at
         description: >
           Timestamp when user account was created (signup date).

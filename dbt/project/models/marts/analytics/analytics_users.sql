@@ -13,9 +13,9 @@
     with mart_civics users model.
 
     Version History:
-    - v0.1: Registrations + product flags (is_win_user, is_serve_user)
-    - v0.2: (planned) Onboarding CVR — onboarding_completed_at, is_onboarded
-    - v0.3: (planned) Pro CVR — pro_upgraded_at, is_pro
+    - v0.1: Registrations + product flags (is_win_user, is_serve_user) ✅
+    - v0.2: Pro CVR — is_pro, pro_campaign_count ✅
+    - v0.3: (planned) Onboarding CVR — onboarding_completed_at, is_onboarded
     - v0.4: (planned) 1st Campaign Sent — first_campaign_sent_at, is_activated
     - v0.5: (planned) Active Candidates — is_active, last_active_at
 */
@@ -57,14 +57,14 @@ with
             date_trunc('month', created_at) as registration_month,
             date_trunc('week', created_at) as registration_week,
             year(created_at) as registration_year,
-            quarter(created_at) as registration_quarter
+            quarter(created_at) as registration_quarter,
 
-        -- v0.2: Onboarding CVR (DATA-1485) — placeholder
+            -- v0.2: Pro CVR (DATA-1486)
+            (pro_campaign_count > 0) as is_pro
+
+        -- v0.3: Onboarding CVR (DATA-1485) — placeholder
         -- onboarding_completed_at,
         -- is_onboarded,
-        -- v0.3: Pro CVR (DATA-1486) — placeholder
-        -- pro_upgraded_at,
-        -- is_pro,
         -- v0.4: 1st Campaign Sent (DATA-1488) — placeholder
         -- first_campaign_sent_at,
         -- is_activated,
