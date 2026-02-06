@@ -1,7 +1,7 @@
 with
     joined as (
         select
-            mapping.company_id as hubspot_id,
+            mapping.company_id as hubspot_company_id,
             mapping.gp_candidacy_id,
             matches.election_date,
             matches.election_type,
@@ -23,7 +23,7 @@ with
     )
 
 select
-    hubspot_id,
+    hubspot_company_id,
     gp_candidacy_id,
     election_date,
     election_type,
