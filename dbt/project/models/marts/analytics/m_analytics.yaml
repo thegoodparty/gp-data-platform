@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: m_analytics__user_signups_by_month
+    description: >
+      Monthly summary of user signups on Goodparty.org.
+
+      Grain: One row per calendar month.
+
+    columns:
+      - name: signup_month
+        description: First day of the month in which users signed up
+        data_tests:
+          - unique
+          - not_null
+
+      - name: user_count
+        description: Total number of users who signed up during this month
+        data_tests:
+          - not_null
