@@ -11,15 +11,6 @@ with
             * except (election_date),
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
-            -- Parse election_date from multiple formats (32% of source has non-ISO
-            -- formats)
-            -- Without this, TRY_CAST loses ~32% of records with MM/DD/YYYY variants
-            coalesce(
-                try_cast(election_date as date),
-                try_to_date(election_date, 'MM/dd/yyyy'),
-                try_to_date(election_date, 'MM-dd-yyyy'),
-                try_to_date(election_date, 'MM/dd/yy')
-            ) as election_date_parsed,
             coalesce(
                 try_cast(primary_election_date as date),
                 try_to_date(primary_election_date, 'MM/dd/yyyy'),
@@ -56,8 +47,6 @@ with
     candidacies as (
         select
             -- Primary identifier (vendor-agnostic)
-            -- Fields aligned with int__hubspot_companies_w_contacts_2025.sql lines
-            -- 37-50
             -- UUID fields must match HubSpot pattern for cross-source dedupe
             -- HubSpot: coalesce(field, '') for strings, DATE type for dates (becomes
             -- ISO on cast)
@@ -84,7 +73,6 @@ with
             cast(null as string) as br_candidacy_id,
 
             -- Candidate FK (matches int__civics_candidate_techspeed generation)
-            -- Fields aligned with int__civics_candidate_2025.sql lines 64-75
             -- HubSpot: raw fields, birth_date is STRING in ISO format
             -- TechSpeed: parse birth_date to DATE then cast to string for format
             -- normalization
@@ -136,8 +124,7 @@ with
             candidate_office,
             official_office_name,
             office_level,
-            -- NOTE: district and city NOT included - civics candidacy schema doesn't
-            -- have them
+
             -- Status fields
             false as is_pledged,  -- TS records are leads, not pledged candidates
             true as is_verified,  -- TS data is verified by definition

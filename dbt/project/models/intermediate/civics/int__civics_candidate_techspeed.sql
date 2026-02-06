@@ -24,7 +24,6 @@ with
     candidates_with_id as (
         select
             -- Primary identifier
-            -- Fields aligned with int__civics_candidate_2025.sql lines 64-75
             -- HubSpot: raw fields, birth_date is STRING in ISO format
             -- TechSpeed: parse birth_date to DATE then cast to string for format
             -- normalization
