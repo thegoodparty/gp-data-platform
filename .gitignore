@@ -46,3 +46,4 @@ test_data/
 
 # Claude runbook
 .claude/RUNBOOK.md
+claude.md
