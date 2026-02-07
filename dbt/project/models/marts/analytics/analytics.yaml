@@ -194,7 +194,7 @@ models:
           arguments:
             expression: "campaign_updated_at >= campaign_created_at"
 
-  - name: m_analytics__candidacy
+  - name: leads_candidacy_details
     description: >
       Candidacy analytics mart combining candidacy records with candidate info,
       ICP office classifications, and election results by stage.
