@@ -1,10 +1,4 @@
-{{
-    config(
-        materialized="table",
-        unique_key="gp_candidacy_id",
-        tags=["mart", "analytics"],
-    )
-}}
+{{ config(materialized="table") }}
 
 with
     stage_results as (
@@ -88,9 +82,6 @@ with
             on cand.gp_candidacy_id = ro.gp_candidacy_id
             and ro.election_stage = 'runoff'
 
-        where
-            cand.general_election_date
-            >= '{{ var("analytics_min_election_date", "2024-01-01") }}'
     )
 
 select *
