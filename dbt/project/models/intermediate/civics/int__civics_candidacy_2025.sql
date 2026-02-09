@@ -4,6 +4,18 @@
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
+    -- Pick one campaign per email, preferring active non-demo campaigns
+    best_campaign_per_email as (
+        select user_email, campaign_id
+        from {{ ref("campaigns") }}
+        where not is_demo
+        qualify
+            row_number() over (
+                partition by user_email order by is_active desc, created_at desc
+            )
+            = 1
+    ),
+
     candidacies as (
         select
             -- Identifiers
@@ -60,7 +72,7 @@ with
             {{ ref("int__hubspot_contest_2025") }} as tbl_contest
             on tbl_contest.contact_id = tbl_companies.contact_id
         left join
-            {{ ref("campaigns") }} as tbl_campaigns
+            best_campaign_per_email as tbl_campaigns
             on tbl_candidates.email = tbl_campaigns.user_email
         left join
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
