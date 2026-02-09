@@ -113,9 +113,9 @@ with
                 else null
             end as is_incumbent,
             case
-                when upper(open_seat) in ('YES', 'TRUE')
+                when upper(trim(cast(open_seat as string))) in ('YES', 'TRUE')
                 then true
-                when upper(open_seat) in ('NO', 'FALSE')
+                when upper(trim(cast(open_seat as string))) in ('NO', 'FALSE')
                 then false
                 else null
             end as is_open_seat,
@@ -128,9 +128,9 @@ with
             true as is_verified,  -- TS data is verified by definition
             cast(null as string) as verification_status_reason,  -- Only populated when is_verified is false
             case
-                when lower(partisan) = 'partisan'
+                when lower(trim(cast(partisan as string))) = 'partisan'
                 then true
-                when lower(partisan) = 'nonpartisan'
+                when lower(trim(cast(partisan as string))) = 'nonpartisan'
                 then false
                 else null
             end as is_partisan,
