@@ -105,19 +105,18 @@ with
 
             -- Candidacy attributes
             party as party_affiliation,
-            -- Note: civics schema uses 'Yes'/'No' strings, not booleans
             case
                 when candidate_type = 'Incumbent'
-                then 'Yes'
+                then true
                 when candidate_type = 'Challenger'
-                then 'No'
+                then false
                 else null
             end as is_incumbent,
             case
                 when upper(open_seat) in ('YES', 'TRUE')
-                then 'Yes'
+                then true
                 when upper(open_seat) in ('NO', 'FALSE')
-                then 'No'
+                then false
                 else null
             end as is_open_seat,
             candidate_office,

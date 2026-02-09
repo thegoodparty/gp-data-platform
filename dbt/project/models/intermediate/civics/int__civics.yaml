@@ -387,20 +387,20 @@ models:
                 values: [true, false]
 
       - name: is_incumbent
-        description: Whether candidate is incumbent ('Yes'/'No' string, NULL if unknown)
+        description: Whether candidate is incumbent (boolean, NULL if unknown)
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Yes', 'No']
+                values: [true, false]
               config:
                 where: "is_incumbent is not null"
 
       - name: is_open_seat
-        description: Whether seat is open ('Yes'/'No' string, NULL if unknown)
+        description: Whether seat is open (boolean, NULL if unknown)
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Yes', 'No']
+                values: [true, false]
               config:
                 where: "is_open_seat is not null"
 
