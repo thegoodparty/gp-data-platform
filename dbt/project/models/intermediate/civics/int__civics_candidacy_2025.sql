@@ -11,7 +11,8 @@ with
         where not is_demo
         qualify
             row_number() over (
-                partition by user_email order by is_active desc, created_at desc
+                partition by user_email
+                order by coalesce(is_active, false) desc, created_at desc
             )
             = 1
     ),
