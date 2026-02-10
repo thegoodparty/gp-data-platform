@@ -17,6 +17,15 @@ with
             = 1
     ),
 
+    -- Campaign IDs already directly linked via HubSpot company → GP DB
+    -- Used to prevent the email backfill from assigning a campaign that
+    -- is already claimed by another candidacy
+    directly_linked_campaigns as (
+        select distinct product_campaign_id
+        from {{ ref("int__hubspot_companies_w_contacts_2025") }}
+        where product_campaign_id is not null
+    ),
+
     candidacies as (
         select
             -- Identifiers
@@ -25,7 +34,19 @@ with
             tbl_candidates.gp_candidate_id as gp_candidate_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
             coalesce(
-                tbl_companies.product_campaign_id, tbl_campaigns.campaign_id
+                tbl_companies.product_campaign_id,
+                -- Only backfill via email if the campaign isn't already
+                -- directly linked to another candidacy
+                case
+                    when
+                        tbl_campaigns.campaign_id is not null
+                        and not exists (
+                            select 1
+                            from directly_linked_campaigns dlc
+                            where dlc.product_campaign_id = tbl_campaigns.campaign_id
+                        )
+                    then tbl_campaigns.campaign_id
+                end
             ) as product_campaign_id,
             tbl_companies.contact_id as hubspot_contact_id,
             tbl_companies.extra_companies as hubspot_company_ids,
