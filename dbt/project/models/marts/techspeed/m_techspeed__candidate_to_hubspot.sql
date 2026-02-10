@@ -18,6 +18,8 @@ with
     techspeed_viability as (
         select * from {{ ref("int__techspeed_viability_scoring") }}
     ),
+    br_race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
+    icp_offices as (select * from {{ ref("int__icp_offices") }}),
     techspeed_candidates_w_hubspot as (
         select
             -- We don't want to hand values over to hubspot with string
@@ -82,11 +84,74 @@ with
             f._ab_source_file_url,
             -- Add viability scores
             v.viability_rating_2_0,
-            v.score_viability_automated
+            v.score_viability_automated,
+            -- ICP flags: use BallotReady ICP offices when available,
+            -- fall back to candidate_office + population for net-new records
+            case
+                when icp.icp_office_win is not null
+                then icp.icp_office_win
+                when f.population is null
+                then null
+                when
+                    f.population between 500 and 50000
+                    and f.candidate_office in (
+                        'City Council',
+                        'Mayor',
+                        'Township Council',
+                        'State Senate',
+                        'State Representative',
+                        'County Legislature',
+                        'Township Supervisor',
+                        'Township Mayor',
+                        'County Executive Head',
+                        'City Legislature Chair//President of Council',
+                        'County Legislative Chair (non-executive)',
+                        'City Board of Selectmen',
+                        'Town Meeting Board',
+                        'City Ward Moderator',
+                        'City Vice-Mayor//Mayor Pro Tem',
+                        'County Vice Mayor',
+                        'Township Executive'
+                    )
+                then true
+                else false
+            end as icp_win,
+            case
+                when icp.icp_office_serve is not null
+                then icp.icp_office_serve
+                when f.population is null
+                then null
+                when
+                    f.population between 1000 and 100000
+                    and f.candidate_office in (
+                        'City Council',
+                        'Mayor',
+                        'Township Council',
+                        'State Senate',
+                        'State Representative',
+                        'County Legislature',
+                        'Township Supervisor',
+                        'Township Mayor',
+                        'County Executive Head',
+                        'City Legislature Chair//President of Council',
+                        'County Legislative Chair (non-executive)',
+                        'City Board of Selectmen',
+                        'Town Meeting Board',
+                        'City Ward Moderator',
+                        'City Vice-Mayor//Mayor Pro Tem',
+                        'County Vice Mayor',
+                        'Township Executive'
+                    )
+                then true
+                else false
+            end as icp_serve
         from techspeed_candidates_fuzzy as f
         left join
             techspeed_viability as v
             on f.techspeed_candidate_code = v.techspeed_candidate_code
+        left join br_race r on try_cast(f.ballotready_race_id as int) = r.database_id
+        left join
+            icp_offices icp on r.position.`databaseId` = icp.br_database_position_id
         -- remove candidates that have already been found in ballotready
         where
             f.fuzzy_matched_hubspot_candidate_code not in (
@@ -149,5 +214,7 @@ select
     _airbyte_extracted_at,
     added_to_mart_at,
     viability_rating_2_0,
-    score_viability_automated
+    score_viability_automated,
+    icp_win,
+    icp_serve
 from techspeed_candidates_w_hubspot

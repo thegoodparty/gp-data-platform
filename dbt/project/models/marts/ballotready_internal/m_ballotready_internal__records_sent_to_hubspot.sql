@@ -20,6 +20,10 @@ with
         select * from {{ ref("int__ballotready_final_candidacies") }}
     ),
 
+    br_race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
+
+    icp_offices as (select * from {{ ref("int__icp_offices") }}),
+
     -- Combine fuzzy match results with final candidacies
     combined_records as (
         select
@@ -68,9 +72,14 @@ with
             fd.fuzzy_matched_office_type,
             fd.match_type,
             -- Placeholder for future viability score calculation
-            cast(null as string) as viability_score
+            cast(null as string) as viability_score,
+            icp.icp_office_win as icp_win,
+            icp.icp_office_serve as icp_serve
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
+        left join br_race r on cast(fc.ballotready_race_id as int) = r.database_id
+        left join
+            icp_offices icp on r.position.`databaseId` = icp.br_database_position_id
     )
 
 select
@@ -121,6 +130,9 @@ select
     fuzzy_matched_office_type,
     -- Viability score placeholder
     viability_score,
+    -- ICP flags
+    icp_win,
+    icp_serve,
     current_timestamp() as upload_timestamp
 from combined_records
 -- Only include records that haven't been processed yet
