@@ -78,8 +78,7 @@ with
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
         left join br_race r on cast(fc.ballotready_race_id as int) = r.database_id
-        left join
-            icp_offices icp on r.position.`databaseId` = icp.br_database_position_id
+        left join icp_offices icp on r.position.databaseid = icp.br_database_position_id
     )
 
 select

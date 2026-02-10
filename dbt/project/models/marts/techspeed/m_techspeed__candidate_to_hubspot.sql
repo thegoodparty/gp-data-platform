@@ -140,43 +140,30 @@ with
             v.score_viability_automated,
             -- ICP flags: use BallotReady ICP offices when available,
             -- fall back to candidate_office + population for net-new records.
-            case
-                when icp.icp_office_win is not null
-                then icp.icp_office_win
-                when f.population is null
-                then null
-                when
-                    f.population between 500 and 50000
-                    and lower(trim(f.candidate_office)) in (
-                        {% for office in icp_qualifying_ts_offices %}
-                            '{{ office }}'{{ ',' if not loop.last }}
-                        {% endfor %}
-                    )
-                then true
-                else false
-            end as icp_win,
-            case
-                when icp.icp_office_serve is not null
-                then icp.icp_office_serve
-                when f.population is null
-                then null
-                when
-                    f.population between 1000 and 100000
-                    and lower(trim(f.candidate_office)) in (
-                        {% for office in icp_qualifying_ts_offices %}
-                            '{{ office }}'{{ ',' if not loop.last }}
-                        {% endfor %}
-                    )
-                then true
-                else false
-            end as icp_serve
+            coalesce(
+                icp.icp_office_win,
+                f.population between 500 and 50000
+                and lower(trim(f.candidate_office)) in (
+                    {% for office in icp_qualifying_ts_offices %}
+                        '{{ office }}'{{ ',' if not loop.last }}
+                    {% endfor %}
+                )
+            ) as icp_win,
+            coalesce(
+                icp.icp_office_serve,
+                f.population between 1000 and 100000
+                and lower(trim(f.candidate_office)) in (
+                    {% for office in icp_qualifying_ts_offices %}
+                        '{{ office }}'{{ ',' if not loop.last }}
+                    {% endfor %}
+                )
+            ) as icp_serve
         from techspeed_candidates_fuzzy as f
         left join
             techspeed_viability as v
             on f.techspeed_candidate_code = v.techspeed_candidate_code
         left join br_race r on try_cast(f.ballotready_race_id as int) = r.database_id
-        left join
-            icp_offices icp on r.position.`databaseId` = icp.br_database_position_id
+        left join icp_offices icp on r.position.databaseid = icp.br_database_position_id
         -- remove candidates that have already been found in ballotready
         where
             f.fuzzy_matched_hubspot_candidate_code not in (
