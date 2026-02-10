@@ -20,8 +20,6 @@ with
         select * from {{ ref("int__ballotready_final_candidacies") }}
     ),
 
-    br_race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
-
     icp_offices as (select * from {{ ref("int__icp_offices") }}),
 
     -- Combine fuzzy match results with final candidacies
@@ -77,8 +75,7 @@ with
             icp.icp_office_serve as icp_serve
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
-        left join br_race r on cast(fc.ballotready_race_id as int) = r.database_id
-        left join icp_offices icp on r.position.databaseid = icp.br_database_position_id
+        left join icp_offices icp on fc.position_id = icp.br_database_position_id
     )
 
 select
