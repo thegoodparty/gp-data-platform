@@ -4,26 +4,25 @@
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
-    -- Pick one campaign per email, preferring active non-demo campaigns
+    -- Pick one campaign per email, preferring active non-demo campaigns.
+    -- Excludes campaigns already linked to a candidacy via HubSpot to
+    -- prevent the email backfill from creating duplicate campaign mappings.
     best_campaign_per_email as (
         select user_email, campaign_id
         from {{ ref("campaigns") }}
-        where not is_demo
+        where
+            is_demo = false
+            and campaign_id not in (
+                select product_campaign_id
+                from {{ ref("int__hubspot_companies_w_contacts_2025") }}
+                where product_campaign_id is not null
+            )
         qualify
             row_number() over (
                 partition by user_email
                 order by coalesce(is_active, false) desc, created_at desc
             )
             = 1
-    ),
-
-    -- Campaign IDs already directly linked via HubSpot company → GP DB
-    -- Used to prevent the email backfill from assigning a campaign that
-    -- is already claimed by another candidacy
-    directly_linked_campaigns as (
-        select distinct product_campaign_id
-        from {{ ref("int__hubspot_companies_w_contacts_2025") }}
-        where product_campaign_id is not null
     ),
 
     candidacies as (
@@ -34,19 +33,7 @@ with
             tbl_candidates.gp_candidate_id as gp_candidate_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
             coalesce(
-                tbl_companies.product_campaign_id,
-                -- Only backfill via email if the campaign isn't already
-                -- directly linked to another candidacy
-                case
-                    when
-                        tbl_campaigns.campaign_id is not null
-                        and not exists (
-                            select 1
-                            from directly_linked_campaigns dlc
-                            where dlc.product_campaign_id = tbl_campaigns.campaign_id
-                        )
-                    then tbl_campaigns.campaign_id
-                end
+                tbl_companies.product_campaign_id, tbl_campaigns.campaign_id
             ) as product_campaign_id,
             tbl_companies.contact_id as hubspot_contact_id,
             tbl_companies.extra_companies as hubspot_company_ids,
