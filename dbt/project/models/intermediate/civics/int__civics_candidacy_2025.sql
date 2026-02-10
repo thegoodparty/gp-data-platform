@@ -108,7 +108,19 @@ select
     candidacy_id,
     gp_candidate_id,
     gp_election_id,
-    product_campaign_id,
+    -- A contact with multiple candidacies (e.g. ran for two different offices)
+    -- can receive the same product_campaign_id via the email backfill, since
+    -- both candidacies share the same email. Keep the link on only one
+    -- candidacy (most recently updated) to preserve 1:1 campaign→candidacy grain.
+    case
+        when
+            product_campaign_id is not null
+            and row_number() over (
+                partition by product_campaign_id order by updated_at desc
+            )
+            = 1
+        then product_campaign_id
+    end as product_campaign_id,
     hubspot_contact_id,
     hubspot_company_ids,
     candidate_id_source,
