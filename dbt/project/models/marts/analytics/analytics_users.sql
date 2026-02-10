@@ -1,32 +1,18 @@
 {{ config(materialized="view", schema="analytics") }}
 
 /*
-    analytics.analytics_users — v0.3: Onboarding CVR (DATA-1485)
+    analytics.analytics_users
 
-    Unified user-grain view for Win and Serve product OKR metrics.
-    Built incrementally: each version adds columns for a new metric.
+    Unified user-grain view for product metrics.
+    Source: mart_civics.users + int__amplitude_user_milestones.
 
-    Grain: One row per user.
-    Refresh: Full refresh (view).
-
-    Note: File is named analytics_users.sql to avoid dbt model name collision
-    with mart_civics users model.
-
-    Version History:
-    - v0.1: Registrations + product flags (is_win_user, is_serve_user) ✅
-    - v0.2: Pro CVR — is_pro, pro_campaign_count ✅
-    - v0.3: Onboarding CVR — is_onboarded + Amplitude milestone columns ✅
-    - v0.4: (planned) 1st Campaign Sent — first_campaign_sent_at, is_activated
-    - v0.5: (planned) Active Candidates — is_active, last_active_at
-
-    v0.3 is_onboarded definition (authoritative KPI):
-    - US registration (registration_country = 'United States')
-    - Dashboard viewed within 14 days of Amplitude registration event
-    - Standard metric filter: is_post_amplitude_registration = TRUE
-
-    Supplemental note:
-    - has_completed_onboarding_flow maps to the OKR doc alternative
-      (onboarding_complete event only; no US or 14-day constraint).
+    Metric definitions in this model:
+    - is_pro: user has at least one pro campaign.
+    - is_onboarded: US registration with first dashboard view from registration
+      time through 14 days. Use with is_post_amplitude_registration for
+      Amplitude-era denominators.
+    - is_activated: user has at least one voter outreach campaign event.
+    - has_completed_onboarding_flow: supplemental onboarding_complete flag.
 */
 with
 
@@ -62,19 +48,17 @@ with
             u.has_verified_campaign,
             u.has_pledged_campaign,
 
-            -- v0.1: Registrations (DATA-1484)
+            -- Registration cohort fields
             u.created_at as registered_at,
             date_trunc('month', u.created_at) as registration_month,
             date_trunc('week', u.created_at) as registration_week,
             year(u.created_at) as registration_year,
             quarter(u.created_at) as registration_quarter,
 
-            -- v0.2: Pro CVR (DATA-1486)
+            -- Pro metric
             (u.pro_campaign_count > 0) as is_pro,
 
-            -- v0.3: Onboarding CVR (DATA-1485)
-            -- Definition: Bryan Levine's Exec Dashboard KPI
-            -- Registration Completed -> Dashboard Viewed within 14 days, US only
+            -- Onboarding metric
             m.amplitude_registration_completed_at,
             m.first_dashboard_viewed_at,
             m.registration_country,
@@ -89,17 +73,14 @@ with
             ) as is_onboarded,
             m.onboarding_completed_at,
             (m.onboarding_completed_at is not null) as has_completed_onboarding_flow,
-            -- Current intermediate scope is registration-event users.
+            -- Intermediate is currently scoped to registration-event users.
             (m.user_id is not null) as has_amplitude_data,
-            (u.created_at >= '2023-12-10') as is_post_amplitude_registration
+            (u.created_at >= '2023-12-10') as is_post_amplitude_registration,
 
-        -- v0.4: 1st Campaign Sent (DATA-1488) — placeholder
-        -- first_campaign_sent_at,
-        -- is_activated,
-        -- total_campaigns_sent,
-        -- v0.5: Active Candidates (DATA-1493) — placeholder
-        -- is_active,
-        -- last_active_at
+            -- Activated metric
+            m.first_campaign_sent_at,
+            (m.first_campaign_sent_at is not null) as is_activated,
+            m.total_campaigns_sent
         from users u
         left join milestones m on u.user_id = m.user_id
     )

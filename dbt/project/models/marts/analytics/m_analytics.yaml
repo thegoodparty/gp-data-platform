@@ -4,18 +4,14 @@ models:
   - name: analytics_users
     description: >
       Unified user-grain view for Win and Serve product OKR metrics tracking.
-      Built incrementally: each version adds columns for a new metric.
+      Built incrementally as new metrics are added.
 
       File is named analytics_users to avoid dbt model name collision with
       mart_civics.users.
 
       Grain: One row per user.
 
-      Source: mart_civics.users (Gold tier) + Amplitude events (Bronze tier, added in v0.3+).
-
-      Tickets: DATA-1484 (Registrations), DATA-1485 (Onboarding CVR),
-      DATA-1486 (Pro CVR), DATA-1488 (1st Campaign Sent),
-      DATA-1491 (Activated Candidates Rate), DATA-1493 (Active Candidates).
+      Source: mart_civics.users (Gold tier) + Amplitude milestones.
 
     columns:
       - name: user_id
@@ -92,7 +88,6 @@ models:
         description: >
           Whether user has upgraded at least one campaign to Pro tier.
           Source: mart_civics.users.pro_campaign_count > 0.
-          Core column for Pro CVR metric (DATA-1486).
           Pro CVR = count(is_pro = true) / count(*) for a given registration cohort.
         data_tests:
           - not_null
@@ -101,13 +96,13 @@ models:
         description: >
           Earliest Amplitude timestamp for event
           'Onboarding - Registration Completed'. Primary denominator timestamp
-          for v0.3 Onboarding CVR.
+          for onboarding conversion.
 
       - name: first_dashboard_viewed_at
         description: >
           Earliest Amplitude timestamp for event
           'Dashboard - Candidate Dashboard Viewed'. Primary numerator timestamp
-          for v0.3 Onboarding CVR.
+          for onboarding conversion.
 
       - name: registration_country
         description: >
@@ -141,7 +136,7 @@ models:
           TRUE if user has a matching registration-scoped record in
           int__amplitude_user_milestones (currently requires
           'Onboarding - Registration Completed'). Coverage indicator for
-          v0.3 Amplitude-backed metrics.
+          Amplitude-backed metrics.
         data_tests:
           - not_null
 
@@ -152,10 +147,26 @@ models:
         data_tests:
           - not_null
 
+      - name: first_campaign_sent_at
+        description: >
+          Timestamp of user's first 'Voter Outreach - Campaign Completed' event.
+          NULL if user has never sent a campaign.
+
+      - name: is_activated
+        description: >
+          TRUE if user has completed at least one voter outreach campaign.
+          This is the OKR "Activated Candidates" metric.
+        data_tests:
+          - not_null
+
+      - name: total_campaigns_sent
+        description: >
+          Count of 'Voter Outreach - Campaign Completed' events for this user.
+          Note: may undercount if Airbyte sync is in progress during dbt run.
+
       - name: registered_at
         description: >
           Timestamp when user account was created (signup date).
-          Core column for the Registrations metric (DATA-1484).
           Source: mart_civics.users.created_at
         data_tests:
           - not_null
@@ -187,3 +198,18 @@ models:
             expression: "amplitude_registration_completed_at is not null"
           config:
             where: "has_amplitude_data = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "first_campaign_sent_at is not null"
+          config:
+            where: "is_activated = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "total_campaigns_sent > 0"
+          config:
+            where: "is_activated = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_activated = true"
+          config:
+            where: "first_campaign_sent_at is not null"
