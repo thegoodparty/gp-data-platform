@@ -58,6 +58,9 @@ models:
       civics:
         +schema: mart_civics
         +tags: ["mart", "civics"]
+      analytics:
+        +schema: mart_analytics
+        +tags: ["mart", "analytics"]
       mban2026:
         +schema: mart_mban2026
     staging:
