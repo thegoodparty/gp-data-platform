@@ -11,6 +11,59 @@ database identifiers (e.g., snake_case), which would break the expected schema f
 */
 {{ config(materialized="view") }}
 
+{#
+    TechSpeed candidate_office values that map to ICP-qualifying normalized
+    position types. Used for fallback ICP logic when no BallotReady position
+    match exists. Values must be lowercase to match lower(trim()) comparison.
+#}
+{%- set icp_qualifying_ts_offices = [
+    "city council",
+    "city commission",
+    "city commissioner",
+    "alderman",
+    "alderperson",
+    "village board",
+    "village council",
+    "village trustee",
+    "village councill",
+    "village president",
+    "municipal assembly",
+    "metro council",
+    "legislative council",
+    "city legislative council",
+    "mayor",
+    "town council",
+    "town board",
+    "town commission",
+    "town commissioner",
+    "town trustee",
+    "town board member",
+    "township board",
+    "town board chairperson",
+    "state legislature",
+    "county council",
+    "county commission",
+    "county commissioner",
+    "county legislator",
+    "board of supervisor",
+    "board of supervisors",
+    "board of commissioner",
+    "county committee",
+    "township supervisor",
+    "town supervisor",
+    "county supervisor",
+    "county executive",
+    "city council president",
+    "city president",
+    "town select board",
+    "town selectmen",
+    "town selectperson",
+    "town selectboard",
+    "town meeting representative",
+    "city ward moderator",
+    "town moderator",
+] -%}
+
 with
     techspeed_candidates_fuzzy as (
         select * from {{ ref("int__techspeed_candidates_fuzzy_deduped") }}
@@ -87,8 +140,6 @@ with
             v.score_viability_automated,
             -- ICP flags: use BallotReady ICP offices when available,
             -- fall back to candidate_office + population for net-new records.
-            -- Fallback list maps TechSpeed office_normalized values to
-            -- ICP-qualifying normalized position types.
             case
                 when icp.icp_office_win is not null
                 then icp.icp_office_win
@@ -97,67 +148,9 @@ with
                 when
                     f.population between 500 and 50000
                     and lower(trim(f.candidate_office)) in (
-                        -- City Legislature
-                        'city council',
-                        'city commission',
-                        'city councilor',
-                        'city commissioner',
-                        'alderman',
-                        'alderperson',
-                        'village council',
-                        'village board',
-                        'village trustee',
-                        'village commission',
-                        'borough assembly',
-                        'municipal assembly',
-                        'metro council',
-                        'legislative council',
-                        -- City Executive / Mayor
-                        'mayor',
-                        'city mayor',
-                        -- Township Trustee / Township Council
-                        'township trustee',
-                        'town council',
-                        'town board',
-                        'town commission',
-                        'town commissioner',
-                        'town trustee',
-                        'township board',
-                        -- State Representative
-                        'state representative',
-                        'state legislature',
-                        'assembly member',
-                        'house of delegates',
-                        'state assembly',
-                        -- State Senator
-                        'state senate',
-                        -- County Legislature / Executive Board
-                        'county legislature',
-                        'county council',
-                        'county commission',
-                        'county commissioner',
-                        'board of supervisor',
-                        'county board of supervisor',
-                        'county committee',
-                        -- Township Supervisor
-                        'township supervisor',
-                        'town supervisor',
-                        'supervisor',
-                        'city supervisor',
-                        -- City Legislature Chair / President of Council
-                        'city council president',
-                        -- City Board of Selectmen
-                        'select board',
-                        'town select board',
-                        'city select board',
-                        'selectman',
-                        'first selectman',
-                        -- Town Meeting Board
-                        'town meeting representative',
-                        -- City Ward Moderator
-                        'city moderator',
-                        'town moderator',
-                        'moderator'
+                        {% for office in icp_qualifying_ts_offices %}
+                            '{{ office }}'{{ ',' if not loop.last }}
+                        {% endfor %}
                     )
                 then true
                 else false
@@ -170,67 +163,9 @@ with
                 when
                     f.population between 1000 and 100000
                     and lower(trim(f.candidate_office)) in (
-                        -- City Legislature
-                        'city council',
-                        'city commission',
-                        'city councilor',
-                        'city commissioner',
-                        'alderman',
-                        'alderperson',
-                        'village council',
-                        'village board',
-                        'village trustee',
-                        'village commission',
-                        'borough assembly',
-                        'municipal assembly',
-                        'metro council',
-                        'legislative council',
-                        -- City Executive / Mayor
-                        'mayor',
-                        'city mayor',
-                        -- Township Trustee / Township Council
-                        'township trustee',
-                        'town council',
-                        'town board',
-                        'town commission',
-                        'town commissioner',
-                        'town trustee',
-                        'township board',
-                        -- State Representative
-                        'state representative',
-                        'state legislature',
-                        'assembly member',
-                        'house of delegates',
-                        'state assembly',
-                        -- State Senator
-                        'state senate',
-                        -- County Legislature / Executive Board
-                        'county legislature',
-                        'county council',
-                        'county commission',
-                        'county commissioner',
-                        'board of supervisor',
-                        'county board of supervisor',
-                        'county committee',
-                        -- Township Supervisor
-                        'township supervisor',
-                        'town supervisor',
-                        'supervisor',
-                        'city supervisor',
-                        -- City Legislature Chair / President of Council
-                        'city council president',
-                        -- City Board of Selectmen
-                        'select board',
-                        'town select board',
-                        'city select board',
-                        'selectman',
-                        'first selectman',
-                        -- Town Meeting Board
-                        'town meeting representative',
-                        -- City Ward Moderator
-                        'city moderator',
-                        'town moderator',
-                        'moderator'
+                        {% for office in icp_qualifying_ts_offices %}
+                            '{{ office }}'{{ ',' if not loop.last }}
+                        {% endfor %}
                     )
                 then true
                 else false
