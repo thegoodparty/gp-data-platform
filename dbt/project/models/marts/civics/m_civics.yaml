@@ -241,6 +241,14 @@ models:
       - name: office_level
         description: Level of office (local, state, federal)
 
+      - name: office_type
+        description: >
+          Standardized type of office sourced from HubSpot properties.
+          Common values include School Board, City Council, Town Council,
+          Mayor, Judge, State House, State Senate, Congressional,
+          Statewide/Governor, Sheriff, Alderman, Attorney, Clerk/Treasurer,
+          County Supervisor, President, and Other.
+
       - name: candidacy_result
         description: >
           Result of the candidacy. Values:
