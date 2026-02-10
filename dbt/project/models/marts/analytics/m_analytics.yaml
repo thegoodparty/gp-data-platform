@@ -257,6 +257,27 @@ models:
               arguments:
                 min_value: 0
 
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
+
+      - name: br_normalized_position_type
+        description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
+
       - name: official_office_name
         description: Formal office title from candidacy data (title case)
 
