@@ -112,6 +112,7 @@ select
     -- can receive the same product_campaign_id via the email backfill, since
     -- both candidacies share the same email. Keep the link on only one
     -- candidacy (most recently updated) to preserve 1:1 campaign→candidacy grain.
+    -- As of 2026-02-10 this dedup applies to 4 candidacies.
     case
         when
             product_campaign_id is not null
