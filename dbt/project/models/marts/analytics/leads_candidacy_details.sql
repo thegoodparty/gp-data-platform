@@ -43,8 +43,6 @@ with
             initcap(icp.l2_district_name) as l2_district_name,
             initcap(icp.l2_district_type) as l2_district_type,
             icp.voter_count,
-            icp.judicial as is_judicial,
-            icp.appointed as is_appointed,
 
             -- Election dates
             cand.primary_election_date,

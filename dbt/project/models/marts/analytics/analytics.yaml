@@ -292,12 +292,6 @@ models:
               arguments:
                 min_value: 0
 
-      - name: is_judicial
-        description: Whether the office is a judicial position
-
-      - name: is_appointed
-        description: Whether the office is an appointed position
-
       - name: primary_election_date
         description: Date of the primary election
 
