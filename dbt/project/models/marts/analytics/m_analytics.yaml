@@ -116,3 +116,352 @@ models:
 
       - name: registration_quarter
         description: Quarter of registration (1-4) for quarterly OKR reporting.
+
+  - name: user_campaign_activity
+    description: >
+      User and campaign activity report combining campaign data with user attributes,
+      ICP office classifications, candidacy details, and election results by stage.
+
+      Grain: One row per campaign.
+
+    columns:
+      - name: campaign_id
+        description: Primary key - unique campaign identifier from gp-api production database
+        data_tests:
+          - unique
+          - not_null
+
+      - name: campaign_slug
+        description: URL-friendly campaign identifier used in app URLs
+        data_tests:
+          - not_null
+
+      - name: hubspot_id
+        description: HubSpot identifier for the campaign
+
+      - name: user_id
+        description: Foreign key to user table - the user who owns this campaign
+        data_tests:
+          - not_null
+
+      - name: user_email
+        description: User's email address (lowercased)
+        data_tests:
+          - not_null
+
+      - name: user_first_name
+        description: User's first name (title case)
+        data_tests:
+          - not_null
+
+      - name: user_last_name
+        description: User's last name (title case)
+        data_tests:
+          - not_null
+
+      - name: user_phone
+        description: User's phone number
+
+      - name: user_zip
+        description: User's zip code
+
+      - name: user_created_at
+        description: Timestamp when user account was created (signup date)
+        data_tests:
+          - not_null
+
+      - name: campaign_created_at
+        description: Timestamp when this campaign was created
+        data_tests:
+          - not_null
+
+      - name: campaign_updated_at
+        description: Timestamp when this campaign was last updated
+        data_tests:
+          - not_null
+
+      - name: is_verified
+        description: Whether the campaign has been verified by GoodParty staff
+        data_tests:
+          - not_null
+
+      - name: is_active
+        description: Whether the campaign is currently active
+        data_tests:
+          - not_null
+
+      - name: is_pro
+        description: Whether the campaign is on pro tier
+
+      - name: is_demo
+        description: Whether the campaign is a demo/test account
+        data_tests:
+          - not_null
+
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+
+      - name: election_date
+        description: Date of the election the campaign is targeting
+
+      - name: campaign_state
+        description: U.S. state where the campaign is running
+
+      - name: campaign_office
+        description: Political office the candidate is running for
+
+      - name: campaign_party
+        description: Political party affiliation
+
+      - name: election_level
+        description: Level of election (local, state, federal)
+
+      - name: ballotready_position_id
+        description: Numeric identifier for the political position in BallotReady's database
+
+      - name: is_win_user
+        description: Whether this is a Win platform user (always true in this model, as it is campaign-based)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true]
+
+      - name: is_serve_user
+        description: Whether the user is a Serve platform user (has created and completed a poll through an elected office)
+        data_tests:
+          - not_null
+
+      - name: eo_activated_at
+        description: Timestamp when the user became a Serve user (first completed poll creation date). NULL for non-Serve users.
+
+      - name: icp_office_win
+        description: Whether the office meets Ideal Customer Profile criteria for the Win product
+
+      - name: icp_office_serve
+        description: Whether the office meets Ideal Customer Profile criteria for the Serve product
+
+      - name: ballotready_position_name
+        description: Name of the political position from BallotReady (title case)
+
+      - name: l2_district_name
+        description: District name from L2 voter data (title case)
+
+      - name: l2_district_type
+        description: District type from L2 voter data (title case)
+
+      - name: voter_count
+        description: Number of voters in the district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
+
+      - name: br_normalized_position_type
+        description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
+
+      - name: official_office_name
+        description: Formal office title from candidacy data (title case)
+
+      - name: candidacy_result
+        description: >
+          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+
+      - name: viability_score
+        description: Model-generated viability rating for the candidacy
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+
+      - name: runoff_election_date
+        description: Date of the runoff election, if applicable
+
+      - name: primary_election_result
+        description: Result of the primary election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_election_result
+        description: Result of the general election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: runoff_election_result
+        description: Result of the runoff election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - campaign_id
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "campaign_updated_at >= campaign_created_at"
+
+  - name: leads_candidacy_details
+    description: >
+      Candidacy analytics mart combining candidacy records with candidate info,
+      ICP office classifications, and election results by stage.
+
+      Grain: One row per candidacy.
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - unique candidacy identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_campaign_id
+        description: Foreign key to associated campaign in the Win product
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate
+        data_tests:
+          - not_null
+
+      - name: gp_election_id
+        description: Foreign key to election
+
+      - name: hubspot_contact_id
+        description: HubSpot contact identifier
+
+      - name: br_position_database_id
+        description: BallotReady position database identifier
+
+      - name: candidate_name
+        description: Candidate full name (title case)
+
+      - name: candidate_state
+        description: U.S. state of the candidate
+
+      - name: party_affiliation
+        description: Political party affiliation
+
+      - name: is_incumbent
+        description: Whether the candidate is an incumbent
+
+      - name: is_open_seat
+        description: Whether the seat is open (no incumbent)
+
+      - name: official_office_name
+        description: Formal office title (title case)
+
+      - name: office_level
+        description: Level of the office (local, state, federal)
+
+      - name: candidacy_result
+        description: >
+          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+
+      - name: is_verified
+        description: Whether the candidacy has been verified
+
+      - name: is_partisan
+        description: Whether the race is partisan
+
+      - name: viability_score
+        description: Model-generated viability rating for the candidacy
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: icp_office_win
+        description: Whether the office meets ICP criteria for the Win product
+
+      - name: icp_office_serve
+        description: Whether the office meets ICP criteria for the Serve product
+
+      - name: ballotready_position_name
+        description: Position name from BallotReady (title case)
+
+      - name: l2_district_name
+        description: District name from L2 voter data (title case)
+
+      - name: l2_district_type
+        description: District type from L2 voter data (title case)
+
+      - name: voter_count
+        description: Number of voters in the district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+
+      - name: runoff_election_date
+        description: Date of the runoff election, if applicable
+
+      - name: primary_election_result
+        description: Result of the primary election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_election_result
+        description: Result of the general election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: runoff_election_result
+        description: Result of the runoff election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
