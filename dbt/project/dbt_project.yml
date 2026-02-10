@@ -53,7 +53,7 @@ models:
     marts:
       +materialized: table
       analytics:
-        +schema: analytics
+        +schema: mart_analytics
         +tags: ["mart", "analytics"]
       civics:
         +schema: mart_civics
