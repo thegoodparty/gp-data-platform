@@ -7,11 +7,11 @@ models:
       Built incrementally: each version adds columns for a new metric.
 
       File is named analytics_users to avoid dbt model name collision with
-      mart_civics.users. Alias renders as analytics.users in the warehouse.
+      mart_civics.users.
 
       Grain: One row per user.
 
-      Source: mart_civics.users (Gold tier) + Amplitude events (Bronze tier, added in v0.2+).
+      Source: mart_civics.users (Gold tier) + Amplitude events (Bronze tier, added in v0.3+).
 
       Tickets: DATA-1484 (Registrations), DATA-1485 (Onboarding CVR),
       DATA-1486 (Pro CVR), DATA-1488 (1st Campaign Sent),
@@ -97,6 +97,61 @@ models:
         data_tests:
           - not_null
 
+      - name: amplitude_registration_completed_at
+        description: >
+          Earliest Amplitude timestamp for event
+          'Onboarding - Registration Completed'. Primary denominator timestamp
+          for v0.3 Onboarding CVR.
+
+      - name: first_dashboard_viewed_at
+        description: >
+          Earliest Amplitude timestamp for event
+          'Dashboard - Candidate Dashboard Viewed'. Primary numerator timestamp
+          for v0.3 Onboarding CVR.
+
+      - name: registration_country
+        description: >
+          Amplitude country value from the registration event
+          ('Onboarding - Registration Completed'). Exposed for ad-hoc country
+          slicing and used in is_onboarded logic.
+
+      - name: is_onboarded
+        description: >
+          TRUE if US user viewed candidate dashboard within 14 days of Amplitude
+          registration. Matches Bryan Levine's Exec Dashboard KPI exactly
+          (US filter + 14-day window baked in). Filter to
+          is_post_amplitude_registration = TRUE for clean denominators.
+        data_tests:
+          - not_null
+
+      - name: onboarding_completed_at
+        description: >
+          Earliest Amplitude timestamp for event 'onboarding_complete'.
+          Supplemental onboarding milestone from the OKR doc alternative definition.
+
+      - name: has_completed_onboarding_flow
+        description: >
+          TRUE if onboarding_completed_at is present. Supplemental onboarding flag
+          (no US segment filter and no 14-day window constraint).
+        data_tests:
+          - not_null
+
+      - name: has_amplitude_data
+        description: >
+          TRUE if user has a matching registration-scoped record in
+          int__amplitude_user_milestones (currently requires
+          'Onboarding - Registration Completed'). Coverage indicator for
+          v0.3 Amplitude-backed metrics.
+        data_tests:
+          - not_null
+
+      - name: is_post_amplitude_registration
+        description: >
+          TRUE if user registered on or after 2023-12-10 (Amplitude tracking start).
+          REQUIRED filter for Amplitude-based CVR metrics.
+        data_tests:
+          - not_null
+
       - name: registered_at
         description: >
           Timestamp when user account was created (signup date).
@@ -116,3 +171,19 @@ models:
 
       - name: registration_quarter
         description: Quarter of registration (1-4) for quarterly OKR reporting.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "registration_country = 'United States'"
+          config:
+            where: "is_onboarded = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "has_amplitude_data = true"
+          config:
+            where: "is_onboarded = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "amplitude_registration_completed_at is not null"
+          config:
+            where: "has_amplitude_data = true"
