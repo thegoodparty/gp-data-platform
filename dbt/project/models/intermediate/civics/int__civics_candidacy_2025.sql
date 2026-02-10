@@ -38,6 +38,7 @@ with
             tbl_companies.candidate_office,
             tbl_companies.official_office_name,
             tbl_companies.office_level,
+            tbl_companies.office_type,
             tbl_companies.candidacy_result,
             tbl_companies.is_pledged,
             case
@@ -109,6 +110,7 @@ select
     candidate_office,
     official_office_name,
     office_level,
+    office_type,
     -- Normalize candidacy_result: empty strings to NULL, Won/Lost General to Won/Lost
     case
         when candidacy_result = ''
