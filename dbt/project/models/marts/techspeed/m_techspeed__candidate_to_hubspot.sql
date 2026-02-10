@@ -86,7 +86,9 @@ with
             v.viability_rating_2_0,
             v.score_viability_automated,
             -- ICP flags: use BallotReady ICP offices when available,
-            -- fall back to candidate_office + population for net-new records
+            -- fall back to candidate_office + population for net-new records.
+            -- Fallback list maps TechSpeed office_normalized values to
+            -- ICP-qualifying normalized position types.
             case
                 when icp.icp_office_win is not null
                 then icp.icp_office_win
@@ -94,24 +96,68 @@ with
                 then null
                 when
                     f.population between 500 and 50000
-                    and f.candidate_office in (
-                        'City Council',
-                        'Mayor',
-                        'Township Council',
-                        'State Senate',
-                        'State Representative',
-                        'County Legislature',
-                        'Township Supervisor',
-                        'Township Mayor',
-                        'County Executive Head',
-                        'City Legislature Chair//President of Council',
-                        'County Legislative Chair (non-executive)',
-                        'City Board of Selectmen',
-                        'Town Meeting Board',
-                        'City Ward Moderator',
-                        'City Vice-Mayor//Mayor Pro Tem',
-                        'County Vice Mayor',
-                        'Township Executive'
+                    and lower(trim(f.candidate_office)) in (
+                        -- City Legislature
+                        'city council',
+                        'city commission',
+                        'city councilor',
+                        'city commissioner',
+                        'alderman',
+                        'alderperson',
+                        'village council',
+                        'village board',
+                        'village trustee',
+                        'village commission',
+                        'borough assembly',
+                        'municipal assembly',
+                        'metro council',
+                        'legislative council',
+                        -- City Executive / Mayor
+                        'mayor',
+                        'city mayor',
+                        -- Township Trustee / Township Council
+                        'township trustee',
+                        'town council',
+                        'town board',
+                        'town commission',
+                        'town commissioner',
+                        'town trustee',
+                        'township board',
+                        -- State Representative
+                        'state representative',
+                        'state legislature',
+                        'assembly member',
+                        'house of delegates',
+                        'state assembly',
+                        -- State Senator
+                        'state senate',
+                        -- County Legislature / Executive Board
+                        'county legislature',
+                        'county council',
+                        'county commission',
+                        'county commissioner',
+                        'board of supervisor',
+                        'county board of supervisor',
+                        'county committee',
+                        -- Township Supervisor
+                        'township supervisor',
+                        'town supervisor',
+                        'supervisor',
+                        'city supervisor',
+                        -- City Legislature Chair / President of Council
+                        'city council president',
+                        -- City Board of Selectmen
+                        'select board',
+                        'town select board',
+                        'city select board',
+                        'selectman',
+                        'first selectman',
+                        -- Town Meeting Board
+                        'town meeting representative',
+                        -- City Ward Moderator
+                        'city moderator',
+                        'town moderator',
+                        'moderator'
                     )
                 then true
                 else false
@@ -123,24 +169,68 @@ with
                 then null
                 when
                     f.population between 1000 and 100000
-                    and f.candidate_office in (
-                        'City Council',
-                        'Mayor',
-                        'Township Council',
-                        'State Senate',
-                        'State Representative',
-                        'County Legislature',
-                        'Township Supervisor',
-                        'Township Mayor',
-                        'County Executive Head',
-                        'City Legislature Chair//President of Council',
-                        'County Legislative Chair (non-executive)',
-                        'City Board of Selectmen',
-                        'Town Meeting Board',
-                        'City Ward Moderator',
-                        'City Vice-Mayor//Mayor Pro Tem',
-                        'County Vice Mayor',
-                        'Township Executive'
+                    and lower(trim(f.candidate_office)) in (
+                        -- City Legislature
+                        'city council',
+                        'city commission',
+                        'city councilor',
+                        'city commissioner',
+                        'alderman',
+                        'alderperson',
+                        'village council',
+                        'village board',
+                        'village trustee',
+                        'village commission',
+                        'borough assembly',
+                        'municipal assembly',
+                        'metro council',
+                        'legislative council',
+                        -- City Executive / Mayor
+                        'mayor',
+                        'city mayor',
+                        -- Township Trustee / Township Council
+                        'township trustee',
+                        'town council',
+                        'town board',
+                        'town commission',
+                        'town commissioner',
+                        'town trustee',
+                        'township board',
+                        -- State Representative
+                        'state representative',
+                        'state legislature',
+                        'assembly member',
+                        'house of delegates',
+                        'state assembly',
+                        -- State Senator
+                        'state senate',
+                        -- County Legislature / Executive Board
+                        'county legislature',
+                        'county council',
+                        'county commission',
+                        'county commissioner',
+                        'board of supervisor',
+                        'county board of supervisor',
+                        'county committee',
+                        -- Township Supervisor
+                        'township supervisor',
+                        'town supervisor',
+                        'supervisor',
+                        'city supervisor',
+                        -- City Legislature Chair / President of Council
+                        'city council president',
+                        -- City Board of Selectmen
+                        'select board',
+                        'town select board',
+                        'city select board',
+                        'selectman',
+                        'first selectman',
+                        -- Town Meeting Board
+                        'town meeting representative',
+                        -- City Ward Moderator
+                        'city moderator',
+                        'town moderator',
+                        'moderator'
                     )
                 then true
                 else false
