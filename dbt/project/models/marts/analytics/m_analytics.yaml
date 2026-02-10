@@ -314,3 +314,133 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "campaign_updated_at >= campaign_created_at"
+
+  - name: leads_candidacy_details
+    description: >
+      Candidacy analytics mart combining candidacy records with candidate info,
+      ICP office classifications, and election results by stage.
+
+      Grain: One row per candidacy.
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - unique candidacy identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_campaign_id
+        description: Foreign key to associated campaign in the Win product
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate
+        data_tests:
+          - not_null
+
+      - name: gp_election_id
+        description: Foreign key to election
+
+      - name: hubspot_contact_id
+        description: HubSpot contact identifier
+
+      - name: br_position_database_id
+        description: BallotReady position database identifier
+
+      - name: candidate_name
+        description: Candidate full name (title case)
+
+      - name: candidate_state
+        description: U.S. state of the candidate
+
+      - name: party_affiliation
+        description: Political party affiliation
+
+      - name: is_incumbent
+        description: Whether the candidate is an incumbent
+
+      - name: is_open_seat
+        description: Whether the seat is open (no incumbent)
+
+      - name: official_office_name
+        description: Formal office title (title case)
+
+      - name: office_level
+        description: Level of the office (local, state, federal)
+
+      - name: candidacy_result
+        description: >
+          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+
+      - name: is_verified
+        description: Whether the candidacy has been verified
+
+      - name: is_partisan
+        description: Whether the race is partisan
+
+      - name: viability_score
+        description: Model-generated viability rating for the candidacy
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: icp_office_win
+        description: Whether the office meets ICP criteria for the Win product
+
+      - name: icp_office_serve
+        description: Whether the office meets ICP criteria for the Serve product
+
+      - name: ballotready_position_name
+        description: Position name from BallotReady (title case)
+
+      - name: l2_district_name
+        description: District name from L2 voter data (title case)
+
+      - name: l2_district_type
+        description: District type from L2 voter data (title case)
+
+      - name: voter_count
+        description: Number of voters in the district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+
+      - name: runoff_election_date
+        description: Date of the runoff election, if applicable
+
+      - name: primary_election_result
+        description: Result of the primary election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_election_result
+        description: Result of the general election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: runoff_election_result
+        description: Result of the runoff election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']

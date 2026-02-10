@@ -42,3 +42,7 @@ logs/
 .tickets/
 .pre-commit-cache/
 test_data/
+
+# Claude runbook
+.claude/RUNBOOK.md
+claude.md
