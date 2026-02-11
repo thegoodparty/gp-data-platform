@@ -52,12 +52,12 @@ models:
     # Applies to all files under models/marts/
     marts:
       +materialized: table
-      analytics:
-        +schema: analytics
-        +tags: ["mart", "analytics"]
       civics:
         +schema: mart_civics
         +tags: ["mart", "civics"]
+      analytics:
+        +schema: mart_analytics
+        +tags: ["mart", "analytics"]
       mban2026:
         +schema: mart_mban2026
     staging:

@@ -241,6 +241,14 @@ models:
       - name: office_level
         description: Level of office (local, state, federal)
 
+      - name: office_type
+        description: >
+          Standardized type of office sourced from HubSpot properties.
+          Common values include School Board, City Council, Town Council,
+          Mayor, Judge, State House, State Senate, Congressional,
+          Statewide/Governor, Sheriff, Alderman, Attorney, Clerk/Treasurer,
+          County Supervisor, President, and Other.
+
       - name: candidacy_result
         description: >
           Result of the candidacy. Values:
@@ -637,6 +645,27 @@ models:
                 # BallotReady API position table (positions removed or reorganized).
                 warn_if: ">5"
                 error_if: ">20"
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
+
+      - name: br_normalized_position_type
+        description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
 
       - name: created_at
         description: Timestamp when the record was created

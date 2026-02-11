@@ -26,7 +26,7 @@ The project structure will be added here as it evolves
 
 ## Development Practices
 
-### Using python locally
+### Using Python locally
 
 To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation). This ensures consistent Python versions across development environments.
 
@@ -36,7 +36,7 @@ Enter the subdirectory of development and run `poetry install` where there is a 
 
 For integration with VS Code, use the output path from `poetry env info --executable` when selecting the Python interpreter. For example on Mac:
 ```shell
-/Users/my_user_name/Library/Caches/pypoetry/virtualenvs/dbt-goodparty-gN6X-qpi-py3.13/bin/python
+/Users/my_user_name/Library/Caches/pypoetry/virtualenvs/dbt-goodparty-gN6X-qpi-py3.12/bin/python
 ```
 
 ### Pre-commit Hooks
@@ -47,9 +47,11 @@ This project uses pre-commit hooks to ensure code quality and consistency. The h
 
 To set up pre-commit:
 
-1. Install pre-commit:
+1. Install dependencies (includes pre-commit as a dev dependency):
 ```bash
-pip install pre-commit
+cd dbt
+poetry install
+eval $(poetry env activate)
 ```
 
 2. Install the git hooks:

@@ -15,6 +15,7 @@ select
     candidate_office,
     official_office_name,
     office_level,
+    office_type,
     candidacy_result,
     is_pledged,
     is_verified,
