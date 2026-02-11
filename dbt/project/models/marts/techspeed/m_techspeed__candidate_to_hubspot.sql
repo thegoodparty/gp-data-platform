@@ -11,6 +11,59 @@ database identifiers (e.g., snake_case), which would break the expected schema f
 */
 {{ config(materialized="view") }}
 
+{#
+    TechSpeed candidate_office values that map to ICP-qualifying normalized
+    position types. Used for fallback ICP logic when no BallotReady position
+    match exists. Values must be lowercase to match lower(trim()) comparison.
+#}
+{%- set icp_qualifying_ts_offices = [
+    "city council",
+    "city commission",
+    "city commissioner",
+    "alderman",
+    "alderperson",
+    "village board",
+    "village council",
+    "village trustee",
+    "village councill",
+    "village president",
+    "municipal assembly",
+    "metro council",
+    "legislative council",
+    "city legislative council",
+    "mayor",
+    "town council",
+    "town board",
+    "town commission",
+    "town commissioner",
+    "town trustee",
+    "town board member",
+    "township board",
+    "town board chairperson",
+    "state legislature",
+    "county council",
+    "county commission",
+    "county commissioner",
+    "county legislator",
+    "board of supervisor",
+    "board of supervisors",
+    "board of commissioner",
+    "county committee",
+    "township supervisor",
+    "town supervisor",
+    "county supervisor",
+    "county executive",
+    "city council president",
+    "city president",
+    "town select board",
+    "town selectmen",
+    "town selectperson",
+    "town selectboard",
+    "town meeting representative",
+    "city ward moderator",
+    "town moderator",
+] -%}
+
 with
     techspeed_candidates_fuzzy as (
         select * from {{ ref("int__techspeed_candidates_fuzzy_deduped") }}
@@ -18,6 +71,8 @@ with
     techspeed_viability as (
         select * from {{ ref("int__techspeed_viability_scoring") }}
     ),
+    br_race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
+    icp_offices as (select * from {{ ref("int__icp_offices") }}),
     techspeed_candidates_w_hubspot as (
         select
             -- We don't want to hand values over to hubspot with string
@@ -82,11 +137,33 @@ with
             f._ab_source_file_url,
             -- Add viability scores
             v.viability_rating_2_0,
-            v.score_viability_automated
+            v.score_viability_automated,
+            -- ICP flags: use BallotReady ICP offices when available,
+            -- fall back to candidate_office + population for net-new records.
+            coalesce(
+                icp.icp_office_win,
+                f.population between 500 and 50000
+                and lower(trim(f.candidate_office)) in (
+                    {% for office in icp_qualifying_ts_offices %}
+                        '{{ office }}'{{ ',' if not loop.last }}
+                    {% endfor %}
+                )
+            ) as icp_win,
+            coalesce(
+                icp.icp_office_serve,
+                f.population between 1000 and 100000
+                and lower(trim(f.candidate_office)) in (
+                    {% for office in icp_qualifying_ts_offices %}
+                        '{{ office }}'{{ ',' if not loop.last }}
+                    {% endfor %}
+                )
+            ) as icp_serve
         from techspeed_candidates_fuzzy as f
         left join
             techspeed_viability as v
             on f.techspeed_candidate_code = v.techspeed_candidate_code
+        left join br_race r on try_cast(f.ballotready_race_id as int) = r.database_id
+        left join icp_offices icp on r.position.databaseid = icp.br_database_position_id
         -- remove candidates that have already been found in ballotready
         where
             f.fuzzy_matched_hubspot_candidate_code not in (
@@ -149,5 +226,7 @@ select
     _airbyte_extracted_at,
     added_to_mart_at,
     viability_rating_2_0,
-    score_viability_automated
+    score_viability_automated,
+    icp_win,
+    icp_serve
 from techspeed_candidates_w_hubspot

@@ -125,6 +125,26 @@ models:
         description: "Timestamp when the record was added to the mart"
         tests:
           - not_null
+      - name: icp_win
+        description: >
+          Boolean flag indicating if the office meets ICP-Win criteria
+          (500-50K voters, non-judicial, non-appointed, qualifying office type).
+          Uses BallotReady ICP offices when a race match exists; falls back to
+          candidate_office + population for net-new TechSpeed records.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_serve
+        description: >
+          Boolean flag indicating if the office meets ICP-Serve criteria
+          (1K-100K voters, non-judicial, non-appointed, qualifying office type).
+          Uses BallotReady ICP offices when a race match exists; falls back to
+          candidate_office + population for net-new TechSpeed records.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: viability_rating_2_0
         description: "Numeric viability score from 0-5, calculated by the viability model. Higher scores indicate greater likelihood of winning."
         tests:

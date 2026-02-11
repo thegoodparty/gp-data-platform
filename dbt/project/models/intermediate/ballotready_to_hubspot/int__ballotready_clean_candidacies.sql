@@ -249,6 +249,7 @@ with
             end as br_contest_id,
             candidacy_id,
             race_id as ballotready_race_id,
+            cast(position_id as int) as position_id,
             parties,
             candidacy_created_at,
             candidacy_updated_at
