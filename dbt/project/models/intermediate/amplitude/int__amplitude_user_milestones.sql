@@ -3,8 +3,8 @@
 
     Purpose:
         User-grain intermediate model that aggregates milestone events from Amplitude.
-        Current scope is users with an Amplitude registration event
-        ('Onboarding - Registration Completed').
+        Includes all users with at least one milestone event.
+        Not scoped to registration-event users.
         Pre-bakes columns used by analytics.users v0.3 (Onboarding CVR), v0.4
         (Activated), and v0.5 (Active Candidates).
 
@@ -122,17 +122,6 @@ with
             ) as first_sms_poll_sent_at
         from milestone_events
         group by 1
-        -- v0.3 scope gate: keep only users with registration events.
-        -- v0.4/v0.5 may need this relaxed to include users with non-registration
-        -- milestones.
-        having
-            min(
-                case
-                    when event_type = 'Onboarding - Registration Completed'
-                    then event_time
-                end
-            )
-            is not null
     )
 
 select *

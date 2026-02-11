@@ -26,8 +26,6 @@ models:
         description: >
           Earliest timestamp for event_type = 'Onboarding - Registration Completed'.
           Denominator timestamp for v0.3 onboarding conversion.
-        data_tests:
-          - not_null
 
       - name: first_dashboard_viewed_at
         description: >

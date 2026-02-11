@@ -133,9 +133,9 @@ models:
 
       - name: has_amplitude_data
         description: >
-          TRUE if user has a matching registration-scoped record in
-          int__amplitude_user_milestones (currently requires
-          'Onboarding - Registration Completed'). Coverage indicator for
+          TRUE if user has any milestone event in Amplitude
+          (registration, dashboard view, campaign, onboarding complete,
+          pro upgrade, or SMS poll). Coverage indicator for
           Amplitude-backed metrics.
         data_tests:
           - not_null
@@ -197,7 +197,7 @@ models:
           arguments:
             expression: "amplitude_registration_completed_at is not null"
           config:
-            where: "has_amplitude_data = true"
+            where: "is_onboarded = true"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "first_campaign_sent_at is not null"
