@@ -115,7 +115,8 @@ models:
           TRUE if US user viewed candidate dashboard within 14 days of Amplitude
           registration. Matches Bryan Levine's Exec Dashboard KPI exactly
           (US filter + 14-day window baked in). Filter to
-          is_post_amplitude_registration = TRUE for clean denominators.
+          is_post_amplitude_registration = TRUE AND
+          registration_country = 'United States' for clean denominators.
         data_tests:
           - not_null
 

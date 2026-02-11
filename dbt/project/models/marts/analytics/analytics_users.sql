@@ -9,8 +9,8 @@
     Metric definitions in this model:
     - is_pro: user has at least one pro campaign.
     - is_onboarded: US registration with first dashboard view from registration
-      time through 14 days. Use with is_post_amplitude_registration for
-      Amplitude-era denominators.
+      time through 14 days. Use with is_post_amplitude_registration and
+      registration_country = 'United States' for Amplitude-era denominators.
     - is_activated: user has at least one voter outreach campaign event.
     - has_completed_onboarding_flow: supplemental onboarding_complete flag.
 */
@@ -73,7 +73,7 @@ with
             ) as is_onboarded,
             m.onboarding_completed_at,
             (m.onboarding_completed_at is not null) as has_completed_onboarding_flow,
-            -- Intermediate is currently scoped to registration-event users.
+            -- Intermediate includes users with any configured milestone event.
             (m.user_id is not null) as has_amplitude_data,
             (u.created_at >= '2023-12-10') as is_post_amplitude_registration,
 
