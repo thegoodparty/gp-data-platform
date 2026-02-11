@@ -47,6 +47,8 @@ with
             u.last_campaign_created_at,
             u.has_verified_campaign,
             u.has_pledged_campaign,
+            -- Demo filter (user-level analog of campaign-grain is_demo filter)
+            (u.campaign_count > 0 and u.non_demo_campaign_count = 0) as is_demo_only,
 
             -- Registration cohort fields
             u.created_at as registered_at,

@@ -56,21 +56,47 @@ models:
 
       - name: campaign_count
         description: Total number of campaigns created by this user.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: non_demo_campaign_count
         description: Number of non-demo campaigns.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: verified_campaign_count
         description: Number of verified campaigns.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: active_campaign_count
         description: Number of active campaigns.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: pro_campaign_count
         description: Number of pro-tier campaigns.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: pledged_campaign_count
         description: Number of campaigns where candidate took the GoodParty pledge.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: first_campaign_created_at
         description: Timestamp of user's first campaign creation.
@@ -83,6 +109,15 @@ models:
 
       - name: has_pledged_campaign
         description: Whether user has at least one pledged campaign.
+
+      - name: is_demo_only
+        description: >
+          TRUE if user has created campaigns but all are demos
+          (campaign_count > 0 AND non_demo_campaign_count = 0).
+          User-level equivalent of the campaign-grain is_demo filter.
+          Use to exclude demo-only users from funnel metrics.
+        data_tests:
+          - not_null
 
       - name: is_pro
         description: >
@@ -164,6 +199,10 @@ models:
         description: >
           Count of 'Voter Outreach - Campaign Completed' events for this user.
           Note: may undercount if Airbyte sync is in progress during dbt run.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
 
       - name: registered_at
         description: >
@@ -214,6 +253,28 @@ models:
             expression: "is_activated = true"
           config:
             where: "first_campaign_sent_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "non_demo_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "pro_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "verified_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "pledged_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_demo_only = false"
+          config:
+            where: "campaign_count = 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_demo_only = true"
+          config:
+            where: "campaign_count > 0 and non_demo_campaign_count = 0"
 
   - name: user_campaign_activity
     description: >
