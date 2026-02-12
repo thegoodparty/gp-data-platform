@@ -388,6 +388,9 @@ models:
       - name: office_level
         description: Level of the office (local, state, federal)
 
+      - name: office_type
+        description: Type of office (executive, legislative, judicial, etc.)
+
       - name: candidacy_result
         description: >
           Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
@@ -417,6 +420,24 @@ models:
 
       - name: icp_office_serve
         description: Whether the office meets ICP criteria for the Serve product
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
 
       - name: ballotready_position_name
         description: Position name from BallotReady (title case)
