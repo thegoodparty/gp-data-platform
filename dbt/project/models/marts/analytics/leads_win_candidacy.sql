@@ -29,6 +29,7 @@ with
             cand.is_open_seat,
             initcap(cand.official_office_name) as official_office_name,
             cand.office_level,
+            cand.office_type,
             cand.candidacy_result,
             cand.is_pledged,
             cand.is_verified,
@@ -39,6 +40,8 @@ with
             -- ICP fields
             icp.icp_office_win,
             icp.icp_office_serve,
+            icp.judicial as is_judicial,
+            icp.appointed as is_appointed,
             initcap(icp.br_position_name) as ballotready_position_name,
             initcap(icp.l2_district_name) as l2_district_name,
             initcap(icp.l2_district_type) as l2_district_type,
