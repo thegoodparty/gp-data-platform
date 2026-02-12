@@ -1,12 +1,12 @@
 version: 2
 
 models:
-  - name: analytics_users
+  - name: users_win_base
     description: >
       Unified user-grain view for Win and Serve product OKR metrics tracking.
       Built incrementally as new metrics are added.
 
-      File is named analytics_users to avoid dbt model name collision with
+      File is named users_win_base to avoid dbt model name collision with
       mart_civics.users.
 
       Grain: One row per user.

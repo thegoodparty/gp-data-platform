@@ -1,7 +1,7 @@
 {{ config(materialized="view", schema="analytics") }}
 
 /*
-    analytics.analytics_users
+    analytics.users_win_base
 
     Unified user-grain view for product metrics.
     Source: mart_civics.users + int__amplitude_user_milestones.
