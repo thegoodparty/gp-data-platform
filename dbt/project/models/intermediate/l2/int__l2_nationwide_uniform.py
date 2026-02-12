@@ -97,6 +97,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",
+        # sync_all_columns handles both adding new columns and dropping stale ones
+        # from the target table. This is necessary because L2 periodically adds,
+        # renames, or removes columns across state deliveries. Using append_new_columns
+        # would cause UNRESOLVED_COLUMN errors when L2 drops a column that still
+        # exists in the target table. See DATA-1528.
         on_schema_change="sync_all_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "l2", "nationwide_uniform", "uniform"],
