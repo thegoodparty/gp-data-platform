@@ -50,8 +50,9 @@ with
             icp.appointed as is_appointed,
             icp.normalized_position_type as br_normalized_position_type,
 
-            -- Election dates (from candidacy)
+            -- Candidacy fields
             initcap(cand.official_office_name) as official_office_name,
+            cand.office_type,
             cand.candidacy_result,
             cand.viability_score,
             cand.win_number,
