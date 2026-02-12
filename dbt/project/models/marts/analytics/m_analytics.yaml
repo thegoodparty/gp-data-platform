@@ -117,7 +117,7 @@ models:
       - name: registration_quarter
         description: Quarter of registration (1-4) for quarterly OKR reporting.
 
-  - name: user_campaign_activity
+  - name: users_win_candidacy
     description: >
       User and campaign activity report combining campaign data with user attributes,
       ICP office classifications, candidacy details, and election results by stage.
@@ -280,6 +280,9 @@ models:
 
       - name: official_office_name
         description: Formal office title from candidacy data (title case)
+
+      - name: office_type
+        description: Type of office (executive, legislative, judicial, etc.)
 
       - name: candidacy_result
         description: >
