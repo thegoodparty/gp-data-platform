@@ -49,6 +49,9 @@ models:
       +create_notebook: True
       civics:
         +materialized: table
+      entity_resolution:
+        +materialized: table
+        +tags: ["intermediate", "entity_resolution"]
     # Applies to all files under models/marts/
     marts:
       +materialized: table

@@ -1,0 +1,190 @@
+version: 2
+
+models:
+  - name: int__er_match_features_union
+    description: >
+      Canonicalized union of Techspeed and BallotReady candidacy records
+      with normalized match features for entity resolution.
+    columns:
+      - name: record_id
+        description: "Primary key. Techspeed: techspeed_candidate_code, BallotReady: candidacy_id"
+        tests:
+          - not_null
+      - name: source_system
+        description: "Source system identifier"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["techspeed", "ballotready"]
+
+  - name: int__er_deterministic_match
+    description: >
+      First pass — high-confidence matches using exact/near-exact deterministic rules.
+      Each record matches at most once, with higher-priority rules taking precedence.
+    columns:
+      - name: ts_record_id
+        description: "Techspeed record identifier (techspeed_candidate_code)"
+        tests:
+          - not_null
+          - unique
+      - name: br_record_id
+        description: "BallotReady record identifier (candidacy_id)"
+        tests:
+          - not_null
+          - unique
+      - name: match_rule
+        description: "Deterministic rule that produced this match"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - "rule_1_br_race_id_xref"
+                  - "rule_2_candidate_code"
+                  - "rule_3_name_state_date"
+                  - "rule_4_email_state"
+                  - "rule_5_phone_state"
+                  - "rule_6_name_state_office_neardate"
+      - name: match_confidence_rank
+        description: "Priority rank of the match rule (1=highest confidence)"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6]
+      - name: decided_by
+        description: "Always 'deterministic' for this model"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["deterministic"]
+
+  - name: int__er_splink_match
+    description: >
+      Second pass — probabilistic matching via Splink (Fellegi-Sunter model)
+      for records not matched by the deterministic pass.
+    columns:
+      - name: ts_record_id
+        description: "Techspeed record identifier"
+        tests:
+          - not_null
+          - unique
+      - name: br_record_id
+        description: "BallotReady record identifier"
+        tests:
+          - not_null
+          - unique
+      - name: splink_match_probability
+        description: "Splink match probability score"
+        tests:
+          - not_null
+      - name: splink_match_weight
+        description: "Splink match weight (log2 likelihood ratio)"
+        tests:
+          - not_null
+      - name: decided_by
+        description: "Always 'splink' for this model"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["splink"]
+
+  - name: int__er_embedding_store
+    description: >
+      Persistent store of Gemini text embeddings for candidate records.
+      Incremental — only generates embeddings for new records.
+    config:
+      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+    columns:
+      - name: record_id
+        description: "Primary key matching int__er_match_features_union"
+        tests:
+          - not_null
+          - unique
+      - name: source_system
+        description: "Source system identifier"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["techspeed", "ballotready"]
+      - name: embedding_text
+        description: "Text string that was embedded"
+        tests:
+          - not_null
+      - name: embedding_model
+        description: "Model used to generate the embedding"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["gemini/text-embedding-004"]
+
+  - name: int__er_ai_match
+    description: >
+      Third pass — vector similarity matching using Gemini embeddings
+      for records not matched by deterministic or Splink passes.
+    columns:
+      - name: ts_record_id
+        description: "Techspeed record identifier"
+        tests:
+          - not_null
+          - unique
+      - name: br_record_id
+        description: "BallotReady record identifier"
+        tests:
+          - not_null
+          - unique
+      - name: ai_similarity_score
+        description: "Cosine similarity between embeddings"
+        tests:
+          - not_null
+      - name: decided_by
+        description: "Always 'ai_embedding' for this model"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ai_embedding"]
+
+  - name: match__candidacies
+    description: >
+      Final resolved match table for entity resolution.
+      Each row links a source record to a canonical entity (candidacy_uuid).
+      A matched pair produces two rows (one per source), enabling N-source extensibility.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - candidacy_uuid
+              - source_system
+    columns:
+      - name: candidacy_uuid
+        description: "Canonical entity ID — all rows with the same UUID represent the same logical candidacy"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      - name: source_system
+        description: "Source system the record came from (e.g. techspeed, ballotready)"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["techspeed", "ballotready"]
+      - name: source_identifier
+        description: "Primary key from the source system (techspeed_candidate_code or candidacy_id)"
+        tests:
+          - not_null
+          - unique
+      - name: decided_by
+        description: "Which matching pass produced this link"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["deterministic", "splink", "ai_embedding"]
