@@ -1,4 +1,4 @@
-{{ config(materialized="table") }}
+{{ config(materialized="table", schema="analytics") }}
 
 with
     stage_results as (
