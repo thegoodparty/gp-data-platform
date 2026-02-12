@@ -116,8 +116,6 @@ snapshots:
         - ConsumerData_Moderate_Republican_Score
         - ConsumerData_Conservative_Republican_Flag
         - ConsumerData_Conservative_Republican_Score
-        - ConsumerData_For_Liberal_Democrats_Flag
-        - ConsumerData_For_Liberal_Democrats_Score
         - ConsumerData_For_Moderate_Democrats_Flag
         - ConsumerData_For_Moderate_Democrats_Score
         - ConsumerData_For_Trump_But_Moderate_Flag
