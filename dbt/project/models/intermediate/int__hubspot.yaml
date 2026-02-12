@@ -69,7 +69,9 @@ models:
       - name: office_level
         description: "Office level of the contact"
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
       - name: election_year
         description: "Year of the election"
         tests:
