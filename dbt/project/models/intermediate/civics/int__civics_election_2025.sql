@@ -26,6 +26,10 @@ with
             tbl_contest.number_of_opponents,
             tbl_contest.open_seat,
             tbl_ddhq_matches.ddhq_race_id is not null as has_ddhq_match,
+            tbl_candidacy.br_position_database_id,
+            tbl_br_position.judicial as is_judicial,
+            tbl_br_position.appointed as is_appointed,
+            tbl_br_normalized.name as br_normalized_position_type,
             tbl_contest.created_at,
             tbl_contest.updated_at
         from {{ ref("int__hubspot_contest_2025") }} as tbl_contest
@@ -36,6 +40,13 @@ with
             {{ ref("stg_model_predictions__candidacy_ddhq_matches_20251016") }}
             as tbl_ddhq_matches
             on tbl_ddhq_matches.gp_candidacy_id = tbl_candidacy.gp_candidacy_id
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_br_position
+            on tbl_candidacy.br_position_database_id = tbl_br_position.database_id
+        left join
+            {{ ref("int__ballotready_normalized_position") }} as tbl_br_normalized
+            on tbl_br_position.normalized_position.`databaseId`
+            = tbl_br_normalized.database_id
     ),
 
     -- Filter to elections on or before 2025-12-31
@@ -71,6 +82,10 @@ select
     number_of_opponents,
     open_seat,
     has_ddhq_match,
+    br_position_database_id,
+    is_judicial,
+    is_appointed,
+    br_normalized_position_type,
     created_at,
     updated_at
 

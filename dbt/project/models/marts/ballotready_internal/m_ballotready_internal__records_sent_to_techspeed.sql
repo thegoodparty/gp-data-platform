@@ -11,14 +11,14 @@
 with
     br_for_techspeed as (
         select
-            br_id as id,
-            br_candidacy_id as candidacy_id,
-            br_election_id as election_id,
+            br_id,
+            br_candidacy_id,
+            br_election_id,
             election_stage_name as election_name,
             election_date as election_day,
-            br_position_id as position_id,
+            br_position_id,
             mtfcc,
-            br_geo_id as geo_id,
+            br_geo_id,
             position_name,
             position_name as official_office_name,
             sub_area_name,
@@ -29,13 +29,13 @@ with
             is_judicial,
             is_retention,
             number_of_seats,
-            br_normalized_position_id as normalized_position_id,
+            br_normalized_position_id,
             normalized_position_name,
-            br_race_id as race_id,
-            br_geofence_id as geofence_id,
+            br_race_id,
+            br_geofence_id,
             is_primary,
             is_runoff,
-            br_candidate_id as candidate_id,
+            br_candidate_id,
             candidate_first_name as first_name,
             candidate_middle_name as middle_name,
             candidate_nickname as nickname,
@@ -61,7 +61,7 @@ with
             and election_date > current_date + interval 3 day
             -- Only records not already sent to TechSpeed
             and br_candidacy_id not in (
-                select candidacy_id
+                select br_candidacy_id
                 from {{ ref("stg_historical__ballotready_records_sent_to_techspeed") }}
             )
     ),
@@ -92,14 +92,14 @@ with
             )
     )
 select
-    id,
-    candidacy_id,
-    election_id,
+    br_id,
+    br_candidacy_id,
+    br_election_id,
     election_name,
     election_day,
-    position_id,
+    br_position_id,
     mtfcc,
-    geo_id,
+    br_geo_id,
     position_name,
     sub_area_name,
     sub_area_value,
@@ -109,13 +109,13 @@ select
     is_judicial,
     is_retention,
     number_of_seats,
-    normalized_position_id,
+    br_normalized_position_id,
     normalized_position_name,
-    race_id,
-    geofence_id,
+    br_race_id,
+    br_geofence_id,
     is_primary,
     is_runoff,
-    candidate_id,
+    br_candidate_id,
     first_name,
     middle_name,
     nickname,

@@ -116,8 +116,9 @@ with
                         )
                     )
             end as br_contest_id,
-            br_candidacy_id as candidacy_id,
+            br_candidacy_id,
             br_race_id,
+            cast(br_position_id as int) as br_position_id,
             raw_parties as parties,
             candidacy_created_at,
             candidacy_updated_at

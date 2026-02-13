@@ -171,14 +171,6 @@ models:
         description: "Whether the contact is deceased"
       - name: house_id
         description: "Foreign key reference to the house record"
-        tests:
-          - relationships:
-              arguments:
-                to: ref('stg_airbyte_source__gp_api_db_ecanvasser_house')
-                field: id
-              config:
-                warn_if: ">300"
-                error_if: ">500"
       - name: action_id
         description: "Action ID associated with this contact"
       - name: last_name

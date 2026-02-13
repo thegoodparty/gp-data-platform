@@ -29,7 +29,7 @@ models:
   - name: stg_airbyte_source__ballotready_s3_office_holders_v3
     description: Office Holders data load from ballotready csvs in s3 bucket
     columns:
-      - name: id
+      - name: br_id
         data_tests:
           - not_null
           - unique
@@ -37,7 +37,7 @@ models:
   - name: stg_airbyte_source__ballotready_s3_recruitment_v1
     description: Recruitment data load from ballotready csvs in s3 bucket
     columns:
-      - name: id
+      - name: br_id
         data_tests:
           - not_null
           - unique

@@ -87,7 +87,7 @@ with
             try_cast(
                 trim(regexp_replace(population, '[^0-9]', '')) as integer
             ) as population,
-            ballotready_race_id,
+            br_race_id,
             type,
             contact_owner,
             owner_name,
@@ -276,7 +276,7 @@ select
     open_seat,
     partisan,
     population,
-    ballotready_race_id,
+    br_race_id,
     type,
     contact_owner,
     owner_name,

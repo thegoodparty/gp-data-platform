@@ -34,7 +34,6 @@ dbt/project/dbt_internal_packages/
 
 # ignore tmp_data
 tmp_data/
-CLAUDE.md
 
 # Logs (including root level) and things I don't want to commit
 logs/
@@ -43,3 +42,7 @@ logs/
 .tickets/
 .pre-commit-cache/
 test_data/
+
+# Claude runbook
+.claude/RUNBOOK.md
+claude.md

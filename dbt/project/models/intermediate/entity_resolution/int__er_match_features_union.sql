@@ -58,7 +58,7 @@ with
             lower(trim(party)) as party_clean,
 
             -- Cross-reference IDs
-            cast(ballotready_race_id as string) as br_race_id,
+            cast(br_race_id as string) as br_race_id,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as br_candidate_id,
             cast(null as int) as br_position_id,
@@ -86,55 +86,38 @@ with
     -- BallotReady records from staging (full scope, no filters)
     ballotready_raw as (
         select
-            cast(candidacy_id as string) as record_id,
+            cast(br_candidacy_id as string) as record_id,
             'ballotready' as source_system,
 
             -- Name cleaning
-            lower(trim(first_name)) as first_name_clean,
-            lower(trim(last_name)) as last_name_clean,
-            lower(trim(concat_ws(' ', first_name, last_name))) as full_name_clean,
-            first_name as first_name_raw,
-            last_name as last_name_raw,
+            lower(trim(candidate_first_name)) as first_name_clean,
+            lower(trim(candidate_last_name)) as last_name_clean,
+            lower(
+                trim(concat_ws(' ', candidate_first_name, candidate_last_name))
+            ) as full_name_clean,
+            candidate_first_name as first_name_raw,
+            candidate_last_name as last_name_raw,
 
             -- State normalization (BR staging has 2-letter abbreviations)
-            {{ normalize_state_to_abbr("state") }} as state_abbr,
+            {{ normalize_state_to_abbr("state_code") }} as state_abbr,
 
             -- Contact info
-            lower(trim(email)) as email_clean,
-            trim(regexp_replace(phone, '[^0-9]', '')) as phone_clean,
+            lower(trim(candidate_email)) as email_clean,
+            trim(regexp_replace(candidate_phone, '[^0-9]', '')) as phone_clean,
 
-            -- Office standardization (apply same macros as
-            -- int__ballotready_clean_candidacies)
+            -- Office standardization (already computed in staging)
+            lower(trim(candidate_office)) as candidate_office_clean,
             lower(
-                trim(
-                    {{
-                        generate_candidate_office_from_position(
-                            "position_name", "normalized_position_name"
-                        )
-                    }}
-                )
-            ) as candidate_office_clean,
-            lower(
-                trim(
-                    {{
-                        map_ballotready_office_type(
-                            generate_candidate_office_from_position(
-                                "position_name", "normalized_position_name"
-                            )
-                        )
-                    }}
-                )
+                trim({{ map_ballotready_office_type("candidate_office") }})
             ) as office_type_clean,
             case
-                when lower(trim(level)) in ('local', 'city', 'county', 'state')
-                then initcap(lower(trim(level)))
-                else lower(trim(level))
+                when lower(trim(office_level)) in ('local', 'city', 'county', 'state')
+                then initcap(lower(trim(office_level)))
+                else lower(trim(office_level))
             end as office_level_clean,
 
-            -- City extraction from position_name
-            lower(
-                trim({{ extract_city_from_office_name("position_name") }})
-            ) as city_clean,
+            -- City extraction (already computed in staging)
+            lower(trim(city)) as city_clean,
 
             -- District extraction (same logic as int__ballotready_clean_candidacies)
             lower(
@@ -160,34 +143,34 @@ with
             ) as district_clean,
 
             -- Election date
-            try_cast(election_day as date) as election_date,
+            try_cast(election_date as date) as election_date,
 
-            -- Party extraction (same logic as int__ballotready_clean_candidacies)
+            -- Party extraction
             lower(
                 trim(
                     case
-                        when parties like '%Independent%'
+                        when raw_parties like '%Independent%'
                         then 'independent'
-                        when parties like '%Nonpartisan%'
+                        when raw_parties like '%Nonpartisan%'
                         then 'nonpartisan'
                         else ''
                     end
                 )
             ) as party_clean,
 
-            -- BallotReady native IDs
-            cast(race_id as string) as br_race_id,
-            cast(candidacy_id as string) as br_candidacy_id,
-            cast(candidate_id as string) as br_candidate_id,
-            cast(position_id as int) as br_position_id,
+            -- BallotReady native IDs (already prefixed in staging)
+            cast(br_race_id as string) as br_race_id,
+            cast(br_candidacy_id as string) as br_candidacy_id,
+            cast(br_candidate_id as string) as br_candidate_id,
+            cast(br_position_id as int) as br_position_id,
 
             -- Raw fields for embedding text
             position_name as official_office_name,
 
             -- For candidate code generation (keep raw columns for downstream CTE)
-            first_name as _br_first_name,
-            last_name as _br_last_name,
-            state as _br_state,
+            candidate_first_name as _br_first_name,
+            candidate_last_name as _br_last_name,
+            state_code as _br_state,
             position_name as _br_position_name,
             normalized_position_name as _br_normalized_position_name,
 
@@ -196,11 +179,11 @@ with
 
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where
-            candidacy_id is not null
-            and first_name is not null
-            and last_name is not null
+            br_candidacy_id is not null
+            and candidate_first_name is not null
+            and candidate_last_name is not null
             -- DEV FILTER: limit to single state for testing
-            and upper(trim(state)) = 'OH'
+            and upper(trim(state_code)) = 'OH'
     ),
 
     ballotready as (

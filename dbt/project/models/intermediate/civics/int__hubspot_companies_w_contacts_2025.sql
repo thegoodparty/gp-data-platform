@@ -206,6 +206,19 @@ with
                 else null
             end as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
+            -- BallotReady Position Database ID (decoded from base64 positionId in
+            -- campaign details)
+            cast(
+                regexp_extract(
+                    cast(
+                        unbase64(
+                            tbl_gp_db_campaign.details:positionid::string
+                        ) as string
+                    ),
+                    '/([0-9]+)$',
+                    1
+                ) as bigint
+            ) as br_position_database_id,
             -- assessments (coalesce HubSpot win_number with GP DB path_to_victory)
             coalesce(
                 cast(cwc.properties_win_number as string),
@@ -340,6 +353,17 @@ with
                 else null
             end as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
+            cast(
+                regexp_extract(
+                    cast(
+                        unbase64(
+                            tbl_gp_db_campaign.details:positionid::string
+                        ) as string
+                    ),
+                    '/([0-9]+)$',
+                    1
+                ) as bigint
+            ) as br_position_database_id,
             coalesce(
                 cast(cwoc.properties_win_number as string),
                 tbl_gp_db_ptv.data:`winNumber`::string
@@ -424,6 +448,7 @@ with
                 else null
             end as is_pledged,
             null as product_campaign_id,
+            null as br_position_database_id,
             null as win_number,
             null as win_number_model,
             1 as contact_rank
@@ -501,6 +526,7 @@ select
     email_contacts,
     win_number,
     win_number_model,
-    product_campaign_id
+    product_campaign_id,
+    br_position_database_id
 from ranked_final
 where row_rank_gp_candidacy_id = 1

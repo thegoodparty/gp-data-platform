@@ -314,3 +314,160 @@ models:
                   - 'Write In'
               config:
                 where: "verified_candidate is not null"
+
+  - name: int__civics_candidacy_techspeed
+    description: >
+      TechSpeed candidates transformed into civics mart candidacy schema.
+
+      Grain: One row per candidacy (candidate + election combination).
+
+      Source: int__techspeed_candidates_clean
+
+      Key design decisions:
+      - UUID fields aligned with int__hubspot_companies_w_contacts_2025 for cross-source consistency
+      - br_candidacy_id is NULL; will be populated via COALESCE when TS adds it
+      - candidate_code is the linkage key to BallotReady data
+      - No HubSpot dependency
+      - Election-level attributes (population, seats, etc.) NOT included — those belong in election table
+
+    columns:
+      - name: gp_candidacy_id
+        description: >
+          Primary key - internally generated UUID for candidacies.
+          Generated from: first_name, last_name, state, party, candidate_office,
+          election_date, district (matches HubSpot pattern).
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: br_candidacy_id
+        description: BallotReady candidacy ID - NULL for TechSpeed-sourced records (future COALESCE target)
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_techspeed')
+                field: gp_candidate_id
+
+      - name: hubspot_company_ids
+        description: HubSpot company IDs (NULL for TechSpeed-sourced records)
+
+      - name: candidate_code
+        description: Deterministic linkage key (first_name__last_name__state__office_type__city)
+        data_tests:
+          - not_null
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['techspeed']
+
+      - name: is_verified
+        description: Whether candidacy is verified (always TRUE for TechSpeed data)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_pledged
+        description: Whether candidate took GoodParty pledge (always FALSE for TechSpeed leads)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_incumbent
+        description: Whether candidate is incumbent (boolean, NULL if unknown)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_incumbent is not null"
+
+      - name: is_open_seat
+        description: Whether seat is open (boolean, NULL if unknown)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_open_seat is not null"
+
+      - name: is_partisan
+        description: Whether race is partisan (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_partisan is not null"
+
+      - name: general_election_date
+        description: General election date
+        data_tests:
+          - not_null
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidate_techspeed
+    description: >
+      TechSpeed candidates transformed into civics mart candidate schema.
+
+      Grain: One row per unique person (deduplicated on identity fields).
+
+      Source: int__techspeed_candidates_clean
+
+      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
+      first_name, last_name, state, birth_date, email, phone_number
+
+    columns:
+      - name: gp_candidate_id
+        description: >
+          Primary key - internally generated UUID for candidates.
+          Generated from: first_name, last_name, state, birth_date, email, phone_number.
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: first_name
+        description: Candidate's first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate's last name
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state
+        data_tests:
+          - not_null
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null

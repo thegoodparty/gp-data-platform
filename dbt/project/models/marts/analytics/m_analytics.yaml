@@ -1,0 +1,650 @@
+version: 2
+
+models:
+  - name: users_win_base
+    description: >
+      Unified user-grain view for Win and Serve product OKR metrics tracking.
+      Built incrementally as new metrics are added.
+
+      File is named users_win_base to avoid dbt model name collision with
+      mart_civics.users.
+
+      Grain: One row per user.
+
+      Source: mart_civics.users (Gold tier) + Amplitude milestones.
+
+    columns:
+      - name: user_id
+        description: Primary key — unique user identifier from mart_civics.users.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: User's email address.
+
+      - name: first_name
+        description: User's first name.
+
+      - name: last_name
+        description: User's last name.
+
+      - name: phone
+        description: User's phone number.
+
+      - name: zip
+        description: User's zip code.
+
+      - name: is_win_user
+        description: >
+          Whether user is a Win product user (has created at least one campaign).
+          Source: mart_civics.users.has_campaign
+        data_tests:
+          - not_null
+
+      - name: is_serve_user
+        description: >
+          Whether user is a Serve product user (has completed a poll through
+          an elected office). Source: mart_civics.users.is_serve_user
+        data_tests:
+          - not_null
+
+      - name: eo_activated_at
+        description: >
+          Timestamp when user became a Serve user (first completed poll).
+          NULL for non-Serve users.
+
+      - name: campaign_count
+        description: Total number of campaigns created by this user.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: non_demo_campaign_count
+        description: Number of non-demo campaigns.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: verified_campaign_count
+        description: Number of verified campaigns.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: active_campaign_count
+        description: Number of active campaigns.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: pro_campaign_count
+        description: Number of pro-tier campaigns.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: pledged_campaign_count
+        description: Number of campaigns where candidate took the GoodParty pledge.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: first_campaign_created_at
+        description: Timestamp of user's first campaign creation.
+
+      - name: last_campaign_created_at
+        description: Timestamp of user's most recent campaign creation.
+
+      - name: has_verified_campaign
+        description: Whether user has at least one verified campaign.
+
+      - name: has_pledged_campaign
+        description: Whether user has at least one pledged campaign.
+
+      - name: is_demo_only
+        description: >
+          TRUE if user has created campaigns but all are demos
+          (campaign_count > 0 AND non_demo_campaign_count = 0).
+          User-level equivalent of the campaign-grain is_demo filter.
+          Use to exclude demo-only users from funnel metrics.
+        data_tests:
+          - not_null
+
+      - name: is_pro
+        description: >
+          Whether user has upgraded at least one campaign to Pro tier.
+          Source: mart_civics.users.pro_campaign_count > 0.
+          Pro CVR = count(is_pro = true) / count(*) for a given registration cohort.
+        data_tests:
+          - not_null
+
+      - name: amplitude_registration_completed_at
+        description: >
+          Earliest Amplitude timestamp for event
+          'Onboarding - Registration Completed'. Primary denominator timestamp
+          for onboarding conversion.
+
+      - name: first_dashboard_viewed_at
+        description: >
+          Earliest Amplitude timestamp for event
+          'Dashboard - Candidate Dashboard Viewed'. Primary numerator timestamp
+          for onboarding conversion.
+
+      - name: registration_country
+        description: >
+          Amplitude country value from the registration event
+          ('Onboarding - Registration Completed'). Exposed for ad-hoc country
+          slicing and used in is_onboarded logic.
+
+      - name: is_onboarded
+        description: >
+          TRUE if US user viewed candidate dashboard within 14 days of Amplitude
+          registration. Matches Bryan Levine's Exec Dashboard KPI exactly
+          (US filter + 14-day window baked in). Filter to
+          is_post_amplitude_registration = TRUE AND
+          registration_country = 'United States' for clean denominators.
+        data_tests:
+          - not_null
+
+      - name: onboarding_completed_at
+        description: >
+          Earliest Amplitude timestamp for event 'onboarding_complete'.
+          Supplemental onboarding milestone from the OKR doc alternative definition.
+
+      - name: has_completed_onboarding_flow
+        description: >
+          TRUE if onboarding_completed_at is present. Supplemental onboarding flag
+          (no US segment filter and no 14-day window constraint).
+        data_tests:
+          - not_null
+
+      - name: has_amplitude_data
+        description: >
+          TRUE if user has any milestone event in Amplitude
+          (registration, dashboard view, campaign, onboarding complete,
+          pro upgrade, or SMS poll). Coverage indicator for
+          Amplitude-backed metrics.
+        data_tests:
+          - not_null
+
+      - name: is_post_amplitude_registration
+        description: >
+          TRUE if user registered on or after 2023-12-10 (Amplitude tracking start).
+          REQUIRED filter for Amplitude-based CVR metrics.
+        data_tests:
+          - not_null
+
+      - name: first_campaign_sent_at
+        description: >
+          Timestamp of user's first 'Voter Outreach - Campaign Completed' event.
+          NULL if user has never sent a campaign.
+
+      - name: is_activated
+        description: >
+          TRUE if user has completed at least one voter outreach campaign.
+          This is the OKR "Activated Candidates" metric.
+        data_tests:
+          - not_null
+
+      - name: total_campaigns_sent
+        description: >
+          Count of 'Voter Outreach - Campaign Completed' events for this user.
+          Note: may undercount if Airbyte sync is in progress during dbt run.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: registered_at
+        description: >
+          Timestamp when user account was created (signup date).
+          Source: mart_civics.users.created_at
+        data_tests:
+          - not_null
+
+      - name: registration_month
+        description: Month truncation of registered_at for monthly counts.
+
+      - name: registration_week
+        description: Week truncation of registered_at for weekly counts.
+
+      - name: registration_year
+        description: Year of registration for annual grouping.
+
+      - name: registration_quarter
+        description: Quarter of registration (1-4) for quarterly OKR reporting.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "registration_country = 'United States'"
+          config:
+            where: "is_onboarded = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "has_amplitude_data = true"
+          config:
+            where: "is_onboarded = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "amplitude_registration_completed_at is not null"
+          config:
+            where: "is_onboarded = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "first_campaign_sent_at is not null"
+          config:
+            where: "is_activated = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "total_campaigns_sent > 0"
+          config:
+            where: "is_activated = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_activated = true"
+          config:
+            where: "first_campaign_sent_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "non_demo_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "pro_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "verified_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "pledged_campaign_count <= campaign_count"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_demo_only = false"
+          config:
+            where: "campaign_count = 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_demo_only = true"
+          config:
+            where: "campaign_count > 0 and non_demo_campaign_count = 0"
+
+  - name: users_win_candidacy
+    description: >
+      User and campaign activity report combining campaign data with user attributes,
+      ICP office classifications, candidacy details, and election results by stage.
+
+      Grain: One row per campaign.
+
+    columns:
+      - name: campaign_id
+        description: Primary key - unique campaign identifier from gp-api production database
+        data_tests:
+          - unique
+          - not_null
+
+      - name: campaign_slug
+        description: URL-friendly campaign identifier used in app URLs
+        data_tests:
+          - not_null
+
+      - name: hubspot_id
+        description: HubSpot identifier for the campaign
+
+      - name: user_id
+        description: Foreign key to user table - the user who owns this campaign
+        data_tests:
+          - not_null
+
+      - name: user_email
+        description: User's email address (lowercased)
+        data_tests:
+          - not_null
+
+      - name: user_first_name
+        description: User's first name (title case)
+        data_tests:
+          - not_null
+
+      - name: user_last_name
+        description: User's last name (title case)
+        data_tests:
+          - not_null
+
+      - name: user_phone
+        description: User's phone number
+
+      - name: user_zip
+        description: User's zip code
+
+      - name: user_created_at
+        description: Timestamp when user account was created (signup date)
+        data_tests:
+          - not_null
+
+      - name: campaign_created_at
+        description: Timestamp when this campaign was created
+        data_tests:
+          - not_null
+
+      - name: campaign_updated_at
+        description: Timestamp when this campaign was last updated
+        data_tests:
+          - not_null
+
+      - name: is_verified
+        description: Whether the campaign has been verified by GoodParty staff
+        data_tests:
+          - not_null
+
+      - name: is_active
+        description: Whether the campaign is currently active
+        data_tests:
+          - not_null
+
+      - name: is_pro
+        description: Whether the campaign is on pro tier
+
+      - name: is_demo
+        description: Whether the campaign is a demo/test account
+        data_tests:
+          - not_null
+
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+
+      - name: election_date
+        description: Date of the election the campaign is targeting
+
+      - name: campaign_state
+        description: U.S. state where the campaign is running
+
+      - name: campaign_office
+        description: Political office the candidate is running for
+
+      - name: campaign_party
+        description: Political party affiliation
+
+      - name: election_level
+        description: Level of election (local, state, federal)
+
+      - name: ballotready_position_id
+        description: Numeric identifier for the political position in BallotReady's database
+
+      - name: is_win_user
+        description: Whether this is a Win platform user (always true in this model, as it is campaign-based)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true]
+
+      - name: is_serve_user
+        description: Whether the user is a Serve platform user (has created and completed a poll through an elected office)
+        data_tests:
+          - not_null
+
+      - name: eo_activated_at
+        description: Timestamp when the user became a Serve user (first completed poll creation date). NULL for non-Serve users.
+
+      - name: icp_office_win
+        description: Whether the office meets Ideal Customer Profile criteria for the Win product
+
+      - name: icp_office_serve
+        description: Whether the office meets Ideal Customer Profile criteria for the Serve product
+
+      - name: ballotready_position_name
+        description: Name of the political position from BallotReady (title case)
+
+      - name: l2_district_name
+        description: District name from L2 voter data (title case)
+
+      - name: l2_district_type
+        description: District type from L2 voter data (title case)
+
+      - name: voter_count
+        description: Number of voters in the district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
+
+      - name: br_normalized_position_type
+        description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
+
+      - name: official_office_name
+        description: Formal office title from candidacy data (title case)
+
+      - name: office_type
+        description: Type of office (executive, legislative, judicial, etc.)
+
+      - name: candidacy_result
+        description: >
+          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+
+      - name: viability_score
+        description: Model-generated viability rating for the candidacy
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+
+      - name: runoff_election_date
+        description: Date of the runoff election, if applicable
+
+      - name: primary_election_result
+        description: Result of the primary election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_election_result
+        description: Result of the general election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: runoff_election_result
+        description: Result of the runoff election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - campaign_id
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "campaign_updated_at >= campaign_created_at"
+
+  - name: leads_win_candidacy
+    description: >
+      Candidacy analytics mart combining candidacy records with candidate info,
+      ICP office classifications, and election results by stage.
+
+      Grain: One row per candidacy.
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - unique candidacy identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_campaign_id
+        description: Foreign key to associated campaign in the Win product
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate
+        data_tests:
+          - not_null
+
+      - name: gp_election_id
+        description: Foreign key to election
+
+      - name: hubspot_contact_id
+        description: HubSpot contact identifier
+
+      - name: br_position_database_id
+        description: BallotReady position database identifier
+
+      - name: candidate_name
+        description: Candidate full name (title case)
+
+      - name: candidate_state
+        description: U.S. state of the candidate
+
+      - name: party_affiliation
+        description: Political party affiliation
+
+      - name: is_incumbent
+        description: Whether the candidate is an incumbent
+
+      - name: is_open_seat
+        description: Whether the seat is open (no incumbent)
+
+      - name: official_office_name
+        description: Formal office title (title case)
+
+      - name: office_level
+        description: Level of the office (local, state, federal)
+
+      - name: office_type
+        description: Type of office (executive, legislative, judicial, etc.)
+
+      - name: candidacy_result
+        description: >
+          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+
+      - name: is_verified
+        description: Whether the candidacy has been verified
+
+      - name: is_partisan
+        description: Whether the race is partisan
+
+      - name: viability_score
+        description: Model-generated viability rating for the candidacy
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: icp_office_win
+        description: Whether the office meets ICP criteria for the Win product
+
+      - name: icp_office_serve
+        description: Whether the office meets ICP criteria for the Serve product
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
+
+      - name: ballotready_position_name
+        description: Position name from BallotReady (title case)
+
+      - name: l2_district_name
+        description: District name from L2 voter data (title case)
+
+      - name: l2_district_type
+        description: District type from L2 voter data (title case)
+
+      - name: voter_count
+        description: Number of voters in the district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+
+      - name: runoff_election_date
+        description: Date of the runoff election, if applicable
+
+      - name: primary_election_result
+        description: Result of the primary election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_election_result
+        description: Result of the general election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: runoff_election_result
+        description: Result of the runoff election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']

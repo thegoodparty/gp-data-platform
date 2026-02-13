@@ -4,6 +4,27 @@
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
+    -- Pick one campaign per email, preferring active non-demo campaigns.
+    -- Excludes campaigns already linked to a candidacy via HubSpot to
+    -- prevent the email backfill from creating duplicate campaign mappings.
+    best_campaign_per_email as (
+        select user_email, campaign_id
+        from {{ ref("campaigns") }}
+        where
+            is_demo = false
+            and campaign_id not in (
+                select product_campaign_id
+                from {{ ref("int__hubspot_companies_w_contacts_2025") }}
+                where product_campaign_id is not null
+            )
+        qualify
+            row_number() over (
+                partition by user_email
+                order by coalesce(is_active, false) desc, created_at desc
+            )
+            = 1
+    ),
+
     candidacies as (
         select
             -- Identifiers
@@ -11,7 +32,9 @@ with
             'candidacy_id-tbd' as candidacy_id,
             tbl_candidates.gp_candidate_id as gp_candidate_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
-            tbl_companies.product_campaign_id,
+            coalesce(
+                tbl_companies.product_campaign_id, tbl_campaigns.campaign_id
+            ) as product_campaign_id,
             tbl_companies.contact_id as hubspot_contact_id,
             tbl_companies.extra_companies as hubspot_company_ids,
             tbl_companies.candidate_id_source,
@@ -23,6 +46,7 @@ with
             tbl_companies.candidate_office,
             tbl_companies.official_office_name,
             tbl_companies.office_level,
+            tbl_companies.office_type,
             tbl_companies.candidacy_result,
             tbl_companies.is_pledged,
             case
@@ -37,6 +61,9 @@ with
             tbl_companies.primary_election_date,
             tbl_companies.general_election_date,
             tbl_companies.runoff_election_date,
+
+            -- BallotReady
+            tbl_companies.br_position_database_id,
 
             -- assessments
             viability_scores.viability_rating_2_0 as viability_score,
@@ -54,6 +81,9 @@ with
         left join
             {{ ref("int__hubspot_contest_2025") }} as tbl_contest
             on tbl_contest.contact_id = tbl_companies.contact_id
+        left join
+            best_campaign_per_email as tbl_campaigns
+            on tbl_candidates.email = tbl_campaigns.user_email
         left join
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
             on tbl_companies.company_id = viability_scores.id
@@ -78,7 +108,20 @@ select
     candidacy_id,
     gp_candidate_id,
     gp_election_id,
-    product_campaign_id,
+    -- A contact with multiple candidacies (e.g. ran for two different offices)
+    -- can receive the same product_campaign_id via the email backfill, since
+    -- both candidacies share the same email. Keep the link on only one
+    -- candidacy (most recently updated) to preserve 1:1 campaign→candidacy grain.
+    -- As of 2026-02-10 this dedup applies to 4 candidacies.
+    case
+        when
+            product_campaign_id is not null
+            and row_number() over (
+                partition by product_campaign_id order by updated_at desc
+            )
+            = 1
+        then product_campaign_id
+    end as product_campaign_id,
     hubspot_contact_id,
     hubspot_company_ids,
     candidate_id_source,
@@ -88,6 +131,7 @@ select
     candidate_office,
     official_office_name,
     office_level,
+    office_type,
     -- Normalize candidacy_result: empty strings to NULL, Won/Lost General to Won/Lost
     case
         when candidacy_result = ''
@@ -105,6 +149,7 @@ select
     primary_election_date,
     general_election_date,
     runoff_election_date,
+    br_position_database_id,
     viability_score,
     win_number,
     win_number_model,

@@ -7,7 +7,7 @@ models:
       Maintains audit trail with fuzzy match results and viability scores.
       Used to prevent duplicate sends and track processing history.
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         description: Unique identifier for the candidacy from BallotReady
         tests:
           - unique
@@ -42,6 +42,24 @@ models:
         description: Similarity score for fuzzy matches (0-100)
       - name: viability_score
         description: Calculated viability score for candidate (placeholder)
+      - name: icp_win
+        description: >
+          Boolean flag indicating if the office meets ICP-Win criteria
+          (500-50K voters, non-judicial, non-appointed, qualifying office type).
+          Derived from int__icp_offices via BallotReady race → position join.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_serve
+        description: >
+          Boolean flag indicating if the office meets ICP-Serve criteria
+          (1K-100K voters, non-judicial, non-appointed, qualifying office type).
+          Derived from int__icp_offices via BallotReady race → position join.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: upload_timestamp
         description: Timestamp when record was processed for HubSpot
         tests:
@@ -51,7 +69,7 @@ models:
       Historical tracking table for BallotReady candidates sent to TechSpeed for data enrichment.
       Tracks candidates with missing contact information that need external data augmentation.
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         description: Unique identifier for the candidacy from BallotReady
         tests:
           - unique
