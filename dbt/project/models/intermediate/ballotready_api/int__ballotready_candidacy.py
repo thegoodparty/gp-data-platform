@@ -305,7 +305,7 @@ def model(dbt, session) -> DataFrame:
             )
 
     # get distinct candidacy IDs
-    candidacy_ids = candidacies_s3.select("candidacy_id").distinct()
+    candidacy_ids = candidacies_s3.select("br_candidacy_id").distinct()
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if candidacy_id is empty, return empty DataFrame
@@ -321,7 +321,7 @@ def model(dbt, session) -> DataFrame:
     # dataframe.sample(False, 0.1).limit(1000)
     get_candidacy = _get_candidacy_token(ce_api_token)
     candidacies = candidacy_ids.withColumn(
-        "candidacy", get_candidacy(col("candidacy_id"))
+        "candidacy", get_candidacy(col("br_candidacy_id"))
     )
 
     candidacies = candidacies.select(

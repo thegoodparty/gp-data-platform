@@ -2,7 +2,7 @@
     config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="br_candidacy_id",
+        unique_key="candidacy_id",
         auto_liquid_cluster=true,
         tags=["mart", "ballotready", "hubspot", "historical"],
     )
@@ -79,8 +79,8 @@ with
     )
 
 select
-    br_candidacy_id,
-    br_race_id,
+    br_candidacy_id as candidacy_id,
+    br_race_id as ballotready_race_id,
     cast(election_date as date) as election_date,
     official_office_name,
     candidate_office,
@@ -138,9 +138,8 @@ where
         from {{ ref("stg_historical__ballotready_records_sent_to_hubspot") }}
     )
     {% if is_incremental() %}
-        and br_candidacy_id not in (
-            select br_candidacy_id from {{ this }} where br_candidacy_id is not null
-        )
+        and br_candidacy_id
+        not in (select candidacy_id from {{ this }} where candidacy_id is not null)
     {% endif %}
 qualify
     row_number() over (partition by br_candidacy_id order by candidacy_updated_at desc)

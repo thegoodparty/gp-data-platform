@@ -7,7 +7,7 @@ models:
       Maintains audit trail with fuzzy match results and viability scores.
       Used to prevent duplicate sends and track processing history.
     columns:
-      - name: br_candidacy_id
+      - name: candidacy_id
         description: Unique identifier for the candidacy from BallotReady
         tests:
           - unique
@@ -69,7 +69,7 @@ models:
       Historical tracking table for BallotReady candidates sent to TechSpeed for data enrichment.
       Tracks candidates with missing contact information that need external data augmentation.
     columns:
-      - name: br_candidacy_id
+      - name: candidacy_id
         description: Unique identifier for the candidacy from BallotReady
         tests:
           - unique
