@@ -105,7 +105,7 @@ with
             coalesce(f.office_type, '') as `Office Type`,
             coalesce(f.office_level, '') as `Office Level`,
             coalesce(f.filing_deadline, '') as `Filing Deadline`,
-            coalesce(f.ballotready_race_id, '') as br_race_id,
+            coalesce(f.br_race_id, '') as br_race_id,
             coalesce(
                 cast(f.primary_election_date as string), ''
             ) as `Primary Election Date`,
@@ -162,7 +162,7 @@ with
         left join
             techspeed_viability as v
             on f.techspeed_candidate_code = v.techspeed_candidate_code
-        left join br_race r on try_cast(f.ballotready_race_id as int) = r.database_id
+        left join br_race r on try_cast(f.br_race_id as int) = r.database_id
         left join icp_offices icp on r.position.databaseid = icp.br_database_position_id
         -- remove candidates that have already been found in ballotready
         where

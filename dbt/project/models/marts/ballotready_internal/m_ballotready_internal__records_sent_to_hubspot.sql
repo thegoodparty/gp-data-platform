@@ -2,7 +2,7 @@
     config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="candidacy_id",
+        unique_key="br_candidacy_id",
         auto_liquid_cluster=true,
         tags=["mart", "ballotready", "hubspot", "historical"],
     )
@@ -50,8 +50,8 @@ with
             fc.contact_owner,
             fc.owner_name,
             fc.candidate_id_source,
-            fc.candidacy_id,
-            fc.ballotready_race_id,
+            fc.br_candidacy_id,
+            fc.br_race_id,
             fc.br_contest_id,
             fc.br_candidate_code,
             fc.uncontested,
@@ -75,12 +75,12 @@ with
             icp.icp_office_serve as icp_serve
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
-        left join icp_offices icp on fc.position_id = icp.br_database_position_id
+        left join icp_offices icp on fc.br_position_id = icp.br_database_position_id
     )
 
 select
-    candidacy_id,
-    ballotready_race_id,
+    br_candidacy_id,
+    br_race_id,
     cast(election_date as date) as election_date,
     official_office_name,
     candidate_office,
@@ -133,13 +133,15 @@ select
 from combined_records
 -- Only include records that haven't been processed yet
 where
-    candidacy_id not in (
-        select candidacy_id
+    br_candidacy_id not in (
+        select br_candidacy_id
         from {{ ref("stg_historical__ballotready_records_sent_to_hubspot") }}
     )
     {% if is_incremental() %}
-        and candidacy_id
-        not in (select candidacy_id from {{ this }} where candidacy_id is not null)
+        and br_candidacy_id not in (
+            select br_candidacy_id from {{ this }} where br_candidacy_id is not null
+        )
     {% endif %}
 qualify
-    row_number() over (partition by candidacy_id order by candidacy_updated_at desc) = 1
+    row_number() over (partition by br_candidacy_id order by candidacy_updated_at desc)
+    = 1
