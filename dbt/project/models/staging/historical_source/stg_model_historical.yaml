@@ -11,7 +11,7 @@ models:
         owner: tristan.aubert@goodparty.org
         source_systems: [BallotReady, HubSpot]
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         description: Unique identifier for the candidacy from BallotReady
         tests:
           - unique
@@ -60,7 +60,7 @@ models:
         owner: tristan.aubert@goodparty.org
         source_systems: [BallotReady, TechSpeed]
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         description: Unique identifier for the candidacy from BallotReady
         tests:
           - unique

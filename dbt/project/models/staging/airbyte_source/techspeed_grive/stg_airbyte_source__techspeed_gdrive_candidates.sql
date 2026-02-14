@@ -47,7 +47,7 @@ with
             {{ adapter.quote("number_candidates") }},
             {{ adapter.quote("office_normalized") }},
             {{ adapter.quote("_ab_source_file_url") }},
-            {{ adapter.quote("ballotready_race_id") }},
+            {{ adapter.quote("ballotready_race_id") }} as br_race_id,
             {{ adapter.quote("candidate_id_source") }},
             {{ adapter.quote("county_municipality") }},
             {{ adapter.quote("normalized_location") }},

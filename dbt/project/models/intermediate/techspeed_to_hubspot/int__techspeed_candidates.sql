@@ -68,7 +68,7 @@ with
             open_seat,
             partisan,
             population,
-            ballotready_race_id,
+            br_race_id,
 
             -- Assign constant values
             'Self-Filer Lead' as `type`,
@@ -123,7 +123,7 @@ select
     open_seat,
     partisan,
     population,
-    ballotready_race_id,
+    br_race_id,
     type,
     contact_owner,
     owner_name,
