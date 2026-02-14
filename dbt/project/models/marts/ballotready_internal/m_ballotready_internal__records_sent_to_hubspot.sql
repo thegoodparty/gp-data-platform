@@ -1,13 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="candidacy_id",
-        auto_liquid_cluster=true,
-        tags=["mart", "ballotready", "hubspot", "historical"],
-    )
-}}
-
 -- Historical tracking table for BallotReady records sent to HubSpot
 -- This table maintains an audit trail of all candidates that have been processed
 -- for HubSpot upload, including fuzzy match results and viability scores
@@ -137,10 +127,6 @@ where
         select br_candidacy_id
         from {{ ref("stg_historical__ballotready_records_sent_to_hubspot") }}
     )
-    {% if is_incremental() %}
-        and br_candidacy_id
-        not in (select candidacy_id from {{ this }} where candidacy_id is not null)
-    {% endif %}
 qualify
     row_number() over (partition by br_candidacy_id order by candidacy_updated_at desc)
     = 1
