@@ -1,5 +1,21 @@
 -- Civics mart election table
--- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
+-- Union of 2025 HubSpot archive and 2026+ BallotReady data
+with
+    combined as (
+        select *
+        from {{ ref("int__civics_election_2025") }}
+        union all
+        select *
+        from {{ ref("int__civics_election_ballotready") }}
+    ),
+
+    deduplicated as (
+        select *
+        from combined
+        qualify
+            row_number() over (partition by gp_election_id order by updated_at desc) = 1
+    )
+
 select
     gp_election_id,
     official_office_name,
@@ -27,4 +43,4 @@ select
     created_at,
     updated_at
 
-from {{ ref("int__civics_election_2025") }}
+from deduplicated

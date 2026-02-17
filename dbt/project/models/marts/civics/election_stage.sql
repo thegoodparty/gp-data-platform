@@ -1,5 +1,24 @@
 -- Civics mart election_stage table
--- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
+-- Union of 2025 HubSpot archive and 2026+ BallotReady data
+with
+    combined as (
+        select *
+        from {{ ref("int__civics_election_stage_2025") }}
+        union all
+        select *
+        from {{ ref("int__civics_election_stage_ballotready") }}
+    ),
+
+    deduplicated as (
+        select *
+        from combined
+        qualify
+            row_number() over (
+                partition by gp_election_stage_id order by created_at desc
+            )
+            = 1
+    )
+
 select
     gp_election_stage_id,
     gp_election_id,
@@ -11,4 +30,4 @@ select
     total_votes_cast,
     created_at
 
-from {{ ref("int__civics_election_stage_2025") }}
+from deduplicated

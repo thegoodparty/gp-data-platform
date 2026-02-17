@@ -1,5 +1,23 @@
 -- Civics mart candidate table
--- Sources from intermediate/civics archived data (elections on or before 2025-12-31)
+-- Union of 2025 HubSpot archive and 2026+ BallotReady data
+-- Deduplicates on gp_candidate_id (a person may appear in both sources)
+with
+    combined as (
+        select *
+        from {{ ref("int__civics_candidate_2025") }}
+        union all
+        select *
+        from {{ ref("int__civics_candidate_ballotready") }}
+    ),
+
+    deduplicated as (
+        select *
+        from combined
+        qualify
+            row_number() over (partition by gp_candidate_id order by updated_at desc)
+            = 1
+    )
+
 select
     gp_candidate_id,
     hubspot_contact_id,
@@ -21,4 +39,4 @@ select
     created_at,
     updated_at
 
-from {{ ref("int__civics_candidate_2025") }}
+from deduplicated
