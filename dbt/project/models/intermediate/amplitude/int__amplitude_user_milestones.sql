@@ -42,7 +42,36 @@
 */
 with
     milestone_events as (
-        select try_cast(user_id as bigint) as user_id, event_type, event_time, country
+        select
+            try_cast(user_id as bigint) as user_id,
+            event_type,
+            event_time,
+            country,
+            -- Data-quality guardrail: exclude implausible recipient counts caused by
+            -- Amplitude instrumentation errors.
+            case
+                when
+                    coalesce(
+                        try_cast(event_properties:recipientcount as bigint),
+                        try_cast(event_properties:votercontacts as bigint)
+                    )
+                    > 100000
+                then null
+                when
+                    coalesce(
+                        try_cast(event_properties:recipientcount as bigint),
+                        try_cast(event_properties:votercontacts as bigint)
+                    )
+                    < 0
+                then null
+                else
+                    try_cast(
+                        coalesce(
+                            try_cast(event_properties:recipientcount as bigint),
+                            try_cast(event_properties:votercontacts as bigint)
+                        ) as int
+                    )
+            end as recipient_count
         from {{ ref("stg_airbyte_source__amplitude_api_events") }}
         where
             user_id is not null
@@ -97,6 +126,12 @@ with
             count(
                 case when event_type = 'Voter Outreach - Campaign Completed' then 1 end
             ) as total_campaigns_sent,
+            sum(
+                case
+                    when event_type = 'Voter Outreach - Campaign Completed'
+                    then recipient_count
+                end
+            ) as total_recipient_count,
 
             -- v0.5: Active Candidates
             max(

@@ -204,6 +204,19 @@ models:
               arguments:
                 min_value: 0
 
+      - name: total_recipient_count
+        description: >
+          Total number of recipients across all voter outreach campaigns sent by this user.
+          Extracted from COALESCE(recipientCount, voterContacts) on
+          'Voter Outreach - Campaign Completed' Amplitude events.
+          recipientCount values above 100000 or below 0 are treated as
+          Amplitude instrumentation errors and excluded.
+          NULL or 0 if user has never sent a campaign.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
       - name: registered_at
         description: >
           Timestamp when user account was created (signup date).

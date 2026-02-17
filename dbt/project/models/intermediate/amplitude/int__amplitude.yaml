@@ -55,6 +55,17 @@ models:
         data_tests:
           - not_null
 
+      - name: total_recipient_count
+        description: >
+          Sum of outreach recipient counts for
+          event_type = 'Voter Outreach - Campaign Completed' per user.
+          Uses COALESCE(recipientCount, voterContacts) and excludes values
+          above 100000 or below 0 as Amplitude instrumentation errors.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
       - name: last_dashboard_viewed_at
         description: >
           Latest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
