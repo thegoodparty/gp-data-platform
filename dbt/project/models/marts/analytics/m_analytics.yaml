@@ -289,6 +289,85 @@ models:
           config:
             where: "campaign_count > 0 and non_demo_campaign_count = 0"
 
+  - name: users_serve_activity
+    description: >
+      User x month activity grain for Serve product. Each row represents one
+      user's activity in one calendar month per the canonical Serve MAU
+      definition (AD-04).
+
+      Grain: One row per user_id x activity_month.
+
+      Source: int__amplitude_serve_activity + mart_civics.users.
+
+      Validated against Amplitude Exec Dashboard:
+        Oct 2025 = 40, Nov 2025 = 145, Dec 2025 = 210.
+
+    columns:
+      - name: user_id
+        description: User identifier (BIGINT).
+        data_tests:
+          - not_null
+
+      - name: activity_month
+        description: Calendar month of activity (first day of month).
+        data_tests:
+          - not_null
+
+      - name: email
+        description: User email from Amplitude user_properties.
+
+      - name: first_activity_at
+        description: Earliest Serve activity in this month.
+        data_tests:
+          - not_null
+
+      - name: last_activity_at
+        description: Latest Serve activity in this month.
+        data_tests:
+          - not_null
+
+      - name: poll_view_count
+        description: Total poll dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: activity_days
+        description: Distinct days with Serve activity in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: is_serve_user
+        description: >
+          Whether user is a Serve product user per mart_civics.users.
+          May be NULL if user doesn't match civics (expect ~1% unmatched).
+
+      - name: eo_activated_at
+        description: >
+          Timestamp when user became a Serve user (first completed poll).
+          NULL if not matched in civics or not yet activated.
+
+      - name: registered_at
+        description: User account creation timestamp from civics. NULL if not matched.
+
+      - name: registration_month
+        description: Month truncation of registered_at for cohort analysis. NULL if not matched.
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - activity_month
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_activity_at >= first_activity_at"
+
   - name: users_win_candidacy
     description: >
       User and campaign activity report combining campaign data with user attributes,

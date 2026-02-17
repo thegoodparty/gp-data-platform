@@ -93,3 +93,67 @@ models:
             expression: "first_dashboard_viewed_at <= last_dashboard_viewed_at"
           config:
             where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
+
+  - name: int__amplitude_serve_activity
+    description: >
+      User x month intermediate aggregating Serve MAU activity from Amplitude.
+      Filters to canonical Serve MAU definition (AD-04): Viewed event on
+      /dashboard/polls with Serve Activated = true, excluding @goodparty.org.
+
+      Grain: One row per user_id x activity_month.
+
+      Source: stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: user_id
+        description: User identifier (BIGINT, cast from Amplitude string user_id).
+        data_tests:
+          - not_null
+
+      - name: activity_month
+        description: Calendar month of activity (first day of month).
+        data_tests:
+          - not_null
+
+      - name: email
+        description: User email from Amplitude user_properties. Used for internal exclusion.
+
+      - name: first_activity_at
+        description: Earliest poll dashboard view in this month.
+        data_tests:
+          - not_null
+
+      - name: last_activity_at
+        description: Latest poll dashboard view in this month.
+        data_tests:
+          - not_null
+
+      - name: poll_view_count
+        description: Total poll dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: activity_days
+        description: Distinct days with poll dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - activity_month
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "activity_days <= day(last_day(activity_month))"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "poll_view_count >= activity_days"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_activity_at >= first_activity_at"
