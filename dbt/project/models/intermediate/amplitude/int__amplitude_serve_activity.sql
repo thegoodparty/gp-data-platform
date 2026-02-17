@@ -27,7 +27,6 @@
             -> activity_days
 
     Definition notes:
-        - Uses AD-04 canonical Serve MAU filter.
         - Casts Amplitude string user_id with TRY_CAST(user_id AS BIGINT).
         - Excludes records where BIGINT cast fails.
         - Excludes internal @goodparty.org emails.

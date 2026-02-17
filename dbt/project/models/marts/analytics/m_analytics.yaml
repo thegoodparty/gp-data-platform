@@ -11,7 +11,7 @@ models:
 
       Grain: One row per user.
 
-      Source: mart_civics.users (Gold tier) + Amplitude milestones.
+      Source: mart_civics.users + Amplitude milestones.
 
     columns:
       - name: user_id
@@ -148,8 +148,7 @@ models:
       - name: is_onboarded
         description: >
           TRUE if US user viewed candidate dashboard within 14 days of Amplitude
-          registration. Matches Bryan Levine's Exec Dashboard KPI exactly
-          (US filter + 14-day window baked in). Filter to
+          registration. Filter to
           is_post_amplitude_registration = TRUE AND
           registration_country = 'United States' for clean denominators.
         data_tests:
@@ -292,15 +291,12 @@ models:
   - name: users_serve_activity
     description: >
       User x month activity grain for Serve product. Each row represents one
-      user's activity in one calendar month per the canonical Serve MAU
-      definition (AD-04).
+      user's activity in one calendar month per the Serve MAU
+      definition.
 
       Grain: One row per user_id x activity_month.
 
       Source: int__amplitude_serve_activity + mart_civics.users.
-
-      Validated against Amplitude Exec Dashboard:
-        Oct 2025 = 40, Nov 2025 = 145, Dec 2025 = 210.
 
     columns:
       - name: user_id

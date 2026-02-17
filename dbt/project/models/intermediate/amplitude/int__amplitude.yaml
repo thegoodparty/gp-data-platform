@@ -5,8 +5,8 @@ models:
     description: >
       User-grain intermediate model that aggregates milestone events from
       stg_airbyte_source__amplitude_api_events into one row per user_id for
-      analytics.users metrics. Supports v0.3 (Onboarding CVR), v0.4 (Activated),
-      and v0.5 (Active Candidates) from a single Amplitude scan.
+      analytics.users metrics. Supports Onboarding CVR, Activated,
+      and Active Candidates from a single Amplitude scan.
     columns:
       - name: user_id
         description: >
@@ -25,33 +25,33 @@ models:
       - name: amplitude_registration_completed_at
         description: >
           Earliest timestamp for event_type = 'Onboarding - Registration Completed'.
-          Denominator timestamp for v0.3 onboarding conversion.
+          Denominator timestamp for onboarding conversion.
 
       - name: first_dashboard_viewed_at
         description: >
           Earliest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
-          Numerator timestamp for v0.3 onboarding conversion.
+          Numerator timestamp for onboarding conversion.
 
       - name: registration_country
         description: >
           Amplitude country value from the registration event
           ('Onboarding - Registration Completed'). Used for US-segment filtering
-          in v0.3 onboarding CVR.
+          in onboarding CVR.
 
       - name: onboarding_completed_at
         description: >
           Earliest timestamp for event_type = 'onboarding_complete'.
-          Supplemental v0.3 column for OKR-document alternative onboarding definition.
+          Supplemental column for OKR-document alternative onboarding definition.
 
       - name: first_campaign_sent_at
         description: >
           Earliest timestamp for event_type = 'Voter Outreach - Campaign Completed'.
-          Supports v0.4 activation milestones.
+          Supports activation milestones.
 
       - name: total_campaigns_sent
         description: >
           Count of event_type = 'Voter Outreach - Campaign Completed' per user.
-          Supports v0.4 campaign activity metrics.
+          Supports campaign activity metrics.
         data_tests:
           - not_null
 
@@ -69,12 +69,12 @@ models:
       - name: last_dashboard_viewed_at
         description: >
           Latest timestamp for event_type = 'Dashboard - Candidate Dashboard Viewed'.
-          Supports v0.5 active-candidate recency logic.
+          Supports active-candidate recency logic.
 
       - name: dashboard_view_count
         description: >
           Count of event_type = 'Dashboard - Candidate Dashboard Viewed' per user.
-          Supports v0.5 active-candidate usage intensity logic.
+          Supports active-candidate usage intensity logic.
         data_tests:
           - not_null
 
@@ -97,7 +97,7 @@ models:
   - name: int__amplitude_serve_activity
     description: >
       User x month intermediate aggregating Serve MAU activity from Amplitude.
-      Filters to canonical Serve MAU definition (AD-04): Viewed event on
+      Filters to canonical Serve MAU definition: Viewed event on
       /dashboard/polls with Serve Activated = true, excluding @goodparty.org.
 
       Grain: One row per user_id x activity_month.

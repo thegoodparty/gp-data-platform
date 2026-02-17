@@ -5,15 +5,12 @@
 
     User x month activity grain for Serve product.
     Each row = one user active in one calendar month per the canonical
-    Serve MAU definition (AD-04): Viewed /dashboard/polls with
+    Serve MAU definition: Viewed /dashboard/polls with
     Serve Activated = true, excluding @goodparty.org.
 
     Grain: One row per user_id x activity_month.
 
     Source: int__amplitude_serve_activity + mart_civics.users.
-
-    Validated against Amplitude Exec Dashboard:
-        Oct 2025 = 40, Nov 2025 = 145, Dec 2025 = 210.
 */
 with
     activity as (select * from {{ ref("int__amplitude_serve_activity") }}),
