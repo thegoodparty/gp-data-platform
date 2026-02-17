@@ -306,12 +306,14 @@ def model(dbt, session) -> DataFrame:
 
         # get all unique geo id after the latest updated_at date
         geofence = (
-            candidacy_df.select("geofence_id", "candidacy_updated_at")
+            candidacy_df.select("br_geofence_id", "candidacy_updated_at")
             .filter(col("candidacy_updated_at") > latest_updated_at)
-            .dropDuplicates(["geofence_id"])
+            .dropDuplicates(["br_geofence_id"])
         )
     else:
-        geofence = candidacy_df.select("geofence_id").dropDuplicates(["geofence_id"])
+        geofence = candidacy_df.select("br_geofence_id").dropDuplicates(
+            ["br_geofence_id"]
+        )
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if geofence_id is empty, return empty DataFrame
@@ -328,7 +330,7 @@ def model(dbt, session) -> DataFrame:
     get_geofence = _get_geofence_token(ce_api_token)
 
     # First get the geofence data as a struct, then extract each field into its own column
-    geofence = geofence.withColumn("geofence_data", get_geofence(col("geofence_id")))
+    geofence = geofence.withColumn("geofence_data", get_geofence(col("br_geofence_id")))
     result = geofence.select(
         col("geofence_data.createdAt").alias("created_at"),
         col("geofence_data.databaseId").alias("database_id"),

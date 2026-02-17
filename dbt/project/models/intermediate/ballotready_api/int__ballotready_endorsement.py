@@ -362,7 +362,7 @@ def model(dbt, session) -> DataFrame:
 
     # Create a DataFrame with just candidacy_ids for processing
     endorsement = candidacies.select(
-        col("candidacy_id").cast("integer").alias("candidacy_id")
+        col("br_candidacy_id").cast("integer").alias("candidacy_id")
     )
 
     # Apply the pandas UDF to get endorsements for each candidacy

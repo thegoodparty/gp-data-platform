@@ -4,7 +4,7 @@ with
     ),
     renamed as (
         select
-            {{ adapter.quote("candidacy_id") }},
+            {{ adapter.quote("candidacy_id") }} as br_candidacy_id,
             {{ adapter.quote("election_date") }},
             {{ adapter.quote("official_office_name") }},
             {{ adapter.quote("candidate_office") }},
@@ -43,7 +43,7 @@ with
             {{ adapter.quote("fuzzy_matched_last_name") }},
             {{ adapter.quote("fuzzy_matched_state") }},
             {{ adapter.quote("fuzzy_matched_office_type") }},
-            {{ adapter.quote("ballotready_race_id") }}
+            {{ adapter.quote("ballotready_race_id") }} as br_race_id
 
         from source
     )
