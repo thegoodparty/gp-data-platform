@@ -124,6 +124,7 @@ def l2_remove_expired_voters():
         Returns a dict with keys:
             - lalvoterids: list of expired LALVOTERID strings
             - source_files: list of source file names
+            - file_timestamps: dict mapping basename to SFTP mtime (ISO 8601)
         """
         sftp_conn = BaseHook.get_connection("l2_sftp")
         expired_dir = Variable.get("l2_sftp_expired_dir")
@@ -141,7 +142,7 @@ def l2_remove_expired_voters():
             )
 
             with TemporaryDirectory(prefix="l2_expired_") as temp_dir:
-                extracted_paths = download_files(
+                extracted_paths, file_timestamps = download_files(
                     sftp_client=sftp_client,
                     remote_dir=expired_dir,
                     file_pattern=file_pattern,
@@ -150,7 +151,11 @@ def l2_remove_expired_voters():
 
                 if not extracted_paths:
                     t_log.info("No expired voter files found on SFTP.")
-                    return {"lalvoterids": [], "source_files": []}
+                    return {
+                        "lalvoterids": [],
+                        "source_files": [],
+                        "file_timestamps": {},
+                    }
 
                 # Filter out already-processed files
                 new_paths = [
@@ -164,7 +169,11 @@ def l2_remove_expired_voters():
                         f"All {len(extracted_paths)} file(s) already processed, "
                         f"skipping: {skipped}"
                     )
-                    return {"lalvoterids": [], "source_files": []}
+                    return {
+                        "lalvoterids": [],
+                        "source_files": [],
+                        "file_timestamps": {},
+                    }
 
                 if len(new_paths) < len(extracted_paths):
                     skipped = [
@@ -176,6 +185,11 @@ def l2_remove_expired_voters():
 
                 lalvoterids = parse_expired_voter_ids(new_paths)
                 source_files = [os.path.basename(p) for p in new_paths]
+                # Keep only timestamps for new (non-skipped) files
+                new_timestamps = {
+                    os.path.basename(p): file_timestamps.get(os.path.basename(p), "")
+                    for p in new_paths
+                }
 
         finally:
             if sftp_client is not None:
@@ -190,6 +204,7 @@ def l2_remove_expired_voters():
         return {
             "lalvoterids": lalvoterids,
             "source_files": source_files,
+            "file_timestamps": new_timestamps,
         }
 
     @task
@@ -230,6 +245,7 @@ def l2_remove_expired_voters():
                 schema=schema,
                 lalvoterids=lalvoterids,
                 source_files=ingest_result["source_files"],
+                file_timestamps=ingest_result.get("file_timestamps", {}),
                 dag_run_id=dag_run_id,
             )
         finally:

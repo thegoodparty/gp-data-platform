@@ -14,6 +14,8 @@ models:
           - not_null
       - name: source_files
         description: Comma-separated list of SFTP source files from the DAG run
+      - name: file_modified_at
+        description: SFTP file modification timestamp (most recent file in the batch)
       - name: ingested_at
         description: Timestamp when the record was staged by Airflow
         tests:

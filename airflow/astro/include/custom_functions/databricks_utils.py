@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import List
+from typing import Dict, List
 
 from databricks import sql as databricks_sql
 from databricks.sdk.core import Config, oauth_service_principal
@@ -142,6 +142,7 @@ def stage_expired_voter_ids(
     lalvoterids: List[str],
     source_files: List[str],
     dag_run_id: str,
+    file_timestamps: Dict[str, str] | None = None,
     batch_size: int = 1000,
 ) -> int:
     """
@@ -150,11 +151,21 @@ def stage_expired_voter_ids(
     Creates the schema and table if they don't exist.
     Appends new records each DAG run to maintain a full history.
 
+    Args:
+        file_timestamps: Dict mapping source file basename to SFTP mtime
+            (ISO 8601 string).  The most recent timestamp is stored as
+            ``file_modified_at`` on every row in the batch.
+
     Returns the number of rows inserted.
     """
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
     source_files_str = ", ".join(source_files).replace("'", "\\'")
     dag_run_id_safe = dag_run_id.replace("'", "\\'")
+
+    # Use the most recent SFTP file timestamp (or NULL if unavailable)
+    file_ts = file_timestamps or {}
+    latest_ts = max(file_ts.values()) if file_ts else None
+    ts_sql = f"'{latest_ts}'" if latest_ts else "NULL"
 
     cursor = connection.cursor()
     try:
@@ -163,16 +174,26 @@ def stage_expired_voter_ids(
             f"CREATE TABLE IF NOT EXISTS {full_table_name} ("
             "  lalvoterid STRING,"
             "  source_files STRING,"
+            "  file_modified_at TIMESTAMP,"
             "  ingested_at TIMESTAMP,"
             "  dag_run_id STRING"
             ")"
         )
+        # Add column for tables created before this change
+        try:
+            cursor.execute(
+                f"ALTER TABLE {full_table_name} "
+                "ADD COLUMNS (file_modified_at TIMESTAMP)"
+            )
+        except Exception:
+            pass  # column already exists
 
         total_inserted = 0
         for i in range(0, len(lalvoterids), batch_size):
             batch = lalvoterids[i : i + batch_size]
             values = ", ".join(
-                f"('{vid}', '{source_files_str}', current_timestamp(), '{dag_run_id_safe}')"
+                f"('{vid}', '{source_files_str}', {ts_sql}, "
+                f"current_timestamp(), '{dag_run_id_safe}')"
                 for vid in batch
             )
             cursor.execute(f"INSERT INTO {full_table_name} VALUES {values}")
