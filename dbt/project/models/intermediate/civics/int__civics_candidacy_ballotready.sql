@@ -10,14 +10,10 @@
 -- UUID fields MUST match int__civics_candidacy_2025 / int__civics_candidacy_techspeed
 -- to ensure same candidacy from different sources gets same gp_candidacy_id
 with
-    source as (
+    candidacies as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where
-            election_day >= '2026-01-01'
-            and first_name is not null
-            and last_name is not null
-            and state is not null
+        where election_day >= '2026-01-01'
     ),
 
     br_position as (
@@ -25,62 +21,36 @@ with
     ),
 
     -- Derive fields needed for ID generation at the race (row) level
-    source_with_fields as (
+    candidacies_with_fields as (
         select
-            source.*,
+            candidacies.*,
             {{
                 generate_candidate_office_from_position(
-                    "source.position_name", "source.normalized_position_name"
+                    "candidacies.position_name",
+                    "candidacies.normalized_position_name",
                 )
             }} as candidate_office,
-            case
-                when source.level = 'local'
-                then 'Local'
-                when source.level = 'city'
-                then 'City'
-                when source.level = 'county'
-                then 'County'
-                when source.level = 'state'
-                then 'State'
-                when source.level = 'federal'
-                then 'Federal'
-                when source.level = 'regional'
-                then 'Regional'
-                when source.level = 'township'
-                then 'Township'
-                else source.level
-            end as office_level,
-            {{ extract_city_from_office_name("source.position_name") }} as city,
-            case
-                when source.position_name like '%- District %'
-                then regexp_extract(source.position_name, '- District (.*)$')
-                when source.position_name like '% - Ward %'
-                then regexp_extract(source.position_name, ' - Ward (.*)$')
-                when source.position_name like '% - Place %'
-                then regexp_extract(source.position_name, ' - Place (.*)$')
-                when source.position_name like '% - Branch %'
-                then regexp_extract(source.position_name, ' - Branch (.*)$')
-                when source.position_name like '% - Subdistrict %'
-                then regexp_extract(source.position_name, ' - Subdistrict (.*)$')
-                when source.position_name like '% - Zone %'
-                then regexp_extract(source.position_name, ' - Zone (.*)$')
-                else ''
-            end as district,
-            case
-                when source.position_name like '% - Seat %'
-                then regexp_extract(source.position_name, ' - Seat ([^,]+)')
-                when source.position_name like '% - Group %'
-                then regexp_extract(source.position_name, ' - Group ([^,]+)')
-                when source.position_name like '%, Seat %'
-                then regexp_extract(source.position_name, ', Seat ([^,]+)')
-                when source.position_name like '% - Position %'
-                then regexp_extract(source.position_name, ' - Position ([^\\s(]+)')
-                else ''
-            end as seat_name,
+            initcap(candidacies.level) as office_level,
+            {{ extract_city_from_office_name("candidacies.position_name") }} as city,
+            coalesce(
+                regexp_extract(
+                    candidacies.position_name,
+                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
+                ),
+                ''
+            ) as district,
+            coalesce(
+                regexp_extract(
+                    candidacies.position_name, '[-, ] (?:Seat|Group) ([^,]+)'
+                ),
+                regexp_extract(candidacies.position_name, ' - Position ([^\\s(]+)'),
+                ''
+            ) as seat_name,
             br_position.partisan_type
-        from source
+        from candidacies
         left join
-            br_position on cast(source.br_position_id as int) = br_position.database_id
+            br_position
+            on cast(candidacies.br_position_id as int) = br_position.database_id
     ),
 
     -- Roll up from race-level to candidacy-level
@@ -137,11 +107,11 @@ with
 
             max(candidacy_updated_at) as candidacy_updated_at
 
-        from source_with_fields
+        from candidacies_with_fields
         group by br_candidate_id, br_position_id, br_election_id
     ),
 
-    candidacies as (
+    candidacies_enriched as (
         select
             -- For gp_election_id, we need the general election date
             -- If no general election date yet, use the earliest available date
@@ -234,7 +204,8 @@ with
             -- The macro expects columns without table prefix in the current scope
             {{ generate_gp_election_id() }} as gp_election_id,
 
-            -- External IDs (NULL for BR-sourced records)
+            -- External IDs (NULL for BR-sourced records until we link them in
+            -- followup work)
             cast(null as string) as product_campaign_id,
             cast(null as string) as hubspot_contact_id,
             cast(null as string) as hubspot_company_ids,
@@ -244,6 +215,7 @@ with
 
             -- Candidacy attributes
             party_affiliation,
+            -- BallotReady does not provide incumbent or open seat data
             cast(null as string) as is_incumbent,
             cast(null as string) as is_open_seat,
             candidate_office,
@@ -251,8 +223,9 @@ with
             office_level,
             office_type,
             candidacy_result,
-            false as is_pledged,
-            true as is_verified,
+            -- Hardcoded until we link BallotReady candidacies with Product DB
+            cast(null as boolean) as is_pledged,
+            cast(null as boolean) as is_verified,
             cast(null as string) as verification_status_reason,
             is_partisan,
             primary_election_date,
@@ -262,7 +235,8 @@ with
             -- BallotReady position ID
             cast(br_position_id as int) as br_position_database_id,
 
-            -- Assessment fields (not available for BR)
+            -- Assessment fields (hardcoded until we join viability/p2v in followup
+            -- work)
             cast(null as float) as viability_score,
             cast(null as int) as win_number,
             cast(null as string) as win_number_model,
@@ -271,7 +245,7 @@ with
             _airbyte_extracted_at as created_at,
             _airbyte_extracted_at as updated_at
 
-        from candidacies
+        from candidacies_enriched
         where
             -- Must have at least a general or primary election date for ID generation
             coalesce(general_election_date, primary_election_date, runoff_election_date)

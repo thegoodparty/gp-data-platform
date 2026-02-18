@@ -1,10 +1,3 @@
-# Civics Mart Database Politics Table Structure & Organization and Terminology
-
-This document defines the models in the "civics" mart that live in models/marts/civics/
-
-## Overview
-This document defines the normalized table structure for the mart database, focusing on candidate and election data organization that aligns with both internal needs and external vendor requirements.
-
 ## Helpful Commands
 
 ```
@@ -36,6 +29,17 @@ dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_
 # With custom sample size
 dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_name": "gp_api_db_user", "sample_size": 10}'
 ```
+## Conventions
+
+- Most dbt tests do *not* need a `config.where: some_column_is_not_null`. For
+  instance, accepted_values tests will work fine with nulls without this
+  config.
+- For boolean columns, use the boolean value explicitly. Don't do a comparison.
+    - Good: `where is_valid and not is_expired`
+    - Bad: `where is_valid = 'true' and is_expired = 'false'
+- Databricks column references are case insensitive, so you don't need to
+  include backticks for mixed-case column names
+
 ## Workflow
 
 Use the `gh` cli to make pull-requests.
@@ -89,7 +93,7 @@ Mart model filenames should use **domain-friendly names** that end users will un
 *   Example: "John Smith for Seattle Mayor 2026, Primary Results"
 *   A Candidate Stage comprises a Candidate and a Stage
 
-## Table Structure
+## Table Structure in Civics Mart
 ### Core Tables
 #### 1\. **_Candidate_** **Table**
 *   **Granularity:** One row per unique person

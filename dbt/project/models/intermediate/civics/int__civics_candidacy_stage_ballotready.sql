@@ -5,7 +5,7 @@
 --
 -- Each row in the BR S3 data IS a candidacy stage (candidate in a specific race).
 with
-    source as (
+    candidacies as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where
@@ -19,67 +19,45 @@ with
         select * from {{ ref("stg_airbyte_source__ballotready_api_position") }}
     ),
 
-    source_with_fields as (
+    candidacies_with_fields as (
         select
-            source.*,
+            candidacies.*,
             {{
                 generate_candidate_office_from_position(
-                    "source.position_name", "source.normalized_position_name"
+                    "candidacies.position_name",
+                    "candidacies.normalized_position_name",
                 )
             }} as candidate_office,
-            case
-                when source.level = 'local'
-                then 'Local'
-                when source.level = 'city'
-                then 'City'
-                when source.level = 'county'
-                then 'County'
-                when source.level = 'state'
-                then 'State'
-                when source.level = 'federal'
-                then 'Federal'
-                when source.level = 'regional'
-                then 'Regional'
-                when source.level = 'township'
-                then 'Township'
-                else source.level
-            end as office_level,
-            {{ extract_city_from_office_name("source.position_name") }} as city,
-            case
-                when source.position_name like '%- District %'
-                then regexp_extract(source.position_name, '- District (.*)$')
-                when source.position_name like '% - Ward %'
-                then regexp_extract(source.position_name, ' - Ward (.*)$')
-                when source.position_name like '% - Place %'
-                then regexp_extract(source.position_name, ' - Place (.*)$')
-                when source.position_name like '% - Branch %'
-                then regexp_extract(source.position_name, ' - Branch (.*)$')
-                when source.position_name like '% - Subdistrict %'
-                then regexp_extract(source.position_name, ' - Subdistrict (.*)$')
-                when source.position_name like '% - Zone %'
-                then regexp_extract(source.position_name, ' - Zone (.*)$')
-                else ''
-            end as district,
+            initcap(candidacies.level) as office_level,
+            {{ extract_city_from_office_name("candidacies.position_name") }} as city,
+            coalesce(
+                regexp_extract(
+                    candidacies.position_name,
+                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
+                ),
+                ''
+            ) as district,
             -- Parse party from parties JSON
             case
-                when source.parties like '%Independent%'
+                when candidacies.parties like '%Independent%'
                 then 'Independent'
-                when source.parties like '%Nonpartisan%'
+                when candidacies.parties like '%Nonpartisan%'
                 then 'Nonpartisan'
-                when source.parties like '%Democrat%'
+                when candidacies.parties like '%Democrat%'
                 then 'Democrat'
-                when source.parties like '%Republican%'
+                when candidacies.parties like '%Republican%'
                 then 'Republican'
-                when source.parties like '%Libertarian%'
+                when candidacies.parties like '%Libertarian%'
                 then 'Libertarian'
-                when source.parties like '%Green%'
+                when candidacies.parties like '%Green%'
                 then 'Green'
                 else null
             end as party_affiliation,
             br_position.partisan_type
-        from source
+        from candidacies
         left join
-            br_position on cast(source.br_position_id as int) = br_position.database_id
+            br_position
+            on cast(candidacies.br_position_id as int) = br_position.database_id
     ),
 
     -- Look up the general election date to generate gp_candidacy_id
@@ -90,7 +68,7 @@ with
             br_position_id,
             br_election_id,
             max(cast(election_day as date)) as general_election_date
-        from source
+        from candidacies
         where is_primary = 'false' and is_runoff = 'false'
         group by br_candidate_id, br_position_id, br_election_id
     ),
@@ -178,7 +156,7 @@ with
             s._airbyte_extracted_at as created_at,
             s._airbyte_extracted_at as updated_at
 
-        from source_with_fields as s
+        from candidacies_with_fields as s
         left join
             general_election_dates as ged
             on s.br_candidate_id = ged.br_candidate_id

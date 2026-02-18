@@ -35,23 +35,7 @@ with
                     "source.position_name", "source.normalized_position_name"
                 )
             }} as candidate_office,
-            case
-                when source.level = 'local'
-                then 'Local'
-                when source.level = 'city'
-                then 'City'
-                when source.level = 'county'
-                then 'County'
-                when source.level = 'state'
-                then 'State'
-                when source.level = 'federal'
-                then 'Federal'
-                when source.level = 'regional'
-                then 'Regional'
-                when source.level = 'township'
-                then 'Township'
-                else source.level
-            end as office_level,
+            initcap(source.level) as office_level,
             {{
                 map_ballotready_office_type(
                     generate_candidate_office_from_position(
@@ -61,32 +45,18 @@ with
             }} as office_type,
             source.state,
             {{ extract_city_from_office_name("source.position_name") }} as city,
-            case
-                when source.position_name like '%- District %'
-                then regexp_extract(source.position_name, '- District (.*)$')
-                when source.position_name like '% - Ward %'
-                then regexp_extract(source.position_name, ' - Ward (.*)$')
-                when source.position_name like '% - Place %'
-                then regexp_extract(source.position_name, ' - Place (.*)$')
-                when source.position_name like '% - Branch %'
-                then regexp_extract(source.position_name, ' - Branch (.*)$')
-                when source.position_name like '% - Subdistrict %'
-                then regexp_extract(source.position_name, ' - Subdistrict (.*)$')
-                when source.position_name like '% - Zone %'
-                then regexp_extract(source.position_name, ' - Zone (.*)$')
-                else ''
-            end as district,
-            case
-                when source.position_name like '% - Seat %'
-                then regexp_extract(source.position_name, ' - Seat ([^,]+)')
-                when source.position_name like '% - Group %'
-                then regexp_extract(source.position_name, ' - Group ([^,]+)')
-                when source.position_name like '%, Seat %'
-                then regexp_extract(source.position_name, ', Seat ([^,]+)')
-                when source.position_name like '% - Position %'
-                then regexp_extract(source.position_name, ' - Position ([^\\s(]+)')
-                else ''
-            end as seat_name,
+            coalesce(
+                regexp_extract(
+                    source.position_name,
+                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
+                ),
+                ''
+            ) as district,
+            coalesce(
+                regexp_extract(source.position_name, '[-, ] (?:Seat|Group) ([^,]+)'),
+                regexp_extract(source.position_name, ' - Position ([^\\s(]+)'),
+                ''
+            ) as seat_name,
             cast(source.election_day as date) as election_date,
             year(cast(source.election_day as date)) as election_year,
 
@@ -98,6 +68,10 @@ with
             cast(null as string) as is_uncontested,
             cast(null as string) as number_of_opponents,
             cast(null as string) as open_seat,
+            -- We should probably refactor this schema slightly and might not
+            -- need an indicator for `ddhq_match`, but we're hardcoding this as
+            -- false for now until we update our record linkage against ddhq
+            -- data
             false as has_ddhq_match,
 
             -- BallotReady enrichment
@@ -115,7 +89,7 @@ with
             br_position on cast(source.br_position_id as int) = br_position.database_id
         left join
             br_normalized
-            on br_position.normalized_position.`databaseId` = br_normalized.database_id
+            on br_position.normalized_position.databaseid = br_normalized.database_id
     ),
 
     elections_with_id as (

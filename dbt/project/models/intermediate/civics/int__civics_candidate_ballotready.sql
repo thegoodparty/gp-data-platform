@@ -7,14 +7,10 @@
 -- UUID fields MUST match int__civics_candidate_2025 pattern
 -- to ensure same person from different sources gets same gp_candidate_id
 with
-    source as (
+    candidacies as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where
-            election_day >= '2026-01-01'
-            and first_name is not null
-            and last_name is not null
-            and state is not null
+        where election_day >= '2026-01-01'
     ),
 
     -- Get enriched person data from BallotReady API (has contact info, URLs, bio)
@@ -55,12 +51,12 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "source.first_name",
-                        "source.last_name",
-                        "source.state",
+                        "candidacies.first_name",
+                        "candidacies.last_name",
+                        "candidacies.state",
                         "cast(null as string)",
-                        "coalesce(source.email, person_urls.api_email)",
-                        "source.phone",
+                        "coalesce(candidacies.email, person_urls.api_email)",
+                        "candidacies.phone",
                     ]
                 )
             }} as gp_candidate_id,
@@ -73,19 +69,20 @@ with
             cast(null as string) as candidate_id_tier,
 
             -- Name fields - prefer API person data if available
-            coalesce(person_urls.first_name, source.first_name) as first_name,
-            coalesce(person_urls.last_name, source.last_name) as last_name,
+            coalesce(person_urls.first_name, candidacies.first_name) as first_name,
+            coalesce(person_urls.last_name, candidacies.last_name) as last_name,
             coalesce(
-                person_urls.full_name, concat(source.first_name, ' ', source.last_name)
+                person_urls.full_name,
+                concat(candidacies.first_name, ' ', candidacies.last_name)
             ) as full_name,
 
             -- Demographics (STRING to match 2025 HubSpot model type)
             cast(null as string) as birth_date,
-            source.state,
+            candidacies.state,
 
             -- Contact info - prefer S3 data, fall back to API
-            coalesce(source.email, person_urls.api_email) as email,
-            coalesce(source.phone, person_urls.api_phone) as phone_number,
+            coalesce(candidacies.email, person_urls.api_email) as email,
+            coalesce(candidacies.phone, person_urls.api_phone) as phone_number,
             cast(null as string) as street_address,
 
             -- Social/web presence from API person data
@@ -97,16 +94,16 @@ with
 
             -- Timestamps
             coalesce(
-                person_urls.person_created_at, source._airbyte_extracted_at
+                person_urls.person_created_at, candidacies._airbyte_extracted_at
             ) as created_at,
             coalesce(
-                person_urls.person_updated_at, source._airbyte_extracted_at
+                person_urls.person_updated_at, candidacies._airbyte_extracted_at
             ) as updated_at
 
-        from source
+        from candidacies
         left join
             person_urls
-            on cast(source.br_candidate_id as int) = person_urls.person_database_id
+            on cast(candidacies.br_candidate_id as int) = person_urls.person_database_id
     ),
 
     deduplicated as (
