@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List
 
 from databricks import sql as databricks_sql
@@ -13,9 +14,13 @@ def get_databricks_connection(
     http_path: str,
     client_id: str,
     client_secret: str,
+    max_retries: int = 10,
+    retry_delay: int = 30,
 ) -> Connection:
     """
     Create a connection to Databricks using OAuth M2M (service principal) credentials.
+
+    Retries on failure to allow for SQL warehouse cold-start (~5 min).
     """
     # Normalize — server_hostname needs bare host, Config needs https://
     hostname = host.removeprefix("https://").removeprefix("http://")
@@ -28,17 +33,27 @@ def get_databricks_connection(
         )
         return oauth_service_principal(config)
 
-    try:
-        connection = databricks_sql.connect(
-            server_hostname=hostname,
-            http_path=http_path,
-            credentials_provider=credential_provider,
-        )
-        logger.info("Databricks connection established successfully")
-        return connection
-    except Exception as e:
-        logger.error(f"Error connecting to Databricks: {e}")
-        raise
+    for attempt in range(max_retries):
+        try:
+            connection = databricks_sql.connect(
+                server_hostname=hostname,
+                http_path=http_path,
+                credentials_provider=credential_provider,
+            )
+            logger.info("Databricks connection established successfully")
+            return connection
+        except Exception as e:
+            if attempt == max_retries - 1:
+                logger.error(
+                    f"Databricks connection failed after {max_retries} attempts: {e}"
+                )
+                raise
+            logger.warning(
+                f"Databricks connection attempt {attempt + 1}/{max_retries} failed: {e}. "
+                f"Retrying in {retry_delay}s (warehouse may be starting)..."
+            )
+            time.sleep(retry_delay)
+    raise RuntimeError("Unreachable")
 
 
 def delete_from_databricks_table(
