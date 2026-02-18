@@ -5,10 +5,11 @@
 
     Purpose:
         User-month intermediate model for canonical Serve MAU activity.
-        Produces one row per user_id x activity_month from Amplitude events.
+        Produces one row per user_id x activity_month_year from Amplitude events.
 
     Grain:
-        One row per user_id (BIGINT) x activity_month.
+        One row per user_id (BIGINT) x activity_month_year.
+        activity_month_year is a DATE month bucket (first day of month).
 
     Source:
         {{ ref('stg_airbyte_source__amplitude_api_events') }}
@@ -28,14 +29,14 @@
 
     Definition notes:
         - Casts Amplitude string user_id with TRY_CAST(user_id AS BIGINT).
-        - Excludes records where BIGINT cast fails.
+        - Excludes records where BIGINT cast fails (non-numeric or empty IDs).
         - Excludes internal @goodparty.org emails.
 */
 with
     serve_activity as (
         select
             try_cast(user_id as bigint) as user_id,
-            date_trunc('month', event_time) as activity_month,
+            date_trunc('month', event_time) as activity_month_year,
             max_by(user_properties:email::string, event_time) as email,
             min(event_time) as first_activity_at,
             max(event_time) as last_activity_at,
@@ -49,7 +50,7 @@ with
             and user_id is not null
             and try_cast(user_id as bigint) is not null
             and (
-                user_properties:email::string not like '%@goodparty.org'
+                user_properties:email::string not ilike '%@goodparty.org'
                 or user_properties:email::string is null
             )
         group by 1, 2

@@ -5,8 +5,7 @@
         User-grain intermediate model that aggregates milestone events from Amplitude.
         Includes all users with at least one milestone event.
         Not scoped to registration-event users.
-        Pre-bakes columns used by analytics.users v0.3 (Onboarding CVR), v0.4
-        (Activated), and v0.5 (Active Candidates).
+        Pre-bakes milestone columns used by downstream analytics marts.
 
     Grain:
         One row per user_id (BIGINT).
@@ -14,23 +13,24 @@
     Source:
         {{ ref('stg_airbyte_source__amplitude_api_events') }}
 
-    Event -> column mapping (first metric version):
+    Event -> column mapping:
         - Onboarding - Registration Completed
-            -> amplitude_registration_completed_at (v0.3)
-            -> registration_country (v0.3)
+            -> amplitude_registration_completed_at
+            -> registration_country
         - Dashboard - Candidate Dashboard Viewed
-            -> first_dashboard_viewed_at (v0.3)
-            -> last_dashboard_viewed_at (v0.5)
-            -> dashboard_view_count (v0.5)
+            -> first_dashboard_viewed_at
+            -> last_dashboard_viewed_at
+            -> dashboard_view_count
         - onboarding_complete
-            -> onboarding_completed_at (v0.3 supplemental)
+            -> onboarding_completed_at
         - Voter Outreach - Campaign Completed
-            -> first_campaign_sent_at (v0.4)
-            -> total_campaigns_sent (v0.4)
+            -> first_campaign_sent_at
+            -> total_campaigns_sent
+            -> total_recipient_count
         - pro_upgrade_complete
-            -> pro_upgrade_completed_at (supplemental)
+            -> pro_upgrade_completed_at
         - Serve Onboarding - SMS Poll Sent
-            -> first_sms_poll_sent_at (supplemental)
+            -> first_sms_poll_sent_at
 
     Onboarding CVR definition note:
         Authoritative KPI is Registration Completed -> Dashboard Viewed within 14 days,

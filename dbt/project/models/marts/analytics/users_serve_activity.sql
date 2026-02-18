@@ -8,7 +8,7 @@
     Serve MAU definition: Viewed /dashboard/polls with
     Serve Activated = true, excluding @goodparty.org.
 
-    Grain: One row per user_id x activity_month.
+    Grain: One row per user_id x activity_month_year.
 
     Source: int__amplitude_serve_activity + mart_civics.users.
 */
@@ -20,7 +20,7 @@ with
         select
             -- Activity fields
             a.user_id,
-            a.activity_month,
+            a.activity_month_year,
             a.email,
             a.first_activity_at,
             a.last_activity_at,

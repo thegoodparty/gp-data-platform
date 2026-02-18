@@ -210,7 +210,9 @@ models:
           'Voter Outreach - Campaign Completed' Amplitude events.
           recipientCount values above 100000 or below 0 are treated as
           Amplitude instrumentation errors and excluded.
-          NULL or 0 if user has never sent a campaign.
+          NULL is intentional when no valid recipient count is available
+          (for example: no campaign-sent events for user, or only invalid/missing
+          recipient count payloads). Downstream consumers can coalesce to 0 if needed.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -294,7 +296,7 @@ models:
       user's activity in one calendar month per the Serve MAU
       definition.
 
-      Grain: One row per user_id x activity_month.
+      Grain: One row per user_id x activity_month_year.
 
       Source: int__amplitude_serve_activity + mart_civics.users.
 
@@ -304,8 +306,8 @@ models:
         data_tests:
           - not_null
 
-      - name: activity_month
-        description: Calendar month of activity (first day of month).
+      - name: activity_month_year
+        description: Calendar month of activity (first day of month, includes year).
         data_tests:
           - not_null
 
@@ -341,7 +343,8 @@ models:
       - name: is_serve_user
         description: >
           Whether user is a Serve product user per mart_civics.users.
-          May be NULL if user doesn't match civics (expect ~1% unmatched).
+          May be NULL if user doesn't match civics
+          (expect ~1% unmatched as of 2026-02-17).
 
       - name: eo_activated_at
         description: >
@@ -359,7 +362,7 @@ models:
           arguments:
             combination_of_columns:
               - user_id
-              - activity_month
+              - activity_month_year
       - dbt_utils.expression_is_true:
           arguments:
             expression: "last_activity_at >= first_activity_at"

@@ -100,7 +100,7 @@ models:
       Filters to canonical Serve MAU definition: Viewed event on
       /dashboard/polls with Serve Activated = true, excluding @goodparty.org.
 
-      Grain: One row per user_id x activity_month.
+      Grain: One row per user_id x activity_month_year.
 
       Source: stg_airbyte_source__amplitude_api_events.
     columns:
@@ -109,8 +109,8 @@ models:
         data_tests:
           - not_null
 
-      - name: activity_month
-        description: Calendar month of activity (first day of month).
+      - name: activity_month_year
+        description: Calendar month of activity (first day of month, includes year).
         data_tests:
           - not_null
 
@@ -147,10 +147,10 @@ models:
           arguments:
             combination_of_columns:
               - user_id
-              - activity_month
+              - activity_month_year
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "activity_days <= day(last_day(activity_month))"
+            expression: "activity_days <= day(last_day(activity_month_year))"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "poll_view_count >= activity_days"
