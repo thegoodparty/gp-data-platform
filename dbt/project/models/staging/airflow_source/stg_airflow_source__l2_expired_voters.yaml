@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__l2_expired_voters
+    description: >
+      Staged view of expired L2 voter IDs ingested by the Airflow
+      l2_remove_expired_voters DAG. Each row is a LALVOTERID that was
+      flagged as expired on L2's SFTP server and subsequently removed
+      from downstream systems (Databricks and People-API).
+    columns:
+      - name: lalvoterid
+        description: The L2 voter identifier that has been expired
+        tests:
+          - not_null
+      - name: source_files
+        description: Comma-separated list of SFTP source files from the DAG run
+      - name: ingested_at
+        description: Timestamp when the record was staged by Airflow
+        tests:
+          - not_null
+      - name: dag_run_id
+        description: Airflow DAG run ID for traceability
+        tests:
+          - not_null

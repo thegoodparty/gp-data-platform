@@ -4,13 +4,10 @@ A comprehensive data platform that handles data ingestion, transformation, orche
 
 ## Components
 
-### Data Orchestration
-- Airflow DAGs (Python) for workflow orchestration
-- Local development environment setup using Docker Compose
-    - Docker setup for Airflow
-    - Local database configuration
-    - Development workflows
-    - Testing procedures
+### Data Orchestration (`airflow/astro/`)
+- Airflow DAGs (Python) for workflow orchestration, hosted on [Astronomer](https://www.astronomer.io/)
+- Deployed automatically via Git Deploys: feature branches deploy to `astro-dev`, `main` deploys to `astro-prod`
+- See [`airflow/astro/README.md`](airflow/astro/README.md) for deployment workflow and local development setup
 
 ### Data Ingestion
 - Airbyte configurations (YAML) for data source connections and synchronization
