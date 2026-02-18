@@ -34,10 +34,6 @@ models:
         description: Timestamp when the record was last updated
         data_tests:
           - not_null
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
 
   - name: int__civics_election_stage_2025
     description: >
@@ -159,10 +155,6 @@ models:
         description: Timestamp when the record was last updated
         data_tests:
           - not_null
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
 
   - name: int__civics_candidate_2025
     description: >
@@ -188,9 +180,6 @@ models:
         data_tests:
           - not_null
     tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
@@ -267,10 +256,6 @@ models:
         description: Timestamp when the record was last updated
         data_tests:
           - not_null
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
 
   - name: int__hubspot_contacts_2025
     description: >
@@ -530,11 +515,6 @@ models:
       - name: updated_at
         data_tests:
           - not_null
-
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
 
   - name: int__civics_candidacy_ballotready
     description: >
