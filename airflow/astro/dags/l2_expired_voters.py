@@ -27,7 +27,8 @@ The state allowlist is only applied to deletions (steps 4–5), not to staging (
 **Variables** (set in Astro Environment Manager):
 - `l2_sftp_expired_dir` — SFTP directory for expired voter files
 - `l2_sftp_expired_file_pattern` — regex pattern for matching files
-- `databricks_schema` — Databricks schema (e.g., `dbt_source`)
+- `databricks_schema` — (optional, default: `dbt`) Databricks schema where dbt models live
+  (e.g., `dbt` in prod, `dbt_hugh` in dev)
 - `databricks_l2_table` — (optional, default: `int__l2_nationwide_uniform`)
 - `databricks_conn_id` — (optional, default: `databricks`) connection ID for Databricks;
   set to `databricks_dev` in dev, `databricks` in prod
@@ -274,7 +275,7 @@ def l2_remove_expired_voters():
 
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
-        schema = Variable.get("databricks_schema")
+        schema = Variable.get("databricks_schema", default="dbt")
         table = Variable.get(
             "databricks_l2_table", default="int__l2_nationwide_uniform"
         )
