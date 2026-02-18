@@ -188,7 +188,7 @@ models:
 
   - name: candidacy
     description: >
-      Historical archive of candidacies from the general mart with elections on or before 2025-12-31.
+      Candidacies combining 2025 HubSpot archive and 2026+ BallotReady data.
 
       Grain: One row per candidacy.
 
@@ -208,7 +208,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('int__civics_candidate_2025')
+                to: ref('candidate')
                 field: gp_candidate_id
 
       - name: gp_election_id
@@ -294,8 +294,6 @@ models:
 
       - name: general_election_date
         description: Date of the general election
-        data_tests:
-          - not_null
 
       - name: runoff_election_date
         description: Date of the runoff election, if applicable
@@ -303,10 +301,9 @@ models:
       - name: br_position_database_id
         description: >
           The numeric identifier for the political position (office) in BallotReady's
-          database. Extracted from the base64-encoded positionId stored in the GoodParty
-          product campaign details. Can be used to join with BallotReady position data
-          for additional office metadata. NULL when no product campaign is associated
-          or the campaign has no positionId.
+          database. For HubSpot-sourced records, extracted from the base64-encoded
+          positionId in campaign details. For BallotReady-sourced records, comes
+          directly from the S3 candidacy data.
         data_tests:
           - relationships:
               arguments:
@@ -314,10 +311,10 @@ models:
                 field: database_id
               config:
                 where: "br_position_database_id is not null"
-                # Some position IDs from older campaigns may no longer exist in the
-                # BallotReady API position table (positions removed or reorganized).
-                warn_if: ">20"
-                error_if: ">50"
+                # Some position IDs may not exist in the API position table yet
+                # (API data is loaded incrementally, S3 data may be ahead).
+                warn_if: ">50"
+                error_if: ">100"
 
       - name: viability_score
         description: Model-generated viability rating
@@ -345,7 +342,7 @@ models:
 
   - name: candidate
     description: >
-      Historical archive of candidates from the general mart with elections on or before 2025-12-31.
+      Candidates combining 2025 HubSpot archive and 2026+ BallotReady data.
 
       Grain: One row per candidate.
 
@@ -431,8 +428,8 @@ models:
 
   - name: candidacy_stage
     description: >
-      Historical archive of candidacy stages (primary, general, runoff results) from the general mart
-      with election stages on or before 2025-12-31.
+      Candidacy stages (primary, general, runoff results) combining 2025 HubSpot/DDHQ archive
+      and 2026+ BallotReady data.
 
       Grain: One row per candidacy stage (candidacy + election stage combination).
 
@@ -452,7 +449,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('int__civics_candidacy_2025')
+                to: ref('candidacy')
                 field: gp_candidacy_id
 
       - name: gp_election_stage_id
@@ -460,7 +457,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('int__civics_election_stage_2025')
+                to: ref('election_stage')
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
@@ -502,7 +499,7 @@ models:
       - name: election_result_source
         description: >
           Source of the election_result value.
-          Values: 'hubspot', 'ddhq', or null if no result available.
+          Values: 'hubspot', 'ddhq', 'ballotready', or null if no result available.
 
       - name: match_confidence
         description: Confidence score for the candidate-to-source match
@@ -525,7 +522,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
+                max_value: "'2030-12-31'"
 
       - name: created_at
         description: Timestamp when the record was created
@@ -544,7 +541,7 @@ models:
 
   - name: election
     description: >
-      Historical archive of elections from the general mart with election dates on or before 2025-12-31.
+      Elections combining 2025 HubSpot archive and 2026+ BallotReady data.
 
       Grain: One row per election.
 
@@ -589,7 +586,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
+                max_value: "'2030-12-31'"
 
       - name: election_year
         description: Year of the election
@@ -597,7 +594,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1900
-                max_value: 2025
+                max_value: 2030
               config:
                 where: "election_year is not null"
 
@@ -641,10 +638,10 @@ models:
                 field: database_id
               config:
                 where: "br_position_database_id is not null"
-                # Some position IDs from older campaigns may no longer exist in the
-                # BallotReady API position table (positions removed or reorganized).
-                warn_if: ">5"
-                error_if: ">20"
+                # Some position IDs may not exist in the API position table yet
+                # (API data is loaded incrementally, S3 data may be ahead).
+                warn_if: ">20"
+                error_if: ">50"
 
       - name: is_judicial
         description: Whether the office is a judicial position (from BallotReady)
@@ -684,8 +681,8 @@ models:
 
   - name: election_stage
     description: >
-      Historical archive of election stages (primary, general, runoff) from the general mart
-      with election stage dates on or before 2025-12-31.
+      Election stages (primary, general, runoff) combining 2025 DDHQ archive
+      and 2026+ BallotReady data.
 
       Grain: One row per election stage.
 
@@ -705,11 +702,13 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('int__civics_election_2025')
+                to: ref('election')
                 field: gp_election_id
 
       - name: ddhq_race_id
-        description: DDHQ race identifier
+        description: >
+          Race identifier from source system. Contains DDHQ race ID for 2025 data
+          or BallotReady race ID for 2026+ data.
         data_tests:
           - not_null
 
@@ -727,7 +726,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
+                max_value: "'2030-12-31'"
 
       - name: ddhq_race_name
         description: Race name from DDHQ

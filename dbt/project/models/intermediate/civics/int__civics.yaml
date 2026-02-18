@@ -70,7 +70,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['general', 'primary', 'runoff']
+                values: ["general", "primary", "runoff"]
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_tests:
@@ -141,8 +141,6 @@ models:
                   - "Can\\'t Determine"
                   - 'Partisan Candidate'
                   - 'Write In'
-              config:
-                where: "verification_status_reason is not null"
       - name: general_election_date
         description: Date of the general election
         data_tests:
@@ -242,7 +240,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
+                values: [ "Won", "Lost", "Won General", "Lost General", "Runoff", "Withdrew", "Not on Ballot", ]
       - name: election_stage_date
         description: Date of the election stage
         data_tests:
@@ -272,9 +270,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['yes', 'no', 'Yes', 'No']
-              config:
-                where: "pledge_status is not null and trim(pledge_status) != ''"
+                values: ["yes", "no"]
       - name: verified_candidate_status
         description: >
           Raw verification status from HubSpot contacts. Empty strings allowed
@@ -287,11 +283,9 @@ models:
                   - 'No'
                   - 'Unresponsive'
                   - "Can\\'t Determine"
-                  - 'Partisan Candidate'
-                  - 'Write In'
-                  - ''
-              config:
-                where: "verified_candidate_status is not null"
+                  - "Partisan Candidate"
+                  - "Write In"
+                  - ""
 
   - name: int__hubspot_companies_w_contacts_2025
     description: >
@@ -312,8 +306,6 @@ models:
                   - "Can\\'t Determine"
                   - 'Partisan Candidate'
                   - 'Write In'
-              config:
-                where: "verified_candidate is not null"
 
   - name: int__civics_candidacy_techspeed
     description: >
@@ -392,8 +384,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_incumbent is not null"
 
       - name: is_open_seat
         description: Whether seat is open (boolean, NULL if unknown)
@@ -401,8 +391,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_open_seat is not null"
 
       - name: is_partisan
         description: Whether race is partisan (boolean)
@@ -410,8 +398,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_partisan is not null"
 
       - name: general_election_date
         description: General election date
@@ -463,6 +449,306 @@ models:
         description: U.S. state
         data_tests:
           - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[A-Z]{2}$
+              config:
+                severity: warn
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidate_ballotready
+    description: >
+      BallotReady candidates transformed into civics mart candidate schema.
+
+      Grain: One row per unique person (deduplicated on gp_candidate_id).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      augmented with int__ballotready_person for contact/URL data from API.
+
+    columns:
+      - name: gp_candidate_id
+        description: >
+          Primary key - internally generated UUID for candidates.
+          Generated from: first_name, last_name, state, birth_date (null), email, phone.
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: first_name
+        description: Candidate's first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate's last name
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[A-Z]{2}$
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_ballotready
+    description: >
+      BallotReady candidacies transformed into civics mart candidacy schema.
+
+      Grain: One row per candidacy (candidate + position + election year).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      rolled up from race-level to candidacy-level by grouping on
+      br_candidate_id + br_position_id + br_election_id.
+
+    columns:
+      - name: gp_candidacy_id
+        description: >
+          Primary key - internally generated UUID for candidacies.
+          Generated from: first_name, last_name, state, party, candidate_office,
+          election_date, district.
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_ballotready')
+                field: gp_candidate_id
+
+      - name: gp_election_id
+        description: Foreign key to election table
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+
+      - name: is_verified
+        description: Whether candidacy is verified (always true for BallotReady data)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: is_pledged
+        description: Whether candidate took GoodParty pledge (always false for BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: candidacy_result
+        description: Result of the candidacy (Won, Lost, Runoff, or null)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_ballotready
+    description: >
+      BallotReady elections transformed into civics mart election schema.
+
+      Grain: One row per election (position + election date).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      enriched with BallotReady API position and normalized position data.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2026-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: election_year
+        description: Year of the election
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2026
+                max_value: 2030
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_stage_ballotready
+    description: >
+      BallotReady election stages transformed into civics mart election_stage schema.
+
+      Grain: One row per election stage (position + election + stage type).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections).
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_ballotready')
+                field: gp_election_id
+
+      - name: ddhq_race_id
+        description: BallotReady race ID (stored in ddhq_race_id column for schema compatibility)
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: Type of election stage (primary, general, runoff)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - general
+                  - primary
+                  - runoff
+
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2026-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_stage_ballotready
+    description: >
+      BallotReady candidacy stages transformed into civics mart candidacy_stage schema.
+
+      Grain: One row per candidacy stage (each BallotReady S3 candidacy row is a stage).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections).
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_ballotready')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_ballotready')
+                field: gp_election_stage_id
+
+      - name: election_result
+        description: Result of the election stage (Won, Lost, Runoff, or null)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
+
+      - name: is_winner
+        description: Whether the candidate won the election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2026-01-01'"
+                max_value: "'2030-12-31'"
 
       - name: created_at
         data_tests:
