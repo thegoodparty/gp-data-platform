@@ -70,7 +70,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['general', 'primary', 'runoff']
+                values: ["general", "primary", "runoff"]
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_tests:
@@ -136,11 +136,11 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - 'No'
-                  - 'Unresponsive'
+                  - "No"
+                  - "Unresponsive"
                   - "Can\\'t Determine"
-                  - 'Partisan Candidate'
-                  - 'Write In'
+                  - "Partisan Candidate"
+                  - "Write In"
               config:
                 where: "verification_status_reason is not null"
       - name: general_election_date
@@ -242,7 +242,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Won General', 'Lost General', 'Runoff', 'Withdrew', 'Not on Ballot']
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Won General",
+                    "Lost General",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                  ]
       - name: election_stage_date
         description: Date of the election stage
         data_tests:
@@ -272,7 +281,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['yes', 'no', 'Yes', 'No']
+                values: ["yes", "no", "Yes", "No"]
               config:
                 where: "pledge_status is not null and trim(pledge_status) != ''"
       - name: verified_candidate_status
@@ -283,13 +292,13 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - 'Yes'
-                  - 'No'
-                  - 'Unresponsive'
+                  - "Yes"
+                  - "No"
+                  - "Unresponsive"
                   - "Can\\'t Determine"
-                  - 'Partisan Candidate'
-                  - 'Write In'
-                  - ''
+                  - "Partisan Candidate"
+                  - "Write In"
+                  - ""
               config:
                 where: "verified_candidate_status is not null"
 
@@ -306,12 +315,12 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - 'Yes'
-                  - 'No'
-                  - 'Unresponsive'
+                  - "Yes"
+                  - "No"
+                  - "Unresponsive"
                   - "Can\\'t Determine"
-                  - 'Partisan Candidate'
-                  - 'Write In'
+                  - "Partisan Candidate"
+                  - "Write In"
               config:
                 where: "verified_candidate is not null"
 
@@ -368,7 +377,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['techspeed']
+                values: ["techspeed"]
 
       - name: is_verified
         description: Whether candidacy is verified (always TRUE for TechSpeed data)
@@ -463,6 +472,9 @@ models:
         description: U.S. state
         data_tests:
           - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[A-Z]{2}$
 
       - name: created_at
         data_tests:
@@ -507,6 +519,9 @@ models:
         description: U.S. state (2-letter code)
         data_tests:
           - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[A-Z]{2}$
 
       - name: created_at
         data_tests:
@@ -561,7 +576,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['ballotready']
+                values: ["ballotready"]
 
       - name: is_verified
         description: Whether candidacy is verified (always true for BallotReady data)
@@ -584,7 +599,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff']
+                values: ["Won", "Lost", "Runoff"]
               config:
                 where: "candidacy_result is not null"
 
@@ -682,7 +697,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['general', 'primary', 'runoff']
+                values: ["general", "primary", "runoff"]
 
       - name: ddhq_election_stage_date
         description: Date of the election stage
@@ -737,7 +752,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff']
+                values: ["Won", "Lost", "Runoff"]
               config:
                 where: "election_result is not null"
 
