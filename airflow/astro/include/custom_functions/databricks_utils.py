@@ -14,13 +14,13 @@ def get_databricks_connection(
     http_path: str,
     client_id: str,
     client_secret: str,
-    max_retries: int = 10,
+    max_retries: int = 20,
     retry_delay: int = 30,
 ) -> Connection:
     """
     Create a connection to Databricks using OAuth M2M (service principal) credentials.
 
-    Retries on failure to allow for SQL warehouse cold-start (~5 min).
+    Retries on failure to allow for SQL warehouse cold-start (~10 min).
     """
     # Normalize — server_hostname needs bare host, Config needs https://
     hostname = host.removeprefix("https://").removeprefix("http://")
