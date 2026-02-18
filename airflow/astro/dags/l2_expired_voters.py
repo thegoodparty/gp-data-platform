@@ -10,6 +10,7 @@ PostgreSQL).
 2. Download new expired voter files from L2 SFTP and parse **all** LALVOTERIDs
 3. Stage **all** expired LALVOTERIDs to `airflow_source.l2_expired_voters` for dbt visibility
 4. Apply state allowlist filter, then delete from Databricks `int__l2_nationwide_uniform`
+   and `m_people_api__voter`
 5. Apply state allowlist filter, then delete from People-API PostgreSQL
 
 Steps 3–5 run in parallel after step 2 completes.
@@ -27,7 +28,7 @@ The state allowlist is only applied to deletions (steps 4–5), not to staging (
 **Variables** (set in Astro Environment Manager):
 - `l2_sftp_expired_dir` — SFTP directory for expired voter files
 - `l2_sftp_expired_file_pattern` — regex pattern for matching files
-- `databricks_schema` — (optional, default: `dbt`) Databricks schema where dbt models live
+- `databricks_voter_schema` — Databricks schema where voter models live
   (e.g., `dbt` in prod, `dbt_hugh` in dev)
 - `databricks_l2_table` — (optional, default: `int__l2_nationwide_uniform`)
 - `databricks_conn_id` — (optional, default: `databricks`) connection ID for Databricks;
@@ -259,30 +260,34 @@ def l2_remove_expired_voters():
     @task
     def delete_from_databricks(ingest_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Delete expired LALVOTERIDs from the Databricks int__l2_nationwide_uniform table.
+        Delete expired LALVOTERIDs from Databricks voter tables:
+          - int__l2_nationwide_uniform (source intermediate table)
+          - m_people_api__voter (downstream mart — incremental, won't auto-delete)
+
         Applies the state allowlist filter so only matching states are deleted.
         """
         lalvoterids = ingest_result["lalvoterids"]
         if not lalvoterids:
             t_log.info("No LALVOTERIDs to delete from Databricks.")
-            return {"rows_deleted": 0}
+            return {"l2_rows_deleted": 0, "voter_mart_rows_deleted": 0}
 
         state_allowlist = Variable.get("l2_state_allowlist", default="")
         lalvoterids = filter_by_state_allowlist(lalvoterids, state_allowlist)
         if not lalvoterids:
             t_log.info("No LALVOTERIDs remain after state allowlist filter.")
-            return {"rows_deleted": 0}
+            return {"l2_rows_deleted": 0, "voter_mart_rows_deleted": 0}
 
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
-        schema = Variable.get("databricks_schema", default="dbt")
-        table = Variable.get(
+        schema = Variable.get("databricks_voter_schema")
+        l2_table = Variable.get(
             "databricks_l2_table", default="int__l2_nationwide_uniform"
         )
 
         t_log.info(
             f"Deleting {len(lalvoterids)} expired voters from "
-            f"{DATABRICKS_CATALOG}.{schema}.{table}"
+            f"{DATABRICKS_CATALOG}.{schema}.{l2_table} "
+            f"and {DATABRICKS_CATALOG}.{schema}.m_people_api__voter"
         )
 
         connection = get_databricks_connection(
@@ -292,18 +297,29 @@ def l2_remove_expired_voters():
             client_secret=db_conn.password,
         )
         try:
-            rows_deleted = delete_from_databricks_table(
+            l2_rows_deleted = delete_from_databricks_table(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
                 schema=schema,
-                table=table,
+                table=l2_table,
+                column="LALVOTERID",
+                values=lalvoterids,
+            )
+            voter_mart_rows_deleted = delete_from_databricks_table(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=schema,
+                table="m_people_api__voter",
                 column="LALVOTERID",
                 values=lalvoterids,
             )
         finally:
             connection.close()
 
-        return {"rows_deleted": rows_deleted}
+        return {
+            "l2_rows_deleted": l2_rows_deleted,
+            "voter_mart_rows_deleted": voter_mart_rows_deleted,
+        }
 
     @task
     def delete_from_people_api(ingest_result: Dict[str, Any]) -> Dict[str, Any]:
