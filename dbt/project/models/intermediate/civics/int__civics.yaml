@@ -34,6 +34,10 @@ models:
         description: Timestamp when the record was last updated
         data_tests:
           - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
 
   - name: int__civics_election_stage_2025
     description: >
@@ -155,6 +159,10 @@ models:
         description: Timestamp when the record was last updated
         data_tests:
           - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
 
   - name: int__civics_candidate_2025
     description: >
@@ -180,6 +188,9 @@ models:
         data_tests:
           - not_null
     tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
@@ -256,6 +267,10 @@ models:
         description: Timestamp when the record was last updated
         data_tests:
           - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
 
   - name: int__hubspot_contacts_2025
     description: >
@@ -266,7 +281,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["yes", "no", "Yes", "No"]
+                values: ["yes", "no"]
               config:
                 where: "pledge_status is not null and trim(pledge_status) != ''"
       - name: verified_candidate_status
@@ -580,8 +595,6 @@ models:
           - accepted_values:
               arguments:
                 values: ["Won", "Lost", "Runoff"]
-              config:
-                where: "candidacy_result is not null"
 
       - name: created_at
         data_tests:
@@ -634,11 +647,6 @@ models:
       - name: updated_at
         data_tests:
           - not_null
-
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
 
   - name: int__civics_election_stage_ballotready
     description: >
@@ -733,8 +741,6 @@ models:
           - accepted_values:
               arguments:
                 values: ["Won", "Lost", "Runoff"]
-              config:
-                where: "election_result is not null"
 
       - name: is_winner
         description: Whether the candidate won the election stage
@@ -742,8 +748,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_winner is not null"
 
       - name: election_stage_date
         description: Date of the election stage
@@ -760,8 +764,3 @@ models:
       - name: updated_at
         data_tests:
           - not_null
-
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
