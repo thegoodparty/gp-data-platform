@@ -4,7 +4,7 @@ import re
 import time
 from datetime import datetime, timezone
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 from zipfile import ZipFile
 
 import pandas as pd
@@ -50,14 +50,18 @@ def download_expired_voter_files(
     remote_dir: str,
     file_pattern: str,
     local_dir: str,
-) -> Tuple[List[str], Dict[str, str]]:
+    file_timestamps: Dict[str, str] | None = None,
+) -> List[str]:
     """
     Lists files in remote_dir matching file_pattern, downloads them locally.
     ZIP files are extracted; plain files (.tab, .csv) are kept as-is.
 
-    Returns:
-        - List of local file paths for the downloaded/extracted files.
-        - Dict mapping each basename to its SFTP modification timestamp (ISO 8601).
+    Args:
+        file_timestamps: Optional dict to populate with SFTP file modification
+            times (basename -> ISO 8601 UTC string).  Pass an empty dict to
+            collect timestamps; omit or pass None to skip.
+
+    Returns a list of local file paths for the downloaded/extracted files.
     """
     file_list = sftp_client.listdir(remote_dir)
     pattern = re.compile(file_pattern)
@@ -65,25 +69,29 @@ def download_expired_voter_files(
 
     if not matching_files:
         logger.info(f"No files matching pattern '{file_pattern}' found in {remote_dir}")
-        return [], {}
+        return []
 
     logger.info(f"Found {len(matching_files)} expired voter file(s): {matching_files}")
 
     downloaded_paths: List[str] = []
-    file_timestamps: Dict[str, str] = {}
     for filename in matching_files:
         remote_path = f"{remote_dir}/{filename}"
         local_path = os.path.join(local_dir, filename)
 
         # Capture SFTP file modification time before downloading
-        stat = sftp_client.stat(remote_path)
-        mtime_iso = (
-            datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
-            if stat.st_mtime
-            else None
-        )
+        mtime_iso: str | None = None
+        if file_timestamps is not None:
+            stat = sftp_client.stat(remote_path)
+            mtime_iso = (
+                datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+                if stat.st_mtime
+                else None
+            )
 
-        logger.info(f"Downloading {remote_path} (modified: {mtime_iso})")
+        logger.info(
+            f"Downloading {remote_path}"
+            + (f" (modified: {mtime_iso})" if mtime_iso else "")
+        )
         sftp_client.get(
             remotepath=remote_path,
             localpath=local_path,
@@ -96,7 +104,7 @@ def download_expired_voter_files(
                     zf.extractall(path=local_dir)
                     for name in zf.namelist():
                         downloaded_paths.append(os.path.join(local_dir, name))
-                        if mtime_iso:
+                        if file_timestamps is not None and mtime_iso:
                             file_timestamps[name] = mtime_iso
             except Exception as e:
                 logger.error(f"Failed to extract {local_path}: {e}")
@@ -104,10 +112,10 @@ def download_expired_voter_files(
             os.remove(local_path)
         else:
             downloaded_paths.append(local_path)
-            if mtime_iso:
+            if file_timestamps is not None and mtime_iso:
                 file_timestamps[filename] = mtime_iso
 
-    return downloaded_paths, file_timestamps
+    return downloaded_paths
 
 
 def _extract_state_from_lalvoterid(voter_id: str) -> str:
@@ -237,11 +245,13 @@ def get_expired_voter_ids(
         )
 
         with TemporaryDirectory(prefix="l2_expired_") as temp_dir:
-            extracted_paths, file_timestamps = download_expired_voter_files(
+            timestamps: Dict[str, str] = {}
+            extracted_paths = download_expired_voter_files(
                 sftp_client=sftp_client,
                 remote_dir=remote_dir,
                 file_pattern=file_pattern,
                 local_dir=temp_dir,
+                file_timestamps=timestamps,
             )
 
             if not extracted_paths:
@@ -256,7 +266,7 @@ def get_expired_voter_ids(
                 "lalvoterids": lalvoterids,
                 "source_files": source_files,
                 "local_paths": extracted_paths,
-                "file_timestamps": file_timestamps,
+                "file_timestamps": timestamps,
             }
     finally:
         if sftp_client is not None:

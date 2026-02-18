@@ -142,11 +142,13 @@ def l2_remove_expired_voters():
             )
 
             with TemporaryDirectory(prefix="l2_expired_") as temp_dir:
-                extracted_paths, file_timestamps = download_files(
+                file_timestamps: Dict[str, str] = {}
+                extracted_paths = download_files(
                     sftp_client=sftp_client,
                     remote_dir=expired_dir,
                     file_pattern=file_pattern,
                     local_dir=temp_dir,
+                    file_timestamps=file_timestamps,
                 )
 
                 if not extracted_paths:
