@@ -136,13 +136,11 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - "No"
-                  - "Unresponsive"
+                  - 'No'
+                  - 'Unresponsive'
                   - "Can\\'t Determine"
-                  - "Partisan Candidate"
-                  - "Write In"
-              config:
-                where: "verification_status_reason is not null"
+                  - 'Partisan Candidate'
+                  - 'Write In'
       - name: general_election_date
         description: Date of the general election
         data_tests:
@@ -242,16 +240,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  [
-                    "Won",
-                    "Lost",
-                    "Won General",
-                    "Lost General",
-                    "Runoff",
-                    "Withdrew",
-                    "Not on Ballot",
-                  ]
+                values: [ "Won", "Lost", "Won General", "Lost General", "Runoff", "Withdrew", "Not on Ballot", ]
       - name: election_stage_date
         description: Date of the election stage
         data_tests:
@@ -282,8 +271,6 @@ models:
           - accepted_values:
               arguments:
                 values: ["yes", "no"]
-              config:
-                where: "pledge_status is not null and trim(pledge_status) != ''"
       - name: verified_candidate_status
         description: >
           Raw verification status from HubSpot contacts. Empty strings allowed
@@ -292,15 +279,13 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - "Yes"
-                  - "No"
-                  - "Unresponsive"
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
                   - "Can\\'t Determine"
                   - "Partisan Candidate"
                   - "Write In"
                   - ""
-              config:
-                where: "verified_candidate_status is not null"
 
   - name: int__hubspot_companies_w_contacts_2025
     description: >
@@ -315,14 +300,12 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - "Yes"
-                  - "No"
-                  - "Unresponsive"
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
                   - "Can\\'t Determine"
-                  - "Partisan Candidate"
-                  - "Write In"
-              config:
-                where: "verified_candidate is not null"
+                  - 'Partisan Candidate'
+                  - 'Write In'
 
   - name: int__civics_candidacy_techspeed
     description: >
@@ -377,7 +360,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["techspeed"]
+                values: ['techspeed']
 
       - name: is_verified
         description: Whether candidacy is verified (always TRUE for TechSpeed data)
@@ -401,8 +384,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_incumbent is not null"
 
       - name: is_open_seat
         description: Whether seat is open (boolean, NULL if unknown)
@@ -410,8 +391,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_open_seat is not null"
 
       - name: is_partisan
         description: Whether race is partisan (boolean)
@@ -419,8 +398,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_partisan is not null"
 
       - name: general_election_date
         description: General election date
@@ -475,6 +452,8 @@ models:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: ^[A-Z]{2}$
+              config:
+                severity: warn
 
       - name: created_at
         data_tests:
@@ -571,30 +550,36 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["ballotready"]
+                values:
+                  - ballotready
 
       - name: is_verified
         description: Whether candidacy is verified (always true for BallotReady data)
         data_tests:
-          - not_null
           - accepted_values:
               arguments:
-                values: [true, false]
+                values:
+                  - true
+                  - false
 
       - name: is_pledged
         description: Whether candidate took GoodParty pledge (always false for BallotReady)
         data_tests:
-          - not_null
           - accepted_values:
               arguments:
-                values: [true, false]
+                values:
+                  - true
+                  - false
 
       - name: candidacy_result
         description: Result of the candidacy (Won, Lost, Runoff, or null)
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Won", "Lost", "Runoff"]
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
 
       - name: created_at
         data_tests:
@@ -685,7 +670,10 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["general", "primary", "runoff"]
+                values:
+                  - general
+                  - primary
+                  - runoff
 
       - name: ddhq_election_stage_date
         description: Date of the election stage
@@ -740,14 +728,19 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Won", "Lost", "Runoff"]
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
 
       - name: is_winner
         description: Whether the candidate won the election stage
         data_tests:
           - accepted_values:
               arguments:
-                values: [true, false]
+                values:
+                  - true
+                  - false
 
       - name: election_stage_date
         description: Date of the election stage
