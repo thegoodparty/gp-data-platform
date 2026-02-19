@@ -29,6 +29,9 @@ on retry (idempotent).
   password (OAuth client_secret), extras: `{"http_path": "/sql/1.0/warehouses/..."}`
 - `people_api_db` (Postgres) — host, port, login, password;
   extras: `{"database": "...", "schema": "..."}`
+- `gp_bastion_host` (SSH) — SSH bastion/jump host for tunneling to RDS;
+  host, port (default 22), login (SSH username), private key;
+  set NO_HOST_KEY_CHECK=True
 
 **Variables** (set in Astro Environment Manager):
 - `l2_sftp_expired_dir` — SFTP directory for expired voter files
@@ -376,7 +379,9 @@ def l2_remove_expired_voters():
             t_log.info("No LALVOTERIDs remain after state allowlist filter.")
             return {"district_voter_deleted": 0, "voter_deleted": 0}
 
-        # Delete from PostgreSQL
+        # Delete from PostgreSQL (via SSH tunnel to reach private VPC)
+        from airflow.providers.ssh.hooks.ssh import SSHHook
+
         pg_conn = BaseHook.get_connection("people_api_db")
         extras = pg_conn.extra_dejson
         db_host = pg_conn.host
@@ -391,21 +396,27 @@ def l2_remove_expired_voters():
             f"({db_host}/{db_name}, schema={db_schema})"
         )
 
-        conn = connect_db(
-            host=db_host,
-            port=db_port,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-        )
+        ssh_hook = SSHHook(ssh_conn_id="gp_bastion_host")
+        tunnel = ssh_hook.get_tunnel(remote_port=db_port, remote_host=db_host)
+        tunnel.start()
         try:
-            result = delete_expired_voters(
-                conn=conn,
-                schema=db_schema,
-                lalvoterids=lalvoterids,
+            conn = connect_db(
+                host="127.0.0.1",
+                port=tunnel.local_bind_port,
+                user=db_user,
+                password=db_password,
+                database=db_name,
             )
+            try:
+                result = delete_expired_voters(
+                    conn=conn,
+                    schema=db_schema,
+                    lalvoterids=lalvoterids,
+                )
+            finally:
+                conn.close()
         finally:
-            conn.close()
+            tunnel.stop()
 
         return result
 
@@ -484,7 +495,9 @@ def l2_remove_expired_voters():
         finally:
             connection.close()
 
-        # --- Verify People-API PostgreSQL ---
+        # --- Verify People-API PostgreSQL (via SSH tunnel) ---
+        from airflow.providers.ssh.hooks.ssh import SSHHook
+
         pg_conn = BaseHook.get_connection("people_api_db")
         extras = pg_conn.extra_dejson
         db_host = pg_conn.host
@@ -494,24 +507,30 @@ def l2_remove_expired_voters():
         db_name = extras.get("database", pg_conn.schema)
         db_schema = extras.get("schema", "public")
 
-        conn = connect_db(
-            host=db_host,
-            port=db_port,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-        )
+        ssh_hook = SSHHook(ssh_conn_id="gp_bastion_host")
+        tunnel = ssh_hook.get_tunnel(remote_port=db_port, remote_host=db_host)
+        tunnel.start()
         try:
-            result = execute_query(
-                conn,
-                f'SELECT COUNT(*) FROM {db_schema}."Voter" '
-                f'WHERE "LALVOTERID" = ANY(%s)',
-                (filtered_ids,),
-                return_results=True,
+            conn = connect_db(
+                host="127.0.0.1",
+                port=tunnel.local_bind_port,
+                user=db_user,
+                password=db_password,
+                database=db_name,
             )
-            pg_remaining = result[0][0] if result else 0
+            try:
+                result = execute_query(
+                    conn,
+                    f'SELECT COUNT(*) FROM {db_schema}."Voter" '
+                    f'WHERE "LALVOTERID" = ANY(%s)',
+                    (filtered_ids,),
+                    return_results=True,
+                )
+                pg_remaining = result[0][0] if result else 0
+            finally:
+                conn.close()
         finally:
-            conn.close()
+            tunnel.stop()
 
         # --- Report ---
         t_log.info(
