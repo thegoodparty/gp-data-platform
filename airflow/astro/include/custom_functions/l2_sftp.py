@@ -3,8 +3,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from tempfile import TemporaryDirectory
-from typing import Any, Dict, List
+from typing import Dict, List
 from zipfile import ZipFile
 
 import pandas as pd
@@ -219,57 +218,3 @@ def filter_by_state_allowlist(
         f"State allowlist {states}: {len(filtered)} of {len(lalvoterids)} LALVOTERIDs"
     )
     return filtered
-
-
-def get_expired_voter_ids(
-    host: str,
-    port: int,
-    username: str,
-    password: str,
-    remote_dir: str,
-    file_pattern: str,
-) -> Dict[str, Any]:
-    """
-    High-level function that connects to SFTP, downloads expired voter files,
-    and returns the LALVOTERID list along with source file names.
-
-    Returns:
-        {"lalvoterids": [...], "source_files": [...], "local_paths": [...],
-         "file_timestamps": {"filename": "ISO-8601", ...}}
-    """
-    transport = None
-    sftp_client = None
-    try:
-        transport, sftp_client = create_sftp_connection(
-            host=host, port=port, username=username, password=password
-        )
-
-        with TemporaryDirectory(prefix="l2_expired_") as temp_dir:
-            timestamps: Dict[str, str] = {}
-            extracted_paths = download_expired_voter_files(
-                sftp_client=sftp_client,
-                remote_dir=remote_dir,
-                file_pattern=file_pattern,
-                local_dir=temp_dir,
-                file_timestamps=timestamps,
-            )
-
-            if not extracted_paths:
-                return {"lalvoterids": [], "source_files": [], "local_paths": []}
-
-            lalvoterids = parse_expired_voter_ids(extracted_paths)
-
-            # Collect source file basenames for logging
-            source_files = [os.path.basename(p) for p in extracted_paths]
-
-            return {
-                "lalvoterids": lalvoterids,
-                "source_files": source_files,
-                "local_paths": extracted_paths,
-                "file_timestamps": timestamps,
-            }
-    finally:
-        if sftp_client is not None:
-            sftp_client.close()
-        if transport is not None:
-            transport.close()

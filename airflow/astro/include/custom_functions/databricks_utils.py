@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from typing import Dict, List
 
@@ -6,7 +7,18 @@ from databricks import sql as databricks_sql
 from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sql.client import Connection
 
+LALVOTERID_PATTERN = re.compile(r"^LAL[A-Z]{2}\d+$")
+
 logger = logging.getLogger("airflow.task")
+
+
+def _validate_lalvoterids(values: List[str]) -> None:
+    """Raise ValueError if any value doesn't match the expected LALVOTERID format."""
+    bad = [v for v in values if not LALVOTERID_PATTERN.match(v)]
+    if bad:
+        raise ValueError(
+            f"{len(bad)} invalid LALVOTERID(s) — refusing to build SQL: {bad[:5]}"
+        )
 
 
 def get_databricks_connection(
@@ -72,12 +84,12 @@ def delete_from_databricks_table(
 
     Returns the total number of rows deleted.
     """
+    _validate_lalvoterids(values)
     total_deleted = 0
     full_table_name = f"`{catalog}`.`{schema}`.`{table}`"
 
     for i in range(0, len(values), batch_size):
         batch = values[i : i + batch_size]
-        # Build a parameterized-style IN clause with quoted values
         placeholders = ", ".join(f"'{v}'" for v in batch)
         query = f"DELETE FROM {full_table_name} WHERE `{column}` IN ({placeholders})"
 
@@ -116,6 +128,7 @@ def count_in_databricks_table(
 
     Returns the total number of matching rows.
     """
+    _validate_lalvoterids(values)
     total_count = 0
     full_table_name = f"`{catalog}`.`{schema}`.`{table}`"
 
@@ -197,6 +210,7 @@ def stage_expired_voter_ids(
 
     Returns the number of rows inserted.
     """
+    _validate_lalvoterids(lalvoterids)
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
     source_files_str = ", ".join(source_files).replace("'", "\\'")
     dag_run_id_safe = dag_run_id.replace("'", "\\'")
