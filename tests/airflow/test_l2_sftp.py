@@ -195,41 +195,6 @@ class TestParseEmptyRows:
 
 
 # ---------------------------------------------------------------------------
-# parse_expired_voter_ids — state allowlist filtering
-# ---------------------------------------------------------------------------
-
-
-class TestParseStateFilter:
-    """Tests for state allowlist filtering in parse_expired_voter_ids."""
-
-    def test_no_filter_returns_all(self, manual_id_omits_file):
-        """No allowlist returns all IDs."""
-        ids = parse_expired_voter_ids([manual_id_omits_file])
-        assert len(ids) == 6
-
-    def test_filter_single_state_from_prefix(self, manual_id_omits_file):
-        """When no state_postal_code column, extract state from LALVOTERID prefix."""
-        ids = parse_expired_voter_ids([manual_id_omits_file], state_allowlist="CA")
-        assert len(ids) == 3
-        assert all(id_.startswith("LALCA") for id_ in ids)
-
-    def test_filter_multiple_states_from_prefix(self, manual_id_omits_file):
-        """Multiple states filtered via LALVOTERID prefix extraction."""
-        ids = parse_expired_voter_ids([manual_id_omits_file], state_allowlist="MD,NJ")
-        assert sorted(ids) == ["LALMD1207645", "LALNJ3456751"]
-
-    def test_filter_uses_state_postal_code_column(self, uppercase_header_file):
-        """When state_postal_code column exists, use it for filtering."""
-        ids = parse_expired_voter_ids([uppercase_header_file], state_allowlist="WY")
-        assert ids == ["LALWY0001"]
-
-    def test_filter_no_match_returns_empty(self, manual_id_omits_file):
-        """Allowlist with no matching states returns empty list."""
-        ids = parse_expired_voter_ids([manual_id_omits_file], state_allowlist="ZZ")
-        assert ids == []
-
-
-# ---------------------------------------------------------------------------
 # parse_expired_voter_ids — file format handling
 # ---------------------------------------------------------------------------
 

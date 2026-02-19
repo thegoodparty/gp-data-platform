@@ -26,6 +26,7 @@ def create_sftp_connection(
     Mirrors the pattern from dbt/project/models/load/load__l2_sftp_to_s3.py.
     """
     for attempt in range(max_retries):
+        transport = None
         try:
             transport = Transport((host, port))
             transport.set_keepalive(30)
@@ -36,6 +37,8 @@ def create_sftp_connection(
             logger.info("SFTP client created successfully")
             return transport, sftp_client
         except Exception as e:
+            if transport is not None:
+                transport.close()
             logger.error(f"SFTP connection attempt {attempt + 1} failed: {e}")
             if attempt == max_retries - 1:
                 raise
@@ -104,7 +107,7 @@ def download_expired_voter_files(
                     for name in zf.namelist():
                         downloaded_paths.append(os.path.join(local_dir, name))
                         if file_timestamps is not None and mtime_iso:
-                            file_timestamps[name] = mtime_iso
+                            file_timestamps[os.path.basename(name)] = mtime_iso
             except Exception as e:
                 logger.error(f"Failed to extract {local_path}: {e}")
                 raise
@@ -125,7 +128,6 @@ def _extract_state_from_lalvoterid(voter_id: str) -> str:
 
 def parse_expired_voter_ids(
     file_paths: List[str],
-    state_allowlist: str = "",
 ) -> List[str]:
     """
     Reads extracted file(s) and returns a deduplicated list of LALVOTERID strings.
@@ -135,16 +137,7 @@ def parse_expired_voter_ids(
 
     Args:
         file_paths: List of local file paths to parse.
-        state_allowlist: Comma-separated state codes to filter on (e.g., "NC,WY").
-            Uses ``state_postal_code`` column if present, otherwise extracts the
-            state from the LALVOTERID prefix (e.g. ``LALMD...`` → ``MD``).
-            Empty string = no filtering (all states).
     """
-    states = (
-        {s.strip().upper() for s in state_allowlist.split(",") if s.strip()}
-        if state_allowlist
-        else set()
-    )
     all_ids: List[str] = []
 
     for file_path in file_paths:
@@ -171,16 +164,6 @@ def parse_expired_voter_ids(
 
         # Drop rows with missing LALVOTERID
         df = df[df["LALVOTERID"].notna() & (df["LALVOTERID"].str.strip() != "")]
-
-        if states:
-            before = len(df)
-            if "STATE_POSTAL_CODE" in df.columns:
-                df = df[df["STATE_POSTAL_CODE"].str.upper().isin(states)]
-            else:
-                df = df[
-                    df["LALVOTERID"].apply(_extract_state_from_lalvoterid).isin(states)
-                ]
-            logger.info(f"Filtered to states {states}: {len(df)} of {before} rows")
 
         ids = df["LALVOTERID"].str.strip().unique().tolist()
         logger.info(f"Parsed {len(ids)} LALVOTERID(s) from {file_path}")

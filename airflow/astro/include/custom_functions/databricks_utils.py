@@ -212,8 +212,8 @@ def stage_expired_voter_ids(
     """
     _validate_lalvoterids(lalvoterids)
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
-    source_files_str = ", ".join(source_files).replace("'", "\\'")
-    dag_run_id_safe = dag_run_id.replace("'", "\\'")
+    source_files_str = ", ".join(source_files).replace("\\", "\\\\").replace("'", "\\'")
+    dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
 
     # Use the most recent SFTP file timestamp (or NULL if unavailable)
     file_ts = file_timestamps or {}
@@ -232,14 +232,6 @@ def stage_expired_voter_ids(
             "  dag_run_id STRING"
             ")"
         )
-        # Add column for tables created before this change
-        try:
-            cursor.execute(
-                f"ALTER TABLE {full_table_name} "
-                "ADD COLUMNS (file_modified_at TIMESTAMP)"
-            )
-        except Exception:
-            pass  # column already exists
 
         total_inserted = 0
         for i in range(0, len(lalvoterids), batch_size):
@@ -249,7 +241,11 @@ def stage_expired_voter_ids(
                 f"current_timestamp(), '{dag_run_id_safe}')"
                 for vid in batch
             )
-            cursor.execute(f"INSERT INTO {full_table_name} VALUES {values}")
+            cursor.execute(
+                f"INSERT INTO {full_table_name} "
+                f"(lalvoterid, source_files, file_modified_at, ingested_at, dag_run_id) "
+                f"VALUES {values}"
+            )
             total_inserted += len(batch)
             logger.info(
                 f"Staged batch {i // batch_size + 1} "

@@ -8,13 +8,14 @@ PostgreSQL).
 ### Pipeline Steps:
 1. Query staging table for already-processed files (idempotency check)
 2. Download new expired voter files from L2 SFTP and parse **all** LALVOTERIDs
-3. Stage **all** expired LALVOTERIDs to `airflow_source.l2_expired_voters` for dbt visibility
-4. Apply state allowlist filter, then delete from Databricks `int__l2_nationwide_uniform`
-   and `m_people_api__voter`
-5. Apply state allowlist filter, then delete from People-API PostgreSQL
+3. Apply state allowlist filter, then delete from Databricks `int__l2_nationwide_uniform`
+   and `m_people_api__voter` (parallel)
+4. Apply state allowlist filter, then delete from People-API PostgreSQL (parallel with step 3)
+5. Verify all deletions succeeded (fails DAG if any IDs remain)
+6. Stage **all** expired LALVOTERIDs to `airflow_source.l2_expired_voters` for dbt visibility
 
-Steps 3–5 run in parallel after step 2 completes.
-The state allowlist is only applied to deletions (steps 4–5), not to staging (step 3).
+Steps 3–4 run in parallel. Staging (step 6) runs only after verification passes,
+so files are marked as processed only when deletions are confirmed.
 
 ### Configuration:
 
@@ -214,10 +215,17 @@ def l2_remove_expired_voters():
         }
 
     @task
-    def stage_to_databricks(ingest_result: Dict[str, Any]) -> Dict[str, Any]:
+    def stage_to_databricks(
+        ingest_result: Dict[str, Any],
+        verify_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """
         Write ingested expired LALVOTERIDs to a staging table in the airflow_source
         schema so they are visible in dbt for auditability.
+
+        Runs after verify_deletions to ensure files are only marked as processed
+        once deletions are confirmed. Accepts verify_result as input to enforce
+        this dependency.
         """
         from airflow.sdk import get_current_context
 
@@ -496,12 +504,13 @@ def l2_remove_expired_voters():
 
     processed_files = fetch_processed_files()
     ingest_result = ingest_expired_voter_files(processed_files)
-    # Stage + deletions run in parallel after ingestion completes
-    stage_to_databricks(ingest_result)
+    # Deletions run in parallel after ingestion completes
     db_result = delete_from_databricks(ingest_result)
     pa_result = delete_from_people_api(ingest_result)
     # Verify after both deletes complete
-    verify_deletions(ingest_result, db_result, pa_result)
+    verify_result = verify_deletions(ingest_result, db_result, pa_result)
+    # Stage only after deletions are verified — marks files as processed
+    stage_to_databricks(ingest_result, verify_result)
 
 
 # Instantiate the DAG
