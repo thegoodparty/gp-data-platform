@@ -97,6 +97,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="LALVOTERID",
+        # append_new_columns: new source columns are added to the target table.
+        # If L2 removes a column, the build will fail — this is intentional so we
+        # can manually drop it from source/target and update downstream dependencies.
+        # Do NOT use sync_all_columns here as it silently drops columns that
+        # downstream models may depend on. See DATA-1528.
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
         tags=["intermediate", "l2", "nationwide_uniform", "uniform"],

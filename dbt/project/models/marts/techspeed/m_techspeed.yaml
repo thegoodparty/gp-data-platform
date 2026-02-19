@@ -66,7 +66,7 @@ models:
         description: "Level of the office (Federal/State/Local)"
       - name: "`Filing Deadline`"
         description: "Deadline for filing candidacy"
-      - name: "`BallotReady Race ID`"
+      - name: br_race_id
         description: "Race identifier from BallotReady"
       - name: "`Primary Election Date`"
         description: "Date of the primary election"
