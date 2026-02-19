@@ -46,6 +46,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Dict, List
 
 from include.custom_functions.databricks_utils import (
+    count_in_databricks_table,
     delete_from_databricks_table,
     get_databricks_connection,
     get_processed_files,
@@ -64,6 +65,7 @@ from include.custom_functions.l2_sftp import (
 from include.custom_functions.postgres_utils import (
     connect_db,
     delete_expired_voters,
+    execute_query,
 )
 from pendulum import datetime, duration
 
@@ -76,7 +78,7 @@ DATABRICKS_CATALOG = "goodparty_data_catalog"
 
 @dag(
     start_date=datetime(2025, 6, 1),
-    schedule=None,  # manual trigger until SFTP file details are confirmed
+    schedule="@weekly",
     max_consecutive_failed_dag_runs=5,
     max_active_runs=1,
     doc_md=__doc__,
@@ -371,6 +373,123 @@ def l2_remove_expired_voters():
 
         return result
 
+    @task
+    def verify_deletions(
+        ingest_result: Dict[str, Any],
+        databricks_result: Dict[str, Any],
+        people_api_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Verify that all expired LALVOTERIDs were successfully removed from
+        downstream tables. Raises an error if any remain.
+
+        Accepts databricks_result and people_api_result as inputs to ensure
+        this task runs only after both delete tasks complete.
+        """
+        lalvoterids = ingest_result["lalvoterids"]
+        if not lalvoterids:
+            t_log.info("No LALVOTERIDs to verify — skipping.")
+            return {"status": "skipped", "reason": "no_ids"}
+
+        state_allowlist = Variable.get("l2_state_allowlist", default="")
+        filtered_ids = filter_by_state_allowlist(lalvoterids, state_allowlist)
+        if not filtered_ids:
+            t_log.info("No LALVOTERIDs remain after state allowlist filter — skipping.")
+            return {"status": "skipped", "reason": "no_ids_after_filter"}
+
+        # --- Verify Databricks ---
+        db_conn_id = Variable.get("databricks_conn_id", default="databricks")
+        db_conn = BaseHook.get_connection(db_conn_id)
+        schema = Variable.get("databricks_voter_schema")
+        l2_table = Variable.get(
+            "databricks_l2_table", default="int__l2_nationwide_uniform"
+        )
+
+        connection = get_databricks_connection(
+            host=db_conn.host,
+            http_path=db_conn.extra_dejson.get("http_path", ""),
+            client_id=db_conn.login,
+            client_secret=db_conn.password,
+        )
+        try:
+            l2_remaining = count_in_databricks_table(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=schema,
+                table=l2_table,
+                column="LALVOTERID",
+                values=filtered_ids,
+            )
+            voter_mart_remaining = count_in_databricks_table(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=schema,
+                table="m_people_api__voter",
+                column="LALVOTERID",
+                values=filtered_ids,
+            )
+        finally:
+            connection.close()
+
+        # --- Verify People-API PostgreSQL ---
+        pg_conn = BaseHook.get_connection("people_api_db")
+        extras = pg_conn.extra_dejson
+        db_host = pg_conn.host
+        db_port = pg_conn.port or 5432
+        db_user = pg_conn.login
+        db_password = pg_conn.password
+        db_name = extras.get("database", pg_conn.schema)
+        db_schema = extras.get("schema", "public")
+
+        conn = connect_db(
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            password=db_password,
+            database=db_name,
+        )
+        try:
+            result = execute_query(
+                conn,
+                f'SELECT COUNT(*) FROM {db_schema}."Voter" '
+                f'WHERE "LALVOTERID" = ANY(%s)',
+                (filtered_ids,),
+                return_results=True,
+            )
+            pg_remaining = result[0][0] if result else 0
+        finally:
+            conn.close()
+
+        # --- Report ---
+        t_log.info(
+            f"Verification results for {len(filtered_ids)} LALVOTERIDs:\n"
+            f"  {l2_table}: {l2_remaining} remaining\n"
+            f"  m_people_api__voter: {voter_mart_remaining} remaining\n"
+            f"  People-API Voter: {pg_remaining} remaining"
+        )
+
+        failures = []
+        if l2_remaining > 0:
+            failures.append(f"{l2_table}: {l2_remaining} rows still present")
+        if voter_mart_remaining > 0:
+            failures.append(
+                f"m_people_api__voter: {voter_mart_remaining} rows still present"
+            )
+        if pg_remaining > 0:
+            failures.append(f"People-API Voter: {pg_remaining} rows still present")
+
+        if failures:
+            raise RuntimeError(f"Deletion verification failed — {'; '.join(failures)}")
+
+        t_log.info("All expired LALVOTERIDs verified removed from downstream tables.")
+        return {
+            "status": "verified",
+            "ids_checked": len(filtered_ids),
+            "l2_remaining": l2_remaining,
+            "voter_mart_remaining": voter_mart_remaining,
+            "pg_remaining": pg_remaining,
+        }
+
     # ------------------------------------ #
     # Calling tasks + Setting dependencies #
     # ------------------------------------ #
@@ -379,8 +498,10 @@ def l2_remove_expired_voters():
     ingest_result = ingest_expired_voter_files(processed_files)
     # Stage + deletions run in parallel after ingestion completes
     stage_to_databricks(ingest_result)
-    delete_from_databricks(ingest_result)
-    delete_from_people_api(ingest_result)
+    db_result = delete_from_databricks(ingest_result)
+    pa_result = delete_from_people_api(ingest_result)
+    # Verify after both deletes complete
+    verify_deletions(ingest_result, db_result, pa_result)
 
 
 # Instantiate the DAG

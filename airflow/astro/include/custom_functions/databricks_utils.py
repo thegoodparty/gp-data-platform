@@ -100,6 +100,45 @@ def delete_from_databricks_table(
     return total_deleted
 
 
+def count_in_databricks_table(
+    connection: Connection,
+    catalog: str,
+    schema: str,
+    table: str,
+    column: str,
+    values: List[str],
+    batch_size: int = 1000,
+) -> int:
+    """
+    Count rows in a Databricks Delta table where column matches any of the given values.
+
+    Processes in batches to avoid query size limits.
+
+    Returns the total number of matching rows.
+    """
+    total_count = 0
+    full_table_name = f"`{catalog}`.`{schema}`.`{table}`"
+
+    for i in range(0, len(values), batch_size):
+        batch = values[i : i + batch_size]
+        placeholders = ", ".join(f"'{v}'" for v in batch)
+        query = (
+            f"SELECT COUNT(*) FROM {full_table_name} "
+            f"WHERE `{column}` IN ({placeholders})"
+        )
+
+        cursor = connection.cursor()
+        try:
+            cursor.execute(query)
+            row = cursor.fetchone()
+            total_count += row[0] if row else 0
+        finally:
+            cursor.close()
+
+    logger.info(f"Count of matching rows in {full_table_name}: {total_count}")
+    return total_count
+
+
 def get_processed_files(
     connection: Connection,
     catalog: str,
