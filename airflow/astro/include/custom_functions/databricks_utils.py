@@ -234,16 +234,6 @@ def stage_expired_voter_ids(
             ")"
         )
 
-        # Add columns that may be missing on tables created by earlier versions
-        for col, dtype in [("status", "STRING")]:
-            try:
-                cursor.execute(
-                    f"ALTER TABLE {full_table_name} ADD COLUMNS ({col} {dtype})"
-                )
-                logger.info(f"Added missing column '{col}' to {full_table_name}")
-            except Exception:
-                pass  # Column already exists
-
         # Clean up any previous pending rows for this dag_run_id (idempotent retry)
         cursor.execute(
             f"DELETE FROM {full_table_name} "
