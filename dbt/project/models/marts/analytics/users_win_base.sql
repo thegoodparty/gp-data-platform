@@ -82,7 +82,8 @@ with
             -- Activated metric
             m.first_campaign_sent_at,
             (m.first_campaign_sent_at is not null) as is_activated,
-            m.total_campaigns_sent
+            m.total_campaigns_sent,
+            m.total_recipient_count
         from users u
         left join milestones m on u.user_id = m.user_id
     )
