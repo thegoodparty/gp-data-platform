@@ -24,3 +24,12 @@ models:
         description: Airflow DAG run ID for traceability
         tests:
           - not_null
+      - name: status
+        description: >
+          Processing status of the staged record. 'pending' while deletions
+          are in progress, 'completed' after verification confirms all
+          deletions succeeded.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['pending', 'completed']

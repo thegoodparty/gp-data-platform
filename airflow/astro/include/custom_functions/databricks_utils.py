@@ -178,7 +178,7 @@ def get_processed_files(
         cursor.execute(
             f"SELECT DISTINCT trim(file_name) AS file_name "
             f"FROM (SELECT explode(split(source_files, ', ')) AS file_name "
-            f"FROM {full_table_name})"
+            f"FROM {full_table_name} WHERE status = 'completed')"
         )
         processed = {row[0] for row in cursor.fetchall()}
         logger.info(f"Already-processed files: {processed}")
@@ -229,8 +229,25 @@ def stage_expired_voter_ids(
             "  source_files STRING,"
             "  file_modified_at TIMESTAMP,"
             "  ingested_at TIMESTAMP,"
-            "  dag_run_id STRING"
+            "  dag_run_id STRING,"
+            "  status STRING"
             ")"
+        )
+
+        # Add columns that may be missing on tables created by earlier versions
+        for col, dtype in [("status", "STRING")]:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE {full_table_name} ADD COLUMNS ({col} {dtype})"
+                )
+                logger.info(f"Added missing column '{col}' to {full_table_name}")
+            except Exception:
+                pass  # Column already exists
+
+        # Clean up any previous pending rows for this dag_run_id (idempotent retry)
+        cursor.execute(
+            f"DELETE FROM {full_table_name} "
+            f"WHERE dag_run_id = '{dag_run_id_safe}' AND status = 'pending'"
         )
 
         total_inserted = 0
@@ -238,12 +255,13 @@ def stage_expired_voter_ids(
             batch = lalvoterids[i : i + batch_size]
             values = ", ".join(
                 f"('{vid}', '{source_files_str}', {ts_sql}, "
-                f"current_timestamp(), '{dag_run_id_safe}')"
+                f"current_timestamp(), '{dag_run_id_safe}', 'pending')"
                 for vid in batch
             )
             cursor.execute(
                 f"INSERT INTO {full_table_name} "
-                f"(lalvoterid, source_files, file_modified_at, ingested_at, dag_run_id) "
+                f"(lalvoterid, source_files, file_modified_at, ingested_at, "
+                f"dag_run_id, status) "
                 f"VALUES {values}"
             )
             total_inserted += len(batch)
@@ -254,5 +272,60 @@ def stage_expired_voter_ids(
 
         logger.info(f"Total staged to {full_table_name}: {total_inserted} rows")
         return total_inserted
+    finally:
+        cursor.close()
+
+
+def get_staged_voter_ids(
+    connection: Connection,
+    catalog: str,
+    schema: str,
+    dag_run_id: str,
+) -> List[str]:
+    """
+    Read staged LALVOTERIDs for a specific DAG run from the staging table.
+
+    Returns a list of LALVOTERID strings.
+    """
+    full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
+    dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
+
+    cursor = connection.cursor()
+    try:
+        cursor.execute(
+            f"SELECT lalvoterid FROM {full_table_name} "
+            f"WHERE dag_run_id = '{dag_run_id_safe}'"
+        )
+        ids = [row[0] for row in cursor.fetchall()]
+        logger.info(f"Read {len(ids)} staged LALVOTERIDs for dag_run_id={dag_run_id}")
+        return ids
+    finally:
+        cursor.close()
+
+
+def mark_staging_complete(
+    connection: Connection,
+    catalog: str,
+    schema: str,
+    dag_run_id: str,
+) -> int:
+    """
+    Update staged rows from 'pending' to 'completed' for a DAG run.
+
+    Returns the number of rows updated.
+    """
+    full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
+    dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
+
+    cursor = connection.cursor()
+    try:
+        cursor.execute(
+            f"UPDATE {full_table_name} "
+            f"SET status = 'completed' "
+            f"WHERE dag_run_id = '{dag_run_id_safe}' AND status = 'pending'"
+        )
+        updated = cursor.rowcount if cursor.rowcount >= 0 else 0
+        logger.info(f"Marked {updated} staged rows as completed for {dag_run_id}")
+        return updated
     finally:
         cursor.close()

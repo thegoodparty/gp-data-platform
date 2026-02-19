@@ -7,15 +7,19 @@ PostgreSQL).
 
 ### Pipeline Steps:
 1. Query staging table for already-processed files (idempotency check)
-2. Download new expired voter files from L2 SFTP and parse **all** LALVOTERIDs
-3. Apply state allowlist filter, then delete from Databricks `int__l2_nationwide_uniform`
-   and `m_people_api__voter` (parallel)
-4. Apply state allowlist filter, then delete from People-API PostgreSQL (parallel with step 3)
+2. Download new expired voter files from L2 SFTP, parse **all** LALVOTERIDs,
+   and stage them to Databricks with `status='pending'`
+3. Read staged IDs, apply state allowlist filter, then delete from Databricks
+   `int__l2_nationwide_uniform` and `m_people_api__voter` (parallel)
+4. Read staged IDs, apply state allowlist filter, then delete from People-API
+   PostgreSQL (parallel with step 3)
 5. Verify all deletions succeeded (fails DAG if any IDs remain)
-6. Stage **all** expired LALVOTERIDs to `airflow_source.l2_expired_voters` for dbt visibility
+6. Mark staged rows as `status='completed'` (only after verification passes)
 
-Steps 3–4 run in parallel. Staging (step 6) runs only after verification passes,
-so files are marked as processed only when deletions are confirmed.
+Steps 3–4 run in parallel. Marking complete (step 6) runs only after
+verification passes, so files are considered processed only when deletions
+are confirmed. If the DAG fails mid-delete, pending rows are cleaned up
+on retry (idempotent).
 
 ### Configuration:
 
@@ -52,6 +56,8 @@ from include.custom_functions.databricks_utils import (
     delete_from_databricks_table,
     get_databricks_connection,
     get_processed_files,
+    get_staged_voter_ids,
+    mark_staging_complete,
     stage_expired_voter_ids,
 )
 from include.custom_functions.l2_sftp import (
@@ -98,7 +104,7 @@ def l2_remove_expired_voters():
     def fetch_processed_files() -> List[str]:
         """
         Query the staging table for files that have already been processed
-        so the ingest task can skip them (idempotency).
+        (status='completed') so the ingest task can skip them (idempotency).
         """
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
@@ -124,14 +130,18 @@ def l2_remove_expired_voters():
         processed_files: List[str],
     ) -> Dict[str, Any]:
         """
-        Connect to L2 SFTP, download expired voter files, and parse LALVOTERIDs.
+        Connect to L2 SFTP, download expired voter files, parse LALVOTERIDs,
+        and stage them to Databricks with status='pending'.
+
         Skips files that have already been processed (listed in processed_files).
 
-        Returns a dict with keys:
-            - lalvoterids: list of expired LALVOTERID strings
+        Returns lightweight metadata (no LALVOTERID list in XCom):
+            - count: number of expired LALVOTERIDs staged
             - source_files: list of source file names
-            - file_timestamps: dict mapping basename to SFTP mtime (ISO 8601)
+            - rows_staged: number of rows written to staging table
         """
+        from airflow.sdk import get_current_context
+
         sftp_conn = BaseHook.get_connection("l2_sftp")
         expired_dir = Variable.get("l2_sftp_expired_dir")
         file_pattern = Variable.get("l2_sftp_expired_file_pattern")
@@ -160,9 +170,9 @@ def l2_remove_expired_voters():
                 if not extracted_paths:
                     t_log.info("No expired voter files found on SFTP.")
                     return {
-                        "lalvoterids": [],
+                        "count": 0,
                         "source_files": [],
-                        "file_timestamps": {},
+                        "rows_staged": 0,
                     }
 
                 # Filter out already-processed files
@@ -178,9 +188,9 @@ def l2_remove_expired_voters():
                         f"skipping: {skipped}"
                     )
                     return {
-                        "lalvoterids": [],
+                        "count": 0,
                         "source_files": [],
-                        "file_timestamps": {},
+                        "rows_staged": 0,
                     }
 
                 if len(new_paths) < len(extracted_paths):
@@ -210,43 +220,14 @@ def l2_remove_expired_voters():
             f"Ingested {len(lalvoterids)} expired LALVOTERIDs "
             f"from {len(source_files)} file(s): {source_files}"
         )
-        return {
-            "lalvoterids": lalvoterids,
-            "source_files": source_files,
-            "file_timestamps": new_timestamps,
-        }
 
-    @task
-    def stage_to_databricks(
-        ingest_result: Dict[str, Any],
-        verify_result: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Write ingested expired LALVOTERIDs to a staging table in the airflow_source
-        schema so they are visible in dbt for auditability.
-
-        Runs after verify_deletions to ensure files are only marked as processed
-        once deletions are confirmed. Accepts verify_result as input to enforce
-        this dependency.
-        """
-        from airflow.sdk import get_current_context
-
-        lalvoterids = ingest_result["lalvoterids"]
-        if not lalvoterids:
-            t_log.info("No LALVOTERIDs to stage.")
-            return {"rows_staged": 0}
+        # Stage to Databricks with status='pending'
+        context = get_current_context()
+        dag_run_id = context["dag_run"].run_id
 
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
-        schema = Variable.get("databricks_source_schema")
-
-        t_log.info(
-            f"Staging {len(lalvoterids)} expired voters to "
-            f"{DATABRICKS_CATALOG}.{schema}.l2_expired_voters"
-        )
-
-        context = get_current_context()
-        dag_run_id = context["dag_run"].run_id
+        source_schema = Variable.get("databricks_source_schema")
 
         connection = get_databricks_connection(
             host=db_conn.host,
@@ -258,16 +239,20 @@ def l2_remove_expired_voters():
             rows_staged = stage_expired_voter_ids(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
-                schema=schema,
+                schema=source_schema,
                 lalvoterids=lalvoterids,
-                source_files=ingest_result["source_files"],
-                file_timestamps=ingest_result.get("file_timestamps", {}),
+                source_files=source_files,
+                file_timestamps=new_timestamps,
                 dag_run_id=dag_run_id,
             )
         finally:
             connection.close()
 
-        return {"rows_staged": rows_staged}
+        return {
+            "count": len(lalvoterids),
+            "source_files": source_files,
+            "rows_staged": rows_staged,
+        }
 
     @task
     def delete_from_databricks(ingest_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -276,30 +261,24 @@ def l2_remove_expired_voters():
           - int__l2_nationwide_uniform (source intermediate table)
           - m_people_api__voter (downstream mart — incremental, won't auto-delete)
 
+        Reads IDs from the staging table (avoids large XCom payloads).
         Applies the state allowlist filter so only matching states are deleted.
         """
-        lalvoterids = ingest_result["lalvoterids"]
-        if not lalvoterids:
+        from airflow.sdk import get_current_context
+
+        if not ingest_result["count"]:
             t_log.info("No LALVOTERIDs to delete from Databricks.")
             return {"l2_rows_deleted": 0, "voter_mart_rows_deleted": 0}
 
-        state_allowlist = Variable.get("l2_state_allowlist", default="")
-        lalvoterids = filter_by_state_allowlist(lalvoterids, state_allowlist)
-        if not lalvoterids:
-            t_log.info("No LALVOTERIDs remain after state allowlist filter.")
-            return {"l2_rows_deleted": 0, "voter_mart_rows_deleted": 0}
+        context = get_current_context()
+        dag_run_id = context["dag_run"].run_id
 
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
-        schema = Variable.get("databricks_voter_schema")
+        source_schema = Variable.get("databricks_source_schema")
+        voter_schema = Variable.get("databricks_voter_schema")
         l2_table = Variable.get(
             "databricks_l2_table", default="int__l2_nationwide_uniform"
-        )
-
-        t_log.info(
-            f"Deleting {len(lalvoterids)} expired voters from "
-            f"{DATABRICKS_CATALOG}.{schema}.{l2_table} "
-            f"and {DATABRICKS_CATALOG}.{schema}.m_people_api__voter"
         )
 
         connection = get_databricks_connection(
@@ -309,10 +288,29 @@ def l2_remove_expired_voters():
             client_secret=db_conn.password,
         )
         try:
+            lalvoterids = get_staged_voter_ids(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=source_schema,
+                dag_run_id=dag_run_id,
+            )
+
+            state_allowlist = Variable.get("l2_state_allowlist", default="")
+            lalvoterids = filter_by_state_allowlist(lalvoterids, state_allowlist)
+            if not lalvoterids:
+                t_log.info("No LALVOTERIDs remain after state allowlist filter.")
+                return {"l2_rows_deleted": 0, "voter_mart_rows_deleted": 0}
+
+            t_log.info(
+                f"Deleting {len(lalvoterids)} expired voters from "
+                f"{DATABRICKS_CATALOG}.{voter_schema}.{l2_table} "
+                f"and {DATABRICKS_CATALOG}.{voter_schema}.m_people_api__voter"
+            )
+
             l2_rows_deleted = delete_from_databricks_table(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
-                schema=schema,
+                schema=voter_schema,
                 table=l2_table,
                 column="LALVOTERID",
                 values=lalvoterids,
@@ -320,7 +318,7 @@ def l2_remove_expired_voters():
             voter_mart_rows_deleted = delete_from_databricks_table(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
-                schema=schema,
+                schema=voter_schema,
                 table="m_people_api__voter",
                 column="LALVOTERID",
                 values=lalvoterids,
@@ -338,12 +336,39 @@ def l2_remove_expired_voters():
         """
         Delete expired LALVOTERIDs from People-API PostgreSQL.
         Deletes DistrictVoter rows first (FK dependency), then Voter rows.
+
+        Reads IDs from the Databricks staging table (avoids large XCom payloads).
         Applies the state allowlist filter so only matching states are deleted.
         """
-        lalvoterids = ingest_result["lalvoterids"]
-        if not lalvoterids:
+        from airflow.sdk import get_current_context
+
+        if not ingest_result["count"]:
             t_log.info("No LALVOTERIDs to delete from People-API.")
             return {"district_voter_deleted": 0, "voter_deleted": 0}
+
+        context = get_current_context()
+        dag_run_id = context["dag_run"].run_id
+
+        # Read staged IDs from Databricks
+        db_conn_id = Variable.get("databricks_conn_id", default="databricks")
+        db_conn = BaseHook.get_connection(db_conn_id)
+        source_schema = Variable.get("databricks_source_schema")
+
+        db_connection = get_databricks_connection(
+            host=db_conn.host,
+            http_path=db_conn.extra_dejson.get("http_path", ""),
+            client_id=db_conn.login,
+            client_secret=db_conn.password,
+        )
+        try:
+            lalvoterids = get_staged_voter_ids(
+                connection=db_connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=source_schema,
+                dag_run_id=dag_run_id,
+            )
+        finally:
+            db_connection.close()
 
         state_allowlist = Variable.get("l2_state_allowlist", default="")
         lalvoterids = filter_by_state_allowlist(lalvoterids, state_allowlist)
@@ -351,6 +376,7 @@ def l2_remove_expired_voters():
             t_log.info("No LALVOTERIDs remain after state allowlist filter.")
             return {"district_voter_deleted": 0, "voter_deleted": 0}
 
+        # Delete from PostgreSQL
         pg_conn = BaseHook.get_connection("people_api_db")
         extras = pg_conn.extra_dejson
         db_host = pg_conn.host
@@ -393,27 +419,23 @@ def l2_remove_expired_voters():
         Verify that all expired LALVOTERIDs were successfully removed from
         downstream tables. Raises an error if any remain.
 
+        Reads IDs from the Databricks staging table (avoids large XCom payloads).
         Accepts databricks_result and people_api_result as inputs to ensure
         this task runs only after both delete tasks complete.
         """
-        lalvoterids = ingest_result["lalvoterids"]
-        if not lalvoterids:
+        from airflow.sdk import get_current_context
+
+        if not ingest_result["count"]:
             t_log.info("No LALVOTERIDs to verify — skipping.")
             return {"status": "skipped", "reason": "no_ids"}
 
-        state_allowlist = Variable.get("l2_state_allowlist", default="")
-        filtered_ids = filter_by_state_allowlist(lalvoterids, state_allowlist)
-        if not filtered_ids:
-            t_log.info("No LALVOTERIDs remain after state allowlist filter — skipping.")
-            return {"status": "skipped", "reason": "no_ids_after_filter"}
+        context = get_current_context()
+        dag_run_id = context["dag_run"].run_id
 
-        # --- Verify Databricks ---
+        # Read staged IDs from Databricks
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
-        schema = Variable.get("databricks_voter_schema")
-        l2_table = Variable.get(
-            "databricks_l2_table", default="int__l2_nationwide_uniform"
-        )
+        source_schema = Variable.get("databricks_source_schema")
 
         connection = get_databricks_connection(
             host=db_conn.host,
@@ -422,10 +444,31 @@ def l2_remove_expired_voters():
             client_secret=db_conn.password,
         )
         try:
+            lalvoterids = get_staged_voter_ids(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=source_schema,
+                dag_run_id=dag_run_id,
+            )
+
+            state_allowlist = Variable.get("l2_state_allowlist", default="")
+            filtered_ids = filter_by_state_allowlist(lalvoterids, state_allowlist)
+            if not filtered_ids:
+                t_log.info(
+                    "No LALVOTERIDs remain after state allowlist filter — skipping."
+                )
+                return {"status": "skipped", "reason": "no_ids_after_filter"}
+
+            # --- Verify Databricks ---
+            voter_schema = Variable.get("databricks_voter_schema")
+            l2_table = Variable.get(
+                "databricks_l2_table", default="int__l2_nationwide_uniform"
+            )
+
             l2_remaining = count_in_databricks_table(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
-                schema=schema,
+                schema=voter_schema,
                 table=l2_table,
                 column="LALVOTERID",
                 values=filtered_ids,
@@ -433,7 +476,7 @@ def l2_remove_expired_voters():
             voter_mart_remaining = count_in_databricks_table(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
-                schema=schema,
+                schema=voter_schema,
                 table="m_people_api__voter",
                 column="LALVOTERID",
                 values=filtered_ids,
@@ -500,19 +543,59 @@ def l2_remove_expired_voters():
             "pg_remaining": pg_remaining,
         }
 
+    @task
+    def mark_staged_complete(
+        verify_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Mark staged rows as 'completed' after verification passes.
+
+        Only completed rows are considered by the idempotency check in
+        fetch_processed_files, so files are only marked as processed once
+        deletions are confirmed.
+
+        Accepts verify_result as input to enforce dependency ordering.
+        """
+        from airflow.sdk import get_current_context
+
+        context = get_current_context()
+        dag_run_id = context["dag_run"].run_id
+
+        db_conn_id = Variable.get("databricks_conn_id", default="databricks")
+        db_conn = BaseHook.get_connection(db_conn_id)
+        schema = Variable.get("databricks_source_schema")
+
+        connection = get_databricks_connection(
+            host=db_conn.host,
+            http_path=db_conn.extra_dejson.get("http_path", ""),
+            client_id=db_conn.login,
+            client_secret=db_conn.password,
+        )
+        try:
+            updated = mark_staging_complete(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=schema,
+                dag_run_id=dag_run_id,
+            )
+        finally:
+            connection.close()
+
+        return {"rows_marked_complete": updated}
+
     # ------------------------------------ #
     # Calling tasks + Setting dependencies #
     # ------------------------------------ #
 
     processed_files = fetch_processed_files()
     ingest_result = ingest_expired_voter_files(processed_files)
-    # Deletions run in parallel after ingestion completes
+    # Deletions run in parallel after ingestion + staging completes
     db_result = delete_from_databricks(ingest_result)
     pa_result = delete_from_people_api(ingest_result)
     # Verify after both deletes complete
     verify_result = verify_deletions(ingest_result, db_result, pa_result)
-    # Stage only after deletions are verified — marks files as processed
-    stage_to_databricks(ingest_result, verify_result)
+    # Mark staged rows as completed only after verification passes
+    mark_staged_complete(verify_result)
 
 
 # Instantiate the DAG
