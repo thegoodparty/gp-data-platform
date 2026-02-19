@@ -87,6 +87,36 @@ models:
         description: >
           Earliest timestamp for event_type = 'Serve Onboarding - SMS Poll Sent'.
           Supplemental Serve milestone for future analyses.
+
+      - name: serve_getting_started_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Getting Started Viewed'.
+          First step in the Serve onboarding funnel.
+
+      - name: serve_constituency_profile_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Constituency Profile Viewed'.
+          Second step in the Serve onboarding funnel.
+
+      - name: serve_poll_value_props_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Value Props Viewed'.
+          Third step in the Serve onboarding funnel.
+
+      - name: serve_poll_strategy_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Strategy Viewed'.
+          Fourth step in the Serve onboarding funnel.
+
+      - name: serve_add_image_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Add Image Viewed'.
+          Fifth step in the Serve onboarding funnel.
+
+      - name: serve_poll_preview_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
+          Sixth step in the Serve onboarding funnel. Precedes SMS Poll Sent.
     tests:
       - dbt_utils.expression_is_true:
           arguments:

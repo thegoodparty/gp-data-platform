@@ -11,6 +11,7 @@
     - is_onboarded: US registration with first dashboard view from registration
       time through 14 days. Use with is_post_amplitude_registration and
       registration_country = 'United States' for Amplitude-era denominators.
+    - is_active_candidate: user viewed candidate dashboard in trailing 30 days.
     - is_activated: user has at least one voter outreach campaign event.
     - has_completed_onboarding_flow: supplemental onboarding_complete flag.
 */
@@ -63,6 +64,12 @@ with
             -- Onboarding metric
             m.amplitude_registration_completed_at,
             m.first_dashboard_viewed_at,
+            -- Active Candidates metric (approved definition)
+            m.last_dashboard_viewed_at,
+            m.dashboard_view_count,
+            coalesce(
+                m.last_dashboard_viewed_at >= current_date - interval 30 days, false
+            ) as is_active_candidate,
             m.registration_country,
             coalesce(
                 m.registration_country = 'United States'
@@ -75,8 +82,15 @@ with
             ) as is_onboarded,
             m.onboarding_completed_at,
             (m.onboarding_completed_at is not null) as has_completed_onboarding_flow,
-            -- Intermediate includes users with any configured milestone event.
-            (m.user_id is not null) as has_amplitude_data,
+            -- Coverage flag for core Amplitude-backed user milestones.
+            (
+                m.amplitude_registration_completed_at is not null
+                or m.first_dashboard_viewed_at is not null
+                or m.onboarding_completed_at is not null
+                or m.first_campaign_sent_at is not null
+                or m.pro_upgrade_completed_at is not null
+                or m.first_sms_poll_sent_at is not null
+            ) as has_amplitude_data,
             (u.created_at >= '2023-12-10') as is_post_amplitude_registration,
 
             -- Activated metric
