@@ -47,30 +47,18 @@ with
             event_type,
             event_time,
             country,
+            coalesce(
+                try_cast(event_properties:recipientcount as bigint),
+                try_cast(event_properties:votercontacts as bigint)
+            ) as raw_recipient_count,
             -- Data-quality guardrail: exclude implausible recipient counts caused by
             -- Amplitude instrumentation errors.
             case
-                when
-                    coalesce(
-                        try_cast(event_properties:recipientcount as bigint),
-                        try_cast(event_properties:votercontacts as bigint)
-                    )
-                    > 100000
+                when raw_recipient_count > 100000
                 then null
-                when
-                    coalesce(
-                        try_cast(event_properties:recipientcount as bigint),
-                        try_cast(event_properties:votercontacts as bigint)
-                    )
-                    < 0
+                when raw_recipient_count < 0
                 then null
-                else
-                    try_cast(
-                        coalesce(
-                            try_cast(event_properties:recipientcount as bigint),
-                            try_cast(event_properties:votercontacts as bigint)
-                        ) as int
-                    )
+                else cast(raw_recipient_count as int)
             end as recipient_count
         from {{ ref("stg_airbyte_source__amplitude_api_events") }}
         where
