@@ -6,3 +6,4 @@ paramiko
 psycopg2-binary
 databricks-sql-connector
 databricks-sdk
+apache-airflow-providers-ssh
