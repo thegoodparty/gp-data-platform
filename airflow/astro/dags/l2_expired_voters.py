@@ -47,6 +47,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Dict, List
 
 from include.custom_functions.databricks_utils import (
+    _validate_lalvoterids,
     count_in_databricks_table,
     delete_from_databricks_table,
     get_databricks_connection,
@@ -191,6 +192,7 @@ def l2_remove_expired_voters():
                     t_log.info(f"Skipping already-processed files: {skipped}")
 
                 lalvoterids = parse_expired_voter_ids(new_paths)
+                _validate_lalvoterids(lalvoterids)
                 source_files = [os.path.basename(p) for p in new_paths]
                 # Keep only timestamps for new (non-skipped) files
                 new_timestamps = {
