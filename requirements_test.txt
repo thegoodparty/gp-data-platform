@@ -1,5 +1,8 @@
 apache-airflow==3.0.6
+databricks-sql-connector
+databricks-sdk
 pandas
 paramiko
+psycopg2-binary
 pyspark
 pytest

@@ -19,6 +19,7 @@ dependencies = [
     "psycopg2-binary (>=2.9.0,<3.0.0)",
     "databricks-sql-connector (>=3.0.0,<4.0.0)",
     "databricks-sdk (>=0.30.0,<1.0.0)",
+    "apache-airflow-providers-ssh (>=1.0.0,<2.0.0)",
 ]
 
 [build-system]
