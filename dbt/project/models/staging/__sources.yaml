@@ -1029,6 +1029,14 @@ sources:
         description: raw data load for Wyoming Haystaq DNA scores
 
 
+  - name: airflow_source
+    schema: "{{ var('airflow_source_schema', 'airflow_source') }}"
+    description: Raw data loaded by Airflow DAGs into Databricks
+
+    tables:
+      - name: l2_expired_voters
+        description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_remove_expired_voters DAG. Each row represents a voter ID that was flagged as expired and removed from downstream systems.
+
   - name: historical
     schema: historical
     description: Raw data loaded from historical schema, having past records of interest

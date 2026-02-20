@@ -71,6 +71,9 @@ models:
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
+vars:
+  airflow_source_schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA', 'airflow_source') }}"
+
 flags:
   use_user_folder_for_python: True
   state_modified_compare_more_unrendered_values: True
