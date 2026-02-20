@@ -168,7 +168,7 @@ def get_processed_files(
         catalog_safe = catalog.replace("\\", "\\\\").replace("'", "\\'")
         schema_safe = schema.replace("\\", "\\\\").replace("'", "\\'")
         cursor.execute(
-            f"SELECT 1 FROM information_schema.tables "
+            f"SELECT 1 FROM `{catalog_safe}`.information_schema.tables "
             f"WHERE table_catalog = '{catalog_safe}' "
             f"AND table_schema = '{schema_safe}' "
             f"AND table_name = 'l2_expired_voters'"
