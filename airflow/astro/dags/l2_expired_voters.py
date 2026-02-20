@@ -46,7 +46,6 @@ on retry (idempotent).
   are still staged for auditability. Empty or unset = delete all states.
 - `databricks_source_schema` — schema where Airflow stages ingested data for dbt
   visibility (e.g., `airflow_source` in prod, `airflow_source_dev` in dev)
-- `people_api_database` — PostgreSQL database name (e.g. `people_prod`)
 - `people_api_schema` — SQL schema where Voter/DistrictVoter tables live
   (e.g. `green`)
 """
@@ -390,7 +389,7 @@ def l2_remove_expired_voters():
         db_port = pg_conn.port or 5432
         db_user = pg_conn.login
         db_password = pg_conn.password
-        db_name = Variable.get("people_api_database")
+        db_name = pg_conn.schema  # Airflow Postgres convention: schema = DB name
         db_schema = Variable.get("people_api_schema")
 
         t_log.info(
@@ -505,7 +504,7 @@ def l2_remove_expired_voters():
         db_port = pg_conn.port or 5432
         db_user = pg_conn.login
         db_password = pg_conn.password
-        db_name = Variable.get("people_api_database")
+        db_name = pg_conn.schema  # Airflow Postgres convention: schema = DB name
         db_schema = Variable.get("people_api_schema")
 
         ssh_hook = SSHHook(ssh_conn_id="gp_bastion_host")
