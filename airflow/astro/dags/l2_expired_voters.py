@@ -27,8 +27,8 @@ on retry (idempotent).
 - `l2_sftp` (SFTP) — L2 SFTP server credentials
 - `databricks` / `databricks_dev` (Generic) — host, login (OAuth client_id),
   password (OAuth client_secret), extras: `{"http_path": "/sql/1.0/warehouses/..."}`
-- `people_api_db` (Postgres) — host, port, login, password;
-  extras: `{"database": "...", "schema": "..."}`
+- `people_api_db` (Postgres) — host, port, login, password,
+  schema (= database name, e.g. `people_prod`)
 - `gp_bastion_host` (SSH) — SSH bastion/jump host for tunneling to RDS;
   host, port (default 22), login (SSH username), private key;
   set NO_HOST_KEY_CHECK=True
@@ -46,6 +46,9 @@ on retry (idempotent).
   are still staged for auditability. Empty or unset = delete all states.
 - `databricks_source_schema` — schema where Airflow stages ingested data for dbt
   visibility (e.g., `airflow_source` in prod, `airflow_source_dev` in dev)
+- `people_api_database` — PostgreSQL database name (e.g. `people_prod`)
+- `people_api_schema` — SQL schema where Voter/DistrictVoter tables live
+  (e.g. `green`)
 """
 
 import logging
@@ -383,13 +386,12 @@ def l2_remove_expired_voters():
         from airflow.providers.ssh.hooks.ssh import SSHHook
 
         pg_conn = BaseHook.get_connection("people_api_db")
-        extras = pg_conn.extra_dejson
         db_host = pg_conn.host
         db_port = pg_conn.port or 5432
         db_user = pg_conn.login
         db_password = pg_conn.password
-        db_name = extras.get("database", pg_conn.schema)
-        db_schema = extras.get("schema", "public")
+        db_name = Variable.get("people_api_database")
+        db_schema = Variable.get("people_api_schema")
 
         t_log.info(
             f"Deleting {len(lalvoterids)} expired voters from People-API "
@@ -499,13 +501,12 @@ def l2_remove_expired_voters():
         from airflow.providers.ssh.hooks.ssh import SSHHook
 
         pg_conn = BaseHook.get_connection("people_api_db")
-        extras = pg_conn.extra_dejson
         db_host = pg_conn.host
         db_port = pg_conn.port or 5432
         db_user = pg_conn.login
         db_password = pg_conn.password
-        db_name = extras.get("database", pg_conn.schema)
-        db_schema = extras.get("schema", "public")
+        db_name = Variable.get("people_api_database")
+        db_schema = Variable.get("people_api_schema")
 
         ssh_hook = SSHHook(ssh_conn_id="gp_bastion_host")
         tunnel = ssh_hook.get_tunnel(remote_port=db_port, remote_host=db_host)
