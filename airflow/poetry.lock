@@ -531,25 +531,25 @@ polars = ["polars (>=1.26.0)"]
 
 [[package]]
 name = "apache-airflow-providers-dbt-cloud"
-version = "3.11.2"
+version = "4.4.3"
 description = "Provider package apache-airflow-providers-dbt-cloud for Apache Airflow"
 optional = false
-python-versions = "~=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "apache_airflow_providers_dbt_cloud-3.11.2-py3-none-any.whl", hash = "sha256:6656645b2b01a792e54a9440878db33799eeb234888aa73b19e2777f2b2db536"},
-    {file = "apache_airflow_providers_dbt_cloud-3.11.2.tar.gz", hash = "sha256:4dc03d2b0149e790e53b73e6dba307d56200d33e58f39d9eba034139cbec6b15"},
+    {file = "apache_airflow_providers_dbt_cloud-4.4.3-py3-none-any.whl", hash = "sha256:afc353f69b5d379fe61a0e459b7aaaf70f3f1acae9d779937a9877b7d0b607fe"},
+    {file = "apache_airflow_providers_dbt_cloud-4.4.3.tar.gz", hash = "sha256:70c0cabcc8dee2f1299546360e2e0603b42f6346e44442a35d10b7d00dc476d9"},
 ]
 
 [package.dependencies]
 aiohttp = ">=3.9.2"
-apache-airflow = ">=2.8.0"
+apache-airflow = ">=2.10.0"
+apache-airflow-providers-common-compat = ">=1.6.0"
 apache-airflow-providers-http = "*"
 asgiref = ">=2.3.0"
 
 [package.extras]
-http = ["apache-airflow-providers-http"]
-openlineage = ["apache-airflow-providers-openlineage (>=1.7.0)"]
+openlineage = ["apache-airflow-providers-openlineage (>=2.3.0)"]
 
 [[package]]
 name = "apache-airflow-providers-http"
@@ -5385,4 +5385,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "0c87d7cc2f483996324d2a20ce490adf35b2990d9f286dd84153fff31ab5bd9c"
+content-hash = "eb21b250be1d1eea5accf9399333b26984bd648c50c28a08fa5497fd4b29b067"
