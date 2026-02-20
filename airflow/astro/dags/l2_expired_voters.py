@@ -95,6 +95,7 @@ DATABRICKS_CATALOG = "goodparty_data_catalog"
     max_consecutive_failed_dag_runs=5,
     max_active_runs=1,
     doc_md=__doc__,
+    catchup=False,
     default_args={
         "owner": "Data Engineering Team",
         "retries": 3,
