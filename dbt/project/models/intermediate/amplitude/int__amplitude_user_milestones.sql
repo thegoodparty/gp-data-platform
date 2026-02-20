@@ -1,3 +1,5 @@
+{{ config(materialized="view") }}
+
 /*
     int__amplitude_user_milestones
 
@@ -29,6 +31,18 @@
             -> total_recipient_count
         - pro_upgrade_complete
             -> pro_upgrade_completed_at
+        - Serve Onboarding - Getting Started Viewed
+            -> serve_getting_started_at
+        - Serve Onboarding - Constituency Profile Viewed
+            -> serve_constituency_profile_at
+        - Serve Onboarding - Poll Value Props Viewed
+            -> serve_poll_value_props_at
+        - Serve Onboarding - Poll Strategy Viewed
+            -> serve_poll_strategy_at
+        - Serve Onboarding - Add Image Viewed
+            -> serve_add_image_at
+        - Serve Onboarding - Poll Preview Viewed
+            -> serve_poll_preview_at
         - Serve Onboarding - SMS Poll Sent
             -> first_sms_poll_sent_at
 
@@ -70,6 +84,12 @@ with
                 'pro_upgrade_complete',
                 'Voter Outreach - Campaign Completed',
                 'Dashboard - Candidate Dashboard Viewed',
+                'Serve Onboarding - Getting Started Viewed',
+                'Serve Onboarding - Constituency Profile Viewed',
+                'Serve Onboarding - Poll Value Props Viewed',
+                'Serve Onboarding - Poll Strategy Viewed',
+                'Serve Onboarding - Add Image Viewed',
+                'Serve Onboarding - Poll Preview Viewed',
                 'Serve Onboarding - SMS Poll Sent'
             )
     ),
@@ -78,7 +98,7 @@ with
         select
             user_id,
 
-            -- v0.3: Onboarding CVR
+            -- Onboarding CVR
             min(
                 case
                     when event_type = 'Onboarding - Registration Completed'
@@ -104,7 +124,7 @@ with
                 case when event_type = 'onboarding_complete' then event_time end
             ) as onboarding_completed_at,
 
-            -- v0.4: Activated Candidates
+            -- Activated Candidates
             min(
                 case
                     when event_type = 'Voter Outreach - Campaign Completed'
@@ -121,7 +141,7 @@ with
                 end
             ) as total_recipient_count,
 
-            -- v0.5: Active Candidates
+            -- Active Candidates
             max(
                 case
                     when event_type = 'Dashboard - Candidate Dashboard Viewed'
@@ -142,7 +162,45 @@ with
                 case
                     when event_type = 'Serve Onboarding - SMS Poll Sent' then event_time
                 end
-            ) as first_sms_poll_sent_at
+            ) as first_sms_poll_sent_at,
+
+            -- Serve Onboarding Funnel (ordered by funnel step)
+            min(
+                case
+                    when event_type = 'Serve Onboarding - Getting Started Viewed'
+                    then event_time
+                end
+            ) as serve_getting_started_at,
+            min(
+                case
+                    when event_type = 'Serve Onboarding - Constituency Profile Viewed'
+                    then event_time
+                end
+            ) as serve_constituency_profile_at,
+            min(
+                case
+                    when event_type = 'Serve Onboarding - Poll Value Props Viewed'
+                    then event_time
+                end
+            ) as serve_poll_value_props_at,
+            min(
+                case
+                    when event_type = 'Serve Onboarding - Poll Strategy Viewed'
+                    then event_time
+                end
+            ) as serve_poll_strategy_at,
+            min(
+                case
+                    when event_type = 'Serve Onboarding - Add Image Viewed'
+                    then event_time
+                end
+            ) as serve_add_image_at,
+            min(
+                case
+                    when event_type = 'Serve Onboarding - Poll Preview Viewed'
+                    then event_time
+                end
+            ) as serve_poll_preview_at
         from milestone_events
         group by 1
     )

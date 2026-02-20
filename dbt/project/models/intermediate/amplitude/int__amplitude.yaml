@@ -87,6 +87,36 @@ models:
         description: >
           Earliest timestamp for event_type = 'Serve Onboarding - SMS Poll Sent'.
           Supplemental Serve milestone for future analyses.
+
+      - name: serve_getting_started_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Getting Started Viewed'.
+          First step in the Serve onboarding funnel.
+
+      - name: serve_constituency_profile_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Constituency Profile Viewed'.
+          Second step in the Serve onboarding funnel.
+
+      - name: serve_poll_value_props_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Value Props Viewed'.
+          Third step in the Serve onboarding funnel.
+
+      - name: serve_poll_strategy_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Strategy Viewed'.
+          Fourth step in the Serve onboarding funnel.
+
+      - name: serve_add_image_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Add Image Viewed'.
+          Fifth step in the Serve onboarding funnel.
+
+      - name: serve_poll_preview_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
+          Sixth step in the Serve onboarding funnel. Precedes SMS Poll Sent.
     tests:
       - dbt_utils.expression_is_true:
           arguments:
@@ -157,3 +187,131 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "last_activity_at >= first_activity_at"
+
+  - name: int__amplitude_win_activity
+    description: >
+      User x month intermediate aggregating Win product engagement from Amplitude.
+      Captures campaign sends (Voter Outreach - Campaign Completed), and dashboard views
+      (Dashboard - Candidate Dashboard Viewed).
+
+      Grain: One row per user_id x activity_month_year.
+
+      Source: stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: user_id
+        description: User identifier (BIGINT, cast from Amplitude string user_id).
+        data_tests:
+          - not_null
+
+      - name: activity_month_year
+        description: Calendar month of activity (first day of month).
+        data_tests:
+          - not_null
+
+      - name: campaigns_sent
+        description: >
+          Count of 'Voter Outreach - Campaign Completed' events in this month.
+          Zero if user had only dashboard views this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: recipient_count
+        description: >
+          Sum of outreach recipients in this month. Uses
+          COALESCE(recipientCount, voterContacts) with 100k cap
+          NULL if no valid campaign sends this month.
+
+      - name: first_campaign_sent_at
+        description: Earliest campaign send event in this month.
+
+      - name: last_campaign_sent_at
+        description: Latest campaign send event in this month.
+
+      - name: first_dashboard_viewed_at
+        description: Earliest dashboard view event in this month.
+
+      - name: last_dashboard_viewed_at
+        description: Latest dashboard view event in this month.
+
+      - name: dashboard_views
+        description: >
+          Count of 'Dashboard - Candidate Dashboard Viewed' events in this month.
+          Zero if user had only campaign events this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: dashboard_view_days
+        description: Distinct days with dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: total_events
+        description: Total Win engagement events (campaigns + dashboard views) in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: activity_days
+        description: Distinct days with any Win engagement in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: first_activity_at
+        description: Earliest Win engagement event in this month.
+        data_tests:
+          - not_null
+
+      - name: last_activity_at
+        description: Latest Win engagement event in this month.
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - activity_month_year
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "activity_days <= day(last_day(activity_month_year))"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "total_events >= activity_days"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_activity_at >= first_activity_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_campaign_sent_at >= first_campaign_sent_at"
+          config:
+            where: "first_campaign_sent_at is not null and last_campaign_sent_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_dashboard_viewed_at >= first_dashboard_viewed_at"
+          config:
+            where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "campaigns_sent + dashboard_views = total_events"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dashboard_view_days <= activity_days"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "recipient_count >= 0"
+          config:
+            where: "recipient_count is not null"

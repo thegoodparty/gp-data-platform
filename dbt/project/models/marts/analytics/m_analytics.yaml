@@ -4,7 +4,8 @@ models:
   - name: users_win_base
     description: >
       Unified user-grain view for Win and Serve product OKR metrics tracking.
-      Built incrementally as new metrics are added.
+      Built incrementally as new metrics are added, including Active Candidates
+      (dashboard views in trailing 30 days).
 
       File is named users_win_base to avoid dbt model name collision with
       mart_civics.users.
@@ -139,6 +140,23 @@ models:
           'Dashboard - Candidate Dashboard Viewed'. Primary numerator timestamp
           for onboarding conversion.
 
+      - name: last_dashboard_viewed_at
+        description: >
+          Most recent timestamp when the user viewed their Candidate Dashboard.
+          From int__amplitude_user_milestones.
+
+      - name: dashboard_view_count
+        description: >
+          Total number of Candidate Dashboard view events for this user.
+          From int__amplitude_user_milestones.
+
+      - name: is_active_candidate
+        description: >
+          TRUE if user has viewed their Candidate Dashboard at least once
+          in the last 30 days. Uses last_dashboard_viewed_at from Amplitude milestones.
+        data_tests:
+          - not_null
+
       - name: registration_country
         description: >
           Amplitude country value from the registration event
@@ -269,6 +287,16 @@ models:
             where: "first_campaign_sent_at is not null"
       - dbt_utils.expression_is_true:
           arguments:
+            expression: "last_dashboard_viewed_at is not null"
+          config:
+            where: "is_active_candidate = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_active_candidate = true"
+          config:
+            where: "last_dashboard_viewed_at >= current_date - interval 30 days"
+      - dbt_utils.expression_is_true:
+          arguments:
             expression: "non_demo_campaign_count <= campaign_count"
       - dbt_utils.expression_is_true:
           arguments:
@@ -366,6 +394,311 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "last_activity_at >= first_activity_at"
+
+  - name: users_win_activity
+    description: >
+      User x month activity grain for Win product. Each row represents one
+      user's Win engagement in one calendar month, including campaign sends
+      (with outreach volume) and dashboard views.
+
+      Grain: One row per user_id x activity_month_year.
+
+      Source: int__amplitude_win_activity + mart_civics.users.
+    columns:
+      - name: user_id
+        description: User identifier (BIGINT).
+        data_tests:
+          - not_null
+
+      - name: activity_month_year
+        description: Calendar month of activity (first day of month).
+        data_tests:
+          - not_null
+
+      - name: campaigns_sent
+        description: >
+          Count of campaign sends in this month. Zero if user had only
+          dashboard views.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: recipient_count
+        description: >
+          Sum of outreach recipients in this month per AD-10 logic.
+          NULL if no valid campaign sends.
+
+      - name: first_campaign_sent_at
+        description: Earliest campaign send event in this month.
+
+      - name: last_campaign_sent_at
+        description: Latest campaign send event in this month.
+
+      - name: dashboard_views
+        description: Count of dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: dashboard_view_days
+        description: Distinct days with dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: first_dashboard_viewed_at
+        description: Earliest dashboard view event in this month.
+
+      - name: last_dashboard_viewed_at
+        description: Latest dashboard view event in this month.
+
+      - name: total_events
+        description: Total Win engagement events in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: activity_days
+        description: Distinct days with any Win engagement in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: first_activity_at
+        description: Earliest Win engagement event in this month.
+        data_tests:
+          - not_null
+
+      - name: last_activity_at
+        description: Latest Win engagement event in this month.
+        data_tests:
+          - not_null
+
+      - name: is_win_user
+        description: >
+          Whether user is a Win product user per mart_civics.users.
+          May be NULL if user doesn't match civics.
+
+      - name: is_serve_user
+        description: >
+          Whether the user is also a Serve product user.
+          May be NULL if user doesn't match civics.
+
+      - name: registered_at
+        description: User account creation timestamp from civics. NULL if not matched.
+
+      - name: registration_month
+        description: Month truncation of registered_at for cohort analysis. NULL if not matched.
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - activity_month_year
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_activity_at >= first_activity_at"
+
+  - name: users_serve_base
+    description: >
+      User-grain snapshot for Serve product metrics and onboarding funnel.
+      Includes all users (not just Serve users) for correct denominator computation.
+
+      Grain: One row per user_id.
+
+      Source: mart_civics.users + int__amplitude_user_milestones + users_serve_activity.
+
+    columns:
+      - name: user_id
+        description: Primary key — unique user identifier from mart_civics.users.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: User's email address.
+
+      - name: first_name
+        description: User's first name.
+
+      - name: last_name
+        description: User's last name.
+
+      - name: phone
+        description: User's phone number.
+
+      - name: zip
+        description: User's zip code.
+
+      - name: is_serve_user
+        description: >
+          Whether user is a Serve product user (has completed a poll through
+          an elected office). Source: mart_civics.users.is_serve_user
+        data_tests:
+          - not_null
+
+      - name: eo_activated_at
+        description: >
+          Timestamp when user became a Serve user (first completed poll).
+          NULL for non-Serve users.
+
+      - name: last_serve_activity_at
+        description: >
+          Most recent Serve MAU-qualifying activity timestamp from users_serve_activity.
+          Derived via MAX(last_activity_at) per user.
+
+      - name: is_active_eo
+        description: >
+          TRUE if user has viewed the Serve polls dashboard (with Serve Activated=true)
+          in the last 30 days.
+          Uses precise last_serve_activity_at timestamp, not monthly approximation.
+        data_tests:
+          - not_null
+
+      - name: first_sms_poll_sent_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - SMS Poll Sent' from
+          int__amplitude_user_milestones.
+
+      - name: has_sent_sms_poll
+        description: TRUE if first_sms_poll_sent_at is not null.
+        data_tests:
+          - not_null
+
+      - name: serve_getting_started_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Getting Started Viewed'.
+
+      - name: serve_constituency_profile_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Constituency Profile Viewed'.
+
+      - name: serve_poll_value_props_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Value Props Viewed'.
+
+      - name: serve_poll_strategy_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Strategy Viewed'.
+
+      - name: serve_add_image_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Add Image Viewed'.
+
+      - name: serve_poll_preview_at
+        description: >
+          Earliest timestamp for 'Serve Onboarding - Poll Preview Viewed'.
+
+      - name: has_started_serve_onboarding
+        description: TRUE if user has the Getting Started milestone timestamp.
+        data_tests:
+          - not_null
+
+      - name: has_viewed_constituency_profile
+        description: TRUE if user has the Constituency Profile milestone timestamp.
+        data_tests:
+          - not_null
+
+      - name: has_viewed_poll_value_props
+        description: TRUE if user has the Poll Value Props milestone timestamp.
+        data_tests:
+          - not_null
+
+      - name: has_viewed_poll_strategy
+        description: TRUE if user has the Poll Strategy milestone timestamp.
+        data_tests:
+          - not_null
+
+      - name: has_added_image
+        description: TRUE if user has the Add Image milestone timestamp.
+        data_tests:
+          - not_null
+
+      - name: has_previewed_poll
+        description: TRUE if user has the Poll Preview milestone timestamp.
+        data_tests:
+          - not_null
+
+      - name: has_completed_serve_onboarding
+        description: >
+          TRUE if user has sent an SMS poll (final funnel step).
+        data_tests:
+          - not_null
+
+      - name: serve_onboarding_steps_completed
+        description: >
+          Integer count of completed Serve onboarding steps (0-7).
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 7
+
+      - name: has_verified_campaign
+        description: >
+          Whether user has at least one verified campaign.
+          Exposed as a dashboard filter column.
+        data_tests:
+          - not_null
+
+      - name: registered_at
+        description: >
+          Timestamp when user account was created (signup date).
+        data_tests:
+          - not_null
+
+      - name: registration_month
+        description: Month truncation of registered_at for monthly grouping.
+
+      - name: registration_year
+        description: Year of registration for annual grouping.
+
+      - name: registration_quarter
+        description: Quarter of registration (1-4) for quarterly reporting.
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_serve_user = true"
+          config:
+            where: "is_active_eo = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_serve_activity_at is not null"
+          config:
+            where: "is_active_eo = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_serve_activity_at >= current_date - interval 30 days"
+          config:
+            where: "is_active_eo = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_active_eo = true"
+          config:
+            where: "is_serve_user = true and last_serve_activity_at >= current_date - interval 30 days"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "first_sms_poll_sent_at is not null"
+          config:
+            where: "has_completed_serve_onboarding = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "serve_onboarding_steps_completed >= 1"
+          config:
+            where: "has_started_serve_onboarding = true"
 
   - name: users_win_candidacy
     description: >
