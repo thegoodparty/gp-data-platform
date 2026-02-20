@@ -561,7 +561,7 @@ models:
       - name: is_active_eo
         description: >
           TRUE if user has viewed the Serve polls dashboard (with Serve Activated=true)
-          in the last 30 days. Approved definition per AD-08.
+          in the last 30 days.
           Uses precise last_serve_activity_at timestamp, not monthly approximation.
         data_tests:
           - not_null

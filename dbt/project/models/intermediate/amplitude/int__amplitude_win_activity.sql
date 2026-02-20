@@ -17,7 +17,7 @@
     Event -> column mapping:
         - Voter Outreach - Campaign Completed
             -> campaigns_sent (count)
-            -> recipient_count (sum, with COALESCE + 100k cap per AD-10)
+            -> recipient_count (sum, with COALESCE + 100k cap)
             -> first_campaign_sent_at, last_campaign_sent_at
         - Dashboard - Candidate Dashboard Viewed
             -> dashboard_views (count)
@@ -28,9 +28,9 @@
         - Casts Amplitude string user_id with TRY_CAST(user_id AS BIGINT).
         - Excludes records where BIGINT cast fails (non-numeric or empty IDs).
         - recipientCount uses COALESCE(recipientCount, voterContacts) with
-          100k cap and <0 exclusion per AD-10.
+          100k cap and <0 exclusion.
         - No email/internal exclusion (Win doesn't have the @goodparty.org
-          filtering that Serve MAU uses; all Win users are external candidates).
+          filtering that Serve MAU uses).
 */
 with
     win_events as (

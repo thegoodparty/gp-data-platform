@@ -96,7 +96,7 @@ with
                 + case when m.first_sms_poll_sent_at is not null then 1 else 0 end
             ) as serve_onboarding_steps_completed,
 
-            -- Dashboard filter columns (AD-07: expose, don't hardcode)
+            -- Dashboard filter columns
             -- Note: is_verified/is_demo are campaign-grain in civics.
             -- Expose user-level analogs instead.
             coalesce(u.has_verified_campaign, false) as has_verified_campaign,

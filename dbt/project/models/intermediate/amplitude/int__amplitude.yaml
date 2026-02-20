@@ -191,8 +191,7 @@ models:
   - name: int__amplitude_win_activity
     description: >
       User x month intermediate aggregating Win product engagement from Amplitude.
-      Captures campaign sends (Voter Outreach - Campaign Completed) with
-      recipient count extraction per AD-10, and dashboard views
+      Captures campaign sends (Voter Outreach - Campaign Completed), and dashboard views
       (Dashboard - Candidate Dashboard Viewed).
 
       Grain: One row per user_id x activity_month_year.
@@ -222,7 +221,7 @@ models:
       - name: recipient_count
         description: >
           Sum of outreach recipients in this month. Uses
-          COALESCE(recipientCount, voterContacts) with 100k cap per AD-10.
+          COALESCE(recipientCount, voterContacts) with 100k cap
           NULL if no valid campaign sends this month.
 
       - name: first_campaign_sent_at
