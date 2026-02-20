@@ -56,9 +56,9 @@ class TestExecuteQuery:
         conn.commit.assert_called_once()
 
     def test_execute_with_results_empty(self, mock_conn):
-        """Return empty list when rowcount is 0."""
+        """Return empty list when query matches no rows."""
         conn, cursor = mock_conn
-        cursor.rowcount = 0
+        cursor.fetchall.return_value = []
 
         result = execute_query(
             conn,
@@ -67,7 +67,7 @@ class TestExecuteQuery:
         )
 
         assert result == []
-        cursor.fetchall.assert_not_called()
+        cursor.fetchall.assert_called_once()
 
     def test_rollback_on_error(self, mock_conn):
         """Roll back and re-raise on query failure."""

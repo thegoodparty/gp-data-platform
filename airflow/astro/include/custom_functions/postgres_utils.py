@@ -45,7 +45,7 @@ def execute_query(
         cursor = conn.cursor()
         cursor.execute(query, params)
         if return_results:
-            results = cursor.fetchall() if cursor.rowcount > 0 else []
+            results = cursor.fetchall()
         else:
             results = []
         conn.commit()
