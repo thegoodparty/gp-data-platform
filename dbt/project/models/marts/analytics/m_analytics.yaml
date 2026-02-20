@@ -395,6 +395,121 @@ models:
           arguments:
             expression: "last_activity_at >= first_activity_at"
 
+  - name: users_win_activity
+    description: >
+      User x month activity grain for Win product. Each row represents one
+      user's Win engagement in one calendar month, including campaign sends
+      (with outreach volume) and dashboard views.
+
+      Grain: One row per user_id x activity_month_year.
+
+      Source: int__amplitude_win_activity + mart_civics.users.
+    columns:
+      - name: user_id
+        description: User identifier (BIGINT).
+        data_tests:
+          - not_null
+
+      - name: activity_month_year
+        description: Calendar month of activity (first day of month).
+        data_tests:
+          - not_null
+
+      - name: campaigns_sent
+        description: >
+          Count of campaign sends in this month. Zero if user had only
+          dashboard views.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: recipient_count
+        description: >
+          Sum of outreach recipients in this month per AD-10 logic.
+          NULL if no valid campaign sends.
+
+      - name: first_campaign_sent_at
+        description: Earliest campaign send event in this month.
+
+      - name: last_campaign_sent_at
+        description: Latest campaign send event in this month.
+
+      - name: dashboard_views
+        description: Count of dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: dashboard_view_days
+        description: Distinct days with dashboard views in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: first_dashboard_viewed_at
+        description: Earliest dashboard view event in this month.
+
+      - name: last_dashboard_viewed_at
+        description: Latest dashboard view event in this month.
+
+      - name: total_events
+        description: Total Win engagement events in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: activity_days
+        description: Distinct days with any Win engagement in this month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: first_activity_at
+        description: Earliest Win engagement event in this month.
+        data_tests:
+          - not_null
+
+      - name: last_activity_at
+        description: Latest Win engagement event in this month.
+        data_tests:
+          - not_null
+
+      - name: is_win_user
+        description: >
+          Whether user is a Win product user per mart_civics.users.
+          May be NULL if user doesn't match civics.
+
+      - name: is_serve_user
+        description: >
+          Whether the user is also a Serve product user.
+          May be NULL if user doesn't match civics.
+
+      - name: registered_at
+        description: User account creation timestamp from civics. NULL if not matched.
+
+      - name: registration_month
+        description: Month truncation of registered_at for cohort analysis. NULL if not matched.
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - activity_month_year
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_activity_at >= first_activity_at"
+
   - name: users_serve_base
     description: >
       User-grain snapshot for Serve product metrics and onboarding funnel.
