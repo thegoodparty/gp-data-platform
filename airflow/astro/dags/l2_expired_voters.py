@@ -180,14 +180,19 @@ def l2_remove_expired_voters():
                         "rows_staged": 0,
                     }
 
+                # Build composite "filename|mtime" keys for idempotency so
+                # republished files with the same name are re-processed.
+                def _file_key(path: str) -> str:
+                    basename = os.path.basename(path)
+                    mtime = file_timestamps.get(basename, "")
+                    return f"{basename}|{mtime}"
+
                 # Filter out already-processed files
                 new_paths = [
-                    p
-                    for p in extracted_paths
-                    if os.path.basename(p) not in already_processed
+                    p for p in extracted_paths if _file_key(p) not in already_processed
                 ]
                 if not new_paths:
-                    skipped = [os.path.basename(p) for p in extracted_paths]
+                    skipped = [_file_key(p) for p in extracted_paths]
                     t_log.info(
                         f"All {len(extracted_paths)} file(s) already processed, "
                         f"skipping: {skipped}"
@@ -200,9 +205,9 @@ def l2_remove_expired_voters():
 
                 if len(new_paths) < len(extracted_paths):
                     skipped = [
-                        os.path.basename(p)
+                        _file_key(p)
                         for p in extracted_paths
-                        if os.path.basename(p) in already_processed
+                        if _file_key(p) in already_processed
                     ]
                     t_log.info(f"Skipping already-processed files: {skipped}")
 
@@ -573,6 +578,10 @@ def l2_remove_expired_voters():
         fetch_processed_files, so files are only marked as processed once
         deletions are confirmed.
 
+        Scoped to the same state-allowlist-filtered IDs used by the delete
+        and verify tasks, so IDs excluded by the allowlist stay 'pending'
+        and can be retried when the allowlist changes.
+
         Accepts verify_result as input to enforce dependency ordering.
         """
         from airflow.sdk import get_current_context
@@ -591,11 +600,22 @@ def l2_remove_expired_voters():
             client_secret=db_conn.password,
         )
         try:
+            lalvoterids = get_staged_voter_ids(
+                connection=connection,
+                catalog=DATABRICKS_CATALOG,
+                schema=schema,
+                dag_run_id=dag_run_id,
+            )
+
+            state_allowlist = Variable.get("l2_state_allowlist", default="")
+            filtered_ids = filter_by_state_allowlist(lalvoterids, state_allowlist)
+
             updated = mark_staging_complete(
                 connection=connection,
                 catalog=DATABRICKS_CATALOG,
                 schema=schema,
                 dag_run_id=dag_run_id,
+                lalvoterids=filtered_ids,
             )
         finally:
             connection.close()

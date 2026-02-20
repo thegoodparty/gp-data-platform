@@ -233,15 +233,24 @@ class TestGetProcessedFiles:
     """Tests for processed file retrieval."""
 
     def test_table_exists_with_files(self, mock_connection):
-        """Return set of completed file names when table exists."""
+        """Return set of completed file keys when table exists."""
         conn, cursor = mock_connection
         cursor.fetchone.return_value = (1,)
-        cursor.fetchall.return_value = [("file1.tab",), ("file2.tab",)]
+        cursor.fetchall.return_value = [
+            ("file1.tab|2026-01-15T10:00:00+00:00",),
+            ("file2.tab|2026-01-16T10:00:00+00:00",),
+        ]
 
         result = get_processed_files(conn, catalog="cat", schema="sch")
 
-        assert result == {"file1.tab", "file2.tab"}
+        assert result == {
+            "file1.tab|2026-01-15T10:00:00+00:00",
+            "file2.tab|2026-01-16T10:00:00+00:00",
+        }
         assert cursor.execute.call_count == 2
+        # Verify query reads from source_file_keys column
+        data_sql = cursor.execute.call_args_list[1][0][0]
+        assert "source_file_keys" in data_sql
 
     def test_table_does_not_exist(self, mock_connection):
         """Return empty set when staging table does not exist yet."""
@@ -288,7 +297,8 @@ class TestStageExpiredVoterIds:
         assert result == 2
         calls = [c[0][0] for c in cursor.execute.call_args_list]
         assert any("CREATE SCHEMA IF NOT EXISTS" in c for c in calls)
-        assert any("CREATE TABLE IF NOT EXISTS" in c for c in calls)
+        create_table = [c for c in calls if "CREATE TABLE IF NOT EXISTS" in c][0]
+        assert "source_file_keys STRING" in create_table
         # Idempotent cleanup of previous pending rows
         assert any("DELETE FROM" in c and "pending" in c for c in calls)
         assert any("INSERT INTO" in c for c in calls)
@@ -332,6 +342,9 @@ class TestStageExpiredVoterIds:
             c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
         ][0]
         assert "2026-01-15T10:00:00+00:00" in insert_sql
+        # source_file_keys stores composite "filename|mtime" for idempotency
+        assert "file1.tab|2026-01-15T10:00:00+00:00" in insert_sql
+        assert "source_file_keys" in insert_sql
 
     def test_without_file_timestamps_uses_null(self, mock_connection):
         """NULL is used for file_modified_at when no timestamps provided."""
@@ -436,3 +449,57 @@ class TestMarkStagingComplete:
             conn, catalog="cat", schema="sch", dag_run_id="run_123"
         )
         assert result == 0
+
+    def test_scoped_to_lalvoterids(self, mock_connection):
+        """Only mark rows matching the given LALVOTERIDs as completed."""
+        conn, cursor = mock_connection
+        cursor.rowcount = 2
+
+        result = mark_staging_complete(
+            conn,
+            catalog="cat",
+            schema="sch",
+            dag_run_id="run_123",
+            lalvoterids=["LALMD0001", "LALMD0002"],
+        )
+
+        assert result == 2
+        sql = cursor.execute.call_args[0][0]
+        assert "SET status = 'completed'" in sql
+        assert "lalvoterid IN (" in sql
+        assert "'LALMD0001'" in sql
+        assert "'LALMD0002'" in sql
+
+    def test_scoped_empty_list_skips(self, mock_connection):
+        """Empty lalvoterids list returns 0 without executing."""
+        conn, cursor = mock_connection
+
+        result = mark_staging_complete(
+            conn,
+            catalog="cat",
+            schema="sch",
+            dag_run_id="run_123",
+            lalvoterids=[],
+        )
+
+        assert result == 0
+        cursor.execute.assert_not_called()
+
+    def test_scoped_batching(self, mock_connection):
+        """Scoped update batches large ID lists."""
+        conn, cursor = mock_connection
+        cursor.rowcount = 2
+
+        ids = [f"LALCA{str(i).zfill(4)}" for i in range(5)]
+        result = mark_staging_complete(
+            conn,
+            catalog="cat",
+            schema="sch",
+            dag_run_id="run_123",
+            lalvoterids=ids,
+            batch_size=2,
+        )
+
+        # 3 batches: [2, 2, 1], each returning rowcount=2
+        assert cursor.execute.call_count == 3
+        assert result == 6

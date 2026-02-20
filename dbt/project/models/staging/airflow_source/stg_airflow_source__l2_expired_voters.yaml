@@ -13,7 +13,12 @@ models:
         tests:
           - not_null
       - name: source_files
-        description: Comma-separated list of SFTP source files from the DAG run
+        description: Comma-separated list of SFTP source file names from the DAG run
+      - name: source_file_keys
+        description: >
+          Comma-separated composite keys (filename|mtime) used for idempotency.
+          Republished files with the same name but a new modification time
+          are treated as new and re-processed.
       - name: file_modified_at
         description: SFTP file modification timestamp (most recent file in the batch)
       - name: ingested_at

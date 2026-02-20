@@ -158,8 +158,9 @@ def get_processed_files(
     schema: str,
 ) -> set:
     """
-    Query the l2_expired_voters staging table for file names that have
-    already been processed.  Returns a set of individual file name strings.
+    Query the l2_expired_voters staging table for files that have already
+    been processed.  Returns a set of composite ``filename|mtime`` keys so
+    that republished files with the same name but a new mtime are re-processed.
     """
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
     cursor = connection.cursor()
@@ -178,12 +179,12 @@ def get_processed_files(
             return set()
 
         cursor.execute(
-            f"SELECT DISTINCT trim(file_name) AS file_name "
-            f"FROM (SELECT explode(split(source_files, ', ')) AS file_name "
+            f"SELECT DISTINCT trim(file_key) AS file_key "
+            f"FROM (SELECT explode(split(source_file_keys, ', ')) AS file_key "
             f"FROM {full_table_name} WHERE status = 'completed')"
         )
         processed = {row[0] for row in cursor.fetchall()}
-        logger.info(f"Already-processed files: {processed}")
+        logger.info(f"Already-processed file keys: {processed}")
         return processed
     finally:
         cursor.close()
@@ -214,11 +215,19 @@ def stage_expired_voter_ids(
     """
     _validate_lalvoterids(lalvoterids)
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
-    source_files_str = ", ".join(source_files).replace("\\", "\\\\").replace("'", "\\'")
     dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
 
-    # Use the most recent SFTP file timestamp (or NULL if unavailable)
+    # Plain comma-separated file list (human-readable)
+    source_files_str = ", ".join(source_files).replace("\\", "\\\\").replace("'", "\\'")
+
+    # Composite "filename|mtime" keys for idempotency so republished
+    # files with the same name but new content are re-processed.
     file_ts = file_timestamps or {}
+    source_keys = [f"{f}|{file_ts.get(f, '')}" for f in source_files]
+    source_file_keys_str = (
+        ", ".join(source_keys).replace("\\", "\\\\").replace("'", "\\'")
+    )
+
     latest_ts = max(file_ts.values()) if file_ts else None
     ts_sql = f"'{latest_ts}'" if latest_ts else "NULL"
 
@@ -229,6 +238,7 @@ def stage_expired_voter_ids(
             f"CREATE TABLE IF NOT EXISTS {full_table_name} ("
             "  lalvoterid STRING,"
             "  source_files STRING,"
+            "  source_file_keys STRING,"
             "  file_modified_at TIMESTAMP,"
             "  ingested_at TIMESTAMP,"
             "  dag_run_id STRING,"
@@ -246,14 +256,14 @@ def stage_expired_voter_ids(
         for i in range(0, len(lalvoterids), batch_size):
             batch = lalvoterids[i : i + batch_size]
             values = ", ".join(
-                f"('{vid}', '{source_files_str}', {ts_sql}, "
-                f"current_timestamp(), '{dag_run_id_safe}', 'pending')"
+                f"('{vid}', '{source_files_str}', '{source_file_keys_str}', "
+                f"{ts_sql}, current_timestamp(), '{dag_run_id_safe}', 'pending')"
                 for vid in batch
             )
             cursor.execute(
                 f"INSERT INTO {full_table_name} "
-                f"(lalvoterid, source_files, file_modified_at, ingested_at, "
-                f"dag_run_id, status) "
+                f"(lalvoterid, source_files, source_file_keys, file_modified_at, "
+                f"ingested_at, dag_run_id, status) "
                 f"VALUES {values}"
             )
             total_inserted += len(batch)
@@ -300,15 +310,51 @@ def mark_staging_complete(
     catalog: str,
     schema: str,
     dag_run_id: str,
+    lalvoterids: List[str] | None = None,
+    batch_size: int = 1000,
 ) -> int:
     """
     Update staged rows from 'pending' to 'completed' for a DAG run.
+
+    When *lalvoterids* is provided, only rows matching those IDs are updated.
+    This prevents IDs excluded by the state allowlist from being marked
+    completed before they are actually deleted.
 
     Returns the number of rows updated.
     """
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
     dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
 
+    if lalvoterids is not None:
+        _validate_lalvoterids(lalvoterids)
+        if not lalvoterids:
+            logger.info("No LALVOTERIDs to mark as completed — skipping.")
+            return 0
+
+        total_updated = 0
+        cursor = connection.cursor()
+        try:
+            for i in range(0, len(lalvoterids), batch_size):
+                batch = lalvoterids[i : i + batch_size]
+                placeholders = ", ".join(f"'{v}'" for v in batch)
+                cursor.execute(
+                    f"UPDATE {full_table_name} "
+                    f"SET status = 'completed' "
+                    f"WHERE dag_run_id = '{dag_run_id_safe}' "
+                    f"AND status = 'pending' "
+                    f"AND lalvoterid IN ({placeholders})"
+                )
+                updated = cursor.rowcount if cursor.rowcount >= 0 else 0
+                total_updated += updated
+        finally:
+            cursor.close()
+        logger.info(
+            f"Marked {total_updated} staged rows as completed for {dag_run_id} "
+            f"(scoped to {len(lalvoterids)} LALVOTERIDs)"
+        )
+        return total_updated
+
+    # Fallback: mark all pending rows for the dag_run_id
     cursor = connection.cursor()
     try:
         cursor.execute(
