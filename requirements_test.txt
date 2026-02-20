@@ -3,6 +3,5 @@ databricks-sql-connector
 databricks-sdk
 pandas
 paramiko
-psycopg2-binary
 pyspark
 pytest
