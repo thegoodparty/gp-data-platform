@@ -53,6 +53,13 @@ def _derive_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     status = summary.get("status")
     if not status:
         status = "clean" if not findings else "unknown"
+    declared_finding_count: int | None = None
+    raw_finding_count: object = summary.get("finding_count")
+    if raw_finding_count is not None:
+        try:
+            declared_finding_count = int(str(raw_finding_count))
+        except (TypeError, ValueError):
+            declared_finding_count = None
 
     return {
         "metadata_catalog": str(metadata_catalog) if metadata_catalog else None,
@@ -62,12 +69,29 @@ def _derive_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "source_relations_found": summary.get("source_relations_found"),
         "staging_relations_found": summary.get("staging_relations_found"),
         "finding_count": len(findings),
+        "summary_finding_count": declared_finding_count,
         "findings_by_kind": dict(sorted(counts.items())),
         "impacted_states": impacted_states,
         "target_minus_src": target_minus_src,
         "relation_missing": relation_missing,
         "findings": findings,
     }
+
+
+def _validate_summary(summary: dict[str, Any]) -> str | None:
+    declared_finding_count = summary.get("summary_finding_count")
+    observed_finding_count = summary.get("finding_count")
+    if (
+        isinstance(declared_finding_count, int)
+        and isinstance(observed_finding_count, int)
+        and declared_finding_count > observed_finding_count
+    ):
+        return (
+            "Preflight log appears incomplete: parsed "
+            f"{observed_finding_count} finding line(s), but summary reports "
+            f"{declared_finding_count}. Download the full preflight log and retry."
+        )
+    return None
 
 
 def _command_to_string(command_argv: list[str]) -> str:
@@ -237,6 +261,10 @@ def _analyze(args: argparse.Namespace) -> int:
         return 1
 
     summary = _derive_summary(records)
+    validation_error = _validate_summary(summary)
+    if validation_error:
+        print(validation_error, file=sys.stderr)
+        return 1
     _print_analysis(summary)
 
     if args.json_out:
@@ -258,6 +286,10 @@ def _plan(args: argparse.Namespace) -> int:
         return 1
 
     summary = _derive_summary(records)
+    validation_error = _validate_summary(summary)
+    if validation_error:
+        print(validation_error, file=sys.stderr)
+        return 1
     plan = _build_plan(summary)
     _print_plan(summary, plan)
 

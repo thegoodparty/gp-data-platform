@@ -220,7 +220,7 @@ Fallback: override catalog with --vars '{"preflight_metadata_catalog":"<catalog>
     {% endif %}
 
     {% set downstream_contract_columns = [] %}
-    {% for column_name in primary_target_columns %}
+    {% for column_name in expected_primary_columns %}
         {% if column_name not in downstream_contract_columns %}
             {% do downstream_contract_columns.append(column_name) %}
         {% endif %}

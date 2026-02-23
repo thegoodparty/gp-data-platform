@@ -32,6 +32,14 @@ def sample_preflight_log_with_manual_actions() -> str:
     return "\n".join(lines) + "\n"
 
 
+def sample_truncated_preflight_log() -> str:
+    lines = [
+        'L2_PREFLIGHT|{"kind":"config","metadata_catalog":"prod_catalog","strict":true,"states_expected":51}',
+        'L2_PREFLIGHT|{"kind":"summary","metadata_catalog":"prod_catalog","strict":true,"status":"fail","states_evaluated":51,"source_relations_found":51,"staging_relations_found":51,"finding_count":2}',
+    ]
+    return "\n".join(lines) + "\n"
+
+
 class TestL2UniformPreflightTool(unittest.TestCase):
     """Tests for the preflight log analyzer and planner CLI."""
 
@@ -140,6 +148,29 @@ class TestL2UniformPreflightTool(unittest.TestCase):
             self.assertTrue(
                 any('{"strict":false}' in command for command in plan["safe_commands"])
             )
+
+    def test_analyze_fails_when_log_is_incomplete(self) -> None:
+        """`analyze` should fail when summary count exceeds parsed findings."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            log_file = tmp_path / "preflight.log"
+            log_file.write_text(sample_truncated_preflight_log(), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PREFLIGHT_TOOL),
+                    "analyze",
+                    "--log-file",
+                    str(log_file),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("appears incomplete", result.stderr)
 
 
 class TestFailureHandler(unittest.TestCase):

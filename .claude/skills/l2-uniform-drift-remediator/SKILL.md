@@ -50,7 +50,7 @@ Then rerun strict preflight.
 - Do not execute destructive DDL automatically.
 - Auto-execute only:
   - targeted staging rebuilds for impacted states
-  - strict preflight rerun
+  - preflight rerun (`strict=true` when no manual actions remain; `strict=false` when manual actions remain so full instructions can still be generated)
 
 ## Inputs and Outputs
 
