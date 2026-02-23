@@ -22,6 +22,16 @@ def sample_preflight_log() -> str:
     return "\n".join(lines) + "\n"
 
 
+def sample_preflight_log_with_manual_actions() -> str:
+    lines = [
+        'L2_PREFLIGHT|{"kind":"config","metadata_catalog":"prod_catalog","strict":true,"states_expected":51}',
+        'L2_PREFLIGHT|{"kind":"stg_minus_src","state":"ME","columns":["old_col"]}',
+        'L2_PREFLIGHT|{"kind":"target_minus_src","target_model":"int__l2_nationwide_uniform","columns":["legacy_col"]}',
+        'L2_PREFLIGHT|{"kind":"summary","metadata_catalog":"prod_catalog","strict":true,"status":"fail","states_evaluated":51,"source_relations_found":51,"staging_relations_found":51,"finding_count":2}',
+    ]
+    return "\n".join(lines) + "\n"
+
+
 class TestL2UniformPreflightTool(unittest.TestCase):
     """Tests for the preflight log analyzer and planner CLI."""
 
@@ -97,6 +107,39 @@ class TestL2UniformPreflightTool(unittest.TestCase):
                 )
             )
             self.assertTrue(plan["follow_up_commands"])
+
+    def test_plan_uses_warn_preflight_when_manual_actions_exist(self) -> None:
+        """Plans with manual actions should rerun preflight with strict=false."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            log_file = tmp_path / "preflight.log"
+            log_file.write_text(
+                sample_preflight_log_with_manual_actions(), encoding="utf-8"
+            )
+            json_out = tmp_path / "plan.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PREFLIGHT_TOOL),
+                    "plan",
+                    "--log-file",
+                    str(log_file),
+                    "--json-out",
+                    str(json_out),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(json_out.read_text(encoding="utf-8"))
+            plan = payload["plan"]
+            self.assertTrue(plan["manual_actions"])
+            self.assertTrue(
+                any('{"strict":false}' in command for command in plan["safe_commands"])
+            )
 
 
 class TestFailureHandler(unittest.TestCase):

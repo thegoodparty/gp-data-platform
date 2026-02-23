@@ -74,13 +74,15 @@ def _command_to_string(command_argv: list[str]) -> str:
     return shlex.join(command_argv)
 
 
-def _preflight_command_argv(metadata_catalog: str | None) -> list[str]:
+def _preflight_command_argv(
+    metadata_catalog: str | None, strict: bool = True
+) -> list[str]:
     command_argv = [
         "dbt",
         "run-operation",
         "l2_uniform_schema_preflight",
         "--args",
-        '{"strict": true}',
+        json.dumps({"strict": strict}, separators=(",", ":")),
     ]
     if metadata_catalog:
         vars_json = json.dumps(
@@ -108,8 +110,6 @@ def _build_plan(summary: dict[str, Any]) -> dict[str, Any]:
             ]
         )
 
-    safe_command_argv.append(_preflight_command_argv(summary["metadata_catalog"]))
-
     manual_actions: list[str] = []
     if summary["target_minus_src"]:
         for item in summary["target_minus_src"]:
@@ -133,6 +133,14 @@ def _build_plan(summary: dict[str, Any]) -> dict[str, Any]:
             )
 
     can_auto_complete = len(manual_actions) == 0
+    # When manual steps remain, run preflight in warn-only mode so the safe phase
+    # can complete and callers can receive an explicit "manual actions remain" signal.
+    safe_command_argv.append(
+        _preflight_command_argv(
+            summary["metadata_catalog"],
+            strict=can_auto_complete,
+        )
+    )
     follow_up_commands = [
         "Rerun the originally failed dbt command/job after safe fixes succeed."
     ]
