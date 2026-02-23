@@ -2,10 +2,46 @@
 -- Union of 2025 HubSpot archive and 2026+ BallotReady data
 with
     combined as (
-        select *
+        select
+            gp_election_stage_id,
+            gp_election_id,
+            cast(null as string) as br_race_id,
+            cast(null as string) as br_election_id,
+            cast(null as string) as br_position_id,
+            ddhq_race_id,
+            election_stage as stage_type,
+            ddhq_election_stage_date as election_date,
+            cast(null as string) as election_name,
+            ddhq_race_name as race_name,
+            election_stage = 'primary' as is_primary,
+            election_stage = 'runoff' as is_runoff,
+            cast(null as boolean) as is_retention,
+            cast(null as int) as number_of_seats,
+            total_votes_cast,
+            created_at,
+            cast(null as timestamp) as updated_at
         from {{ ref("int__civics_election_stage_2025") }}
+
         union all
-        select *
+
+        select
+            gp_election_stage_id,
+            gp_election_id,
+            br_race_id,
+            br_election_id,
+            br_position_id,
+            ddhq_race_id,
+            stage_type,
+            election_date,
+            election_name,
+            race_name,
+            is_primary,
+            is_runoff,
+            is_retention,
+            number_of_seats,
+            total_votes_cast,
+            created_at,
+            updated_at
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
@@ -20,14 +56,27 @@ with
     )
 
 select
-    gp_election_stage_id,
-    gp_election_id,
-    hubspot_contact_id,
-    ddhq_race_id,
-    election_stage,
-    ddhq_election_stage_date,
-    ddhq_race_name,
-    total_votes_cast,
-    created_at
+    deduplicated.gp_election_stage_id,
+    deduplicated.gp_election_id,
+    deduplicated.br_race_id,
+    deduplicated.br_election_id,
+    deduplicated.br_position_id,
+    deduplicated.ddhq_race_id,
+    deduplicated.stage_type,
+    deduplicated.election_date,
+    deduplicated.election_name,
+    deduplicated.race_name,
+    deduplicated.is_primary,
+    deduplicated.is_runoff,
+    deduplicated.is_retention,
+    deduplicated.number_of_seats,
+    deduplicated.total_votes_cast,
+    icp.icp_office_win as is_win_icp,
+    icp.icp_office_serve as is_serve_icp,
+    deduplicated.created_at,
+    deduplicated.updated_at
 
 from deduplicated
+left join
+    {{ ref("int__icp_offices") }} as icp
+    on cast(deduplicated.br_position_id as int) = icp.br_database_position_id

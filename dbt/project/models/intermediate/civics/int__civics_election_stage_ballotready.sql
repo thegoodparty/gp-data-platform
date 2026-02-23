@@ -79,24 +79,49 @@ with
             -- We temporarily override election_date for the macro
             {{ generate_gp_election_id("elec_date_lookup") }} as gp_election_id,
 
-            cast(null as string) as hubspot_contact_id,
-            cast(candidacies_with_fields.br_race_id as string) as ddhq_race_id,
+            -- BallotReady source identifiers
+            cast(candidacies_with_fields.br_race_id as string) as br_race_id,
+            cast(candidacies_with_fields.br_election_id as string) as br_election_id,
+            cast(candidacies_with_fields.br_position_id as string) as br_position_id,
+            cast(null as string) as ddhq_race_id,
 
-            -- Map stage type
+            -- Map stage type (lowercased)
             case
                 when candidacies_with_fields.is_primary = 'true'
                 then 'primary'
                 when candidacies_with_fields.is_runoff = 'true'
                 then 'runoff'
                 else 'general'
-            end as election_stage,
+            end as stage_type,
 
-            cast(
-                candidacies_with_fields.election_day as date
-            ) as ddhq_election_stage_date,
-            candidacies_with_fields.election_name as ddhq_race_name,
+            cast(candidacies_with_fields.election_day as date) as election_date,
+
+            -- election_name: the overarching election event name from BallotReady
+            candidacies_with_fields.election_name as election_name,
+
+            -- race_name: office-specific label constructed from position fields
+            candidacies_with_fields.state
+            || ' '
+            || candidacies_with_fields.position_name
+            || case
+                when
+                    nullif(candidacies_with_fields.sub_area_name, '') is not null
+                    and nullif(candidacies_with_fields.sub_area_value, '') is not null
+                then
+                    ', '
+                    || candidacies_with_fields.sub_area_name
+                    || ' '
+                    || candidacies_with_fields.sub_area_value
+                else ''
+            end as race_name,
+
+            candidacies_with_fields.is_primary = 'true' as is_primary,
+            candidacies_with_fields.is_runoff = 'true' as is_runoff,
+            candidacies_with_fields.is_retention = 'true' as is_retention,
+            cast(candidacies_with_fields.number_of_seats as int) as number_of_seats,
             cast(null as string) as total_votes_cast,
-            candidacies_with_fields._airbyte_extracted_at as created_at
+            candidacies_with_fields._airbyte_extracted_at as created_at,
+            candidacies_with_fields._airbyte_extracted_at as updated_at
 
         from candidacies_with_fields
         -- Join to get the general election date for this position+election
@@ -148,11 +173,19 @@ with
 select
     gp_election_stage_id,
     gp_election_id,
-    hubspot_contact_id,
+    br_race_id,
+    br_election_id,
+    br_position_id,
     ddhq_race_id,
-    election_stage,
-    ddhq_election_stage_date,
-    ddhq_race_name,
+    stage_type,
+    election_date,
+    election_name,
+    race_name,
+    is_primary,
+    is_runoff,
+    is_retention,
+    number_of_seats,
     total_votes_cast,
-    created_at
+    created_at,
+    updated_at
 from deduplicated
