@@ -70,7 +70,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["general", "primary", "runoff"]
+                values: ['general', 'primary', 'runoff']
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_tests:
@@ -136,11 +136,11 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - "No"
-                  - "Unresponsive"
+                  - 'No'
+                  - 'Unresponsive'
                   - "Can\\'t Determine"
-                  - "Partisan Candidate"
-                  - "Write In"
+                  - 'Partisan Candidate'
+                  - 'Write In'
       - name: general_election_date
         description: Date of the general election
         data_tests:
@@ -286,13 +286,13 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - "Yes"
-                  - "No"
-                  - "Unresponsive"
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
                   - "Can\\'t Determine"
-                  - "Partisan Candidate"
-                  - "Write In"
-                  - ""
+                  - 'Partisan Candidate'
+                  - 'Write In'
+                  - ''
 
   - name: int__hubspot_companies_w_contacts_2025
     description: >
@@ -307,12 +307,12 @@ models:
           - accepted_values:
               arguments:
                 values:
-                  - "Yes"
-                  - "No"
-                  - "Unresponsive"
+                  - 'Yes'
+                  - 'No'
+                  - 'Unresponsive'
                   - "Can\\'t Determine"
-                  - "Partisan Candidate"
-                  - "Write In"
+                  - 'Partisan Candidate'
+                  - 'Write In'
 
   - name: int__civics_candidacy_techspeed
     description: >
@@ -367,7 +367,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["techspeed"]
+                values: ['techspeed']
 
       - name: is_verified
         description: Whether candidacy is verified (always TRUE for TechSpeed data)
