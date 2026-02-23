@@ -1,6 +1,6 @@
 ---
 name: l2-uniform-drift-remediator
-description: Triage and safely remediate L2 uniform schema drift using `l2_uniform_schema_preflight` output. Use when dbt runs touching `int__l2_nationwide_uniform` or `int__l2_nationwide_uniform_w_haystaq` fail, or when `L2_PREFLIGHT|` lines report drift (`stg_minus_src`, `src_minus_stg`, `target_minus_src`, `relation_missing`). Parse preflight logs, generate deterministic fix plans, optionally execute only non-destructive staging rebuild fixes, and produce operator-ready next steps.
+description: Triage and remediate L2 uniform schema drift using `l2_uniform_schema_preflight` output. Use when dbt runs touching `int__l2_nationwide_uniform` or `int__l2_nationwide_uniform_w_haystaq` fail, or when `L2_PREFLIGHT|` lines report drift (`stg_minus_src`, `src_minus_stg`, `target_minus_src`, `relation_missing`). Parse preflight logs, generate deterministic safe commands and manual instructions, and produce operator-ready next steps.
 ---
 
 # L2 Uniform Drift Remediator
@@ -16,29 +16,15 @@ All script paths below are repo-root-relative.
 dbt run-operation l2_uniform_schema_preflight --args '{"strict": true}'
 ```
 2. Download the preflight log containing `L2_PREFLIGHT|` JSON lines.
-3. Run the failure handler (recommended):
+3. Run the failure handler:
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py \
   --log-file /path/to/preflight.log \
   --output-dir /path/to/gp-data-platform/.claude/skills/l2-uniform-drift-remediator/dbt_logs/failure_handler
 ```
-4. Parse and classify findings (manual mode):
-```bash
-python .claude/skills/l2-uniform-drift-remediator/scripts/l2_uniform_preflight_tool.py analyze --log-file /path/to/log
-```
-5. Generate the concrete remediation plan:
-```bash
-python .claude/skills/l2-uniform-drift-remediator/scripts/l2_uniform_preflight_tool.py plan --log-file /path/to/log
-```
-6. Execute safe fixes only when findings are limited to state staging drift (`stg_minus_src`, `src_minus_stg`):
-```bash
-python .claude/skills/l2-uniform-drift-remediator/scripts/l2_uniform_preflight_tool.py plan \
-  --log-file /path/to/log \
-  --execute-safe \
-  --dbt-project-path /path/to/gp-data-platform/dbt/project
-```
-7. If `target_minus_src` or `relation_missing` exists, stop auto-fix and produce manual remediation steps.
-8. If `target_minus_src` includes `int__l2_nationwide_uniform`, apply approved column deprecations to both:
+4. Review `summary.md`, run safe commands manually in a one-off dbt Cloud job (or equivalent), and complete follow-up steps.
+5. If `target_minus_src` or `relation_missing` exists, follow manual remediation steps in the summary.
+6. If `target_minus_src` includes `int__l2_nationwide_uniform`, apply approved column deprecations to both:
 - `int__l2_nationwide_uniform`
 - `int__l2_nationwide_uniform_w_haystaq`
 Then rerun strict preflight.
@@ -48,9 +34,7 @@ Then rerun strict preflight.
 - Keep `on_schema_change="append_new_columns"` as-is.
 - Do not switch to `sync_all_columns`.
 - Do not execute destructive DDL automatically.
-- Auto-execute only:
-  - targeted staging rebuilds for impacted states
-  - preflight rerun (`strict=true` when no manual actions remain; `strict=false` when manual actions remain so full instructions can still be generated)
+- This skill generates instructions only; it does not execute dbt commands.
 
 ## Inputs and Outputs
 
@@ -60,7 +44,7 @@ Input:
 Output:
 - Deterministic triage summary.
 - Command plan for safe fixes.
-- Optional generated shell script with executable safe fix commands.
+- Generated shell script containing safe commands to run manually.
 
 ## Notes for dbt Cloud
 

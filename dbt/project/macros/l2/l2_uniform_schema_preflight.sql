@@ -39,13 +39,13 @@
         ] %}
     {% endif %}
 
+    {% set target_database = target.database %}
+    {% if target_database is string %}
+        {% set target_database = target_database | trim %}
+    {% endif %}
     {% set metadata_catalog = var(
         "preflight_metadata_catalog",
-        (
-            target.database
-            if target.database is not none
-            else "goodparty_data_catalog"
-        ),
+        (target_database if target_database else "goodparty_data_catalog"),
     ) %}
     {% set states = get_us_states_list(include_DC=true, include_US=false) %}
     {% set ns = namespace(source_found_count=0, stg_found_count=0, findings=[]) %}

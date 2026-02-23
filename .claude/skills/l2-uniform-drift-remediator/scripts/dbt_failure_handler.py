@@ -43,7 +43,7 @@ def _load_json(path: Path) -> dict:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Generate and optionally execute L2 uniform drift remediation steps from a dbt log."
+        description="Generate deterministic L2 uniform remediation instructions from a preflight log."
     )
     parser.add_argument(
         "--log-file",
@@ -56,17 +56,6 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_OUTPUT_DIR,
         help="Directory where generated artifacts are written.",
-    )
-    parser.add_argument(
-        "--dbt-project-path",
-        type=Path,
-        default=Path("dbt/project"),
-        help="Path to dbt project root for safe command execution.",
-    )
-    parser.add_argument(
-        "--execute-safe",
-        action="store_true",
-        help="Execute safe, non-destructive commands after generating the plan.",
     )
     return parser
 
@@ -86,81 +75,60 @@ def main() -> int:
     run_dir = args.output_dir / started_at
     run_dir.mkdir(parents=True, exist_ok=False)
 
-    copied_log = run_dir / "dbt_failure.log"
+    copied_log = run_dir / "dbt_preflight.log"
     shutil.copy2(args.log_file, copied_log)
 
-    analysis_text = run_dir / "analysis.txt"
-    analysis_json = run_dir / "analysis.json"
-    plan_text = run_dir / "plan.txt"
-    plan_json = run_dir / "plan.json"
+    triage_text = run_dir / "triage.txt"
+    triage_json = run_dir / "triage.json"
     plan_shell = run_dir / "safe_fix_plan.sh"
     summary_md = run_dir / "summary.md"
 
-    analyze_cmd = [
+    triage_cmd = [
         sys.executable,
         str(tool_path),
-        "analyze",
         "--log-file",
         str(copied_log),
         "--json-out",
-        str(analysis_json),
+        str(triage_json),
+        "--shell-out",
+        str(plan_shell),
     ]
-    rc, out = _run_cmd(analyze_cmd)
-    _write_text(analysis_text, out)
-    if rc != 0:
+
+    rc, out = _run_cmd(triage_cmd)
+    _write_text(triage_text, out)
+
+    if rc == 1:
         print(out, file=sys.stderr)
         print(
-            "Hint: this log does not contain preflight output.",
+            "Hint: this log does not contain complete preflight output.",
             file=sys.stderr,
         )
         print(
-            "Run preflight after the failed build, download that preflight log, then rerun this handler:",
+            "Run preflight after the failed build, download the full preflight log, then rerun this handler:",
             file=sys.stderr,
         )
         print(
             "dbt run-operation l2_uniform_schema_preflight --args '{\"strict\": true}'",
             file=sys.stderr,
         )
-        print(f"Analyze step failed. See: {analysis_text}", file=sys.stderr)
-        return rc
+        print(f"Triage step failed. See: {triage_text}", file=sys.stderr)
+        return 1
 
-    plan_cmd = [
-        sys.executable,
-        str(tool_path),
-        "plan",
-        "--log-file",
-        str(copied_log),
-        "--json-out",
-        str(plan_json),
-        "--shell-out",
-        str(plan_shell),
-    ]
-    if args.execute_safe:
-        plan_cmd.extend(
-            [
-                "--execute-safe",
-                "--dbt-project-path",
-                str(args.dbt_project_path),
-            ]
-        )
-
-    rc, out = _run_cmd(plan_cmd)
-    _write_text(plan_text, out)
-
-    if not plan_json.exists():
-        print("Plan output JSON was not created.", file=sys.stderr)
-        print(f"Plan/execute step failed. See: {plan_text}", file=sys.stderr)
-        print(f"Command: {_format_command(plan_cmd)}", file=sys.stderr)
+    if not triage_json.exists():
+        print("Triage output JSON was not created.", file=sys.stderr)
+        print(f"Triage step failed. See: {triage_text}", file=sys.stderr)
+        print(f"Command: {_format_command(triage_cmd)}", file=sys.stderr)
         return rc if rc != 0 else 1
 
     try:
-        plan_payload = _load_json(plan_json)
+        triage_payload = _load_json(triage_json)
     except json.JSONDecodeError as exc:
-        print(f"Plan output JSON is invalid: {exc}", file=sys.stderr)
-        print(f"Plan/execute step failed. See: {plan_text}", file=sys.stderr)
+        print(f"Triage output JSON is invalid: {exc}", file=sys.stderr)
+        print(f"Triage step failed. See: {triage_text}", file=sys.stderr)
         return rc if rc != 0 else 1
-    summary = plan_payload.get("summary", {})
-    plan = plan_payload.get("plan", {})
+
+    summary = triage_payload.get("summary", {})
+    plan = triage_payload.get("plan", {})
     manual_actions = plan.get("manual_actions", [])
 
     summary_lines = [
@@ -171,15 +139,14 @@ def main() -> int:
         f"- status: `{summary.get('status')}`",
         f"- finding_count: `{summary.get('finding_count')}`",
         f"- impacted_states: `{', '.join(summary.get('impacted_states', [])) or '(none)'}`",
-        f"- execute_safe: `{str(args.execute_safe).lower()}`",
         f"- manual_actions_count: `{len(manual_actions)}`",
+        f"- triage_exit_code: `{rc}`",
         "",
         "## Generated Artifacts",
-        f"- `{analysis_text}`",
-        f"- `{analysis_json}`",
-        f"- `{plan_text}`",
-        f"- `{plan_json}`",
+        f"- `{triage_text}`",
+        f"- `{triage_json}`",
         f"- `{plan_shell}`",
+        f"- `{summary_md}`",
         "",
         "## Safe Commands",
     ]
@@ -202,6 +169,9 @@ def main() -> int:
     summary_lines.append("")
     summary_lines.append("## Notes")
     summary_lines.append(
+        "- This handler does not execute dbt commands. Run safe commands manually in an ad hoc dbt Cloud job (or equivalent controlled run)."
+    )
+    summary_lines.append(
         "- Keep raw logs under `.claude/skills/l2-uniform-drift-remediator/dbt_logs/` locally and copy sanitized summaries to PR description or tracked runbooks."
     )
     _write_text(summary_md, "\n".join(summary_lines) + "\n")
@@ -209,15 +179,16 @@ def main() -> int:
     print(f"Wrote failure-handler artifacts to: {run_dir}")
     print(f"Summary: {summary_md}")
 
-    if rc == 0:
-        return 0
     if rc == 2:
-        print("Safe commands completed, but manual actions remain.", file=sys.stderr)
+        print("Manual actions remain. See summary for required steps.", file=sys.stderr)
         return 2
 
-    print(f"Plan/execute step failed. See: {plan_text}", file=sys.stderr)
-    print(f"Command: {_format_command(plan_cmd)}", file=sys.stderr)
-    return rc
+    if rc != 0:
+        print(f"Triage step failed. See: {triage_text}", file=sys.stderr)
+        print(f"Command: {_format_command(triage_cmd)}", file=sys.stderr)
+        return rc
+
+    return 0
 
 
 if __name__ == "__main__":
