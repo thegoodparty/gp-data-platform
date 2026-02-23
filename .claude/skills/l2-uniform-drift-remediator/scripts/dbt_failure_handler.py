@@ -110,19 +110,15 @@ def main() -> int:
     if rc != 0:
         print(out, file=sys.stderr)
         print(
-            "Hint: run preflight before build so logs include L2_PREFLIGHT lines.",
+            "Hint: this log does not contain preflight output.",
             file=sys.stderr,
         )
         print(
-            "Recommended dbt Cloud command order:",
+            "Run preflight after the failed build, download that preflight log, then rerun this handler:",
             file=sys.stderr,
         )
         print(
-            "1) dbt run-operation l2_uniform_schema_preflight --args '{\"strict\": true}'",
-            file=sys.stderr,
-        )
-        print(
-            '2) dbt build --exclude="tag:dbt_source tag:l2_s3 tag:weekly write__l2_databricks_to_gp_api"',
+            "dbt run-operation l2_uniform_schema_preflight --args '{\"strict\": true}'",
             file=sys.stderr,
         )
         print(f"Analyze step failed. See: {analysis_text}", file=sys.stderr)
@@ -189,6 +185,13 @@ def main() -> int:
     ]
     for command in plan.get("safe_commands", []):
         summary_lines.append(f"- `{command}`")
+
+    follow_up_commands = plan.get("follow_up_commands", [])
+    if follow_up_commands:
+        summary_lines.append("")
+        summary_lines.append("## Follow-up Commands")
+        for command in follow_up_commands:
+            summary_lines.append(f"- {command}")
 
     if manual_actions:
         summary_lines.append("")

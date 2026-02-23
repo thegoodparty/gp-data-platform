@@ -5,36 +5,40 @@ description: Triage and safely remediate L2 uniform schema drift using `l2_unifo
 
 # L2 Uniform Drift Remediator
 
-Use this workflow to convert preflight output into safe actions.
+Use this workflow to convert post-failure preflight output into safe actions.
 
 ## Workflow
 
 All script paths below are repo-root-relative.
 
-1. Locate the preflight or dbt run log that contains `L2_PREFLIGHT|` JSON lines.
-2. Run the failure handler (recommended):
+1. If a build fails, run preflight to collect full drift visibility:
+```bash
+dbt run-operation l2_uniform_schema_preflight --args '{"strict": true}'
+```
+2. Download the preflight log containing `L2_PREFLIGHT|` JSON lines.
+3. Run the failure handler (recommended):
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py \
-  --log-file /path/to/dbt_failure.log \
+  --log-file /path/to/preflight.log \
   --output-dir /path/to/gp-data-platform/.claude/skills/l2-uniform-drift-remediator/dbt_logs/failure_handler
 ```
-3. Parse and classify findings (manual mode):
+4. Parse and classify findings (manual mode):
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/l2_uniform_preflight_tool.py analyze --log-file /path/to/log
 ```
-4. Generate the concrete remediation plan:
+5. Generate the concrete remediation plan:
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/l2_uniform_preflight_tool.py plan --log-file /path/to/log
 ```
-5. Execute safe fixes only when findings are limited to state staging drift (`stg_minus_src`, `src_minus_stg`):
+6. Execute safe fixes only when findings are limited to state staging drift (`stg_minus_src`, `src_minus_stg`):
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/l2_uniform_preflight_tool.py plan \
   --log-file /path/to/log \
   --execute-safe \
   --dbt-project-path /path/to/gp-data-platform/dbt/project
 ```
-6. If `target_minus_src` or `relation_missing` exists, stop auto-fix and produce manual remediation steps.
-7. If `target_minus_src` includes `int__l2_nationwide_uniform`, apply approved column deprecations to both:
+7. If `target_minus_src` or `relation_missing` exists, stop auto-fix and produce manual remediation steps.
+8. If `target_minus_src` includes `int__l2_nationwide_uniform`, apply approved column deprecations to both:
 - `int__l2_nationwide_uniform`
 - `int__l2_nationwide_uniform_w_haystaq`
 Then rerun strict preflight.
@@ -47,7 +51,6 @@ Then rerun strict preflight.
 - Auto-execute only:
   - targeted staging rebuilds for impacted states
   - strict preflight rerun
-  - downstream model rerun only when manual gate conditions are absent
 
 ## Inputs and Outputs
 
@@ -64,17 +67,6 @@ Output:
 This skill itself does not run inside dbt Cloud unless you call its script from a dbt Cloud job command environment that has Python and this repo checked out.
 
 To surface drift context directly in dbt Cloud logs, rely on the preflight macro logging (`L2_PREFLIGHT|...`).
-
-`agents/openai.yaml` is intentionally UI metadata only (display name, description, default prompt), not a runtime execution config.
-
-## Daily dbt Cloud Job Integration
-
-Use this command order in the dbt Cloud job:
-
-1. `dbt run-operation l2_uniform_schema_preflight --args '{"strict": true}'`
-2. `dbt build --exclude="tag:dbt_source tag:l2_s3 tag:weekly write__l2_databricks_to_gp_api"`
-
-If command 1 fails, dbt Cloud logs already contain parseable `L2_PREFLIGHT|` lines for triage.
 
 ## Log Capture and PR Guidance
 

@@ -1,20 +1,19 @@
 # L2 Uniform Schema Drift Runbook
 
-## Daily dbt Cloud Job Commands
+## Post-Failure Workflow
 
-Run preflight before the existing daily build command:
+When a dbt build fails, run preflight to gather complete schema drift visibility:
 
 1. `dbt run-operation l2_uniform_schema_preflight --args '{"strict": true}'`
-2. `dbt build --exclude="tag:dbt_source tag:l2_s3 tag:weekly write__l2_databricks_to_gp_api"`
 
 ## Failure Triage Workflow
 
-1. Download the dbt Cloud log for the failed run.
+1. Download the dbt Cloud log for the preflight run.
 2. Run the failure handler in this repo:
 
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py \
-  --log-file /absolute/path/to/downloaded_dbt_log.txt \
+  --log-file /absolute/path/to/downloaded_preflight_log.txt \
   --output-dir /path/to/gp-data-platform/.claude/skills/l2-uniform-drift-remediator/dbt_logs/failure_handler \
   --dbt-project-path /path/to/gp-data-platform/dbt/project
 ```
@@ -31,14 +30,15 @@ python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py
 
 ```bash
 python .claude/skills/l2-uniform-drift-remediator/scripts/dbt_failure_handler.py \
-  --log-file /absolute/path/to/downloaded_dbt_log.txt \
+  --log-file /absolute/path/to/downloaded_preflight_log.txt \
   --output-dir /path/to/gp-data-platform/.claude/skills/l2-uniform-drift-remediator/dbt_logs/failure_handler \
   --dbt-project-path /path/to/gp-data-platform/dbt/project \
   --execute-safe
 ```
 
-5. If `target_minus_src` appears, do not run destructive DDL automatically; follow manual deprecation workflow.
-6. If deprecating target-only columns from `int__l2_nationwide_uniform`, apply equivalent removals to `int__l2_nationwide_uniform_w_haystaq`, then rerun strict preflight.
+5. Kick off a one-off dbt Cloud job/command to apply the safe commands from `plan.txt` or `safe_fix_plan.sh`.
+6. If `target_minus_src` appears, do not run destructive DDL automatically; follow manual deprecation workflow.
+7. If deprecating target-only columns from `int__l2_nationwide_uniform`, apply equivalent removals to `int__l2_nationwide_uniform_w_haystaq`, then rerun strict preflight.
 
 ## PR Hygiene
 

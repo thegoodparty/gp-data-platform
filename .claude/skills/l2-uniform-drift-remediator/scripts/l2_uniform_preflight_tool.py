@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 PREFIX = "L2_PREFLIGHT|"
-DEFAULT_CATALOG = "goodparty_data_catalog"
 
 
 def _load_records(log_file: Path) -> list[dict[str, Any]]:
@@ -50,17 +49,13 @@ def _derive_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     target_minus_src = [f for f in findings if f.get("kind") == "target_minus_src"]
     relation_missing = [f for f in findings if f.get("kind") == "relation_missing"]
 
-    metadata_catalog = (
-        summary.get("metadata_catalog")
-        or config.get("metadata_catalog")
-        or DEFAULT_CATALOG
-    )
+    metadata_catalog = summary.get("metadata_catalog") or config.get("metadata_catalog")
     status = summary.get("status")
     if not status:
         status = "clean" if not findings else "unknown"
 
     return {
-        "metadata_catalog": str(metadata_catalog),
+        "metadata_catalog": str(metadata_catalog) if metadata_catalog else None,
         "strict": bool(summary.get("strict", config.get("strict", True))),
         "status": str(status),
         "states_evaluated": summary.get("states_evaluated"),
@@ -79,7 +74,7 @@ def _command_to_string(command_argv: list[str]) -> str:
     return shlex.join(command_argv)
 
 
-def _preflight_command_argv(metadata_catalog: str) -> list[str]:
+def _preflight_command_argv(metadata_catalog: str | None) -> list[str]:
     command_argv = [
         "dbt",
         "run-operation",
@@ -87,7 +82,7 @@ def _preflight_command_argv(metadata_catalog: str) -> list[str]:
         "--args",
         '{"strict": true}',
     ]
-    if metadata_catalog != DEFAULT_CATALOG:
+    if metadata_catalog:
         vars_json = json.dumps(
             {"preflight_metadata_catalog": metadata_catalog},
             separators=(",", ":"),
@@ -138,22 +133,16 @@ def _build_plan(summary: dict[str, Any]) -> dict[str, Any]:
             )
 
     can_auto_complete = len(manual_actions) == 0
-    if can_auto_complete:
-        safe_command_argv.append(
-            [
-                "dbt",
-                "run",
-                "--select",
-                "int__l2_nationwide_uniform",
-                "int__l2_nationwide_uniform_w_haystaq",
-            ]
-        )
+    follow_up_commands = [
+        "Rerun the originally failed dbt command/job after safe fixes succeed."
+    ]
 
     safe_commands = [_command_to_string(command) for command in safe_command_argv]
 
     return {
         "safe_commands": safe_commands,
         "safe_command_argv": safe_command_argv,
+        "follow_up_commands": follow_up_commands,
         "manual_actions": manual_actions,
         "can_auto_complete": can_auto_complete,
         "staging_selectors": staging_selectors,
@@ -164,7 +153,9 @@ def _print_analysis(summary: dict[str, Any]) -> None:
     print("# L2 Uniform Preflight Analysis")
     print(f"- status: {summary['status']}")
     print(f"- strict: {summary['strict']}")
-    print(f"- metadata_catalog: {summary['metadata_catalog']}")
+    print(
+        f"- metadata_catalog: {summary['metadata_catalog'] or '(not provided in log)'}"
+    )
     print(f"- finding_count: {summary['finding_count']}")
     print(f"- impacted_states: {', '.join(summary['impacted_states']) or '(none)'}")
     print("")
@@ -190,6 +181,12 @@ def _print_plan(summary: dict[str, Any], plan: dict[str, Any]) -> None:
         print("## Manual Actions Required")
         for idx, action in enumerate(plan["manual_actions"], start=1):
             print(f"{idx}. {action}")
+
+    if plan["follow_up_commands"]:
+        print("")
+        print("## Follow-up Commands")
+        for idx, command in enumerate(plan["follow_up_commands"], start=1):
+            print(f"{idx}. {command}")
 
     print("")
     print(f"- can_auto_complete: {str(plan['can_auto_complete']).lower()}")

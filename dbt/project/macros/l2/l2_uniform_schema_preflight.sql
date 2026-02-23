@@ -40,7 +40,12 @@
     {% endif %}
 
     {% set metadata_catalog = var(
-        "preflight_metadata_catalog", "goodparty_data_catalog"
+        "preflight_metadata_catalog",
+        (
+            target.database
+            if target.database is not none
+            else "goodparty_data_catalog"
+        ),
     ) %}
     {% set states = get_us_states_list(include_DC=true, include_US=false) %}
     {% set ns = namespace(source_found_count=0, stg_found_count=0, findings=[]) %}
