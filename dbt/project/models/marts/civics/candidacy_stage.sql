@@ -24,6 +24,8 @@ select
     has_match,
     votes_received,
     election_stage_date,
+    cast(null as boolean) as is_win_icp,
+    cast(null as boolean) as is_serve_icp,
     created_at,
     updated_at
 

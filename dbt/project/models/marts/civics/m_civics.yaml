@@ -252,6 +252,12 @@ models:
       - name: is_judicial
         description: Whether this is a judicial election
 
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (500-50,000 voters)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (1,000-100,000 voters)
+
       - name: created_at
         description: Earliest candidacy creation timestamp for this election
 
@@ -281,17 +287,33 @@ models:
       - name: br_race_id
         description: BallotReady race ID
 
+      - name: br_election_id
+        description: BallotReady election ID (the overarching election event)
+
+      - name: br_position_id
+        description: BallotReady position ID (links to parent election)
+
       - name: ddhq_race_id
         description: DDHQ race ID (NULL placeholder for future integration)
 
       - name: stage_type
-        description: Type of election stage - Primary, General, or Runoff
+        description: Type of election stage (general, primary, or runoff)
 
       - name: election_date
         description: Date of this election stage
 
-      - name: election_stage_name
-        description: Full name of the election stage
+      - name: election_name
+        description: >
+          Name of the overarching election event from BallotReady
+          (e.g. "Illinois Primary Election", "Wisconsin General Election").
+          NULL for legacy DDHQ records.
+
+      - name: race_name
+        description: >
+          Office-specific race label identifying the position being contested
+          (e.g. "IL Franklin County Board - Full Term, District 3").
+          For BallotReady records, constructed from state_code + position_name + sub_area.
+          For legacy DDHQ records, sourced from ddhq_race_name.
 
       - name: is_primary
         description: Whether this is a primary election stage
@@ -301,6 +323,18 @@ models:
 
       - name: is_retention
         description: Whether this is a retention election
+
+      - name: number_of_seats
+        description: Number of seats available in this race
+
+      - name: total_votes_cast
+        description: Total votes cast in the election stage (may contain string values like 'uncontested')
+
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (500-50,000 voters)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (1,000-100,000 voters)
 
       - name: created_at
         description: Earliest candidacy creation timestamp for this stage
@@ -412,6 +446,12 @@ models:
       - name: hs_company_id
         description: HubSpot company ID (NULL placeholder for future integration)
 
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (500-50,000 voters)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (1,000-100,000 voters)
+
       - name: created_at
         description: Earliest candidacy stage creation timestamp
 
@@ -461,6 +501,12 @@ models:
 
       - name: hs_contact_id
         description: HubSpot contact ID (NULL placeholder for future integration)
+
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (500-50,000 voters)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (1,000-100,000 voters)
 
       - name: created_at
         description: Record creation timestamp
@@ -614,6 +660,12 @@ models:
 
       - name: win_number_model
         description: Model version used for win number calculation
+
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (500-50,000 voters)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (1,000-100,000 voters)
 
       - name: created_at
         description: Timestamp when the record was created
@@ -814,6 +866,12 @@ models:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
 
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (NULL for legacy records without position join)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (NULL for legacy records without position join)
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -954,6 +1012,12 @@ models:
       - name: br_normalized_position_type
         description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
 
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (500-50,000 voters)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (1,000-100,000 voters)
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -995,12 +1059,21 @@ models:
                 to: ref('int__civics_election_2025')
                 field: gp_election_id
 
+      - name: br_race_id
+        description: BallotReady race ID (NULL for legacy records)
+
+      - name: br_election_id
+        description: BallotReady election ID (NULL for legacy records)
+
+      - name: br_position_id
+        description: BallotReady position ID (NULL for legacy records)
+
       - name: ddhq_race_id
         description: DDHQ race identifier
         data_tests:
           - not_null
 
-      - name: election_stage
+      - name: stage_type
         description: Type of election stage (primary, general, runoff)
         data_tests:
           - not_null
@@ -1008,7 +1081,7 @@ models:
               arguments:
                 values: ['general', 'primary', 'runoff']
 
-      - name: ddhq_election_stage_date
+      - name: election_date
         description: Date of the election stage
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
@@ -1016,13 +1089,37 @@ models:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
 
-      - name: ddhq_race_name
-        description: Race name from DDHQ
+      - name: election_name
+        description: Name of the overarching election event (NULL for legacy DDHQ records)
+
+      - name: race_name
+        description: Office-specific race label (sourced from ddhq_race_name for legacy records)
+
+      - name: is_primary
+        description: Whether this is a primary election stage
+
+      - name: is_runoff
+        description: Whether this is a runoff election stage
+
+      - name: is_retention
+        description: Whether this is a retention election (NULL for legacy records)
+
+      - name: number_of_seats
+        description: Number of seats available in this race (NULL for legacy records)
 
       - name: total_votes_cast
         description: Total votes cast in the election stage (may contain string values like 'uncontested')
+
+      - name: is_win_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Win (NULL for legacy records)
+
+      - name: is_serve_icp
+        description: Whether this position meets the Ideal Customer Profile criteria for Serve (NULL for legacy records)
 
       - name: created_at
         description: Timestamp when the record was created (from Airbyte extraction)
         data_tests:
           - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated (NULL for legacy records)

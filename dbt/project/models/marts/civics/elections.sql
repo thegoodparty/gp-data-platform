@@ -63,5 +63,9 @@ with
             = 1
     )
 
-select *
+select
+    elections.*, icp.icp_office_win as is_win_icp, icp.icp_office_serve as is_serve_icp
 from elections
+left join
+    {{ ref("int__icp_offices") }} as icp
+    on elections.br_position_id = icp.br_database_position_id

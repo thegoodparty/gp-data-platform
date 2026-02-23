@@ -57,6 +57,9 @@ with
             -- HubSpot placeholder
             cast(null as bigint) as hs_contact_id,
 
+            -- Position ID for ICP join
+            br_position_id,
+
             -- Timestamps
             candidacy_created_at as created_at,
             candidacy_updated_at as updated_at
@@ -70,5 +73,21 @@ with
             = 1
     )
 
-select *
+select
+    candidacy_stages.gp_candidacy_stage_id,
+    candidacy_stages.gp_candidacy_id,
+    candidacy_stages.gp_election_stage_id,
+    candidacy_stages.br_candidacy_id,
+    candidacy_stages.ddhq_candidacy_id,
+    candidacy_stages.candidacy_stage_result,
+    candidacy_stages.votes_received,
+    candidacy_stages.vote_percentage,
+    candidacy_stages.hs_contact_id,
+    icp.icp_office_win as is_win_icp,
+    icp.icp_office_serve as is_serve_icp,
+    candidacy_stages.created_at,
+    candidacy_stages.updated_at
 from candidacy_stages
+left join
+    {{ ref("int__icp_offices") }} as icp
+    on candidacy_stages.br_position_id = icp.br_database_position_id
