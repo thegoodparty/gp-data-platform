@@ -1,0 +1,4 @@
+interface:
+  display_name: "L2 Drift Remediator"
+  short_description: "Triage and safe-fix L2 uniform drift findings"
+  default_prompt: "Use $l2-uniform-drift-remediator to parse L2 preflight output and produce a safe remediation plan."
