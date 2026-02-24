@@ -1,5 +1,5 @@
 models:
-  - name: stg_segment_storage_source_web_app__tracks
+  - name: stg_segment_storage_source__web_app_tracks
     description: Segment track calls from web app capturing user actions and events
     columns:
       - name: id
@@ -24,7 +24,7 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_segment_storage_source_web_app__identifies
+  - name: stg_segment_storage_source__web_app_identifies
     description: Segment identify calls from web app linking anonymous IDs to known users
     columns:
       - name: id
@@ -43,7 +43,7 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_segment_storage_source_web_app__users
+  - name: stg_segment_storage_source__web_app_users
     description: Segment user profiles from web app with traits and properties
     columns:
       - name: id
@@ -58,7 +58,7 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_segment_storage_source_web_app__pages
+  - name: stg_segment_storage_source__web_app_pages
     description: Segment page view events from web app tracking user navigation
     columns:
       - name: id

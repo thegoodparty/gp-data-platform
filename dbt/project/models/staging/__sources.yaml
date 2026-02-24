@@ -1074,7 +1074,7 @@ sources:
       - name: viability_scores
         description: raw data load from model predictions
 
-  - name: segment_storage_source_gp_api
+  - name: segment_storage_source
     database: segment_storage
     schema: gp_api
     description: Event data from Segment's GP API source synced to dedicated catalog

@@ -1,5 +1,5 @@
 models:
-  - name: stg_segment_storage_source_gp_api__tracks
+  - name: stg_segment_storage_source__gp_api_tracks
     description: Segment track calls from GP API capturing user actions and events
     columns:
       - name: id
@@ -22,7 +22,7 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_segment_storage_source_gp_api__identifies
+  - name: stg_segment_storage_source__gp_api_identifies
     description: Segment identify calls from GP API linking anonymous IDs to known users
     columns:
       - name: id
@@ -39,7 +39,7 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_segment_storage_source_gp_api__users
+  - name: stg_segment_storage_source__gp_api_users
     description: Segment user profiles from GP API with traits and properties
     columns:
       - name: id
