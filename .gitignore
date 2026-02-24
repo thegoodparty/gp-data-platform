@@ -40,6 +40,9 @@ logs/
 
 # Local dev files
 .tickets/
+.claude/skills/l2-uniform-drift-remediator/dbt_logs/*
+!.claude/skills/l2-uniform-drift-remediator/dbt_logs/.gitkeep
+!.claude/skills/l2-uniform-drift-remediator/dbt_logs/README.md
 .pre-commit-cache/
 test_data/
 
