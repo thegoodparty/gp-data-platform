@@ -68,6 +68,8 @@ models:
         l2_s3:
           # There are about 400 static view models in this folder, so we need to add a tag to exclude them from recurring dbt jobs.
           +tags: ["staging", "dbt_source", "l2_s3"]
+      segment_storage_source:
+        +tags: ["segment", "weekly"]
 
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
