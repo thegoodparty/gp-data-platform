@@ -1,7 +1,8 @@
-{% set source_ref = source(
-    "segment_storage_source_web_app",
-    "polls_poll_results_issue_details_viewed",
-) %}
-
-select {{ dbt_utils.star(from=source_ref, except=[]) }}
-from {{ source_ref }}
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app",
+            "polls_poll_results_issue_details_viewed",
+        )
+    }}
