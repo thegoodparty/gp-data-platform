@@ -1,0 +1,57 @@
+models:
+  - name: stg_segment_storage_source__tracks
+    description: Segment track calls from GP API capturing user actions and events
+    columns:
+      - name: id
+        description: Unique identifier for the track event
+        data_tests:
+          - not_null
+          - unique
+      - name: event
+        description: Name of the tracked event
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Segment user ID associated with the event
+      - name: timestamp
+        description: Timestamp when the event occurred
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
+
+  - name: stg_segment_storage_source__identifies
+    description: Segment identify calls from GP API linking anonymous IDs to known users
+    columns:
+      - name: id
+        description: Unique identifier for the identify call
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: Segment user ID
+      - name: email
+        description: Email address from the identify call
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
+
+  - name: stg_segment_storage_source__users
+    description: Segment user profiles from GP API with traits and properties
+    columns:
+      - name: id
+        description: Unique identifier for the user profile
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: Segment user ID
+      - name: email
+        description: Email address of the user
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null

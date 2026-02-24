@@ -1,0 +1,88 @@
+models:
+  - name: stg_segment_storage_source_web_app__tracks
+    description: Segment track calls from web app capturing user actions and events
+    columns:
+      - name: id
+        description: Unique identifier for the track event
+        data_tests:
+          - not_null
+          - unique
+      - name: event
+        description: Name of the tracked event
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Segment user ID associated with the event
+      - name: anonymous_id
+        description: Anonymous identifier for unauthenticated users
+      - name: timestamp
+        description: Timestamp when the event occurred
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
+
+  - name: stg_segment_storage_source_web_app__identifies
+    description: Segment identify calls from web app linking anonymous IDs to known users
+    columns:
+      - name: id
+        description: Unique identifier for the identify call
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: Segment user ID
+      - name: anonymous_id
+        description: Anonymous identifier for unauthenticated users
+      - name: email
+        description: Email address from the identify call
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
+
+  - name: stg_segment_storage_source_web_app__users
+    description: Segment user profiles from web app with traits and properties
+    columns:
+      - name: id
+        description: Unique identifier for the user profile
+        data_tests:
+          - not_null
+          - unique
+      - name: email
+        description: Email address of the user
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
+
+  - name: stg_segment_storage_source_web_app__pages
+    description: Segment page view events from web app tracking user navigation
+    columns:
+      - name: id
+        description: Unique identifier for the page view event
+        data_tests:
+          - not_null
+          - unique
+      - name: user_id
+        description: Segment user ID associated with the page view
+      - name: anonymous_id
+        description: Anonymous identifier for unauthenticated users
+      - name: path
+        description: URL path of the page viewed
+      - name: title
+        description: Title of the page viewed
+      - name: url
+        description: Full URL of the page viewed
+      - name: referrer
+        description: Referrer URL
+      - name: timestamp
+        description: Timestamp when the page view occurred
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
