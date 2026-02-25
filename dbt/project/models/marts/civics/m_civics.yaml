@@ -373,9 +373,6 @@ models:
           - unique
           - not_null
           - is_uuid
-          # Relationship test for 2026+ candidates is in
-          # tests/civics/candidate_candidacy_relationship_2026_forward.sql
-          # (singular test needed because config.where does not support ref())
 
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
