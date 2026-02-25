@@ -1088,6 +1088,12 @@ sources:
         description: raw data load from voter turnout projections for odd years
       - name: viability_scores
         description: raw data load from model predictions
+      - name: ballots_projected_2026_v2
+        description: raw data load from voter turnout projections for 2026 (v2)
+      - name: ballots_projected_2027
+        description: raw data load from voter turnout projections for 2027
+      - name: ballots_projected_2028
+        description: raw data load from voter turnout projections for 2028
 
   - name: segment_storage_source
     database: segment_storage
