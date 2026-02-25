@@ -125,11 +125,7 @@ select
     hubspot_contact_id,
     hubspot_company_ids,
     candidate_id_source,
-    case
-        when party_affiliation is null or trim(party_affiliation) = ''
-        then null
-        else {{ parse_party_affiliation("party_affiliation") }}
-    end as party_affiliation,
+    nullif(party_affiliation, '') as party_affiliation,
     is_incumbent,
     is_open_seat,
     candidate_office,
