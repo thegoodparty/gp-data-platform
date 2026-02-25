@@ -1073,3 +1073,355 @@ sources:
         description: raw data load from voter turnout projections for odd years
       - name: viability_scores
         description: raw data load from model predictions
+
+  - name: segment_storage_source
+    database: segment_storage
+    schema: gp_api
+    description: Event data from Segment's GP API source synced to dedicated catalog
+
+    tables:
+      - name: account_password_reset_requested
+        description: Segment event fired when a user requests a password reset
+      - name: campaign_verify_token_status_update
+        description: Segment event for campaign verification token status changes
+      - name: content_builder_generation_completed
+        description: Segment event fired when AI content generation completes
+      - name: content_builder_generation_started
+        description: Segment event fired when AI content generation starts
+      - name: identifies
+        description: Segment identify calls linking anonymous IDs to known users
+      - name: onboarding_user_created
+        description: Segment event fired when a new user completes onboarding
+      - name: poll_results_synthesis_complete
+        description: Segment event fired when poll results synthesis completes
+      - name: tracks
+        description: Segment track calls capturing user actions and events
+      - name: users
+        description: Segment user profiles with traits and properties
+      - name: voter_outreach_10dlc_compliance_completed
+        description: Segment event fired when 10DLC compliance is completed
+
+  - name: segment_storage_source_web_app
+    database: segment_storage
+    schema: web_app
+    description: Event data from Segment's web app source synced to dedicated catalog
+
+    tables:
+      - name: _10_dlc_compliance_registration_submitted
+        description: Segment web app event -  10 dlc compliance registration submitted
+      - name: account_password_reset_completed
+        description: Segment web app event - account password reset completed
+      - name: ai_assistant_ask_a_question
+        description: Segment web app event - ai assistant ask a question
+      - name: ai_assistant_click_new_chat
+        description: Segment web app event - ai assistant click new chat
+      - name: ai_assistant_click_view_chat_history
+        description: Segment web app event - ai assistant click view chat history
+      - name: ai_content_generation_start
+        description: Segment web app event - ai content generation start
+      - name: campaign_assistant_chatbot_input
+        description: Segment web app event - campaign assistant chatbot input
+      - name: candidacy_did_you_win_modal_completed
+        description: Segment web app event - candidacy did you win modal completed
+      - name: candidacy_did_you_win_modal_viewed
+        description: Segment web app event - candidacy did you win modal viewed
+      - name: candidate_website_continued
+        description: Segment web app event - candidate website continued
+      - name: candidate_website_edited
+        description: Segment web app event - candidate website edited
+      - name: candidate_website_published
+        description: Segment web app event - candidate website published
+      - name: candidate_website_purchased_domain
+        description: Segment web app event - candidate website purchased domain
+      - name: candidate_website_selected_domain
+        description: Segment web app event - candidate website selected domain
+      - name: candidate_website_started
+        description: Segment web app event - candidate website started
+      - name: candidate_website_started_domain_selection
+        description: Segment web app event - candidate website started domain selection
+      - name: content_builder_click_content
+        description: Segment web app event - content builder click content
+      - name: content_builder_click_continue_questions
+        description: Segment web app event - content builder click continue questions
+      - name: content_builder_click_generate
+        description: Segment web app event - content builder click generate
+      - name: content_builder_close_additional_inputs
+        description: Segment web app event - content builder close additional inputs
+      - name: content_builder_editor_click_regenerate
+        description: Segment web app event - content builder editor click regenerate
+      - name: content_builder_editor_open_version_picker
+        description: Segment web app event - content builder editor open version picker
+      - name: content_builder_editor_submit_regenerate
+        description: Segment web app event - content builder editor submit regenerate
+      - name: content_builder_select_template
+        description: Segment web app event - content builder select template
+      - name: content_builder_submit_additional_inputs
+        description: Segment web app event - content builder submit additional inputs
+      - name: custom_voter_file_created
+        description: Segment web app event - custom voter file created
+      - name: dashboard_candidate_dashboard_viewed
+        description: Segment web app event - dashboard candidate dashboard viewed
+      - name: dashboard_path_to_victory_exit_understand_path_to_victory
+        description: Segment web app event - dashboard path to victory exit understand path to victory
+      - name: download_voter_file_attempt
+        description: Segment web app event - download voter file attempt
+      - name: download_voter_file_failure
+        description: Segment web app event - download voter file failure
+      - name: download_voter_file_success
+        description: Segment web app event - download voter file success
+      - name: exposure
+        description: Segment exposure events for experiment tracking
+      - name: identifies
+        description: Segment identify calls linking anonymous IDs to known users
+      - name: invalid_party
+        description: Segment web app event - invalid party
+      - name: navigation_dashboard_click_ai_assistant
+        description: Segment web app event - navigation dashboard click ai assistant
+      - name: navigation_dashboard_click_community
+        description: Segment web app event - navigation dashboard click community
+      - name: navigation_dashboard_click_contacts
+        description: Segment web app event - navigation dashboard click contacts
+      - name: navigation_dashboard_click_content_builder
+        description: Segment web app event - navigation dashboard click content builder
+      - name: navigation_dashboard_click_dashboard
+        description: Segment web app event - navigation dashboard click dashboard
+      - name: navigation_dashboard_click_door_knocking
+        description: Segment web app event - navigation dashboard click door knocking
+      - name: navigation_dashboard_click_my_profile
+        description: Segment web app event - navigation dashboard click my profile
+      - name: navigation_dashboard_click_polls
+        description: Segment web app event - navigation dashboard click polls
+      - name: navigation_dashboard_click_resources
+        description: Segment web app event - navigation dashboard click resources
+      - name: navigation_dashboard_click_voter_data
+        description: Segment web app event - navigation dashboard click voter data
+      - name: navigation_dashboard_click_voter_outreach
+        description: Segment web app event - navigation dashboard click voter outreach
+      - name: navigation_dashboard_click_website
+        description: Segment web app event - navigation dashboard click website
+      - name: navigation_top_avatar_dropdown_click_logout
+        description: Segment web app event - navigation top avatar dropdown click logout
+      - name: navigation_top_avatar_dropdown_click_settings
+        description: Segment web app event - navigation top avatar dropdown click settings
+      - name: navigation_top_avatar_dropdown_close_dropdown
+        description: Segment web app event - navigation top avatar dropdown close dropdown
+      - name: navigation_top_click_avatar_dropdown
+        description: Segment web app event - navigation top click avatar dropdown
+      - name: navigation_top_click_logo
+        description: Segment web app event - navigation top click logo
+      - name: onboarding_candidate_affiliation_completed
+        description: Segment web app event - onboarding candidate affiliation completed
+      - name: onboarding_candidate_office_completed
+        description: Segment web app event - onboarding candidate office completed
+      - name: onboarding_candidate_office_searched
+        description: Segment web app event - onboarding candidate office searched
+      - name: onboarding_candidate_pledge_completed
+        description: Segment web app event - onboarding candidate pledge completed
+      - name: onboarding_click_finish_later
+        description: Segment web app event - onboarding click finish later
+      - name: onboarding_complete
+        description: Segment web app event - onboarding complete
+      - name: onboarding_complete_step_click_go_to_dashboard
+        description: Segment web app event - onboarding complete step click go to dashboard
+      - name: onboarding_office_step_click_can_t_see_office
+        description: Segment web app event - onboarding office step click can t see office
+      - name: onboarding_office_step_click_next
+        description: Segment web app event - onboarding office step click next
+      - name: onboarding_office_step_office_selected
+        description: Segment web app event - onboarding office step office selected
+      - name: onboarding_party_step_click_submit
+        description: Segment web app event - onboarding party step click submit
+      - name: onboarding_pledge_step_click_submit
+        description: Segment web app event - onboarding pledge step click submit
+      - name: onboarding_registration_completed
+        description: Segment web app event - onboarding registration completed
+      - name: outreach_action_clicked
+        description: Segment web app event - outreach action clicked
+      - name: outreach_click_create
+        description: Segment web app event - outreach click create
+      - name: outreach_door_knocking_complete
+        description: Segment web app event - outreach door knocking complete
+      - name: outreach_phone_banking_complete
+        description: Segment web app event - outreach phone banking complete
+      - name: outreach_view_accessed
+        description: Segment web app event - outreach view accessed
+      - name: p2p_upgrade_modal_click_button
+        description: Segment web app event - p2p upgrade modal click button
+      - name: p2p_upgrade_modal_exit
+        description: Segment web app event - p2p upgrade modal exit
+      - name: p2p_upgrade_modal_modal_shown
+        description: Segment web app event - p2p upgrade modal modal shown
+      - name: pages
+        description: Segment page view events tracking user navigation
+      - name: polls_create_poll_clicked
+        description: Segment web app event - polls create poll clicked
+      - name: polls_poll_question_viewed
+        description: Segment web app event - polls poll question viewed
+      - name: polls_poll_results_issue_details_viewed
+        description: Segment web app event - polls poll results issue details viewed
+      - name: polls_poll_results_overview_viewed
+        description: Segment web app event - polls poll results overview viewed
+      - name: pro_upgrade_click_exit_top_nav
+        description: Segment web app event - pro upgrade click exit top nav
+      - name: pro_upgrade_click_go_to_stripe
+        description: Segment web app event - pro upgrade click go to stripe
+      - name: pro_upgrade_committee_check_page_click_next
+        description: Segment web app event - pro upgrade committee check page click next
+      - name: pro_upgrade_committee_check_page_click_upload
+        description: Segment web app event - pro upgrade committee check page click upload
+      - name: pro_upgrade_committee_check_page_hover_ein_number_help
+        description: Segment web app event - pro upgrade committee check page hover ein number help
+      - name: pro_upgrade_committee_check_page_hover_name_of_campaign_committee_help
+        description: Segment web app event - pro upgrade committee check page hover name of campaign committee help
+      - name: pro_upgrade_committee_check_page_hover_upload_help
+        description: Segment web app event - pro upgrade committee check page hover upload help
+      - name: pro_upgrade_committee_check_page_toggle_ein_requirement
+        description: Segment web app event - pro upgrade committee check page toggle ein requirement
+      - name: pro_upgrade_complete
+        description: Segment web app event - pro upgrade complete
+      - name: pro_upgrade_confirm_office
+        description: Segment web app event - pro upgrade confirm office
+      - name: pro_upgrade_edit_office
+        description: Segment web app event - pro upgrade edit office
+      - name: pro_upgrade_modal_click_button
+        description: Segment web app event - pro upgrade modal click button
+      - name: pro_upgrade_modal_exit
+        description: Segment web app event - pro upgrade modal exit
+      - name: pro_upgrade_modal_modal_shown
+        description: Segment web app event - pro upgrade modal modal shown
+      - name: pro_upgrade_service_agreement_page_click_finish
+        description: Segment web app event - pro upgrade service agreement page click finish
+      - name: pro_upgrade_splash_page_click_upgrade
+        description: Segment web app event - pro upgrade splash page click upgrade
+      - name: pro_upgrade_splash_page_exit
+        description: Segment web app event - pro upgrade splash page exit
+      - name: pro_upgrade_submit_edit_office
+        description: Segment web app event - pro upgrade submit edit office
+      - name: profile_campaign_details_click_save
+        description: Segment web app event - profile campaign details click save
+      - name: profile_fun_fact_click_save
+        description: Segment web app event - profile fun fact click save
+      - name: profile_office_details_click_edit
+        description: Segment web app event - profile office details click edit
+      - name: profile_running_against_cancel_add_new
+        description: Segment web app event - profile running against cancel add new
+      - name: profile_running_against_click_add_new
+        description: Segment web app event - profile running against click add new
+      - name: profile_running_against_click_edit
+        description: Segment web app event - profile running against click edit
+      - name: profile_running_against_click_save
+        description: Segment web app event - profile running against click save
+      - name: profile_running_against_submit_add_new
+        description: Segment web app event - profile running against submit add new
+      - name: profile_running_against_submit_edit
+        description: Segment web app event - profile running against submit edit
+      - name: profile_top_issues_click_finish_entering_issues
+        description: Segment web app event - profile top issues click finish entering issues
+      - name: profile_why_section_click_save
+        description: Segment web app event - profile why section click save
+      - name: question_complete
+        description: Segment web app event - question complete
+      - name: resources_resource_clicked
+        description: Segment web app event - resources resource clicked
+      - name: schedule_text_campaign_audience_check_age
+        description: Segment web app event - schedule text campaign audience check age
+      - name: schedule_text_campaign_audience_check_audience
+        description: Segment web app event - schedule text campaign audience check audience
+      - name: schedule_text_campaign_audience_check_gender
+        description: Segment web app event - schedule text campaign audience check gender
+      - name: schedule_text_campaign_audience_check_political_party
+        description: Segment web app event - schedule text campaign audience check political party
+      - name: schedule_text_campaign_audience_enter_audience_request
+        description: Segment web app event - schedule text campaign audience enter audience request
+      - name: schedule_text_campaign_back
+        description: Segment web app event - schedule text campaign back
+      - name: schedule_text_campaign_exit
+        description: Segment web app event - schedule text campaign exit
+      - name: schedule_text_campaign_next
+        description: Segment web app event - schedule text campaign next
+      - name: schedule_text_campaign_script_click_add_your_own_script
+        description: Segment web app event - schedule text campaign script click add your own script
+      - name: schedule_text_campaign_script_click_generate_a_new_script
+        description: Segment web app event - schedule text campaign script click generate a new script
+      - name: schedule_text_campaign_script_click_use_a_saved_script
+        description: Segment web app event - schedule text campaign script click use a saved script
+      - name: schedule_text_campaign_script_select_saved_script
+        description: Segment web app event - schedule text campaign script select saved script
+      - name: schedule_text_campaign_script_submit_added_script
+        description: Segment web app event - schedule text campaign script submit added script
+      - name: serve_onboarding_add_image_viewed
+        description: Segment web app event - serve onboarding add image viewed
+      - name: serve_onboarding_constituency_profile_viewed
+        description: Segment web app event - serve onboarding constituency profile viewed
+      - name: serve_onboarding_getting_started_viewed
+        description: Segment web app event - serve onboarding getting started viewed
+      - name: serve_onboarding_meet_your_constituents_viewed
+        description: Segment web app event - serve onboarding meet your constituents viewed
+      - name: serve_onboarding_poll_preview_viewed
+        description: Segment web app event - serve onboarding poll preview viewed
+      - name: serve_onboarding_poll_strategy_viewed
+        description: Segment web app event - serve onboarding poll strategy viewed
+      - name: serve_onboarding_poll_value_props_viewed
+        description: Segment web app event - serve onboarding poll value props viewed
+      - name: serve_onboarding_sms_poll_sent
+        description: Segment web app event - serve onboarding sms poll sent
+      - name: serve_onboarding_success_page_viewed
+        description: Segment web app event - serve onboarding success page viewed
+      - name: serve_onboarding_sworn_in_completed
+        description: Segment web app event - serve onboarding sworn in completed
+      - name: serve_onboarding_sworn_in_viewed
+        description: Segment web app event - serve onboarding sworn in viewed
+      - name: set_password_click_set_password
+        description: Segment web app event - set password click set password
+      - name: settings_account_settings_click_upgrade
+        description: Segment web app event - settings account settings click upgrade
+      - name: settings_delete_account_click_delete
+        description: Segment web app event - settings delete account click delete
+      - name: settings_delete_account_submit_delete
+        description: Segment web app event - settings delete account submit delete
+      - name: settings_notifications_toggle_email
+        description: Segment web app event - settings notifications toggle email
+      - name: settings_personal_info_click_save
+        description: Segment web app event - settings personal info click save
+      - name: settings_personal_info_click_upload
+        description: Segment web app event - settings personal info click upload
+      - name: sign_in_click_create_account
+        description: Segment web app event - sign in click create account
+      - name: sign_in_click_forgot_password
+        description: Segment web app event - sign in click forgot password
+      - name: sign_up_click_login
+        description: Segment web app event - sign up click login
+      - name: tracks
+        description: Segment track calls capturing user actions and events
+      - name: users
+        description: Segment user profiles with traits and properties
+      - name: usersnap_submission
+        description: Segment web app event - usersnap submission
+      - name: voter_data_click_create_custom_voter_file
+        description: Segment web app event - voter data click create custom voter file
+      - name: voter_data_click_detail_view
+        description: Segment web app event - voter data click detail view
+      - name: voter_data_custom_voter_file_click_create
+        description: Segment web app event - voter data custom voter file click create
+      - name: voter_data_custom_voter_file_click_next
+        description: Segment web app event - voter data custom voter file click next
+      - name: voter_data_custom_voter_file_exit_modal
+        description: Segment web app event - voter data custom voter file exit modal
+      - name: voter_data_custom_voter_file_select_channel
+        description: Segment web app event - voter data custom voter file select channel
+      - name: voter_data_custom_voter_file_select_purpose
+        description: Segment web app event - voter data custom voter file select purpose
+      - name: voter_data_file_detail_click_back
+        description: Segment web app event - voter data file detail click back
+      - name: voter_data_file_detail_click_custom_file_info_icon
+        description: Segment web app event - voter data file detail click custom file info icon
+      - name: voter_data_file_detail_click_download_csv
+        description: Segment web app event - voter data file detail click download csv
+      - name: voter_data_file_detail_click_view_audience_filters
+        description: Segment web app event - voter data file detail click view audience filters
+      - name: voter_outreach_10dlc_compliance_form_submitted
+        description: Segment web app event - voter outreach 10dlc compliance form submitted
+      - name: voter_outreach_10dlc_compliance_started
+        description: Segment web app event - voter outreach 10dlc compliance started
+      - name: voter_outreach_campaign_completed
+        description: Segment web app event - voter outreach campaign completed

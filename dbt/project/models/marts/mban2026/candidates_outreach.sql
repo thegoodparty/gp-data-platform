@@ -12,6 +12,11 @@ select
     h.properties_general_votes_received as general_votes_received,
     h.properties_total_general_votes_cast as total_general_votes_cast,
     h.properties_uncontested as is_uncontested,
+    h.properties_incumbent as is_incumbent,
+    h.properties_open_seat_ as is_open_seat,
+    h.properties_number_of_opponents as number_of_opponents,
+    h.properties_partisan_np as partisan_type,
+    h.properties_seats_available as seats_available,
 
     -- Outreach fields (may be null for HubSpot companies without outreach)
     o.id as outreach_id,
