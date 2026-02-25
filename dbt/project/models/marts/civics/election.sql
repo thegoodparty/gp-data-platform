@@ -40,6 +40,8 @@ select
     deduplicated.is_judicial,
     deduplicated.is_appointed,
     deduplicated.br_normalized_position_type,
+    icp.voter_count as icp_voter_count,
+    icp.normalized_position_type as icp_normalized_position_name,
     icp.icp_office_win as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
     deduplicated.created_at,

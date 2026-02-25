@@ -709,6 +709,24 @@ models:
       - name: br_normalized_position_type
         description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
 
+      - name: icp_voter_count
+        description: >
+          Voter count from the L2 district match used to determine ICP eligibility.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without a matched L2 district.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "icp_voter_count is not null"
+
+      - name: icp_normalized_position_name
+        description: >
+          BallotReady normalized position type used in ICP eligibility determination.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
       - name: is_win_icp
         description: >
           Whether this election's position meets the Win ICP criteria
