@@ -200,6 +200,10 @@ models:
         description: The election year
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: [2026]
+                quote: false
       - name: state
         description: State postal code
         data_tests:
@@ -241,6 +245,10 @@ models:
         description: The election year
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: [2027]
+                quote: false
       - name: state
         description: State postal code
         data_tests:
@@ -282,6 +290,10 @@ models:
         description: The election year
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: [2028]
+                quote: false
       - name: state
         description: State postal code
         data_tests:

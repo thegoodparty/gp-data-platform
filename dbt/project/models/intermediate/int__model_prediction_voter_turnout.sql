@@ -89,12 +89,13 @@ with
             model_version,
             inference_at
         from {{ ref("stg_model_predictions__ballots_projected_2026_v2") }}
-        {% if is_incremental() %}
-            where
-                inference_at >= coalesce(
+        where
+            election_year = 2026
+            {% if is_incremental() %}
+                and inference_at >= coalesce(
                     (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
                 )
-        {% endif %}
+            {% endif %}
         qualify
             row_number() over (
                 partition by
@@ -119,12 +120,13 @@ with
             model_version,
             inference_at
         from {{ ref("stg_model_predictions__ballots_projected_2027") }}
-        {% if is_incremental() %}
-            where
-                inference_at >= coalesce(
+        where
+            election_year = 2027
+            {% if is_incremental() %}
+                and inference_at >= coalesce(
                     (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
                 )
-        {% endif %}
+            {% endif %}
         qualify
             row_number() over (
                 partition by
@@ -149,12 +151,13 @@ with
             model_version,
             inference_at
         from {{ ref("stg_model_predictions__ballots_projected_2028") }}
-        {% if is_incremental() %}
-            where
-                inference_at >= coalesce(
+        where
+            election_year = 2028
+            {% if is_incremental() %}
+                and inference_at >= coalesce(
                     (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
                 )
-        {% endif %}
+            {% endif %}
         qualify
             row_number() over (
                 partition by
