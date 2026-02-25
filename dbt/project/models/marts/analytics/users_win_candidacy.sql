@@ -5,6 +5,12 @@ with
         inner join
             {{ ref("election_stage") }} es
             on cs.gp_election_stage_id = es.gp_election_stage_id
+        qualify
+            row_number() over (
+                partition by cs.gp_candidacy_id, es.stage_type
+                order by cs.updated_at desc nulls last
+            )
+            = 1
     ),
 
     final as (
