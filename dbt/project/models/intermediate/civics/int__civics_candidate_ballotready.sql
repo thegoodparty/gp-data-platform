@@ -102,8 +102,7 @@ with
 
         from candidacies
         left join
-            person_urls
-            on cast(candidacies.br_candidate_id as int) = person_urls.person_database_id
+            person_urls on candidacies.br_candidate_id = person_urls.person_database_id
     ),
 
     deduplicated as (

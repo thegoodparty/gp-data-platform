@@ -1,8 +1,36 @@
+## Workflow
+
+Use the `gh` cli to make pull-requests and interact with GitHub.
+
+Assume we're using the dbt *cloud* cli, not the dbt-core cli. As such you do
+not need to specify `--defer` or the location of a state file, as it's
+configured in dbt cloud. Unless instructed otherwise, do not invoke dbt via
+`poetry`, as the dbt cloud cli should be installed at the system level, and
+invoking dbt via `poetry` risks invoking the dbt-core cli unintentionally.
+
+When adding or modifying models and/or tests, run `dbt build` on the modified
+objects to ensure they build as exected.
+
+When building multiple models, use quotes around the models in the `--select` argument:
+    - Bad: `dbt build --select my_model1 my_model2`
+    - Good: `dbt build --select "my_model1 my_model2"`
+
+**IMPORTANT** - When working on dbt models, it may be helpful to inspect
+existing sources/models in Databricks, as well as models that you have added
+and modified after creating them. Do so by running the `inspect_data` utility
+macro:
+
+Output includes:
+  - Relation name and type
+  - Total row count
+  - Column details table (name, data type, non-null count, % populated)
+  - Sample data rows
+
+
 ## Helpful Commands
 
 ```
 # dbt (must be run from in dbt/project/ directory
-poetry install && eval $(poetry env activate)
 dbt run                               # Run transformations
 dbt test                              # Data quality tests
 dbt build                             # Run + test
@@ -10,14 +38,6 @@ dbt build                             # Run + test
 # Inpect models/sources:
 dbt run-operation inspect_data --args '{"model": "model_name"}'
 ```
-
-**IMPORTANT** - When working on dbt models, it may be helpful to inspect existing sources/models in Databricks, as well as models that you have added and modified after creating them. Do so by running the `inspect_data` utility macro:
-
-Output includes:
-  - Relation name and type
-  - Total row count
-  - Column details table (name, data type, non-null count, % populated)
-  - Sample data rows
 
 ```
 # For models
@@ -29,7 +49,7 @@ dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_
 # With custom sample size
 dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_name": "gp_api_db_user", "sample_size": 10}'
 ```
-## Conventions
+## Code Conventions
 
 - Most dbt tests do *not* need a `config.where: some_column_is_not_null`. For
   instance, accepted_values tests will work fine with nulls without this
@@ -39,12 +59,11 @@ dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_
     - Bad: `where is_valid = 'true' and is_expired = 'false'
 - Databricks column references are case insensitive, so you don't need to
   include backticks for mixed-case column names
+- All column renaming and casting should happen once, in the staging layer. If
+  we're casting and renaming columns in intermeidate and mart models, that's a
+  code smell. Identify and suggest refactoring when you notice this.
 
-## Workflow
-
-Use the `gh` cli to make pull-requests.
-
-### Building and Testing Models
+## Building and Testing Models
 
 When creating or modifying dbt models, always follow this workflow:
 
@@ -62,7 +81,10 @@ When creating or modifying dbt models, always follow this workflow:
 ## Naming Conventions
 
 ### Mart Models
-Mart model filenames should use **domain-friendly names** that end users will understand. Do **not** prefix mart models with `m_`. Use plain, descriptive names like `candidacies.sql`, `candidates.sql`, `user_signups_by_month.sql`, etc.
+Mart model filenames should use **domain-friendly names** that end users will
+understand. Do **not** prefix mart models with `m_`. Use plain, descriptive
+names like `candidacies.sql`, `candidates.sql`, `user_signups_by_month.sql`,
+etc.
 
 ### Other Layers
 - **Staging models**: `stg_<source>__<table>.sql` (e.g., `stg_airbyte_source__gp_api_db_user.sql`)

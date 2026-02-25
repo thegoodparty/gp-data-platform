@@ -9,9 +9,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: election_date
         description: Date of the election
         data_tests:
@@ -50,9 +48,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: gp_election_id
         description: Foreign key to election table
         data_tests:
@@ -93,9 +89,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: gp_candidate_id
         description: Foreign key to candidate table
         data_tests:
@@ -172,9 +166,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
       - name: created_at
@@ -208,9 +200,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: gp_candidacy_id
         description: Foreign key to candidacy table
         data_tests:
@@ -234,17 +224,14 @@ models:
                 values: [true, false]
       - name: election_result
         description: >
-          Result of the election (Won, Lost, etc.).
-          HubSpot values: Won General, Lost General, Runoff, Withdrew, Not on Ballot.
-          DDHQ values: Won, Lost.
+          Normalized result of the election stage.
+          Standard values: Won, Lost, Runoff, Withdrew, Not on Ballot.
         data_tests:
           - accepted_values:
               arguments:
                 values:
                   - Won
                   - Lost
-                  - Won General
-                  - Lost General
                   - Runoff
                   - Withdrew
                   - Not on Ballot
@@ -338,9 +325,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: br_candidacy_id
         description: BallotReady candidacy ID - NULL for TechSpeed-sourced records (future COALESCE target)
@@ -438,9 +423,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: first_name
         description: Candidate's first name
@@ -456,9 +439,7 @@ models:
         description: U.S. state
         data_tests:
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[A-Z]{2}$
+          - is_state_abbreviation:
               config:
                 severity: warn
 
@@ -487,9 +468,22 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
+          - is_uuid
+          - relationships:
+              description: >
+                Every candidate must have at least one candidacy. Failures
+                indicate an ID-generation mismatch between candidate and
+                candidacy models (e.g. different email coalesce logic).
               arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+                to: ref('int__civics_candidacy_ballotready')
+                field: gp_candidate_id
+              config:
+                # A small number of candidates may have candidacy rows where
+                # all election dates are null after rollup, causing them to be
+                # filtered out of the candidacy table. Large spikes indicate
+                # an ID-generation bug.
+                warn_if: ">15"
+                error_if: ">50"
 
       - name: first_name
         description: Candidate's first name
@@ -505,9 +499,7 @@ models:
         description: U.S. state (2-letter code)
         data_tests:
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[A-Z]{2}$
+          - is_state_abbreviation
 
       - name: created_at
         data_tests:
@@ -536,9 +528,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_candidate_id
         description: Foreign key to candidate table
@@ -611,9 +601,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: election_date
         description: Date of the election
@@ -654,9 +642,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_election_id
         description: Foreign key to election table
@@ -753,9 +739,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_candidacy_id
         description: Foreign key to candidacy table

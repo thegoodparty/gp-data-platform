@@ -129,7 +129,14 @@ select
     source_race_id,
     candidate_party,
     is_winner,
-    election_result,
+    -- Normalize HubSpot-specific result values to standard form
+    case
+        when election_result = 'Won General'
+        then 'Won'
+        when election_result = 'Lost General'
+        then 'Lost'
+        else election_result
+    end as election_result,
     election_result_source,
     match_confidence,
     match_reasoning,

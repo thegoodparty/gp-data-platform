@@ -16,8 +16,8 @@ with
             election_day >= '2026-01-01'
             -- Use general election records to define elections
             -- (primaries/runoffs are stages within an election)
-            and is_primary = 'false'
-            and is_runoff = 'false'
+            and not is_primary
+            and not is_runoff
     ),
 
     br_position as (
@@ -61,13 +61,13 @@ with
                 regexp_extract(candidacies.position_name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name,
-            cast(candidacies.election_day as date) as election_date,
-            year(cast(candidacies.election_day as date)) as election_year,
+            candidacies.election_day as election_date,
+            year(candidacies.election_day) as election_year,
 
             -- Election metadata (from position API)
             cast(null as date) as filing_deadline,
             cast(null as int) as population,
-            cast(candidacies.number_of_seats as int) as seats_available,
+            candidacies.number_of_seats as seats_available,
             cast(null as date) as term_start_date,
             cast(null as string) as is_uncontested,
             cast(null as string) as number_of_opponents,
@@ -79,7 +79,7 @@ with
             false as has_ddhq_match,
 
             -- BallotReady enrichment
-            cast(candidacies.br_position_id as int) as br_position_database_id,
+            candidacies.br_position_id as br_position_database_id,
             br_position.judicial as is_judicial,
             br_position.appointed as is_appointed,
             br_normalized.name as br_normalized_position_type,
@@ -89,9 +89,7 @@ with
             candidacies._airbyte_extracted_at as updated_at
 
         from candidacies
-        left join
-            br_position
-            on cast(candidacies.br_position_id as int) = br_position.database_id
+        left join br_position on candidacies.br_position_id = br_position.database_id
         left join
             br_normalized
             on br_position.normalized_position.databaseid = br_normalized.database_id

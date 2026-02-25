@@ -38,38 +38,26 @@ with
                 ''
             ) as district,
             -- Parse party from parties JSON
-            case
-                when candidacies.parties like '%Independent%'
-                then 'Independent'
-                when candidacies.parties like '%Nonpartisan%'
-                then 'Nonpartisan'
-                when candidacies.parties like '%Democrat%'
-                then 'Democrat'
-                when candidacies.parties like '%Republican%'
-                then 'Republican'
-                when candidacies.parties like '%Libertarian%'
-                then 'Libertarian'
-                when candidacies.parties like '%Green%'
-                then 'Green'
-                else null
-            end as party_affiliation,
+            {{ parse_party_affiliation("candidacies.parties") }} as party_affiliation,
             br_position.partisan_type
         from candidacies
-        left join
-            br_position
-            on cast(candidacies.br_position_id as int) = br_position.database_id
+        left join br_position on candidacies.br_position_id = br_position.database_id
     ),
 
-    -- Look up the general election date to generate gp_candidacy_id
-    -- (candidacy ID uses the general election date, not stage-specific date)
-    general_election_dates as (
+    -- Look up election dates to generate gp_candidacy_id
+    -- Must use the same coalesce(general, primary, runoff) fallback as
+    -- int__civics_candidacy_ballotready to ensure IDs match across models
+    candidacy_election_dates as (
         select
             br_candidate_id,
             br_position_id,
             br_election_id,
-            max(cast(election_day as date)) as general_election_date
+            max(
+                case when not is_primary and not is_runoff then election_day end
+            ) as general_election_date,
+            max(case when is_primary then election_day end) as primary_election_date,
+            max(case when is_runoff then election_day end) as runoff_election_date
         from candidacies
-        where is_primary = 'false' and is_runoff = 'false'
         group by br_candidate_id, br_position_id, br_election_id
     ),
 
@@ -80,13 +68,13 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(s.first_name, '')",
-                        "coalesce(s.last_name, '')",
-                        "coalesce(s.state, '')",
-                        "coalesce(s.party_affiliation, '')",
-                        "coalesce(s.candidate_office, '')",
-                        "cast(coalesce(ged.general_election_date, cast(s.election_day as date)) as string)",
-                        "coalesce(s.district, '')",
+                        "s.first_name",
+                        "s.last_name",
+                        "s.state",
+                        "s.party_affiliation",
+                        "s.candidate_office",
+                        "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.runoff_election_date) as string)",
+                        "s.district",
                     ]
                 )
             }}
@@ -97,13 +85,13 @@ with
                     fields=[
                         generate_salted_uuid(
                             fields=[
-                                "coalesce(s.first_name, '')",
-                                "coalesce(s.last_name, '')",
-                                "coalesce(s.state, '')",
-                                "coalesce(s.party_affiliation, '')",
-                                "coalesce(s.candidate_office, '')",
-                                "cast(coalesce(ged.general_election_date, cast(s.election_day as date)) as string)",
-                                "coalesce(s.district, '')",
+                                "s.first_name",
+                                "s.last_name",
+                                "s.state",
+                                "s.party_affiliation",
+                                "s.candidate_office",
+                                "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.runoff_election_date) as string)",
+                                "s.district",
                             ]
                         ),
                         "s.br_race_id",
@@ -139,8 +127,6 @@ with
                 then 'Won'
                 when s.election_result = 'RUNOFF'
                 then 'Runoff'
-                when s.election_result = ''
-                then null
                 else null
             end as election_result,
 
@@ -148,20 +134,18 @@ with
             cast(null as float) as match_confidence,
             cast(null as string) as match_reasoning,
             cast(null as string) as match_top_candidates,
-            cast(
-                s.election_result is not null and s.election_result != '' as boolean
-            ) as has_match,
+            s.election_result is not null as has_match,
             cast(null as string) as votes_received,
-            cast(s.election_day as date) as election_stage_date,
+            s.election_day as election_stage_date,
             s._airbyte_extracted_at as created_at,
             s._airbyte_extracted_at as updated_at
 
         from candidacies_with_fields as s
         left join
-            general_election_dates as ged
-            on s.br_candidate_id = ged.br_candidate_id
-            and s.br_position_id = ged.br_position_id
-            and s.br_election_id = ged.br_election_id
+            candidacy_election_dates as ced
+            on s.br_candidate_id = ced.br_candidate_id
+            and s.br_position_id = ced.br_position_id
+            and s.br_election_id = ced.br_election_id
     ),
 
     -- Only include stages with valid candidacy and election_stage references
@@ -180,10 +164,9 @@ with
         inner join
             valid_candidacies
             on stage.computed_gp_candidacy_id = valid_candidacies.gp_candidacy_id
-        where
-            stage.gp_election_stage_id is null
-            or stage.gp_election_stage_id
-            in (select gp_election_stage_id from valid_election_stages)
+        inner join
+            valid_election_stages
+            on stage.gp_election_stage_id = valid_election_stages.gp_election_stage_id
     ),
 
     deduplicated as (

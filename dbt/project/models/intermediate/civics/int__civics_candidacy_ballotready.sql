@@ -20,10 +20,22 @@ with
         select * from {{ ref("stg_airbyte_source__ballotready_api_position") }}
     ),
 
+    -- Get enriched person data from BallotReady API (has contact info)
+    br_person as (select * from {{ ref("int__ballotready_person") }}),
+
+    person_emails as (
+        select
+            database_id as person_database_id,
+            get(filter(contacts, x -> x.email is not null), 0).email as api_email
+        from br_person
+        where database_id is not null
+    ),
+
     -- Derive fields needed for ID generation at the race (row) level
     candidacies_with_fields as (
         select
             candidacies.*,
+            person_emails.api_email,
             {{
                 generate_candidate_office_from_position(
                     "candidacies.position_name",
@@ -48,9 +60,10 @@ with
             ) as seat_name,
             br_position.partisan_type
         from candidacies
+        left join br_position on candidacies.br_position_id = br_position.database_id
         left join
-            br_position
-            on cast(candidacies.br_position_id as int) = br_position.database_id
+            person_emails
+            on candidacies.br_candidate_id = person_emails.person_database_id
     ),
 
     -- Roll up from race-level to candidacy-level
@@ -67,6 +80,7 @@ with
             any_value(last_name) as last_name,
             any_value(state) as state,
             any_value(email) as email,
+            any_value(api_email) as api_email,
             any_value(phone) as phone,
             any_value(position_name) as official_office_name,
             any_value(candidate_office) as candidate_office,
@@ -80,29 +94,19 @@ with
             any_value(_airbyte_extracted_at) as _airbyte_extracted_at,
 
             -- Extract stage-specific dates
+            max(case when is_primary then election_day end) as primary_election_date,
             max(
-                case when is_primary = 'true' then cast(election_day as date) end
-            ) as primary_election_date,
-            max(
-                case
-                    when is_primary = 'false' and is_runoff = 'false'
-                    then cast(election_day as date)
-                end
+                case when not is_primary and not is_runoff then election_day end
             ) as general_election_date,
-            max(
-                case when is_runoff = 'true' then cast(election_day as date) end
-            ) as runoff_election_date,
+            max(case when is_runoff then election_day end) as runoff_election_date,
 
             -- The general election result is the canonical candidacy result
             -- Fall back to primary result if no general yet
             coalesce(
                 max(
-                    case
-                        when is_primary = 'false' and is_runoff = 'false'
-                        then election_result
-                    end
+                    case when not is_primary and not is_runoff then election_result end
                 ),
-                max(case when is_primary = 'true' then election_result end)
+                max(case when is_primary then election_result end)
             ) as raw_election_result,
 
             max(candidacy_updated_at) as candidacy_updated_at
@@ -121,21 +125,7 @@ with
 
             -- Parse party from parties JSON
             -- parties format: [{"name"=>"Nonpartisan", "short_name"=>"NP"}]
-            case
-                when parties like '%Independent%'
-                then 'Independent'
-                when parties like '%Nonpartisan%'
-                then 'Nonpartisan'
-                when parties like '%Democrat%'
-                then 'Democrat'
-                when parties like '%Republican%'
-                then 'Republican'
-                when parties like '%Libertarian%'
-                then 'Libertarian'
-                when parties like '%Green%'
-                then 'Green'
-                else null
-            end as party_affiliation,
+            {{ parse_party_affiliation("parties") }} as party_affiliation,
 
             -- Map election_result to candidacy_result
             case
@@ -174,19 +164,20 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(first_name, '')",
-                        "coalesce(last_name, '')",
-                        "coalesce(state, '')",
-                        "coalesce(party_affiliation, '')",
-                        "coalesce(candidate_office, '')",
+                        "first_name",
+                        "last_name",
+                        "state",
+                        "party_affiliation",
+                        "candidate_office",
                         "cast(coalesce(general_election_date, primary_election_date, runoff_election_date) as string)",
-                        "coalesce(district, '')",
+                        "district",
                     ]
                 )
             }}
             as gp_candidacy_id,
 
             -- gp_candidate_id - matches int__civics_candidate_ballotready pattern
+            -- Must use coalesce(email, api_email) to match the candidate model
             {{
                 generate_salted_uuid(
                     fields=[
@@ -194,7 +185,7 @@ with
                         "last_name",
                         "state",
                         "cast(null as string)",
-                        "email",
+                        "coalesce(email, api_email)",
                         "phone",
                     ]
                 )
@@ -233,7 +224,7 @@ with
             runoff_election_date,
 
             -- BallotReady position ID
-            cast(br_position_id as int) as br_position_database_id,
+            br_position_id as br_position_database_id,
 
             -- Assessment fields (hardcoded until we join viability/p2v in followup
             -- work)

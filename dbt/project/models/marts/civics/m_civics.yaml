@@ -198,9 +198,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_candidate_id
         description: Foreign key to candidate table
@@ -225,6 +223,16 @@ models:
 
       - name: party_affiliation
         description: Candidate's political party
+        tests:
+          - accepted_values:
+              values:
+                - Independent
+                - Nonpartisan
+                - Democrat
+                - Republican
+                - Libertarian
+                - Green
+                - Other
 
       - name: is_incumbent
         description: Whether the candidate is the incumbent
@@ -364,9 +372,22 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
+          - is_uuid
+          - relationships:
+              description: >
+                Every candidate must have at least one candidacy. Failures here
+                indicate an ID-generation mismatch between candidate and candidacy
+                intermediate models (e.g. different email coalesce logic).
               arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+                to: ref('candidacy')
+                field: gp_candidate_id
+              config:
+                # A small number of candidates may have candidacy rows where
+                # all election dates are null after rollup, causing them to be
+                # filtered out of the candidacy table. Large spikes indicate
+                # an ID-generation bug.
+                warn_if: ">15"
+                error_if: ">50"
 
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
@@ -391,6 +412,8 @@ models:
 
       - name: state
         description: U.S. state for the candidate
+        data_tests:
+          - is_state_abbreviation
 
       - name: email
         description: Candidate's email address
@@ -451,9 +474,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_candidacy_id
         description: Foreign key to candidacy table
@@ -575,9 +596,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: official_office_name
         description: Formal office title for the election
@@ -593,6 +612,8 @@ models:
 
       - name: state
         description: U.S. state for the election
+        data_tests:
+          - is_state_abbreviation
 
       - name: city
         description: City for the election
@@ -728,9 +749,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_election_id
         description: Foreign key to election table

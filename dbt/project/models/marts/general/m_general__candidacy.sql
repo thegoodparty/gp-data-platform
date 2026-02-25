@@ -20,14 +20,14 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(tbl_contest.official_office_name, '')",
-                        "coalesce(tbl_contest.candidate_office, '')",
-                        "coalesce(tbl_contest.office_type, '')",
-                        "coalesce(tbl_contest.office_level, '')",
-                        "coalesce(tbl_contest.state, '')",
-                        "coalesce(tbl_contest.city, '')",
-                        "coalesce(tbl_contest.district, '')",
-                        "coalesce(tbl_contest.seat_name, '')",
+                        "tbl_contest.official_office_name",
+                        "tbl_contest.candidate_office",
+                        "tbl_contest.office_type",
+                        "tbl_contest.office_level",
+                        "tbl_contest.state",
+                        "tbl_contest.city",
+                        "tbl_contest.district",
+                        "tbl_contest.seat_name",
                     ]
                 )
             }} as gp_contest_id,

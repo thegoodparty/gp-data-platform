@@ -51,9 +51,7 @@ with
                 ''
             ) as seat_name
         from candidacies
-        left join
-            br_position
-            on cast(candidacies.br_position_id as int) = br_position.database_id
+        left join br_position on candidacies.br_position_id = br_position.database_id
     ),
 
     -- To generate gp_election_id we need the GENERAL election date for this
@@ -61,11 +59,9 @@ with
     -- general-stage rows.
     general_election_dates as (
         select
-            br_position_id,
-            br_election_id,
-            max(cast(election_day as date)) as general_election_date
+            br_position_id, br_election_id, max(election_day) as general_election_date
         from candidacies
-        where is_primary = 'false' and is_runoff = 'false'
+        where not is_primary and not is_runoff
         group by br_position_id, br_election_id
     ),
 
@@ -82,19 +78,19 @@ with
             -- BallotReady source identifiers
             cast(candidacies_with_fields.br_race_id as string) as br_race_id,
             cast(candidacies_with_fields.br_election_id as string) as br_election_id,
-            cast(candidacies_with_fields.br_position_id as string) as br_position_id,
+            candidacies_with_fields.br_position_id,
             cast(null as string) as ddhq_race_id,
 
             -- Map stage type (lowercased)
             case
-                when candidacies_with_fields.is_primary = 'true'
+                when candidacies_with_fields.is_primary
                 then 'primary'
-                when candidacies_with_fields.is_runoff = 'true'
+                when candidacies_with_fields.is_runoff
                 then 'runoff'
                 else 'general'
             end as stage_type,
 
-            cast(candidacies_with_fields.election_day as date) as election_date,
+            candidacies_with_fields.election_day as election_date,
 
             -- election_name: the overarching election event name from BallotReady
             candidacies_with_fields.election_name as election_name,
@@ -115,10 +111,10 @@ with
                 else ''
             end as race_name,
 
-            candidacies_with_fields.is_primary = 'true' as is_primary,
-            candidacies_with_fields.is_runoff = 'true' as is_runoff,
+            candidacies_with_fields.is_primary,
+            candidacies_with_fields.is_runoff,
             candidacies_with_fields.is_retention = 'true' as is_retention,
-            cast(candidacies_with_fields.number_of_seats as int) as number_of_seats,
+            candidacies_with_fields.number_of_seats,
             cast(null as string) as total_votes_cast,
             candidacies_with_fields._airbyte_extracted_at as created_at,
             candidacies_with_fields._airbyte_extracted_at as updated_at
@@ -142,8 +138,7 @@ with
                     candidacies_with_fields.district,
                     candidacies_with_fields.seat_name,
                     coalesce(
-                        ged.general_election_date,
-                        cast(candidacies_with_fields.election_day as date)
+                        ged.general_election_date, candidacies_with_fields.election_day
                     ) as election_date
             ) as elec_date_lookup
     ),
