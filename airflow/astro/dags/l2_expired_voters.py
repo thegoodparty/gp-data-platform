@@ -31,7 +31,7 @@ fails mid-delete, pending rows are cleaned up on retry (idempotent).
 - `l2_sftp_expired_dir` — SFTP directory for expired voter files
 - `l2_sftp_expired_file_pattern` — regex pattern for matching files
 - `databricks_voter_schema` — Databricks schema where voter models live
-  (e.g., `dbt` in prod, `dbt_hugh` in dev)
+  (e.g., `dbt` in prod, `dbt_staging` in dev)
 - `databricks_l2_table` — (optional, default: `int__l2_nationwide_uniform`)
 - `databricks_conn_id` — (optional, default: `databricks`) connection ID for Databricks;
   set to `databricks_dev` in dev, `databricks` in prod
@@ -466,11 +466,10 @@ def l2_remove_expired_voters():
     verify_result = verify_deletions(ingest_result, db_result)
     mark_result = mark_staged_complete(verify_result)
 
-    dbt_cloud_job_id = Variable.get("dbt_cloud_job_id")
     trigger_dbt = DbtCloudRunJobOperator(
         task_id="trigger_dbt_full_refresh",
         dbt_cloud_conn_id="dbt_cloud",
-        job_id=int(dbt_cloud_job_id),
+        job_id="{{ var.value.dbt_cloud_job_id | int }}",
         steps_override=[
             "dbt run --select int__l2_nationwide_uniform+ "
             "--exclude int__l2_nationwide_uniform --full-refresh"
