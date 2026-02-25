@@ -27,12 +27,13 @@ with
             model_version,
             inference_at
         from {{ ref("stg_model_predictions__turnout_projections_model2odd") }}
-        {% if is_incremental() %}
-            where
-                inference_at >= coalesce(
+        where
+            election_year not in (2027)
+            {% if is_incremental() %}
+                and inference_at >= coalesce(
                     (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
                 )
-        {% endif %}
+            {% endif %}
         qualify
             row_number() over (
                 partition by
@@ -58,7 +59,7 @@ with
             inference_at
         from {{ ref("stg_model_predictions__turnout_projections_even_years_20250709") }}
         where
-            election_year != 2026
+            election_year < 2026
             {% if is_incremental() %}
                 and inference_at >= coalesce(
                     (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
