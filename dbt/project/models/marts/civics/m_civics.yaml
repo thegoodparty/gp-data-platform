@@ -373,21 +373,9 @@ models:
           - unique
           - not_null
           - is_uuid
-          - relationships:
-              description: >
-                Every candidate must have at least one candidacy. Failures here
-                indicate an ID-generation mismatch between candidate and candidacy
-                intermediate models (e.g. different email coalesce logic).
-              arguments:
-                to: ref('candidacy')
-                field: gp_candidate_id
-              config:
-                # A small number of candidates may have candidacy rows where
-                # all election dates are null after rollup, causing them to be
-                # filtered out of the candidacy table. Large spikes indicate
-                # an ID-generation bug.
-                warn_if: ">15"
-                error_if: ">50"
+          # Relationship test for 2026+ candidates is in
+          # tests/civics/candidate_candidacy_relationship_2026_forward.sql
+          # (singular test needed because config.where does not support ref())
 
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
