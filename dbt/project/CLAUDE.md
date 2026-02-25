@@ -56,7 +56,7 @@ dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_
   config.
 - For boolean columns, use the boolean value explicitly. Don't do a comparison.
     - Good: `where is_valid and not is_expired`
-    - Bad: `where is_valid = 'true' and is_expired = 'false'
+    - Bad: `where is_valid = 'true' and is_expired = 'false'`
 - Databricks column references are case insensitive, so you don't need to
   include backticks for mixed-case column names
 - All column renaming and casting should happen once, in the staging layer. If
