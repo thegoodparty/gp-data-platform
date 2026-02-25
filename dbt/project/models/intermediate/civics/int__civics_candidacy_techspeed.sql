@@ -58,13 +58,13 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(first_name, '')",
-                        "coalesce(last_name, '')",
-                        "coalesce(state, '')",
-                        "coalesce(party, '')",
-                        "coalesce(candidate_office, '')",
+                        "first_name",
+                        "last_name",
+                        "state",
+                        "party",
+                        "candidate_office",
                         "cast(general_election_date_parsed as string)",
-                        "coalesce(district, '')",
+                        "district",
                     ]
                 )
             }} as gp_candidacy_id,

@@ -36,10 +36,7 @@ with
             tier as geographic_tier,
             number_of_seats as number_of_seats_available,
             case
-                when is_primary = 'false'
-                then 'General'
-                when is_primary = 'true'
-                then 'Primary'
+                when not is_primary then 'General' when is_primary then 'Primary'
             end as election_type,
             case
                 when parties like '%Independent%'
@@ -249,7 +246,7 @@ with
             end as br_contest_id,
             br_candidacy_id,
             br_race_id,
-            cast(br_position_id as int) as br_position_id,
+            br_position_id,
             parties,
             candidacy_created_at,
             candidacy_updated_at

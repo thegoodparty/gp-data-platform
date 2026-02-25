@@ -6,17 +6,22 @@ with
         select *
         from
         values
-            -- Test case 1: Default parameters (include_DC=true, include_US=false)
-            ('default', 51),
+            -- Test case 1: Default parameters (include_DC=true, include_US=false,
+            -- include_territories=true)
+            -- 50 states + DC + 5 territories = 56
+            ('default', 56),
 
-            -- Test case 2: Include US, include DC
-            ('include_us_dc', 52),
+            -- Test case 2: Include US, include DC (+ territories)
+            -- 50 states + DC + US + 5 territories = 57
+            ('include_us_dc', 57),
 
-            -- Test case 3: Include US, exclude DC
-            ('include_us_no_dc', 51),
+            -- Test case 3: Include US, exclude DC (+ territories)
+            -- 50 states + US + 5 territories = 56
+            ('include_us_no_dc', 56),
 
-            -- Test case 4: Exclude US, exclude DC
-            ('no_us_no_dc', 50) as test_cases(test_name, expected_count)
+            -- Test case 4: Exclude US, exclude DC (+ territories)
+            -- 50 states + 5 territories = 55
+            ('no_us_no_dc', 55) as test_cases(test_name, expected_count)
     ),
 
     macro_results as (

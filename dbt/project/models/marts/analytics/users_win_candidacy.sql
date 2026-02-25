@@ -1,10 +1,16 @@
 with
     stage_results as (
-        select cs.gp_candidacy_id, es.election_stage, cs.election_result
+        select cs.gp_candidacy_id, es.stage_type, cs.election_result
         from {{ ref("candidacy_stage") }} cs
         inner join
             {{ ref("election_stage") }} es
             on cs.gp_election_stage_id = es.gp_election_stage_id
+        qualify
+            row_number() over (
+                partition by cs.gp_candidacy_id, es.stage_type
+                order by cs.updated_at desc nulls last
+            )
+            = 1
     ),
 
     final as (
@@ -83,17 +89,17 @@ with
         left join
             stage_results pr
             on cand.gp_candidacy_id = pr.gp_candidacy_id
-            and pr.election_stage = 'primary'
+            and pr.stage_type = 'primary'
 
         left join
             stage_results ge
             on cand.gp_candidacy_id = ge.gp_candidacy_id
-            and ge.election_stage = 'general'
+            and ge.stage_type = 'general'
 
         left join
             stage_results ro
             on cand.gp_candidacy_id = ro.gp_candidacy_id
-            and ro.election_stage = 'runoff'
+            and ro.stage_type = 'runoff'
     )
 
 select *

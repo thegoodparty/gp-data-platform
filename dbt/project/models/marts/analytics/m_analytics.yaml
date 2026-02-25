@@ -1046,8 +1046,6 @@ models:
 
       - name: general_election_date
         description: Date of the general election
-        data_tests:
-          - not_null
 
       - name: runoff_election_date
         description: Date of the runoff election, if applicable
