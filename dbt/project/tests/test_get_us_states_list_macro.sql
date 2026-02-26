@@ -7,21 +7,25 @@ with
         from
         values
             -- Test case 1: Default parameters (include_DC=true, include_US=false,
-            -- include_territories=true)
+            -- include_territories=false)
+            -- 50 states + DC = 51
+            ('default', 51),
+
+            -- Test case 2: Include US, include DC (no territories)
+            -- 50 states + DC + US = 52
+            ('include_us_dc', 52),
+
+            -- Test case 3: Include US, exclude DC (no territories)
+            -- 50 states + US = 51
+            ('include_us_no_dc', 51),
+
+            -- Test case 4: Exclude US, exclude DC (no territories)
+            -- 50 states
+            ('no_us_no_dc', 50),
+
+            -- Test case 5: Include territories explicitly
             -- 50 states + DC + 5 territories = 56
-            ('default', 56),
-
-            -- Test case 2: Include US, include DC (+ territories)
-            -- 50 states + DC + US + 5 territories = 57
-            ('include_us_dc', 57),
-
-            -- Test case 3: Include US, exclude DC (+ territories)
-            -- 50 states + US + 5 territories = 56
-            ('include_us_no_dc', 56),
-
-            -- Test case 4: Exclude US, exclude DC (+ territories)
-            -- 50 states + 5 territories = 55
-            ('no_us_no_dc', 55) as test_cases(test_name, expected_count)
+            ('with_territories', 56) as test_cases(test_name, expected_count)
     ),
 
     macro_results as (
@@ -48,6 +52,16 @@ with
             'no_us_no_dc' as test_name,
             {{ get_us_states_list(include_DC=false, include_US=false) | length }}
             as actual_count
+
+        union all
+
+        select
+            'with_territories' as test_name,
+            {{
+                get_us_states_list(
+                    include_DC=true, include_US=false, include_territories=true
+                ) | length
+            }} as actual_count
     ),
 
     validation as (
