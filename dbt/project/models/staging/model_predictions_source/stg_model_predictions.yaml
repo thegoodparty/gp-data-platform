@@ -185,6 +185,141 @@ models:
           - not_null
           - unique
 
+  - name: stg_model_predictions__ballots_projected_2026_v2
+    description: Turnout projections for 2026 (v2 replacing original even years 2026 data)
+    columns:
+      - name: district_type
+        description: The district type
+        data_tests:
+          - not_null
+      - name: district_name
+        description: The district name
+        data_tests:
+          - not_null
+      - name: election_year
+        description: The election year
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [2026]
+                quote: false
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+    tests:
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+            - state
+            - district_type
+            - district_name
+            - election_year
+            - election_code
+            - model_version
+            - inference_at
+
+  - name: stg_model_predictions__ballots_projected_2027
+    description: Turnout projections for 2027
+    columns:
+      - name: district_type
+        description: The district type
+        data_tests:
+          - not_null
+      - name: district_name
+        description: The district name
+        data_tests:
+          - not_null
+      - name: election_year
+        description: The election year
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [2027]
+                quote: false
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+    tests:
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+            - state
+            - district_type
+            - district_name
+            - election_year
+            - election_code
+            - model_version
+            - inference_at
+
+  - name: stg_model_predictions__ballots_projected_2028
+    description: Turnout projections for 2028
+    columns:
+      - name: district_type
+        description: The district type
+        data_tests:
+          - not_null
+      - name: district_name
+        description: The district name
+        data_tests:
+          - not_null
+      - name: election_year
+        description: The election year
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [2028]
+                quote: false
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+    tests:
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+            - state
+            - district_type
+            - district_name
+            - election_year
+            - election_code
+            - model_version
+            - inference_at
+
   - name: stg_model_predictions__turnout_projections_even_years_20250709
     description: Turnout projections data load from model predictions
     columns:

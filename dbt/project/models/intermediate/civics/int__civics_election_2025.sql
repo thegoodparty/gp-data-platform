@@ -63,30 +63,33 @@ with
     )
 
 select
-    gp_election_id,
-    official_office_name,
-    candidate_office,
-    office_level,
-    office_type,
-    state,
-    city,
-    district,
-    seat_name,
-    election_date,
-    election_year,
-    filing_deadline,
-    population,
-    seats_available,
-    term_start_date,
-    is_uncontested,
-    number_of_opponents,
-    open_seat,
-    has_ddhq_match,
-    br_position_database_id,
-    is_judicial,
-    is_appointed,
-    br_normalized_position_type,
-    created_at,
-    updated_at
+    archived_elections.gp_election_id,
+    archived_elections.official_office_name,
+    archived_elections.candidate_office,
+    archived_elections.office_level,
+    archived_elections.office_type,
+    tbl_states.state_cleaned_postal_code as state,
+    archived_elections.city,
+    archived_elections.district,
+    archived_elections.seat_name,
+    archived_elections.election_date,
+    archived_elections.election_year,
+    archived_elections.filing_deadline,
+    archived_elections.population,
+    archived_elections.seats_available,
+    archived_elections.term_start_date,
+    archived_elections.is_uncontested,
+    archived_elections.number_of_opponents,
+    archived_elections.open_seat,
+    archived_elections.has_ddhq_match,
+    archived_elections.br_position_database_id,
+    archived_elections.is_judicial,
+    archived_elections.is_appointed,
+    archived_elections.br_normalized_position_type,
+    archived_elections.created_at,
+    archived_elections.updated_at
 
 from archived_elections
+left join
+    {{ ref("clean_states") }} as tbl_states
+    on trim(upper(archived_elections.state)) = tbl_states.state_raw

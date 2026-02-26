@@ -125,7 +125,7 @@ select
     hubspot_contact_id,
     hubspot_company_ids,
     candidate_id_source,
-    party_affiliation,
+    nullif(party_affiliation, '') as party_affiliation,
     is_incumbent,
     is_open_seat,
     candidate_office,

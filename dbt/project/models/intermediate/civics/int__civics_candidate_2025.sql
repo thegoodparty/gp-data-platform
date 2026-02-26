@@ -104,24 +104,27 @@ with
     )
 
 select
-    gp_candidate_id,
-    hubspot_contact_id,
-    prod_db_user_id,
-    candidate_id_tier,
-    first_name,
-    last_name,
-    full_name,
-    birth_date,
-    state,
-    email,
-    phone_number,
-    street_address,
-    website_url,
-    linkedin_url,
-    twitter_handle,
-    facebook_url,
-    instagram_handle,
-    created_at,
-    updated_at
+    archived_candidates.gp_candidate_id,
+    archived_candidates.hubspot_contact_id,
+    archived_candidates.prod_db_user_id,
+    archived_candidates.candidate_id_tier,
+    archived_candidates.first_name,
+    archived_candidates.last_name,
+    archived_candidates.full_name,
+    archived_candidates.birth_date,
+    tbl_states.state_cleaned_postal_code as state,
+    archived_candidates.email,
+    archived_candidates.phone_number,
+    archived_candidates.street_address,
+    archived_candidates.website_url,
+    archived_candidates.linkedin_url,
+    archived_candidates.twitter_handle,
+    archived_candidates.facebook_url,
+    archived_candidates.instagram_handle,
+    archived_candidates.created_at,
+    archived_candidates.updated_at
 
 from archived_candidates
+left join
+    {{ ref("clean_states") }} as tbl_states
+    on trim(upper(archived_candidates.state)) = tbl_states.state_raw

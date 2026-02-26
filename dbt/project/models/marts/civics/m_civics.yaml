@@ -188,7 +188,7 @@ models:
 
   - name: candidacy
     description: >
-      Historical archive of candidacies from the general mart with elections on or before 2025-12-31.
+      Candidacies combining 2025 HubSpot archive and 2026+ BallotReady data.
 
       Grain: One row per candidacy.
 
@@ -198,9 +198,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_candidate_id
         description: Foreign key to candidate table
@@ -208,7 +206,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('int__civics_candidate_2025')
+                to: ref('candidate')
                 field: gp_candidate_id
 
       - name: gp_election_id
@@ -225,6 +223,16 @@ models:
 
       - name: party_affiliation
         description: Candidate's political party
+        tests:
+          - accepted_values:
+              values:
+                - Independent
+                - Nonpartisan
+                - Democrat
+                - Republican
+                - Libertarian
+                - Green
+                - Other
 
       - name: is_incumbent
         description: Whether the candidate is the incumbent
@@ -294,8 +302,6 @@ models:
 
       - name: general_election_date
         description: Date of the general election
-        data_tests:
-          - not_null
 
       - name: runoff_election_date
         description: Date of the runoff election, if applicable
@@ -303,10 +309,9 @@ models:
       - name: br_position_database_id
         description: >
           The numeric identifier for the political position (office) in BallotReady's
-          database. Extracted from the base64-encoded positionId stored in the GoodParty
-          product campaign details. Can be used to join with BallotReady position data
-          for additional office metadata. NULL when no product campaign is associated
-          or the campaign has no positionId.
+          database. For HubSpot-sourced records, extracted from the base64-encoded
+          positionId in campaign details. For BallotReady-sourced records, comes
+          directly from the S3 candidacy data.
         data_tests:
           - relationships:
               arguments:
@@ -314,10 +319,10 @@ models:
                 field: database_id
               config:
                 where: "br_position_database_id is not null"
-                # Some position IDs from older campaigns may no longer exist in the
-                # BallotReady API position table (positions removed or reorganized).
-                warn_if: ">20"
-                error_if: ">50"
+                # Some position IDs may not exist in the API position table yet
+                # (API data is loaded incrementally, S3 data may be ahead).
+                warn_if: ">50"
+                error_if: ">100"
 
       - name: viability_score
         description: Model-generated viability rating
@@ -327,6 +332,18 @@ models:
 
       - name: win_number_model
         description: Model version used for win number calculation
+
+      - name: is_win_icp
+        description: >
+          Whether this candidacy's position meets the Win ICP criteria
+          (500-50,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this candidacy's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
 
       - name: created_at
         description: Timestamp when the record was created
@@ -345,7 +362,7 @@ models:
 
   - name: candidate
     description: >
-      Historical archive of candidates from the general mart with elections on or before 2025-12-31.
+      Candidates combining 2025 HubSpot archive and 2026+ BallotReady data.
 
       Grain: One row per candidate.
 
@@ -355,9 +372,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
@@ -382,6 +397,8 @@ models:
 
       - name: state
         description: U.S. state for the candidate
+        data_tests:
+          - is_state_abbreviation
 
       - name: email
         description: Candidate's email address
@@ -431,8 +448,8 @@ models:
 
   - name: candidacy_stage
     description: >
-      Historical archive of candidacy stages (primary, general, runoff results) from the general mart
-      with election stages on or before 2025-12-31.
+      Candidacy stages (primary, general, runoff results) combining 2025 HubSpot/DDHQ archive
+      and 2026+ BallotReady data.
 
       Grain: One row per candidacy stage (candidacy + election stage combination).
 
@@ -442,9 +459,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_candidacy_id
         description: Foreign key to candidacy table
@@ -452,7 +467,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('int__civics_candidacy_2025')
+                to: ref('candidacy')
                 field: gp_candidacy_id
 
       - name: gp_election_stage_id
@@ -460,7 +475,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('int__civics_election_stage_2025')
+                to: ref('election_stage')
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
@@ -502,7 +517,7 @@ models:
       - name: election_result_source
         description: >
           Source of the election_result value.
-          Values: 'hubspot', 'ddhq', or null if no result available.
+          Values: 'hubspot', 'ddhq', 'ballotready', or null if no result available.
 
       - name: match_confidence
         description: Confidence score for the candidate-to-source match
@@ -525,7 +540,19 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
+                max_value: "'2030-12-31'"
+
+      - name: is_win_icp
+        description: >
+          Whether this candidacy stage's position meets the Win ICP criteria
+          (500-50,000 voters). Derived from the election_stage table's ICP flags.
+          NULL for records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this candidacy stage's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from the election_stage table's ICP flags.
+          NULL for records without BallotReady position match.
 
       - name: created_at
         description: Timestamp when the record was created
@@ -544,7 +571,7 @@ models:
 
   - name: election
     description: >
-      Historical archive of elections from the general mart with election dates on or before 2025-12-31.
+      Elections combining 2025 HubSpot archive and 2026+ BallotReady data.
 
       Grain: One row per election.
 
@@ -554,9 +581,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: official_office_name
         description: Formal office title for the election
@@ -572,6 +597,8 @@ models:
 
       - name: state
         description: U.S. state for the election
+        data_tests:
+          - is_state_abbreviation
 
       - name: city
         description: City for the election
@@ -589,7 +616,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
+                max_value: "'2030-12-31'"
 
       - name: election_year
         description: Year of the election
@@ -597,7 +624,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1900
-                max_value: 2025
+                max_value: 2030
               config:
                 where: "election_year is not null"
 
@@ -641,10 +668,10 @@ models:
                 field: database_id
               config:
                 where: "br_position_database_id is not null"
-                # Some position IDs from older campaigns may no longer exist in the
-                # BallotReady API position table (positions removed or reorganized).
-                warn_if: ">5"
-                error_if: ">20"
+                # Some position IDs may not exist in the API position table yet
+                # (API data is loaded incrementally, S3 data may be ahead).
+                warn_if: ">20"
+                error_if: ">50"
 
       - name: is_judicial
         description: Whether the office is a judicial position (from BallotReady)
@@ -667,6 +694,36 @@ models:
       - name: br_normalized_position_type
         description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
 
+      - name: icp_voter_count
+        description: >
+          Voter count from the L2 district match used to determine ICP eligibility.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without a matched L2 district.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "icp_voter_count is not null"
+
+      - name: icp_normalized_position_name
+        description: >
+          BallotReady normalized position type used in ICP eligibility determination.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_icp
+        description: >
+          Whether this election's position meets the Win ICP criteria
+          (500-50,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this election's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -684,8 +741,8 @@ models:
 
   - name: election_stage
     description: >
-      Historical archive of election stages (primary, general, runoff) from the general mart
-      with election stage dates on or before 2025-12-31.
+      Election stages (primary, general, runoff) combining 2025 DDHQ archive
+      and 2026+ BallotReady data.
 
       Grain: One row per election stage.
 
@@ -695,9 +752,7 @@ models:
         data_tests:
           - unique
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: gp_election_id
         description: Foreign key to election table
@@ -705,15 +760,30 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('int__civics_election_2025')
+                to: ref('election')
                 field: gp_election_id
 
-      - name: ddhq_race_id
-        description: DDHQ race identifier
-        data_tests:
-          - not_null
+      - name: br_race_id
+        description: >
+          BallotReady race ID. Populated for 2026+ BallotReady records,
+          NULL for 2025 archive records.
 
-      - name: election_stage
+      - name: br_election_id
+        description: >
+          BallotReady election ID. Populated for 2026+ BallotReady records,
+          NULL for 2025 archive records.
+
+      - name: br_position_id
+        description: >
+          BallotReady position ID. Used for ICP join. Populated for 2026+
+          BallotReady records, NULL for 2025 archive records.
+
+      - name: ddhq_race_id
+        description: >
+          DDHQ race identifier. Populated for 2025 archive records,
+          NULL for 2026+ BallotReady records.
+
+      - name: stage_type
         description: Type of election stage (primary, general, runoff)
         data_tests:
           - not_null
@@ -721,21 +791,69 @@ models:
               arguments:
                 values: ['general', 'primary', 'runoff']
 
-      - name: ddhq_election_stage_date
+      - name: election_date
         description: Date of the election stage
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2025-12-31'"
+                max_value: "'2030-12-31'"
 
-      - name: ddhq_race_name
-        description: Race name from DDHQ
+      - name: election_name
+        description: >
+          Overarching election event name (e.g., "Illinois Primary Election").
+          Populated for 2026+ BallotReady records, NULL for 2025 archive records.
+
+      - name: race_name
+        description: >
+          Office-specific race label. For 2025 records this is the DDHQ race name
+          (e.g., "WI Tigerton Village Trustee"). For 2026+ records this is
+          constructed from BallotReady position fields
+          (e.g., "IL Franklin County Board - Full Term").
+
+      - name: is_primary
+        description: Whether this stage is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_runoff
+        description: Whether this stage is a runoff election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_retention
+        description: Whether this stage is a retention election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: number_of_seats
+        description: Number of seats available for this race (BallotReady only)
 
       - name: total_votes_cast
         description: Total votes cast in the election stage (may contain string values like 'uncontested')
+
+      - name: is_win_icp
+        description: >
+          Whether this election stage's position meets the Win ICP criteria
+          (500-50,000 voters). Derived from int__icp_offices via br_position_id.
+          NULL for 2025 archive records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this election stage's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from int__icp_offices via br_position_id.
+          NULL for 2025 archive records without BallotReady position match.
 
       - name: created_at
         description: Timestamp when the record was created (from Airbyte extraction)
         data_tests:
           - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated

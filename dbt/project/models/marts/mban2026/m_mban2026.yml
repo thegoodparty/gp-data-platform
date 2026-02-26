@@ -200,6 +200,21 @@ models:
           Whether the race was uncontested.
           Values: "Contested", "Uncontested", null
 
+      - name: is_incumbent
+        description: Whether the candidate is an incumbent in this race
+
+      - name: is_open_seat
+        description: Whether this is an open seat with no incumbent running
+
+      - name: number_of_opponents
+        description: Number of opponents the candidate faces in this race
+
+      - name: partisan_type
+        description: Partisan classification of the race (e.g., partisan, nonpartisan)
+
+      - name: seats_available
+        description: Number of seats available in this election
+
       - name: outreach_id
         description: |
           Unique identifier for the outreach campaign.
