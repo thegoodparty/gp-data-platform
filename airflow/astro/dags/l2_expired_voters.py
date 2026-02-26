@@ -5,9 +5,11 @@ This DAG downloads expired L2 LALVOTERID files from L2's SFTP server and
 stages them to a Databricks table for downstream dbt modelling.
 
 ### Pipeline Steps:
-1. Query staging table for already-processed files (idempotency check)
+1. Query the `l2_expired_voters_loads` metadata table for already-processed
+   files (idempotency check — only fully loaded files are considered processed)
 2. Download new expired voter files from L2 SFTP, parse **all** LALVOTERIDs,
-   and write them to Databricks
+   and write them to Databricks (a completion record is written to the loads
+   table only after all batch inserts succeed)
 
 ### Configuration:
 
@@ -74,7 +76,7 @@ def l2_expired_voters():
     @task
     def fetch_processed_files() -> List[str]:
         """
-        Query the staging table for files that have already been processed
+        Query the loads metadata table for files that have been fully loaded
         so the ingest task can skip them (idempotency).
         """
         db_conn_id = Variable.get("databricks_conn_id")

@@ -74,30 +74,33 @@ def get_processed_files(
     schema: str,
 ) -> set:
     """
-    Query the l2_expired_voters staging table for files that have already
-    been processed.  Returns a set of composite ``filename|mtime`` keys so
+    Query the ``l2_expired_voters_loads`` metadata table for files that have
+    been fully loaded.  Returns a set of composite ``filename|mtime`` keys so
     that republished files with the same name but a new mtime are re-processed.
+
+    Only files with a record in the loads table are considered processed —
+    partial loads from failed runs are excluded because the loads record is
+    written only after all batch inserts succeed.
     """
-    full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
+    loads_table = f"`{catalog}`.`{schema}`.`l2_expired_voters_loads`"
     cursor = connection.cursor()
     try:
-        # Check if table exists first
         catalog_safe = catalog.replace("\\", "\\\\").replace("'", "\\'")
         schema_safe = schema.replace("\\", "\\\\").replace("'", "\\'")
         cursor.execute(
             f"SELECT 1 FROM `{catalog_safe}`.information_schema.tables "
             f"WHERE table_catalog = '{catalog_safe}' "
             f"AND table_schema = '{schema_safe}' "
-            f"AND table_name = 'l2_expired_voters'"
+            f"AND table_name = 'l2_expired_voters_loads'"
         )
         if not cursor.fetchone():
-            logger.info("Staging table does not exist yet — no files processed.")
+            logger.info("Loads table does not exist yet — no files processed.")
             return set()
 
         cursor.execute(
             f"SELECT DISTINCT trim(file_key) AS file_key "
             f"FROM (SELECT explode(split(source_file_keys, ', ')) AS file_key "
-            f"FROM {full_table_name})"
+            f"FROM {loads_table})"
         )
         processed = {row[0] for row in cursor.fetchall()}
         logger.info(f"Already-processed file keys: {processed}")
@@ -119,8 +122,10 @@ def stage_expired_voter_ids(
     """
     Write expired voter IDs to a staging table in Databricks for auditability.
 
-    Creates the schema and table if they don't exist.
-    Appends new records each DAG run to maintain a full history.
+    Creates the schema, data table, and ``l2_expired_voters_loads`` metadata
+    table if they don't exist.  A completion record is written to the loads
+    table only after **all** batch inserts succeed, so partial failures are
+    automatically retried on the next DAG run.
 
     Args:
         file_timestamps: Dict mapping source file basename to SFTP mtime
@@ -131,6 +136,7 @@ def stage_expired_voter_ids(
     """
     _validate_lalvoterids(lalvoterids)
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
+    loads_table = f"`{catalog}`.`{schema}`.`l2_expired_voters_loads`"
     dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
 
     # Plain comma-separated file list (human-readable)
@@ -160,10 +166,21 @@ def stage_expired_voter_ids(
             "  dag_run_id STRING"
             ")"
         )
+        cursor.execute(
+            f"CREATE TABLE IF NOT EXISTS {loads_table} ("
+            "  dag_run_id STRING,"
+            "  source_file_keys STRING,"
+            "  row_count INT,"
+            "  loaded_at TIMESTAMP"
+            ")"
+        )
 
         # Clean up any previous rows for this dag_run_id (idempotent retry)
         cursor.execute(
-            f"DELETE FROM {full_table_name} " f"WHERE dag_run_id = '{dag_run_id_safe}'"
+            f"DELETE FROM {full_table_name} WHERE dag_run_id = '{dag_run_id_safe}'"
+        )
+        cursor.execute(
+            f"DELETE FROM {loads_table} WHERE dag_run_id = '{dag_run_id_safe}'"
         )
 
         total_inserted = 0
@@ -185,6 +202,19 @@ def stage_expired_voter_ids(
                 f"Staged batch {i // batch_size + 1} "
                 f"({len(batch)} rows, {total_inserted} of {len(lalvoterids)})"
             )
+
+        # Record successful load — written only after all batches succeed so
+        # get_processed_files() won't mark partial failures as complete.
+        cursor.execute(
+            f"INSERT INTO {loads_table} "
+            f"(dag_run_id, source_file_keys, row_count, loaded_at) "
+            f"VALUES ('{dag_run_id_safe}', '{source_file_keys_str}', "
+            f"{total_inserted}, current_timestamp())"
+        )
+        logger.info(
+            f"Recorded load completion in {loads_table}: "
+            f"{total_inserted} rows, dag_run_id={dag_run_id}"
+        )
 
         logger.info(f"Total staged to {full_table_name}: {total_inserted} rows")
         return total_inserted

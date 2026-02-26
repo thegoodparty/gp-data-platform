@@ -74,10 +74,10 @@ class TestValidateLalvoterids:
 
 
 class TestGetProcessedFiles:
-    """Tests for processed file retrieval."""
+    """Tests for processed file retrieval from the loads metadata table."""
 
-    def test_table_exists_with_files(self, mock_connection):
-        """Return set of completed file keys when table exists."""
+    def test_loads_table_exists_with_files(self, mock_connection):
+        """Return set of completed file keys when loads table exists."""
         conn, cursor = mock_connection
         cursor.fetchone.return_value = (1,)
         cursor.fetchall.return_value = [
@@ -92,23 +92,26 @@ class TestGetProcessedFiles:
             "file2.tab|2026-01-16T10:00:00+00:00",
         }
         assert cursor.execute.call_count == 2
-        # Verify query reads from source_file_keys column
+        # Info schema check targets the loads table
+        info_sql = cursor.execute.call_args_list[0][0][0]
+        assert "l2_expired_voters_loads" in info_sql
+        # Data query reads from the loads table
         data_sql = cursor.execute.call_args_list[1][0][0]
+        assert "l2_expired_voters_loads" in data_sql
         assert "source_file_keys" in data_sql
 
-    def test_table_does_not_exist(self, mock_connection):
-        """Return empty set when staging table does not exist yet."""
+    def test_loads_table_does_not_exist(self, mock_connection):
+        """Return empty set when loads table does not exist yet."""
         conn, cursor = mock_connection
         cursor.fetchone.return_value = None
 
         result = get_processed_files(conn, catalog="cat", schema="sch")
 
         assert result == set()
-        # Only the information_schema check should have been executed
         assert cursor.execute.call_count == 1
 
-    def test_table_exists_no_files(self, mock_connection):
-        """Return empty set when table exists but has no rows."""
+    def test_loads_table_exists_no_files(self, mock_connection):
+        """Return empty set when loads table exists but has no rows."""
         conn, cursor = mock_connection
         cursor.fetchone.return_value = (1,)
         cursor.fetchall.return_value = []
@@ -141,11 +144,18 @@ class TestStageExpiredVoterIds:
         assert result == 2
         calls = [c[0][0] for c in cursor.execute.call_args_list]
         assert any("CREATE SCHEMA IF NOT EXISTS" in c for c in calls)
-        create_table = [c for c in calls if "CREATE TABLE IF NOT EXISTS" in c][0]
-        assert "source_file_keys STRING" in create_table
-        # Idempotent cleanup of previous rows for this dag_run_id
-        assert any("DELETE FROM" in c for c in calls)
-        assert any("INSERT INTO" in c for c in calls)
+        create_tables = [c for c in calls if "CREATE TABLE IF NOT EXISTS" in c]
+        assert len(create_tables) == 2
+        assert any("source_file_keys STRING" in c for c in create_tables)
+        assert any("row_count INT" in c for c in create_tables)
+        # Idempotent cleanup of both data and loads tables
+        delete_calls = [c for c in calls if "DELETE FROM" in c]
+        assert len(delete_calls) == 2
+        # Data insert + loads completion record
+        insert_calls = [c for c in calls if "INSERT INTO" in c]
+        assert len(insert_calls) == 2
+        # Last INSERT is the loads table completion record
+        assert "l2_expired_voters_loads" in insert_calls[-1]
 
     def test_batching(self, mock_connection):
         """Verify IDs exceeding batch_size are split across INSERT statements."""
@@ -166,7 +176,9 @@ class TestStageExpiredVoterIds:
         insert_calls = [
             c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
         ]
-        assert len(insert_calls) == 3  # batches: [2, 2, 1]
+        # 3 data batches [2, 2, 1] + 1 loads completion record
+        assert len(insert_calls) == 4
+        assert "l2_expired_voters_loads" in insert_calls[-1]
 
     def test_with_file_timestamps(self, mock_connection):
         """File timestamp is included in INSERT SQL when provided."""
@@ -221,7 +233,34 @@ class TestStageExpiredVoterIds:
             dag_run_id="run_with'quote",
         )
 
-        delete_sql = [
+        delete_calls = [
             c[0][0] for c in cursor.execute.call_args_list if "DELETE FROM" in c[0][0]
-        ][0]
-        assert "run_with\\'quote" in delete_sql
+        ]
+        # Both data table and loads table DELETEs should have escaped dag_run_id
+        assert len(delete_calls) == 2
+        for sql in delete_calls:
+            assert "run_with\\'quote" in sql
+
+    def test_loads_record_is_last_insert(self, mock_connection):
+        """Loads completion record is written after all data batch inserts."""
+        conn, cursor = mock_connection
+        ids = [f"LALCA{str(i).zfill(4)}" for i in range(3)]
+
+        stage_expired_voter_ids(
+            connection=conn,
+            catalog="cat",
+            schema="sch",
+            lalvoterids=ids,
+            source_files=["file1.tab"],
+            dag_run_id="run_123",
+            batch_size=2,
+        )
+
+        insert_calls = [
+            c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
+        ]
+        # Data inserts come first, loads record comes last
+        for sql in insert_calls[:-1]:
+            assert "l2_expired_voters`" in sql
+        assert "l2_expired_voters_loads" in insert_calls[-1]
+        assert "3" in insert_calls[-1]  # row_count
