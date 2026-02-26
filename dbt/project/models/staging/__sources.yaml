@@ -1051,6 +1051,8 @@ sources:
     tables:
       - name: l2_expired_voters
         description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_expired_voters DAG. Each row represents a voter ID that was flagged as expired and staged for downstream processing.
+      - name: l2_expired_voters_loads
+        description: Load metadata for the l2_expired_voters DAG. One row per successful DAG run, written only after all batch inserts complete. Used by the DAG for idempotency checks.
 
   - name: historical
     schema: historical
