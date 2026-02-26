@@ -5,10 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from include.custom_functions.databricks_utils import (
     _validate_lalvoterids,
-    count_in_databricks_table,
-    delete_from_databricks_table,
     get_processed_files,
-    get_staged_voter_ids,
     mark_staging_complete,
     stage_expired_voter_ids,
 )
@@ -70,158 +67,6 @@ class TestValidateLalvoterids:
             _validate_lalvoterids(bad_ids)
         assert "BAD0" in str(exc_info.value)
         assert "BAD4" in str(exc_info.value)
-
-
-# ---------------------------------------------------------------------------
-# delete_from_databricks_table
-# ---------------------------------------------------------------------------
-
-
-class TestDeleteFromDatabricksTable:
-    """Tests for Databricks DELETE operations."""
-
-    def test_single_batch(self, mock_connection):
-        """Delete a small batch in one query."""
-        conn, cursor = mock_connection
-        cursor.rowcount = 3
-
-        result = delete_from_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=["LALMD0001", "LALMD0002", "LALMD0003"],
-        )
-
-        assert result == 3
-        cursor.execute.assert_called_once()
-        sql = cursor.execute.call_args[0][0]
-        assert "DELETE FROM `cat`.`sch`.`tbl`" in sql
-        assert "'LALMD0001'" in sql
-        assert "'LALMD0003'" in sql
-
-    def test_multi_batch(self, mock_connection):
-        """Values exceeding batch_size are split across queries."""
-        conn, cursor = mock_connection
-        cursor.rowcount = 2
-
-        ids = [f"LALCA{str(i).zfill(4)}" for i in range(5)]
-        result = delete_from_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=ids,
-            batch_size=2,
-        )
-
-        # 3 batches: [2, 2, 1], each returning rowcount=2
-        assert cursor.execute.call_count == 3
-        assert result == 6
-
-    def test_empty_values(self, mock_connection):
-        """Empty values list returns 0 without executing."""
-        conn, cursor = mock_connection
-        result = delete_from_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=[],
-        )
-        assert result == 0
-        cursor.execute.assert_not_called()
-
-    def test_negative_rowcount_treated_as_zero(self, mock_connection):
-        """Negative rowcount (driver quirk) is clamped to 0."""
-        conn, cursor = mock_connection
-        cursor.rowcount = -1
-
-        result = delete_from_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=["LALMD0001"],
-        )
-        assert result == 0
-
-    def test_validation_failure_raises(self, mock_connection):
-        """Invalid IDs raise ValueError before any SQL executes."""
-        conn, cursor = mock_connection
-        with pytest.raises(ValueError, match="invalid LALVOTERID"):
-            delete_from_databricks_table(
-                connection=conn,
-                catalog="cat",
-                schema="sch",
-                table="tbl",
-                column="LALVOTERID",
-                values=["BAD_VALUE"],
-            )
-        cursor.execute.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# count_in_databricks_table
-# ---------------------------------------------------------------------------
-
-
-class TestCountInDatabricksTable:
-    """Tests for Databricks COUNT operations."""
-
-    def test_single_batch(self, mock_connection):
-        """Count matching rows in one query."""
-        conn, cursor = mock_connection
-        cursor.fetchone.return_value = (5,)
-
-        result = count_in_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=["LALMD0001", "LALMD0002"],
-        )
-
-        assert result == 5
-        sql = cursor.execute.call_args[0][0]
-        assert "SELECT COUNT(*)" in sql
-
-    def test_multi_batch_sums(self, mock_connection):
-        """Counts from multiple batches are summed."""
-        conn, cursor = mock_connection
-        cursor.fetchone.side_effect = [(3,), (2,)]
-
-        ids = [f"LALCA{str(i).zfill(4)}" for i in range(4)]
-        result = count_in_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=ids,
-            batch_size=2,
-        )
-        assert result == 5
-
-    def test_no_results(self, mock_connection):
-        """None from fetchone is treated as 0."""
-        conn, cursor = mock_connection
-        cursor.fetchone.return_value = None
-
-        result = count_in_databricks_table(
-            connection=conn,
-            catalog="cat",
-            schema="sch",
-            table="tbl",
-            column="LALVOTERID",
-            values=["LALMD0001"],
-        )
-        assert result == 0
 
 
 # ---------------------------------------------------------------------------
@@ -383,38 +228,6 @@ class TestStageExpiredVoterIds:
             if "DELETE FROM" in c[0][0] and "pending" in c[0][0]
         ][0]
         assert "run_with\\'quote" in delete_sql
-
-
-# ---------------------------------------------------------------------------
-# get_staged_voter_ids
-# ---------------------------------------------------------------------------
-
-
-class TestGetStagedVoterIds:
-    """Tests for reading staged voter IDs."""
-
-    def test_returns_ids(self, mock_connection):
-        """Return list of LALVOTERIDs for the given dag_run_id."""
-        conn, cursor = mock_connection
-        cursor.fetchall.return_value = [("LALMD0001",), ("LALMD0002",)]
-
-        result = get_staged_voter_ids(
-            conn, catalog="cat", schema="sch", dag_run_id="run_123"
-        )
-
-        assert result == ["LALMD0001", "LALMD0002"]
-        sql = cursor.execute.call_args[0][0]
-        assert "run_123" in sql
-
-    def test_empty_result(self, mock_connection):
-        """Return empty list when no rows match the dag_run_id."""
-        conn, cursor = mock_connection
-        cursor.fetchall.return_value = []
-
-        result = get_staged_voter_ids(
-            conn, catalog="cat", schema="sch", dag_run_id="run_123"
-        )
-        assert result == []
 
 
 # ---------------------------------------------------------------------------

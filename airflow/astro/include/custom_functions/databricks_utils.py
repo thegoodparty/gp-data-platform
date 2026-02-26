@@ -68,90 +68,6 @@ def get_databricks_connection(
     raise RuntimeError("Unreachable")
 
 
-def delete_from_databricks_table(
-    connection: Connection,
-    catalog: str,
-    schema: str,
-    table: str,
-    column: str,
-    values: List[str],
-    batch_size: int = 1000,
-) -> int:
-    """
-    Delete rows from a Databricks Delta table where column matches any of the given values.
-
-    Processes in batches to avoid query size limits.
-
-    Returns the total number of rows deleted.
-    """
-    _validate_lalvoterids(values)
-    total_deleted = 0
-    full_table_name = f"`{catalog}`.`{schema}`.`{table}`"
-
-    for i in range(0, len(values), batch_size):
-        batch = values[i : i + batch_size]
-        placeholders = ", ".join(f"'{v}'" for v in batch)
-        query = f"DELETE FROM {full_table_name} WHERE `{column}` IN ({placeholders})"
-
-        logger.info(
-            f"Deleting batch {i // batch_size + 1} "
-            f"({len(batch)} values, {i + 1}-{i + len(batch)} of {len(values)}) "
-            f"from {full_table_name}"
-        )
-
-        cursor = connection.cursor()
-        try:
-            cursor.execute(query)
-            deleted = cursor.rowcount if cursor.rowcount >= 0 else 0
-            total_deleted += deleted
-            logger.info(f"  Deleted {deleted} rows")
-        finally:
-            cursor.close()
-
-    logger.info(f"Total deleted from {full_table_name}: {total_deleted} rows")
-    return total_deleted
-
-
-def count_in_databricks_table(
-    connection: Connection,
-    catalog: str,
-    schema: str,
-    table: str,
-    column: str,
-    values: List[str],
-    batch_size: int = 1000,
-) -> int:
-    """
-    Count rows in a Databricks Delta table where column matches any of the given values.
-
-    Processes in batches to avoid query size limits.
-
-    Returns the total number of matching rows.
-    """
-    _validate_lalvoterids(values)
-    total_count = 0
-    full_table_name = f"`{catalog}`.`{schema}`.`{table}`"
-
-    for i in range(0, len(values), batch_size):
-        batch = values[i : i + batch_size]
-        placeholders = ", ".join(f"'{v}'" for v in batch)
-        query = (
-            f"SELECT COUNT(*) FROM {full_table_name} "
-            f"WHERE `{column}` IN ({placeholders})"
-        )
-
-        cursor = connection.cursor()
-        try:
-            cursor.execute(query)
-            row = cursor.fetchone()
-            total_count += row[0] if row else 0
-        finally:
-            cursor.close()
-
-    logger.info(f"Count of matching rows in {full_table_name}: {total_count}")
-    return total_count
-
-
 def get_processed_files(
     connection: Connection,
     catalog: str,
@@ -274,33 +190,6 @@ def stage_expired_voter_ids(
 
         logger.info(f"Total staged to {full_table_name}: {total_inserted} rows")
         return total_inserted
-    finally:
-        cursor.close()
-
-
-def get_staged_voter_ids(
-    connection: Connection,
-    catalog: str,
-    schema: str,
-    dag_run_id: str,
-) -> List[str]:
-    """
-    Read staged LALVOTERIDs for a specific DAG run from the staging table.
-
-    Returns a list of LALVOTERID strings.
-    """
-    full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
-    dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
-
-    cursor = connection.cursor()
-    try:
-        cursor.execute(
-            f"SELECT lalvoterid FROM {full_table_name} "
-            f"WHERE dag_run_id = '{dag_run_id_safe}'"
-        )
-        ids = [row[0] for row in cursor.fetchall()]
-        logger.info(f"Read {len(ids)} staged LALVOTERIDs for dag_run_id={dag_run_id}")
-        return ids
     finally:
         cursor.close()
 

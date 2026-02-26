@@ -120,12 +120,6 @@ def download_expired_voter_files(
     return downloaded_paths
 
 
-def _extract_state_from_lalvoterid(voter_id: str) -> str:
-    """Extract the 2-letter state code from a LALVOTERID (e.g. 'LALMD1207645' → 'MD')."""
-    match = re.match(r"^LAL([A-Z]{2})", voter_id.upper())
-    return match.group(1) if match else ""
-
-
 def parse_expired_voter_ids(
     file_paths: List[str],
 ) -> List[str]:
@@ -172,32 +166,3 @@ def parse_expired_voter_ids(
     deduplicated = list(set(all_ids))
     logger.info(f"Total unique expired LALVOTERIDs: {len(deduplicated)}")
     return deduplicated
-
-
-def filter_by_state_allowlist(
-    lalvoterids: List[str],
-    state_allowlist: str = "",
-) -> List[str]:
-    """
-    Filter a list of LALVOTERIDs to only include those whose embedded state
-    code is in the allowlist.
-
-    Args:
-        lalvoterids: List of LALVOTERID strings.
-        state_allowlist: Comma-separated state codes (e.g., "NC,WY").
-            Empty string = no filtering (returns input unchanged).
-
-    Returns:
-        Filtered list of LALVOTERIDs.
-    """
-    if not state_allowlist or not state_allowlist.strip():
-        return lalvoterids
-
-    states = {s.strip().upper() for s in state_allowlist.split(",") if s.strip()}
-    filtered = [
-        vid for vid in lalvoterids if _extract_state_from_lalvoterid(vid) in states
-    ]
-    logger.info(
-        f"State allowlist {states}: {len(filtered)} of {len(lalvoterids)} LALVOTERIDs"
-    )
-    return filtered

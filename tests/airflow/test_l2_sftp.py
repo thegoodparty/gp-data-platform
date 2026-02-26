@@ -2,8 +2,6 @@
 
 import pytest
 from include.custom_functions.l2_sftp import (
-    _extract_state_from_lalvoterid,
-    filter_by_state_allowlist,
     parse_expired_voter_ids,
 )
 
@@ -54,94 +52,6 @@ def csv_file(tmp_path):
     f = tmp_path / "voters.csv"
     f.write_text("lalvoterid,state_postal_code\nLALFL0001,FL\nLALTX0002,TX\n")
     return str(f)
-
-
-# ---------------------------------------------------------------------------
-# _extract_state_from_lalvoterid
-# ---------------------------------------------------------------------------
-
-
-class TestExtractState:
-    """Tests for _extract_state_from_lalvoterid helper."""
-
-    def test_standard_ids(self):
-        """Extract state codes from well-formed LALVOTERIDs."""
-        assert _extract_state_from_lalvoterid("LALMD1207645") == "MD"
-        assert _extract_state_from_lalvoterid("LALCA22155264") == "CA"
-        assert _extract_state_from_lalvoterid("LALNJ3456751") == "NJ"
-        assert _extract_state_from_lalvoterid("LALCO607260009") == "CO"
-
-    def test_case_insensitive(self):
-        """Extraction works regardless of input case."""
-        assert _extract_state_from_lalvoterid("lalco607260009") == "CO"
-        assert _extract_state_from_lalvoterid("LalMd1207645") == "MD"
-
-    def test_empty_string(self):
-        """Empty string returns empty string."""
-        assert _extract_state_from_lalvoterid("") == ""
-
-    def test_no_match(self):
-        """Invalid formats return empty string."""
-        assert _extract_state_from_lalvoterid("INVALID") == ""
-        assert _extract_state_from_lalvoterid("LAL") == ""
-        assert _extract_state_from_lalvoterid("LAL1234") == ""
-
-
-# ---------------------------------------------------------------------------
-# filter_by_state_allowlist
-# ---------------------------------------------------------------------------
-
-
-class TestFilterByStateAllowlist:
-    """Tests for filter_by_state_allowlist utility."""
-
-    SAMPLE_IDS = [
-        "LALCA0001",
-        "LALCA0002",
-        "LALMD0003",
-        "LALNJ0004",
-        "LALWY0005",
-    ]
-
-    def test_empty_allowlist_returns_all(self):
-        """Empty allowlist means no filtering."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, "")
-        assert result == self.SAMPLE_IDS
-
-    def test_whitespace_only_allowlist_returns_all(self):
-        """Whitespace-only allowlist means no filtering."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, "  ")
-        assert result == self.SAMPLE_IDS
-
-    def test_single_state(self):
-        """Filter to a single state."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, "CA")
-        assert sorted(result) == ["LALCA0001", "LALCA0002"]
-
-    def test_multiple_states(self):
-        """Filter to multiple comma-separated states."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, "MD,NJ")
-        assert sorted(result) == ["LALMD0003", "LALNJ0004"]
-
-    def test_case_insensitive_allowlist(self):
-        """Allowlist state codes are case-insensitive."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, "ca,wy")
-        assert sorted(result) == ["LALCA0001", "LALCA0002", "LALWY0005"]
-
-    def test_whitespace_in_allowlist(self):
-        """Whitespace around state codes is trimmed."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, " MD , NJ ")
-        assert sorted(result) == ["LALMD0003", "LALNJ0004"]
-
-    def test_no_match_returns_empty(self):
-        """Allowlist with no matching states returns empty list."""
-        result = filter_by_state_allowlist(self.SAMPLE_IDS, "ZZ")
-        assert result == []
-
-    def test_empty_input_list(self):
-        """Empty input list returns empty list."""
-        result = filter_by_state_allowlist([], "CA")
-        assert result == []
 
 
 # ---------------------------------------------------------------------------
