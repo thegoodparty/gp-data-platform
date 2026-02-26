@@ -196,7 +196,8 @@ def stage_expired_voter_ids(
             )
             cursor.execute(
                 f"MERGE INTO {full_table_name} AS target "
-                f"USING (VALUES {values}) AS source({merge_cols}) "
+                f"USING (SELECT * FROM VALUES {values} "
+                f"AS t({merge_cols})) AS source "
                 f"ON target.lalvoterid = source.lalvoterid "
                 f"WHEN MATCHED THEN UPDATE SET * "
                 f"WHEN NOT MATCHED THEN INSERT *"
