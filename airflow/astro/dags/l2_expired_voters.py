@@ -71,7 +71,7 @@ DATABRICKS_CATALOG = "goodparty_data_catalog"
     tags=["l2", "expired_voters", "ingestion"],
     is_paused_upon_creation=True,
 )
-def l2_remove_expired_voters():
+def l2_ingest_expired_voters():
 
     @task
     def fetch_processed_files() -> List[str]:
@@ -284,4 +284,4 @@ def l2_remove_expired_voters():
 
 
 # Instantiate the DAG
-l2_remove_expired_voters()
+l2_ingest_expired_voters()
