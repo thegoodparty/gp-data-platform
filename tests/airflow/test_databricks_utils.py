@@ -155,8 +155,9 @@ class TestStageExpiredVoterIds:
         # Data uses MERGE, loads uses INSERT
         merge_calls = [c for c in calls if "MERGE INTO" in c]
         assert len(merge_calls) == 1
-        assert "WHEN MATCHED THEN UPDATE SET *" in merge_calls[0]
-        assert "WHEN NOT MATCHED THEN INSERT *" in merge_calls[0]
+        assert "WHEN MATCHED THEN UPDATE SET" in merge_calls[0]
+        assert "source.source_files" in merge_calls[0]
+        assert "WHEN NOT MATCHED THEN INSERT" in merge_calls[0]
         insert_calls = [c for c in calls if "INSERT INTO" in c]
         assert len(insert_calls) == 1
         assert "l2_expired_voters_loads" in insert_calls[0]

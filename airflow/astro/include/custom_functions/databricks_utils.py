@@ -199,8 +199,16 @@ def stage_expired_voter_ids(
                 f"USING (SELECT * FROM VALUES {values} "
                 f"AS t({merge_cols})) AS source "
                 f"ON target.lalvoterid = source.lalvoterid "
-                f"WHEN MATCHED THEN UPDATE SET * "
-                f"WHEN NOT MATCHED THEN INSERT *"
+                f"WHEN MATCHED THEN UPDATE SET "
+                f"  source_files = source.source_files, "
+                f"  source_file_keys = source.source_file_keys, "
+                f"  file_modified_at = source.file_modified_at, "
+                f"  ingested_at = source.ingested_at, "
+                f"  dag_run_id = source.dag_run_id "
+                f"WHEN NOT MATCHED THEN INSERT ({merge_cols}) VALUES ("
+                f"  source.lalvoterid, source.source_files, "
+                f"  source.source_file_keys, source.file_modified_at, "
+                f"  source.ingested_at, source.dag_run_id)"
             )
             total_upserted += len(batch)
             logger.info(
