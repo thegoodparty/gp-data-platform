@@ -5,8 +5,7 @@ models:
     description: >
       Staged view of expired L2 voter IDs ingested by the Airflow
       l2_remove_expired_voters DAG. Each row is a LALVOTERID that was
-      flagged as expired on L2's SFTP server and subsequently removed
-      from downstream systems (Databricks and People-API).
+      flagged as expired on L2's SFTP server.
     columns:
       - name: lalvoterid
         description: The L2 voter identifier that has been expired
@@ -31,9 +30,8 @@ models:
           - not_null
       - name: status
         description: >
-          Processing status of the staged record. 'pending' while deletions
-          are in progress, 'completed' after verification confirms all
-          deletions succeeded.
+          Processing status of the staged record. 'pending' while ingestion
+          is in progress, 'completed' after staging succeeds.
         tests:
           - not_null
           - accepted_values:
