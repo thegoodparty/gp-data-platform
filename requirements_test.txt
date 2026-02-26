@@ -1,4 +1,4 @@
-apache-airflow==3.0.6
+apache-airflow==3.1.7
 databricks-sql-connector
 databricks-sdk
 pandas
