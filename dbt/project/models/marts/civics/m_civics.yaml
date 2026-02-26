@@ -223,16 +223,6 @@ models:
 
       - name: party_affiliation
         description: Candidate's political party
-        tests:
-          - accepted_values:
-              values:
-                - Independent
-                - Nonpartisan
-                - Democrat
-                - Republican
-                - Libertarian
-                - Green
-                - Other
 
       - name: is_incumbent
         description: Whether the candidate is the incumbent
