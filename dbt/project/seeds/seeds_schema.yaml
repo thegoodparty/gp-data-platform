@@ -50,7 +50,7 @@ seeds:
         tests:
         - dbt_expectations.expect_column_distinct_values_to_equal_set:
             arguments:
-              value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+              value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=true) }}"
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
     columns:
