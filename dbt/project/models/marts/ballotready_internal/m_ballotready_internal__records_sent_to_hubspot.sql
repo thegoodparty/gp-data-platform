@@ -62,7 +62,8 @@ with
             -- Placeholder for future viability score calculation
             cast(null as string) as viability_score,
             icp.icp_office_win as icp_win,
-            icp.icp_office_serve as icp_serve
+            icp.icp_office_serve as icp_serve,
+            icp.icp_win_supersize
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
         left join icp_offices icp on fc.br_position_id = icp.br_database_position_id
@@ -119,6 +120,7 @@ select
     -- ICP flags
     icp_win,
     icp_serve,
+    icp_win_supersize,
     current_timestamp() as upload_timestamp
 from combined_records
 -- Only include records that haven't been processed yet
