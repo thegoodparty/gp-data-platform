@@ -114,7 +114,7 @@ def stage_expired_voter_ids(
     source_files: List[str],
     dag_run_id: str,
     file_timestamps: Dict[str, str] | None = None,
-    batch_size: int = 1000,
+    batch_size: int = 10_000,
 ) -> int:
     """
     Write expired voter IDs to a staging table in Databricks for auditability.
