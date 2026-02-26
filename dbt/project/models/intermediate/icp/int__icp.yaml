@@ -51,7 +51,7 @@ models:
       - name: appointed
         description: "Flag indicating if position is appointed"
       - name: icp_office_win
-        description: "ICP-Office-Win flag (true for districts with 500-50,000 voters)"
+        description: "ICP-Office-Win flag (true for districts with 500-100,000 voters)"
         tests:
           - accepted_values:
               arguments:
@@ -66,3 +66,11 @@ models:
                 values: [true, false]
               config:
                 where: "icp_office_serve is not null"
+      - name: icp_win_supersize
+        description: "ICP-Win-Supersize flag (true for offices meeting all ICP criteria but with >100,000 voters, needing separate consideration)"
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "icp_win_supersize is not null"

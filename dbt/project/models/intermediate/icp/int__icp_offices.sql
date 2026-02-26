@@ -29,7 +29,9 @@ with
         select * from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
     ),
 
-    district_counts as (select * from {{ ref("int__l2_district_aggregations") }})
+    district_counts as (select * from {{ ref("int__l2_district_aggregations") }}),
+
+    icp_position_names as (select name from {{ ref("icp_normalized_position_names") }})
 
 select
     position.database_id as br_database_position_id,
@@ -53,11 +55,10 @@ select
         then null
         when
             (
-                district_counts.voter_count between 500 and 50000
+                district_counts.voter_count between 500 and 100000
                 and position.judicial = false
                 and position.appointed = false
-                and normalized_position.name
-                in ({{ get_icp_office_normalized_position_names() }})
+                and normalized_position.name in (select name from icp_position_names)
             )
         then true
         else false
@@ -74,12 +75,30 @@ select
                 district_counts.voter_count between 1000 and 100000
                 and position.judicial = false
                 and position.appointed = false
-                and normalized_position.name
-                in ({{ get_icp_office_normalized_position_names() }})
+                and normalized_position.name in (select name from icp_position_names)
             )
         then true
         else false
-    end as icp_office_serve
+    end as icp_office_serve,
+
+    -- ICP-Win-Supersize Flag
+    -- Large offices (>100K voters) that meet all other ICP criteria
+    -- These need separate consideration outside the standard Win process
+    case
+        when l2_match.is_matched is not true or l2_match.l2_district_name is null
+        then null
+        when district_counts.voter_count is null
+        then null
+        when
+            (
+                district_counts.voter_count > 100000
+                and position.judicial = false
+                and position.appointed = false
+                and normalized_position.name in (select name from icp_position_names)
+            )
+        then true
+        else false
+    end as icp_win_supersize
 
 from position
 
