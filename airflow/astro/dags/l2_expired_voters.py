@@ -7,8 +7,7 @@ stages them to a Databricks table for downstream dbt modelling.
 ### Pipeline Steps:
 1. Query staging table for already-processed files (idempotency check)
 2. Download new expired voter files from L2 SFTP, parse **all** LALVOTERIDs,
-   and stage them to Databricks with `status='pending'`
-3. Mark staged rows as `status='completed'`
+   and write them to Databricks
 
 ### Configuration:
 
@@ -35,7 +34,6 @@ from include.custom_functions.databricks_utils import (
     _validate_lalvoterids,
     get_databricks_connection,
     get_processed_files,
-    mark_staging_complete,
     stage_expired_voter_ids,
 )
 from include.custom_functions.l2_sftp import (
@@ -71,13 +69,13 @@ DATABRICKS_CATALOG = "goodparty_data_catalog"
     tags=["l2", "expired_voters", "ingestion"],
     is_paused_upon_creation=True,
 )
-def l2_ingest_expired_voters():
+def l2_expired_voters():
 
     @task
     def fetch_processed_files() -> List[str]:
         """
         Query the staging table for files that have already been processed
-        (status='completed') so the ingest task can skip them (idempotency).
+        so the ingest task can skip them (idempotency).
         """
         db_conn_id = Variable.get("databricks_conn_id", default="databricks")
         db_conn = BaseHook.get_connection(db_conn_id)
@@ -104,14 +102,14 @@ def l2_ingest_expired_voters():
     ) -> Dict[str, Any]:
         """
         Connect to L2 SFTP, download expired voter files, parse LALVOTERIDs,
-        and stage them to Databricks with status='pending'.
+        and write them to Databricks.
 
         Skips files that have already been processed (listed in processed_files).
 
         Returns lightweight metadata (no LALVOTERID list in XCom):
-            - count: number of expired LALVOTERIDs staged
+            - count: number of expired LALVOTERIDs written
             - source_files: list of source file names
-            - rows_staged: number of rows written to staging table
+            - rows_staged: number of rows written to table
         """
         from airflow.sdk import get_current_context
 
@@ -199,7 +197,7 @@ def l2_ingest_expired_voters():
             f"from {len(source_files)} file(s): {source_files}"
         )
 
-        # Stage to Databricks with status='pending'
+        # Write to Databricks
         context = get_current_context()
         dag_run_id = context["dag_run"].run_id
 
@@ -232,56 +230,13 @@ def l2_ingest_expired_voters():
             "rows_staged": rows_staged,
         }
 
-    @task
-    def mark_staged_complete(
-        ingest_result: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Mark all staged rows for this DAG run as 'completed'.
-
-        Only completed rows are considered by the idempotency check in
-        fetch_processed_files, so files are only marked as processed once
-        staging succeeds.
-        """
-        from airflow.sdk import get_current_context
-
-        if not ingest_result["count"]:
-            t_log.info("No rows to mark complete — skipping.")
-            return {"rows_marked_complete": 0}
-
-        context = get_current_context()
-        dag_run_id = context["dag_run"].run_id
-
-        db_conn_id = Variable.get("databricks_conn_id", default="databricks")
-        db_conn = BaseHook.get_connection(db_conn_id)
-        schema = Variable.get("databricks_source_schema")
-
-        connection = get_databricks_connection(
-            host=db_conn.host,
-            http_path=db_conn.extra_dejson.get("http_path", ""),
-            client_id=db_conn.login,
-            client_secret=db_conn.password,
-        )
-        try:
-            updated = mark_staging_complete(
-                connection=connection,
-                catalog=DATABRICKS_CATALOG,
-                schema=schema,
-                dag_run_id=dag_run_id,
-            )
-        finally:
-            connection.close()
-
-        return {"rows_marked_complete": updated}
-
     # ------------------------------------ #
     # Calling tasks + Setting dependencies #
     # ------------------------------------ #
 
     processed_files = fetch_processed_files()
-    ingest_result = ingest_expired_voter_files(processed_files)
-    mark_staged_complete(ingest_result)
+    ingest_expired_voter_files(processed_files)
 
 
 # Instantiate the DAG
-l2_ingest_expired_voters()
+l2_expired_voters()

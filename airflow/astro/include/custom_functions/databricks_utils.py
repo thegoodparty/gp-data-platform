@@ -97,7 +97,7 @@ def get_processed_files(
         cursor.execute(
             f"SELECT DISTINCT trim(file_key) AS file_key "
             f"FROM (SELECT explode(split(source_file_keys, ', ')) AS file_key "
-            f"FROM {full_table_name} WHERE status = 'completed')"
+            f"FROM {full_table_name})"
         )
         processed = {row[0] for row in cursor.fetchall()}
         logger.info(f"Already-processed file keys: {processed}")
@@ -157,15 +157,13 @@ def stage_expired_voter_ids(
             "  source_file_keys STRING,"
             "  file_modified_at TIMESTAMP,"
             "  ingested_at TIMESTAMP,"
-            "  dag_run_id STRING,"
-            "  status STRING"
+            "  dag_run_id STRING"
             ")"
         )
 
-        # Clean up any previous pending rows for this dag_run_id (idempotent retry)
+        # Clean up any previous rows for this dag_run_id (idempotent retry)
         cursor.execute(
-            f"DELETE FROM {full_table_name} "
-            f"WHERE dag_run_id = '{dag_run_id_safe}' AND status = 'pending'"
+            f"DELETE FROM {full_table_name} " f"WHERE dag_run_id = '{dag_run_id_safe}'"
         )
 
         total_inserted = 0
@@ -173,13 +171,13 @@ def stage_expired_voter_ids(
             batch = lalvoterids[i : i + batch_size]
             values = ", ".join(
                 f"('{vid}', '{source_files_str}', '{source_file_keys_str}', "
-                f"{ts_sql}, current_timestamp(), '{dag_run_id_safe}', 'pending')"
+                f"{ts_sql}, current_timestamp(), '{dag_run_id_safe}')"
                 for vid in batch
             )
             cursor.execute(
                 f"INSERT INTO {full_table_name} "
                 f"(lalvoterid, source_files, source_file_keys, file_modified_at, "
-                f"ingested_at, dag_run_id, status) "
+                f"ingested_at, dag_run_id) "
                 f"VALUES {values}"
             )
             total_inserted += len(batch)
@@ -190,69 +188,5 @@ def stage_expired_voter_ids(
 
         logger.info(f"Total staged to {full_table_name}: {total_inserted} rows")
         return total_inserted
-    finally:
-        cursor.close()
-
-
-def mark_staging_complete(
-    connection: Connection,
-    catalog: str,
-    schema: str,
-    dag_run_id: str,
-    lalvoterids: List[str] | None = None,
-    batch_size: int = 1000,
-) -> int:
-    """
-    Update staged rows from 'pending' to 'completed' for a DAG run.
-
-    When *lalvoterids* is provided, only rows matching those IDs are updated.
-    This prevents IDs excluded by the state allowlist from being marked
-    completed before they are actually deleted.
-
-    Returns the number of rows updated.
-    """
-    full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
-    dag_run_id_safe = dag_run_id.replace("\\", "\\\\").replace("'", "\\'")
-
-    if lalvoterids is not None:
-        _validate_lalvoterids(lalvoterids)
-        if not lalvoterids:
-            logger.info("No LALVOTERIDs to mark as completed — skipping.")
-            return 0
-
-        total_updated = 0
-        cursor = connection.cursor()
-        try:
-            for i in range(0, len(lalvoterids), batch_size):
-                batch = lalvoterids[i : i + batch_size]
-                placeholders = ", ".join(f"'{v}'" for v in batch)
-                cursor.execute(
-                    f"UPDATE {full_table_name} "
-                    f"SET status = 'completed' "
-                    f"WHERE dag_run_id = '{dag_run_id_safe}' "
-                    f"AND status = 'pending' "
-                    f"AND lalvoterid IN ({placeholders})"
-                )
-                updated = cursor.rowcount if cursor.rowcount >= 0 else 0
-                total_updated += updated
-        finally:
-            cursor.close()
-        logger.info(
-            f"Marked {total_updated} staged rows as completed for {dag_run_id} "
-            f"(scoped to {len(lalvoterids)} LALVOTERIDs)"
-        )
-        return total_updated
-
-    # Fallback: mark all pending rows for the dag_run_id
-    cursor = connection.cursor()
-    try:
-        cursor.execute(
-            f"UPDATE {full_table_name} "
-            f"SET status = 'completed' "
-            f"WHERE dag_run_id = '{dag_run_id_safe}' AND status = 'pending'"
-        )
-        updated = cursor.rowcount if cursor.rowcount >= 0 else 0
-        logger.info(f"Marked {updated} staged rows as completed for {dag_run_id}")
-        return updated
     finally:
         cursor.close()

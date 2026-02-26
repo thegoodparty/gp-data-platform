@@ -4,7 +4,7 @@ models:
   - name: stg_airflow_source__l2_expired_voters
     description: >
       Staged view of expired L2 voter IDs ingested by the Airflow
-      l2_ingest_expired_voters DAG. Each row is a LALVOTERID that was
+      l2_expired_voters DAG. Each row is a LALVOTERID that was
       flagged as expired on L2's SFTP server.
     columns:
       - name: lalvoterid
@@ -28,11 +28,3 @@ models:
         description: Airflow DAG run ID for traceability
         tests:
           - not_null
-      - name: status
-        description: >
-          Processing status of the staged record. 'pending' while ingestion
-          is in progress, 'completed' after staging succeeds.
-        tests:
-          - not_null
-          - accepted_values:
-              values: ['pending', 'completed']

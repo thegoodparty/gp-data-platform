@@ -6,7 +6,6 @@ import pytest
 from include.custom_functions.databricks_utils import (
     _validate_lalvoterids,
     get_processed_files,
-    mark_staging_complete,
     stage_expired_voter_ids,
 )
 
@@ -108,8 +107,8 @@ class TestGetProcessedFiles:
         # Only the information_schema check should have been executed
         assert cursor.execute.call_count == 1
 
-    def test_table_exists_no_completed_files(self, mock_connection):
-        """Return empty set when table exists but has no completed rows."""
+    def test_table_exists_no_files(self, mock_connection):
+        """Return empty set when table exists but has no rows."""
         conn, cursor = mock_connection
         cursor.fetchone.return_value = (1,)
         cursor.fetchall.return_value = []
@@ -144,8 +143,8 @@ class TestStageExpiredVoterIds:
         assert any("CREATE SCHEMA IF NOT EXISTS" in c for c in calls)
         create_table = [c for c in calls if "CREATE TABLE IF NOT EXISTS" in c][0]
         assert "source_file_keys STRING" in create_table
-        # Idempotent cleanup of previous pending rows
-        assert any("DELETE FROM" in c and "pending" in c for c in calls)
+        # Idempotent cleanup of previous rows for this dag_run_id
+        assert any("DELETE FROM" in c for c in calls)
         assert any("INSERT INTO" in c for c in calls)
 
     def test_batching(self, mock_connection):
@@ -223,96 +222,6 @@ class TestStageExpiredVoterIds:
         )
 
         delete_sql = [
-            c[0][0]
-            for c in cursor.execute.call_args_list
-            if "DELETE FROM" in c[0][0] and "pending" in c[0][0]
+            c[0][0] for c in cursor.execute.call_args_list if "DELETE FROM" in c[0][0]
         ][0]
         assert "run_with\\'quote" in delete_sql
-
-
-# ---------------------------------------------------------------------------
-# mark_staging_complete
-# ---------------------------------------------------------------------------
-
-
-class TestMarkStagingComplete:
-    """Tests for marking staged rows as completed."""
-
-    def test_updates_rows(self, mock_connection):
-        """Update pending rows to completed and return count."""
-        conn, cursor = mock_connection
-        cursor.rowcount = 10
-
-        result = mark_staging_complete(
-            conn, catalog="cat", schema="sch", dag_run_id="run_123"
-        )
-
-        assert result == 10
-        sql = cursor.execute.call_args[0][0]
-        assert "SET status = 'completed'" in sql
-        assert "status = 'pending'" in sql
-        assert "run_123" in sql
-
-    def test_no_rows_to_update(self, mock_connection):
-        """Return 0 when no pending rows exist for the dag_run_id."""
-        conn, cursor = mock_connection
-        cursor.rowcount = 0
-
-        result = mark_staging_complete(
-            conn, catalog="cat", schema="sch", dag_run_id="run_123"
-        )
-        assert result == 0
-
-    def test_scoped_to_lalvoterids(self, mock_connection):
-        """Only mark rows matching the given LALVOTERIDs as completed."""
-        conn, cursor = mock_connection
-        cursor.rowcount = 2
-
-        result = mark_staging_complete(
-            conn,
-            catalog="cat",
-            schema="sch",
-            dag_run_id="run_123",
-            lalvoterids=["LALMD0001", "LALMD0002"],
-        )
-
-        assert result == 2
-        sql = cursor.execute.call_args[0][0]
-        assert "SET status = 'completed'" in sql
-        assert "lalvoterid IN (" in sql
-        assert "'LALMD0001'" in sql
-        assert "'LALMD0002'" in sql
-
-    def test_scoped_empty_list_skips(self, mock_connection):
-        """Empty lalvoterids list returns 0 without executing."""
-        conn, cursor = mock_connection
-
-        result = mark_staging_complete(
-            conn,
-            catalog="cat",
-            schema="sch",
-            dag_run_id="run_123",
-            lalvoterids=[],
-        )
-
-        assert result == 0
-        cursor.execute.assert_not_called()
-
-    def test_scoped_batching(self, mock_connection):
-        """Scoped update batches large ID lists."""
-        conn, cursor = mock_connection
-        cursor.rowcount = 2
-
-        ids = [f"LALCA{str(i).zfill(4)}" for i in range(5)]
-        result = mark_staging_complete(
-            conn,
-            catalog="cat",
-            schema="sch",
-            dag_run_id="run_123",
-            lalvoterids=ids,
-            batch_size=2,
-        )
-
-        # 3 batches: [2, 2, 1], each returning rowcount=2
-        assert cursor.execute.call_count == 3
-        assert result == 6

@@ -1050,7 +1050,7 @@ sources:
 
     tables:
       - name: l2_expired_voters
-        description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_ingest_expired_voters DAG. Each row represents a voter ID that was flagged as expired and staged for downstream processing.
+        description: Expired L2 LALVOTERIDs ingested from L2 SFTP by the l2_expired_voters DAG. Each row represents a voter ID that was flagged as expired and staged for downstream processing.
 
   - name: historical
     schema: historical
