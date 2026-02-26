@@ -80,9 +80,11 @@ class TestGetProcessedFiles:
         """Return set of completed file keys when loads table exists."""
         conn, cursor = mock_connection
         cursor.fetchone.return_value = (1,)
+        # Each row is a DAG run's comma-joined source_file_keys
         cursor.fetchall.return_value = [
-            ("file1.tab|2026-01-15T10:00:00+00:00",),
-            ("file2.tab|2026-01-16T10:00:00+00:00",),
+            (
+                "file1.tab|2026-01-15T10:00:00+00:00, file2.tab|2026-01-16T10:00:00+00:00",
+            ),
         ]
 
         result = get_processed_files(conn, catalog="cat", schema="sch")
@@ -92,7 +94,7 @@ class TestGetProcessedFiles:
             "file2.tab|2026-01-16T10:00:00+00:00",
         }
         assert cursor.execute.call_count == 2
-        # Info schema check targets the loads table
+        # Info schema check uses raw catalog in backticks, escaped in WHERE
         info_sql = cursor.execute.call_args_list[0][0][0]
         assert "l2_expired_voters_loads" in info_sql
         # Data query reads from the loads table

@@ -88,7 +88,7 @@ def get_processed_files(
         catalog_safe = catalog.replace("\\", "\\\\").replace("'", "\\'")
         schema_safe = schema.replace("\\", "\\\\").replace("'", "\\'")
         cursor.execute(
-            f"SELECT 1 FROM `{catalog_safe}`.information_schema.tables "
+            f"SELECT 1 FROM `{catalog}`.information_schema.tables "
             f"WHERE table_catalog = '{catalog_safe}' "
             f"AND table_schema = '{schema_safe}' "
             f"AND table_name = 'l2_expired_voters_loads'"
@@ -97,12 +97,12 @@ def get_processed_files(
             logger.info("Loads table does not exist yet — no files processed.")
             return set()
 
-        cursor.execute(
-            f"SELECT DISTINCT trim(file_key) AS file_key "
-            f"FROM (SELECT explode(split(source_file_keys, ', ')) AS file_key "
-            f"FROM {loads_table})"
-        )
-        processed = {row[0] for row in cursor.fetchall()}
+        cursor.execute(f"SELECT source_file_keys FROM {loads_table}")
+        processed = set()
+        for (keys_str,) in cursor.fetchall():
+            if keys_str:
+                for key in keys_str.split(", "):
+                    processed.add(key.strip())
         logger.info(f"Already-processed file keys: {processed}")
         return processed
     finally:
