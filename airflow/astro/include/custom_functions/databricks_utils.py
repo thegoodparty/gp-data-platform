@@ -120,11 +120,12 @@ def stage_expired_voter_ids(
     batch_size: int = 100_000,
 ) -> int:
     """
-    Write expired voter IDs to a staging table in Databricks for auditability.
+    Upsert expired voter IDs into a staging table in Databricks using MERGE
+    to prevent duplicates if metadata is corrupted or files are re-processed.
 
     Creates the schema, data table, and ``l2_expired_voters_loads`` metadata
     table if they don't exist.  A completion record is written to the loads
-    table only after **all** batch inserts succeed, so partial failures are
+    table only after **all** batch merges succeed, so partial failures are
     automatically retried on the next DAG run.
 
     Args:
@@ -132,7 +133,7 @@ def stage_expired_voter_ids(
             (ISO 8601 string).  The most recent timestamp is stored as
             ``file_modified_at`` on every row in the batch.
 
-    Returns the number of rows inserted.
+    Returns the number of rows upserted.
     """
     _validate_lalvoterids(lalvoterids)
     full_table_name = f"`{catalog}`.`{schema}`.`l2_expired_voters`"
@@ -152,6 +153,11 @@ def stage_expired_voter_ids(
 
     latest_ts = max(file_ts.values()) if file_ts else None
     ts_sql = f"'{latest_ts}'" if latest_ts else "NULL"
+
+    merge_cols = (
+        "lalvoterid, source_files, source_file_keys, "
+        "file_modified_at, ingested_at, dag_run_id"
+    )
 
     cursor = connection.cursor()
     try:
@@ -175,15 +181,12 @@ def stage_expired_voter_ids(
             ")"
         )
 
-        # Clean up any previous rows for this dag_run_id (idempotent retry)
-        cursor.execute(
-            f"DELETE FROM {full_table_name} WHERE dag_run_id = '{dag_run_id_safe}'"
-        )
+        # Clean up any previous load record for this dag_run_id (idempotent retry)
         cursor.execute(
             f"DELETE FROM {loads_table} WHERE dag_run_id = '{dag_run_id_safe}'"
         )
 
-        total_inserted = 0
+        total_upserted = 0
         for i in range(0, len(lalvoterids), batch_size):
             batch = lalvoterids[i : i + batch_size]
             values = ", ".join(
@@ -192,15 +195,16 @@ def stage_expired_voter_ids(
                 for vid in batch
             )
             cursor.execute(
-                f"INSERT INTO {full_table_name} "
-                f"(lalvoterid, source_files, source_file_keys, file_modified_at, "
-                f"ingested_at, dag_run_id) "
-                f"VALUES {values}"
+                f"MERGE INTO {full_table_name} AS target "
+                f"USING (VALUES {values}) AS source({merge_cols}) "
+                f"ON target.lalvoterid = source.lalvoterid "
+                f"WHEN MATCHED THEN UPDATE SET * "
+                f"WHEN NOT MATCHED THEN INSERT *"
             )
-            total_inserted += len(batch)
+            total_upserted += len(batch)
             logger.info(
-                f"Staged batch {i // batch_size + 1} "
-                f"({len(batch)} rows, {total_inserted} of {len(lalvoterids)})"
+                f"Merged batch {i // batch_size + 1} "
+                f"({len(batch)} rows, {total_upserted} of {len(lalvoterids)})"
             )
 
         # Record successful load — written only after all batches succeed so
@@ -209,14 +213,14 @@ def stage_expired_voter_ids(
             f"INSERT INTO {loads_table} "
             f"(dag_run_id, source_file_keys, row_count, loaded_at) "
             f"VALUES ('{dag_run_id_safe}', '{source_file_keys_str}', "
-            f"{total_inserted}, current_timestamp())"
+            f"{total_upserted}, current_timestamp())"
         )
         logger.info(
             f"Recorded load completion in {loads_table}: "
-            f"{total_inserted} rows, dag_run_id={dag_run_id}"
+            f"{total_upserted} rows, dag_run_id={dag_run_id}"
         )
 
-        logger.info(f"Total staged to {full_table_name}: {total_inserted} rows")
-        return total_inserted
+        logger.info(f"Total upserted to {full_table_name}: {total_upserted} rows")
+        return total_upserted
     finally:
         cursor.close()

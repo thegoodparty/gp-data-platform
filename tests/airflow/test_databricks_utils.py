@@ -126,10 +126,10 @@ class TestGetProcessedFiles:
 
 
 class TestStageExpiredVoterIds:
-    """Tests for staging expired voter IDs to Databricks."""
+    """Tests for staging expired voter IDs to Databricks via MERGE (upsert)."""
 
     def test_basic_staging(self, mock_connection):
-        """Stage IDs with schema/table creation and idempotent cleanup."""
+        """Stage IDs with schema/table creation, MERGE upsert, and loads record."""
         conn, cursor = mock_connection
 
         result = stage_expired_voter_ids(
@@ -148,17 +148,21 @@ class TestStageExpiredVoterIds:
         assert len(create_tables) == 2
         assert any("source_file_keys STRING" in c for c in create_tables)
         assert any("row_count INT" in c for c in create_tables)
-        # Idempotent cleanup of both data and loads tables
+        # Only loads table gets DELETE (MERGE handles data table idempotency)
         delete_calls = [c for c in calls if "DELETE FROM" in c]
-        assert len(delete_calls) == 2
-        # Data insert + loads completion record
+        assert len(delete_calls) == 1
+        assert "l2_expired_voters_loads" in delete_calls[0]
+        # Data uses MERGE, loads uses INSERT
+        merge_calls = [c for c in calls if "MERGE INTO" in c]
+        assert len(merge_calls) == 1
+        assert "WHEN MATCHED THEN UPDATE SET *" in merge_calls[0]
+        assert "WHEN NOT MATCHED THEN INSERT *" in merge_calls[0]
         insert_calls = [c for c in calls if "INSERT INTO" in c]
-        assert len(insert_calls) == 2
-        # Last INSERT is the loads table completion record
-        assert "l2_expired_voters_loads" in insert_calls[-1]
+        assert len(insert_calls) == 1
+        assert "l2_expired_voters_loads" in insert_calls[0]
 
     def test_batching(self, mock_connection):
-        """Verify IDs exceeding batch_size are split across INSERT statements."""
+        """Verify IDs exceeding batch_size are split across MERGE statements."""
         conn, cursor = mock_connection
         ids = [f"LALCA{str(i).zfill(4)}" for i in range(5)]
 
@@ -173,15 +177,16 @@ class TestStageExpiredVoterIds:
         )
 
         assert result == 5
-        insert_calls = [
-            c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
-        ]
-        # 3 data batches [2, 2, 1] + 1 loads completion record
-        assert len(insert_calls) == 4
-        assert "l2_expired_voters_loads" in insert_calls[-1]
+        calls = [c[0][0] for c in cursor.execute.call_args_list]
+        merge_calls = [c for c in calls if "MERGE INTO" in c]
+        assert len(merge_calls) == 3  # batches: [2, 2, 1]
+        # Loads completion record is a single INSERT
+        insert_calls = [c for c in calls if "INSERT INTO" in c]
+        assert len(insert_calls) == 1
+        assert "l2_expired_voters_loads" in insert_calls[0]
 
     def test_with_file_timestamps(self, mock_connection):
-        """File timestamp is included in INSERT SQL when provided."""
+        """File timestamp is included in MERGE SQL when provided."""
         conn, cursor = mock_connection
 
         stage_expired_voter_ids(
@@ -194,13 +199,13 @@ class TestStageExpiredVoterIds:
             file_timestamps={"file1.tab": "2026-01-15T10:00:00+00:00"},
         )
 
-        insert_sql = [
-            c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
+        merge_sql = [
+            c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]
         ][0]
-        assert "2026-01-15T10:00:00+00:00" in insert_sql
+        assert "2026-01-15T10:00:00+00:00" in merge_sql
         # source_file_keys stores composite "filename|mtime" for idempotency
-        assert "file1.tab|2026-01-15T10:00:00+00:00" in insert_sql
-        assert "source_file_keys" in insert_sql
+        assert "file1.tab|2026-01-15T10:00:00+00:00" in merge_sql
+        assert "source_file_keys" in merge_sql
 
     def test_without_file_timestamps_uses_null(self, mock_connection):
         """NULL is used for file_modified_at when no timestamps provided."""
@@ -215,10 +220,10 @@ class TestStageExpiredVoterIds:
             dag_run_id="run_123",
         )
 
-        insert_sql = [
-            c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
+        merge_sql = [
+            c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]
         ][0]
-        assert "NULL" in insert_sql
+        assert "NULL" in merge_sql
 
     def test_dag_run_id_escaped(self, mock_connection):
         """Single quotes in dag_run_id are escaped in SQL."""
@@ -233,16 +238,20 @@ class TestStageExpiredVoterIds:
             dag_run_id="run_with'quote",
         )
 
+        # Loads table DELETE has escaped dag_run_id
         delete_calls = [
             c[0][0] for c in cursor.execute.call_args_list if "DELETE FROM" in c[0][0]
         ]
-        # Both data table and loads table DELETEs should have escaped dag_run_id
-        assert len(delete_calls) == 2
-        for sql in delete_calls:
-            assert "run_with\\'quote" in sql
+        assert len(delete_calls) == 1
+        assert "run_with\\'quote" in delete_calls[0]
+        # MERGE also has escaped dag_run_id
+        merge_sql = [
+            c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]
+        ][0]
+        assert "run_with\\'quote" in merge_sql
 
-    def test_loads_record_is_last_insert(self, mock_connection):
-        """Loads completion record is written after all data batch inserts."""
+    def test_loads_record_is_last_execute(self, mock_connection):
+        """Loads completion record is written after all data MERGE batches."""
         conn, cursor = mock_connection
         ids = [f"LALCA{str(i).zfill(4)}" for i in range(3)]
 
@@ -256,11 +265,11 @@ class TestStageExpiredVoterIds:
             batch_size=2,
         )
 
-        insert_calls = [
-            c[0][0] for c in cursor.execute.call_args_list if "INSERT INTO" in c[0][0]
-        ]
-        # Data inserts come first, loads record comes last
-        for sql in insert_calls[:-1]:
-            assert "l2_expired_voters`" in sql
-        assert "l2_expired_voters_loads" in insert_calls[-1]
-        assert "3" in insert_calls[-1]  # row_count
+        calls = [c[0][0] for c in cursor.execute.call_args_list]
+        # Find positions of MERGE and loads INSERT
+        merge_positions = [i for i, c in enumerate(calls) if "MERGE INTO" in c]
+        loads_insert_pos = [i for i, c in enumerate(calls) if "INSERT INTO" in c]
+        assert len(loads_insert_pos) == 1
+        # All MERGEs come before the loads INSERT
+        assert all(m < loads_insert_pos[0] for m in merge_positions)
+        assert "3" in calls[loads_insert_pos[0]]  # row_count
