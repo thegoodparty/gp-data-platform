@@ -19,8 +19,8 @@ stages them to a Databricks table for downstream dbt modelling.
 **Variables** (set in Astro Environment Manager):
 - `l2_sftp_expired_dir` — SFTP directory for expired voter files
 - `l2_sftp_expired_file_pattern` — regex pattern for matching files
-- `databricks_conn_id` — (optional, default: `databricks`) connection ID for Databricks;
-  set to `databricks_dev` in dev, `databricks` in prod
+- `databricks_conn_id` — connection ID for Databricks
+  (e.g., `databricks_dev` in dev, `databricks` in prod)
 - `databricks_source_schema` — schema where Airflow stages ingested data for dbt
   visibility (e.g., `airflow_source` in prod, `airflow_source_dev` in dev)
 """
@@ -77,7 +77,7 @@ def l2_expired_voters():
         Query the staging table for files that have already been processed
         so the ingest task can skip them (idempotency).
         """
-        db_conn_id = Variable.get("databricks_conn_id", default="databricks")
+        db_conn_id = Variable.get("databricks_conn_id")
         db_conn = BaseHook.get_connection(db_conn_id)
         schema = Variable.get("databricks_source_schema")
 
@@ -201,7 +201,7 @@ def l2_expired_voters():
         context = get_current_context()
         dag_run_id = context["dag_run"].run_id
 
-        db_conn_id = Variable.get("databricks_conn_id", default="databricks")
+        db_conn_id = Variable.get("databricks_conn_id")
         db_conn = BaseHook.get_connection(db_conn_id)
         source_schema = Variable.get("databricks_source_schema")
 
