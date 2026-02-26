@@ -117,7 +117,7 @@ def stage_expired_voter_ids(
     source_files: List[str],
     dag_run_id: str,
     file_timestamps: Dict[str, str] | None = None,
-    batch_size: int = 100_000,
+    batch_size: int = 10_000,  # 100k caused OOM on Astro worker; keep MERGE statements small
 ) -> int:
     """
     Upsert expired voter IDs into a staging table in Databricks using MERGE
