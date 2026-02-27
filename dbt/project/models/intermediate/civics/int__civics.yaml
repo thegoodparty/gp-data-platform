@@ -663,7 +663,7 @@ models:
         description: BallotReady position ID (used for ICP join)
 
       - name: stage_type
-        description: Type of election stage (primary, general, runoff)
+        description: Type of election stage
         data_tests:
           - not_null
           - accepted_values:
@@ -671,7 +671,8 @@ models:
                 values:
                   - general
                   - primary
-                  - runoff
+                  - primary runoff
+                  - general runoff
 
       - name: election_date
         description: Date of the election stage
