@@ -142,7 +142,7 @@ with
             -- fall back to candidate_office + population for net-new records.
             coalesce(
                 icp.icp_office_win,
-                f.population between 500 and 50000
+                f.population between 500 and 100000
                 and lower(trim(f.candidate_office)) in (
                     {% for office in icp_qualifying_ts_offices %}
                         '{{ office }}'{{ ',' if not loop.last }}
