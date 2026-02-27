@@ -269,7 +269,15 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                    "Cannot Determine",
+                  ]
               config:
                 where: "candidacy_result is not null"
 
@@ -478,7 +486,7 @@ models:
                 to: ref('election_stage')
                 field: gp_election_stage_id
               config:
-                where: "gp_election_stage_id is not null"
+                error_if: ">=100"
 
       - name: candidate_name
         description: Name of the candidate
@@ -510,7 +518,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
               config:
                 where: "election_result is not null"
 
@@ -789,7 +797,11 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['general', 'primary', 'runoff']
+                values:
+                  - general
+                  - primary
+                  - primary runoff
+                  - general runoff
 
       - name: election_date
         description: Date of the election stage

@@ -60,7 +60,11 @@ with
             stage.gp_election_id,
             stage.hubspot_contact_id,
             stage.ddhq_race_id,
-            stage.election_stage,
+            case
+                when stage.election_stage = 'runoff'
+                then 'general runoff'
+                else stage.election_stage
+            end as election_stage,
             stage.ddhq_election_stage_date,
             stage.ddhq_race_name,
             stage.total_votes_cast,
