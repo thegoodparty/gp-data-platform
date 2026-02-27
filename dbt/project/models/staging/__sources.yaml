@@ -1045,7 +1045,7 @@ sources:
 
 
   - name: airflow_source
-    schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA', 'airflow_source') }}"
+    schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA') }}"
     description: Raw data loaded by Airflow DAGs into Databricks
 
     tables:
