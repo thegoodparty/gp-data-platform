@@ -105,6 +105,8 @@ def download_expired_voter_files(
                 with ZipFile(local_path, "r") as zf:
                     zf.extractall(path=local_dir)
                     for name in zf.namelist():
+                        if name.endswith("/"):
+                            continue
                         downloaded_paths.append(os.path.join(local_dir, name))
                         if file_timestamps is not None and mtime_iso:
                             file_timestamps[os.path.basename(name)] = mtime_iso
