@@ -479,6 +479,9 @@ models:
                 field: gp_election_stage_id
               config:
                 where: "gp_election_stage_id is not null"
+                severity: warn
+                warn_if: "<100"
+                error_if: ">=100"
 
       - name: candidate_name
         description: Name of the candidate
