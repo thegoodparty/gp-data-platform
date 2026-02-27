@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_airflow_source__l2_expired_voters_loads
+    description: >
+      Load metadata for the l2_expired_voters DAG. Each row represents
+      a successful DAG run where all batch inserts completed. Used by
+      the DAG for idempotency — only files with a record here are
+      considered fully loaded.
+    columns:
+      - name: dag_run_id
+        description: Airflow DAG run ID that produced this load
+        tests:
+          - not_null
+          - unique
+      - name: source_file_keys
+        description: >
+          Comma-separated composite keys (filename|mtime) for files
+          ingested in this load. Used by the DAG to determine which
+          files have been fully processed.
+        tests:
+          - not_null
+      - name: row_count
+        description: Number of LALVOTERIDs upserted in this load
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: loaded_at
+        description: Timestamp when the load completed successfully
+        tests:
+          - not_null

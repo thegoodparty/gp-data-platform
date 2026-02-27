@@ -297,17 +297,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
     l2_haystaq_prefix = f"l2_data/from_sftp_server/Haystaq/{dbt_env_name}"
 
-    # set databricks temporary volume path based on dbt cloud environment name
-    if dbt_env_name == "dev":
-        vol_prefix = "dbt_hugh"
-    elif dbt_env_name == "prod":
-        vol_prefix = "dbt"
-    else:
-        raise ValueError(
-            f"Invalid `vol_prefix` handling of dbt environment name: {dbt_env_name}"
-        )
     databricks_volume_directory = (
-        f"/Volumes/goodparty_data_catalog/{vol_prefix}/object_storage/l2_temp"
+        f"/Volumes/goodparty_data_catalog/{dbt.this.schema}/object_storage/l2_temp"
     )
 
     # get list of states

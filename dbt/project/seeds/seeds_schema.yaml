@@ -26,7 +26,7 @@ seeds:
           - not_null
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
-                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
               row_condition: "level = 'state'"
 
       - name: level
