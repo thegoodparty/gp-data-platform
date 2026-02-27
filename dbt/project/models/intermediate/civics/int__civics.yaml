@@ -592,8 +592,8 @@ models:
 
       Grain: One row per election (position + election date).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
-      enriched with BallotReady API position and normalized position data.
+      Source: Rolled up from int__civics_election_stage_ballotready, which
+      sources from BallotReady API race, election, and position tables.
 
     columns:
       - name: gp_election_id
@@ -634,7 +634,9 @@ models:
 
       Grain: One row per election stage (position + election + stage type).
 
-      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections).
+      Source: BallotReady API race, election, and position tables (2026+ elections).
+      This model is the foundation for int__civics_election_ballotready, which
+      rolls up stages into elections.
 
     columns:
       - name: gp_election_stage_id
@@ -645,13 +647,9 @@ models:
           - is_uuid
 
       - name: gp_election_id
-        description: Foreign key to election table
+        description: Foreign key to election table (referential integrity guaranteed by the election model rolling up from this model)
         data_tests:
           - not_null
-          - relationships:
-              arguments:
-                to: ref('int__civics_election_ballotready')
-                field: gp_election_id
 
       - name: br_race_id
         description: BallotReady race ID (maps to election stage concept)

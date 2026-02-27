@@ -1,14 +1,19 @@
 -- BallotReady election stages → Civics mart election_stage schema
--- Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections)
+-- Source: BallotReady API (race + election + position tables)
 --
 -- Grain: One row per election stage (position + election + stage type)
 --
 -- A BallotReady "race" maps to an "election stage" — each race represents a
 -- single stage (primary, general, or runoff) for a position within an election.
+--
+-- This model is the foundation for int__civics_election_ballotready, which
+-- rolls up election stages into elections.
 with
-    candidacies as (
+    race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
+
+    br_election as (
         select *
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        from {{ ref("stg_airbyte_source__ballotready_api_election") }}
         where election_day >= '2026-01-01'
     ),
 
@@ -16,148 +21,153 @@ with
         select * from {{ ref("stg_airbyte_source__ballotready_api_position") }}
     ),
 
-    candidacies_with_fields as (
+    br_normalized as (select * from {{ ref("int__ballotready_normalized_position") }}),
+
+    races_with_fields as (
         select
-            candidacies.*,
-            candidacies.position_name as official_office_name,
+            race.*,
+            br_election.election_day,
+            br_election.name as election_name,
+            br_election.database_id as br_election_database_id,
+            br_position.name as position_name,
+            br_position.state,
+            br_position.level,
+            br_position.database_id as br_position_database_id,
+            br_position.sub_area_name,
+            br_position.sub_area_value,
+            br_position.retention as is_retention,
+            br_position.seats as position_seats,
+            br_position.name as official_office_name,
             {{
                 generate_candidate_office_from_position(
-                    "candidacies.position_name",
-                    "candidacies.normalized_position_name",
+                    "br_position.name",
+                    "br_normalized.name",
                 )
             }} as candidate_office,
-            initcap(candidacies.level) as office_level,
+            initcap(br_position.level) as office_level,
             {{
                 map_ballotready_office_type(
                     generate_candidate_office_from_position(
-                        "candidacies.position_name",
-                        "candidacies.normalized_position_name",
+                        "br_position.name",
+                        "br_normalized.name",
                     )
                 )
             }} as office_type,
-            {{ extract_city_from_office_name("candidacies.position_name") }} as city,
+            {{ extract_city_from_office_name("br_position.name") }} as city,
             coalesce(
                 regexp_extract(
-                    candidacies.position_name,
+                    br_position.name,
                     '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
                 ),
                 ''
             ) as district,
             coalesce(
-                regexp_extract(
-                    candidacies.position_name, '[-, ] (?:Seat|Group) ([^,]+)'
-                ),
-                regexp_extract(candidacies.position_name, ' - Position ([^\\s(]+)'),
+                regexp_extract(br_position.name, '[-, ] (?:Seat|Group) ([^,]+)'),
+                regexp_extract(br_position.name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name
-        from candidacies
-        left join br_position on candidacies.br_position_id = br_position.database_id
+        from race
+        inner join br_election on race.election.databaseid = br_election.database_id
+        inner join br_position on race.position.databaseid = br_position.database_id
+        left join
+            br_normalized
+            on br_position.normalized_position.databaseid = br_normalized.database_id
     ),
 
     -- To generate gp_election_id we need the GENERAL election date for this
     -- position+election, not the stage-specific date. Look it up from the
-    -- general-stage rows.
+    -- general-stage rows. If no general race exists yet, fall back to the
+    -- stage-specific date.
     general_election_dates as (
         select
-            br_position_id, br_election_id, max(election_day) as general_election_date
-        from candidacies
+            br_position_database_id,
+            br_election_database_id,
+            max(election_day) as general_election_date
+        from races_with_fields
         where not is_primary and not is_runoff
-        group by br_position_id, br_election_id
+        group by br_position_database_id, br_election_database_id
     ),
 
     election_stages as (
         select
-            -- gp_election_stage_id from br_race_id (analogous to ddhq_race_id pattern)
-            {{ generate_salted_uuid(fields=["candidacies_with_fields.br_race_id"]) }}
+            -- gp_election_stage_id from br race database_id
+            {{ generate_salted_uuid(fields=["races_with_fields.database_id"]) }}
             as gp_election_stage_id,
 
             -- gp_election_id needs the general election date, not the stage date
-            -- We temporarily override election_date for the macro
             {{ generate_gp_election_id("elec_date_lookup") }} as gp_election_id,
 
             -- BallotReady source identifiers
-            cast(candidacies_with_fields.br_race_id as string) as br_race_id,
-            cast(candidacies_with_fields.br_election_id as string) as br_election_id,
-            candidacies_with_fields.br_position_id,
+            cast(races_with_fields.database_id as string) as br_race_id,
+            cast(races_with_fields.br_election_database_id as string) as br_election_id,
+            races_with_fields.br_position_database_id as br_position_id,
             cast(null as string) as ddhq_race_id,
 
-            -- Map stage type (lowercased)
+            -- Map stage type
             case
-                when candidacies_with_fields.is_primary
+                when races_with_fields.is_primary
                 then 'primary'
-                when candidacies_with_fields.is_runoff
+                when races_with_fields.is_runoff
                 then 'runoff'
                 else 'general'
             end as stage_type,
 
-            candidacies_with_fields.election_day as election_date,
+            races_with_fields.election_day as election_date,
 
             -- election_name: the overarching election event name from BallotReady
-            candidacies_with_fields.election_name as election_name,
+            races_with_fields.election_name as election_name,
 
             -- race_name: office-specific label constructed from position fields
-            candidacies_with_fields.state
+            races_with_fields.state
             || ' '
-            || candidacies_with_fields.position_name
+            || races_with_fields.position_name
             || case
                 when
-                    nullif(candidacies_with_fields.sub_area_name, '') is not null
-                    and nullif(candidacies_with_fields.sub_area_value, '') is not null
+                    nullif(races_with_fields.sub_area_name, '') is not null
+                    and nullif(races_with_fields.sub_area_value, '') is not null
                 then
                     ', '
-                    || candidacies_with_fields.sub_area_name
+                    || races_with_fields.sub_area_name
                     || ' '
-                    || candidacies_with_fields.sub_area_value
+                    || races_with_fields.sub_area_value
                 else ''
             end as race_name,
 
-            candidacies_with_fields.is_primary,
-            candidacies_with_fields.is_runoff,
-            candidacies_with_fields.is_retention = 'true' as is_retention,
-            candidacies_with_fields.number_of_seats,
+            races_with_fields.is_primary,
+            races_with_fields.is_runoff,
+            races_with_fields.is_retention,
+            races_with_fields.seats as number_of_seats,
             cast(null as string) as total_votes_cast,
-            candidacies_with_fields._airbyte_extracted_at as created_at,
-            candidacies_with_fields._airbyte_extracted_at as updated_at
+            races_with_fields.updated_at as created_at,
+            races_with_fields.updated_at as updated_at
 
-        from candidacies_with_fields
+        from races_with_fields
         -- Join to get the general election date for this position+election
         left join
             general_election_dates as ged
-            on candidacies_with_fields.br_position_id = ged.br_position_id
-            and candidacies_with_fields.br_election_id = ged.br_election_id
+            on races_with_fields.br_position_database_id = ged.br_position_database_id
+            and races_with_fields.br_election_database_id = ged.br_election_database_id
         -- Build a virtual row with the general election date for the macro
         cross join
             lateral(
                 select
-                    candidacies_with_fields.official_office_name,
-                    candidacies_with_fields.candidate_office,
-                    candidacies_with_fields.office_level,
-                    candidacies_with_fields.office_type,
-                    candidacies_with_fields.state,
-                    candidacies_with_fields.city,
-                    candidacies_with_fields.district,
-                    candidacies_with_fields.seat_name,
+                    races_with_fields.official_office_name,
+                    races_with_fields.candidate_office,
+                    races_with_fields.office_level,
+                    races_with_fields.office_type,
+                    races_with_fields.state,
+                    races_with_fields.city,
+                    races_with_fields.district,
+                    races_with_fields.seat_name,
                     coalesce(
-                        ged.general_election_date, candidacies_with_fields.election_day
+                        ged.general_election_date, races_with_fields.election_day
                     ) as election_date
             ) as elec_date_lookup
     ),
 
-    -- Only include stages that have a matching election
-    valid_elections as (
-        select gp_election_id from {{ ref("int__civics_election_ballotready") }}
-    ),
-
-    filtered as (
-        select stage.*
-        from election_stages as stage
-        inner join
-            valid_elections on stage.gp_election_id = valid_elections.gp_election_id
-    ),
-
     deduplicated as (
         select *
-        from filtered
+        from election_stages
         qualify
             row_number() over (
                 partition by gp_election_stage_id order by created_at desc
