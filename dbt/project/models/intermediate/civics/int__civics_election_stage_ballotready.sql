@@ -105,10 +105,12 @@ with
 
             -- Map stage type
             case
+                when races_with_fields.is_runoff and races_with_fields.is_primary
+                then 'primary runoff'
+                when races_with_fields.is_runoff and not races_with_fields.is_primary
+                then 'general runoff'
                 when races_with_fields.is_primary
                 then 'primary'
-                when races_with_fields.is_runoff
-                then 'runoff'
                 else 'general'
             end as stage_type,
 
