@@ -48,6 +48,7 @@ with
             -- ICP fields
             icp.icp_office_win,
             icp.icp_office_serve,
+            icp.icp_win_supersize,
             initcap(icp.br_position_name) as ballotready_position_name,
             initcap(icp.l2_district_name) as l2_district_name,
             initcap(icp.l2_district_type) as l2_district_type,

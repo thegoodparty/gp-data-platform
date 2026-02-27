@@ -824,6 +824,11 @@ models:
       - name: icp_office_serve
         description: Whether the office meets Ideal Customer Profile criteria for the Serve product
 
+      - name: icp_win_supersize
+        description: >
+          Whether the office meets all ICP criteria but has >100,000 voters,
+          requiring separate consideration outside the standard Win process.
+
       - name: ballotready_position_name
         description: Name of the political position from BallotReady (title case)
 
@@ -1006,6 +1011,11 @@ models:
 
       - name: icp_office_serve
         description: Whether the office meets ICP criteria for the Serve product
+
+      - name: icp_win_supersize
+        description: >
+          Whether the office meets all ICP criteria but has >100,000 voters,
+          requiring separate consideration outside the standard Win process.
 
       - name: is_judicial
         description: Whether the office is a judicial position (from BallotReady)

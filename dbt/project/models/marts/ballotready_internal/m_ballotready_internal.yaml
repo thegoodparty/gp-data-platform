@@ -45,7 +45,7 @@ models:
       - name: icp_win
         description: >
           Boolean flag indicating if the office meets ICP-Win criteria
-          (500-50K voters, non-judicial, non-appointed, qualifying office type).
+          (500-100K voters, non-judicial, non-appointed, qualifying office type).
           Derived from int__icp_offices via BallotReady race → position join.
         tests:
           - accepted_values:
@@ -56,6 +56,15 @@ models:
           Boolean flag indicating if the office meets ICP-Serve criteria
           (1K-100K voters, non-judicial, non-appointed, qualifying office type).
           Derived from int__icp_offices via BallotReady race → position join.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_win_supersize
+        description: >
+          Boolean flag indicating if the office meets all ICP criteria but has
+          >100K voters, requiring separate consideration outside the standard
+          Win process. Derived from int__icp_offices via BallotReady race → position join.
         tests:
           - accepted_values:
               arguments:

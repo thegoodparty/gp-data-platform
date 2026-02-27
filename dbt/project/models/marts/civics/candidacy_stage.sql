@@ -76,6 +76,7 @@ select
     deduplicated.election_stage_date,
     es.is_win_icp,
     es.is_serve_icp,
+    es.is_win_supersize_icp,
     deduplicated.created_at,
     deduplicated.updated_at
 
