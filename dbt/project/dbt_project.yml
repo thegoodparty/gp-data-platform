@@ -71,9 +71,6 @@ models:
       segment_storage_source:
         +tags: ["segment", "weekly"]
 
-vars:
-  airflow_source_schema: "{{ env_var('DBT_AIRFLOW_SOURCE_SCHEMA', 'airflow_source') }}"
-
 # Use the user's home folder for uploading python notebooks
 # Shared folder use is deprecated due to governance concerns.
 flags:
