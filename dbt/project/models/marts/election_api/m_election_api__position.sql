@@ -13,7 +13,7 @@ with
             tbl_position.id as id,
             tbl_match.br_database_id,
             tbl_position.br_position_id as br_position_id,
-            tbl_position.name as br_position_name,
+            tbl_position.name,
             tbl_match.state,
             tbl_district.id as district_id,
             tbl_position.created_at,
@@ -55,7 +55,7 @@ with
             tbl_position.id as id,
             tbl_position.br_database_id,
             tbl_position.br_position_id as br_position_id,
-            tbl_position.name as br_position_name,
+            tbl_position.name,
             tbl_position.state,
             cast(null as string) as district_id,
             tbl_position.created_at,
@@ -89,7 +89,7 @@ with
             }} as id,
             cast(null as bigint) as br_database_id,
             cast(null as string) as br_position_id,
-            cast(null as string) as br_position_name,
+            cast(null as string) as name,
             tbl_district.state,
             tbl_district.id as district_id,
             tbl_district.created_at,
@@ -103,34 +103,13 @@ with
     )
 
 select
-    id,
-    br_database_id,
-    br_position_id,
-    br_position_name,
-    state,
-    district_id,
-    created_at,
-    updated_at
+    id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
 from matched_positions
 union all
 select
-    id,
-    br_database_id,
-    br_position_id,
-    br_position_name,
-    state,
-    district_id,
-    created_at,
-    updated_at
+    id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
 from unmatched_br_positions
 union all
 select
-    id,
-    br_database_id,
-    br_position_id,
-    br_position_name,
-    state,
-    district_id,
-    created_at,
-    updated_at
+    id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
 from unmatched_districts

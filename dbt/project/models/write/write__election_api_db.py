@@ -108,7 +108,7 @@ POSITION_UPSERT_QUERY = """
         id,
         br_database_id,
         br_position_id,
-        br_position_name,
+        name,
         state,
         district_id
     )
@@ -116,14 +116,14 @@ POSITION_UPSERT_QUERY = """
         id::uuid,
         br_database_id,
         br_position_id,
-        br_position_name,
+        name,
         state,
         district_id::uuid
     FROM {staging_schema}."Position"
     ON CONFLICT (id) DO UPDATE SET
         br_database_id = EXCLUDED.br_database_id,
         br_position_id = EXCLUDED.br_position_id,
-        br_position_name = EXCLUDED.br_position_name,
+        name = EXCLUDED.name,
         state = EXCLUDED.state,
         district_id = EXCLUDED.district_id
 """

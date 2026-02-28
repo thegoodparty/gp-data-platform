@@ -118,7 +118,7 @@ models:
         description: "BallotReady position ID"
         tests:
           - unique
-      - name: br_position_name
+      - name: name
         description: "BallotReady position name"
       - name: state
         description: "State postal code"
