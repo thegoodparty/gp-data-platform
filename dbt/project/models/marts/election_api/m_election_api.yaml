@@ -113,10 +113,12 @@ models:
       - name: br_database_id
         description: "Database ID of the `position` from BallotReady"
         tests:
+          - not_null
           - unique
       - name: br_position_id
         description: "BallotReady position ID"
         tests:
+          - not_null
           - unique
       - name: name
         description: "BallotReady position name"

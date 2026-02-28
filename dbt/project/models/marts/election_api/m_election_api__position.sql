@@ -73,33 +73,6 @@ with
             {% if is_incremental() %}
                 and tbl_position.updated_at > (select max(updated_at) from {{ this }})
             {% endif %}
-    ),
-
-    unmatched_districts as (
-        select
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "tbl_district.state",
-                        "tbl_district.l2_district_type",
-                        "tbl_district.l2_district_name",
-                    ],
-                    salt="election_api_position",
-                )
-            }} as id,
-            cast(null as bigint) as br_database_id,
-            cast(null as string) as br_position_id,
-            cast(null as string) as name,
-            tbl_district.state,
-            tbl_district.id as district_id,
-            tbl_district.created_at,
-            tbl_district.updated_at
-        from {{ ref("m_election_api__district") }} as tbl_district
-        where
-            tbl_district.id not in (select district_id from matched_positions)
-            {% if is_incremental() %}
-                and tbl_district.updated_at > (select max(updated_at) from {{ this }})
-            {% endif %}
     )
 
 select
@@ -109,7 +82,3 @@ union all
 select
     id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
 from unmatched_br_positions
-union all
-select
-    id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
-from unmatched_districts
