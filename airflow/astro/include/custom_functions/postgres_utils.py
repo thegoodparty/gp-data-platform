@@ -6,8 +6,10 @@ DistrictStats, District, DistrictVoter, Voter.
 
 import logging
 from contextlib import contextmanager
+from io import StringIO
 from typing import Iterator, List, Sequence, Tuple
 
+import paramiko
 import psycopg2
 import psycopg2.extras
 from include.custom_functions.databricks_utils import get_databricks_connection
@@ -37,10 +39,22 @@ def get_postgres_via_ssh(
     bastion = BaseHook.get_connection(bastion_conn_id)
     pg = BaseHook.get_connection(pg_conn_id)
 
+    # Build SSH auth kwargs — prefer private key, fall back to password.
+    ssh_kwargs: dict = {}
+    private_key = bastion.extra_dejson.get("private_key", "")
+    if private_key:
+        pkey = paramiko.RSAKey.from_private_key(
+            StringIO(private_key),
+            password=bastion.password or None,
+        )
+        ssh_kwargs["ssh_pkey"] = pkey
+    else:
+        ssh_kwargs["ssh_password"] = bastion.password
+
     tunnel = SSHTunnelForwarder(
         (bastion.host, bastion.port or 22),
         ssh_username=bastion.login,
-        ssh_password=bastion.password,
+        **ssh_kwargs,
         remote_bind_address=(pg.host, pg.port or 5432),
         set_keepalive=30,
     )

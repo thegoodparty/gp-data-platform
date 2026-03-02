@@ -26,6 +26,7 @@ _STUBS = (
     "databricks.sql.client",
     "databricks.sdk",
     "databricks.sdk.core",
+    "paramiko",
     "sshtunnel",
     "psycopg2",
     "psycopg2.extras",
@@ -180,6 +181,7 @@ class TestGetPostgresViaSsh:
         bastion_conn = MagicMock(
             host="bastion.example.com", port=22, login="user", password="pw"
         )
+        bastion_conn.extra_dejson = {}
         pg_conn = MagicMock(
             host="pg.internal",
             port=5432,
@@ -212,6 +214,7 @@ class TestGetPostgresViaSsh:
         bastion_conn = MagicMock(
             host="bastion.example.com", port=22, login="user", password="pw"
         )
+        bastion_conn.extra_dejson = {}
         pg_conn = MagicMock(
             host="pg.internal",
             port=5432,
