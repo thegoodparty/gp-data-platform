@@ -64,7 +64,7 @@ with
         where
             tbl_position.br_database_id not in (
                 select br_database_id
-                from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+                from matched_positions
                 where br_database_id is not null
             )
             {% if is_incremental() %}
