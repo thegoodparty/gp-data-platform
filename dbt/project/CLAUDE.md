@@ -62,6 +62,11 @@ dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_
 - All column renaming and casting should happen once, in the staging layer. If
   we're casting and renaming columns in intermeidate and mart models, that's a
   code smell. Identify and suggest refactoring when you notice this.
+- When using `NOT IN` with a subquery, always add `IS NOT NULL` on the
+  subquery column. `NOT IN` silently drops all rows if any value in the
+  subquery is NULL (the entire expression evaluates to UNKNOWN).
+    - Good: `where main.id not in (select id from other_table where id is not null)`
+    - Bad: `where main.id not in (select id from other_table)`
 
 ## Building and Testing Models
 
