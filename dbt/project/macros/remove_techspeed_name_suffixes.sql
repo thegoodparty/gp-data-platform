@@ -2,51 +2,9 @@
     trim(
         regexp_replace(
             regexp_replace(
-                regexp_replace(
-                    regexp_replace(
-                        regexp_replace(
-                            regexp_replace(
-                                regexp_replace(
-                                    regexp_replace(
-                                        regexp_replace(
-                                            regexp_replace(
-                                                regexp_replace(
-                                                    regexp_replace(
-                                                        {{ last_name_column }},
-                                                        ' Jr$',
-                                                        ''
-                                                    ),
-                                                    ' Jr\.$',
-                                                    ''
-                                                ),
-                                                ' Sr$',
-                                                ''
-                                            ),
-                                            ' Sr\.$',
-                                            ''
-                                        ),
-                                        ' II$',
-                                        ''
-                                    ),
-                                    ' Ii$',
-                                    ''
-                                ),
-                                ' III$',
-                                ''
-                            ),
-                            ' Iii$',
-                            ''
-                        ),
-                        ' Iv$',
-                        ''
-                    ),
-                    ' I ii$',
-                    ''
-                ),
-                ' V$',
-                ''
+                {{ last_name_column }}, '(?i) (jr\\.?|sr\\.?|ii+|iv|v|i ii)$', ''
             ),
-            ' Iiii$',
+            '(?i) (jr\\.?|sr\\.?|ii+|iv|v|i ii)$',
             ''
         )
     )
