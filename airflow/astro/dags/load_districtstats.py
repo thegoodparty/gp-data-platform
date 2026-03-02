@@ -68,8 +68,12 @@ def load_districtstats():
 
     @task
     def sync_districtstats():
-        """Read DistrictStats from Databricks and upsert into PostgreSQL."""
+        """Read DistrictStats from Databricks and upsert into PostgreSQL.
+
+        Streams rows in batches to stay within the Astro worker memory limit.
+        """
         schema = Variable.get("databricks_dbt_schema", default="dbt")
+        batch_size = 5000
 
         query = (
             f"SELECT district_id, updated_at, total_constituents, "
@@ -78,32 +82,44 @@ def load_districtstats():
         )
 
         t_log.info("Reading from Databricks: %s", query)
-        _col_names, row_iter = read_databricks_table(query)
-
-        # Materialize all rows — ~200k is small enough for in-memory
-        rows = [
-            (
-                row[0],  # district_id
-                row[1],  # updated_at
-                row[2],  # total_constituents
-                row[3],  # total_constituents_with_cell_phone
-                Json(row[4]),  # buckets — wrap for explicit JSONB casting
-            )
-            for row in row_iter
-        ]
-        t_log.info("Fetched %d rows from Databricks", len(rows))
+        _col_names, row_iter = read_databricks_table(query, fetch_size=batch_size)
 
         pg_schema = Variable.get("people_api_schema")
 
         with get_postgres_via_ssh() as conn:
-            total = upsert_rows(
-                conn=conn,
-                schema=pg_schema,
-                table="DistrictStats",
-                columns=COLUMNS,
-                conflict_columns=["district_id"],
-                rows=rows,
-            )
+            total = 0
+            batch = []
+            for row in row_iter:
+                batch.append(
+                    (
+                        row[0],  # district_id
+                        row[1],  # updated_at
+                        row[2],  # total_constituents
+                        row[3],  # total_constituents_with_cell_phone
+                        Json(row[4]),  # buckets — JSONB casting
+                    )
+                )
+                if len(batch) >= batch_size:
+                    total += upsert_rows(
+                        conn=conn,
+                        schema=pg_schema,
+                        table="DistrictStats",
+                        columns=COLUMNS,
+                        conflict_columns=["district_id"],
+                        rows=batch,
+                    )
+                    batch = []
+
+            # Flush remaining rows
+            if batch:
+                total += upsert_rows(
+                    conn=conn,
+                    schema=pg_schema,
+                    table="DistrictStats",
+                    columns=COLUMNS,
+                    conflict_columns=["district_id"],
+                    rows=batch,
+                )
 
         t_log.info("Upserted %d DistrictStats rows to PostgreSQL", total)
 
