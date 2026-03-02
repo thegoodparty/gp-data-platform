@@ -396,9 +396,10 @@ models:
                 values: [true, false]
 
       - name: general_election_date
-        description: General election date
-        data_tests:
-          - not_null
+        description: >
+          General election date. May be NULL for records that only have a
+          primary election date (e.g. early 2026 primaries before general
+          dates are set). At least one of general/primary must be non-null.
 
       - name: created_at
         data_tests:
