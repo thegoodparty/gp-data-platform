@@ -62,13 +62,9 @@ with
             tbl_position.updated_at
         from {{ ref("int__enhanced_position") }} as tbl_position
         where
-            tbl_position.br_database_id
-            not in (select br_database_id from matched_positions)
-            and tbl_position.name not in (
-                'County Committee Female Member',
-                'County Committee Male Member',
-                'President of the United States',
-                'Vice President of the United States'
+            tbl_position.br_database_id not in (
+                select br_database_id
+                from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
             )
             {% if is_incremental() %}
                 and tbl_position.updated_at > (select max(updated_at) from {{ this }})
