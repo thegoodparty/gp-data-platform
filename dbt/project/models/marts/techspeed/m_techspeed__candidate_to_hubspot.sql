@@ -142,7 +142,7 @@ with
             -- fall back to candidate_office + population for net-new records.
             coalesce(
                 icp.icp_office_win,
-                f.population between 500 and 50000
+                f.population between 500 and 100000
                 and lower(trim(f.candidate_office)) in (
                     {% for office in icp_qualifying_ts_offices %}
                         '{{ office }}'{{ ',' if not loop.last }}
@@ -157,7 +157,16 @@ with
                         '{{ office }}'{{ ',' if not loop.last }}
                     {% endfor %}
                 )
-            ) as icp_serve
+            ) as icp_serve,
+            coalesce(
+                icp.icp_win_supersize,
+                f.population > 100000
+                and lower(trim(f.candidate_office)) in (
+                    {% for office in icp_qualifying_ts_offices %}
+                        '{{ office }}'{{ ',' if not loop.last }}
+                    {% endfor %}
+                )
+            ) as icp_win_supersize
         from techspeed_candidates_fuzzy as f
         left join
             techspeed_viability as v
@@ -228,5 +237,6 @@ select
     viability_rating_2_0,
     score_viability_automated,
     icp_win,
-    icp_serve
+    icp_serve,
+    icp_win_supersize
 from techspeed_candidates_w_hubspot

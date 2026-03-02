@@ -1,6 +1,7 @@
 {% test is_state_abbreviation(model, column_name) %}
 
-    {%- set valid_states = get_us_states_list() -%}
+    {# Keep civics state validation territory-inclusive independent of macro defaults. #}
+    {%- set valid_states = get_us_states_list(include_territories=true) -%}
 
     select {{ column_name }}
     from {{ model }}

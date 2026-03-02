@@ -128,7 +128,7 @@ models:
       - name: icp_win
         description: >
           Boolean flag indicating if the office meets ICP-Win criteria
-          (500-50K voters, non-judicial, non-appointed, qualifying office type).
+          (500-100K voters, non-judicial, non-appointed, qualifying office type).
           Uses BallotReady ICP offices when a race match exists; falls back to
           candidate_office + population for net-new TechSpeed records.
         tests:
@@ -141,6 +141,16 @@ models:
           (1K-100K voters, non-judicial, non-appointed, qualifying office type).
           Uses BallotReady ICP offices when a race match exists; falls back to
           candidate_office + population for net-new TechSpeed records.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_win_supersize
+        description: >
+          Boolean flag indicating if the office meets all ICP criteria but has
+          >100K voters, requiring separate consideration outside the standard
+          Win process. Uses BallotReady ICP offices when a race match exists;
+          falls back to candidate_office + population for net-new TechSpeed records.
         tests:
           - accepted_values:
               arguments:

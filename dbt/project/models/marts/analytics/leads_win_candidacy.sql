@@ -46,6 +46,7 @@ with
             -- ICP fields
             icp.icp_office_win,
             icp.icp_office_serve,
+            icp.icp_win_supersize,
             icp.judicial as is_judicial,
             icp.appointed as is_appointed,
             initcap(icp.br_position_name) as ballotready_position_name,

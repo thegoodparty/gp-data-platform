@@ -109,19 +109,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["l2", "s3", "databricks", "load"],
     )
 
-    # get dbt environment variables
-    dbt_env_name = dbt.config.get("dbt_environment")
     s3_bucket = dbt.config.get("l2_s3_bucket")
-
-    # set databricks schema based on dbt cloud environment name
-    # TODO: use schema based on dbt cloud account. current env vars listed in docs are not available
-    # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-    if dbt_env_name == "dev":
-        databricks_schema = "dbt_hugh_source"
-    elif dbt_env_name == "prod":
-        databricks_schema = "dbt_source"
-    else:
-        raise ValueError(f"Invalid `dbt_env_name`: {dbt_env_name}")
+    databricks_schema = f"{dbt.this.schema}_source"
 
     # get files loaded from sftp server into s3
     s3_files_loaded: DataFrame = dbt.ref("load__l2_sftp_to_s3")

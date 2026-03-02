@@ -52,7 +52,7 @@ models:
         tests:
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
-                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"

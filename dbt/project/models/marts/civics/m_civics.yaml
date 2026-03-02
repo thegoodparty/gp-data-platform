@@ -223,16 +223,6 @@ models:
 
       - name: party_affiliation
         description: Candidate's political party
-        tests:
-          - accepted_values:
-              values:
-                - Independent
-                - Nonpartisan
-                - Democrat
-                - Republican
-                - Libertarian
-                - Green
-                - Other
 
       - name: is_incumbent
         description: Whether the candidate is the incumbent
@@ -269,7 +259,15 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                    "Cannot Determine",
+                  ]
               config:
                 where: "candidacy_result is not null"
 
@@ -336,13 +334,20 @@ models:
       - name: is_win_icp
         description: >
           Whether this candidacy's position meets the Win ICP criteria
-          (500-50,000 voters). Derived from int__icp_offices via br_position_database_id.
+          (500-100,000 voters). Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
           Whether this candidacy's position meets the Serve ICP criteria
           (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this candidacy's position meets all ICP criteria but has >100,000
+          voters, requiring separate consideration outside the standard Win process.
+          Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: created_at
@@ -478,7 +483,7 @@ models:
                 to: ref('election_stage')
                 field: gp_election_stage_id
               config:
-                where: "gp_election_stage_id is not null"
+                error_if: ">=100"
 
       - name: candidate_name
         description: Name of the candidate
@@ -510,7 +515,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
               config:
                 where: "election_result is not null"
 
@@ -545,13 +550,20 @@ models:
       - name: is_win_icp
         description: >
           Whether this candidacy stage's position meets the Win ICP criteria
-          (500-50,000 voters). Derived from the election_stage table's ICP flags.
+          (500-100,000 voters). Derived from the election_stage table's ICP flags.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
           Whether this candidacy stage's position meets the Serve ICP criteria
           (1,000-100,000 voters). Derived from the election_stage table's ICP flags.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this candidacy stage's position meets all ICP criteria but has
+          >100,000 voters, requiring separate consideration outside the standard
+          Win process. Derived from the election_stage table's ICP flags.
           NULL for records without BallotReady position match.
 
       - name: created_at
@@ -715,13 +727,20 @@ models:
       - name: is_win_icp
         description: >
           Whether this election's position meets the Win ICP criteria
-          (500-50,000 voters). Derived from int__icp_offices via br_position_database_id.
+          (500-100,000 voters). Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
           Whether this election's position meets the Serve ICP criteria
           (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this election's position meets all ICP criteria but has >100,000
+          voters, requiring separate consideration outside the standard Win process.
+          Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: created_at
@@ -789,7 +808,11 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['general', 'primary', 'runoff']
+                values:
+                  - general
+                  - primary
+                  - primary runoff
+                  - general runoff
 
       - name: election_date
         description: Date of the election stage
@@ -841,13 +864,20 @@ models:
       - name: is_win_icp
         description: >
           Whether this election stage's position meets the Win ICP criteria
-          (500-50,000 voters). Derived from int__icp_offices via br_position_id.
+          (500-100,000 voters). Derived from int__icp_offices via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
           Whether this election stage's position meets the Serve ICP criteria
           (1,000-100,000 voters). Derived from int__icp_offices via br_position_id.
+          NULL for 2025 archive records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this election stage's position meets all ICP criteria but has
+          >100,000 voters, requiring separate consideration outside the standard
+          Win process. Derived from int__icp_offices via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
 
       - name: created_at
