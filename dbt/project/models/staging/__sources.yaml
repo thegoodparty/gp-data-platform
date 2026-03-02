@@ -208,6 +208,8 @@ sources:
           freshness: null
       - name: techspeed_gdrive_candidates
         description: raw data load from Techspeed Google Drive
+      - name: techspeed_gdrive_officeholders
+        description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
         config:
