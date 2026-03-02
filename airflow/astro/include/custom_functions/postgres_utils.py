@@ -42,11 +42,29 @@ def get_postgres_via_ssh(
     # Build SSH auth kwargs — prefer private key, fall back to password.
     ssh_kwargs: dict = {}
     private_key = bastion.extra_dejson.get("private_key", "")
+    passphrase = (
+        bastion.extra_dejson.get("private_key_passphrase") or bastion.password or None
+    )
     if private_key:
-        pkey = paramiko.RSAKey.from_private_key(
-            StringIO(private_key),
-            password=bastion.password or None,
-        )
+        # Auto-detect key type (RSA, Ed25519, ECDSA, etc.)
+        for key_class in (
+            paramiko.Ed25519Key,
+            paramiko.RSAKey,
+            paramiko.ECDSAKey,
+        ):
+            try:
+                pkey = key_class.from_private_key(
+                    StringIO(private_key), password=passphrase
+                )
+                logger.info("Loaded SSH key as %s", key_class.__name__)
+                break
+            except (paramiko.SSHException, ValueError):
+                continue
+        else:
+            raise ValueError(
+                "Could not load private key from connection — "
+                "tried Ed25519, RSA, ECDSA"
+            )
         ssh_kwargs["ssh_pkey"] = pkey
     else:
         ssh_kwargs["ssh_password"] = bastion.password
