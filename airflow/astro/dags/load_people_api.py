@@ -1,15 +1,14 @@
 """
-## Load DistrictStats to People-API PostgreSQL
+## Load People-API Tables to PostgreSQL
 
-Reads the `m_people_api__districtstats` dbt model from Databricks and upserts
-all rows into the `"DistrictStats"` table in the people-api PostgreSQL database
-via an SSH tunnel through the bastion host.
+Reads dbt models from Databricks and upserts rows into the people-api
+PostgreSQL database via an SSH tunnel through the bastion host.
 
-### Pipeline Steps:
-1. Query all rows from `m_people_api__districtstats` in Databricks
-   (using `to_json(buckets)` for server-side struct → JSON serialization)
-2. Upsert into PostgreSQL `"DistrictStats"` via SSH tunnel using
-   `INSERT ... ON CONFLICT (district_id) DO UPDATE SET ...`
+### Tables Loaded:
+1. **sync_districts** — `m_people_api__district` → `"District"`
+   (parent table, must run first due to foreign key constraints)
+2. **sync_district_stats** — `m_people_api__districtstats` → `"DistrictStats"`
+   (has FK to District)
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M credentials
@@ -40,7 +39,16 @@ t_log = logging.getLogger("airflow.task")
 
 DATABRICKS_CATALOG = "goodparty_data_catalog"
 
-COLUMNS = [
+DISTRICT_COLUMNS = [
+    "id",
+    "created_at",
+    "updated_at",
+    "type",
+    "name",
+    "state",
+]
+
+DISTRICT_STATS_COLUMNS = [
     "district_id",
     "updated_at",
     "total_constituents",
@@ -61,13 +69,62 @@ COLUMNS = [
         "retries": 3,
         "retry_delay": duration(seconds=30),
     },
-    tags=["people_api", "districtstats", "postgres"],
+    tags=["people_api", "postgres"],
     is_paused_upon_creation=True,
 )
-def load_districtstats():
+def load_people_api():
 
     @task
-    def sync_districtstats():
+    def sync_districts():
+        """Read District from Databricks and upsert into PostgreSQL.
+
+        Loads all districts except federal-level (state='US').
+        Must complete before DistrictStats due to foreign key constraint.
+        """
+        schema = Variable.get("databricks_dbt_schema", default="dbt")
+        batch_size = 5000
+
+        query = (
+            f"SELECT id, created_at, updated_at, type, name, state "
+            f"FROM `{DATABRICKS_CATALOG}`.`{schema}`.`m_people_api__district` "
+            f"WHERE state != 'US'"
+        )
+
+        t_log.info("Reading from Databricks: %s", query)
+        _col_names, row_iter = read_databricks_table(query, fetch_size=batch_size)
+
+        pg_schema = Variable.get("people_api_schema")
+
+        with get_postgres_via_ssh() as conn:
+            total = 0
+            batch = []
+            for row in row_iter:
+                batch.append(tuple(row))
+                if len(batch) >= batch_size:
+                    total += upsert_rows(
+                        conn=conn,
+                        schema=pg_schema,
+                        table="District",
+                        columns=DISTRICT_COLUMNS,
+                        conflict_columns=["id"],
+                        rows=batch,
+                    )
+                    batch = []
+
+            if batch:
+                total += upsert_rows(
+                    conn=conn,
+                    schema=pg_schema,
+                    table="District",
+                    columns=DISTRICT_COLUMNS,
+                    conflict_columns=["id"],
+                    rows=batch,
+                )
+
+        t_log.info("Upserted %d District rows to PostgreSQL", total)
+
+    @task
+    def sync_district_stats():
         """Read DistrictStats from Databricks and upsert into PostgreSQL.
 
         Streams rows in batches to stay within the Astro worker memory limit.
@@ -104,26 +161,25 @@ def load_districtstats():
                         conn=conn,
                         schema=pg_schema,
                         table="DistrictStats",
-                        columns=COLUMNS,
+                        columns=DISTRICT_STATS_COLUMNS,
                         conflict_columns=["district_id"],
                         rows=batch,
                     )
                     batch = []
 
-            # Flush remaining rows
             if batch:
                 total += upsert_rows(
                     conn=conn,
                     schema=pg_schema,
                     table="DistrictStats",
-                    columns=COLUMNS,
+                    columns=DISTRICT_STATS_COLUMNS,
                     conflict_columns=["district_id"],
                     rows=batch,
                 )
 
         t_log.info("Upserted %d DistrictStats rows to PostgreSQL", total)
 
-    sync_districtstats()
+    sync_districts() >> sync_district_stats()
 
 
-load_districtstats()
+load_people_api()
