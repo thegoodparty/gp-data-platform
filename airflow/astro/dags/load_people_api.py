@@ -40,6 +40,13 @@ t_log = logging.getLogger("airflow.task")
 
 DATABRICKS_CATALOG = "goodparty_data_catalog"
 
+# The dbt SQL model defines struct fields as lowercase, but the API expects
+# camelCase. Remap the two affected keys on the way into PostgreSQL.
+_BUCKET_KEY_MAP = {
+    "presenceofchildren": "presenceOfChildren",
+    "estimatedincomerange": "estimatedIncomeRange",
+}
+
 DISTRICT_COLUMNS = [
     "id",
     "created_at",
@@ -154,7 +161,12 @@ def load_people_api():
                         row[1],  # updated_at
                         row[2],  # total_constituents
                         row[3],  # total_constituents_with_cell_phone
-                        Json(json.loads(row[4])),  # buckets — parse JSON string to dict
+                        Json(  # buckets — parse and fix camelCase keys
+                            {
+                                _BUCKET_KEY_MAP.get(k, k): v
+                                for k, v in json.loads(row[4]).items()
+                            }
+                        ),
                     )
                 )
                 if len(batch) >= batch_size:
