@@ -46,25 +46,11 @@ def get_postgres_via_ssh(
         bastion.extra_dejson.get("private_key_passphrase") or bastion.password or None
     )
     if private_key:
-        # Auto-detect key type (RSA, Ed25519, ECDSA, etc.)
-        for key_class in (
-            paramiko.Ed25519Key,
-            paramiko.RSAKey,
-            paramiko.ECDSAKey,
-        ):
-            try:
-                pkey = key_class.from_private_key(
-                    StringIO(private_key), password=passphrase
-                )
-                logger.info("Loaded SSH key as %s", key_class.__name__)
-                break
-            except (paramiko.SSHException, ValueError):
-                continue
-        else:
-            raise ValueError(
-                "Could not load private key from connection — "
-                "tried Ed25519, RSA, ECDSA"
-            )
+        # PKey auto-detects key type and handles the OpenSSH unified format.
+        pkey = paramiko.PKey.from_private_key(
+            StringIO(private_key), password=passphrase
+        )
+        logger.info("Loaded SSH key: %s", type(pkey).__name__)
         ssh_kwargs["ssh_pkey"] = pkey
     else:
         ssh_kwargs["ssh_password"] = bastion.password
