@@ -23,6 +23,7 @@ PostgreSQL database via an SSH tunnel through the bastion host.
 - `people_api_schema` — PostgreSQL schema name for people-api tables
 """
 
+import json
 import logging
 
 from include.custom_functions.postgres_utils import (
@@ -153,7 +154,7 @@ def load_people_api():
                         row[1],  # updated_at
                         row[2],  # total_constituents
                         row[3],  # total_constituents_with_cell_phone
-                        Json(row[4]),  # buckets — JSONB casting
+                        Json(json.loads(row[4])),  # buckets — parse JSON string to dict
                     )
                 )
                 if len(batch) >= batch_size:
