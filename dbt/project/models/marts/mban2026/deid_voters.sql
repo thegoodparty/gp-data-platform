@@ -1,3 +1,10 @@
+{{
+    config(
+        auto_liquid_cluster=false,
+        liquid_clustered_by=["state", "residence_addresses_zip"],
+    )
+}}
+
 with
     source_voters as (select * from {{ ref("m_people_api__voter") }}),
 
@@ -7,6 +14,14 @@ with
             id,
             lalvoterid,
             state,
+
+            -- Geographic fields (positioned early for liquid clustering stats)
+            residence_addresses_city,
+            residence_addresses_state,
+            cast(residence_addresses_zip as string) as residence_addresses_zip,
+            mailing_addresses_city,
+            mailing_addresses_state,
+            cast(mailing_addresses_zip as string) as mailing_addresses_zip,
 
             -- Household identifiers (hashed from address components)
             sha2(
@@ -67,17 +82,10 @@ with
             voter_status,
             voter_status_updatedat,
 
-            mailing_addresses_city,
-            mailing_addresses_state,
-            cast(mailing_addresses_zip as string) as mailing_addresses_zip,
-
-            residence_addresses_city,
             residence_addresses_latlongaccuracy,
             -- Round lat/long to 3 decimal places (~100m precision) for privacy
             round(residence_addresses_latitude, 3) as residence_addresses_latitude,
             round(residence_addresses_longitude, 3) as residence_addresses_longitude,
-            residence_addresses_state,
-            cast(residence_addresses_zip as string) as residence_addresses_zip,
             residence_hhparties_description,
 
             -- Voter turnout (all boolean flags)
