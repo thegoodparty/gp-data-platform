@@ -3,7 +3,7 @@
 with
     clean_officeholders as (
         select
-            office_holder_id as br_officeholder_id,
+            office_holder_id as ts_officeholder_id,
             first_name,
             last_name,
             case
@@ -62,7 +62,7 @@ with
         from {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }}
     )
 select
-    br_officeholder_id,
+    ts_officeholder_id,
     first_name,
     last_name,
     is_incumbent,

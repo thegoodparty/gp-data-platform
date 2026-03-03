@@ -67,7 +67,7 @@ models:
   - name: int__techspeed_officeholders
     description: "Cleaned and standardized techspeed officeholder data with basic transformations"
     columns:
-      - name: br_officeholder_id
+      - name: ts_officeholder_id
         description: "Unique identifier for the officeholder from source system"
         tests:
           - not_null
