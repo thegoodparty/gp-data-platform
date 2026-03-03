@@ -1,6 +1,3 @@
--- TODO: Keep raw string types to match the current TechSpeed candidates staging
--- pattern.
--- If we later add safe typed casts in candidates, mirror those casts here.
 with
     source as (
         select * from {{ source("airbyte_source", "techspeed_gdrive_officeholders") }}
@@ -13,7 +10,7 @@ with
             {{ adapter.quote("_airbyte_generation_id") }},
             {{ adapter.quote("_ab_source_file_url") }},
             {{ adapter.quote("_ab_source_file_last_modified") }},
-            {{ adapter.quote("office_holder_id") }},
+            {{ adapter.quote("office_holder_id") }} as ts_officeholder_id,
             {{ adapter.quote("first_name") }},
             {{ adapter.quote("last_name") }},
             {{ adapter.quote("email") }},
@@ -37,8 +34,28 @@ with
             {{ adapter.quote("tier") }},
             {{ adapter.quote("party") }},
             {{ adapter.quote("partisan") }},
-            {{ adapter.quote("is_incumbent") }},
-            {{ adapter.quote("is_uncontested") }},
+            {{ adapter.quote("is_incumbent") }} as is_incumbent_raw,
+            case
+                when
+                    lower(trim({{ adapter.quote("is_incumbent") }}))
+                    in ('true', 'yes', '1')
+                then true
+                when
+                    lower(trim({{ adapter.quote("is_incumbent") }}))
+                    in ('false', 'no', '0')
+                then false
+            end as is_incumbent,
+            {{ adapter.quote("is_uncontested") }} as is_uncontested_raw,
+            case
+                when
+                    lower(trim({{ adapter.quote("is_uncontested") }}))
+                    in ('true', 'yes', '1')
+                then true
+                when
+                    lower(trim({{ adapter.quote("is_uncontested") }}))
+                    in ('false', 'no', '0')
+                then false
+            end as is_uncontested,
             {{ adapter.quote("seats_available") }},
             {{ adapter.quote("general_election_day") }},
             {{ adapter.quote("primary_election_day") }},

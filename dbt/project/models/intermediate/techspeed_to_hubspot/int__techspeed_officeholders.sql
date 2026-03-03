@@ -3,15 +3,10 @@
 with
     clean_officeholders as (
         select
-            office_holder_id as ts_officeholder_id,
+            ts_officeholder_id,
             first_name,
             last_name,
-            case
-                when lower(trim(is_incumbent)) in ('true', 'yes', '1')
-                then true
-                when lower(trim(is_incumbent)) in ('false', 'no', '0')
-                then false
-            end as is_incumbent,
+            is_incumbent,
             email,
             replace(
                 replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
@@ -37,12 +32,7 @@ with
             primary_election_day as primary_election_date,
             general_election_day as general_election_date,
             date_processed,
-            case
-                when lower(trim(is_uncontested)) in ('true', 'yes', '1')
-                then true
-                when lower(trim(is_uncontested)) in ('false', 'no', '0')
-                then false
-            end as is_uncontested,
+            is_uncontested,
             seats_available as number_of_seats_available,
             partisan,
             running_for_re_election_2025,
