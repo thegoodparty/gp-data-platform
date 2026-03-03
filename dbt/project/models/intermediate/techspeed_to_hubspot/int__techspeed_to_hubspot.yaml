@@ -64,6 +64,65 @@ models:
         tests:
           - not_null
 
+  - name: int__techspeed_officeholders
+    description: "Cleaned and standardized techspeed officeholder data with basic transformations"
+    columns:
+      - name: office_holder_id
+        description: "Unique identifier for the officeholder from source system"
+        tests:
+          - not_null
+      - name: first_name
+        description: "Officeholder's first name"
+        tests:
+          - not_null
+      - name: last_name
+        description: "Officeholder's last name"
+        tests:
+          - not_null
+      - name: officeholder_type
+        description: "Type of officeholder (Incumbent/Non-Incumbent)"
+      - name: email
+        description: "Officeholder's email address"
+      - name: phone
+        description: "Officeholder's phone number (cleaned)"
+      - name: party
+        description: "Political party affiliation"
+      - name: state
+        description: "State where the officeholder serves"
+        tests:
+          - not_null
+      - name: office_type
+        description: "Type of office held"
+        tests:
+          - not_null
+      - name: uncontested
+        description: "Whether the officeholder's race is contested or uncontested"
+      - name: type
+        description: "Lead type classification"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Self-Filer Lead']
+      - name: contact_owner
+        description: "Email of the contact owner"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['jesse@goodparty.org']
+      - name: owner_name
+        description: "Name of the contact owner"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Jesse Diliberto']
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted"
+        tests:
+          - not_null
+
   - name: int__techspeed_candidates_clean
     description: "Further cleaned techspeed candidate data with name standardization and district cleaning"
     columns:
