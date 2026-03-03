@@ -39,18 +39,31 @@ def get_postgres_via_ssh(
     bastion = BaseHook.get_connection(bastion_conn_id)
     pg = BaseHook.get_connection(pg_conn_id)
 
-    # Build SSH auth kwargs — prefer private key, fall back to password.
+    # Build SSH auth kwargs — prefer key-based auth, fall back to password.
     ssh_kwargs: dict = {}
-    private_key = bastion.extra_dejson.get("private_key", "")
+    pem_data = bastion.extra_dejson.get("private_key", "")
     passphrase = (
         bastion.extra_dejson.get("private_key_passphrase") or bastion.password or None
     )
-    if private_key:
-        # PKey auto-detects key type and handles the OpenSSH unified format.
-        pkey = paramiko.PKey.from_private_key(
-            StringIO(private_key), password=passphrase
-        )
-        logger.info("Loaded SSH key: %s", type(pkey).__name__)
+    if pem_data:
+        # Try each key class until one parses the key successfully.
+        pkey = None
+        key_classes = [
+            paramiko.Ed25519Key,
+            paramiko.RSAKey,
+            paramiko.ECDSAKey,
+        ]
+        for cls in key_classes:
+            try:
+                pkey = cls.from_private_key(  # type: ignore[attr-defined]
+                    StringIO(pem_data), password=passphrase
+                )
+                logger.info("Loaded SSH key: %s", cls.__name__)
+                break
+            except (paramiko.SSHException, ValueError):
+                continue
+        if pkey is None:
+            raise ValueError("Could not load SSH key with any supported key type")
         ssh_kwargs["ssh_pkey"] = pkey
     else:
         ssh_kwargs["ssh_password"] = bastion.password
