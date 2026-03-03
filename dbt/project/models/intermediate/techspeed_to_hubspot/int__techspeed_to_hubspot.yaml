@@ -67,7 +67,7 @@ models:
   - name: int__techspeed_officeholders
     description: "Cleaned and standardized techspeed officeholder data with basic transformations"
     columns:
-      - name: office_holder_id
+      - name: br_officeholder_id
         description: "Unique identifier for the officeholder from source system"
         tests:
           - not_null
@@ -85,8 +85,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_incumbent is not null"
       - name: email
         description: "Officeholder's email address"
       - name: phone
@@ -111,8 +109,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_uncontested is not null"
       - name: _airbyte_extracted_at
         description: "Timestamp when the record was extracted"
         tests:

@@ -1,9 +1,9 @@
-{{ config(materialized="incremental", on_schema_change="append_new_columns") }}
+{{ config(materialized="view") }}
 
 with
     clean_officeholders as (
         select
-            office_holder_id,
+            office_holder_id as br_officeholder_id,
             first_name,
             last_name,
             case
@@ -60,14 +60,9 @@ with
             _ab_source_file_url,
             _airbyte_extracted_at
         from {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }}
-        {% if is_incremental() %}
-            where
-                _airbyte_extracted_at
-                > (select max(_airbyte_extracted_at) from {{ this }})
-        {% endif %}
     )
 select
-    office_holder_id,
+    br_officeholder_id,
     first_name,
     last_name,
     is_incumbent,
