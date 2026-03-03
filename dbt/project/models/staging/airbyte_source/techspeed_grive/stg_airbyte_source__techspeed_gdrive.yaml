@@ -6,6 +6,14 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__techspeed_gdrive_officeholders
+    description: Officeholders data load from TechSpeed Google Drive
+    # TODO: Add person-level office_holder_id tests if/when candidates moves to id-based key tests.
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - not_null
+          - unique
   - name: stg_airbyte_source__techspeed_gdrive_marketing_data_enrichment
     description: Marketing data enrichment load from TechSpeed Google Drive
     columns:
