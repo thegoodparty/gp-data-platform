@@ -401,6 +401,11 @@ models:
           primary election date (e.g. early 2026 primaries before general
           dates are set). At least one of general/primary must be non-null.
 
+      - name: primary_election_date
+        description: >
+          Primary election date. May be NULL when only a general election
+          date is available. At least one of general/primary must be non-null.
+
       - name: created_at
         data_tests:
           - not_null
@@ -408,6 +413,12 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: techspeed_candidacy_has_general_or_primary_date
+          arguments:
+            expression: "coalesce(general_election_date, primary_election_date) is not null"
 
   - name: int__civics_candidate_techspeed
     description: >
