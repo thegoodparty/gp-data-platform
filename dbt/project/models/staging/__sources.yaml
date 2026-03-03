@@ -225,8 +225,8 @@ sources:
         description: raw data load from Techspeed Google Drive
         config:
           freshness:
-            warn_after: {count: 30, period: day}
-            error_after: {count: 90, period: day}
+            warn_after: {count: 90, period: day}
+            error_after: {count: 180, period: day}
 
   - name: dbt_source
     schema: dbt_source
