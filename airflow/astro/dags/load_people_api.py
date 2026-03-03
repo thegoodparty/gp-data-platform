@@ -5,9 +5,9 @@ Reads dbt models from Databricks and upserts rows into the people-api
 PostgreSQL database via an SSH tunnel through the bastion host.
 
 ### Tables Loaded:
-1. **sync_districts** — `m_people_api__district` → `"District"`
+1. **load_districts** — `m_people_api__district` → `"District"`
    (parent table, must run first due to foreign key constraints)
-2. **sync_district_stats** — `m_people_api__districtstats` → `"DistrictStats"`
+2. **load_district_stats** — `m_people_api__districtstats` → `"DistrictStats"`
    (has FK to District)
 
 ### Connections (set in Astro Environment Manager):
@@ -75,7 +75,7 @@ DISTRICT_STATS_COLUMNS = [
 def load_people_api():
 
     @task
-    def sync_districts():
+    def load_districts():
         """Read District from Databricks and upsert into PostgreSQL.
 
         Loads all districts except federal-level (state='US').
@@ -124,7 +124,7 @@ def load_people_api():
         t_log.info("Upserted %d District rows to PostgreSQL", total)
 
     @task
-    def sync_district_stats():
+    def load_district_stats():
         """Read DistrictStats from Databricks and upsert into PostgreSQL.
 
         Streams rows in batches to stay within the Astro worker memory limit.
@@ -179,7 +179,7 @@ def load_people_api():
 
         t_log.info("Upserted %d DistrictStats rows to PostgreSQL", total)
 
-    sync_districts() >> sync_district_stats()
+    load_districts() >> load_district_stats()
 
 
 load_people_api()

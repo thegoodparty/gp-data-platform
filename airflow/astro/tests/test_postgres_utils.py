@@ -127,8 +127,8 @@ class TestUpsertRows:
             assert '"updated_at"' in update_part
             assert '"buckets"' in update_part
 
-    def test_batching(self):
-        """Rows should be split into correct batch count."""
+    def test_returns_row_count(self):
+        """Return value equals the number of rows passed in."""
         conn, cursor = self._make_conn()
         rows = [(i, f"name_{i}") for i in range(12)]
 
@@ -142,12 +142,11 @@ class TestUpsertRows:
                 columns=["id", "name"],
                 conflict_columns=["id"],
                 rows=rows,
-                batch_size=5,
             )
 
         assert total == 12
-        assert mock_ev.call_count == 3  # batches of 5, 5, 2
-        assert conn.commit.call_count == 3
+        assert mock_ev.call_count == 1
+        assert conn.commit.call_count == 1
 
     def test_empty_rows(self):
         """No-op on empty input."""

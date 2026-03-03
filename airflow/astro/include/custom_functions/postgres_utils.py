@@ -138,31 +138,22 @@ def upsert_rows(
         f"ON CONFLICT ({conflict_list}) DO UPDATE SET {update_clause}"
     )
 
-    total = 0
     cur = conn.cursor()
     try:
-        for i in range(0, len(rows), batch_size):
-            batch = rows[i : i + batch_size]
-            psycopg2.extras.execute_values(cur, sql, batch, page_size=batch_size)
-            conn.commit()
-            total += len(batch)
-            logger.info(
-                "Upserted batch %d (%d rows, %d / %d total)",
-                i // batch_size + 1,
-                len(batch),
-                total,
-                len(rows),
-            )
+        psycopg2.extras.execute_values(cur, sql, rows, page_size=batch_size)
+        conn.commit()
+        logger.info("Upserted %d rows into %s", len(rows), table)
     finally:
         cur.close()
 
-    return total
+    return len(rows)
 
 
 def read_databricks_table(
     query: str,
     databricks_conn_id_var: str = "databricks_conn_id",
     fetch_size: int = 10_000,
+    use_cloud_fetch: bool = False,
 ) -> Tuple[List[str], Iterator[tuple]]:
     """Stream rows from Databricks using fetchmany for memory-bounded reads.
 
@@ -170,6 +161,8 @@ def read_databricks_table(
         query: SQL SELECT statement to execute.
         databricks_conn_id_var: Airflow Variable holding the Databricks connection ID.
         fetch_size: Number of rows per fetchmany call.
+        use_cloud_fetch: Enable CloudFetch (bulk S3 download). Disabled by
+            default so that fetchmany controls peak memory usage.
 
     Returns:
         (column_names, row_iterator) — column_names is a list of strings,
@@ -183,6 +176,7 @@ def read_databricks_table(
         http_path=db_conn.extra_dejson.get("http_path", ""),
         client_id=db_conn.login,
         client_secret=db_conn.password,
+        use_cloud_fetch=use_cloud_fetch,
     )
 
     cursor = connection.cursor()

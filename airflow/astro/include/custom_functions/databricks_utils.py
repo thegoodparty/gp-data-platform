@@ -28,6 +28,7 @@ def get_databricks_connection(
     client_secret: str,
     max_retries: int = 20,
     retry_delay: int = 30,
+    use_cloud_fetch: bool = True,
 ) -> Connection:
     """
     Create a connection to Databricks using OAuth M2M (service principal) credentials.
@@ -51,6 +52,7 @@ def get_databricks_connection(
                 server_hostname=hostname,
                 http_path=http_path,
                 credentials_provider=credential_provider,
+                use_cloud_fetch=use_cloud_fetch,
             )
             logger.info("Databricks connection established successfully")
             return connection
