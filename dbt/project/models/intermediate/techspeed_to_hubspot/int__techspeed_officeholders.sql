@@ -7,11 +7,11 @@ with
             first_name,
             last_name,
             case
-                when upper(is_incumbent) = 'TRUE'
-                then 'Incumbent'
-                when upper(is_incumbent) = 'FALSE'
-                then 'Non-Incumbent'
-            end as officeholder_type,
+                when lower(trim(is_incumbent)) in ('true', 'yes', '1')
+                then true
+                when lower(trim(is_incumbent)) in ('false', 'no', '0')
+                then false
+            end as is_incumbent,
             email,
             replace(
                 replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
@@ -23,7 +23,8 @@ with
             postal_code,
             county_municipality,
             district_name as district,
-            normalized_location as city,
+            city,
+            normalized_location,
             state,
             office_name as official_office_name,
             office_normalized as official_office,
@@ -31,20 +32,17 @@ with
             office_level,
             position_id,
             normalized_position_id,
-            `level`,
             tier,
             filing_deadline,
             primary_election_day as primary_election_date,
             general_election_day as general_election_date,
             date_processed,
-            -- Transform is_uncontested to Uncontested
             case
-                when upper(is_uncontested) = 'NO'
-                then 'Contested'
-                when upper(is_uncontested) = 'YES'
-                then 'Uncontested'
-                else is_uncontested
-            end as uncontested,
+                when lower(trim(is_uncontested)) in ('true', 'yes', '1')
+                then true
+                when lower(trim(is_uncontested)) in ('false', 'no', '0')
+                then false
+            end as is_uncontested,
             seats_available as number_of_seats_available,
             partisan,
             running_for_re_election_2025,
@@ -53,11 +51,6 @@ with
             url_for_running_for_re_election_2026,
             ts_status,
             ts_comment,
-
-            -- Assign constant values
-            'Self-Filer Lead' as `type`,
-            'jesse@goodparty.org' as contact_owner,
-            'Jesse Diliberto' as owner_name,
 
             -- placeholder for "uploaded" column
             case
@@ -77,7 +70,7 @@ select
     office_holder_id,
     first_name,
     last_name,
-    officeholder_type,
+    is_incumbent,
     email,
     phone,
     email_source,
@@ -88,6 +81,7 @@ select
     county_municipality,
     district,
     city,
+    normalized_location,
     state,
     official_office_name,
     official_office,
@@ -95,13 +89,12 @@ select
     office_level,
     position_id,
     normalized_position_id,
-    `level`,
     tier,
     filing_deadline,
     primary_election_date,
     general_election_date,
     date_processed,
-    uncontested,
+    is_uncontested,
     number_of_seats_available,
     partisan,
     running_for_re_election_2025,
@@ -110,9 +103,6 @@ select
     url_for_running_for_re_election_2026,
     ts_status,
     ts_comment,
-    type,
-    contact_owner,
-    owner_name,
     uploaded,
     _ab_source_file_url,
     _airbyte_extracted_at

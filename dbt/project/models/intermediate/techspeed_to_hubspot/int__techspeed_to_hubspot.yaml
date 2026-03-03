@@ -79,14 +79,24 @@ models:
         description: "Officeholder's last name"
         tests:
           - not_null
-      - name: officeholder_type
-        description: "Type of officeholder (Incumbent/Non-Incumbent)"
+      - name: is_incumbent
+        description: "Boolean incumbent flag normalized from source values"
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_incumbent is not null"
       - name: email
         description: "Officeholder's email address"
       - name: phone
         description: "Officeholder's phone number (cleaned)"
       - name: party
         description: "Political party affiliation"
+      - name: city
+        description: "Source city value from TechSpeed"
+      - name: normalized_location
+        description: "TechSpeed normalized location value (often municipality/county-level)"
       - name: state
         description: "State where the officeholder serves"
         tests:
@@ -95,29 +105,14 @@ models:
         description: "Type of office held"
         tests:
           - not_null
-      - name: uncontested
-        description: "Whether the officeholder's race is contested or uncontested"
-      - name: type
-        description: "Lead type classification"
+      - name: is_uncontested
+        description: "Boolean uncontested flag normalized from source values"
         tests:
-          - not_null
           - accepted_values:
               arguments:
-                values: ['Self-Filer Lead']
-      - name: contact_owner
-        description: "Email of the contact owner"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['jesse@goodparty.org']
-      - name: owner_name
-        description: "Name of the contact owner"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['Jesse Diliberto']
+                values: [true, false]
+              config:
+                where: "is_uncontested is not null"
       - name: _airbyte_extracted_at
         description: "Timestamp when the record was extracted"
         tests:
