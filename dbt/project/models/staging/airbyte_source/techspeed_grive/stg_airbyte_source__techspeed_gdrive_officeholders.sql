@@ -18,11 +18,21 @@ with
             {{ adapter.quote("phone") }},
             replace(
                 replace(
-                    replace(replace({{ adapter.quote("phone") }}, '-', ''), '_', ''),
-                    '[',
+                    replace(
+                        replace(
+                            replace(
+                                replace({{ adapter.quote("phone") }}, '-', ''), '_', ''
+                            ),
+                            '[',
+                            ''
+                        ),
+                        ']',
+                        ''
+                    ),
+                    '(',
                     ''
                 ),
-                ']',
+                ')',
                 ''
             ) as phone_clean,
             {{ adapter.quote("phone_source") }},
@@ -67,11 +77,21 @@ with
             end as is_uncontested,
             {{ adapter.quote("seats_available") }},
             {{ adapter.quote("general_election_day") }},
-            {{ adapter.quote("general_election_day") }} as general_election_date,
+            try_cast(
+                {{ adapter.quote("general_election_day") }} as date
+            ) as general_election_date,
             {{ adapter.quote("primary_election_day") }},
-            {{ adapter.quote("primary_election_day") }} as primary_election_date,
+            try_cast(
+                {{ adapter.quote("primary_election_day") }} as date
+            ) as primary_election_date,
             {{ adapter.quote("filing_deadline") }},
+            try_cast(
+                {{ adapter.quote("filing_deadline") }} as date
+            ) as filing_deadline_date,
             {{ adapter.quote("date_processed") }},
+            try_cast(
+                {{ adapter.quote("date_processed") }} as date
+            ) as date_processed_date,
             {{ adapter.quote("running_for_re_election_2025") }},
             {{ adapter.quote("running_for_re_election_2026") }},
             {{ adapter.quote("url_for_running_for_re_election_2025") }},

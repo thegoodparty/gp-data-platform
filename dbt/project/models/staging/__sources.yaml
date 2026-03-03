@@ -210,6 +210,17 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
+        columns:
+          - name: is_incumbent
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["", "FALSE", "False", "TRUE", "True"]
+          - name: is_uncontested
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: ["", "No", "Yes"]
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
         config:
