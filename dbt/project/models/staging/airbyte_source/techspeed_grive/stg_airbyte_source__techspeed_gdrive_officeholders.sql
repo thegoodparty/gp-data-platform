@@ -39,6 +39,7 @@ with
             {{ adapter.quote("position_id") }},
             {{ adapter.quote("normalized_position_id") }},
             {{ adapter.quote("normalized_location") }},
+            {{ adapter.quote("level") }},
             {{ adapter.quote("tier") }},
             {{ adapter.quote("party") }},
             {{ adapter.quote("partisan") }},
