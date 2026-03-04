@@ -863,7 +863,7 @@ models:
 
       - name: partisan_type
         description: >
-          The partisan type of the position (e.g., "Partisan", "Nonpartisan").
+          The partisan type of the position (e.g., "partisan", "nonpartisan").
           Sourced from BallotReady position data. NULL for 2025 archive records.
 
       - name: filing_period_start_on
@@ -877,11 +877,17 @@ models:
           End date (deadline) of the candidate filing period for this race.
           Sourced from BallotReady filing period data. NULL for 2025 archive records
           or races without filing period information.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= filing_period_start_on"
+              config:
+                where: "filing_period_end_on is not null and filing_period_start_on is not null"
 
       - name: filing_requirements
         description: >
-          Description of filing requirements for the position (e.g., petition signatures,
-          fees). Sourced from BallotReady position data. NULL for 2025 archive records.
+          Filing requirements for the position (e.g., petition signatures, fees).
+          Sourced from BallotReady position data. NULL for 2025 archive records.
 
       - name: filing_address
         description: >
