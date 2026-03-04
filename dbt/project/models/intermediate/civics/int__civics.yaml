@@ -647,11 +647,6 @@ models:
         data_tests:
           - not_null
 
-      - name: election_date
-        description: Coalesced election date (general, primary, or runoff)
-        data_tests:
-          - not_null
-
   - name: int__civics_election_ballotready
     description: >
       BallotReady elections transformed into civics mart election schema.
