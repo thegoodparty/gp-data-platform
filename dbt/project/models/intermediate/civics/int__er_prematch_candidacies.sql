@@ -48,11 +48,6 @@ with
             as city,
             br_candidacy.general_election_date,
             br_candidacy.primary_election_date,
-            coalesce(
-                br_candidacy.general_election_date,
-                br_candidacy.primary_election_date,
-                br_candidacy.runoff_election_date
-            ) as election_date,
             br_candidate.email,
             br_candidate.phone_number as phone,
             br_candidacy.br_race_id,
@@ -74,11 +69,14 @@ with
     ),
 
     -- TechSpeed candidacies (has standardized office, party, IDs, dates)
-    -- Filter to 2026+ to match BallotReady scope (BR is already filtered upstream)
+    -- Filter to 2026+ using coalesced date (general or primary) to match
+    -- BallotReady scope. Upper bound guards against bad date parsing.
     ts_candidacy as (
         select *
         from {{ ref("int__civics_candidacy_techspeed") }}
-        where general_election_date >= '2026-01-01'
+        where
+            coalesce(general_election_date, primary_election_date) >= '2026-01-01'
+            and coalesce(general_election_date, primary_election_date) <= '2030-12-31'
     ),
 
     -- TechSpeed candidates (name, email, phone)
@@ -108,9 +106,6 @@ with
             ts_source.city,
             ts_candidacy.general_election_date,
             ts_candidacy.primary_election_date,
-            coalesce(
-                ts_candidacy.general_election_date, ts_candidacy.primary_election_date
-            ) as election_date,
             ts_candidate.email,
             ts_candidate.phone_number as phone,
             ts_source.br_race_id,
@@ -132,6 +127,8 @@ with
         from techspeed_candidacies
     )
 
+-- Splink treats empty strings as real values for exact matching, so convert
+-- sparse columns to NULL where empty so missing data is handled correctly.
 select
     source_name || '|' || source_id as unique_id,
     source_id,
@@ -144,15 +141,14 @@ select
     candidate_office,
     office_level,
     office_type,
-    district_raw,
-    district_identifier,
-    city,
+    nullif(district_raw, '') as district_raw,
+    nullif(district_identifier, '') as district_identifier,
+    nullif(city, '') as city,
     general_election_date,
     primary_election_date,
-    election_date,
-    email,
-    phone,
-    br_race_id,
+    nullif(email, '') as email,
+    nullif(phone, '') as phone,
+    nullif(br_race_id, '') as br_race_id,
     official_office_name,
-    seat_name
+    nullif(seat_name, '') as seat_name
 from unioned
