@@ -26,11 +26,11 @@ with
     br_filing_period as (select * from {{ ref("int__ballotready_filing_period") }}),
 
     -- Pick one filing period per race. As of 2026-03-04, only 6 of 547K races
-    -- have >1 filing period; take the latest (by database_id).
+    -- have >1 filing period; take the highest database_id (most recent).
     filing_period_ids as (
         select
             race.database_id as race_database_id,
-            last(fp.databaseid) as filing_period_database_id
+            max(fp.databaseid) as filing_period_database_id
         from race
         lateral view explode(filing_periods) as fp
         group by race_database_id
