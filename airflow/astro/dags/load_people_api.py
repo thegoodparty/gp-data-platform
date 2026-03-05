@@ -112,17 +112,20 @@ def load_people_api():
         t_log.info("Reading from Databricks: %s", query)
         _col_names, batches = read_databricks_table(query, batch_size=batch_size)
 
-        with get_postgres_via_ssh() as conn:
-            total = 0
-            for batch in batches:
-                total += upsert_rows(
-                    conn=conn,
-                    schema=pg_schema,
-                    table="District",
-                    columns=DISTRICT_COLUMNS,
-                    conflict_columns=["id"],
-                    rows=batch,
-                )
+        try:
+            with get_postgres_via_ssh() as conn:
+                total = 0
+                for batch in batches:
+                    total += upsert_rows(
+                        conn=conn,
+                        schema=pg_schema,
+                        table="District",
+                        columns=DISTRICT_COLUMNS,
+                        conflict_columns=["id"],
+                        rows=batch,
+                    )
+        finally:
+            batches.close()
 
         t_log.info("Upserted %d District rows to PostgreSQL", total)
 
@@ -154,32 +157,35 @@ def load_people_api():
         t_log.info("Reading from Databricks: %s", query)
         _col_names, batches = read_databricks_table(query, batch_size=batch_size)
 
-        with get_postgres_via_ssh() as conn:
-            total = 0
-            for batch in batches:
-                rows = [
-                    (
-                        row[0],  # district_id
-                        row[1],  # updated_at
-                        row[2],  # total_constituents
-                        row[3],  # total_constituents_with_cell_phone
-                        Json(  # buckets — parse and fix camelCase keys
-                            {
-                                _BUCKET_KEY_MAP.get(k, k): v
-                                for k, v in json.loads(row[4]).items()
-                            }
-                        ),
+        try:
+            with get_postgres_via_ssh() as conn:
+                total = 0
+                for batch in batches:
+                    rows = [
+                        (
+                            row[0],  # district_id
+                            row[1],  # updated_at
+                            row[2],  # total_constituents
+                            row[3],  # total_constituents_with_cell_phone
+                            Json(  # buckets — parse and fix camelCase keys
+                                {
+                                    _BUCKET_KEY_MAP.get(k, k): v
+                                    for k, v in json.loads(row[4]).items()
+                                }
+                            ),
+                        )
+                        for row in batch
+                    ]
+                    total += upsert_rows(
+                        conn=conn,
+                        schema=pg_schema,
+                        table="DistrictStats",
+                        columns=DISTRICT_STATS_COLUMNS,
+                        conflict_columns=["district_id"],
+                        rows=rows,
                     )
-                    for row in batch
-                ]
-                total += upsert_rows(
-                    conn=conn,
-                    schema=pg_schema,
-                    table="DistrictStats",
-                    columns=DISTRICT_STATS_COLUMNS,
-                    conflict_columns=["district_id"],
-                    rows=rows,
-                )
+        finally:
+            batches.close()
 
         t_log.info("Upserted %d DistrictStats rows to PostgreSQL", total)
 

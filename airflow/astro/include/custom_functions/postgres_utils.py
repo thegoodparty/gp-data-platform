@@ -145,12 +145,17 @@ def upsert_rows(
     update_cols = [c for c in columns if c not in conflict_columns]
     col_list = ", ".join(f'"{c}"' for c in columns)
     conflict_list = ", ".join(f'"{c}"' for c in conflict_columns)
-    update_clause = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
+
+    if update_cols:
+        update_clause = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
+        conflict_action = f"DO UPDATE SET {update_clause}"
+    else:
+        conflict_action = "DO NOTHING"
 
     sql = (
         f'INSERT INTO "{schema}"."{table}" ({col_list}) '
         f"VALUES %s "
-        f"ON CONFLICT ({conflict_list}) DO UPDATE SET {update_clause}"
+        f"ON CONFLICT ({conflict_list}) {conflict_action}"
     )
 
     cur = conn.cursor()
