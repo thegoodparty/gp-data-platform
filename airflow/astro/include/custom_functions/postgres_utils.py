@@ -7,15 +7,14 @@ DistrictStats, District, DistrictVoter, Voter.
 import logging
 from contextlib import contextmanager
 from io import StringIO
-from typing import Iterator, List, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 import paramiko
 import psycopg2
 import psycopg2.extras
-from include.custom_functions.databricks_utils import get_databricks_connection
 from sshtunnel import SSHTunnelForwarder
 
-from airflow.sdk import BaseHook, Variable
+from airflow.sdk import BaseHook
 
 logger = logging.getLogger("airflow.task")
 
@@ -100,6 +99,22 @@ def get_postgres_via_ssh(
         logger.info("SSH tunnel closed")
 
 
+def get_max_updated_at(conn, schema: str, table: str) -> Optional[str]:
+    """Return the MAX(updated_at) from a PostgreSQL table as an ISO string.
+
+    Returns None if the table is empty.
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(f'SELECT MAX("updated_at") FROM {schema}."{table}"')
+        result = cur.fetchone()[0]
+        if result is None:
+            return None
+        return result.isoformat()
+    finally:
+        cur.close()
+
+
 def upsert_rows(
     conn,
     schema: str,
@@ -147,52 +162,3 @@ def upsert_rows(
         cur.close()
 
     return len(rows)
-
-
-def read_databricks_table(
-    query: str,
-    databricks_conn_id_var: str = "databricks_conn_id",
-    fetch_size: int = 10_000,
-    use_cloud_fetch: bool = False,
-) -> Tuple[List[str], Iterator[tuple]]:
-    """Stream rows from Databricks using fetchmany for memory-bounded reads.
-
-    Args:
-        query: SQL SELECT statement to execute.
-        databricks_conn_id_var: Airflow Variable holding the Databricks connection ID.
-        fetch_size: Number of rows per fetchmany call.
-        use_cloud_fetch: Enable CloudFetch (bulk S3 download). Disabled by
-            default so that fetchmany controls peak memory usage.
-
-    Returns:
-        (column_names, row_iterator) — column_names is a list of strings,
-        row_iterator yields tuples of row values.
-    """
-    db_conn_id = Variable.get(databricks_conn_id_var)
-    db_conn = BaseHook.get_connection(db_conn_id)
-
-    connection = get_databricks_connection(
-        host=db_conn.host,
-        http_path=db_conn.extra_dejson.get("http_path", ""),
-        client_id=db_conn.login,
-        client_secret=db_conn.password,
-        use_cloud_fetch=use_cloud_fetch,
-    )
-
-    cursor = connection.cursor()
-    cursor.execute(query)
-    column_names = [desc[0] for desc in cursor.description]
-
-    def _row_iterator():
-        try:
-            while True:
-                batch = cursor.fetchmany(fetch_size)
-                if not batch:
-                    break
-                yield from batch
-        finally:
-            cursor.close()
-            connection.close()
-            logger.info("Databricks connection closed")
-
-    return column_names, _row_iterator()

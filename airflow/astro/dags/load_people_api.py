@@ -26,9 +26,10 @@ PostgreSQL database via an SSH tunnel through the bastion host.
 import json
 import logging
 
+from include.custom_functions.databricks_utils import read_databricks_table
 from include.custom_functions.postgres_utils import (
+    get_max_updated_at,
     get_postgres_via_ssh,
-    read_databricks_table,
     upsert_rows,
 )
 from pendulum import datetime, duration
@@ -92,34 +93,27 @@ def load_people_api():
         schema = Variable.get("databricks_dbt_schema", default="dbt")
         batch_size = 5000
 
+        pg_schema = Variable.get("people_api_schema")
+
+        with get_postgres_via_ssh() as conn:
+            watermark = get_max_updated_at(conn, pg_schema, "District")
+
         query = (
             f"SELECT id, created_at, updated_at, type, name, state "
             f"FROM `{DATABRICKS_CATALOG}`.`{schema}`.`m_people_api__district` "
             f"WHERE state != 'US'"
         )
+        if watermark:
+            query += f" AND updated_at > '{watermark}'"
+            t_log.info("Incremental load — watermark: %s", watermark)
+        query += " ORDER BY updated_at ASC"
 
         t_log.info("Reading from Databricks: %s", query)
-        _col_names, row_iter = read_databricks_table(query, fetch_size=batch_size)
-
-        pg_schema = Variable.get("people_api_schema")
+        _col_names, batches = read_databricks_table(query, batch_size=batch_size)
 
         with get_postgres_via_ssh() as conn:
             total = 0
-            batch = []
-            for row in row_iter:
-                batch.append(tuple(row))
-                if len(batch) >= batch_size:
-                    total += upsert_rows(
-                        conn=conn,
-                        schema=pg_schema,
-                        table="District",
-                        columns=DISTRICT_COLUMNS,
-                        conflict_columns=["id"],
-                        rows=batch,
-                    )
-                    batch = []
-
-            if batch:
+            for batch in batches:
                 total += upsert_rows(
                     conn=conn,
                     schema=pg_schema,
@@ -140,22 +134,28 @@ def load_people_api():
         schema = Variable.get("databricks_dbt_schema", default="dbt")
         batch_size = 5000
 
+        pg_schema = Variable.get("people_api_schema")
+
+        with get_postgres_via_ssh() as conn:
+            watermark = get_max_updated_at(conn, pg_schema, "DistrictStats")
+
         query = (
             f"SELECT district_id, updated_at, total_constituents, "
             f"total_constituents_with_cell_phone, to_json(buckets) AS buckets "
             f"FROM `{DATABRICKS_CATALOG}`.`{schema}`.`m_people_api__districtstats`"
         )
+        if watermark:
+            query += f" WHERE updated_at > '{watermark}'"
+            t_log.info("Incremental load — watermark: %s", watermark)
+        query += " ORDER BY updated_at ASC"
 
         t_log.info("Reading from Databricks: %s", query)
-        _col_names, row_iter = read_databricks_table(query, fetch_size=batch_size)
-
-        pg_schema = Variable.get("people_api_schema")
+        _col_names, batches = read_databricks_table(query, batch_size=batch_size)
 
         with get_postgres_via_ssh() as conn:
             total = 0
-            batch = []
-            for row in row_iter:
-                batch.append(
+            for batch in batches:
+                rows = [
                     (
                         row[0],  # district_id
                         row[1],  # updated_at
@@ -168,26 +168,15 @@ def load_people_api():
                             }
                         ),
                     )
-                )
-                if len(batch) >= batch_size:
-                    total += upsert_rows(
-                        conn=conn,
-                        schema=pg_schema,
-                        table="DistrictStats",
-                        columns=DISTRICT_STATS_COLUMNS,
-                        conflict_columns=["district_id"],
-                        rows=batch,
-                    )
-                    batch = []
-
-            if batch:
+                    for row in batch
+                ]
                 total += upsert_rows(
                     conn=conn,
                     schema=pg_schema,
                     table="DistrictStats",
                     columns=DISTRICT_STATS_COLUMNS,
                     conflict_columns=["district_id"],
-                    rows=batch,
+                    rows=rows,
                 )
 
         t_log.info("Upserted %d DistrictStats rows to PostgreSQL", total)

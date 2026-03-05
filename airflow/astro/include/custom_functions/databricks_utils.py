@@ -1,11 +1,13 @@
 import logging
 import re
 import time
-from typing import Dict, List
+from typing import Dict, Iterator, List, Tuple
 
 from databricks import sql as databricks_sql
 from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sql.client import Connection
+
+from airflow.sdk import BaseHook, Variable
 
 LALVOTERID_PATTERN = re.compile(r"^LAL[A-Z]{2}\d+$")
 
@@ -235,3 +237,52 @@ def stage_expired_voter_ids(
         return total_upserted
     finally:
         cursor.close()
+
+
+def read_databricks_table(
+    query: str,
+    databricks_conn_id_var: str = "databricks_conn_id",
+    batch_size: int = 5_000,
+    use_cloud_fetch: bool = False,
+) -> Tuple[List[str], Iterator[List[tuple]]]:
+    """Stream batches of rows from Databricks for memory-bounded reads.
+
+    Args:
+        query: SQL SELECT statement to execute.
+        databricks_conn_id_var: Airflow Variable holding the Databricks connection ID.
+        batch_size: Number of rows per batch (fetchmany size).
+        use_cloud_fetch: Enable CloudFetch (bulk S3 download). Disabled by
+            default so that fetchmany controls peak memory usage.
+
+    Returns:
+        (column_names, batch_iterator) — column_names is a list of strings,
+        batch_iterator yields lists of row tuples.
+    """
+    db_conn_id = Variable.get(databricks_conn_id_var)
+    db_conn = BaseHook.get_connection(db_conn_id)
+
+    connection = get_databricks_connection(
+        host=db_conn.host,
+        http_path=db_conn.extra_dejson.get("http_path", ""),
+        client_id=db_conn.login,
+        client_secret=db_conn.password,
+        use_cloud_fetch=use_cloud_fetch,
+    )
+
+    cursor = connection.cursor()
+    cursor.execute(query)
+    column_names = [desc[0] for desc in cursor.description]
+
+    def _batch_iterator():
+        try:
+            while True:
+                batch = cursor.fetchmany(batch_size)
+                if not batch:
+                    break
+                yield batch
+        finally:
+            cursor.close()
+            connection.close()
+            logger.info("Databricks connection closed")
+
+    return column_names, _batch_iterator()
