@@ -105,7 +105,7 @@ def load_people_api():
             f"WHERE state != 'US'"
         )
         if watermark:
-            query += f" AND updated_at > '{watermark}'"
+            query += f" AND updated_at >= '{watermark}'"
             t_log.info("Incremental load — watermark: %s", watermark)
         query += " ORDER BY updated_at ASC"
 
@@ -147,7 +147,7 @@ def load_people_api():
             f"FROM `{catalog}`.`{schema}`.`m_people_api__districtstats`"
         )
         if watermark:
-            query += f" WHERE updated_at > '{watermark}'"
+            query += f" WHERE updated_at >= '{watermark}'"
             t_log.info("Incremental load — watermark: %s", watermark)
         query += " ORDER BY updated_at ASC"
 

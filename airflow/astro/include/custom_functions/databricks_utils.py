@@ -269,9 +269,13 @@ def read_databricks_table(
         use_cloud_fetch=use_cloud_fetch,
     )
 
-    cursor = connection.cursor()
-    cursor.execute(query)
-    column_names = [desc[0] for desc in cursor.description]
+    try:
+        cursor = connection.cursor()
+        cursor.execute(query)
+        column_names = [desc[0] for desc in cursor.description]
+    except Exception:
+        connection.close()
+        raise
 
     def _batch_iterator():
         try:
