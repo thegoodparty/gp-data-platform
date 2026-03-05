@@ -106,7 +106,7 @@ def get_max_updated_at(conn, schema: str, table: str) -> Optional[str]:
     """
     cur = conn.cursor()
     try:
-        cur.execute(f'SELECT MAX("updated_at") FROM {schema}."{table}"')
+        cur.execute(f'SELECT MAX("updated_at") FROM "{schema}"."{table}"')
         result = cur.fetchone()[0]
         if result is None:
             return None
@@ -148,7 +148,7 @@ def upsert_rows(
     update_clause = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
 
     sql = (
-        f'INSERT INTO {schema}."{table}" ({col_list}) '
+        f'INSERT INTO "{schema}"."{table}" ({col_list}) '
         f"VALUES %s "
         f"ON CONFLICT ({conflict_list}) DO UPDATE SET {update_clause}"
     )
