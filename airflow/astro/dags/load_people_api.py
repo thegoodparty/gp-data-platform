@@ -18,6 +18,7 @@ PostgreSQL database via an SSH tunnel through the bastion host.
 ### Variables (set in Astro Environment Manager):
 - `databricks_conn_id` — selects Databricks connection
   (e.g., `databricks_dev` in dev, `databricks` in prod)
+- `databricks_catalog` — Databricks catalog name (e.g., `goodparty_data_catalog`)
 - `databricks_dbt_schema` — Databricks schema where dbt models live
   (e.g., `dbt` in prod, `dbt_staging` in dev)
 - `people_api_schema` — PostgreSQL schema name for people-api tables
@@ -39,7 +40,6 @@ from airflow.sdk import Variable, dag, task
 
 t_log = logging.getLogger("airflow.task")
 
-DATABRICKS_CATALOG = "goodparty_data_catalog"
 
 # The dbt SQL model defines struct fields as lowercase, but the API expects
 # camelCase. Remap the two affected keys on the way into PostgreSQL.
@@ -90,7 +90,8 @@ def load_people_api():
         Loads all districts except federal-level (state='US').
         Must complete before DistrictStats due to foreign key constraint.
         """
-        schema = Variable.get("databricks_dbt_schema", default="dbt")
+        catalog = Variable.get("databricks_catalog")
+        schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
 
         pg_schema = Variable.get("people_api_schema")
@@ -100,7 +101,7 @@ def load_people_api():
 
         query = (
             f"SELECT id, created_at, updated_at, type, name, state "
-            f"FROM `{DATABRICKS_CATALOG}`.`{schema}`.`m_people_api__district` "
+            f"FROM `{catalog}`.`{schema}`.`m_people_api__district` "
             f"WHERE state != 'US'"
         )
         if watermark:
@@ -131,7 +132,8 @@ def load_people_api():
 
         Streams rows in batches to stay within the Astro worker memory limit.
         """
-        schema = Variable.get("databricks_dbt_schema", default="dbt")
+        catalog = Variable.get("databricks_catalog")
+        schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
 
         pg_schema = Variable.get("people_api_schema")
@@ -142,7 +144,7 @@ def load_people_api():
         query = (
             f"SELECT district_id, updated_at, total_constituents, "
             f"total_constituents_with_cell_phone, to_json(buckets) AS buckets "
-            f"FROM `{DATABRICKS_CATALOG}`.`{schema}`.`m_people_api__districtstats`"
+            f"FROM `{catalog}`.`{schema}`.`m_people_api__districtstats`"
         )
         if watermark:
             query += f" WHERE updated_at > '{watermark}'"
