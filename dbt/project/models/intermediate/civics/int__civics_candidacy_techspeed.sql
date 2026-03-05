@@ -26,13 +26,19 @@ with
             -- Parsed election_date for generate_gp_election_id macro
             -- HubSpot stores DATE type which becomes ISO string; parse TechSpeed to
             -- match
+            -- Falls back to primary_election_date when general is NULL (e.g. early
+            -- 2026 primaries before general dates are set)
             -- Note: Must duplicate parsing expression since we can't reference alias
             -- in same SELECT
             coalesce(
                 try_cast(general_election_date as date),
                 try_to_date(general_election_date, 'MM/dd/yyyy'),
                 try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy')
+                try_to_date(general_election_date, 'MM/dd/yy'),
+                try_cast(primary_election_date as date),
+                try_to_date(primary_election_date, 'MM/dd/yyyy'),
+                try_to_date(primary_election_date, 'MM-dd-yyyy'),
+                try_to_date(primary_election_date, 'MM/dd/yy')
             ) as election_date,  -- parsed DATE for format parity with HubSpot
             -- Parse birth_date for UUID generation (format normalization)
             coalesce(
@@ -63,11 +69,12 @@ with
                         "state",
                         "party",
                         "candidate_office",
-                        "cast(general_election_date_parsed as string)",
+                        "cast(coalesce(general_election_date_parsed, primary_election_date_parsed) as string)",
                         "district",
                     ]
                 )
-            }} as gp_candidacy_id,
+            }}
+            as gp_candidacy_id,
 
             -- BallotReady ID: NULL today, COALESCE target when TS adds it
             cast(null as string) as br_candidacy_id,
@@ -156,8 +163,10 @@ with
         where
             -- Ensure we have minimum required fields for UUID generation
             techspeed_candidate_code is not null
-            -- Filter on parsed date (used in UUID) - ensures valid date format
-            and general_election_date_parsed is not null
+            -- Require at least one valid parsed date for UUID generation
+            -- (matches BallotReady pattern: coalesce(general, primary, runoff))
+            and coalesce(general_election_date_parsed, primary_election_date_parsed)
+            is not null
             -- Keep aligned with int__civics_candidate_techspeed filters so
             -- relationship tests cannot orphan gp_candidate_id references
             and first_name is not null

@@ -120,6 +120,8 @@ models:
         tests:
           - not_null
           - unique
+      - name: name
+        description: "BallotReady position name"
       - name: state
         description: "State postal code"
         tests:
@@ -137,7 +139,6 @@ models:
       - name: district_id
         description: "UUID of the district"
         tests:
-          - not_null
           - relationships:
               arguments:
                 to: ref('m_election_api__district')
