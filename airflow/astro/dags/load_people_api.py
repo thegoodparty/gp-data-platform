@@ -100,7 +100,7 @@ def load_people_api():
             watermark = get_max_updated_at(conn, pg_schema, "District")
 
         query = (
-            f"SELECT id, created_at, updated_at, type, name, state "
+            f"SELECT {', '.join(DISTRICT_COLUMNS)} "
             f"FROM `{catalog}`.`{schema}`.`m_people_api__district` "
             f"WHERE state != 'US'"
         )
@@ -145,8 +145,8 @@ def load_people_api():
             watermark = get_max_updated_at(conn, pg_schema, "DistrictStats")
 
         query = (
-            f"SELECT district_id, updated_at, total_constituents, "
-            f"total_constituents_with_cell_phone, to_json(buckets) AS buckets "
+            "SELECT "
+            f"{', '.join('to_json(buckets) AS buckets' if c == 'buckets' else c for c in DISTRICT_STATS_COLUMNS)} "
             f"FROM `{catalog}`.`{schema}`.`m_people_api__districtstats`"
         )
         if watermark:
