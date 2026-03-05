@@ -1,7 +1,7 @@
 import logging
 import re
 import time
-from typing import Dict, Iterator, List, Tuple
+from typing import Dict, Generator, List, Tuple
 
 from databricks import sql as databricks_sql
 from databricks.sdk.core import Config, oauth_service_principal
@@ -244,7 +244,7 @@ def read_databricks_table(
     databricks_conn_id_var: str = "databricks_conn_id",
     batch_size: int = 5_000,
     use_cloud_fetch: bool = False,
-) -> Tuple[List[str], Iterator[List[tuple]]]:
+) -> Tuple[List[str], Generator[List[tuple], None, None]]:
     """Stream batches of rows from Databricks for memory-bounded reads.
 
     Args:
