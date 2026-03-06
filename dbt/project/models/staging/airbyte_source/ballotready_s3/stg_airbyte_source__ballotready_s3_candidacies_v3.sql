@@ -19,7 +19,7 @@ with
             email,
             level,
             mtfcc,
-            phone,
+            nullif(regexp_replace(phone, '-', ''), '') as phone,
             state,
             geo_id as br_geo_id,
             suffix,

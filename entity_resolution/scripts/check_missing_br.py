@@ -18,10 +18,10 @@ print(f"Distinct br_race_id values involved: {distinct_race_ids}")
 
 # How many TS records per missing race?
 ts_per_race = ts_missing.groupby("br_race_id").size()
-print(f"\nTS records per missing br_race_id:")
+print("\nTS records per missing br_race_id:")
 print(ts_per_race.describe())
 
-print(f"\nSample missing br_race_ids (with TS record details):")
+print("\nSample missing br_race_ids (with TS record details):")
 for race_id in ts_missing["br_race_id"].unique()[:15]:
     rows = ts_missing[ts_missing["br_race_id"] == race_id]
     for _, row in rows.iterrows():

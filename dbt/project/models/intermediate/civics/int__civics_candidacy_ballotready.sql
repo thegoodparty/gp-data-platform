@@ -42,7 +42,11 @@ with
                     "candidacies.normalized_position_name",
                 )
             }} as candidate_office,
-            initcap(candidacies.level) as office_level,
+            case
+                when lower(candidacies.level) = 'city'
+                then 'Local'
+                else initcap(candidacies.level)
+            end as office_level,
             {{ extract_city_from_office_name("candidacies.position_name") }} as city,
             coalesce(
                 regexp_extract(

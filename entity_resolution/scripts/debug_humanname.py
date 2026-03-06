@@ -59,7 +59,7 @@ print(f"\n{mismatches} / {min(20, len(ts_bos))} had last name changed by HumanNa
 # Check all records for last name changes
 print("\n=== Full dataset HumanName impact ===")
 changed = 0
-examples = []
+examples: list[tuple[str, str, str, str]] = []
 for _, row in inp.iterrows():
     raw_last = (
         (str(row["last_name"]) if pd.notna(row["last_name"]) else "").lower().strip()

@@ -51,6 +51,29 @@ seeds:
         - dbt_expectations.expect_column_distinct_values_to_equal_set:
             arguments:
               value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=true) }}"
+  - name: nicknames
+    description: >
+      Mapping of given names to their common nicknames/aliases.
+      Used by int__er_prematch_candidacy_stages to build first_name_aliases arrays
+      for Splink entity resolution nickname matching.
+    columns:
+      - name: name1
+        description: The canonical/full given name
+        data_tests:
+          - not_null
+      - name: relationship
+        description: Relationship type (always 'has_nickname')
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - has_nickname
+      - name: name2
+        description: The nickname/alias for name1
+        data_tests:
+          - not_null
+
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
     columns:

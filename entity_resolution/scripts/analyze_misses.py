@@ -40,7 +40,7 @@ ts_with_br = ts[ts["br_in_input"]].copy()
 n_matched = 0
 n_diff_person = 0
 n_same_missed = 0
-miss_reasons = {}
+miss_reasons: dict[str, int] = {}
 
 for _, row in ts_with_br.iterrows():
     ts_cluster = cluster_map.get(row["unique_id"])

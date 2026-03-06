@@ -20,7 +20,7 @@ ts_with_br = ts_known[ts_known["br_race_id"].isin(br_race_ids_in_input)]
 
 # Find cases where same last name + state but "not in pairwise"
 count = 0
-examples = []
+examples: list[dict[str, str]] = []
 for _, ts_row in ts_with_br.iterrows():
     ts_last = (ts_row["last_name"] or "").lower().strip()
     br_matches = br[br["br_race_id"] == ts_row["br_race_id"]]
@@ -55,7 +55,7 @@ for _, ts_row in ts_with_br.iterrows():
                 )
 
 print(f"Total same-person pairs NOT in pairwise: {count}")
-print(f"\nExamples:")
+print("\nExamples:")
 for e in examples:
     print(
         f"\n  TS: {e['ts_name']} | {e['ts_state']} | {e['ts_office']} | city={e['ts_city']} | gen={e['ts_gen']} pri={e['ts_pri']}"
