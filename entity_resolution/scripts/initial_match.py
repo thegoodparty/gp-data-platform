@@ -24,7 +24,7 @@ from splink.blocking_rule_library import CustomRule
 from splink.comparison_library import CustomComparison
 from splink.internals.duckdb.database_api import DuckDBAPI
 
-PREDICT_THRESHOLD = 0.5
+PREDICT_THRESHOLD = 0.01
 CLUSTER_THRESHOLD = 0.95
 
 
@@ -74,10 +74,8 @@ def load_and_prepare(input_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 SETTINGS = SettingsCreator(
     link_type="link_only",
     unique_id_column_name="unique_id",
-    # Comparisons use only candidate-level attributes. Race/election-level
-    # attributes are in blocking rules only — including them as comparisons
-    # inflates scores for same-race, different-candidate pairs.
     comparisons=[
+        # ── Candidate-level ──
         cl.JaroWinklerAtThresholds(
             "last_name", score_threshold_or_thresholds=[0.95, 0.88]
         ).configure(term_frequency_adjustments=True),
@@ -96,6 +94,16 @@ SETTINGS = SettingsCreator(
         cl.ExactMatch("party"),
         cl.ExactMatch("email"),
         cl.ExactMatch("phone"),
+        # ── Race / election-level ──
+        # These provide evidence that two candidates ran in the same race.
+        # The person identity filter (below) prevents same-race,
+        # different-candidate pairs from being false positives.
+        cl.ExactMatch("state"),
+        cl.ExactMatch("election_date"),
+        cl.JaroWinklerAtThresholds(
+            "official_office_name", score_threshold_or_thresholds=[0.95, 0.88]
+        ),
+        cl.ExactMatch("city"),
     ],
     blocking_rules_to_generate_predictions=[
         block_on("br_race_id_int"),
@@ -132,15 +140,16 @@ SETTINGS = SettingsCreator(
         "seat_name",
         "br_race_id",
         "br_candidacy_id",
-        "official_office_name",
-        "election_date",
         "election_stage",
-        "state",
-        "city",
     ],
 )
 
-EM_TRAINING_BLOCKS = [("last_name",), ("first_name",), ("email",)]
+EM_TRAINING_BLOCKS = [
+    ("last_name",),
+    ("first_name",),
+    ("email",),
+    ("state", "election_date"),
+]
 
 
 def train_model(linker: Linker) -> None:
@@ -172,9 +181,15 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         | (pairwise_df["gamma_email"] > 0)
         | (pairwise_df["gamma_phone"] > 0)
     )
-    pairwise_df = pairwise_df[person_ok].copy()
+    # Race-level filter: require that at least the office name or city agrees.
+    # Without this, common-name pairs in the same state/election but different
+    # offices can score above the cluster threshold.
+    race_ok = (pairwise_df["gamma_official_office_name"] > 0) | (
+        pairwise_df["gamma_city"] > 0
+    )
+    pairwise_df = pairwise_df[person_ok & race_ok].copy()
     if (dropped := pre - len(pairwise_df)) > 0:
-        print(f"Person identity filter: removed {dropped:,} pairs")
+        print(f"Person + race filter: removed {dropped:,} pairs")
 
     # Apply the same filter in DuckDB for clustering
     pred_table = predictions.physical_name
@@ -184,6 +199,7 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         SELECT * FROM {pred_table}
         WHERE gamma_last_name > 0
           AND (gamma_first_name > 0 OR gamma_email > 0 OR gamma_phone > 0)
+          AND (gamma_official_office_name > 0 OR gamma_city > 0)
     """
     )
 
