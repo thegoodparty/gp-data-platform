@@ -36,7 +36,7 @@ from include.custom_functions.postgres_utils import (
 from pendulum import datetime, duration
 from psycopg2.extras import Json
 
-from airflow.sdk import Variable, dag, task
+from airflow.sdk import Param, Variable, dag, get_current_context, task
 
 t_log = logging.getLogger("airflow.task")
 
@@ -80,6 +80,23 @@ DISTRICT_STATS_COLUMNS = [
     },
     tags=["people_api", "postgres"],
     is_paused_upon_creation=True,
+    params={
+        "full_reload": Param(
+            False,
+            type="boolean",
+            description="Skip the updated_at watermark and reload ALL tables from Databricks.",
+        ),
+        "full_reload_districts": Param(
+            False,
+            type="boolean",
+            description="Skip the watermark for District only.",
+        ),
+        "full_reload_district_stats": Param(
+            False,
+            type="boolean",
+            description="Skip the watermark for DistrictStats only.",
+        ),
+    },
 )
 def load_people_api():
 
@@ -90,14 +107,20 @@ def load_people_api():
         Loads all districts except federal-level (state='US').
         Must complete before DistrictStats due to foreign key constraint.
         """
+        params = get_current_context()["params"]
+        skip_watermark = params.get("full_reload") or params.get(
+            "full_reload_districts"
+        )
         catalog = Variable.get("databricks_catalog")
         schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
 
         pg_schema = Variable.get("people_api_schema")
 
-        with get_postgres_via_ssh() as conn:
-            watermark = get_max_updated_at(conn, pg_schema, "District")
+        watermark = None
+        if not skip_watermark:
+            with get_postgres_via_ssh() as conn:
+                watermark = get_max_updated_at(conn, pg_schema, "District")
 
         query = (
             f"SELECT {', '.join(DISTRICT_COLUMNS)} "
@@ -107,6 +130,10 @@ def load_people_api():
         if watermark:
             query += f" AND updated_at >= '{watermark}'"
             t_log.info("Incremental load — watermark: %s", watermark)
+        elif skip_watermark:
+            t_log.info("Full reload requested — skipping watermark")
+        else:
+            t_log.info("Initial load — table is empty, no watermark")
         query += " ORDER BY updated_at ASC"
 
         t_log.info("Reading from Databricks: %s", query)
@@ -135,14 +162,20 @@ def load_people_api():
 
         Streams rows in batches to stay within the Astro worker memory limit.
         """
+        params = get_current_context()["params"]
+        skip_watermark = params.get("full_reload") or params.get(
+            "full_reload_district_stats"
+        )
         catalog = Variable.get("databricks_catalog")
         schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
 
         pg_schema = Variable.get("people_api_schema")
 
-        with get_postgres_via_ssh() as conn:
-            watermark = get_max_updated_at(conn, pg_schema, "DistrictStats")
+        watermark = None
+        if not skip_watermark:
+            with get_postgres_via_ssh() as conn:
+                watermark = get_max_updated_at(conn, pg_schema, "DistrictStats")
 
         query = (
             "SELECT "
@@ -152,6 +185,10 @@ def load_people_api():
         if watermark:
             query += f" WHERE updated_at >= '{watermark}'"
             t_log.info("Incremental load — watermark: %s", watermark)
+        elif skip_watermark:
+            t_log.info("Full reload requested — skipping watermark")
+        else:
+            t_log.info("Initial load — table is empty, no watermark")
         query += " ORDER BY updated_at ASC"
 
         t_log.info("Reading from Databricks: %s", query)
