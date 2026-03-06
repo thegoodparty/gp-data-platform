@@ -6,9 +6,11 @@ Usage:
     uv run python scripts/cli.py match --input data/input.csv
     uv run python scripts/cli.py match --input data/input.csv --output-dir results/
 
-Input:  CSV file with prematch candidacy records
+Input:  CSV exported from int__er_prematch_candidacy_stages
 Output: results/pairwise_predictions.csv
         results/clustered_candidacies.csv
+        results/match_weights_chart.{html,png}
+        results/m_u_parameters_chart.{html,png}
 """
 
 import json
@@ -32,182 +34,126 @@ def load_and_prepare(input_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     print(f"Loaded {len(df):,} rows from {input_path}")
     print(f"\nSource distribution:\n{df['source_name'].value_counts().to_string()}")
 
-    if "election_date" in df.columns:
-        df["election_date"] = pd.to_datetime(
-            df["election_date"], errors="coerce"
-        ).dt.date.astype(str)
-        df["election_date"] = df["election_date"].replace(
-            {"NaT": None, "nan": None, "None": None}
-        )
-
+    df["election_date"] = pd.to_datetime(
+        df["election_date"], errors="coerce"
+    ).dt.date.astype(str)
+    df["election_date"] = df["election_date"].replace(
+        {"NaT": None, "nan": None, "None": None}
+    )
     df["first_name"] = df["first_name"].str.lower().str.strip()
     df["last_name"] = df["last_name"].str.lower().str.strip()
+    df["official_office_name"] = df["official_office_name"].str.lower().str.strip()
 
-    # first_name_aliases is built upstream in the dbt prematch model
-    # (int__er_prematch_candidacy_stages) via the nicknames seed and arrives as a
-    # JSON array string (always includes the first_name itself).
-    if "first_name_aliases" in df.columns:
-        df["first_name_aliases"] = df["first_name_aliases"].apply(
-            lambda v: (
-                json.loads(v)
-                if isinstance(v, str)
-                else v if isinstance(v, list) else [v]
-            )
-        )
-    else:
-        df["first_name_aliases"] = df["first_name"].apply(lambda n: [n])
+    # Parse first_name_aliases from JSON array string built by the dbt prematch model
+    df["first_name_aliases"] = df["first_name_aliases"].apply(
+        lambda v: json.loads(v) if isinstance(v, str) else [v]
+    )
 
-    if "official_office_name" in df.columns:
-        df["official_office_name"] = df["official_office_name"].str.lower().str.strip()
+    # Normalize district formatting ("01" → "1")
+    df["district_identifier"] = (
+        df["district_identifier"].str.lstrip("0").replace({"": "0"})
+    )
 
-    # Strip leading zeros from district_identifier ("01" → "1") so
-    # BallotReady and TechSpeed formatting differences don't cause mismatches.
-    if "district_identifier" in df.columns:
-        df["district_identifier"] = (
-            df["district_identifier"]
-            .str.lstrip("0")
-            .replace({"": "0"})  # preserve bare "0"
-        )
-
-    # br_race_id_int: keep only integer race IDs (BR-originated).
-    # Non-integer values like "ts_found_race_net_new" become null so the
-    # blocking rule only fires for records with a shared BR race ID.
-    # NOTE: br_race_id_int is used ONLY for blocking, not as a comparison.
-    # It identifies a race (multiple candidates per race), so using it as a
-    # comparison creates huge false-positive Bayes factors for same-race,
-    # different-candidate pairs.
+    # Keep only integer race IDs for blocking (non-integer values like
+    # "ts_found_race_net_new" become null)
     df["br_race_id_int"] = df["br_race_id"].where(
         df["br_race_id"].str.isnumeric().fillna(False), other=None
     )
 
+    # Normalize nulls so Splink treats missing data correctly
     df = df.where(df.notna(), None)
     df = df.replace({"": None, "nan": None, "null": None})
 
-    print("\nColumn population rates:")
-    for col in df.columns:
-        pop = df[col].notna().sum()
-        print(f"  {col:30s} {pop:>8,} / {len(df):,}  ({pop / len(df) * 100:5.1f}%)")
-
     br_df = df[df["source_name"] == "ballotready"].copy()
     ts_df = df[df["source_name"] == "techspeed"].copy()
-    print(f"\nSplit: {len(br_df):,} BallotReady, {len(ts_df):,} TechSpeed")
+    print(f"Split: {len(br_df):,} BallotReady, {len(ts_df):,} TechSpeed")
 
     return br_df, ts_df
 
 
-def build_first_name_comparison() -> CustomComparison:
-    """Custom first_name comparison: exact → nickname → fuzzy → else."""
-    return CustomComparison(
-        output_column_name="first_name",
-        comparison_levels=[
-            cll.NullLevel("first_name"),
-            cll.ExactMatchLevel("first_name").configure(
-                tf_adjustment_column="first_name",
-            ),
-            cll.ArrayIntersectLevel("first_name_aliases", min_intersection=1),
-            cll.JaroWinklerLevel("first_name", distance_threshold=0.92),
-            cll.ElseLevel(),
-        ],
-    )
+SETTINGS = SettingsCreator(
+    link_type="link_only",
+    unique_id_column_name="unique_id",
+    # Comparisons use only candidate-level attributes. Race/election-level
+    # attributes are in blocking rules only — including them as comparisons
+    # inflates scores for same-race, different-candidate pairs.
+    comparisons=[
+        cl.JaroWinklerAtThresholds(
+            "last_name", score_threshold_or_thresholds=[0.95, 0.88]
+        ).configure(term_frequency_adjustments=True),
+        CustomComparison(
+            output_column_name="first_name",
+            comparison_levels=[
+                cll.NullLevel("first_name"),
+                cll.ExactMatchLevel("first_name").configure(
+                    tf_adjustment_column="first_name",
+                ),
+                cll.ArrayIntersectLevel("first_name_aliases", min_intersection=1),
+                cll.JaroWinklerLevel("first_name", distance_threshold=0.92),
+                cll.ElseLevel(),
+            ],
+        ),
+        cl.ExactMatch("party"),
+        cl.ExactMatch("email"),
+        cl.ExactMatch("phone"),
+    ],
+    blocking_rules_to_generate_predictions=[
+        block_on("br_race_id_int"),
+        CustomRule(
+            "l.state = r.state"
+            " AND l.election_date = r.election_date"
+            " AND jaro_winkler_similarity(l.official_office_name,"
+            " r.official_office_name) >= 0.88"
+            " AND l.last_name = r.last_name",
+            sql_dialect="duckdb",
+        ),
+        block_on("state", "last_name", "election_date"),
+        CustomRule(
+            "l.state = r.state"
+            " AND l.election_date = r.election_date"
+            " AND jaro_winkler_similarity(l.official_office_name,"
+            " r.official_office_name) >= 0.88"
+            " AND jaro_winkler_similarity(l.last_name,"
+            " r.last_name) >= 0.88",
+            sql_dialect="duckdb",
+        ),
+        block_on("phone"),
+        block_on("email"),
+    ],
+    retain_intermediate_calculation_columns=True,
+    additional_columns_to_retain=[
+        "source_name",
+        "source_id",
+        "candidate_office",
+        "office_level",
+        "office_type",
+        "district_raw",
+        "district_identifier",
+        "seat_name",
+        "br_race_id",
+        "br_candidacy_id",
+        "official_office_name",
+        "election_date",
+        "election_stage",
+        "state",
+        "city",
+    ],
+)
 
-
-def build_settings() -> SettingsCreator:
-    # Comparisons use only candidate-level attributes — fields that distinguish
-    # one candidate from another within the same race.
-    #
-    # Race/election-level attributes (state, office, date, district, city,
-    # election_stage, br_race_id) are used only in blocking rules to generate
-    # candidate pairs. They don't carry signal for distinguishing candidates
-    # within a race, and including them as comparisons inflates match scores
-    # for same-race, different-candidate pairs.
-    return SettingsCreator(
-        link_type="link_only",
-        unique_id_column_name="unique_id",
-        comparisons=[
-            # --- Candidate-level comparisons ---
-            cl.JaroWinklerAtThresholds(
-                "last_name", score_threshold_or_thresholds=[0.95, 0.88]
-            ).configure(term_frequency_adjustments=True),
-            build_first_name_comparison(),
-            cl.ExactMatch("party"),
-            cl.ExactMatch("email"),
-            cl.ExactMatch("phone"),
-        ],
-        blocking_rules_to_generate_predictions=[
-            # Race/election-level blocking rules generate candidate pairs that
-            # plausibly refer to the same candidacy.
-            #
-            # br_race_id_int: high-cardinality race ID — covers most TS
-            # records that originated from BR.
-            block_on("br_race_id_int"),
-            # Fuzzy office name blocking catches cross-source format
-            # differences like "republic city council - ward 3" vs
-            # "republic city ward 3" (JW 0.88).
-            CustomRule(
-                "l.state = r.state"
-                " AND l.election_date = r.election_date"
-                " AND jaro_winkler_similarity(l.official_office_name,"
-                " r.official_office_name) >= 0.88"
-                " AND l.last_name = r.last_name",
-                sql_dialect="duckdb",
-            ),
-            block_on("state", "last_name", "election_date"),
-            # Fuzzy last name + fuzzy office blocking catches typos like
-            # "feidler" vs "fiedler" or "montelone" vs "monteleone" with
-            # cross-source office formatting differences.
-            CustomRule(
-                "l.state = r.state"
-                " AND l.election_date = r.election_date"
-                " AND jaro_winkler_similarity(l.official_office_name,"
-                " r.official_office_name) >= 0.88"
-                " AND jaro_winkler_similarity(l.last_name,"
-                " r.last_name) >= 0.88",
-                sql_dialect="duckdb",
-            ),
-            block_on("phone"),
-            block_on("email"),
-        ],
-        retain_intermediate_calculation_columns=True,
-        additional_columns_to_retain=[
-            "source_name",
-            "source_id",
-            "candidate_office",
-            "office_level",
-            "office_type",
-            "district_raw",
-            "district_identifier",
-            "seat_name",
-            "br_race_id",
-            "br_candidacy_id",
-            "official_office_name",
-            "election_date",
-            "election_stage",
-            "state",
-            "city",
-        ],
-    )
+EM_TRAINING_BLOCKS = [("last_name",), ("first_name",), ("email",)]
 
 
 def train_model(linker: Linker) -> None:
-    print("\n--- Training ---")
+    """Estimate u via random sampling, then m via EM on each comparison column."""
     linker.training.estimate_u_using_random_sampling(max_pairs=5_000_000)
-    # EM training blocks on comparison columns to estimate m probabilities.
-    # Each pass fixes the blocked columns and estimates the rest.
-    for cols in [
-        ("last_name",),
-        ("first_name",),
-        ("email",),
-    ]:
-        print(f"  EM pass: blocking on {' + '.join(cols)}...")
+    for cols in EM_TRAINING_BLOCKS:
         linker.training.estimate_parameters_using_expectation_maximisation(
-            block_on(*cols),
-            fix_u_probabilities=True,
+            block_on(*cols), fix_u_probabilities=True
         )
-    print("Training complete.")
 
 
 def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
-    print("\n--- Prediction ---")
+    """Predict matches, apply person identity filter, cluster."""
     predictions = linker.inference.predict(
         threshold_match_probability=PREDICT_THRESHOLD
     )
@@ -218,11 +164,8 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         print("WARNING: No predictions found.")
         return pairwise_df, pd.DataFrame()
 
-    # Person identity filter: the br_race_id_int blocking rule generates all
-    # candidate pairs within a race, including different candidates. Since
-    # race-level attributes are no longer comparisons, the model can only
-    # distinguish candidates by name/email/phone. Require at minimum that
-    # the last name agrees and the first name or contact info agrees.
+    # Person identity filter: require last name agreement + first name or
+    # contact info agreement to remove same-race different-candidate pairs.
     pre = len(pairwise_df)
     person_ok = (pairwise_df["gamma_last_name"] > 0) & (
         (pairwise_df["gamma_first_name"] > 0)
@@ -230,14 +173,12 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         | (pairwise_df["gamma_phone"] > 0)
     )
     pairwise_df = pairwise_df[person_ok].copy()
-    dropped = pre - len(pairwise_df)
-    if dropped > 0:
+    if (dropped := pre - len(pairwise_df)) > 0:
         print(f"Person identity filter: removed {dropped:,} pairs")
 
     # Apply the same filter in DuckDB for clustering
     pred_table = predictions.physical_name
-    db = linker._db_api._con
-    db.execute(
+    linker._db_api._con.execute(
         f"""
         CREATE OR REPLACE TABLE {pred_table} AS
         SELECT * FROM {pred_table}
@@ -246,33 +187,15 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     )
 
-    print("\nMatch probability distribution:")
-    bins = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
-    for interval, count in (
-        pd.cut(pairwise_df["match_probability"], bins=bins)
-        .value_counts()
-        .sort_index()
-        .items()
-    ):
-        print(f"  {interval}: {count:,}")
-
-    print(f"\n--- Clustering (threshold={CLUSTER_THRESHOLD}) ---")
     clusters = linker.clustering.cluster_pairwise_predictions_at_threshold(
-        predictions,
-        threshold_match_probability=CLUSTER_THRESHOLD,
+        predictions, threshold_match_probability=CLUSTER_THRESHOLD
     )
     clustered_df = clusters.as_pandas_dataframe()
 
-    n_clusters = clustered_df["cluster_id"].nunique()
-    multi = clustered_df.groupby("cluster_id").size()
-    n_matched = (multi > 1).sum()
+    n_matched = (clustered_df.groupby("cluster_id").size() > 1).sum()
     n_cross = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
-    print(
-        f"Total clusters: {n_clusters:,}  |  Matched (2+): {n_matched:,}  |  Cross-source: {n_cross:,}"
-    )
-
-    within = n_matched - n_cross
-    if within > 0:
+    print(f"Matched clusters: {n_matched:,}  |  Cross-source: {n_cross:,}")
+    if (within := n_matched - n_cross) > 0:
         print(f"WARNING: {within} within-source duplicate clusters found")
 
     return pairwise_df, clustered_df
@@ -284,6 +207,7 @@ def save_results(
     clustered_df: pd.DataFrame,
     output_dir: Path,
 ) -> None:
+    """Write CSVs and diagnostic charts."""
     output_dir.mkdir(parents=True, exist_ok=True)
     pairwise_df.to_csv(output_dir / "pairwise_predictions.csv", index=False)
     if len(clustered_df) > 0:
@@ -304,23 +228,15 @@ def save_results(
 
 
 def run(input_path: Path, output_dir: Path) -> None:
-    print("=" * 60)
-    print("Splink Entity Resolution: BallotReady x TechSpeed Candidacies")
-    print("=" * 60)
-
+    """Load data, train, predict, cluster, save."""
     br_df, ts_df = load_and_prepare(input_path)
-    settings = build_settings()
-    linker = Linker([br_df, ts_df], settings, DuckDBAPI())
-
+    linker = Linker([br_df, ts_df], SETTINGS, DuckDBAPI())
     train_model(linker)
     pairwise_df, clustered_df = predict_and_cluster(linker)
     save_results(linker, pairwise_df, clustered_df, output_dir)
 
-    print("\nDone!")
-
 
 if __name__ == "__main__":
-    # Default paths for direct script invocation
     script_dir = Path(__file__).resolve().parent
     project_dir = script_dir.parent
     run(
