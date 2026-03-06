@@ -36,7 +36,7 @@ with
             get(filter(contacts, x -> x.email is not null), 0).email as api_email,
             nullif(
                 regexp_replace(
-                    get(filter(contacts, x -> x.phone is not null), 0).phone, '-', ''
+                    get(filter(contacts, x -> x.phone is not null), 0).phone, '[^0-9]', ''
                 ),
                 ''
             ) as api_phone,

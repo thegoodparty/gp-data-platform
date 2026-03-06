@@ -15,13 +15,21 @@
 -- parsing (e.g. HumanName for suffixes/nicknames) happens in the Python
 -- Splink script to keep iteration fast without rebuilding the dbt model.
 with
-    -- Nickname aliases: aggregate nicknames per canonical name into an array
-    -- so Splink can use ArrayIntersectLevel to detect nickname matches
-    -- (e.g. robert ↔ bob).
+    -- Nickname aliases: treat nickname relationships as bidirectional and
+    -- aggregate per name so Splink can use ArrayIntersectLevel to detect
+    -- matches (e.g. robert ↔ bob, bobby ↔ robert).
+    nickname_pairs as (
+        select name1, name2
+        from {{ ref("nicknames") }}
+        union all
+        select name2 as name1, name1 as name2
+        from {{ ref("nicknames") }}
+    ),
+
     nickname_aliases as (
         select
             name1, array_distinct(array_append(collect_list(name2), name1)) as aliases
-        from {{ ref("nicknames") }}
+        from nickname_pairs
         group by name1
     ),
 
