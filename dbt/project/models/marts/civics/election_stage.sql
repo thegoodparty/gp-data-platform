@@ -18,6 +18,12 @@ with
             cast(null as boolean) as is_retention,
             cast(null as int) as number_of_seats,
             total_votes_cast,
+            cast(null as string) as partisan_type,
+            cast(null as date) as filing_period_start_on,
+            cast(null as date) as filing_period_end_on,
+            cast(null as string) as filing_requirements,
+            cast(null as string) as filing_address,
+            cast(null as string) as filing_phone,
             created_at,
             cast(null as timestamp) as updated_at
         from {{ ref("int__civics_election_stage_2025") }}
@@ -40,6 +46,12 @@ with
             is_retention,
             number_of_seats,
             total_votes_cast,
+            partisan_type,
+            filing_period_start_on,
+            filing_period_end_on,
+            filing_requirements,
+            filing_address,
+            filing_phone,
             created_at,
             updated_at
         from {{ ref("int__civics_election_stage_ballotready") }}
@@ -71,6 +83,12 @@ select
     deduplicated.is_retention,
     deduplicated.number_of_seats,
     deduplicated.total_votes_cast,
+    deduplicated.partisan_type,
+    deduplicated.filing_period_start_on,
+    deduplicated.filing_period_end_on,
+    deduplicated.filing_requirements,
+    deduplicated.filing_address,
+    deduplicated.filing_phone,
     icp.icp_office_win as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
     icp.icp_win_supersize as is_win_supersize_icp,

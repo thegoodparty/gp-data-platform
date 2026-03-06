@@ -869,6 +869,44 @@ models:
       - name: total_votes_cast
         description: Total votes cast in the election stage (may contain string values like 'uncontested')
 
+      - name: partisan_type
+        description: >
+          The partisan type of the position (e.g., "partisan", "nonpartisan").
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: filing_period_start_on
+        description: >
+          Start date of the candidate filing period for this race.
+          Sourced from BallotReady filing period data. NULL for 2025 archive records
+          or races without filing period information.
+
+      - name: filing_period_end_on
+        description: >
+          End date (deadline) of the candidate filing period for this race.
+          Sourced from BallotReady filing period data. NULL for 2025 archive records
+          or races without filing period information.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= filing_period_start_on"
+              config:
+                where: "filing_period_end_on is not null and filing_period_start_on is not null"
+
+      - name: filing_requirements
+        description: >
+          Filing requirements for the position (e.g., petition signatures, fees).
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: filing_address
+        description: >
+          Address of the filing office for this position.
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: filing_phone
+        description: >
+          Phone number of the filing office for this position.
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
       - name: is_win_icp
         description: >
           Whether this election stage's position meets the Win ICP criteria

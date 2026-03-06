@@ -23,6 +23,19 @@ with
 
     br_normalized as (select * from {{ ref("int__ballotready_normalized_position") }}),
 
+    br_filing_period as (select * from {{ ref("int__ballotready_filing_period") }}),
+
+    -- Pick one filing period per race. As of 2026-03-04, only 6 of 547K races
+    -- have >1 filing period; take the highest database_id (most recent).
+    filing_period_ids as (
+        select
+            race.database_id as race_database_id,
+            max(fp.databaseid) as filing_period_database_id
+        from race
+        lateral view explode(filing_periods) as fp
+        group by race_database_id
+    ),
+
     races_with_fields as (
         select
             race.*,
@@ -65,13 +78,24 @@ with
                 regexp_extract(br_position.name, '[-, ] (?:Seat|Group) ([^,]+)'),
                 regexp_extract(br_position.name, ' - Position ([^\\s(]+)'),
                 ''
-            ) as seat_name
+            ) as seat_name,
+            br_position.partisan_type,
+            br_position.filing_requirements,
+            br_position.filing_address,
+            br_position.filing_phone,
+            br_filing_period.start_on as filing_period_start_on,
+            br_filing_period.end_on as filing_period_end_on
         from race
         inner join br_election on race.election.databaseid = br_election.database_id
         inner join br_position on race.position.databaseid = br_position.database_id
         left join
             br_normalized
             on br_position.normalized_position.databaseid = br_normalized.database_id
+        left join
+            filing_period_ids as fp_ids on race.database_id = fp_ids.race_database_id
+        left join
+            br_filing_period
+            on fp_ids.filing_period_database_id = br_filing_period.database_id
     ),
 
     -- To generate gp_election_id we need the GENERAL election date for this
@@ -140,6 +164,12 @@ with
             races_with_fields.is_retention,
             races_with_fields.seats as number_of_seats,
             cast(null as string) as total_votes_cast,
+            races_with_fields.partisan_type,
+            races_with_fields.filing_period_start_on,
+            races_with_fields.filing_period_end_on,
+            races_with_fields.filing_requirements,
+            races_with_fields.filing_address,
+            races_with_fields.filing_phone,
             races_with_fields.updated_at as created_at,
             races_with_fields.updated_at as updated_at
 
@@ -193,6 +223,12 @@ select
     is_retention,
     number_of_seats,
     total_votes_cast,
+    partisan_type,
+    filing_period_start_on,
+    filing_period_end_on,
+    filing_requirements,
+    filing_address,
+    filing_phone,
     created_at,
     updated_at
 from deduplicated
