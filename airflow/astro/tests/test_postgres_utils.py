@@ -237,3 +237,59 @@ class TestGetPostgresViaSsh:
 
         pg_connection.close.assert_called_once()
         tunnel_instance.stop.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# DSSKey compatibility shim
+# ---------------------------------------------------------------------------
+
+
+class TestDSSKeyCompat:
+    """Tests for the paramiko DSSKey compatibility shim."""
+
+    def test_stub_applied_when_dsskey_missing(self):
+        """Importing postgres_utils stubs DSSKey when paramiko ≥3 drops it."""
+        import importlib
+        import types
+
+        # Simulate paramiko ≥3: module exists but has no DSSKey
+        fake_paramiko = types.ModuleType("paramiko")
+        fake_paramiko.SSHException = type("SSHException", (Exception,), {})
+        fake_paramiko.Ed25519Key = MagicMock()
+        fake_paramiko.RSAKey = MagicMock()
+        fake_paramiko.ECDSAKey = MagicMock()
+
+        original = sys.modules["paramiko"]
+        sys.modules["paramiko"] = fake_paramiko
+        try:
+            import include.custom_functions.postgres_utils as mod
+
+            importlib.reload(mod)
+
+            assert hasattr(fake_paramiko, "DSSKey")
+            with pytest.raises(Exception, match="DSA not supported"):
+                fake_paramiko.DSSKey.from_private_key_file("/tmp/id_dsa")
+        finally:
+            sys.modules["paramiko"] = original
+
+    def test_stub_skipped_when_dsskey_exists(self):
+        """Stub is not applied when paramiko already has DSSKey (paramiko <3)."""
+        import importlib
+        import types
+
+        fake_paramiko = types.ModuleType("paramiko")
+        fake_paramiko.SSHException = type("SSHException", (Exception,), {})
+        fake_paramiko.DSSKey = MagicMock()
+        original_dsskey = fake_paramiko.DSSKey
+
+        original = sys.modules["paramiko"]
+        sys.modules["paramiko"] = fake_paramiko
+        try:
+            import include.custom_functions.postgres_utils as mod
+
+            importlib.reload(mod)
+
+            # Should keep the original, not replace with stub
+            assert fake_paramiko.DSSKey is original_dsskey
+        finally:
+            sys.modules["paramiko"] = original

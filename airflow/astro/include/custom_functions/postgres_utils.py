@@ -12,6 +12,18 @@ from typing import List, Optional, Sequence
 import paramiko
 import psycopg2
 import psycopg2.extras
+
+# Compatibility: paramiko ≥3 removed DSSKey (DSA is deprecated),
+# but sshtunnel still references it during host-key discovery.
+if not hasattr(paramiko, "DSSKey"):
+
+    class _DSSKeyStub:
+        @staticmethod
+        def from_private_key_file(*a, **kw):
+            raise paramiko.SSHException("DSA not supported")
+
+    paramiko.DSSKey = _DSSKeyStub  # type: ignore[attr-defined]
+
 from sshtunnel import SSHTunnelForwarder
 
 from airflow.sdk import BaseHook
