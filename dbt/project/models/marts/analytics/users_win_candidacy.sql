@@ -42,7 +42,7 @@ with
             true as is_win_user,
 
             -- User fields
-            u.is_serve_user,
+            coalesce(u.is_serve_user, false) as is_serve_user,
             u.eo_activated_at,
 
             -- ICP fields

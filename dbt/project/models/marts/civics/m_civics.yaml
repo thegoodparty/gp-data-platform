@@ -115,6 +115,9 @@ models:
       - name: campaign_slug
         description: URL-friendly campaign identifier used in app URLs
 
+      - name: hubspot_id
+        description: HubSpot company identifier associated with this campaign
+
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
@@ -217,6 +220,11 @@ models:
 
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM
+
+      - name: hubspot_company_ids
+        description: >
+          Comma-separated HubSpot company IDs associated with this candidacy.
+          A candidacy may link to multiple HubSpot companies.
 
       - name: candidate_id_source
         description: Source system for the candidate data (BallotReady, Techspeed, Product, etc.)
