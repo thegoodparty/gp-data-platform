@@ -46,6 +46,10 @@ logs/
 .pre-commit-cache/
 test_data/
 
+# Entity resolution local data and results
+entity_resolution/data/
+entity_resolution/results/
+
 # Claude runbook
 .claude/RUNBOOK.md
 claude.md

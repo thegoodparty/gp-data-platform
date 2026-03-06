@@ -602,6 +602,74 @@ models:
         data_tests:
           - not_null
 
+  - name: int__er_prematch_candidacy_stages
+    description: >
+      Entity resolution prematch table: BallotReady x TechSpeed candidacy-stages
+      unioned into a standardized schema for Splink probabilistic matching.
+
+      Grain: One row per source candidacy-stage record (candidate + office + election date).
+
+      Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
+      int__techspeed_candidates_clean (TS), with clean_states for state
+      standardization and int__ballotready_person for API contact data.
+
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id.
+          Guaranteed unique across both sources.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: source_name
+        description: Origin of the record ('ballotready' or 'techspeed')
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - techspeed
+
+      - name: source_id
+        description: >
+          Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code.
+        data_tests:
+          - not_null
+
+      - name: first_name
+        description: Candidate first name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate last name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+
+      - name: election_date
+        description: Election date for this candidacy-stage
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: Type of election stage (Primary, General, Runoff)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Primary
+                  - General
+                  - Runoff
+
   - name: int__civics_election_ballotready
     description: >
       BallotReady elections transformed into civics mart election schema.
