@@ -84,7 +84,17 @@ DISTRICT_STATS_COLUMNS = [
         "full_reload": Param(
             False,
             type="boolean",
-            description="Skip the updated_at watermark and reload all rows from Databricks.",
+            description="Skip the updated_at watermark and reload ALL tables from Databricks.",
+        ),
+        "full_reload_districts": Param(
+            False,
+            type="boolean",
+            description="Skip the watermark for District only.",
+        ),
+        "full_reload_district_stats": Param(
+            False,
+            type="boolean",
+            description="Skip the watermark for DistrictStats only.",
         ),
     },
 )
@@ -97,7 +107,10 @@ def load_people_api():
         Loads all districts except federal-level (state='US').
         Must complete before DistrictStats due to foreign key constraint.
         """
-        full_reload = get_current_context()["params"].get("full_reload", False)
+        params = get_current_context()["params"]
+        skip_watermark = params.get("full_reload") or params.get(
+            "full_reload_districts"
+        )
         catalog = Variable.get("databricks_catalog")
         schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
@@ -105,7 +118,7 @@ def load_people_api():
         pg_schema = Variable.get("people_api_schema")
 
         watermark = None
-        if not full_reload:
+        if not skip_watermark:
             with get_postgres_via_ssh() as conn:
                 watermark = get_max_updated_at(conn, pg_schema, "District")
 
@@ -117,8 +130,10 @@ def load_people_api():
         if watermark:
             query += f" AND updated_at >= '{watermark}'"
             t_log.info("Incremental load — watermark: %s", watermark)
+        elif skip_watermark:
+            t_log.info("Full reload requested — skipping watermark")
         else:
-            t_log.info("Full reload — no watermark applied")
+            t_log.info("Initial load — table is empty, no watermark")
         query += " ORDER BY updated_at ASC"
 
         t_log.info("Reading from Databricks: %s", query)
@@ -147,7 +162,10 @@ def load_people_api():
 
         Streams rows in batches to stay within the Astro worker memory limit.
         """
-        full_reload = get_current_context()["params"].get("full_reload", False)
+        params = get_current_context()["params"]
+        skip_watermark = params.get("full_reload") or params.get(
+            "full_reload_district_stats"
+        )
         catalog = Variable.get("databricks_catalog")
         schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
@@ -155,7 +173,7 @@ def load_people_api():
         pg_schema = Variable.get("people_api_schema")
 
         watermark = None
-        if not full_reload:
+        if not skip_watermark:
             with get_postgres_via_ssh() as conn:
                 watermark = get_max_updated_at(conn, pg_schema, "DistrictStats")
 
@@ -167,8 +185,10 @@ def load_people_api():
         if watermark:
             query += f" WHERE updated_at >= '{watermark}'"
             t_log.info("Incremental load — watermark: %s", watermark)
+        elif skip_watermark:
+            t_log.info("Full reload requested — skipping watermark")
         else:
-            t_log.info("Full reload — no watermark applied")
+            t_log.info("Initial load — table is empty, no watermark")
         query += " ORDER BY updated_at ASC"
 
         t_log.info("Reading from Databricks: %s", query)
