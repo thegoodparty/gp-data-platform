@@ -44,7 +44,7 @@ def load_and_prepare(input_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     df["last_name"] = df["last_name"].str.lower().str.strip()
 
     # first_name_aliases is built upstream in the dbt prematch model
-    # (int__er_prematch_candidacies) via the nicknames seed and arrives as a
+    # (int__er_prematch_candidacy_stages) via the nicknames seed and arrives as a
     # JSON array string (always includes the first_name itself).
     if "first_name_aliases" in df.columns:
         df["first_name_aliases"] = df["first_name_aliases"].apply(
