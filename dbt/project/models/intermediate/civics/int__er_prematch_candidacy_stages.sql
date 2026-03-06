@@ -11,13 +11,11 @@
 -- - BallotReady staging: one row per candidate per race (election stage)
 -- - TechSpeed clean: one row per candidate per election date
 --
--- Name cleaning is intentionally minimal (lower/trim) — more sophisticated
--- parsing (e.g. HumanName for suffixes/nicknames) happens in the Python
--- Splink script to keep iteration fast without rebuilding the dbt model.
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
     -- so Splink can use ArrayIntersectLevel to detect nickname matches
     -- (e.g. robert ↔ bob).
+    -- Produces an array like [`daniel`, `dan`, `danny`]
     nickname_aliases as (
         select
             name1, array_distinct(array_append(collect_list(name2), name1)) as aliases
