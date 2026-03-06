@@ -187,7 +187,15 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
     race_ok = (pairwise_df["gamma_official_office_name"] > 0) | (
         pairwise_df["gamma_city"] > 0
     )
-    pairwise_df = pairwise_df[person_ok & race_ok].copy()
+    # Exclude pairs where both sides have a known (integer) br_race_id and
+    # they differ — these are confirmed different candidacy stages.
+    both_race_known = (
+        pairwise_df["br_race_id_int_l"].notna()
+        & pairwise_df["br_race_id_int_r"].notna()
+    )
+    same_race_id = pairwise_df["br_race_id_int_l"] == pairwise_df["br_race_id_int_r"]
+    race_id_ok = ~both_race_known | same_race_id
+    pairwise_df = pairwise_df[person_ok & race_ok & race_id_ok].copy()
     if (dropped := pre - len(pairwise_df)) > 0:
         print(f"Person + race filter: removed {dropped:,} pairs")
 
@@ -200,6 +208,11 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         WHERE gamma_last_name > 0
           AND (gamma_first_name > 0 OR gamma_email > 0 OR gamma_phone > 0)
           AND (gamma_official_office_name > 0 OR gamma_city > 0)
+          AND NOT (
+            br_race_id_int_l IS NOT NULL
+            AND br_race_id_int_r IS NOT NULL
+            AND br_race_id_int_l != br_race_id_int_r
+          )
     """
     )
 
