@@ -160,7 +160,7 @@ models:
               - zip_code
               - district_type
               - district_name
-              - br_race_database_id
+              - br_database_id
 
   - name: int__zip_code_to_l2_district
     description: "Zip code to L2 district mapping"
