@@ -3,8 +3,8 @@ Splink entity resolution: BallotReady x TechSpeed candidacies.
 
 Usage:
     cd entity_resolution
-    uv run er-match --input data/input.csv
-    uv run er-match --input data/input.csv --output-dir results/
+    uv run python scripts/cli.py match --input data/input.csv
+    uv run python scripts/cli.py match --input data/input.csv --output-dir results/
 
 Input:  CSV file with prematch candidacy records
 Output: results/pairwise_predictions.csv

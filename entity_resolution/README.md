@@ -19,7 +19,7 @@ Or with a custom input file and output directory:
 uv run python scripts/cli.py match --input /path/to/prematch.csv --output-dir /path/to/output/
 ```
 
-**Input:** CSV file exported from `dbt_dball.int__er_prematch_candidacies`
+**Input:** CSV file exported from `dbt_dball.int__er_prematch_candidacy_stages`
 **Output:**
 - `results/pairwise_predictions.csv` — all scored candidate pairs
 - `results/clustered_candidacies.csv` — all records with cluster assignments
@@ -63,7 +63,7 @@ DuckDB as the backend.
 ### Preprocessing
 
 - **Names:** lowercased and trimmed
-- **First name nicknames:** the upstream dbt model (`int__er_prematch_candidacies`)
+- **First name nicknames:** the upstream dbt model (`int__er_prematch_candidacy_stages`)
   maps each first name to an alias array via the `nicknames` seed (e.g.
   robert -> [robert, bob, bobby, rob, bert, ...]). The array always includes
   the original first name. Splink's `ArrayIntersectLevel` checks for overlap
