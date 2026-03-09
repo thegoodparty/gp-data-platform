@@ -7,7 +7,7 @@
             "zip_code",
             "district_type",
             "district_name",
-            "br_race_database_id",
+            "br_database_id",
         ],
         tags=["intermediate", "l2", "ballotready", "zip_code"],
     )
@@ -78,10 +78,11 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_br_race
             on tbl_br_position.database_id = tbl_br_race.position.databaseid
-        -- dedup over the latest race in the database so as not to get a past one
+        -- dedup to the latest race per BR position per zip+district
         qualify
             row_number() over (
-                partition by zip_code, district_type, district_name
+                partition by
+                    zip_code, district_type, district_name, tbl_match.br_database_id
                 order by br_race_database_id desc
             )
             = 1
