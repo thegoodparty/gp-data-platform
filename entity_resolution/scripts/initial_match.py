@@ -149,7 +149,11 @@ SETTINGS = SettingsCreator(
 )
 
 EM_TRAINING_BLOCKS = [
-    ("last_name",),
+    # Block on last_name + state + election_date to train first_name (and
+    # office/district) cleanly. Blocking on last_name alone produces too many
+    # same-race different-person pairs, which inflates the first_name
+    # non-agreement m probability and weakens its negative signal.
+    ("last_name", "state", "election_date"),
     ("first_name",),
     ("email",),
     ("state", "election_date"),
