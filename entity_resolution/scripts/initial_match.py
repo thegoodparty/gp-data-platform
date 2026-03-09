@@ -100,10 +100,15 @@ SETTINGS = SettingsCreator(
         # different-candidate pairs from being false positives.
         cl.ExactMatch("state"),
         cl.ExactMatch("election_date"),
+        # Office name with a 0.75 tier to catch cross-source formatting
+        # differences (e.g. "durham school board" vs "durham county board of
+        # education"). FPs from completely different offices (JW < 0.75) are
+        # excluded; TPs with the same office reformatted (JW >= 0.76) are kept.
         cl.JaroWinklerAtThresholds(
-            "official_office_name", score_threshold_or_thresholds=[0.95, 0.88]
+            "official_office_name",
+            score_threshold_or_thresholds=[0.95, 0.88, 0.75],
         ),
-        cl.ExactMatch("city"),
+        cl.ExactMatch("district_identifier"),
     ],
     blocking_rules_to_generate_predictions=[
         block_on("br_race_id_int"),
@@ -136,7 +141,6 @@ SETTINGS = SettingsCreator(
         "office_level",
         "office_type",
         "district_raw",
-        "district_identifier",
         "seat_name",
         "br_race_id",
         "br_candidacy_id",
@@ -181,25 +185,21 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         | (pairwise_df["gamma_email"] > 0)
         | (pairwise_df["gamma_phone"] > 0)
     )
-    # Race-level filter: require that at least the office name or city agrees.
-    # Without this, common-name pairs in the same state/election but different
-    # offices can score above the cluster threshold.
-    # When falling back to city match (office gamma=0), also require
-    # office_type to agree — otherwise same-person, different-office pairs
-    # (e.g. mayor vs council) in the same city leak through.
-    office_ok = pairwise_df["gamma_official_office_name"] > 0
-    city_fallback = (pairwise_df["gamma_city"] > 0) & (
-        pairwise_df["office_type_l"] == pairwise_df["office_type_r"]
-    )
-    race_ok = office_ok | city_fallback
+    # Race-level filter: require official_office_name similarity (gamma > 0
+    # means JW >= 0.75, which excludes completely different offices while
+    # allowing cross-source formatting differences).
+    race_ok = pairwise_df["gamma_official_office_name"] > 0
     # Exclude pairs where both sides have a known (integer) br_race_id and
-    # they differ — these are confirmed different candidacy stages.
+    # they differ — unless the office names match well (gamma >= 2, i.e.
+    # JW >= 0.88), since BR and TS sometimes assign different race IDs to the
+    # same race.
     both_race_known = (
         pairwise_df["br_race_id_int_l"].notna()
         & pairwise_df["br_race_id_int_r"].notna()
     )
     same_race_id = pairwise_df["br_race_id_int_l"] == pairwise_df["br_race_id_int_r"]
-    race_id_ok = ~both_race_known | same_race_id
+    strong_office_match = pairwise_df["gamma_official_office_name"] >= 2
+    race_id_ok = ~both_race_known | same_race_id | strong_office_match
     pairwise_df = pairwise_df[person_ok & race_ok & race_id_ok].copy()
     if (dropped := pre - len(pairwise_df)) > 0:
         print(f"Person + race filter: removed {dropped:,} pairs")
@@ -212,12 +212,12 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         SELECT * FROM {pred_table}
         WHERE gamma_last_name > 0
           AND (gamma_first_name > 0 OR gamma_email > 0 OR gamma_phone > 0)
-          AND (gamma_official_office_name > 0
-               OR (gamma_city > 0 AND office_type_l = office_type_r))
+          AND gamma_official_office_name > 0
           AND NOT (
             br_race_id_int_l IS NOT NULL
             AND br_race_id_int_r IS NOT NULL
             AND br_race_id_int_l != br_race_id_int_r
+            AND gamma_official_office_name < 2
           )
     """
     )

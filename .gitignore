@@ -48,7 +48,7 @@ test_data/
 
 # Entity resolution local data and results
 entity_resolution/data/
-entity_resolution/results/
+entity_resolution/results/*.csv
 
 # Claude runbook
 .claude/RUNBOOK.md

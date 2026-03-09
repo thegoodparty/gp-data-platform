@@ -98,7 +98,6 @@ with
                     ) as int
                 )
             ) as district_identifier,
-            {{ extract_city_from_office_name("br.position_name") }} as city,
             -- Single election date at candidacy-stage grain
             br.election_day as election_date,
             -- Derive election stage from is_primary / is_runoff flags
@@ -176,11 +175,6 @@ with
             try_cast(
                 regexp_extract(ts.district, '([0-9]+)') as int
             ) as district_identifier,
-            -- Strip geographic type suffixes so city values align with BallotReady
-            -- (e.g. "Little River County" → "Little River", "Paris City" → "Paris")
-            regexp_replace(
-                ts.city, ' (County|City|Township|Borough|Parish)$', ''
-            ) as city,
             -- Single election date: coalesce general > primary (same as election_date
             -- column)
             coalesce(
@@ -229,7 +223,6 @@ select
     office_type,
     nullif(district_raw, '') as district_raw,
     district_identifier,
-    nullif(city, '') as city,
     election_date,
     election_stage,
     nullif(email, '') as email,

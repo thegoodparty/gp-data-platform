@@ -37,12 +37,12 @@ score):
 
 **Race/election-level attributes** (used in both blocking rules and as Splink
 comparisons, but guarded by post-prediction filters to prevent false positives):
-- `state`, `official_office_name`, `election_date`, `city`
+- `state`, `official_office_name`, `election_date`, `district_identifier`
 - `br_race_id_int` — used in blocking only
 
 **Additional retained columns** (carried through for filtering and output but
 not used as comparisons):
-- `office_type`, `candidate_office`, `office_level`, `district_identifier`,
+- `office_type`, `candidate_office`, `office_level`,
   `district_raw`, `seat_name`, `election_stage`, `br_race_id`, `br_candidacy_id`
 
 ### Why race-level attributes need post-prediction guards
@@ -107,8 +107,8 @@ All comparisons contribute Bayes factors to the match score:
 | `phone` | Exact | match, else | |
 | `state` | Exact | match, else | |
 | `election_date` | Exact | match, else | |
-| `official_office_name` | Jaro-Winkler | exact, >= 0.95, >= 0.88, else | |
-| `city` | Exact | match, else | |
+| `official_office_name` | Jaro-Winkler | exact, >= 0.95, >= 0.88, >= 0.75, else | 0.75 tier catches cross-source formatting (e.g. "durham school board" vs "durham county board of education") |
+| `district_identifier` | Exact | match, else | Numeric district; provides positive/negative Bayesian evidence |
 
 ### Training
 
@@ -116,10 +116,10 @@ Four EM passes with different blocking ensure all comparison columns get
 trained. Each pass blocks on one or more columns (fixing them) and estimates
 m probabilities for the rest:
 
-1. Block on `last_name` -> trains first_name, party, email, phone, state, election_date, official_office_name, city
-2. Block on `first_name` -> trains last_name, party, email, phone, state, election_date, official_office_name, city
-3. Block on `email` -> trains last_name, first_name, party, phone, state, election_date, official_office_name, city
-4. Block on `state + election_date` -> trains last_name, first_name, party, email, phone, official_office_name, city
+1. Block on `last_name` -> trains first_name, party, email, phone, state, election_date, official_office_name, district_identifier
+2. Block on `first_name` -> trains last_name, party, email, phone, state, election_date, official_office_name, district_identifier
+3. Block on `email` -> trains last_name, first_name, party, phone, state, election_date, official_office_name, district_identifier
+4. Block on `state + election_date` -> trains last_name, first_name, party, email, phone, official_office_name, district_identifier
 
 u probabilities are estimated via random sampling (5M pairs) before EM.
 
@@ -132,14 +132,15 @@ true candidacy matches (same person + same office + same election):
    first name agreement OR email/phone match. Removes same-race,
    different-candidate pairs.
 
-2. **Race-level filter** — requires `official_office_name` agreement (JW >= 0.88,
-   i.e. gamma > 0) OR city match with same `office_type`. The `office_type`
-   guard on the city fallback prevents same-person, different-office pairs
-   (e.g. mayor vs council member in the same city) from being false positives.
+2. **Race-level filter** — requires `official_office_name` JW >= 0.75
+   (gamma > 0). The 0.75 threshold is high enough to exclude completely
+   different offices (JW 0.60-0.72) while catching cross-source formatting
+   differences for the same office (JW 0.76+).
 
 3. **Race ID filter** — excludes pairs where both sides have a known integer
-   `br_race_id` and they differ. When both sources point to different BR race
-   records, that's strong evidence the candidacies are different.
+   `br_race_id` and they differ, **unless** the office names match well
+   (JW >= 0.88). BR and TS sometimes assign different race IDs to the same
+   race, so a strong office name match overrides the race ID disagreement.
 
 ### Thresholds
 
@@ -167,17 +168,16 @@ generated even when names don't match exactly:
 ### Cross-source office name formatting
 
 BallotReady and TechSpeed often format the same office differently. The fuzzy
-office blocking rule (JW >= 0.88) handles most cases. When the office name JW
-falls below 0.88 (e.g. "norman city council - ward 5" vs "city of norman
-councilmember councilmember ward 5 (unexpired)", JW = 0.65), the city match +
-`office_type` agreement fallback still allows the match:
+office blocking rule (JW >= 0.88) handles most cases. The 0.75 JW tier in the
+comparison catches reformatted office names that fall below 0.88:
 
-| BR format | TS format | Mechanism |
-|-----------|-----------|-----------|
-| `fort smith school board - zone 1` | `fort smith public school district zone 1` | Office JW >= 0.88 |
-| `mountainburg school board - zone 2` | `mountainburg school district, zone 2` | Office JW >= 0.88 |
-| `norman city council - ward 5` | `city of norman councilmember councilmember ward 5 (unexpired)` | City match + office_type = City Council |
-| `durham school board - district 4` | `durham county board of education district 04` | City match + office_type = School Board |
+| BR format | TS format | JW | Mechanism |
+|-----------|-----------|-----|-----------|
+| `fort smith school board - zone 1` | `fort smith public school district zone 1` | 0.89 | Office JW >= 0.88 |
+| `mountainburg school board - zone 2` | `mountainburg school district, zone 2` | 0.89 | Office JW >= 0.88 |
+| `durham school board - district 4` | `durham county board of education district 04` | 0.87 | Office JW >= 0.75 |
+| `university of nebraska board of regents - district 1` | `nebraska board of regents - district 01` | 0.76 | Office JW >= 0.75 |
+| `lake mills city council - district 1` | `city of lake mills council member- district 1` | 0.79 | Office JW >= 0.75 |
 
 ### First name nicknames
 
@@ -212,27 +212,22 @@ and district — but the person identity filter separates them:
 
 ### Known false negatives
 
-Two categories of true matches are systematically missed:
+A small number of true matches are systematically missed:
 
-1. **Cross-source `br_race_id` mismatches (~23 pairs):** BR and TS sometimes
-   assign different integer race IDs to the same race. The race ID filter
-   excludes these pairs. Removing the filter would recover them but introduces
-   ~68 false positives (same person in different elections or different offices),
-   so the tradeoff favors precision.
+1. **Office name JW < 0.75 (~5 pairs):** Extreme cross-source formatting
+   differences push JW below the 0.75 threshold. The main example is
+   TechSpeed's "city of norman councilmember councilmember ward N (unexpired)"
+   vs BR's "norman city council - ward N" (JW = 0.65), caused by a duplicated
+   "councilmember" in the TS data.
 
-2. **Office name JW 0.83-0.87 without city match (~24 pairs):** Pairs where
-   the office name JW falls just below 0.88 and the city values don't match
-   (e.g. BR uses the office name as the city field). Mostly AR circuit court
-   and prosecuting attorney formatting differences.
-
-## Current results (35,882 input records)
+## Current results (40,462 input records)
 
 | Metric | Value |
 |--------|-------|
-| Input records | 18,345 BR + 17,537 TS |
-| Pairwise pairs above 0.01 | 3,864 |
-| Removed by post-prediction filters | ~8,800 |
-| Cross-source matched clusters | 3,840 |
+| Input records | 22,925 BR + 17,537 TS |
+| Pairwise pairs above 0.01 | ~19,500 |
+| Removed by post-prediction filters | ~15,000 |
+| Cross-source matched clusters | 4,413 |
 | Within-source duplicate clusters | 0 |
 
 ## Diagnostic charts
