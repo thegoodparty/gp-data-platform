@@ -28,31 +28,30 @@ uv run python scripts/cli.py match --input /path/to/prematch.csv --output-dir /p
 
 ## Design: candidate-level vs race-level attributes
 
-The key architectural decision is the separation of attributes into two
-categories:
+Attributes are divided into two categories based on how they contribute to
+scoring:
 
-**Candidate-level attributes** (used as Splink comparisons — contribute Bayes
-factors to the match score):
+**Candidate-level attributes** (strongest Splink comparisons — drive the match
+score):
 - `last_name`, `first_name`, `party`, `email`, `phone`
 
-**Race/election-level attributes** (used only in blocking rules — determine
-which pairs are generated, but do NOT influence the match score):
-- `state`, `official_office_name`, `election_date`, `district_identifier`,
-  `city`, `election_stage`, `br_race_id_int`
+**Race/election-level attributes** (used in both blocking rules and as Splink
+comparisons, but guarded by post-prediction filters to prevent false positives):
+- `state`, `official_office_name`, `election_date`, `city`
+- `br_race_id_int` — used in blocking only
 
-### Why this separation matters
+**Additional retained columns** (carried through for filtering and output but
+not used as comparisons):
+- `office_type`, `candidate_office`, `office_level`, `district_identifier`,
+  `district_raw`, `seat_name`, `election_stage`, `br_race_id`, `br_candidacy_id`
 
-Multiple candidates run in the same race. When race-level attributes like
-`official_office_name`, `election_date`, and `br_race_id` are included as
-Splink comparisons, they produce massive positive Bayes factors for
-*any* pair of candidates in the same race — overwhelming the name-mismatch
-penalty. In testing, this caused **6,872 false positives** (63% of all
-predictions) that required an extensive post-prediction filter to remove.
+### Why race-level attributes need post-prediction guards
 
-By moving race-level attributes to blocking rules only, the model scores
-pairs purely on whether they look like the *same person*, while the blocking
-rules ensure we only compare candidates who are plausibly in the *same race*.
-This reduced post-prediction filtering from 6,872 pairs to just 5.
+Multiple candidates run in the same race. Race-level attributes like
+`official_office_name`, `election_date`, and `state` produce positive Bayes
+factors for *any* pair of candidates in the same race — which can overwhelm
+name-mismatch penalties. The post-prediction filter (described below) catches
+these cases by requiring name agreement and office/race consistency.
 
 ## How it works
 
@@ -97,7 +96,7 @@ Rules 2 and 4 use DuckDB's `jaro_winkler_similarity` function via Splink's
 
 ### Comparisons (how pairs are scored)
 
-Only candidate-level attributes contribute to the match score:
+All comparisons contribute Bayes factors to the match score:
 
 | Column | Type | Levels | Notes |
 |--------|------|--------|-------|
@@ -106,36 +105,46 @@ Only candidate-level attributes contribute to the match score:
 | `party` | Exact | match, else | |
 | `email` | Exact | match, else | |
 | `phone` | Exact | match, else | |
+| `state` | Exact | match, else | |
+| `election_date` | Exact | match, else | |
+| `official_office_name` | Jaro-Winkler | exact, >= 0.95, >= 0.88, else | |
+| `city` | Exact | match, else | |
 
 ### Training
 
-Three EM passes with different blocking ensure all comparison columns get
-trained. Each pass blocks on one comparison column (fixing it) and estimates
+Four EM passes with different blocking ensure all comparison columns get
+trained. Each pass blocks on one or more columns (fixing them) and estimates
 m probabilities for the rest:
 
-1. Block on `last_name` -> trains first_name, party, email, phone
-2. Block on `first_name` -> trains last_name, party, email, phone
-3. Block on `email` -> trains last_name, first_name, party, phone
+1. Block on `last_name` -> trains first_name, party, email, phone, state, election_date, official_office_name, city
+2. Block on `first_name` -> trains last_name, party, email, phone, state, election_date, official_office_name, city
+3. Block on `email` -> trains last_name, first_name, party, phone, state, election_date, official_office_name, city
+4. Block on `state + election_date` -> trains last_name, first_name, party, email, phone, official_office_name, city
 
 u probabilities are estimated via random sampling (5M pairs) before EM.
 
-### Post-prediction person identity filter
+### Post-prediction filters
 
-A lightweight filter removes the small number of pairs (typically ~5) where
-the `br_race_id_int` blocking rule generated a pair for two different
-candidates in the same race who happen to score above the prediction
-threshold. The filter requires:
+After Splink scores all blocked pairs, three filters ensure we only cluster
+true candidacy matches (same person + same office + same election):
 
-1. **Last name must agree** (gamma > 0)
-2. **First name must agree OR email/phone must match**
+1. **Person identity filter** — requires last name agreement (gamma > 0) AND
+   first name agreement OR email/phone match. Removes same-race,
+   different-candidate pairs.
 
-This is a minimal safety net — the model handles the vast majority of
-discrimination on its own since only candidate-level attributes are in the
-comparisons.
+2. **Race-level filter** — requires `official_office_name` agreement (JW >= 0.88,
+   i.e. gamma > 0) OR city match with same `office_type`. The `office_type`
+   guard on the city fallback prevents same-person, different-office pairs
+   (e.g. mayor vs council member in the same city) from being false positives.
+
+3. **Race ID filter** — excludes pairs where both sides have a known integer
+   `br_race_id` and they differ. When both sources point to different BR race
+   records, that's strong evidence the candidacies are different.
 
 ### Thresholds
 
-- **Prediction threshold: 0.5** — captures all plausible matches for review
+- **Prediction threshold: 0.01** — low threshold to capture all plausible pairs
+  for the post-prediction filters to evaluate
 - **Clustering threshold: 0.95** — high confidence required to cluster, since
   the unit of matching is a *candidacy* (person + office + election date), not
   just a person
@@ -158,13 +167,17 @@ generated even when names don't match exactly:
 ### Cross-source office name formatting
 
 BallotReady and TechSpeed often format the same office differently. The fuzzy
-office blocking rule (JW >= 0.88) handles this:
+office blocking rule (JW >= 0.88) handles most cases. When the office name JW
+falls below 0.88 (e.g. "norman city council - ward 5" vs "city of norman
+councilmember councilmember ward 5 (unexpired)", JW = 0.65), the city match +
+`office_type` agreement fallback still allows the match:
 
-| BR format | TS format | JW score |
-|-----------|-----------|----------|
-| `fort smith school board - zone 1` | `fort smith public school district zone 1` | 0.89 |
-| `mountainburg school board - zone 2` | `mountainburg school district, zone 2` | 0.91 |
-| `republic city council - ward 3` | `republic city ward 3` | 0.91 |
+| BR format | TS format | Mechanism |
+|-----------|-----------|-----------|
+| `fort smith school board - zone 1` | `fort smith public school district zone 1` | Office JW >= 0.88 |
+| `mountainburg school board - zone 2` | `mountainburg school district, zone 2` | Office JW >= 0.88 |
+| `norman city council - ward 5` | `city of norman councilmember councilmember ward 5 (unexpired)` | City match + office_type = City Council |
+| `durham school board - district 4` | `durham county board of education district 04` | City match + office_type = School Board |
 
 ### First name nicknames
 
@@ -177,38 +190,49 @@ would miss:
 | william jones | bill jones | alias intersection |
 | james wilson | jim wilson | alias intersection |
 
-### Same person, different candidacy stages (correctly separated)
+### Same person, different office (correctly separated)
 
-Primary and general election candidacies for the same person are *not* matched
-because they represent different candidacy records. The blocking rules require
-`election_date` to agree, which naturally separates these:
+The race-level filter prevents matching a person who runs for two different
+offices (e.g. mayor and city council) in the same city:
 
-| BR record (primary) | TS record (general) | Matched? |
-|---------------------|---------------------|----------|
-| joel straub, marathon county board dist 15, 2026-02-17 | joel straub, marathon county board dist 15, 2026-04-07 | No (different dates) |
-| genene hibbler, oak creek-franklin school board, 2026-04-07 | genene hibbler, oak creek-franklin school board, 2026-02-17 | No (different dates) |
+| Candidate A | Candidate B | Matched? |
+|-------------|-------------|----------|
+| dean isgrigg, gerald city council - ward 2 | dean isgrigg, gerald city mayor | No (City Council != Mayor) |
+| john muraski, howard village board | john muraski, howard village president | No (City Council != Other) |
 
 ### Same race, different candidates (correctly separated)
 
 Two different candidates running in the same race share office, state, date,
-and district — but the model correctly separates them because only
-candidate-level attributes (name, email, phone) are used for scoring:
+and district — but the person identity filter separates them:
 
 | Candidate A | Candidate B | Matched? |
 |-------------|-------------|----------|
 | joel straub, marathon county board dist 15 | timothy sondelski, marathon county board dist 25 | No (different names) |
 | clark rinehart, raleigh city council | sana siddiqui, raleigh city council | No (different names) |
 
+### Known false negatives
+
+Two categories of true matches are systematically missed:
+
+1. **Cross-source `br_race_id` mismatches (~23 pairs):** BR and TS sometimes
+   assign different integer race IDs to the same race. The race ID filter
+   excludes these pairs. Removing the filter would recover them but introduces
+   ~68 false positives (same person in different elections or different offices),
+   so the tradeoff favors precision.
+
+2. **Office name JW 0.83-0.87 without city match (~24 pairs):** Pairs where
+   the office name JW falls just below 0.88 and the city values don't match
+   (e.g. BR uses the office name as the city field). Mostly AR circuit court
+   and prosecuting attorney formatting differences.
+
 ## Current results (35,882 input records)
 
 | Metric | Value |
 |--------|-------|
 | Input records | 18,345 BR + 17,537 TS |
-| Pairwise pairs above 0.5 | 4,166 |
-| Removed by person identity filter | 5 |
-| High-confidence pairs (>= 0.95) | 3,882 |
-| Borderline pairs (0.5-0.95) | 279 |
-| Cross-source matched clusters | 3,726 |
+| Pairwise pairs above 0.01 | 3,864 |
+| Removed by post-prediction filters | ~8,800 |
+| Cross-source matched clusters | 3,840 |
 | Within-source duplicate clusters | 0 |
 
 ## Diagnostic charts

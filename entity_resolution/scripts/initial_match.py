@@ -184,9 +184,14 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
     # Race-level filter: require that at least the office name or city agrees.
     # Without this, common-name pairs in the same state/election but different
     # offices can score above the cluster threshold.
-    race_ok = (pairwise_df["gamma_official_office_name"] > 0) | (
-        pairwise_df["gamma_city"] > 0
+    # When falling back to city match (office gamma=0), also require
+    # office_type to agree — otherwise same-person, different-office pairs
+    # (e.g. mayor vs council) in the same city leak through.
+    office_ok = pairwise_df["gamma_official_office_name"] > 0
+    city_fallback = (pairwise_df["gamma_city"] > 0) & (
+        pairwise_df["office_type_l"] == pairwise_df["office_type_r"]
     )
+    race_ok = office_ok | city_fallback
     # Exclude pairs where both sides have a known (integer) br_race_id and
     # they differ — these are confirmed different candidacy stages.
     both_race_known = (
@@ -207,7 +212,8 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
         SELECT * FROM {pred_table}
         WHERE gamma_last_name > 0
           AND (gamma_first_name > 0 OR gamma_email > 0 OR gamma_phone > 0)
-          AND (gamma_official_office_name > 0 OR gamma_city > 0)
+          AND (gamma_official_office_name > 0
+               OR (gamma_city > 0 AND office_type_l = office_type_r))
           AND NOT (
             br_race_id_int_l IS NOT NULL
             AND br_race_id_int_r IS NOT NULL
