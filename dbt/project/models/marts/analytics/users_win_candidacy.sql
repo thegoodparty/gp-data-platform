@@ -40,6 +40,7 @@ with
             c.campaign_party,
             c.election_level,
             c.ballotready_position_id,
+            c.is_latest_version,
             true as is_win_user,
 
             -- User fields
