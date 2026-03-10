@@ -809,6 +809,14 @@ models:
       - name: ballotready_position_id
         description: Numeric identifier for the political position in BallotReady's database
 
+      - name: is_latest_version
+        description: >
+          Whether this is the most recent version of the campaign (true) or a
+          historical version that was overwritten (false). Filter with
+          `where is_latest_version` to restore one-row-per-campaign behavior.
+        data_tests:
+          - not_null
+
       - name: is_win_user
         description: Whether this is a Win platform user (always true in this model, as it is campaign-based)
         data_tests:
