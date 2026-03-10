@@ -1,0 +1,17 @@
+models:
+  - name: stg_airbyte_internal__raw_gp_api_db_campaign
+    description: >
+      Parsed and deduplicated campaign data from Airbyte's insert-only raw
+      stream. Unlike the standard source table (which only reflects the current
+      state of the product DB), this model preserves historical campaign
+      versions that were overwritten when users reused their campaign for a new
+      election.
+
+      Grain: One row per distinct campaign version, identified by the
+      combination of campaign id and election context (election date, position,
+      office, state).
+    columns:
+      - name: id
+        description: Campaign identifier from the product database. Not unique — a campaign may have multiple historical versions.
+        data_tests:
+          - not_null
