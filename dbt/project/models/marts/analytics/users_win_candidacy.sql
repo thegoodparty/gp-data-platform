@@ -16,6 +16,7 @@ with
     final as (
         select
             -- Campaign fields
+            c.campaign_version_id,
             c.campaign_id,
             c.campaign_slug,
             c.hubspot_id,

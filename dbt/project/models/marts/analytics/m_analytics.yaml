@@ -705,13 +705,20 @@ models:
       User and campaign activity report combining campaign data with user attributes,
       ICP office classifications, candidacy details, and election results by stage.
 
-      Grain: One row per campaign.
+      Grain: One row per campaign version.
 
     columns:
-      - name: campaign_id
-        description: Primary key - unique campaign identifier from gp-api production database
+      - name: campaign_version_id
+        description: >
+          Primary key - surrogate key uniquely identifying each historical
+          version of a campaign.
         data_tests:
           - unique
+          - not_null
+
+      - name: campaign_id
+        description: Campaign identifier from gp-api production database. Not unique — a campaign may have multiple historical versions.
+        data_tests:
           - not_null
 
       - name: campaign_slug
@@ -922,7 +929,7 @@ models:
           arguments:
             combination_of_columns:
               - user_id
-              - campaign_id
+              - campaign_version_id
       - dbt_utils.expression_is_true:
           arguments:
             expression: "campaign_updated_at >= campaign_created_at"
