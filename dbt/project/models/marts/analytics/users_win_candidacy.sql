@@ -84,9 +84,12 @@ with
             {{ ref("int__icp_offices") }} icp
             on c.ballotready_position_id = icp.br_database_position_id
 
-        -- Candidacy for election dates
+        -- Candidacy for election dates (only join on latest version to avoid
+        -- associating historical campaign versions with the wrong candidacy)
         left join
-            {{ ref("candidacy") }} cand on c.campaign_id = cand.product_campaign_id
+            {{ ref("candidacy") }} cand
+            on c.campaign_id = cand.product_campaign_id
+            and c.is_latest_version
 
         -- Stage results pivoted
         left join
