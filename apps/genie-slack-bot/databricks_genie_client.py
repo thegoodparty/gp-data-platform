@@ -78,11 +78,17 @@ class DatabricksGenieClient:
         data: Optional[Dict[str, Any]] = None,
         max_retries: int = 3,
         suppress_status_codes: Optional[Set[int]] = None,
+        allow_empty_response: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """Make an authenticated API request using the SDK's HTTP client."""
         for attempt in range(max_retries):
             try:
-                return cast(Dict[str, Any], self.api_client.do(method, path, body=data))
+                result = self.api_client.do(method, path, body=data)
+                if result is None:
+                    if allow_empty_response:
+                        return {}
+                    return None
+                return cast(Dict[str, Any], result)
             except Exception as error:
                 status_code = self._extract_status_code(error)
                 is_retryable = self._is_retryable_error(status_code, error)
@@ -346,7 +352,8 @@ class DatabricksGenieClient:
 
         if status == "COMPLETED":
             # Extract text response and any attachments
-            attachments = response.get("attachments", [])
+            raw_attachments = response.get("attachments")
+            attachments = raw_attachments if isinstance(raw_attachments, list) else []
             query_result = response.get("query_result")
 
             response_text = ""
@@ -354,14 +361,19 @@ class DatabricksGenieClient:
 
             if attachments:
                 for attachment in attachments:
-                    if "text" in attachment:
-                        text_content = attachment["text"].get("content", "")
+                    if not isinstance(attachment, dict):
+                        continue
+
+                    text_attachment = attachment.get("text")
+                    if isinstance(text_attachment, dict):
+                        text_content = text_attachment.get("content") or ""
                         if text_content:
                             response_text += text_content + "\n\n"
 
-                    elif "query" in attachment:
-                        query_data = attachment["query"]
-                        description = query_data.get("description", "")
+                    query_attachment = attachment.get("query")
+                    if isinstance(query_attachment, dict):
+                        query_data = query_attachment
+                        description = query_data.get("description") or ""
                         attachment_id = attachment.get("attachment_id")
                         if isinstance(attachment_id, str):
                             query_attachment_id = attachment_id
@@ -388,9 +400,19 @@ class DatabricksGenieClient:
                     }
 
             if not response_text.strip():
-                response_text = response.get("content", "No response generated")
+                content = response.get("content")
+                response_text = (
+                    content
+                    if isinstance(content, str) and content
+                    else "No response generated"
+                )
 
-            suggested_questions = response.get("suggested_questions", [])
+            raw_suggested_questions = response.get("suggested_questions")
+            suggested_questions = (
+                raw_suggested_questions
+                if isinstance(raw_suggested_questions, list)
+                else []
+            )
 
             return {
                 "success": True,
@@ -403,7 +425,16 @@ class DatabricksGenieClient:
                 "suggested_questions": suggested_questions,
             }
         else:
-            error_msg = response.get("error", {}).get("message", "Unknown error")
+            raw_error = response.get("error")
+            if isinstance(raw_error, dict):
+                error_message = raw_error.get("message")
+                error_msg = (
+                    error_message if isinstance(error_message, str) else "Unknown error"
+                )
+            elif isinstance(raw_error, str) and raw_error:
+                error_msg = raw_error
+            else:
+                error_msg = "Unknown error"
             return {
                 "success": False,
                 "conversation_id": actual_conversation_id,
@@ -437,7 +468,12 @@ class DatabricksGenieClient:
         if feedback_text:
             payload["feedback_text"] = feedback_text
 
-        result = self._make_request("POST", path, data=payload)
+        result = self._make_request(
+            "POST",
+            path,
+            data=payload,
+            allow_empty_response=True,
+        )
 
         if result is not None:
             logger.info(f"Sent {rating.upper()} feedback for message {message_id}")

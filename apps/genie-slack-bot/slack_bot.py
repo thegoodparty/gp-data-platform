@@ -226,7 +226,10 @@ class SlackGenieBot:
                 self._post_message(
                     client,
                     channel=channel_value,
-                    text=f"Sorry, I encountered an error: {str(e)}",
+                    text=(
+                        "Sorry, I encountered an error processing your request. "
+                        "Please try again."
+                    ),
                     thread_ts=thread_ts_value,
                 )
 
@@ -338,7 +341,13 @@ class SlackGenieBot:
             data = result_data.get("data", {})
             schema = result_data.get("schema", {})
             data_array = data.get("data_array", [])
-            row_count = data.get("row_count", len(data_array))
+            raw_row_count = data.get("row_count")
+            if isinstance(raw_row_count, int):
+                row_count = raw_row_count if raw_row_count > 0 else len(data_array)
+            elif isinstance(raw_row_count, str) and raw_row_count.isdigit():
+                row_count = int(raw_row_count)
+            else:
+                row_count = len(data_array)
 
             if not data_array:
                 return
