@@ -66,7 +66,10 @@ with
             ) as ballotready_position_id,
 
             -- Version tracking
-            row_number() over (partition by c.id order by c.updated_at desc nulls last)
+            row_number() over (
+                partition by c.id
+                order by c.updated_at desc nulls last, c._airbyte_extracted_at desc
+            )
             = 1 as is_latest_version
 
         from campaigns c
