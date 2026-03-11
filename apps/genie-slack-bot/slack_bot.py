@@ -5,6 +5,8 @@ Slack bot handler for Databricks Genie integration
 import logging
 import re
 from collections import OrderedDict
+from threading import RLock
+from time import monotonic
 from typing import Any, Dict, List, Optional, Tuple
 
 from databricks_genie_client import DatabricksGenieClient
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 SLACK_TEXT_LIMIT = 3900
 MAX_CONVERSATION_THREADS = 1000
 MAX_FEEDBACK_MESSAGES = 2000
+MAX_RECENT_EVENT_KEYS = 2000
 
 
 class SlackGenieBot:
@@ -36,12 +39,16 @@ class SlackGenieBot:
         self.slack_app_token = slack_app_token
         self.genie_client = genie_client
         self.client = WebClient(token=slack_bot_token)
+        self.state_lock = RLock()
 
         # slack_thread_ts -> databricks_conversation_id
         self.conversation_map: OrderedDict[str, str] = OrderedDict()
 
         # message_ts -> (conversation_id, message_id) for feedback routing
         self.message_feedback_map: OrderedDict[str, Tuple[str, str]] = OrderedDict()
+
+        # channel:message_ts -> monotonic timestamp for event de-duplication
+        self.recent_event_keys: OrderedDict[str, float] = OrderedDict()
 
         self._register_handlers()
 
@@ -93,6 +100,16 @@ class SlackGenieBot:
 
             channel = channel_value
             thread_ts = thread_ts_value
+            event_ts = event.get("ts")
+            if isinstance(event_ts, str) and self._is_duplicate_event(
+                channel, event_ts
+            ):
+                logger.info(
+                    "Skipping duplicate Slack event for channel=%s ts=%s",
+                    channel,
+                    event_ts,
+                )
+                return
 
             text = self._clean_message_text(text)
 
@@ -115,7 +132,7 @@ class SlackGenieBot:
             thinking_ts = thinking_resp.get("ts")
 
             # Get or create Databricks conversation
-            conversation_id = self.conversation_map.get(thread_ts)
+            conversation_id = self._get_mapping(self.conversation_map, thread_ts)
 
             logger.info(f"Asking Genie: {text}")
             result = self.genie_client.ask_question(text, conversation_id)
@@ -273,16 +290,41 @@ class SlackGenieBot:
         if event.get("channel_type") == "im":
             return True
         thread_ts = event.get("thread_ts")
-        return bool(thread_ts and thread_ts in self.conversation_map)
+        return bool(
+            isinstance(thread_ts, str)
+            and self._has_mapping(self.conversation_map, thread_ts)
+        )
 
-    @staticmethod
+    def _get_mapping(self, mapping: OrderedDict[str, Any], key: str) -> Optional[Any]:
+        with self.state_lock:
+            return mapping.get(key)
+
+    def _has_mapping(self, mapping: OrderedDict[str, Any], key: str) -> bool:
+        with self.state_lock:
+            return key in mapping
+
+    def _is_duplicate_event(self, channel: str, event_ts: str) -> bool:
+        event_key = f"{channel}:{event_ts}"
+        with self.state_lock:
+            if event_key in self.recent_event_keys:
+                self.recent_event_keys.move_to_end(event_key)
+                return True
+            self._remember_mapping(
+                self.recent_event_keys,
+                event_key,
+                monotonic(),
+                MAX_RECENT_EVENT_KEYS,
+            )
+            return False
+
     def _remember_mapping(
-        mapping: OrderedDict[str, Any], key: str, value: Any, max_size: int
+        self, mapping: OrderedDict[str, Any], key: str, value: Any, max_size: int
     ) -> None:
-        mapping[key] = value
-        mapping.move_to_end(key)
-        while len(mapping) > max_size:
-            mapping.popitem(last=False)
+        with self.state_lock:
+            mapping[key] = value
+            mapping.move_to_end(key)
+            while len(mapping) > max_size:
+                mapping.popitem(last=False)
 
     @staticmethod
     def _format_response(result: Dict[str, Any]) -> str:
@@ -437,7 +479,7 @@ class SlackGenieBot:
 
             logger.info(f"Feedback button clicked: {rating}, msg_ts: {msg_ts}")
 
-            feedback_info = self.message_feedback_map.get(msg_ts)
+            feedback_info = self._get_mapping(self.message_feedback_map, msg_ts)
 
             if not feedback_info:
                 logger.warning(f"No feedback info found for message {msg_ts}")

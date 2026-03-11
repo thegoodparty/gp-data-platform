@@ -196,6 +196,7 @@ class DatabricksGenieClient:
         max_wait_time: int = 120,
         poll_interval: int = 2,
         max_poll_interval: int = 5,
+        max_empty_polls: int = 3,
     ) -> Optional[Dict[str, Any]]:
         """
         Poll for a message response until it's complete or timeout
@@ -205,18 +206,35 @@ class DatabricksGenieClient:
             message_id: The message ID
             max_wait_time: Maximum time to wait in seconds
             poll_interval: Time between polls in seconds
+            max_empty_polls: Consecutive empty poll results allowed before aborting
 
         Returns:
             Complete message response dict if successful, None otherwise
         """
         start_time = time.time()
         current_poll_interval = poll_interval
+        empty_polls = 0
 
         while time.time() - start_time < max_wait_time:
             status = self.get_message_status(conversation_id, message_id)
 
             if not status:
-                return None
+                empty_polls += 1
+                logger.warning(
+                    "Empty poll result for message %s (attempt %s/%s)",
+                    message_id,
+                    empty_polls,
+                    max_empty_polls,
+                )
+                if empty_polls >= max_empty_polls:
+                    return None
+                time.sleep(current_poll_interval)
+                current_poll_interval = min(
+                    current_poll_interval + 1, max_poll_interval
+                )
+                continue
+
+            empty_polls = 0
 
             # Check if the response is complete
             state = status.get("status")
