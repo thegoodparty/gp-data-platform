@@ -556,9 +556,10 @@ class SlackGenieBot:
             max_width = len(column_names[i])
             is_numeric = True
             for row in data_array:
-                val_str = str(row[i]) if row[i] is not None else ""
+                cell = row[i] if i < len(row) else None
+                val_str = str(cell) if cell is not None else ""
                 max_width = max(max_width, len(val_str))
-                if row[i] is not None and not self._is_numeric(row[i]):
+                if cell is not None and not self._is_numeric(cell):
                     is_numeric = False
             col_widths.append(min(max_width + 2, 30))
             col_types.append(is_numeric)
@@ -573,7 +574,8 @@ class SlackGenieBot:
 
         for row in data_array:
             parts = []
-            for val, w, num in zip(row, col_widths, col_types):
+            for i, (w, num) in enumerate(zip(col_widths, col_types)):
+                val = row[i] if i < len(row) else None
                 s = str(val)[:w].strip() if val is not None else ""
                 parts.append(
                     s.rjust(w) if num and self._is_numeric(val) else s.ljust(w)

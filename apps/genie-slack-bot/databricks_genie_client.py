@@ -28,14 +28,14 @@ class DatabricksGenieClient:
         logger.info("✓ Using OAuth M2M authentication via app service principal")
         logger.info(f"✓ Genie space ID: {self.space_id}")
 
-        self.base_url = f"{self.host}/api/2.0/genie/spaces/{self.space_id}"
-
     @staticmethod
     def _extract_status_code(error: Exception) -> Optional[int]:
         for attr in ("status_code", "http_status_code", "error_code"):
             value = getattr(error, attr, None)
             if isinstance(value, int):
                 return value
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
 
         response = getattr(error, "response", None)
         if response is not None:
@@ -43,7 +43,7 @@ class DatabricksGenieClient:
             if isinstance(status_code, int):
                 return status_code
 
-        match = re.search(r"\b(429|500|502|503|504)\b", str(error))
+        match = re.search(r"\b([1-5]\d{2})\b", str(error))
         if match:
             return int(match.group(1))
 
