@@ -84,7 +84,7 @@ class SlackGenieBot:
         """Handle an inbound Slack message event."""
         thread_ts_value = event.get("thread_ts") or event.get("ts")
         try:
-            text = event.get("text", "")
+            text = event.get("text") or ""
             channel_value = event.get("channel")
 
             if event.get("bot_id"):
@@ -183,11 +183,6 @@ class SlackGenieBot:
                 data = result_data.get("data", {})
                 if data.get("data_array"):
                     self._send_query_results(channel, thread_ts, result_data, client)
-
-            # Send any attachments (charts, tables, etc.)
-            attachments = result.get("attachments", [])
-            if attachments:
-                self._send_attachments(channel, thread_ts, attachments, client)
 
             # Send suggested follow-up questions
             suggested_questions = result.get("suggested_questions", [])
@@ -337,32 +332,6 @@ class SlackGenieBot:
     # ------------------------------------------------------------------
     # Rich message senders
     # ------------------------------------------------------------------
-
-    def _send_attachments(self, channel, thread_ts, attachments, client):
-        for attachment in attachments:
-            try:
-                atype = attachment.get("type")
-                if atype == "chart":
-                    url = attachment.get("url")
-                    title = attachment.get("title", "Chart")
-                    if url:
-                        self._post_message(
-                            client,
-                            channel=channel,
-                            text=f"📊 *{title}*\n{url}",
-                            thread_ts=thread_ts,
-                        )
-                elif atype == "table":
-                    table_data = attachment.get("data", [])
-                    if table_data:
-                        self._post_message(
-                            client,
-                            channel=channel,
-                            text=f"```{self._format_table(table_data)}```",
-                            thread_ts=thread_ts,
-                        )
-            except Exception as e:
-                logger.error(f"Error sending attachment: {e}")
 
     def _send_query_results(self, channel, thread_ts, result_data, client):
         try:
@@ -593,19 +562,6 @@ class SlackGenieBot:
             return True
         except (ValueError, TypeError):
             return False
-
-    @staticmethod
-    def _format_table(data: List[Dict[str, Any]], max_rows: int = 10) -> str:
-        if not data:
-            return "No data"
-        headers = list(data[0].keys())
-        lines = [" | ".join(headers)]
-        lines.append("-" * len(lines[0]))
-        for row in data[:max_rows]:
-            lines.append(" | ".join(str(row.get(h, "")) for h in headers))
-        if len(data) > max_rows:
-            lines.append(f"... and {len(data) - max_rows} more rows")
-        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Start

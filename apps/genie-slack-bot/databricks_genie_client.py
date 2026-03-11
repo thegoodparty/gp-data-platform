@@ -5,7 +5,7 @@ Databricks Genie API Client for conversational interactions
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, Set, cast
+from typing import Any, Dict, Optional, Set, cast
 
 from databricks.sdk import WorkspaceClient
 
@@ -49,6 +49,28 @@ class DatabricksGenieClient:
 
         return None
 
+    @staticmethod
+    def _is_retryable_error(status_code: Optional[int], error: Exception) -> bool:
+        if status_code in RETRYABLE_STATUS_CODES:
+            return True
+
+        if isinstance(error, (ConnectionError, TimeoutError)):
+            return True
+
+        message = str(error).lower()
+        transient_tokens = (
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+            "connection refused",
+            "temporarily unavailable",
+            "temporary failure in name resolution",
+            "name or service not known",
+            "dns",
+        )
+        return any(token in message for token in transient_tokens)
+
     def _make_request(
         self,
         method: str,
@@ -63,7 +85,7 @@ class DatabricksGenieClient:
                 return cast(Dict[str, Any], self.api_client.do(method, path, body=data))
             except Exception as error:
                 status_code = self._extract_status_code(error)
-                is_retryable = status_code in RETRYABLE_STATUS_CODES
+                is_retryable = self._is_retryable_error(status_code, error)
 
                 if suppress_status_codes and status_code in suppress_status_codes:
                     logger.debug(
@@ -100,18 +122,6 @@ class DatabricksGenieClient:
                     exc_info=True,
                 )
                 return None
-        return None
-
-    def create_conversation(self) -> Optional[str]:
-        """
-        Create a new conversation in the Genie space
-        Note: Conversations are created when you send the first message via start-conversation
-
-        Returns:
-            None (conversation will be created with first message)
-        """
-        # Return None - conversation will be created when first message is sent
-        logger.info("New conversation will be created with first message")
         return None
 
     def send_message(
@@ -399,30 +409,6 @@ class DatabricksGenieClient:
                 "conversation_id": actual_conversation_id,
                 "error": f"Query failed: {error_msg}",
             }
-
-    def get_conversation_history(
-        self, conversation_id: str
-    ) -> Optional[List[Dict[str, Any]]]:
-        """
-        Get the message history for a conversation
-
-        Args:
-            conversation_id: The conversation ID
-
-        Returns:
-            List of message dicts if successful, None otherwise
-        """
-        path = (
-            f"/api/2.0/genie/spaces/{self.space_id}/conversations/"
-            f"{conversation_id}/messages"
-        )
-
-        result = self._make_request("GET", path)
-
-        if result:
-            return result.get("messages", [])
-
-        return None
 
     def send_message_feedback(
         self,
