@@ -1,0 +1,32 @@
+{
+  "version": "v1",
+  "host": "https://dbc-3d8ca484-79f3.cloud.databricks.com",
+  "remote_path": "/Workspace/Users/sanjay@goodparty.org/gp-genie-slack-bot",
+  "last_modified_times": {
+    "README.md": "2026-03-10T11:01:49.018786516-06:00",
+    "app.py": "2026-03-10T11:01:51.665941142-06:00",
+    "app.yaml": "2026-03-10T11:01:50.470425341-06:00",
+    "config.py": "2026-03-10T10:56:40.2210035-06:00",
+    "databricks_genie_client.py": "2026-03-10T11:04:26.170369494-06:00",
+    "requirements.txt": "2026-03-10T11:02:04.509628944-06:00",
+    "slack_bot.py": "2026-03-10T22:13:40.09436331-06:00"
+  },
+  "local_to_remote_names": {
+    "README.md": "README.md",
+    "app.py": "app.py",
+    "app.yaml": "app.yaml",
+    "config.py": "config.py",
+    "databricks_genie_client.py": "databricks_genie_client.py",
+    "requirements.txt": "requirements.txt",
+    "slack_bot.py": "slack_bot.py"
+  },
+  "remote_to_local_names": {
+    "README.md": "README.md",
+    "app.py": "app.py",
+    "app.yaml": "app.yaml",
+    "config.py": "config.py",
+    "databricks_genie_client.py": "databricks_genie_client.py",
+    "requirements.txt": "requirements.txt",
+    "slack_bot.py": "slack_bot.py"
+  }
+}
