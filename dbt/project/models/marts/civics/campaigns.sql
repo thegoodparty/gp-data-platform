@@ -7,17 +7,7 @@ with
 
     joined as (
         select
-            {{
-                dbt_utils.generate_surrogate_key(
-                    [
-                        "c.id",
-                        "c.details:electiondate::string",
-                        "c.details:positionid::string",
-                        "c.details:office::string",
-                        "c.details:state::string",
-                    ]
-                )
-            }} as campaign_version_id,
+            c.campaign_version_id,
             c.id as campaign_id,
             c.slug as campaign_slug,
 

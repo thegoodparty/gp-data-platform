@@ -11,6 +11,14 @@ models:
       combination of campaign id and election context (election date, position,
       office, state).
     columns:
+      - name: campaign_version_id
+        description: >
+          Surrogate key uniquely identifying a campaign version. Generated from the
+          campaign id and election context fields (election date, position, office,
+          state).
+        data_tests:
+          - unique
+          - not_null
       - name: id
         description: Campaign identifier from the product database. Not unique — a campaign may have multiple historical versions.
         data_tests:

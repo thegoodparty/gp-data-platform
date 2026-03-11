@@ -47,13 +47,17 @@ with
     versioned as (
         select
             *,
-            concat_ws(
-                '|',
-                coalesce(details:electiondate::string, ''),
-                coalesce(details:positionid::string, ''),
-                coalesce(details:office::string, ''),
-                coalesce(details:state::string, '')
-            ) as _version_fingerprint
+            {{
+                dbt_utils.generate_surrogate_key(
+                    [
+                        "id",
+                        "details:electiondate::string",
+                        "details:positionid::string",
+                        "details:office::string",
+                        "details:state::string",
+                    ]
+                )
+            }} as campaign_version_id
         from parsed
     ),
 
@@ -63,8 +67,7 @@ with
         from versioned
         qualify
             row_number() over (
-                partition by id, _version_fingerprint
-                order by _airbyte_extracted_at desc
+                partition by campaign_version_id order by _airbyte_extracted_at desc
             )
             = 1
     )
@@ -74,6 +77,7 @@ select
     _airbyte_extracted_at,
     _airbyte_meta,
     _airbyte_generation_id,
+    campaign_version_id,
     id,
     data,
     slug,
