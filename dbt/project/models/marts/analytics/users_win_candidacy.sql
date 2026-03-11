@@ -84,12 +84,12 @@ with
             {{ ref("int__icp_offices") }} icp
             on c.ballotready_position_id = icp.br_database_position_id
 
-        -- Candidacy for election dates (only join on latest version to avoid
-        -- associating historical campaign versions with the wrong candidacy)
+        -- Candidacy: version-aware join using election_date so each campaign
+        -- version matches the candidacy from its own election cycle
         left join
             {{ ref("candidacy") }} cand
             on c.campaign_id = cand.product_campaign_id
-            and c.is_latest_version
+            and c.election_date = cand.general_election_date
 
         -- Stage results pivoted
         left join
