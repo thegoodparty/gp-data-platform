@@ -37,7 +37,7 @@ Unity Catalog (civics mart tables)
 **Key behavior:**
 - Each new Slack thread starts a new Genie conversation
 - In channels, users should `@mention` the bot for each follow-up question during beta
-- DMs keep one ongoing Genie conversation per DM channel
+- In DMs, each top-level message starts a new Genie conversation and replies in that DM thread continue it
 - Bot posts a "Thinking..." indicator that updates in-place with the answer
 - Tabular results rendered as formatted code blocks (max 10 rows)
 - Thumbs up/down feedback flows back to the Genie space Monitoring tab

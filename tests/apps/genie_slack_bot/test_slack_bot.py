@@ -69,6 +69,8 @@ class FakeGenieClient:
         """Initialize captured call state."""
         self.calls = []
         self.counter = 0
+        self.feedback_calls = []
+        self.feedback_success = True
 
     def ask_question(self, text, conversation_id=None, on_message_sent=None):
         """Return a deterministic Genie response for tests."""
@@ -88,7 +90,8 @@ class FakeGenieClient:
 
     def send_message_feedback(self, **kwargs):
         """Pretend feedback submission succeeded."""
-        return True
+        self.feedback_calls.append(kwargs)
+        return self.feedback_success
 
 
 class FakeSlackClient:
@@ -126,7 +129,111 @@ def build_bot():
     return bot, genie_client
 
 
-def test_dm_messages_reuse_the_same_conversation():
+def test_duplicate_thread_reply_event_is_processed_once():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    root_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "150.100",
+        "text": "<@U123BOT> How many elections do we have?",
+    }
+    reply_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "150.200",
+        "thread_ts": "150.100",
+        "text": "<@U123BOT> How many by year?",
+    }
+
+    bot._handle_message(root_event, None, client)
+    assert bot._should_handle_message_event(reply_event) is True
+
+    bot._handle_message(reply_event, None, client)
+    bot._handle_message(reply_event, None, client)
+
+    assert genie_client.calls == [
+        ("How many elections do we have?", None),
+        ("How many by year?", "conv-1"),
+    ]
+
+
+def test_dm_message_events_are_always_handled():
+    bot, _ = build_bot()
+
+    top_level_dm = {
+        "channel": "D123",
+        "channel_type": "im",
+        "ts": "101.100",
+        "text": "How many elections do we have?",
+    }
+    reply_dm = {
+        "channel": "D123",
+        "channel_type": "im",
+        "ts": "101.200",
+        "thread_ts": "101.100",
+        "text": "How many by year?",
+    }
+
+    assert bot._should_handle_message_event(top_level_dm) is True
+    assert bot._should_handle_message_event(reply_dm) is True
+
+
+def test_message_events_with_subtype_or_bot_id_are_ignored():
+    bot, _ = build_bot()
+
+    assert (
+        bot._should_handle_message_event(
+            {
+                "channel": "D123",
+                "channel_type": "im",
+                "ts": "101.100",
+                "text": "hello",
+                "subtype": "message_changed",
+            }
+        )
+        is False
+    )
+    assert (
+        bot._should_handle_message_event(
+            {
+                "channel": "D123",
+                "channel_type": "im",
+                "ts": "101.101",
+                "text": "hello",
+                "bot_id": "B123",
+            }
+        )
+        is False
+    )
+
+
+def test_empty_message_prompts_for_question():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    mention_only_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "175.100",
+        "text": "<@U123BOT>",
+    }
+
+    bot._handle_message(mention_only_event, None, client)
+
+    assert genie_client.calls == []
+    assert client.posts == [
+        {
+            "channel": "C123",
+            "text": "Please ask me a question about your data!",
+            "thread_ts": "175.100",
+            "ts": "1001",
+        }
+    ]
+
+
+def test_dm_top_level_messages_start_new_conversations():
     bot, genie_client = build_bot()
     client = FakeSlackClient()
 
@@ -148,7 +255,7 @@ def test_dm_messages_reuse_the_same_conversation():
 
     assert genie_client.calls == [
         ("How many elections do we have?", None),
-        ("How many are in Colorado?", "conv-1"),
+        ("How many are in Colorado?", None),
     ]
 
 
@@ -194,6 +301,159 @@ def test_channel_thread_without_existing_mapping_is_ignored():
     }
 
     assert bot._should_handle_message_event(reply_event) is False
+
+
+def test_dm_thread_follow_up_reuses_parent_conversation():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    first_dm = {
+        "channel": "D123",
+        "channel_type": "im",
+        "ts": "111.111",
+        "text": "How many elections do we have?",
+    }
+    reply_dm = {
+        "channel": "D123",
+        "channel_type": "im",
+        "ts": "111.222",
+        "thread_ts": "111.111",
+        "text": "How many are in Colorado?",
+    }
+
+    bot._handle_message(first_dm, None, client)
+    bot._handle_message(reply_dm, None, client)
+
+    assert genie_client.calls == [
+        ("How many elections do we have?", None),
+        ("How many are in Colorado?", "conv-1"),
+    ]
+
+
+def test_feedback_routes_to_genie_and_updates_message():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+    bot._remember_mapping(
+        bot.message_feedback_map,
+        "500.100",
+        ("conv-1", "msg-1"),
+        2000,
+    )
+
+    bot._handle_feedback(
+        {
+            "message": {"ts": "500.100"},
+            "channel": {"id": "C123"},
+            "user": {"id": "U123"},
+        },
+        "positive",
+        client,
+    )
+
+    assert genie_client.feedback_calls == [
+        {
+            "conversation_id": "conv-1",
+            "message_id": "msg-1",
+            "rating": "positive",
+        }
+    ]
+    assert client.updates == [
+        {
+            "channel": "C123",
+            "ts": "500.100",
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "👍 _Thanks for your feedback!_",
+                    },
+                }
+            ],
+            "text": "👍 _Thanks for your feedback!_",
+        }
+    ]
+
+
+def test_feedback_without_mapping_updates_with_failure_message():
+    bot, _ = build_bot()
+    client = FakeSlackClient()
+
+    bot._handle_feedback(
+        {
+            "message": {"ts": "500.200"},
+            "channel": {"id": "C123"},
+            "user": {"id": "U123"},
+        },
+        "negative",
+        client,
+    )
+
+    assert client.updates == [
+        {
+            "channel": "C123",
+            "ts": "500.200",
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            "⚠️ _Unable to submit feedback. Please try asking a new "
+                            "question._"
+                        ),
+                    },
+                }
+            ],
+            "text": "Unable to submit feedback",
+        }
+    ]
+
+
+def test_genie_error_posts_apology_message():
+    slack_bot = load_slack_bot_module()
+
+    class ErroringFakeGenieClient(FakeGenieClient):
+        def ask_question(self, text, conversation_id=None, on_message_sent=None):
+            raise RuntimeError("boom")
+
+    genie_client = ErroringFakeGenieClient()
+    bot = slack_bot.SlackGenieBot(
+        "xoxb-test",
+        "secret",
+        "xapp-test",
+        genie_client,
+    )
+    client = FakeSlackClient()
+
+    bot._handle_message(
+        {
+            "channel": "D123",
+            "channel_type": "im",
+            "ts": "600.100",
+            "text": "How many elections do we have?",
+        },
+        None,
+        client,
+    )
+
+    assert client.posts == [
+        {
+            "channel": "D123",
+            "text": "Thinking...",
+            "thread_ts": "600.100",
+            "ts": "1001",
+        },
+        {
+            "channel": "D123",
+            "text": (
+                "Sorry, I encountered an error processing your request. "
+                "Please try again."
+            ),
+            "thread_ts": "600.100",
+            "ts": "1002",
+        },
+    ]
 
 
 def test_fast_thread_follow_up_reuses_existing_conversation_scope():
