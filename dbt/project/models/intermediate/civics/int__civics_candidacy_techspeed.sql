@@ -11,6 +11,7 @@ with
             * except (election_date),
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
+            try_cast(number_of_seats_available as int) as seats_available,
             coalesce(
                 try_cast(primary_election_date as date),
                 try_to_date(primary_election_date, 'MM/dd/yyyy'),

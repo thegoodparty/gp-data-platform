@@ -193,7 +193,8 @@ with
                     races_with_fields.seat_name,
                     coalesce(
                         ged.general_election_date, races_with_fields.election_day
-                    ) as election_date
+                    ) as election_date,
+                    races_with_fields.seats as seats_available
             ) as elec_date_lookup
     ),
 

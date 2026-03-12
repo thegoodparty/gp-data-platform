@@ -91,6 +91,7 @@ with
             any_value(seat_name) as seat_name,
             any_value(parties) as parties,
             any_value(partisan_type) as partisan_type,
+            any_value(number_of_seats) as seats_available,
             any_value(_airbyte_extracted_at) as _airbyte_extracted_at,
 
             -- Extract stage-specific dates
