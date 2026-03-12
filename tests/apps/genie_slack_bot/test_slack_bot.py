@@ -1,0 +1,270 @@
+import importlib
+import sys
+import threading
+import types
+from pathlib import Path
+
+APP_DIR = Path(__file__).resolve().parents[3] / "apps" / "genie-slack-bot"
+
+
+def load_slack_bot_module():
+    databricks_genie_client = types.ModuleType("databricks_genie_client")
+    databricks_genie_client.DatabricksGenieClient = object
+    sys.modules["databricks_genie_client"] = databricks_genie_client
+
+    slack_bolt = types.ModuleType("slack_bolt")
+
+    class FakeApp:
+        def __init__(self, *args, **kwargs):
+            self.handlers = []
+
+        def event(self, name):
+            def decorator(func):
+                self.handlers.append(("event", name, func))
+                return func
+
+            return decorator
+
+        def action(self, name):
+            def decorator(func):
+                self.handlers.append(("action", name, func))
+                return func
+
+            return decorator
+
+    slack_bolt.App = FakeApp
+    sys.modules["slack_bolt"] = slack_bolt
+
+    socket_mode = types.ModuleType("slack_bolt.adapter.socket_mode")
+
+    class FakeSocketModeHandler:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    socket_mode.SocketModeHandler = FakeSocketModeHandler
+    sys.modules["slack_bolt.adapter"] = types.ModuleType("slack_bolt.adapter")
+    sys.modules["slack_bolt.adapter.socket_mode"] = socket_mode
+
+    slack_sdk = types.ModuleType("slack_sdk")
+
+    class FakeWebClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    slack_sdk.WebClient = FakeWebClient
+    sys.modules["slack_sdk"] = slack_sdk
+
+    sys.path.insert(0, str(APP_DIR))
+    sys.modules.pop("slack_bot", None)
+    return importlib.import_module("slack_bot")
+
+
+class FakeGenieClient:
+    """Test double for the Genie client."""
+
+    def __init__(self):
+        """Initialize captured call state."""
+        self.calls = []
+        self.counter = 0
+
+    def ask_question(self, text, conversation_id=None, on_message_sent=None):
+        """Return a deterministic Genie response for tests."""
+        self.calls.append((text, conversation_id))
+        self.counter += 1
+        conversation_id = conversation_id or f"conv-{self.counter}"
+        if on_message_sent is not None:
+            on_message_sent(conversation_id, f"msg-{self.counter}")
+        return {
+            "success": True,
+            "conversation_id": conversation_id,
+            "message_id": f"msg-{self.counter}",
+            "response": f"response-{self.counter}",
+            "result_data": None,
+            "suggested_questions": [],
+        }
+
+    def send_message_feedback(self, **kwargs):
+        """Pretend feedback submission succeeded."""
+        return True
+
+
+class FakeSlackClient:
+    """Test double for the Slack WebClient."""
+
+    def __init__(self):
+        """Initialize captured Slack messages."""
+        self.post_count = 0
+        self.posts = []
+        self.updates = []
+
+    def chat_postMessage(self, **payload):
+        """Capture posted messages and return a synthetic timestamp."""
+        self.post_count += 1
+        ts = str(1000 + self.post_count)
+        message = {**payload, "ts": ts}
+        self.posts.append(message)
+        return message
+
+    def chat_update(self, **payload):
+        """Capture message updates and echo the payload."""
+        self.updates.append(payload)
+        return payload
+
+
+def build_bot():
+    slack_bot = load_slack_bot_module()
+    genie_client = FakeGenieClient()
+    bot = slack_bot.SlackGenieBot(
+        "xoxb-test",
+        "secret",
+        "xapp-test",
+        genie_client,
+    )
+    return bot, genie_client
+
+
+def test_dm_messages_reuse_the_same_conversation():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    first_dm = {
+        "channel": "D123",
+        "channel_type": "im",
+        "ts": "111.111",
+        "text": "How many elections do we have?",
+    }
+    second_dm = {
+        "channel": "D123",
+        "channel_type": "im",
+        "ts": "112.112",
+        "text": "How many are in Colorado?",
+    }
+
+    bot._handle_message(first_dm, None, client)
+    bot._handle_message(second_dm, None, client)
+
+    assert genie_client.calls == [
+        ("How many elections do we have?", None),
+        ("How many are in Colorado?", "conv-1"),
+    ]
+
+
+def test_channel_follow_up_reuses_parent_thread_conversation():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    mention_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "200.100",
+        "text": "<@U123BOT> How many elections do we have?",
+    }
+    reply_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "200.200",
+        "thread_ts": "200.100",
+        "text": "How many by year?",
+    }
+
+    bot._handle_message(mention_event, None, client)
+
+    assert bot._should_handle_message_event(reply_event) is True
+
+    bot._handle_message(reply_event, None, client)
+
+    assert genie_client.calls == [
+        ("How many elections do we have?", None),
+        ("How many by year?", "conv-1"),
+    ]
+
+
+def test_channel_thread_without_existing_mapping_is_ignored():
+    bot, _ = build_bot()
+
+    reply_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "300.200",
+        "thread_ts": "300.100",
+        "text": "How many by year?",
+    }
+
+    assert bot._should_handle_message_event(reply_event) is False
+
+
+def test_fast_thread_follow_up_reuses_existing_conversation_scope():
+    slack_bot = load_slack_bot_module()
+
+    class CoordinatedFakeGenieClient(FakeGenieClient):
+        def __init__(self):
+            super().__init__()
+            self.first_message_sent = threading.Event()
+            self.release_first_response = threading.Event()
+
+        def ask_question(self, text, conversation_id=None, on_message_sent=None):
+            self.calls.append((text, conversation_id))
+            self.counter += 1
+            resolved_conversation_id = conversation_id or f"conv-{self.counter}"
+            message_id = f"msg-{self.counter}"
+            if on_message_sent is not None:
+                on_message_sent(resolved_conversation_id, message_id)
+
+            if text == "How many elections do we have?":
+                self.first_message_sent.set()
+                assert self.release_first_response.wait(timeout=2)
+
+            return {
+                "success": True,
+                "conversation_id": resolved_conversation_id,
+                "message_id": message_id,
+                "response": f"response-{self.counter}",
+                "result_data": None,
+                "suggested_questions": [],
+            }
+
+    genie_client = CoordinatedFakeGenieClient()
+    bot = slack_bot.SlackGenieBot(
+        "xoxb-test",
+        "secret",
+        "xapp-test",
+        genie_client,
+    )
+    client = FakeSlackClient()
+
+    mention_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "400.100",
+        "text": "<@U123BOT> How many elections do we have?",
+    }
+    reply_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "400.200",
+        "thread_ts": "400.100",
+        "text": "How many by year?",
+    }
+
+    root_thread = threading.Thread(
+        target=bot._handle_message,
+        args=(mention_event, None, client),
+    )
+    root_thread.start()
+
+    assert genie_client.first_message_sent.wait(timeout=2)
+    assert bot._should_handle_message_event(reply_event) is True
+
+    bot._handle_message(reply_event, None, client)
+
+    genie_client.release_first_response.set()
+    root_thread.join(timeout=2)
+    assert not root_thread.is_alive()
+
+    assert genie_client.calls == [
+        ("How many elections do we have?", None),
+        ("How many by year?", "conv-1"),
+    ]

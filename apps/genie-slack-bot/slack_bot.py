@@ -41,7 +41,7 @@ class SlackGenieBot:
         self.client = WebClient(token=slack_bot_token)
         self.state_lock = RLock()
 
-        # slack_thread_ts -> databricks_conversation_id
+        # slack thread ts or DM channel id -> databricks_conversation_id
         self.conversation_map: OrderedDict[str, str] = OrderedDict()
 
         # message_ts -> (conversation_id, message_id) for feedback routing
@@ -100,6 +100,7 @@ class SlackGenieBot:
 
             channel = channel_value
             thread_ts = thread_ts_value
+            conversation_scope = self._get_conversation_key(event, channel, thread_ts)
             event_ts = event.get("ts")
             if isinstance(event_ts, str) and self._is_duplicate_event(
                 channel, event_ts
@@ -132,18 +133,42 @@ class SlackGenieBot:
             thinking_ts = thinking_resp.get("ts")
 
             # Get or create Databricks conversation
-            conversation_id = self._get_mapping(self.conversation_map, thread_ts)
+            conversation_id = self._get_mapping(
+                self.conversation_map, conversation_scope
+            )
+            logger.info(
+                "Routing Slack message channel=%s channel_type=%s thread_ts=%s "
+                "conversation_key=%s existing_conversation=%s",
+                channel,
+                event.get("channel_type"),
+                thread_ts,
+                conversation_scope,
+                conversation_id is not None,
+            )
 
             logger.info(f"Asking Genie: {text}")
-            result = self.genie_client.ask_question(text, conversation_id)
 
-            # Store conversation mapping for thread continuity
-            conversation_key = result.get("conversation_id")
-            if isinstance(conversation_key, str):
+            def remember_conversation(sent_conversation_id: str, _message_id: str):
                 self._remember_mapping(
                     self.conversation_map,
-                    thread_ts,
-                    conversation_key,
+                    conversation_scope,
+                    sent_conversation_id,
+                    MAX_CONVERSATION_THREADS,
+                )
+
+            result = self.genie_client.ask_question(
+                text,
+                conversation_id,
+                on_message_sent=remember_conversation,
+            )
+
+            # Store conversation mapping for thread continuity
+            result_conversation_id = result.get("conversation_id")
+            if isinstance(result_conversation_id, str):
+                self._remember_mapping(
+                    self.conversation_map,
+                    conversation_scope,
+                    result_conversation_id,
                     MAX_CONVERSATION_THREADS,
                 )
 
@@ -288,10 +313,28 @@ class SlackGenieBot:
         if event.get("channel_type") == "im":
             return True
         thread_ts = event.get("thread_ts")
-        return bool(
-            isinstance(thread_ts, str)
-            and self._has_mapping(self.conversation_map, thread_ts)
-        )
+        if not isinstance(thread_ts, str):
+            return False
+        has_mapping = self._has_mapping(self.conversation_map, thread_ts)
+        if not has_mapping:
+            logger.info(
+                "Ignoring threaded Slack reply without known Genie conversation: "
+                "channel=%s channel_type=%s thread_ts=%s ts=%s",
+                event.get("channel"),
+                event.get("channel_type"),
+                thread_ts,
+                event.get("ts"),
+            )
+        return has_mapping
+
+    @staticmethod
+    def _get_conversation_key(
+        event: Dict[str, Any], channel: str, thread_ts: str
+    ) -> str:
+        """Map channel threads and DMs to stable conversation scopes."""
+        if event.get("channel_type") == "im":
+            return f"dm:{channel}"
+        return thread_ts
 
     def _get_mapping(self, mapping: OrderedDict[str, Any], key: str) -> Optional[Any]:
         with self.state_lock:

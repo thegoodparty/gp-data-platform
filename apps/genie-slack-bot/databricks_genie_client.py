@@ -5,7 +5,7 @@ Databricks Genie API Client for conversational interactions
 import logging
 import re
 import time
-from typing import Any, Dict, Optional, Set, cast
+from typing import Any, Callable, Dict, Optional, Set, cast
 
 from databricks.sdk import WorkspaceClient
 
@@ -303,7 +303,10 @@ class DatabricksGenieClient:
         return None
 
     def ask_question(
-        self, question: str, conversation_id: Optional[str] = None
+        self,
+        question: str,
+        conversation_id: Optional[str] = None,
+        on_message_sent: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         """
         High-level method to ask a question and get the response
@@ -336,6 +339,17 @@ class DatabricksGenieClient:
                 "conversation_id": conversation_id,
                 "error": "Genie response missing conversation_id or message_id",
             }
+
+        if on_message_sent is not None:
+            try:
+                on_message_sent(actual_conversation_id, message_id)
+            except Exception as callback_error:
+                logger.warning(
+                    "on_message_sent callback failed for conversation=%s message=%s: %s",
+                    actual_conversation_id,
+                    message_id,
+                    callback_error,
+                )
 
         # Wait for the response
         response = self.wait_for_response(actual_conversation_id, message_id)
