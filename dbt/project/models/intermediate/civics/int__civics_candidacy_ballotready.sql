@@ -116,12 +116,31 @@ with
         group by br_candidate_id, br_position_id, br_election_id
     ),
 
+    -- Look up the general election date from the election_stage model (which
+    -- uses the API race data and has the same year-based general-date lookup).
+    -- This ensures the candidacy model computes the same gp_election_id as the
+    -- election and election_stage tables.
+    general_election_date_lookup as (
+        select
+            br_position_id,
+            year(election_date) as election_year,
+            max(election_date) as general_election_date
+        from {{ ref("int__civics_election_stage_ballotready") }}
+        where not is_primary and not is_runoff
+        group by br_position_id, year(election_date)
+    ),
+
     candidacies_enriched as (
         select
             -- For gp_election_id, we need the general election date
-            -- If no general election date yet, use the earliest available date
+            -- First try the election_stage model's general date (source of
+            -- truth), then the candidacy's own general date from S3, then
+            -- fall back to primary/runoff date
             coalesce(
-                general_election_date, primary_election_date, runoff_election_date
+                ged.general_election_date,
+                rolled.general_election_date,
+                rolled.primary_election_date,
+                rolled.runoff_election_date
             ) as election_date,
 
             -- Parse party from parties JSON
@@ -157,6 +176,17 @@ with
             rolled.*
 
         from candidacy_rolled_up as rolled
+        left join
+            general_election_date_lookup as ged
+            on rolled.br_position_id = ged.br_position_id
+            and year(
+                coalesce(
+                    rolled.primary_election_date,
+                    rolled.general_election_date,
+                    rolled.runoff_election_date
+                )
+            )
+            = ged.election_year
     ),
 
     candidacies_with_ids as (
