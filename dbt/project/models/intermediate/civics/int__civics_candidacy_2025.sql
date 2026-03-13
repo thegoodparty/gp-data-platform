@@ -11,8 +11,7 @@ with
         select user_email, campaign_id
         from {{ ref("campaigns") }}
         where
-            is_latest_version
-            and is_demo = false
+            is_demo = false
             and campaign_id not in (
                 select product_campaign_id
                 from {{ ref("int__hubspot_companies_w_contacts_2025") }}
