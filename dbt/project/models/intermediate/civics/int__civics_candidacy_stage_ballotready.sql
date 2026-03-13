@@ -56,8 +56,15 @@ with
             max(
                 case when not is_primary and not is_runoff then election_day end
             ) as general_election_date,
-            max(case when is_primary then election_day end) as primary_election_date,
-            max(case when is_runoff then election_day end) as runoff_election_date
+            max(
+                case when is_primary and not is_runoff then election_day end
+            ) as primary_election_date,
+            max(
+                case when not is_primary and is_runoff then election_day end
+            ) as general_runoff_election_date,
+            max(
+                case when is_primary and is_runoff then election_day end
+            ) as primary_runoff_election_date
         from candidacies
         group by br_candidate_id, br_position_id, year(election_day)
     ),
@@ -74,7 +81,7 @@ with
                         "s.state",
                         "s.party_affiliation",
                         "s.candidate_office",
-                        "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.runoff_election_date) as string)",
+                        "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.general_runoff_election_date, ced.primary_runoff_election_date) as string)",
                         "s.district",
                     ]
                 )
@@ -91,7 +98,7 @@ with
                                 "s.state",
                                 "s.party_affiliation",
                                 "s.candidate_office",
-                                "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.runoff_election_date) as string)",
+                                "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.general_runoff_election_date, ced.primary_runoff_election_date) as string)",
                                 "s.district",
                             ]
                         ),

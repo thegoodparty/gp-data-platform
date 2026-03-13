@@ -59,8 +59,9 @@ with
             end as verification_status_reason,
             tbl_companies.is_partisan,
             tbl_companies.primary_election_date,
+            cast(null as date) as primary_runoff_election_date,
             tbl_companies.general_election_date,
-            tbl_companies.runoff_election_date,
+            tbl_companies.runoff_election_date as general_runoff_election_date,
 
             -- BallotReady
             tbl_companies.br_position_database_id,
@@ -147,8 +148,9 @@ select
     verification_status_reason,
     is_partisan,
     primary_election_date,
+    primary_runoff_election_date,
     general_election_date,
-    runoff_election_date,
+    general_runoff_election_date,
     br_position_database_id,
     viability_score,
     win_number,

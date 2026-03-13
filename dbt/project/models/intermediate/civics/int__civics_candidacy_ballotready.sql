@@ -95,12 +95,19 @@ with
             any_value(number_of_seats) as seats_available,
             any_value(_airbyte_extracted_at) as _airbyte_extracted_at,
 
-            -- Extract stage-specific dates
-            max(case when is_primary then election_day end) as primary_election_date,
+            -- Extract stage-specific dates (4 stage types)
+            max(
+                case when is_primary and not is_runoff then election_day end
+            ) as primary_election_date,
+            max(
+                case when is_primary and is_runoff then election_day end
+            ) as primary_runoff_election_date,
             max(
                 case when not is_primary and not is_runoff then election_day end
             ) as general_election_date,
-            max(case when is_runoff then election_day end) as runoff_election_date,
+            max(
+                case when not is_primary and is_runoff then election_day end
+            ) as general_runoff_election_date,
 
             -- The general election result is the canonical candidacy result
             -- Fall back to primary result if no general yet
@@ -142,7 +149,8 @@ with
                 ged.general_election_date,
                 rolled.general_election_date,
                 rolled.primary_election_date,
-                rolled.runoff_election_date
+                rolled.general_runoff_election_date,
+                rolled.primary_runoff_election_date
             ) as election_date,
 
             -- seats_available from the election_stage model (API race data) for
@@ -199,7 +207,7 @@ with
                         "state",
                         "party_affiliation",
                         "candidate_office",
-                        "cast(coalesce(general_election_date, primary_election_date, runoff_election_date) as string)",
+                        "cast(coalesce(general_election_date, primary_election_date, general_runoff_election_date, primary_runoff_election_date) as string)",
                         "district",
                     ]
                 )
@@ -250,8 +258,9 @@ with
             cast(null as string) as verification_status_reason,
             is_partisan,
             primary_election_date,
+            primary_runoff_election_date,
             general_election_date,
-            runoff_election_date,
+            general_runoff_election_date,
 
             -- BallotReady position ID
             br_position_id as br_position_database_id,
@@ -269,7 +278,12 @@ with
         from candidacies_enriched
         where
             -- Must have at least a general or primary election date for ID generation
-            coalesce(general_election_date, primary_election_date, runoff_election_date)
+            coalesce(
+                general_election_date,
+                primary_election_date,
+                general_runoff_election_date,
+                primary_runoff_election_date
+            )
             is not null
     ),
 
@@ -315,8 +329,9 @@ select
     verification_status_reason,
     is_partisan,
     primary_election_date,
+    primary_runoff_election_date,
     general_election_date,
-    runoff_election_date,
+    general_runoff_election_date,
     br_position_database_id,
     viability_score,
     win_number,

@@ -309,8 +309,11 @@ models:
       - name: general_election_date
         description: Date of the general election
 
-      - name: runoff_election_date
-        description: Date of the runoff election, if applicable
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election, if applicable
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election, if applicable
 
       - name: br_position_database_id
         description: >
