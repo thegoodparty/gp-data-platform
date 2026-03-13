@@ -85,11 +85,15 @@ with
             on c.ballotready_position_id = icp.br_database_position_id
 
         -- Candidacy: version-aware join using election_date so each campaign
-        -- version matches the candidacy from its own election cycle
+        -- version matches the candidacy from its own election cycle.
+        -- Falls back to campaign_id alone when election_date is NULL to avoid
+        -- silently dropping candidacy data for campaigns with missing dates.
         left join
             {{ ref("candidacy") }} cand
             on c.campaign_id = cand.product_campaign_id
-            and c.election_date = cand.general_election_date
+            and (
+                c.election_date = cand.general_election_date or c.election_date is null
+            )
 
         -- Stage results pivoted
         left join
