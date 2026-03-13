@@ -11,6 +11,7 @@ with
             * except (election_date),
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
+            try_cast(number_of_seats_available as int) as seats_available,
             coalesce(
                 try_cast(primary_election_date as date),
                 try_to_date(primary_election_date, 'MM/dd/yyyy'),
@@ -148,7 +149,8 @@ with
             -- Election dates (using pre-parsed values from source CTE)
             primary_election_date_parsed as primary_election_date,
             general_election_date_parsed as general_election_date,
-            cast(null as date) as runoff_election_date,
+            cast(null as date) as primary_runoff_election_date,
+            cast(null as date) as general_runoff_election_date,
 
             -- Assessment fields (populated downstream)
             cast(null as float) as viability_score,
