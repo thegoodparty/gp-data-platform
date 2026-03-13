@@ -276,12 +276,15 @@ class SlackGenieBot:
                             update_error,
                         )
 
-                self._post_message(
-                    client,
-                    channel=channel_value,
-                    text=error_text,
-                    thread_ts=thread_ts_value,
-                )
+                try:
+                    self._post_message(
+                        client,
+                        channel=channel_value,
+                        text=error_text,
+                        thread_ts=thread_ts_value,
+                    )
+                except Exception as post_error:
+                    logger.warning("Failed to post error message: %s", post_error)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -344,7 +347,7 @@ class SlackGenieBot:
         conversation_scope = self._get_conversation_key(channel, thread_ts)
         has_mapping = self._has_mapping(self.conversation_map, conversation_scope)
         if not has_mapping:
-            logger.info(
+            logger.debug(
                 "Ignoring threaded Slack reply without known Genie conversation: "
                 "channel=%s channel_type=%s thread_ts=%s ts=%s conversation_key=%s",
                 channel,
