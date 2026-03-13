@@ -410,7 +410,7 @@ def test_feedback_without_mapping_updates_with_failure_message():
     ]
 
 
-def test_genie_error_posts_apology_message():
+def test_genie_error_updates_thinking_message_with_apology():
     slack_bot = load_slack_bot_module()
 
     class ErroringFakeGenieClient(FakeGenieClient):
@@ -443,16 +443,17 @@ def test_genie_error_posts_apology_message():
             "text": "Thinking...",
             "thread_ts": "600.100",
             "ts": "1001",
-        },
+        }
+    ]
+    assert client.updates == [
         {
             "channel": "D123",
+            "ts": "1001",
             "text": (
                 "Sorry, I encountered an error processing your request. "
                 "Please try again."
             ),
-            "thread_ts": "600.100",
-            "ts": "1002",
-        },
+        }
     ]
 
 

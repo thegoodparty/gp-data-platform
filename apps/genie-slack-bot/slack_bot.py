@@ -82,10 +82,12 @@ class SlackGenieBot:
 
     def _handle_message(self, event: Dict[str, Any], say, client):
         """Handle an inbound Slack message event."""
+        # Replies carry the parent thread root; new top-level messages use their own ts.
         thread_ts_value = event.get("thread_ts") or event.get("ts")
+        channel_value = event.get("channel")
+        thinking_ts: Optional[str] = None
         try:
             text = event.get("text") or ""
-            channel_value = event.get("channel")
 
             if event.get("bot_id"):
                 return
@@ -254,13 +256,30 @@ class SlackGenieBot:
         except Exception as error:
             logger.error("Error handling message: %s", error, exc_info=True)
             if isinstance(channel_value, str) and isinstance(thread_ts_value, str):
+                error_text = (
+                    "Sorry, I encountered an error processing your request. "
+                    "Please try again."
+                )
+                if thinking_ts:
+                    try:
+                        self._update_message(
+                            client,
+                            channel=channel_value,
+                            ts=thinking_ts,
+                            text=error_text,
+                        )
+                        return
+                    except Exception as update_error:
+                        logger.warning(
+                            "Failed to update thinking message with error state, "
+                            "posting new: %s",
+                            update_error,
+                        )
+
                 self._post_message(
                     client,
                     channel=channel_value,
-                    text=(
-                        "Sorry, I encountered an error processing your request. "
-                        "Please try again."
-                    ),
+                    text=error_text,
                     thread_ts=thread_ts_value,
                 )
 

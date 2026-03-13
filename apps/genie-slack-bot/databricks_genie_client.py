@@ -314,6 +314,10 @@ class DatabricksGenieClient:
         Args:
             question: The question to ask
             conversation_id: Optional existing conversation ID. If None, creates a new one.
+            on_message_sent: Optional callback invoked with (conversation_id,
+                message_id) after the message is sent successfully but before
+                polling for the full response. Used to persist conversation
+                mappings early and avoid fast follow-up races.
 
         Returns:
             Dict with 'success', 'conversation_id', 'response', and 'attachments' keys
