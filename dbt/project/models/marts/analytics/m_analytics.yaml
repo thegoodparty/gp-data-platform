@@ -893,8 +893,11 @@ models:
       - name: general_election_date
         description: Date of the general election
 
-      - name: runoff_election_date
-        description: Date of the runoff election, if applicable
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election, if applicable
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election, if applicable
 
       - name: primary_election_result
         description: Result of the primary election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
@@ -1057,8 +1060,11 @@ models:
       - name: general_election_date
         description: Date of the general election
 
-      - name: runoff_election_date
-        description: Date of the runoff election, if applicable
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election, if applicable
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election, if applicable
 
       - name: primary_election_result
         description: Result of the primary election stage

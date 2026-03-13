@@ -149,7 +149,8 @@ with
             -- Election dates (using pre-parsed values from source CTE)
             primary_election_date_parsed as primary_election_date,
             general_election_date_parsed as general_election_date,
-            cast(null as date) as runoff_election_date,
+            cast(null as date) as primary_runoff_election_date,
+            cast(null as date) as general_runoff_election_date,
 
             -- Assessment fields (populated downstream)
             cast(null as float) as viability_score,

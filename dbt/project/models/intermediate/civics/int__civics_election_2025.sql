@@ -76,7 +76,9 @@ select
     archived_elections.election_year,
     archived_elections.filing_deadline,
     archived_elections.population,
-    try_cast(archived_elections.seats_available as int) as seats_available,
+    try_cast(
+        try_cast(archived_elections.seats_available as double) as int
+    ) as seats_available,
     archived_elections.term_start_date,
     archived_elections.is_uncontested,
     archived_elections.number_of_opponents,

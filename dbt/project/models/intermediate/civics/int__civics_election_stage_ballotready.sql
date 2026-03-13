@@ -109,7 +109,7 @@ with
             br_position_database_id,
             year(election_day) as election_year,
             max(election_day) as general_election_date,
-            any_value(position_seats) as general_seats
+            any_value(seats) as general_seats
         from races_with_fields
         where not is_primary and not is_runoff
         group by br_position_database_id, year(election_day)
