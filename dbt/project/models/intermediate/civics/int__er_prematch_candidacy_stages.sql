@@ -157,7 +157,7 @@ with
                 try_to_date(primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(primary_election_date, 'MM/dd/yy')
             )
-            <= '2030-12-31'
+            < '2050-01-01'
     ),
 
     techspeed_stages as (
@@ -227,8 +227,8 @@ select
     election_stage,
     nullif(email, '') as email,
     nullif(phone, '') as phone,
-    nullif(br_race_id, '') as br_race_id,
-    official_office_name,
+    try_cast(br_race_id as int) as br_race_id,
+    lower(trim(official_office_name)) as official_office_name,
     nullif(br_candidacy_id, '') as br_candidacy_id,
     nullif(seat_name, '') as seat_name,
     partisan_type

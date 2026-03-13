@@ -38,12 +38,12 @@ score):
 **Race/election-level attributes** (used in both blocking rules and as Splink
 comparisons, but guarded by post-prediction filters to prevent false positives):
 - `state`, `official_office_name`, `election_date`, `district_identifier`
-- `br_race_id_int` — used in blocking only
+- `br_race_id` — used in blocking only
 
 **Additional retained columns** (carried through for filtering and output but
 not used as comparisons):
 - `office_type`, `candidate_office`, `office_level`,
-  `district_raw`, `seat_name`, `election_stage`, `br_race_id`, `br_candidacy_id`
+  `district_raw`, `seat_name`, `election_stage`, `br_candidacy_id`
 
 ### Why race-level attributes need post-prediction guards
 
@@ -61,20 +61,25 @@ DuckDB as the backend.
 
 ### Preprocessing
 
-- **Names:** lowercased and trimmed
-- **First name nicknames:** the upstream dbt model (`int__er_prematch_candidacy_stages`)
-  maps each first name to an alias array via the `nicknames` seed (e.g.
-  robert -> [robert, bob, bobby, rob, bert, ...]). The array always includes
-  the original first name. Splink's `ArrayIntersectLevel` checks for overlap
-  between alias arrays, so "robert" and "bob" are recognized as potential
-  matches without requiring exact string similarity.
-- **District identifiers:** leading zeros stripped ("01" -> "1") to normalize
-  formatting differences between sources
-- **`br_race_id_int`:** derived from `br_race_id` — keeps only integer values
-  (BR-originated race IDs). Non-integer values like `ts_found_race_net_new`
-  become null so the blocking rule only fires for records with a shared race ID.
+Most data cleaning is handled upstream in the dbt prematch model
+(`int__er_prematch_candidacy_stages`). The Python script performs only:
+
+- **First name nicknames:** the dbt model maps each first name to an alias
+  array via the `nicknames` seed (e.g. robert -> [robert, bob, bobby, rob,
+  bert, ...]). The array always includes the original first name. The script
+  parses these JSON arrays so Splink's `ArrayIntersectLevel` can check for
+  overlap, recognizing "robert" and "bob" as potential matches without
+  requiring exact string similarity.
 - **Nulls:** literal `"null"` strings, empty strings, and `NaN` are all
   converted to `None` so Splink treats them as missing data
+
+The following are handled in dbt (not in the Python script):
+- **Names:** lowercased and trimmed
+- **`official_office_name`:** lowercased and trimmed
+- **`district_identifier`:** cast to int (normalizes leading zeros)
+- **`br_race_id`:** cast to int (non-integer values like
+  `ts_found_race_net_new` become null so the blocking rule only fires for
+  records with a shared race ID)
 
 ### Blocking rules (which pairs to compare)
 
@@ -84,7 +89,7 @@ constraints so that only candidates plausibly in the same race are compared.
 
 | Order | Rule | Purpose |
 |-------|------|---------|
-| 1 | `br_race_id_int` (exact) | High-cardinality first pass. Pairs TS records with BR records in the same race. Covers the majority of matches. |
+| 1 | `br_race_id` (exact) | High-cardinality first pass. Pairs TS records with BR records in the same race. Covers the majority of matches. |
 | 2 | `state + election_date + office_name (JW >= 0.88) + last_name` (exact) | Catches cross-source office formatting differences (e.g. "republic city council - ward 3" vs "republic city ward 3") for records without a shared race ID. |
 | 3 | `state + last_name + election_date` (exact) | Broad catch-all for net-new TS records and cases not covered by race ID or office name. |
 | 4 | `state + election_date + office_name (JW >= 0.88) + last_name (JW >= 0.88)` | Catches last name typos/variants across sources with different office formatting. |
@@ -116,7 +121,7 @@ Four EM passes with different blocking ensure all comparison columns get
 trained. Each pass blocks on one or more columns (fixing them) and estimates
 m probabilities for the rest:
 
-1. Block on `last_name` -> trains first_name, party, email, phone, state, election_date, official_office_name, district_identifier
+1. Block on `last_name + state + election_date` -> trains first_name, party, email, phone, official_office_name, district_identifier. Blocking on all three prevents EM contamination from same-race different-person pairs that would inflate the first_name non-agreement m probability.
 2. Block on `first_name` -> trains last_name, party, email, phone, state, election_date, official_office_name, district_identifier
 3. Block on `email` -> trains last_name, first_name, party, phone, state, election_date, official_office_name, district_identifier
 4. Block on `state + election_date` -> trains last_name, first_name, party, email, phone, official_office_name, district_identifier
@@ -198,7 +203,11 @@ offices (e.g. mayor and city council) in the same city:
 | Candidate A | Candidate B | Matched? |
 |-------------|-------------|----------|
 | dean isgrigg, gerald city council - ward 2 | dean isgrigg, gerald city mayor | No (City Council != Mayor) |
-| john muraski, howard village board | john muraski, howard village president | No (City Council != Other) |
+
+Note: candidates running for multiple offices in the same election can still
+end up in the same cluster if intermediate pairs chain them together. For
+example, John Muraski's howard village board and howard village president
+records are clustered together via transitive links through cross-source pairs.
 
 ### Same race, different candidates (correctly separated)
 
@@ -220,14 +229,21 @@ A small number of true matches are systematically missed:
    vs BR's "norman city council - ward N" (JW = 0.65), caused by a duplicated
    "councilmember" in the TS data.
 
-## Current results (40,462 input records)
+2. **Uncommon nicknames not in the nicknames seed (~60 pairs sharing
+   `br_race_id` + `last_name`):** The nickname alias table doesn't cover
+   informal or uncommon variants. Examples:
+   - `barb` / `barbara`, `samara` / `sammie`, `keisha` / `lakeisha`
+   - `a.j.` / `a.` (initial/period handling)
+   - `fee fee` / `iphenia`, `clutch` / `claude` (exotic nicknames)
+
+## Current results (42,249 input records)
 
 | Metric | Value |
 |--------|-------|
-| Input records | 22,925 BR + 17,537 TS |
-| Pairwise pairs above 0.01 | ~19,500 |
-| Removed by post-prediction filters | ~15,000 |
-| Cross-source matched clusters | 4,413 |
+| Input records | 22,925 BR + 19,324 TS |
+| Pairwise pairs above 0.01 | 17,112 |
+| Removed by post-prediction filters | 12,327 |
+| Cross-source matched clusters | 4,685 |
 | Within-source duplicate clusters | 0 |
 
 ## Diagnostic charts

@@ -37,27 +37,10 @@ def load_and_prepare(input_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     df["election_date"] = pd.to_datetime(
         df["election_date"], errors="coerce"
     ).dt.date.astype(str)
-    df["election_date"] = df["election_date"].replace(
-        {"NaT": None, "nan": None, "None": None}
-    )
-    df["first_name"] = df["first_name"].str.lower().str.strip()
-    df["last_name"] = df["last_name"].str.lower().str.strip()
-    df["official_office_name"] = df["official_office_name"].str.lower().str.strip()
 
     # Parse first_name_aliases from JSON array string built by the dbt prematch model
     df["first_name_aliases"] = df["first_name_aliases"].apply(
         lambda v: json.loads(v) if isinstance(v, str) else [v]
-    )
-
-    # Normalize district formatting ("01" → "1")
-    df["district_identifier"] = (
-        df["district_identifier"].str.lstrip("0").replace({"": "0"})
-    )
-
-    # Keep only integer race IDs for blocking (non-integer values like
-    # "ts_found_race_net_new" become null)
-    df["br_race_id_int"] = df["br_race_id"].where(
-        df["br_race_id"].str.isnumeric().fillna(False), other=None
     )
 
     # Normalize nulls so Splink treats missing data correctly
@@ -111,7 +94,7 @@ SETTINGS = SettingsCreator(
         cl.ExactMatch("district_identifier"),
     ],
     blocking_rules_to_generate_predictions=[
-        block_on("br_race_id_int"),
+        block_on("br_race_id"),
         CustomRule(
             "l.state = r.state"
             " AND l.election_date = r.election_date"
@@ -198,17 +181,19 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
     # JW >= 0.88), since BR and TS sometimes assign different race IDs to the
     # same race.
     both_race_known = (
-        pairwise_df["br_race_id_int_l"].notna()
-        & pairwise_df["br_race_id_int_r"].notna()
+        pairwise_df["br_race_id_l"].notna() & pairwise_df["br_race_id_r"].notna()
     )
-    same_race_id = pairwise_df["br_race_id_int_l"] == pairwise_df["br_race_id_int_r"]
+    same_race_id = pairwise_df["br_race_id_l"] == pairwise_df["br_race_id_r"]
     strong_office_match = pairwise_df["gamma_official_office_name"] >= 2
     race_id_ok = ~both_race_known | same_race_id | strong_office_match
     pairwise_df = pairwise_df[person_ok & race_ok & race_id_ok].copy()
     if (dropped := pre - len(pairwise_df)) > 0:
         print(f"Person + race filter: removed {dropped:,} pairs")
 
-    # Apply the same filter in DuckDB for clustering
+    # Apply the same filter in DuckDB for clustering.
+    # Uses Splink's private _db_api._con because Splink 4 doesn't expose a
+    # public method for executing raw SQL on the linker's DuckDB connection,
+    # and we need to keep the DuckDB table in sync with the pandas filter above.
     pred_table = predictions.physical_name
     linker._db_api._con.execute(
         f"""
@@ -218,9 +203,9 @@ def predict_and_cluster(linker: Linker) -> tuple[pd.DataFrame, pd.DataFrame]:
           AND (gamma_first_name > 0 OR gamma_email > 0 OR gamma_phone > 0)
           AND gamma_official_office_name > 0
           AND NOT (
-            br_race_id_int_l IS NOT NULL
-            AND br_race_id_int_r IS NOT NULL
-            AND br_race_id_int_l != br_race_id_int_r
+            br_race_id_l IS NOT NULL
+            AND br_race_id_r IS NOT NULL
+            AND br_race_id_l != br_race_id_r
             AND gamma_official_office_name < 2
           )
     """
