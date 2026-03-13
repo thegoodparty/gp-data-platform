@@ -41,7 +41,7 @@ class SlackGenieBot:
         self.client = WebClient(token=slack_bot_token)
         self.state_lock = RLock()
 
-        # slack_thread_ts -> databricks_conversation_id
+        # slack channel + thread root ts -> databricks_conversation_id
         self.conversation_map: OrderedDict[str, str] = OrderedDict()
 
         # message_ts -> (conversation_id, message_id) for feedback routing
@@ -82,10 +82,12 @@ class SlackGenieBot:
 
     def _handle_message(self, event: Dict[str, Any], say, client):
         """Handle an inbound Slack message event."""
+        # Replies carry the parent thread root; new top-level messages use their own ts.
         thread_ts_value = event.get("thread_ts") or event.get("ts")
+        channel_value = event.get("channel")
+        thinking_ts: Optional[str] = None
         try:
             text = event.get("text") or ""
-            channel_value = event.get("channel")
 
             if event.get("bot_id"):
                 return
@@ -100,6 +102,7 @@ class SlackGenieBot:
 
             channel = channel_value
             thread_ts = thread_ts_value
+            conversation_scope = self._get_conversation_key(channel, thread_ts)
             event_ts = event.get("ts")
             if isinstance(event_ts, str) and self._is_duplicate_event(
                 channel, event_ts
@@ -132,18 +135,42 @@ class SlackGenieBot:
             thinking_ts = thinking_resp.get("ts")
 
             # Get or create Databricks conversation
-            conversation_id = self._get_mapping(self.conversation_map, thread_ts)
+            conversation_id = self._get_mapping(
+                self.conversation_map, conversation_scope
+            )
+            logger.info(
+                "Routing Slack message channel=%s channel_type=%s thread_ts=%s "
+                "conversation_key=%s existing_conversation=%s",
+                channel,
+                event.get("channel_type"),
+                thread_ts,
+                conversation_scope,
+                conversation_id is not None,
+            )
 
-            logger.info(f"Asking Genie: {text}")
-            result = self.genie_client.ask_question(text, conversation_id)
+            logger.info("Asking Genie: %s", text)
 
-            # Store conversation mapping for thread continuity
-            conversation_key = result.get("conversation_id")
-            if isinstance(conversation_key, str):
+            def remember_conversation(sent_conversation_id: str, _message_id: str):
                 self._remember_mapping(
                     self.conversation_map,
-                    thread_ts,
-                    conversation_key,
+                    conversation_scope,
+                    sent_conversation_id,
+                    MAX_CONVERSATION_THREADS,
+                )
+
+            result = self.genie_client.ask_question(
+                text,
+                conversation_id,
+                on_message_sent=remember_conversation,
+            )
+
+            # Store conversation mapping for thread continuity
+            result_conversation_id = result.get("conversation_id")
+            if isinstance(result_conversation_id, str):
+                self._remember_mapping(
+                    self.conversation_map,
+                    conversation_scope,
+                    result_conversation_id,
                     MAX_CONVERSATION_THREADS,
                 )
 
@@ -161,7 +188,8 @@ class SlackGenieBot:
                     )
                 except Exception as update_err:
                     logger.warning(
-                        f"Failed to update thinking message, posting new: {update_err}"
+                        "Failed to update thinking message, posting new: %s",
+                        update_err,
                     )
                     self._post_message(
                         client,
@@ -196,7 +224,9 @@ class SlackGenieBot:
                 conv_id = result.get("conversation_id")
                 msg_id = result.get("message_id")
                 logger.info(
-                    f"Preparing feedback buttons - conv_id: {conv_id}, msg_id: {msg_id}"
+                    "Preparing feedback buttons - conv_id: %s, msg_id: %s",
+                    conv_id,
+                    msg_id,
                 )
 
                 if isinstance(conv_id, str) and isinstance(msg_id, str):
@@ -213,25 +243,48 @@ class SlackGenieBot:
                                 MAX_FEEDBACK_MESSAGES,
                             )
                             logger.info(
-                                f"Stored feedback mapping: {fb_ts} -> ({conv_id}, {msg_id})"
+                                "Stored feedback mapping: %s -> (%s, %s)",
+                                fb_ts,
+                                conv_id,
+                                msg_id,
                             )
                 else:
                     logger.warning(
                         "Missing conversation_id or message_id - cannot create feedback buttons"
                     )
 
-        except Exception as e:
-            logger.error(f"Error handling message: {e}", exc_info=True)
+        except Exception as error:
+            logger.error("Error handling message: %s", error, exc_info=True)
             if isinstance(channel_value, str) and isinstance(thread_ts_value, str):
-                self._post_message(
-                    client,
-                    channel=channel_value,
-                    text=(
-                        "Sorry, I encountered an error processing your request. "
-                        "Please try again."
-                    ),
-                    thread_ts=thread_ts_value,
+                error_text = (
+                    "Sorry, I encountered an error processing your request. "
+                    "Please try again."
                 )
+                if thinking_ts:
+                    try:
+                        self._update_message(
+                            client,
+                            channel=channel_value,
+                            ts=thinking_ts,
+                            text=error_text,
+                        )
+                        return
+                    except Exception as update_error:
+                        logger.warning(
+                            "Failed to update thinking message with error state, "
+                            "posting new: %s",
+                            update_error,
+                        )
+
+                try:
+                    self._post_message(
+                        client,
+                        channel=channel_value,
+                        text=error_text,
+                        thread_ts=thread_ts_value,
+                    )
+                except Exception as post_error:
+                    logger.warning("Failed to post error message: %s", post_error)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -287,11 +340,28 @@ class SlackGenieBot:
             return False
         if event.get("channel_type") == "im":
             return True
+        channel = event.get("channel")
         thread_ts = event.get("thread_ts")
-        return bool(
-            isinstance(thread_ts, str)
-            and self._has_mapping(self.conversation_map, thread_ts)
-        )
+        if not isinstance(channel, str) or not isinstance(thread_ts, str):
+            return False
+        conversation_scope = self._get_conversation_key(channel, thread_ts)
+        has_mapping = self._has_mapping(self.conversation_map, conversation_scope)
+        if not has_mapping:
+            logger.debug(
+                "Ignoring threaded Slack reply without known Genie conversation: "
+                "channel=%s channel_type=%s thread_ts=%s ts=%s conversation_key=%s",
+                channel,
+                event.get("channel_type"),
+                thread_ts,
+                event.get("ts"),
+                conversation_scope,
+            )
+        return has_mapping
+
+    @staticmethod
+    def _get_conversation_key(channel: str, thread_ts: str) -> str:
+        """Map each Slack thread root to a stable conversation scope."""
+        return f"{channel}:{thread_ts}"
 
     def _get_mapping(self, mapping: OrderedDict[str, Any], key: str) -> Optional[Any]:
         with self.state_lock:
@@ -370,8 +440,8 @@ class SlackGenieBot:
                 text=msg,
                 thread_ts=thread_ts,
             )
-        except Exception as e:
-            logger.error(f"Error sending query results: {e}")
+        except Exception as error:
+            logger.error("Error sending query results: %s", error)
 
     def _send_suggested_questions(self, channel, thread_ts, questions, client):
         try:
@@ -386,8 +456,8 @@ class SlackGenieBot:
                 text=text,
                 thread_ts=thread_ts,
             )
-        except Exception as e:
-            logger.error(f"Error sending suggested questions: {e}")
+        except Exception as error:
+            logger.error("Error sending suggested questions: %s", error)
 
     def _send_feedback_buttons(
         self, channel: str, thread_ts: str, client
@@ -432,8 +502,8 @@ class SlackGenieBot:
                 text="Was this response helpful?",
                 thread_ts=thread_ts,
             )
-        except Exception as e:
-            logger.error(f"Error sending feedback buttons: {e}")
+        except Exception as error:
+            logger.error("Error sending feedback buttons: %s", error)
             return None
 
     # ------------------------------------------------------------------
@@ -455,12 +525,12 @@ class SlackGenieBot:
                 )
                 return
 
-            logger.info(f"Feedback button clicked: {rating}, msg_ts: {msg_ts}")
+            logger.info("Feedback button clicked: %s, msg_ts: %s", rating, msg_ts)
 
             feedback_info = self._get_mapping(self.message_feedback_map, msg_ts)
 
             if not feedback_info:
-                logger.warning(f"No feedback info found for message {msg_ts}")
+                logger.warning("No feedback info found for message %s", msg_ts)
                 missing_feedback_blocks: List[Dict[str, Any]] = [
                     {
                         "type": "section",
@@ -481,7 +551,9 @@ class SlackGenieBot:
 
             conversation_id, message_id = feedback_info
             logger.info(
-                f"Sending feedback for conversation {conversation_id}, message {message_id}"
+                "Sending feedback for conversation %s, message %s",
+                conversation_id,
+                message_id,
             )
 
             success = self.genie_client.send_message_feedback(
@@ -494,7 +566,10 @@ class SlackGenieBot:
             if success:
                 feedback_text = f"{emoji} _Thanks for your feedback!_"
                 logger.info(
-                    f"User {user} gave {rating} feedback for message {message_id}"
+                    "User %s gave %s feedback for message %s",
+                    user,
+                    rating,
+                    message_id,
                 )
             else:
                 feedback_text = "❌ _Failed to submit feedback. Please try again._"
@@ -514,8 +589,8 @@ class SlackGenieBot:
                 text=feedback_text,
             )
 
-        except Exception as e:
-            logger.error(f"Error handling feedback: {e}", exc_info=True)
+        except Exception as error:
+            logger.error("Error handling feedback: %s", error, exc_info=True)
 
     # ------------------------------------------------------------------
     # Table formatting

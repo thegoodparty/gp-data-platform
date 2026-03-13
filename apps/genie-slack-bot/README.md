@@ -36,7 +36,8 @@ Unity Catalog (civics mart tables)
 
 **Key behavior:**
 - Each new Slack thread starts a new Genie conversation
-- Follow-up messages only continue in threads the bot has already started
+- In channels, users should `@mention` the bot for each follow-up question during beta
+- In DMs, each top-level message starts a new Genie conversation and replies in that DM thread continue it
 - Bot posts a "Thinking..." indicator that updates in-place with the answer
 - Tabular results rendered as formatted code blocks (max 10 rows)
 - Thumbs up/down feedback flows back to the Genie space Monitoring tab
@@ -123,6 +124,10 @@ them at deploy time from the app resources configured in the UI.
 | `app_mention` | Someone @mentions the bot |
 | `message.channels` | Message posted in a channel the bot is in |
 | `message.im` | Direct message to the bot |
+
+Notes:
+- In this workspace's current beta setup, plain thread follow-ups in channels are not reliably delivered to the app. Use explicit `@mentions` in channels.
+- After adding new bot events or scopes in Slack, reinstall the app to the workspace so the changes take effect.
 
 #### Tokens
 

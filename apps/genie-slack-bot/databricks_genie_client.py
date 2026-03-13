@@ -5,7 +5,7 @@ Databricks Genie API Client for conversational interactions
 import logging
 import re
 import time
-from typing import Any, Dict, Optional, Set, cast
+from typing import Any, Callable, Dict, Optional, Set, cast
 
 from databricks.sdk import WorkspaceClient
 
@@ -24,9 +24,9 @@ class DatabricksGenieClient:
         self.api_client = self.workspace_client.api_client
         self.host = self.workspace_client.config.host.rstrip("/")
 
-        logger.info(f"✓ Connected to Databricks workspace: {self.host}")
+        logger.info("✓ Connected to Databricks workspace: %s", self.host)
         logger.info("✓ Using OAuth M2M authentication via app service principal")
-        logger.info(f"✓ Genie space ID: {self.space_id}")
+        logger.info("✓ Genie space ID: %s", self.space_id)
 
     @staticmethod
     def _extract_status_code(error: Exception) -> Optional[int]:
@@ -168,7 +168,7 @@ class DatabricksGenieClient:
         else:
             actual_conv_id = result.get("conversation_id", conversation_id)
 
-        logger.info(f"Sent message {message_id} to conversation {actual_conv_id}")
+        logger.info("Sent message %s to conversation %s", message_id, actual_conv_id)
 
         # Return the message data with conversation_id at top level for easy access
         return {
@@ -256,16 +256,16 @@ class DatabricksGenieClient:
             state = status.get("status")
 
             if state == "COMPLETED":
-                logger.info(f"Message {message_id} completed")
+                logger.info("Message %s completed", message_id)
                 return status
             elif state in ["FAILED", "CANCELLED"]:
-                logger.error(f"Message {message_id} failed with state: {state}")
+                logger.error("Message %s failed with state: %s", message_id, state)
                 return status
 
             time.sleep(current_poll_interval)
             current_poll_interval = min(current_poll_interval + 1, max_poll_interval)
 
-        logger.warning(f"Timeout waiting for message {message_id}")
+        logger.warning("Timeout waiting for message %s", message_id)
         return None
 
     def get_message_attachment_query_result(
@@ -303,7 +303,10 @@ class DatabricksGenieClient:
         return None
 
     def ask_question(
-        self, question: str, conversation_id: Optional[str] = None
+        self,
+        question: str,
+        conversation_id: Optional[str] = None,
+        on_message_sent: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         """
         High-level method to ask a question and get the response
@@ -311,6 +314,10 @@ class DatabricksGenieClient:
         Args:
             question: The question to ask
             conversation_id: Optional existing conversation ID. If None, creates a new one.
+            on_message_sent: Optional callback invoked with (conversation_id,
+                message_id) after the message is sent successfully but before
+                polling for the full response. Used to persist conversation
+                mappings early and avoid fast follow-up races.
 
         Returns:
             Dict with 'success', 'conversation_id', 'response', and 'attachments' keys
@@ -336,6 +343,17 @@ class DatabricksGenieClient:
                 "conversation_id": conversation_id,
                 "error": "Genie response missing conversation_id or message_id",
             }
+
+        if on_message_sent is not None:
+            try:
+                on_message_sent(actual_conversation_id, message_id)
+            except Exception as callback_error:
+                logger.warning(
+                    "on_message_sent callback failed for conversation=%s message=%s: %s",
+                    actual_conversation_id,
+                    message_id,
+                    callback_error,
+                )
 
         # Wait for the response
         response = self.wait_for_response(actual_conversation_id, message_id)
@@ -476,7 +494,7 @@ class DatabricksGenieClient:
         )
 
         if result is not None:
-            logger.info(f"Sent {rating.upper()} feedback for message {message_id}")
+            logger.info("Sent %s feedback for message %s", rating.upper(), message_id)
             return True
 
         return False
