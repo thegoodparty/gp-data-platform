@@ -108,7 +108,8 @@ with
         select
             br_position_database_id,
             year(election_day) as election_year,
-            max(election_day) as general_election_date
+            max(election_day) as general_election_date,
+            any_value(position_seats) as general_seats
         from races_with_fields
         where not is_primary and not is_runoff
         group by br_position_database_id, year(election_day)
@@ -196,7 +197,9 @@ with
                     coalesce(
                         ged.general_election_date, races_with_fields.election_day
                     ) as election_date,
-                    races_with_fields.seats as seats_available
+                    coalesce(
+                        ged.general_seats, races_with_fields.seats
+                    ) as seats_available
             ) as elec_date_lookup
     ),
 
