@@ -6,19 +6,25 @@
 -- CRITICAL: UUID fields MUST match int__civics_candidate_2025.sql pattern
 -- to ensure same person from different sources gets same gp_candidate_id
 with
+    clean_states as (select * from {{ ref("clean_states") }}),
+
     source as (
         select
-            *,
+            ts.*,
+            -- Standardize state to 2-letter postal code via clean_states seed
+            coalesce(cs.state_cleaned_postal_code, ts.state) as state_clean,
             -- Parse birth_date from multiple formats for UUID consistency
             -- Note: Many Jan 1 dates are placeholders, but we include for HubSpot
             -- pattern alignment
             coalesce(
-                try_cast(birth_date as date),
-                try_to_date(birth_date, 'MM-dd-yyyy'),
-                try_to_date(birth_date, 'MM/dd/yyyy'),
-                try_to_date(birth_date, 'yyyy-MM-dd')
+                try_cast(ts.birth_date as date),
+                try_to_date(ts.birth_date, 'MM-dd-yyyy'),
+                try_to_date(ts.birth_date, 'MM/dd/yyyy'),
+                try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
-        from {{ ref("int__techspeed_candidates_clean") }}
+        from {{ ref("int__techspeed_candidates_clean") }} as ts
+        left join
+            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
 
     candidates_with_id as (
@@ -34,7 +40,7 @@ with
                     fields=[
                         "first_name",
                         "last_name",
-                        "state",
+                        "state_clean",
                         "cast(birth_date_parsed as string)",
                         "email",
                         "phone",
@@ -56,7 +62,7 @@ with
 
             -- Demographics (use pre-parsed value)
             birth_date_parsed as birth_date,
-            state,
+            state_clean as state,
 
             -- Contact info
             email,

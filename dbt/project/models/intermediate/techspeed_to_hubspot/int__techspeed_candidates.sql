@@ -13,9 +13,7 @@ with
                 then 'Challenger'
             end as candidate_type,
             email,
-            replace(
-                replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
-            ) as phone,
+            {{ clean_phone_number("phone") }} as phone,
             candidate_id_tier,
             party,
             website_url,

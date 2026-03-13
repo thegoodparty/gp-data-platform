@@ -47,6 +47,10 @@ logs/
 test_data/
 .databricks/
 
+# Entity resolution local data and results
+entity_resolution/data/
+entity_resolution/results/*.csv
+
 # Claude runbook
 .claude/RUNBOOK.md
 claude.md
