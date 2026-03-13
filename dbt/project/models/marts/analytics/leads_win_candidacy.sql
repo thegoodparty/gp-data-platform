@@ -56,8 +56,9 @@ with
 
             -- Election dates
             cand.primary_election_date,
+            cand.primary_runoff_election_date,
             cand.general_election_date,
-            cand.runoff_election_date,
+            cand.general_runoff_election_date,
 
             -- Election results by stage
             pr.election_result as primary_election_result,
