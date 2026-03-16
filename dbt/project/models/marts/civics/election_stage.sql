@@ -13,7 +13,7 @@ with
             ddhq_election_stage_date as election_date,
             cast(null as string) as election_name,
             ddhq_race_name as race_name,
-            election_stage = 'primary' as is_primary,
+            election_stage in ('primary', 'primary runoff') as is_primary,
             election_stage in ('general runoff', 'primary runoff') as is_runoff,
             cast(null as boolean) as is_retention,
             cast(null as int) as number_of_seats,

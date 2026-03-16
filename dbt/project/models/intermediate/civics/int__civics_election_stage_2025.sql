@@ -6,8 +6,6 @@
 with
     election_stages as (
         select
-            {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
-            as gp_election_stage_id,
             {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
             tbl_contest.contact_id as hubspot_contact_id,
             tbl_ddhq_matches.ddhq_race_id,
@@ -56,7 +54,14 @@ with
 
     filtered_election_stages as (
         select
-            stage.gp_election_stage_id,
+            {{
+                generate_salted_uuid(
+                    fields=[
+                        "stage.gp_election_id",
+                        "case when stage.election_stage = 'runoff' then 'general runoff' else stage.election_stage end",
+                    ]
+                )
+            }} as gp_election_stage_id,
             stage.gp_election_id,
             stage.hubspot_contact_id,
             stage.ddhq_race_id,
