@@ -22,6 +22,13 @@ with
                     {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
                 else null
             end as gp_election_stage_id,
+            -- Map ddhq_election_type to match election_stage values used in
+            -- int__civics_election_stage_2025 (for remapping gp_election_stage_id)
+            case
+                when tbl_ddhq_matches.ddhq_election_type = 'runoff'
+                then 'general runoff'
+                else tbl_ddhq_matches.ddhq_election_type
+            end as election_stage_type,
             tbl_ddhq_matches.ddhq_candidate as candidate_name,
             tbl_ddhq_matches.ddhq_candidate_id as source_candidate_id,
             tbl_ddhq_matches.ddhq_race_id as source_race_id,
@@ -97,27 +104,51 @@ with
             election_stage_date <= '2025-12-31' and election_stage_date >= '1900-01-01'
     ),
 
-    -- Only include candidacy_stages that have a matching election_stage in the archive
+    -- Surviving election stages after dedup (one per election + stage)
     valid_election_stages as (
-        select gp_election_stage_id from {{ ref("int__civics_election_stage_2025") }}
+        select gp_election_stage_id, gp_election_id, election_stage
+        from {{ ref("int__civics_election_stage_2025") }}
     ),
 
-    -- Only include candidacy_stages that have a matching candidacy in the archive
+    -- Valid candidacies with their election ID for the remap join
     valid_candidacies as (
-        select gp_candidacy_id from {{ ref("int__civics_candidacy_2025") }}
+        select gp_candidacy_id, gp_election_id
+        from {{ ref("int__civics_candidacy_2025") }}
     ),
 
-    -- Filter to valid records
+    -- Remap gp_election_stage_id to the surviving election_stage_id.
+    -- The election_stage dedup keeps one row per (election, stage), so
+    -- candidates whose ddhq_race_id was dropped still need to point to
+    -- the surviving election_stage row.
     filtered_candidacy_stages as (
-        select stage.*
+        select
+            stage.gp_candidacy_stage_id,
+            stage.gp_candidacy_id,
+            coalesce(
+                ves.gp_election_stage_id, stage.gp_election_stage_id
+            ) as gp_election_stage_id,
+            stage.candidate_name,
+            stage.source_candidate_id,
+            stage.source_race_id,
+            stage.candidate_party,
+            stage.is_winner,
+            stage.election_result,
+            stage.election_result_source,
+            stage.match_confidence,
+            stage.match_reasoning,
+            stage.match_top_candidates,
+            stage.has_match,
+            stage.votes_received,
+            stage.election_stage_date,
+            stage.created_at,
+            stage.updated_at
         from archived_candidacy_stages as stage
-        where
-            stage.gp_candidacy_id in (select gp_candidacy_id from valid_candidacies)
-            and (
-                stage.gp_election_stage_id is null
-                or stage.gp_election_stage_id
-                in (select gp_election_stage_id from valid_election_stages)
-            )
+        inner join valid_candidacies as vc on stage.gp_candidacy_id = vc.gp_candidacy_id
+        left join
+            valid_election_stages as ves
+            on vc.gp_election_id = ves.gp_election_id
+            and stage.election_stage_type = ves.election_stage
+        where stage.gp_election_stage_id is null or ves.gp_election_stage_id is not null
     )
 
 select
