@@ -99,17 +99,20 @@ with
     ),
 
     -- To generate gp_election_id we need the GENERAL election date for this
-    -- position+election, not the stage-specific date. Look it up from the
-    -- general-stage rows. If no general race exists yet, fall back to the
-    -- stage-specific date.
+    -- position, not the stage-specific date. Look it up from the general-stage
+    -- rows by position + year.
+    -- NOTE: primaries and generals have different br_election_database_id values
+    -- (e.g. "2026 WA Primary" vs "2026 WA General"), so we match by election
+    -- year instead to ensure primary stages find their corresponding general date.
     general_election_dates as (
         select
             br_position_database_id,
-            br_election_database_id,
-            max(election_day) as general_election_date
+            year(election_day) as election_year,
+            max(election_day) as general_election_date,
+            any_value(seats) as general_seats
         from races_with_fields
         where not is_primary and not is_runoff
-        group by br_position_database_id, br_election_database_id
+        group by br_position_database_id, year(election_day)
     ),
 
     election_stages as (
@@ -174,11 +177,11 @@ with
             races_with_fields.updated_at as updated_at
 
         from races_with_fields
-        -- Join to get the general election date for this position+election
+        -- Join to get the general election date for this position + year
         left join
             general_election_dates as ged
             on races_with_fields.br_position_database_id = ged.br_position_database_id
-            and races_with_fields.br_election_database_id = ged.br_election_database_id
+            and year(races_with_fields.election_day) = ged.election_year
         -- Build a virtual row with the general election date for the macro
         cross join
             lateral(
@@ -193,7 +196,10 @@ with
                     races_with_fields.seat_name,
                     coalesce(
                         ged.general_election_date, races_with_fields.election_day
-                    ) as election_date
+                    ) as election_date,
+                    coalesce(
+                        ged.general_seats, races_with_fields.seats
+                    ) as seats_available
             ) as elec_date_lookup
     ),
 
