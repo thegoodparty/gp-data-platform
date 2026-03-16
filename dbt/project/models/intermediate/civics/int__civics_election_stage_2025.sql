@@ -73,6 +73,23 @@ with
         inner join
             valid_elections as election
             on stage.gp_election_id = election.gp_election_id
+        -- Deduplicate to one row per (election, stage): different candidates
+        -- in the same race can have adjacent DDHQ race_ids, creating duplicate
+        -- election stages. Prefer rows with actual vote counts over uncontested.
+        qualify
+            row_number() over (
+                partition by stage.gp_election_id, election_stage
+                order by
+                    case
+                        when
+                            stage.total_votes_cast is not null
+                            and stage.total_votes_cast != 'uncontested'
+                        then 0
+                        else 1
+                    end,
+                    stage.ddhq_race_id
+            )
+            = 1
     )
 
 select
