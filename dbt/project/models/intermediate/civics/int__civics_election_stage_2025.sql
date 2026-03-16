@@ -60,6 +60,11 @@ with
             stage.gp_election_id,
             stage.hubspot_contact_id,
             stage.ddhq_race_id,
+            -- DDHQ uses a single 'runoff' type without distinguishing primary
+            -- vs general. Data confirms all 394 DDHQ runoff records follow a
+            -- general election (387 have a general match, 0 have a primary match),
+            -- so mapping to 'general runoff' is correct. 'primary runoff' only
+            -- comes from BallotReady (2026+), which flags it explicitly.
             case
                 when stage.election_stage = 'runoff'
                 then 'general runoff'

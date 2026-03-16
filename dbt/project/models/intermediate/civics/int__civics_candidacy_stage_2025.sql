@@ -23,7 +23,8 @@ with
                 else null
             end as gp_election_stage_id,
             -- Map ddhq_election_type to match election_stage values used in
-            -- int__civics_election_stage_2025 (for remapping gp_election_stage_id)
+            -- int__civics_election_stage_2025 (for remapping gp_election_stage_id).
+            -- DDHQ 'runoff' is always general — see election_stage model comment.
             case
                 when tbl_ddhq_matches.ddhq_election_type = 'runoff'
                 then 'general runoff'
