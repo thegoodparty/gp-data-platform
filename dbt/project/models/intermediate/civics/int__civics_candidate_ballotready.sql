@@ -34,7 +34,12 @@ with
             get(filter(urls, x -> x.type = 'instagram'), 0).url as instagram_url,
             -- Extract contact info from person.contacts array
             get(filter(contacts, x -> x.email is not null), 0).email as api_email,
-            get(filter(contacts, x -> x.phone is not null), 0).phone as api_phone,
+            nullif(
+                regexp_replace(
+                    get(filter(contacts, x -> x.phone is not null), 0).phone, '-', ''
+                ),
+                ''
+            ) as api_phone,
             created_at as person_created_at,
             updated_at as person_updated_at
         from br_person

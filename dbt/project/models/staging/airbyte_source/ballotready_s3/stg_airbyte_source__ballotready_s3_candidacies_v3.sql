@@ -19,7 +19,7 @@ with
             email,
             level,
             mtfcc,
-            phone,
+            {{ clean_phone_number("phone") }} as phone,
             state,
             geo_id as br_geo_id,
             suffix,
@@ -38,7 +38,11 @@ with
             cast(position_id as int) as br_position_id,
             candidacy_id as br_candidacy_id,
             cast(candidate_id as int) as br_candidate_id,
-            cast(election_day as date) as election_day,
+            case
+                when cast(election_day as date) >= '2050-01-01'
+                then null
+                else cast(election_day as date)
+            end as election_day,
             is_retention,
             is_unexpired,
             election_name,

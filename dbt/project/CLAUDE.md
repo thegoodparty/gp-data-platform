@@ -17,10 +17,9 @@ When building multiple models, use quotes around the models in the `--select` ar
 
 **IMPORTANT** - When working on dbt models, it may be helpful to inspect
 existing sources/models in Databricks, as well as models that you have added
-and modified after creating them. Do so by running the `inspect_data` utility
-macro:
+and modified after creating them. Do so by running `dbt show` for custom
+queries or the `inspect_data` utility macro, which includes:
 
-Output includes:
   - Relation name and type
   - Total row count
   - Column details table (name, data type, non-null count, % populated)
@@ -34,6 +33,7 @@ Output includes:
 dbt run                               # Run transformations
 dbt test                              # Data quality tests
 dbt build                             # Run + test
+dbt show                              # Query the data in databricks
 
 # Inpect models/sources:
 dbt run-operation inspect_data --args '{"model": "model_name"}'

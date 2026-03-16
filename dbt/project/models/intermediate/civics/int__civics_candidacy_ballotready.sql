@@ -42,7 +42,11 @@ with
                     "candidacies.normalized_position_name",
                 )
             }} as candidate_office,
-            initcap(candidacies.level) as office_level,
+            case
+                when lower(candidacies.level) = 'city'
+                then 'Local'
+                else initcap(candidacies.level)
+            end as office_level,
             {{ extract_city_from_office_name("candidacies.position_name") }} as city,
             coalesce(
                 regexp_extract(
@@ -118,7 +122,11 @@ with
                 max(case when is_primary then election_result end)
             ) as raw_election_result,
 
-            max(candidacy_updated_at) as candidacy_updated_at
+            max(candidacy_updated_at) as candidacy_updated_at,
+
+            -- BallotReady native IDs (one per stage; take any for candidacy grain)
+            any_value(br_candidacy_id) as br_candidacy_id,
+            any_value(cast(br_race_id as string)) as br_race_id
 
         from candidacies_with_fields
         group by br_candidate_id, br_position_id, year(election_day)
@@ -262,8 +270,10 @@ with
             general_election_date,
             general_runoff_election_date,
 
-            -- BallotReady position ID
+            -- BallotReady IDs
             br_position_id as br_position_database_id,
+            br_candidacy_id,
+            br_race_id,
 
             -- Assessment fields (hardcoded until we join viability/p2v in followup
             -- work)
@@ -333,6 +343,8 @@ select
     general_election_date,
     general_runoff_election_date,
     br_position_database_id,
+    br_candidacy_id,
+    br_race_id,
     viability_score,
     win_number,
     win_number_model,
