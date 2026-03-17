@@ -351,14 +351,26 @@ with
                 else 'Other'
             end as office_type,
             -- Extract district/ward from race_name
-            regexp_extract(
-                ddhq.race_name, '(?i)(?:ward|district|seat|place|position) ([^ ]+)$'
+            -- Try keyword-prefixed first (Ward 3, District 5), then fall back
+            -- to any trailing number (Board of Supervisors 19)
+            coalesce(
+                nullif(
+                    regexp_extract(
+                        ddhq.race_name,
+                        '(?i)(?:ward|district|seat|place|position|zone) ([^ ]+)$'
+                    ),
+                    ''
+                ),
+                nullif(regexp_extract(ddhq.race_name, ' ([0-9]+)$'), '')
             ) as district_raw,
-            try_cast(
-                regexp_extract(
-                    ddhq.race_name,
-                    '(?i)(?:ward|district|seat|place|position) ([0-9]+)$'
-                ) as int
+            coalesce(
+                try_cast(
+                    regexp_extract(
+                        ddhq.race_name,
+                        '(?i)(?:ward|district|seat|place|position|zone) ([0-9]+)$'
+                    ) as int
+                ),
+                try_cast(regexp_extract(ddhq.race_name, ' ([0-9]+)$') as int)
             ) as district_identifier,
             ddhq.date as election_date,
             case
