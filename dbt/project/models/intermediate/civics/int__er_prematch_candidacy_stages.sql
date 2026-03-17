@@ -216,9 +216,9 @@ with
     ddhq_stages as (
         select
             'ddhq' as source_name,
-            cast(ddhq.race_id as string)
-            || '-'
-            || cast(ddhq.candidate_id as string) as source_id,
+            cast(ddhq.candidate_id as string)
+            || '_'
+            || cast(ddhq.race_id as string) as source_id,
             lower(
                 trim(
                     split(
