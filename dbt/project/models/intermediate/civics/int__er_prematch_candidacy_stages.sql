@@ -191,7 +191,7 @@ with
             initcap(ts.election_type) as election_stage,
             ts.email,
             ts.phone,
-            ts.ballotready_race_id as br_race_id,
+            ts.br_race_id,
             ts.official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
@@ -209,6 +209,8 @@ with
             and trim(candidate) != ''
             -- Require splittable name (first + last)
             and size(split(trim(candidate), ' ')) >= 2
+            and date is not null
+            and date >= '2026-01-01'
     ),
 
     ddhq_stages as (
@@ -217,8 +219,25 @@ with
             cast(ddhq.race_id as string)
             || '-'
             || cast(ddhq.candidate_id as string) as source_id,
-            lower(trim(split(trim(ddhq.candidate), ' ')[0])) as first_name,
-            lower(trim(element_at(split(trim(ddhq.candidate), ' '), -1))) as last_name,
+            lower(
+                trim(
+                    split(
+                        {{ remove_techspeed_name_suffixes("trim(ddhq.candidate)") }},
+                        ' '
+                    )[0]
+                )
+            ) as first_name,
+            lower(
+                trim(
+                    element_at(
+                        split(
+                            {{ remove_techspeed_name_suffixes("trim(ddhq.candidate)") }},
+                            ' '
+                        ),
+                        -1
+                    )
+                )
+            ) as last_name,
             coalesce(
                 cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code
             ) as state,
@@ -230,16 +249,40 @@ with
             cast(null as int) as district_identifier,
             ddhq.date as election_date,
             case
-                when ddhq.election_type like '%Primary%'
-                then 'Primary'
-                when ddhq.election_type like '%Runoff%'
+                when lower(ddhq.election_type) like '%runoff%'
                 then 'Runoff'
+                when lower(ddhq.election_type) like '%primary%'
+                then 'Primary'
                 else 'General'
             end as election_stage,
             cast(null as string) as email,
             cast(null as string) as phone,
             cast(null as string) as br_race_id,
-            ddhq.race_name as official_office_name,
+            -- Strip state prefix from race_name so office names align with
+            -- BR/TS for Splink JW matching (e.g. "New York Senate District 5"
+            -- → "Senate District 5")
+            trim(
+                case
+                    when cs_two.state_cleaned_postal_code is not null
+                    then
+                        substring(
+                            ddhq.race_name,
+                            length(
+                                concat(
+                                    split(ddhq.race_name, ' ')[0],
+                                    ' ',
+                                    split(ddhq.race_name, ' ')[1]
+                                )
+                            )
+                            + 2
+                        )
+                    when cs_one.state_cleaned_postal_code is not null
+                    then
+                        substring(
+                            ddhq.race_name, length(split(ddhq.race_name, ' ')[0]) + 2
+                        )
+                end
+            ) as official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
