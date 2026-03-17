@@ -242,11 +242,124 @@ with
                 cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code
             ) as state,
             {{ parse_party_affiliation("ddhq.candidate_party") }} as party,
-            cast(null as string) as candidate_office,
-            cast(null as string) as office_level,
-            cast(null as string) as office_type,
-            cast(null as string) as district_raw,
-            cast(null as int) as district_identifier,
+            -- Derive candidate_office from race_name keywords
+            case
+                when lower(ddhq.race_name) like '%mayor%'
+                then 'Mayor'
+                when
+                    lower(ddhq.race_name) like '%city council%'
+                    or lower(ddhq.race_name) like '%city commission%'
+                    or lower(ddhq.race_name) like '%common council%'
+                    or lower(ddhq.race_name) like '%council member%'
+                    or lower(ddhq.race_name) like '%councilmember%'
+                    or lower(ddhq.race_name) like '%commission board%'
+                then 'City Council'
+                when
+                    lower(ddhq.race_name) like '%alderperson%'
+                    or lower(ddhq.race_name) like '%alderman%'
+                    or lower(ddhq.race_name) like '%alder %'
+                then 'Alderman'
+                when
+                    lower(ddhq.race_name) like '%town council%'
+                    or lower(ddhq.race_name) like '%selectperson%'
+                then 'Town Council'
+                when
+                    lower(ddhq.race_name) like '%town board%'
+                    or lower(ddhq.race_name) like '%village board%'
+                    or lower(ddhq.race_name) like '%village trustee%'
+                then 'Town Council'
+                when lower(ddhq.race_name) like '%county commission%'
+                then 'County Commissioner'
+                when
+                    lower(ddhq.race_name) like '%county council%'
+                    or lower(ddhq.race_name) like '%board of supervisors%'
+                    or lower(ddhq.race_name) like '%county board%'
+                    or lower(ddhq.race_name) like '%county supervisor%'
+                then 'County Legislature'
+                when lower(ddhq.race_name) like '%county treasurer%'
+                then 'Clerk/Treasurer'
+                when
+                    lower(ddhq.race_name) like '%circuit court%'
+                    or lower(ddhq.race_name) like '%municipal judge%'
+                    or lower(ddhq.race_name) like '%municipal court%'
+                then 'Judge'
+                when
+                    lower(ddhq.race_name) like '%school board%'
+                    or lower(ddhq.race_name) like '%public school%'
+                    or lower(ddhq.race_name) like '%school district%'
+                then 'School Board'
+                when lower(ddhq.race_name) like '%board of trustees%'
+                then 'Board of Trustees'
+                when
+                    lower(ddhq.race_name) like '%drainage%'
+                    or lower(ddhq.race_name) like '%conservation%'
+                    or lower(ddhq.race_name) like '%utility district%'
+                then 'Other'
+            end as candidate_office,
+            case
+                when lower(ddhq.race_name) like '%county%'
+                then 'County'
+                when
+                    lower(ddhq.race_name) like '%state senate%'
+                    or lower(ddhq.race_name) like '%state house%'
+                    or lower(ddhq.race_name) like '%state assembly%'
+                then 'State'
+                else 'Local'
+            end as office_level,
+            case
+                when lower(ddhq.race_name) like '%mayor%'
+                then 'Mayor'
+                when
+                    lower(ddhq.race_name) like '%city council%'
+                    or lower(ddhq.race_name) like '%city commission%'
+                    or lower(ddhq.race_name) like '%common council%'
+                    or lower(ddhq.race_name) like '%council member%'
+                    or lower(ddhq.race_name) like '%councilmember%'
+                    or lower(ddhq.race_name) like '%commission board%'
+                then 'City Council'
+                when
+                    lower(ddhq.race_name) like '%alderperson%'
+                    or lower(ddhq.race_name) like '%alderman%'
+                    or lower(ddhq.race_name) like '%alder %'
+                then 'Alderman'
+                when
+                    lower(ddhq.race_name) like '%town council%'
+                    or lower(ddhq.race_name) like '%town board%'
+                    or lower(ddhq.race_name) like '%village board%'
+                    or lower(ddhq.race_name) like '%village trustee%'
+                    or lower(ddhq.race_name) like '%selectperson%'
+                then 'Town Council'
+                when
+                    lower(ddhq.race_name) like '%county commission%'
+                    or lower(ddhq.race_name) like '%county council%'
+                    or lower(ddhq.race_name) like '%board of supervisors%'
+                    or lower(ddhq.race_name) like '%county board%'
+                    or lower(ddhq.race_name) like '%county supervisor%'
+                then 'County Supervisor'
+                when lower(ddhq.race_name) like '%county treasurer%'
+                then 'Clerk/Treasurer'
+                when
+                    lower(ddhq.race_name) like '%circuit court%'
+                    or lower(ddhq.race_name) like '%municipal judge%'
+                    or lower(ddhq.race_name) like '%municipal court%'
+                then 'Judge'
+                when
+                    lower(ddhq.race_name) like '%school board%'
+                    or lower(ddhq.race_name) like '%public school%'
+                    or lower(ddhq.race_name) like '%school district%'
+                then 'School Board'
+                else 'Other'
+            end as office_type,
+            -- Extract district/ward from race_name
+            regexp_extract(
+                ddhq.race_name, '(?i)(?:ward|district|seat|place|position) ([^ ]+)$'
+            ) as district_raw,
+            try_cast(
+                regexp_extract(
+                    ddhq.race_name,
+                    '(?i)(?:ward|district|seat|place|position) ([0-9]+)$'
+                ) as int
+            ) as district_identifier,
             ddhq.date as election_date,
             case
                 when lower(ddhq.election_type) like '%runoff%'
