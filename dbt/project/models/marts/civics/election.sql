@@ -14,6 +14,26 @@ with
         from combined
         qualify
             row_number() over (partition by gp_election_id order by updated_at desc) = 1
+    ),
+
+    -- Pivot election stage dates by type
+    stage_dates as (
+        select
+            gp_election_id,
+            max(
+                case when stage_type = 'primary' then election_date end
+            ) as primary_election_date,
+            max(
+                case when stage_type = 'general' then election_date end
+            ) as general_election_date,
+            max(
+                case when stage_type = 'primary runoff' then election_date end
+            ) as primary_runoff_election_date,
+            max(
+                case when stage_type = 'general runoff' then election_date end
+            ) as general_runoff_election_date
+        from {{ ref("election_stage") }}
+        group by gp_election_id
     )
 
 select
@@ -40,6 +60,10 @@ select
     deduplicated.is_judicial,
     deduplicated.is_appointed,
     deduplicated.br_normalized_position_type,
+    stage_dates.primary_election_date,
+    stage_dates.general_election_date,
+    stage_dates.primary_runoff_election_date,
+    stage_dates.general_runoff_election_date,
     icp.voter_count as icp_voter_count,
     icp.normalized_position_type as icp_normalized_position_name,
     icp.icp_office_win as is_win_icp,
@@ -52,3 +76,4 @@ from deduplicated
 left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
+left join stage_dates on deduplicated.gp_election_id = stage_dates.gp_election_id
