@@ -1,15 +1,16 @@
 {{ config(materialized="table", tags=["civics", "entity_resolution"]) }}
 
--- Entity Resolution prematch: BallotReady x TechSpeed candidacy-stages
--- Unions candidacy-stage records from both sources into a standardized schema
+-- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ candidacy-stages
+-- Unions candidacy-stage records from all sources into a standardized schema
 -- for Splink matching.
 --
 -- Grain: One row per source candidacy-stage record (candidate + office + election date)
 -- Key: unique_id (source_name || '|' || source_id)
 --
--- Both upstream sources are already at the candidacy-stage grain:
+-- All upstream sources are already at the candidacy-stage grain:
 -- - BallotReady staging: one row per candidate per race (election stage)
 -- - TechSpeed clean: one row per candidate per election date
+-- - DDHQ election results: one row per candidate per race
 --
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
@@ -125,7 +126,7 @@ with
         left join person_emails as pe on br.br_candidate_id = pe.person_database_id
     ),
 
-    -- State name → 2-letter code mapping for TechSpeed
+    -- State name → 2-letter code mapping for TechSpeed and DDHQ
     clean_states as (select * from {{ ref("clean_states") }}),
 
     -- TechSpeed: each row in int__techspeed_candidates_clean is already at
@@ -190,12 +191,73 @@ with
             initcap(ts.election_type) as election_stage,
             ts.email,
             ts.phone,
-            ts.br_race_id,
+            ts.ballotready_race_id as br_race_id,
             ts.official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
         from ts_clean as ts
+    ),
+
+    -- DDHQ election results: each row is a candidate x race (candidacy-stage)
+    ddhq_staging as (
+        select *
+        from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+        where
+            candidate_id is not null
+            and candidate is not null
+            and trim(candidate) != ''
+            -- Require splittable name (first + last)
+            and size(split(trim(candidate), ' ')) >= 2
+    ),
+
+    ddhq_stages as (
+        select
+            'ddhq' as source_name,
+            cast(ddhq.race_id as string)
+            || '-'
+            || cast(ddhq.candidate_id as string) as source_id,
+            lower(trim(split(trim(ddhq.candidate), ' ')[0])) as first_name,
+            lower(trim(element_at(split(trim(ddhq.candidate), ' '), -1))) as last_name,
+            coalesce(
+                cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code
+            ) as state,
+            {{ parse_party_affiliation("ddhq.candidate_party") }} as party,
+            cast(null as string) as candidate_office,
+            cast(null as string) as office_level,
+            cast(null as string) as office_type,
+            cast(null as string) as district_raw,
+            cast(null as int) as district_identifier,
+            ddhq.date as election_date,
+            case
+                when ddhq.election_type like '%Primary%'
+                then 'Primary'
+                when ddhq.election_type like '%Runoff%'
+                then 'Runoff'
+                else 'General'
+            end as election_stage,
+            cast(null as string) as email,
+            cast(null as string) as phone,
+            cast(null as string) as br_race_id,
+            ddhq.race_name as official_office_name,
+            cast(null as string) as br_candidacy_id,
+            cast(null as string) as seat_name,
+            cast(null as string) as partisan_type
+        from ddhq_staging as ddhq
+        left join
+            clean_states as cs_one
+            on upper(split(ddhq.race_name, ' ')[0]) = upper(trim(cs_one.state_raw))
+        left join
+            clean_states as cs_two
+            on upper(
+                concat(
+                    split(ddhq.race_name, ' ')[0], ' ', split(ddhq.race_name, ' ')[1]
+                )
+            )
+            = upper(trim(cs_two.state_raw))
+        where
+            coalesce(cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code)
+            is not null
     ),
 
     unioned as (
@@ -204,6 +266,9 @@ with
         union all
         select *
         from techspeed_stages
+        union all
+        select *
+        from ddhq_stages
     )
 
 -- Splink treats empty strings as real values for exact matching, so convert
