@@ -204,7 +204,8 @@ with
         select *
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
         where
-            candidate_id is not null
+            race_id is not null
+            and candidate_id is not null
             and candidate is not null
             and trim(candidate) != ''
             -- Require splittable name (first + last)
