@@ -244,9 +244,21 @@ with
             ) as state,
             {{ parse_party_affiliation("ddhq.candidate_party") }} as party,
             -- Derive candidate_office from race_name keywords
+            -- County branches first to avoid %commission board% matching
+            -- before %county commission% (CASE short-circuits)
             case
                 when lower(ddhq.race_name) like '%mayor%'
                 then 'Mayor'
+                when lower(ddhq.race_name) like '%county commission%'
+                then 'County Commissioner'
+                when
+                    lower(ddhq.race_name) like '%county council%'
+                    or lower(ddhq.race_name) like '%board of supervisors%'
+                    or lower(ddhq.race_name) like '%county board%'
+                    or lower(ddhq.race_name) like '%county supervisor%'
+                then 'County Legislature'
+                when lower(ddhq.race_name) like '%county treasurer%'
+                then 'Clerk/Treasurer'
                 when
                     lower(ddhq.race_name) like '%city council%'
                     or lower(ddhq.race_name) like '%city commission%'
@@ -269,16 +281,6 @@ with
                     or lower(ddhq.race_name) like '%village board%'
                     or lower(ddhq.race_name) like '%village trustee%'
                 then 'Town Council'
-                when lower(ddhq.race_name) like '%county commission%'
-                then 'County Commissioner'
-                when
-                    lower(ddhq.race_name) like '%county council%'
-                    or lower(ddhq.race_name) like '%board of supervisors%'
-                    or lower(ddhq.race_name) like '%county board%'
-                    or lower(ddhq.race_name) like '%county supervisor%'
-                then 'County Legislature'
-                when lower(ddhq.race_name) like '%county treasurer%'
-                then 'Clerk/Treasurer'
                 when
                     lower(ddhq.race_name) like '%circuit court%'
                     or lower(ddhq.race_name) like '%municipal judge%'
@@ -311,6 +313,15 @@ with
                 when lower(ddhq.race_name) like '%mayor%'
                 then 'Mayor'
                 when
+                    lower(ddhq.race_name) like '%county commission%'
+                    or lower(ddhq.race_name) like '%county council%'
+                    or lower(ddhq.race_name) like '%board of supervisors%'
+                    or lower(ddhq.race_name) like '%county board%'
+                    or lower(ddhq.race_name) like '%county supervisor%'
+                then 'County Supervisor'
+                when lower(ddhq.race_name) like '%county treasurer%'
+                then 'Clerk/Treasurer'
+                when
                     lower(ddhq.race_name) like '%city council%'
                     or lower(ddhq.race_name) like '%city commission%'
                     or lower(ddhq.race_name) like '%common council%'
@@ -330,15 +341,6 @@ with
                     or lower(ddhq.race_name) like '%village trustee%'
                     or lower(ddhq.race_name) like '%selectperson%'
                 then 'Town Council'
-                when
-                    lower(ddhq.race_name) like '%county commission%'
-                    or lower(ddhq.race_name) like '%county council%'
-                    or lower(ddhq.race_name) like '%board of supervisors%'
-                    or lower(ddhq.race_name) like '%county board%'
-                    or lower(ddhq.race_name) like '%county supervisor%'
-                then 'County Supervisor'
-                when lower(ddhq.race_name) like '%county treasurer%'
-                then 'Clerk/Treasurer'
                 when
                     lower(ddhq.race_name) like '%circuit court%'
                     or lower(ddhq.race_name) like '%municipal judge%'
@@ -462,7 +464,7 @@ select
     nullif(email, '') as email,
     nullif(phone, '') as phone,
     try_cast(br_race_id as int) as br_race_id,
-    lower(trim(official_office_name)) as official_office_name,
+    nullif(lower(trim(official_office_name)), '') as official_office_name,
     nullif(br_candidacy_id, '') as br_candidacy_id,
     nullif(seat_name, '') as seat_name,
     partisan_type

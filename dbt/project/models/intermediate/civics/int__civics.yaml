@@ -620,7 +620,7 @@ models:
       - name: unique_id
         description: >
           Primary key for Splink — source_name || '|' || source_id.
-          Guaranteed unique across both sources.
+          Guaranteed unique across all sources.
         data_tests:
           - unique
           - not_null
