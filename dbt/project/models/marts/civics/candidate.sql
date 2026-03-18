@@ -1,6 +1,7 @@
 -- Civics mart candidate table
 -- Union of 2025 HubSpot archive and 2026+ BallotReady data
 -- Deduplicates on gp_candidate_id (a person may appear in both sources)
+-- Force rebuild for CI: ensure candidate is fresh alongside candidacy
 with
     combined as (
         select *
