@@ -107,13 +107,13 @@ etc.
 *   A Candidacy comprises a Candidate and an Election
 **Election**
 *   The full election cycle for a specific position in a specific year
-*   Encompasses all stages (primary, general, runoff)
+*   Encompasses all stages (primary, general, primary runoff, general runoff)
 *   Example: "Seattle Mayor 2026" (the entire election)
 *   An Election comprises multiple Stages
 **Election-Stage**
-*   A single phase within an election (primary, general, or runoff)
+*   A single phase within an election (primary, general, primary runoff, or general runoff)
 *   Example: "Seattle Mayor 2026 Primary" or "Seattle Mayor 2026 General"
-*   Values: Primary, General, Runoff
+*   Values: Primary, General, Primary Runoff, General Runoff
 **Candidacy-Stage**
 *   The intersection of a candidacy and a specific stage
 *   Contains vendor-specific IDs and stage-specific results
