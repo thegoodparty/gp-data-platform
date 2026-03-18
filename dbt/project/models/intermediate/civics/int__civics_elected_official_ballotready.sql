@@ -12,7 +12,6 @@ with
         select
             office_holders.*,
             concat(first_name, ' ', last_name) as full_name,
-            {{ clean_phone_number("phone") }} as clean_phone_for_candidate_id,
             {{
                 generate_candidate_office_from_position(
                     "position_name",
@@ -50,23 +49,6 @@ with
                     ]
                 )
             }} as gp_elected_official_id,
-            case
-                when is_vacant
-                then cast(null as string)
-                else
-                    {{
-                        generate_salted_uuid(
-                            fields=[
-                                "first_name",
-                                "last_name",
-                                "state",
-                                "cast(null as string)",
-                                "email",
-                                "clean_phone_for_candidate_id",
-                            ]
-                        )
-                    }}
-            end as gp_candidate_id,
             br_office_holder_id,
             br_candidate_id,
             br_position_id,
@@ -114,7 +96,6 @@ with
 
 select
     gp_elected_official_id,
-    gp_candidate_id,
     br_office_holder_id,
     br_candidate_id,
     br_position_id,

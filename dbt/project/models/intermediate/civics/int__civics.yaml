@@ -623,17 +623,6 @@ models:
           - not_null
           - is_uuid
 
-      - name: gp_candidate_id
-        description: >
-          Best-effort candidate identifier using the BallotReady candidate UUID
-          pattern and elected-official contact fields, with phone normalized to
-          digits-only before hashing to better align with the candidate model.
-          This is still not a reliable join key to
-          `int__civics_candidate_ballotready.gp_candidate_id`: the candidate
-          model is limited to 2026+ candidacies and also enriches with the
-          BallotReady person API, so current overall match rates remain below 1%
-          of elected-official rows.
-
       - name: br_office_holder_id
         description: BallotReady natural key for the office-holder term record
         data_tests:
