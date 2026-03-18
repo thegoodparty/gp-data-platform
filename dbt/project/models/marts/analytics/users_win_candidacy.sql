@@ -71,7 +71,8 @@ with
             -- Election results by stage
             pr.election_result as primary_election_result,
             ge.election_result as general_election_result,
-            coalesce(gro.election_result, pro.election_result) as runoff_election_result
+            pro.election_result as primary_runoff_election_result,
+            gro.election_result as general_runoff_election_result
 
         from {{ ref("campaigns") }} c
 
