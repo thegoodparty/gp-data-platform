@@ -18,7 +18,11 @@ with
             try_cast({{ adapter.quote("candidacy_id") }} as int) as br_candidacy_id,
             try_cast({{ adapter.quote("candidate_id") }} as int) as br_candidate_id,
             from_json(
-                regexp_replace({{ adapter.quote("contacts") }}, '=>', ':'),
+                regexp_replace(
+                    regexp_replace({{ adapter.quote("contacts") }}, '=>', ':'),
+                    'nil',
+                    'null'
+                ),
                 'ARRAY<STRUCT<email: STRING, phone: STRING, type: STRING>>'
             ) as contacts,
             try_cast({{ adapter.quote("end_at") }} as date) as end_at,

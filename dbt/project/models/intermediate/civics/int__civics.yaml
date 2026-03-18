@@ -602,6 +602,124 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_elected_official_ballotready
+    description: >
+      BallotReady office holders transformed into the civics mart
+      elected_officials schema.
+
+      Grain: One row per office-holder term.
+
+      Source: stg_airbyte_source__ballotready_s3_office_holders_v3.
+      Includes the contacts parser fix for Ruby nil values in staging.
+
+    columns:
+      - name: gp_elected_official_id
+        description: >
+          Primary key - internally generated UUID for elected officials.
+          Generated from: first_name, last_name, state, candidate_office,
+          term_start_date, district.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: br_office_holder_id
+        description: BallotReady natural key for the office-holder term record
+        data_tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        description: Elected official first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Elected official last name
+        data_tests:
+          - not_null
+
+      - name: phone
+        description: >
+          Canonical phone number, preferring office_phone, then central_phone,
+          then any remaining non-null BallotReady phone value
+
+      - name: position_name
+        description: Raw BallotReady office name
+        data_tests:
+          - not_null
+
+      - name: br_position_id
+        description: BallotReady position identifier
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+
+      - name: office_level
+        description: >
+          Office level derived from BallotReady level values.
+          City-level offices are mapped to Local.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
+      - name: party_affiliation
+        description: Normalized party affiliation from the first BallotReady party value
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: office_phone
+        description: Phone number from a BallotReady contact with type = office
+
+      - name: central_phone
+        description: Phone number from a BallotReady contact with type = central
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+
+      - name: is_current_term
+        description: Whether the official's term is current or has an unknown end date
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
   - name: int__er_prematch_candidacy_stages
     description: >
       Entity resolution prematch table: BallotReady x TechSpeed candidacy-stages
