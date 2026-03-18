@@ -12,6 +12,7 @@ with
         select
             office_holders.*,
             concat(first_name, ' ', last_name) as full_name,
+            {{ clean_phone_number("phone") }} as clean_phone_for_candidate_id,
             {{
                 generate_candidate_office_from_position(
                     "position_name",
@@ -61,7 +62,7 @@ with
                                 "state",
                                 "cast(null as string)",
                                 "email",
-                                "phone",
+                                "clean_phone_for_candidate_id",
                             ]
                         )
                     }}
