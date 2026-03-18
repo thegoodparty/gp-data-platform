@@ -1,7 +1,7 @@
 {#
   Macros for parsing DDHQ race_name into standardized office fields.
   office_type is derived by feeding parse_ddhq_candidate_office output
-  through the shared map_office_type macro (in ballotready_standardizations.sql).
+  through the shared map_office_type macro (in office_standardizations.sql).
 #}
 {% macro parse_ddhq_candidate_office(race_name_col) %}
     {# Derives candidate_office from DDHQ race_name keywords.
