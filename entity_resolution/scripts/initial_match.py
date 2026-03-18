@@ -233,6 +233,17 @@ def save_results(
 ) -> None:
     """Write CSVs and diagnostic charts."""
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Convert list/array columns to single-line JSON strings before CSV export.
+    # numpy array repr wraps long arrays across multiple lines, which breaks
+    # CSV parsers that don't support multiline quoted fields (e.g. Databricks).
+    to_json = lambda v: json.dumps(list(v))  # noqa: E731
+    for col in ["first_name_aliases_l", "first_name_aliases_r"]:
+        pairwise_df[col] = pairwise_df[col].apply(to_json)
+    clustered_df["first_name_aliases"] = clustered_df["first_name_aliases"].apply(
+        to_json
+    )
+
     pairwise_df.to_csv(output_dir / "pairwise_predictions.csv", index=False)
     if len(clustered_df) > 0:
         clustered_df.to_csv(output_dir / "clustered_candidacies.csv", index=False)
