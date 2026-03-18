@@ -19,9 +19,13 @@ with
             try_cast({{ adapter.quote("candidate_id") }} as int) as br_candidate_id,
             from_json(
                 regexp_replace(
-                    regexp_replace({{ adapter.quote("contacts") }}, '=>', ':'),
-                    '\\bnil\\b',
-                    'null'
+                    replace(
+                        replace({{ adapter.quote("contacts") }}, '=>nil,', '=>null,'),
+                        '=>nil}',
+                        '=>null}'
+                    ),
+                    '=>',
+                    ':'
                 ),
                 'ARRAY<STRUCT<email: STRING, phone: STRING, type: STRING>>'
             ) as contacts,
@@ -78,6 +82,41 @@ with
                 'ARRAY<STRUCT<url: STRING, type: STRING>>'
             ) as urls
         from source
+    ),
+    flattened_contacts_and_urls as (
+        select
+            renamed.*,
+            get(
+                filter(contacts, x -> x.type = 'primary' and x.email is not null), 0
+            ).email as email,
+            get(
+                filter(contacts, x -> x.type = 'office' and x.phone is not null), 0
+            ).phone as office_phone,
+            get(
+                filter(contacts, x -> x.type = 'central' and x.phone is not null), 0
+            ).phone as central_phone,
+            coalesce(
+                get(
+                    filter(contacts, x -> x.type = 'office' and x.phone is not null), 0
+                ).phone,
+                get(
+                    filter(contacts, x -> x.type = 'central' and x.phone is not null), 0
+                ).phone,
+                get(filter(contacts, x -> x.phone is not null), 0).phone
+            ) as phone,
+            get(
+                filter(urls, x -> x.type = 'website' and x.url is not null), 0
+            ).url as website_url,
+            get(
+                filter(urls, x -> x.type = 'linkedin' and x.url is not null), 0
+            ).url as linkedin_url,
+            get(
+                filter(urls, x -> x.type = 'facebook' and x.url is not null), 0
+            ).url as facebook_url,
+            get(
+                filter(urls, x -> x.type = 'twitter' and x.url is not null), 0
+            ).url as twitter_url
+        from renamed
     )
 select *
-from renamed
+from flattened_contacts_and_urls

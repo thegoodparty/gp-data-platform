@@ -8,42 +8,10 @@ with
         select * from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
     ),
 
-    extracted_contacts_and_urls as (
-        select
-            office_holders.*,
-            get(
-                filter(contacts, x -> x.type = 'primary' and x.email is not null), 0
-            ).email as email,
-            get(
-                filter(contacts, x -> x.type = 'office' and x.phone is not null), 0
-            ).phone as office_phone,
-            get(
-                filter(contacts, x -> x.type = 'central' and x.phone is not null), 0
-            ).phone as central_phone,
-            get(
-                filter(urls, x -> x.type = 'website' and x.url is not null), 0
-            ).url as website_url,
-            get(
-                filter(urls, x -> x.type = 'linkedin' and x.url is not null), 0
-            ).url as linkedin_url,
-            get(
-                filter(urls, x -> x.type = 'facebook' and x.url is not null), 0
-            ).url as facebook_url,
-            get(
-                filter(urls, x -> x.type = 'twitter' and x.url is not null), 0
-            ).url as twitter_url
-        from office_holders
-    ),
-
     derived_fields as (
         select
-            extracted_contacts_and_urls.*,
+            office_holders.*,
             concat(first_name, ' ', last_name) as full_name,
-            coalesce(
-                office_phone,
-                central_phone,
-                get(filter(contacts, x -> x.phone is not null), 0).phone
-            ) as phone,
             {{
                 generate_candidate_office_from_position(
                     "position_name",
@@ -65,11 +33,8 @@ with
                 when get(party_names, 0) is null
                 then null
                 else {{ parse_party_affiliation("get(party_names, 0)") }}
-            end as party_affiliation,
-            case
-                when end_at >= current_date() or end_at is null then true else false
-            end as is_current_term
-        from extracted_contacts_and_urls
+            end as party_affiliation
+        from office_holders
     ),
 
     elected_officials as (
@@ -124,7 +89,6 @@ with
             district,
             start_at as term_start_date,
             end_at as term_end_date,
-            is_current_term,
             appointed as is_appointed,
             is_judicial,
             is_vacant,
@@ -173,7 +137,6 @@ select
     district,
     term_start_date,
     term_end_date,
-    is_current_term,
     is_appointed,
     is_judicial,
     is_vacant,

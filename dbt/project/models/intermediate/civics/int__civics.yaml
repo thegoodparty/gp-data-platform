@@ -712,15 +712,6 @@ models:
                 values:
                   - ballotready
 
-      - name: is_current_term
-        description: Whether the official's term is current or has an unknown end date
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - true
-                  - false
-
       - name: created_at
         data_tests:
           - not_null
