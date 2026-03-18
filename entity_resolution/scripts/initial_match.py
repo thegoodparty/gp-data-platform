@@ -239,7 +239,7 @@ def save_results(
     # CSV parsers that don't support multiline quoted fields (e.g. Databricks).
     def to_json(v):
         if v is None or (isinstance(v, float) and pd.isna(v)):
-            return "null"
+            return "[]"
         return json.dumps(list(v))
 
     for col in ["first_name_aliases_l", "first_name_aliases_r"]:
