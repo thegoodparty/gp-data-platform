@@ -20,10 +20,18 @@ with
             get(
                 filter(contacts, x -> x.type = 'central' and x.phone is not null), 0
             ).phone as central_phone,
-            get(filter(urls, x -> x.type = 'website'), 0).url as website_url,
-            get(filter(urls, x -> x.type = 'linkedin'), 0).url as linkedin_url,
-            get(filter(urls, x -> x.type = 'facebook'), 0).url as facebook_url,
-            get(filter(urls, x -> x.type = 'twitter'), 0).url as twitter_url
+            get(
+                filter(urls, x -> x.type = 'website' and x.url is not null), 0
+            ).url as website_url,
+            get(
+                filter(urls, x -> x.type = 'linkedin' and x.url is not null), 0
+            ).url as linkedin_url,
+            get(
+                filter(urls, x -> x.type = 'facebook' and x.url is not null), 0
+            ).url as facebook_url,
+            get(
+                filter(urls, x -> x.type = 'twitter' and x.url is not null), 0
+            ).url as twitter_url
         from office_holders
     ),
 
@@ -31,6 +39,11 @@ with
         select
             extracted_contacts_and_urls.*,
             concat(first_name, ' ', last_name) as full_name,
+            coalesce(
+                office_phone,
+                central_phone,
+                get(filter(contacts, x -> x.phone is not null), 0).phone
+            ) as phone,
             {{
                 generate_candidate_office_from_position(
                     "position_name",
@@ -61,15 +74,13 @@ with
 
     elected_officials as (
         select
+            -- BallotReady's office_holder_id is the natural key for the
+            -- office-holder term grain and avoids collisions across positions.
             {{
                 generate_salted_uuid(
                     fields=[
-                        "first_name",
-                        "last_name",
-                        "state",
-                        "candidate_office",
-                        "cast(start_at as string)",
-                        "district",
+                        "'ballotready_office_holder'",
+                        "cast(br_office_holder_id as string)",
                     ]
                 )
             }} as gp_elected_official_id,
@@ -85,7 +96,7 @@ with
                                 "state",
                                 "cast(null as string)",
                                 "email",
-                                "coalesce(office_phone, central_phone, get(filter(contacts, x -> x.phone is not null), 0).phone)",
+                                "phone",
                             ]
                         )
                     }}
@@ -100,11 +111,7 @@ with
             suffix,
             full_name,
             email,
-            coalesce(
-                office_phone,
-                central_phone,
-                get(filter(contacts, x -> x.phone is not null), 0).phone
-            ) as phone,
+            phone,
             office_phone,
             central_phone,
             position_name,

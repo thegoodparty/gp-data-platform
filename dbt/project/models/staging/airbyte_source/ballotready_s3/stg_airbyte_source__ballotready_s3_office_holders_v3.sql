@@ -20,7 +20,7 @@ with
             from_json(
                 regexp_replace(
                     regexp_replace({{ adapter.quote("contacts") }}, '=>', ':'),
-                    'nil',
+                    '\\bnil\\b',
                     'null'
                 ),
                 'ARRAY<STRUCT<email: STRING, phone: STRING, type: STRING>>'

@@ -616,12 +616,19 @@ models:
       - name: gp_elected_official_id
         description: >
           Primary key - internally generated UUID for elected officials.
-          Generated from: first_name, last_name, state, candidate_office,
-          term_start_date, district.
+          Generated from the BallotReady office-holder natural key to preserve
+          uniqueness at the office-holder term grain.
         data_tests:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_candidate_id
+        description: >
+          Best-effort candidate identifier using the BallotReady candidate UUID
+          pattern and elected-official contact fields. This is not guaranteed to
+          match `int__civics_candidate_ballotready.gp_candidate_id` because the
+          candidate model also enriches from the BallotReady person API.
 
       - name: br_office_holder_id
         description: BallotReady natural key for the office-holder term record
@@ -658,7 +665,9 @@ models:
         description: U.S. state (2-letter code)
         data_tests:
           - not_null
-          - is_state_abbreviation
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
 
       - name: office_level
         description: >
