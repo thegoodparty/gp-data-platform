@@ -754,6 +754,38 @@ models:
           Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
+      - name: primary_election_date
+        description: Date of the primary election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: general_election_date
+        description: Date of the general election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -814,7 +846,7 @@ models:
           NULL for 2026+ BallotReady records.
 
       - name: stage_type
-        description: Type of election stage (primary, general, runoff)
+        description: Type of election stage (primary, general, primary runoff, general runoff)
         data_tests:
           - not_null
           - accepted_values:
