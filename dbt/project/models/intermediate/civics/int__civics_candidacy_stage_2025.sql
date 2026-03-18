@@ -125,9 +125,10 @@ with
         select
             stage.gp_candidacy_stage_id,
             stage.gp_candidacy_id,
-            coalesce(
-                ves.gp_election_stage_id, stage.gp_election_stage_id
-            ) as gp_election_stage_id,
+            -- Uses the surviving election_stage_id from the dedup join.
+            -- When gp_election_stage_id is null (no DDHQ match), the WHERE
+            -- clause preserves the row and this column stays null.
+            ves.gp_election_stage_id,
             stage.candidate_name,
             stage.source_candidate_id,
             stage.source_race_id,
