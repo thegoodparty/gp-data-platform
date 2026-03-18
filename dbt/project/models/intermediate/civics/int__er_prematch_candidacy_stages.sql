@@ -270,7 +270,7 @@ with
                 when
                     lower(ddhq.race_name) like '%alderperson%'
                     or lower(ddhq.race_name) like '%alderman%'
-                    or lower(ddhq.race_name) like '%alder %'
+                    or lower(ddhq.race_name) like '%alder%'
                 then 'Alderman'
                 when
                     lower(ddhq.race_name) like '%town council%'
@@ -332,7 +332,7 @@ with
                 when
                     lower(ddhq.race_name) like '%alderperson%'
                     or lower(ddhq.race_name) like '%alderman%'
-                    or lower(ddhq.race_name) like '%alder %'
+                    or lower(ddhq.race_name) like '%alder%'
                 then 'Alderman'
                 when
                     lower(ddhq.race_name) like '%town council%'
