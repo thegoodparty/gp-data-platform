@@ -200,7 +200,7 @@ with
                     "first_name", "last_name", "official_office_name"
                 )
             }} as candidate_slug,
-            {{ map_ballotready_office_type("candidate_office") }} as office_type,
+            {{ map_office_type("candidate_office") }} as office_type,
             'Self-Filer Lead' as type,
             'jesse@goodparty.org' as contact_owner,
             'Jesse Diliberto' as owner_name,

@@ -1,8 +1,9 @@
 {#
-  This macro maps Ballotready columns
+  Maps candidate_office values to standardized office_type categories.
+  Shared across all sources (BallotReady, TechSpeed, DDHQ).
   Usage: {{ map_office_type(column_name) }}
   #}
-{% macro map_ballotready_office_type(column_name) %}
+{% macro map_office_type(column_name) %}
     case
         when {{ column_name }} = 'Alderman'
         then 'Alderman'
@@ -117,6 +118,15 @@
         when {{ column_name }} = 'Township Council'
         then 'City Council'
         when {{ column_name }} = 'Water Supply Board'
+        then 'Other'
+        -- DDHQ-sourced candidate_office values
+        when {{ column_name }} = 'County Legislature'
+        then 'County Supervisor'
+        when {{ column_name }} = 'County Commissioner'
+        then 'County Supervisor'
+        when {{ column_name }} = 'Clerk/Treasurer'
+        then 'Clerk/Treasurer'
+        when {{ column_name }} = 'Board of Trustees'
         then 'Other'
         else 'Other'
     end

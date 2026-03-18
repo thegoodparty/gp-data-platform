@@ -68,7 +68,7 @@ with
                 when lower(br.level) = 'city' then 'Local' else initcap(br.level)
             end as office_level,
             {{
-                map_ballotready_office_type(
+                map_office_type(
                     generate_candidate_office_from_position(
                         "br.position_name",
                         "br.normalized_position_name",
@@ -245,7 +245,8 @@ with
             {{ parse_party_affiliation("ddhq.candidate_party") }} as party,
             {{ parse_ddhq_candidate_office("ddhq.race_name") }} as candidate_office,
             {{ parse_ddhq_office_level("ddhq.race_name") }} as office_level,
-            {{ map_ddhq_office_type("ddhq.race_name") }} as office_type,
+            {{ map_office_type(parse_ddhq_candidate_office("ddhq.race_name")) }}
+            as office_type,
             -- Extract district/ward from race_name
             -- Try keyword-prefixed first (Ward 3, District 5), then fall back
             -- to any trailing number (Board of Supervisors 19)

@@ -193,7 +193,7 @@ with
             end as is_partisan,
 
             -- Compute office_type here so it's available for generate_gp_election_id
-            {{ map_ballotready_office_type("candidate_office") }} as office_type,
+            {{ map_office_type("candidate_office") }} as office_type,
 
             rolled.* except (seats_available)
 
