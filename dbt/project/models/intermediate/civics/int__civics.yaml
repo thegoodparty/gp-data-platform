@@ -39,7 +39,7 @@ models:
 
   - name: int__civics_election_stage_2025
     description: >
-      Historical archive of election stages (primary, general, runoff) from the
+      Historical archive of election stages (primary, general, primary runoff, general runoff) from the
       general mart with election stage dates on or before 2025-12-31.
       Snapshot from 2026-01-22.
     columns:
@@ -195,7 +195,7 @@ models:
 
   - name: int__civics_candidacy_stage_2025
     description: >
-      Historical archive of candidacy stages (primary, general, runoff results)
+      Historical archive of candidacy stages (primary, general, primary runoff, general runoff results)
       from the general mart with election stages on or before 2025-12-31.
       Uses archived HubSpot data from 2026-01-22 for election results.
     columns:

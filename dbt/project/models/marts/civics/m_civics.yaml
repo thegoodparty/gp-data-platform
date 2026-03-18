@@ -464,7 +464,7 @@ models:
 
   - name: candidacy_stage
     description: >
-      Candidacy stages (primary, general, runoff results) combining 2025 HubSpot/DDHQ archive
+      Candidacy stages (primary, general, primary runoff, general runoff results) combining 2025 HubSpot/DDHQ archive
       and 2026+ BallotReady data.
 
       Grain: One row per candidacy stage (candidacy + election stage combination).
@@ -803,7 +803,7 @@ models:
 
   - name: election_stage
     description: >
-      Election stages (primary, general, runoff) combining 2025 DDHQ archive
+      Election stages (primary, general, primary runoff, general runoff) combining 2025 DDHQ archive
       and 2026+ BallotReady data.
 
       Grain: One row per election stage.
