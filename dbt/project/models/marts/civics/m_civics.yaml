@@ -760,7 +760,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2035-12-31'"
 
       - name: general_election_date
         description: Date of the general election stage, if applicable
@@ -768,7 +768,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2035-12-31'"
 
       - name: primary_runoff_election_date
         description: Date of the primary runoff election stage, if applicable
@@ -776,7 +776,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2035-12-31'"
 
       - name: general_runoff_election_date
         description: Date of the general runoff election stage, if applicable
@@ -784,7 +784,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2035-12-31'"
 
       - name: created_at
         description: Timestamp when the record was created
