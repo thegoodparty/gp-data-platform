@@ -26,6 +26,15 @@ with
             -- Suffix-like substrings that should NOT be stripped
             ('Junior Smith', 'Junior Smith'),
             ('Ivan Senior', 'Ivan Senior'),
+            -- Period is literal, not wildcard (regression test for \\.? escaping)
+            -- If regex uses \.? instead of \\.?, the . matches any char and
+            -- these would incorrectly strip "Jrx" / "Srx"
+            ('John Smith Jrx', 'John Smith Jrx'),
+            ('John Smith Srx', 'John Smith Srx'),
+            ('John Smith Jr!', 'John Smith Jr!'),
+            -- Period specifically should be stripped
+            ('Mary Jones Sr.', 'Mary Jones'),
+            ('Bob White Jr.', 'Bob White'),
             -- Double suffix (macro applies regex twice)
             ('John Smith Jr Jr', 'John Smith'),
             -- Empty / null
