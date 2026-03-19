@@ -84,7 +84,12 @@ with
                 else 'Other'
             end as office_type_derived,
             -- party_affiliation: via parse_party_affiliation macro
-            {{ parse_party_affiliation("party") }} as party_affiliation
+            -- NULL guard mirrors BR EO model; prevents NULL/blank → 'Other'
+            case
+                when nullif(trim(party), '') is null
+                then null
+                else {{ parse_party_affiliation("party") }}
+            end as party_affiliation
         from with_clean_state
     ),
 
