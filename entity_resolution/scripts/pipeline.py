@@ -1,12 +1,12 @@
 """
-Splink entity resolution: BallotReady x TechSpeed candidacies.
+Splink entity resolution: multi-source candidacy matching.
 
 Usage:
     cd entity_resolution
     uv run python scripts/cli.py match --input data/input.csv
-    uv run python scripts/cli.py match --input data/input.csv --output-dir results/
+    uv run python scripts/cli.py match --input catalog.schema.table --output-table catalog.schema.output
 
-Input:  CSV exported from int__er_prematch_candidacy_stages
+Input:  CSV or Databricks table from int__er_prematch_candidacy_stages
 Output: results/pairwise_predictions.csv
         results/clustered_candidacies.csv
         results/match_weights_chart.{html,png}
@@ -28,10 +28,9 @@ PREDICT_THRESHOLD = 0.01
 CLUSTER_THRESHOLD = 0.95
 
 
-def load_and_prepare(input_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load prematch CSV, clean nulls, return (br_df, ts_df)."""
-    df = pd.read_csv(input_path, dtype=str)
-    print(f"Loaded {len(df):,} rows from {input_path}")
+def load_and_prepare(df: pd.DataFrame) -> list[pd.DataFrame]:
+    """Clean nulls, parse aliases, return one DataFrame per source (sorted by name)."""
+    print(f"Preparing {len(df):,} rows")
     print(f"\nSource distribution:\n{df['source_name'].value_counts().to_string()}")
 
     df["election_date"] = pd.to_datetime(
@@ -47,11 +46,14 @@ def load_and_prepare(input_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     df = df.where(df.notna(), None)
     df = df.replace({"": None, "nan": None, "null": None})
 
-    br_df = df[df["source_name"] == "ballotready"].copy()
-    ts_df = df[df["source_name"] == "techspeed"].copy()
-    print(f"Split: {len(br_df):,} BallotReady, {len(ts_df):,} TechSpeed")
+    sources = sorted(df["source_name"].unique())
+    source_dfs = []
+    for src in sources:
+        src_df = df[df["source_name"] == src].copy()
+        print(f"  {src}: {len(src_df):,} records")
+        source_dfs.append(src_df)
 
-    return br_df, ts_df
+    return source_dfs
 
 
 SETTINGS = SettingsCreator(
@@ -238,8 +240,13 @@ def save_results(
     # numpy array repr wraps long arrays across multiple lines, which breaks
     # CSV parsers that don't support multiline quoted fields (e.g. Databricks).
     def to_json(v):
+        # This is annoying, but data loaded from Databricks land as native
+        # np.arrays, while data ingested from CSV files are parsed as strings
+        # and verted from JSON
         if v is None or (isinstance(v, float) and pd.isna(v)):
             return "[]"
+        if hasattr(v, "tolist"):
+            return json.dumps(v.tolist())
         return json.dumps(list(v))
 
     for col in ["first_name_aliases_l", "first_name_aliases_r"]:
@@ -266,19 +273,18 @@ def save_results(
     print(f"\nResults saved to {output_dir}/")
 
 
-def run(input_path: Path, output_dir: Path) -> None:
-    """Load data, train, predict, cluster, save."""
-    br_df, ts_df = load_and_prepare(input_path)
-    linker = Linker([br_df, ts_df], SETTINGS, DuckDBAPI())
+def run(input_df: pd.DataFrame, output_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Prepare data, train, predict, cluster, save. Returns (pairwise_df, clustered_df)."""
+    source_dfs = load_and_prepare(input_df)
+    linker = Linker(source_dfs, SETTINGS, DuckDBAPI())
     train_model(linker)
     pairwise_df, clustered_df = predict_and_cluster(linker)
     save_results(linker, pairwise_df, clustered_df, output_dir)
+    return pairwise_df, clustered_df
 
 
 if __name__ == "__main__":
     script_dir = Path(__file__).resolve().parent
     project_dir = script_dir.parent
-    run(
-        input_path=project_dir / "data" / "input.csv",
-        output_dir=project_dir / "results",
-    )
+    df = pd.read_csv(project_dir / "data" / "input.csv", dtype=str)
+    run(input_df=df, output_dir=project_dir / "results")

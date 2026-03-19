@@ -1,30 +1,116 @@
-# Entity Resolution: BallotReady x TechSpeed Candidacies
+# Entity Resolution: Multi-Source Candidacy Matching
 
 Splink-based probabilistic record linkage to match candidacy records across
-BallotReady (BR) and TechSpeed (TS). TechSpeed receives BallotReady race data,
-enhances some records (adding phone/email), and also discovers "net new"
-candidates BallotReady doesn't have yet. The overlap means we need entity
-resolution to avoid duplicates before combining both sources in the civics mart.
+multiple data sources. Currently links BallotReady (BR) and TechSpeed (TS)
+records, but the pipeline supports any number of sources discovered dynamically
+from the `source_name` column.
 
 ## Quick start
 
+### Local CSV
+
 ```bash
 cd entity_resolution
-uv run python scripts/cli.py match --input data/input.csv
+uv run python scripts/cli.py match --input input.csv
 ```
 
-Or with a custom input file and output directory:
+### Databricks input + output
 
 ```bash
-uv run python scripts/cli.py match --input /path/to/prematch.csv --output-dir /path/to/output/
+export DATABRICKS_HOST=dbc-abc123.cloud.databricks.com
+export DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
+export DATABRICKS_CLIENT_ID=<service-principal-client-id>
+export DATABRICKS_CLIENT_SECRET=<service-principal-secret>
+
+uv run python scripts/cli.py match \
+  --input goodparty_data_catalog.dbt_dball.int__er_prematch_candidacy_stages \
+  --output-table goodparty_data_catalog.dbt_dball.er_clustered_candidacies \
+  --pairwise-table goodparty_data_catalog.dbt_dball.er_pairwise_predictions \
+  --overwrite
 ```
 
-**Input:** CSV file exported from `dbt_dball.int__er_prematch_candidacy_stages`
+### Docker
+
+```bash
+docker build -t er-pipeline entity_resolution/
+
+# Show help
+docker run er-pipeline match --help
+
+# Run with Databricks I/O
+docker run \
+  -e DATABRICKS_HOST -e DATABRICKS_HTTP_PATH \
+  -e DATABRICKS_CLIENT_ID -e DATABRICKS_CLIENT_SECRET \
+  er-pipeline match \
+  --input goodparty_data_catalog.dbt_dball.int__er_prematch_candidacy_stages \
+  --output-table goodparty_data_catalog.dbt_dball.er_clustered_candidacies
+```
+
+## CLI reference
+
+```
+Usage: cli.py match [OPTIONS]
+
+Options:
+  --input TEXT           Path to prematch CSV or Databricks FQN (catalog.schema.table). Required.
+  --output-dir PATH     Directory for local results (CSVs + charts). Default: results/
+  --output-table TEXT    Databricks FQN to upload clustered results.
+  --pairwise-table TEXT  Databricks FQN to upload pairwise predictions.
+  --overwrite            Overwrite existing Databricks output tables.
+  --run-audit/--no-audit Run audit reports after matching (default: enabled).
+```
+
+### Audit subcommands
+
+```bash
+uv run python scripts/cli.py audit summary --input input.csv --results-dir results/
+uv run python scripts/cli.py audit low-confidence --results-dir results/ --sample 20
+uv run python scripts/cli.py audit false-negatives --input input.csv --results-dir results/
+```
+
+When `--run-audit` is enabled (default), all three audits run automatically after
+matching and log results. The standalone commands above are available for manual
+re-runs against saved CSV results.
+
+**Input:** CSV file or Databricks table from `int__er_prematch_candidacy_stages`
 **Output:**
 - `results/pairwise_predictions.csv` — all scored candidate pairs
 - `results/clustered_candidacies.csv` — all records with cluster assignments
 - `results/match_weights_chart.html` — Splink match weight visualization
 - `results/m_u_parameters_chart.html` — learned m/u probability visualization
+- `results/audit_summary.csv` — match coverage stats per source
+- `results/audit_low_confidence.csv` — most ambiguous pairs for review
+- `results/audit_false_negatives.csv` — plausible matches the model missed
+
+## Authentication
+
+Two auth modes are supported, resolved automatically:
+
+### Local development (Databricks CLI)
+
+If you've authenticated with the Databricks CLI (`databricks configure` or
+`databricks auth login`), the pipeline picks up your profile automatically.
+Only one env var is needed:
+
+```bash
+export DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/abcdef1234567890
+```
+
+`DATABRICKS_HOST` is optional — it will be read from your CLI profile if not set.
+
+### Production (OAuth M2M service principal)
+
+Used in Docker containers and Airflow. All four env vars are required:
+
+| Variable | Description |
+|----------|-------------|
+| `DATABRICKS_HOST` | Databricks workspace hostname |
+| `DATABRICKS_HTTP_PATH` | SQL warehouse HTTP path |
+| `DATABRICKS_CLIENT_ID` | Service principal client ID |
+| `DATABRICKS_CLIENT_SECRET` | Service principal secret |
+
+The pipeline detects which mode to use based on whether `DATABRICKS_CLIENT_ID`
+and `DATABRICKS_CLIENT_SECRET` are set.
 
 ## Design: candidate-level vs race-level attributes
 
@@ -57,7 +143,8 @@ these cases by requiring name agreement and office/race consistency.
 
 The script uses [Splink 4](https://moj-analytical-services.github.io/splink/)
 in `link_only` mode (cross-source matching, no within-source dedup) with
-DuckDB as the backend.
+DuckDB as the backend. Sources are discovered dynamically from
+`df["source_name"].unique()` and passed as a list to the Splink `Linker`.
 
 ### Preprocessing
 
@@ -89,9 +176,9 @@ constraints so that only candidates plausibly in the same race are compared.
 
 | Order | Rule | Purpose |
 |-------|------|---------|
-| 1 | `br_race_id` (exact) | High-cardinality first pass. Pairs TS records with BR records in the same race. Covers the majority of matches. |
-| 2 | `state + election_date + office_name (JW >= 0.88) + last_name` (exact) | Catches cross-source office formatting differences (e.g. "republic city council - ward 3" vs "republic city ward 3") for records without a shared race ID. |
-| 3 | `state + last_name + election_date` (exact) | Broad catch-all for net-new TS records and cases not covered by race ID or office name. |
+| 1 | `br_race_id` (exact) | High-cardinality first pass. Pairs records in the same race. Covers the majority of matches. |
+| 2 | `state + election_date + office_name (JW >= 0.88) + last_name` (exact) | Catches cross-source office formatting differences for records without a shared race ID. |
+| 3 | `state + last_name + election_date` (exact) | Broad catch-all for net-new records and cases not covered by race ID or office name. |
 | 4 | `state + election_date + office_name (JW >= 0.88) + last_name (JW >= 0.88)` | Catches last name typos/variants across sources with different office formatting. |
 | 5 | `phone` (exact) | Contact-info matches where names may differ. |
 | 6 | `email` (exact) | Contact-info matches where names may differ. |
@@ -112,7 +199,7 @@ All comparisons contribute Bayes factors to the match score:
 | `phone` | Exact | match, else | |
 | `state` | Exact | match, else | |
 | `election_date` | Exact | match, else | |
-| `official_office_name` | Jaro-Winkler | exact, >= 0.95, >= 0.88, >= 0.75, else | 0.75 tier catches cross-source formatting (e.g. "durham school board" vs "durham county board of education") |
+| `official_office_name` | Jaro-Winkler | exact, >= 0.95, >= 0.88, >= 0.75, else | 0.75 tier catches cross-source formatting |
 | `district_identifier` | Exact | match, else | Numeric district; provides positive/negative Bayesian evidence |
 
 ### Training
@@ -121,7 +208,7 @@ Four EM passes with different blocking ensure all comparison columns get
 trained. Each pass blocks on one or more columns (fixing them) and estimates
 m probabilities for the rest:
 
-1. Block on `last_name + state + election_date` -> trains first_name, party, email, phone, official_office_name, district_identifier. Blocking on all three prevents EM contamination from same-race different-person pairs that would inflate the first_name non-agreement m probability.
+1. Block on `last_name + state + election_date` -> trains first_name, party, email, phone, official_office_name, district_identifier
 2. Block on `first_name` -> trains last_name, party, email, phone, state, election_date, official_office_name, district_identifier
 3. Block on `email` -> trains last_name, first_name, party, phone, state, election_date, official_office_name, district_identifier
 4. Block on `state + election_date` -> trains last_name, first_name, party, email, phone, official_office_name, district_identifier
@@ -144,7 +231,7 @@ true candidacy matches (same person + same office + same election):
 
 3. **Race ID filter** — excludes pairs where both sides have a known integer
    `br_race_id` and they differ, **unless** the office names match well
-   (JW >= 0.88). BR and TS sometimes assign different race IDs to the same
+   (JW >= 0.88). Sources sometimes assign different race IDs to the same
    race, so a strong office name match overrides the race ID disagreement.
 
 ### Thresholds
@@ -236,45 +323,15 @@ A small number of true matches are systematically missed:
    - `a.j.` / `a.` (initial/period handling)
    - `fee fee` / `iphenia`, `clutch` / `claude` (exotic nicknames)
 
-## Current results (42,249 input records)
+## Testing
 
-| Metric | Value |
-|--------|-------|
-| Input records | 22,925 BR + 19,324 TS |
-| Pairwise pairs above 0.01 | 17,112 |
-| Removed by post-prediction filters | 12,327 |
-| Cross-source matched clusters | 4,685 |
-| Within-source duplicate clusters | 0 |
+```bash
+cd entity_resolution
+uv run --extra dev pytest tests/ -v
+```
 
-## Diagnostic charts
+## CI/CD
 
-### Match weights
-
-Shows how much each comparison column contributes to the overall match score.
-Bars to the right indicate evidence *for* a match when columns agree; bars to
-the left indicate evidence *against* when they disagree.
-
-![Match weights chart](results/match_weights_chart.png)
-
-<sub>[Interactive version](results/match_weights_chart.html)</sub>
-
-### M/U parameters
-
-Shows the learned probability distributions for each comparison level. The **m
-probability** is the chance two records agree on a column *given they are a true
-match*; the **u probability** is the chance they agree *given they are not a
-match*. Columns where m is high and u is low are the most discriminating.
-
-![M/U parameters chart](results/m_u_parameters_chart.png)
-
-<sub>[Interactive version](results/m_u_parameters_chart.html)</sub>
-
-## Next steps
-
-### Productionization
-- Convert Splink logic into a **dbt Python model** on Databricks. Reference
-  pattern: `int__techspeed_candidates_fuzzy_deduped.py`
-- Output table (`int__er_match_candidacies`) should contain `er_cluster_id`,
-  source IDs, `match_probability`, and all prematch columns
-- Update `marts/civics/candidacy.sql` to union BR + TS candidacies, join ER
-  clusters, and deduplicate (BR wins most fields, TS wins phone/email)
+The `.github/workflows/er_container.yml` workflow:
+- **On PR:** builds the Docker image (validates it compiles)
+- **On push to main:** builds and pushes to `ghcr.io/goodparty/er-pipeline:latest` and `:sha`

@@ -1,1 +1,1 @@
-"""Entity resolution scripts for BallotReady x TechSpeed candidacy matching."""
+"""Entity resolution scripts for multi-source candidacy matching."""
