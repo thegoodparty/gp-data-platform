@@ -713,6 +713,138 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_elected_official_techspeed
+    description: >
+      TechSpeed office holders transformed into the civics mart
+      elected_officials schema.
+
+      Grain: One row per officeholder-position (current snapshot, deduplicated).
+
+      Source: stg_airbyte_source__techspeed_gdrive_officeholders.
+
+      Key differences from BallotReady EO model:
+      - ts_officeholder_id is NOT a person-level PK (reused across people)
+      - UUID uses composite key: ts_officeholder_id + position_id + office_name_clean
+      - No term dates (TechSpeed doesn't track terms)
+      - State requires clean_states join (mixed format + blanks)
+      - Schema is narrower (omits BR-only columns); merge model owns alignment
+
+    columns:
+      - name: gp_elected_official_id
+        description: >
+          Primary key - internally generated UUID for elected officials.
+          Generated from composite key: ts_officeholder_id + position_id +
+          office_name_clean to handle source ID collisions.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: ts_officeholder_id
+        description: >
+          TechSpeed officeholder ID. Not unique — source reuses across
+          genuinely different people. Carried for traceability only.
+        data_tests:
+          - not_null
+
+      - name: ts_position_id
+        description: TechSpeed position ID
+        data_tests:
+          - not_null
+
+      - name: first_name
+        description: Elected official first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Elected official last name
+        data_tests:
+          - not_null
+
+      - name: position_name
+        description: Raw TechSpeed office name (from office_name field)
+        data_tests:
+          - not_null
+
+      - name: state
+        description: >
+          U.S. state (2-letter code, via clean_states join).
+          ~3.7% of rows have NULL state after clean_states processing
+          (blank source values nullified).
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+          - is_state_abbreviation:
+              config:
+                severity: warn
+
+      - name: office_level
+        description: >
+          Office level derived from TechSpeed level field.
+          City-level offices are mapped to Local.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+
+      - name: party_affiliation
+        description: Normalized party affiliation via parse_party_affiliation macro
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: is_incumbent
+        description: Whether the officeholder is an incumbent (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_judicial
+        description: Whether the position is judicial, derived from source office_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_uncontested
+        description: Whether the position is uncontested (boolean, may be null)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - techspeed
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
   - name: int__er_prematch_candidacy_stages
     description: >
       Entity resolution prematch table: BallotReady x TechSpeed candidacy-stages
