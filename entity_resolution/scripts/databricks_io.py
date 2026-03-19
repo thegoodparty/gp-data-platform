@@ -53,7 +53,7 @@ def is_databricks_fqn(value: str) -> bool:
     if os.sep in value or value.endswith(".csv"):
         return False
     parts = value.split(".")
-    return len(parts) >= 3 and all(p.strip() for p in parts)
+    return len(parts) == 3 and all(p.strip() for p in parts)
 
 
 def _strip_scheme(url: str) -> str:
@@ -176,9 +176,10 @@ def _table_exists(cursor, catalog: str, schema: str, table: str) -> bool:
     """Check if a table exists via information_schema."""
     cursor.execute(
         f"SELECT 1 FROM `{catalog}`.information_schema.tables "
-        f"WHERE table_catalog = '{catalog}' "
-        f"AND table_schema = '{schema}' "
-        f"AND table_name = '{table}'"
+        "WHERE table_catalog = ? "
+        "AND table_schema = ? "
+        "AND table_name = ?",
+        parameters=[catalog, schema, table],
     )
     return cursor.fetchone() is not None
 
@@ -216,7 +217,11 @@ def write_table(
             for _, row in batch.iterrows():
                 vals = []
                 for v in row:
-                    if v is None or (isinstance(v, float) and pd.isna(v)):
+                    if (
+                        v is None
+                        or (isinstance(v, float) and pd.isna(v))
+                        or v is pd.NaT
+                    ):
                         vals.append("NULL")
                     elif isinstance(v, (int, float)):
                         vals.append(str(v))
