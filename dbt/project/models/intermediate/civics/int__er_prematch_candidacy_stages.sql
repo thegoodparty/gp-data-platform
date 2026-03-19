@@ -272,20 +272,12 @@ with
             || '_'
             || cast(d.race_id as string) as source_id,
             lower(
-                trim(
-                    split(
-                        {{ remove_techspeed_name_suffixes("trim(d.candidate)") }}, ' '
-                    )[0]
-                )
+                trim(split({{ remove_name_suffixes("trim(d.candidate)") }}, ' ')[0])
             ) as first_name,
             lower(
                 trim(
                     element_at(
-                        split(
-                            {{ remove_techspeed_name_suffixes("trim(d.candidate)") }},
-                            ' '
-                        ),
-                        -1
+                        split({{ remove_name_suffixes("trim(d.candidate)") }}, ' '), -1
                     )
                 )
             ) as last_name,

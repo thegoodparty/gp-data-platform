@@ -99,7 +99,7 @@ with
             _ab_source_file_url,
             _airbyte_extracted_at,
             -- Remove name suffixes (Jr, Sr, II, III, etc.)
-            {{ remove_techspeed_name_suffixes("last_name") }} as last_name_no_suffix,
+            {{ remove_name_suffixes("last_name") }} as last_name_no_suffix,
             -- Remove trailing commas
             regexp_replace(last_name_no_suffix, ',$', '') as last_name_no_comma,
             -- Remove trailing single character after space
