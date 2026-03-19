@@ -38,7 +38,9 @@ select
 
     -- election context
     properties_number_opponents as number_of_opponents,
-    properties_number_of_seats_available as seats_available,
+    try_cast(
+        try_cast(properties_number_of_seats_available as double) as int
+    ) as seats_available,
     properties_uncontested as uncontested,
     properties_open_seat as open_seat,
     properties_start_date as term_start_date,

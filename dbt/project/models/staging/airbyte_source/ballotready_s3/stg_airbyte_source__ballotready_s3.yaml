@@ -32,6 +32,22 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: email
+        description: Primary contact email extracted from the BallotReady contacts array
+      - name: office_phone
+        description: Phone number from a BallotReady contact with type = office
+      - name: central_phone
+        description: Phone number from a BallotReady contact with type = central
+      - name: phone
+        description: Canonical phone number preferring office_phone, then central_phone, then any remaining contact phone
+      - name: website_url
+        description: Website URL extracted from the BallotReady urls array
+      - name: linkedin_url
+        description: LinkedIn URL extracted from the BallotReady urls array
+      - name: facebook_url
+        description: Facebook URL extracted from the BallotReady urls array
+      - name: twitter_url
+        description: Twitter URL extracted from the BallotReady urls array
 
   - name: stg_airbyte_source__ballotready_s3_recruitment_v1
     description: Recruitment data load from ballotready csvs in s3 bucket
