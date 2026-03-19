@@ -129,7 +129,7 @@ with
             nullif(trim(city), '') as mailing_city,
             state_clean as mailing_state,
             nullif(trim(postal_code), '') as mailing_zip,
-            cast(tier as int) as tier,
+            tier,
             nullif(trim(county_municipality), '') as county_municipality,
             nullif(trim(normalized_location), '') as normalized_location,
             ts_status,

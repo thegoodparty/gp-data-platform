@@ -745,6 +745,9 @@ models:
         data_tests:
           - not_null
 
+      - name: ts_normalized_position_id
+        description: TechSpeed normalized position ID
+
       - name: first_name
         description: Elected official first name
         data_tests:
@@ -755,10 +758,27 @@ models:
         data_tests:
           - not_null
 
+      - name: full_name
+        description: Concatenated first + last name
+
+      - name: email
+        description: >
+          Contact email. ~34.6% may be wrong-person (sourced from
+          fastpeoplesearch.com lookups). Treat with skepticism.
+
+      - name: phone
+        description: Cleaned phone number (punctuation stripped in staging)
+
       - name: position_name
         description: Raw TechSpeed office name (from office_name field)
         data_tests:
           - not_null
+
+      - name: normalized_position_name
+        description: TechSpeed normalized office name (from office_normalized field)
+
+      - name: candidate_office
+        description: Office name via initcap(office_normalized), used for display
 
       - name: state
         description: >
@@ -770,6 +790,12 @@ models:
           - is_state_abbreviation:
               config:
                 severity: warn
+
+      - name: city
+        description: City from source data
+
+      - name: district
+        description: Electoral district name
 
       - name: office_level
         description: >
@@ -843,8 +869,32 @@ models:
               arguments:
                 values: [true, false]
 
+      - name: mailing_address_line_1
+        description: Street address for mailing
+
+      - name: mailing_city
+        description: City for mailing address
+
+      - name: mailing_state
+        description: State for mailing address (2-letter code)
+
+      - name: mailing_zip
+        description: Postal code for mailing address
+
+      - name: tier
+        description: TechSpeed tier classification (integer)
+
+      - name: county_municipality
+        description: County or municipality from source data
+
+      - name: normalized_location
+        description: TechSpeed normalized location string
+
+      - name: ts_status
+        description: TechSpeed record status
+
       - name: candidate_id_source
-        description: Source system identifier
+        description: Source system identifier (always 'techspeed')
         data_tests:
           - accepted_values:
               arguments:

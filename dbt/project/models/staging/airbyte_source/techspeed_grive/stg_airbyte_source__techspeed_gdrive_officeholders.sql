@@ -50,7 +50,7 @@ with
             {{ adapter.quote("normalized_position_id") }},
             {{ adapter.quote("normalized_location") }},
             {{ adapter.quote("level") }},
-            {{ adapter.quote("tier") }},
+            cast({{ adapter.quote("tier") }} as int) as tier,
             {{ adapter.quote("party") }},
             {{ adapter.quote("partisan") }},
             {{ adapter.quote("is_incumbent") }} as is_incumbent_raw,
