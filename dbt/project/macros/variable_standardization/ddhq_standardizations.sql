@@ -35,12 +35,10 @@
         then 'Alderman'
         when
             lower({{ race_name_col }}) like '%town council%'
-            or lower({{ race_name_col }}) like '%selectperson%'
-        then 'Town Council'
-        when
-            lower({{ race_name_col }}) like '%town board%'
+            or lower({{ race_name_col }}) like '%town board%'
             or lower({{ race_name_col }}) like '%village board%'
             or lower({{ race_name_col }}) like '%village trustee%'
+            or lower({{ race_name_col }}) like '%selectperson%'
         then 'Town Council'
         when
             lower({{ race_name_col }}) like '%circuit court%'
