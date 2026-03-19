@@ -785,6 +785,29 @@ models:
                   - State
                   - Regional
 
+      - name: office_type
+        description: >
+          Normalized office type derived from TechSpeed office_type field
+          via a 34-variant case normalization map.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - City Council
+                  - Town Council
+                  - School Board
+                  - Mayor
+                  - Judge
+                  - Clerk/Treasurer
+                  - County Supervisor
+                  - Sheriff
+                  - State House
+                  - State Senate
+                  - Surveyor
+                  - Attorney
+                  - Other
+
       - name: party_affiliation
         description: Normalized party affiliation via parse_party_affiliation macro
         data_tests:
