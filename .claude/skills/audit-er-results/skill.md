@@ -16,8 +16,8 @@ script, then interpret the results before moving to the next step.
 ## Step 1: Summary Statistics
 
 ```bash
-cd /Users/danball/projects/gp-data-parent/gp-data-platform/entity_resolution
-uv run python scripts/audit_summary.py --input data/input.csv --results-dir results/
+cd entity_resolution
+uv run python scripts/audit_summary.py --results-dir results/
 ```
 
 Read `results/audit_summary.csv` and interpret the terminal output. Flag:
@@ -47,7 +47,7 @@ Summarize your findings as:
 ## Step 3: False Negative Review
 
 ```bash
-uv run python scripts/audit_false_negatives.py --input data/input.csv --results-dir results/ --sample 20
+uv run python scripts/audit_false_negatives.py --results-dir results/ --sample 20
 ```
 
 Read `results/audit_false_negatives.csv`. For each suspicious non-match:

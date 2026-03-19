@@ -40,7 +40,7 @@ DISPLAY_COLS = [
 
 def _name_similar(a: str | None, b: str | None, threshold: float = 0.88) -> bool:
     """Check if two names are similar using JW similarity or exact match."""
-    if not a or not b:
+    if pd.isna(a) or pd.isna(b):
         return False
     a, b = str(a).lower().strip(), str(b).lower().strip()
     if a == b:
@@ -87,7 +87,7 @@ def run_false_negatives(
         s_date = singleton.get("election_date")
         s_last = singleton.get("last_name")
 
-        if not s_state or not s_last:
+        if pd.isna(s_state) or pd.isna(s_last):
             continue
 
         # Look for candidates in other providers with same state + election date

@@ -268,6 +268,9 @@ def save_results(
 
 def run(input_path: Path, output_dir: Path) -> None:
     """Load data, train, predict, cluster, save."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    input_df = pd.read_csv(input_path, dtype=str)
+    input_df.to_parquet(output_dir / "input.parquet")
     br_df, ts_df = load_and_prepare(input_path)
     linker = Linker([br_df, ts_df], SETTINGS, DuckDBAPI())
     train_model(linker)
