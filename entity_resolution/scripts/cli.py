@@ -15,7 +15,7 @@ import click
 # Allow importing sibling modules when run as a script
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from initial_match import run  # noqa: E402
+from pipeline import run  # noqa: E402
 
 
 @click.group()

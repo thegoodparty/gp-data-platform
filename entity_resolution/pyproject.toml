@@ -1,7 +1,7 @@
 [project]
 name = "entity-resolution"
 version = "0.1.0"
-description = "Splink entity resolution: BallotReady x TechSpeed candidacies"
+description = "Splink entity resolution: multi-source candidacy matching"
 requires-python = ">=3.11"
 dependencies = [
     "click",
@@ -16,4 +16,10 @@ dependencies = [
 dev = [
     "jupyter",
     "matplotlib",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require Databricks connectivity",
 ]
