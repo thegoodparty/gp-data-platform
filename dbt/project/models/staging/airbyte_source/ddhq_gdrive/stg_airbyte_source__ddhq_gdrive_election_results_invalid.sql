@@ -1,25 +1,44 @@
 -- DDHQ election results rows that fail data quality checks.
--- Captures rows excluded from downstream models for investigation.
+-- Reads from the raw source (not the staging model) since staging
+-- filters these rows out.
 --
 -- Invalid reasons:
 -- null_candidate_id: candidate_id could not be cast to int (empty or non-numeric)
 -- unresolvable_state: race_name does not start with a recognized state name
 --
 with
-    stg as (
-        select * from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+    source as (
+        select * from {{ source("airbyte_source", "ddhq_gdrive_election_results") }}
+    ),
+
+    renamed as (
+        select
+            {{ adapter.quote("_airbyte_raw_id") }},
+            {{ adapter.quote("_airbyte_extracted_at") }},
+            cast({{ adapter.quote("date") }} as date) as date,
+            cast(try_cast({{ adapter.quote("race_id") }} as float) as int) as race_id,
+            {{ adapter.quote("candidate") }},
+            {{ adapter.quote("is_winner") }},
+            {{ adapter.quote("race_name") }},
+            cast(
+                cast(nullif({{ adapter.quote("candidate_id") }}, '') as float) as int
+            ) as candidate_id,
+            {{ adapter.quote("election_type") }},
+            {{ adapter.quote("candidate_party") }},
+            {{ adapter.quote("_ab_source_file_url") }}
+        from source
     ),
 
     clean_states as (select * from {{ ref("clean_states") }}),
 
     with_checks as (
         select
-            stg.*,
+            r.*,
             coalesce(
                 cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code
             ) as resolved_state,
             case
-                when stg.candidate_id is null
+                when r.candidate_id is null
                 then 'null_candidate_id'
                 when
                     coalesce(
@@ -29,14 +48,14 @@ with
                     is null
                 then 'unresolvable_state'
             end as invalid_reason
-        from stg
+        from renamed as r
         left join
             clean_states as cs_one
-            on upper(split(stg.race_name, ' ')[0]) = upper(trim(cs_one.state_raw))
+            on upper(split(r.race_name, ' ')[0]) = upper(trim(cs_one.state_raw))
         left join
             clean_states as cs_two
             on upper(
-                concat(split(stg.race_name, ' ')[0], ' ', split(stg.race_name, ' ')[1])
+                concat(split(r.race_name, ' ')[0], ' ', split(r.race_name, ' ')[1])
             )
             = upper(trim(cs_two.state_raw))
     )
