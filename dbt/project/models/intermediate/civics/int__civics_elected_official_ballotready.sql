@@ -66,7 +66,7 @@ with
             normalized_position_name,
             candidate_office,
             office_level,
-            {{ map_ballotready_office_type("candidate_office") }} as office_type,
+            {{ map_office_type("candidate_office") }} as office_type,
             state,
             city,
             district,
