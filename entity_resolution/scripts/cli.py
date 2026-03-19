@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import click
+import pandas as pd
 
 # Allow importing sibling modules when run as a script
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -43,7 +44,8 @@ def match(input_path: Path, output_dir: Path | None) -> None:
     if output_dir is None:
         output_dir = Path(__file__).resolve().parent.parent / "results"
 
-    run(input_path=input_path, output_dir=output_dir)
+    df = pd.read_csv(input_path, dtype=str)
+    run(input_df=df, output_dir=output_dir)
 
 
 # Future: add a `from-databricks` command that reads a FQN relation
