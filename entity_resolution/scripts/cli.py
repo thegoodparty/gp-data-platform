@@ -42,13 +42,20 @@ def _load_input(input_value: str) -> pd.DataFrame:
         # columns differently during parameter estimation.
         for col in df.columns:
             sample = df[col].dropna().iloc[0] if df[col].notna().any() else None
-            if isinstance(sample, np.ndarray):
+            if isinstance(sample, (np.ndarray, list)):
                 # Array columns (e.g. first_name_aliases) → JSON strings
                 df[col] = df[col].apply(
-                    lambda v: json.dumps(v.tolist()) if isinstance(v, np.ndarray) else v
+                    lambda v: (
+                        json.dumps(v.tolist() if isinstance(v, np.ndarray) else v)
+                        if isinstance(v, (np.ndarray, list))
+                        else v
+                    )
                 )
             else:
-                df[col] = df[col].where(df[col].isna(), df[col].astype(str))
+                df[col] = df[col].where(
+                    df[col].isna(),
+                    df[col].astype(str).str.replace(r"\.0$", "", regex=True),
+                )
         return df
     else:
         path = Path(input_value)
