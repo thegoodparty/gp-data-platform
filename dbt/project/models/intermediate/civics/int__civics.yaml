@@ -722,13 +722,6 @@ models:
 
       Source: stg_airbyte_source__techspeed_gdrive_officeholders.
 
-      Key differences from BallotReady EO model:
-      - ts_officeholder_id is NOT a person-level PK (reused across people)
-      - UUID uses composite key: ts_officeholder_id + position_id + office_name_clean
-      - No term dates (TechSpeed doesn't track terms)
-      - State requires clean_states join (mixed format + blanks)
-      - Schema is narrower (omits BR-only columns); merge model owns alignment
-
     columns:
       - name: gp_elected_official_id
         description: >
@@ -770,8 +763,6 @@ models:
       - name: state
         description: >
           U.S. state (2-letter code, via clean_states join).
-          ~3.7% of rows have NULL state after clean_states processing
-          (blank source values nullified).
         data_tests:
           - not_null:
               config:
