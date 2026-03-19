@@ -39,7 +39,7 @@ models:
 
   - name: int__civics_election_stage_2025
     description: >
-      Historical archive of election stages (primary, general, runoff) from the
+      Historical archive of election stages (primary, general, primary runoff, general runoff) from the
       general mart with election stage dates on or before 2025-12-31.
       Snapshot from 2026-01-22.
     columns:
@@ -62,7 +62,7 @@ models:
         data_tests:
           - not_null
       - name: election_stage
-        description: Type of election stage (primary, general, runoff)
+        description: Type of election stage (primary, general, primary runoff, general runoff)
         data_tests:
           - accepted_values:
               arguments:
@@ -195,7 +195,7 @@ models:
 
   - name: int__civics_candidacy_stage_2025
     description: >
-      Historical archive of candidacy stages (primary, general, runoff results)
+      Historical archive of candidacy stages (primary, general, primary runoff, general runoff results)
       from the general mart with election stages on or before 2025-12-31.
       Uses archived HubSpot data from 2026-01-22 for election results.
     columns:
@@ -601,6 +601,185 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+  - name: int__civics_elected_official_ballotready
+    description: >
+      BallotReady office holders transformed into the civics mart
+      elected_officials schema.
+
+      Grain: One row per office-holder term.
+
+      Source: stg_airbyte_source__ballotready_s3_office_holders_v3.
+      Includes the contacts parser fix for Ruby nil values in staging.
+
+    columns:
+      - name: gp_elected_official_id
+        description: >
+          Primary key - internally generated UUID for elected officials.
+          Generated from the BallotReady office-holder natural key to preserve
+          uniqueness at the office-holder term grain.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: br_office_holder_id
+        description: BallotReady natural key for the office-holder term record
+        data_tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        description: Elected official first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Elected official last name
+        data_tests:
+          - not_null
+
+      - name: phone
+        description: >
+          Canonical phone number, preferring office_phone, then central_phone,
+          then any remaining non-null BallotReady phone value
+
+      - name: position_name
+        description: Raw BallotReady office name
+        data_tests:
+          - not_null
+
+      - name: br_position_id
+        description: BallotReady position identifier
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+
+      - name: office_level
+        description: >
+          Office level derived from BallotReady level values.
+          City-level offices are mapped to Local.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
+      - name: party_affiliation
+        description: Normalized party affiliation from the first BallotReady party value
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: office_phone
+        description: Phone number from a BallotReady contact with type = office
+
+      - name: central_phone
+        description: Phone number from a BallotReady contact with type = central
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__er_prematch_candidacy_stages
+    description: >
+      Entity resolution prematch table: BallotReady x TechSpeed candidacy-stages
+      unioned into a standardized schema for Splink probabilistic matching.
+
+      Grain: One row per source candidacy-stage record (candidate + office + election date).
+
+      Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
+      int__techspeed_candidates_clean (TS), with clean_states for state
+      standardization and int__ballotready_person for API contact data.
+
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id.
+          Guaranteed unique across both sources.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: source_name
+        description: Origin of the record ('ballotready' or 'techspeed')
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - techspeed
+
+      - name: source_id
+        description: >
+          Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code.
+        data_tests:
+          - not_null
+
+      - name: first_name
+        description: Candidate first name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate last name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+
+      - name: election_date
+        description: Election date for this candidacy-stage
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: Type of election stage (Primary, General, Runoff)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Primary
+                  - General
+                  - Runoff
 
   - name: int__civics_election_ballotready
     description: >

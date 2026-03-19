@@ -908,8 +908,11 @@ models:
       - name: general_election_date
         description: Date of the general election
 
-      - name: runoff_election_date
-        description: Date of the runoff election, if applicable
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election, if applicable
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election, if applicable
 
       - name: primary_election_result
         description: Result of the primary election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
@@ -925,8 +928,15 @@ models:
               arguments:
                 values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
 
-      - name: runoff_election_result
-        description: Result of the runoff election stage (Won, Lost, Runoff, Withdrew, Not on Ballot)
+      - name: primary_runoff_election_result
+        description: Result of the primary runoff election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_runoff_election_result
+        description: Result of the general runoff election stage
         data_tests:
           - accepted_values:
               arguments:
@@ -1072,8 +1082,11 @@ models:
       - name: general_election_date
         description: Date of the general election
 
-      - name: runoff_election_date
-        description: Date of the runoff election, if applicable
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election, if applicable
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election, if applicable
 
       - name: primary_election_result
         description: Result of the primary election stage
@@ -1089,8 +1102,15 @@ models:
               arguments:
                 values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
 
-      - name: runoff_election_result
-        description: Result of the runoff election stage
+      - name: primary_runoff_election_result
+        description: Result of the primary runoff election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+      - name: general_runoff_election_result
+        description: Result of the general runoff election stage
         data_tests:
           - accepted_values:
               arguments:

@@ -28,7 +28,11 @@ with
                     "candidacies.normalized_position_name",
                 )
             }} as candidate_office,
-            initcap(candidacies.level) as office_level,
+            case
+                when lower(candidacies.level) = 'city'
+                then 'Local'
+                else initcap(candidacies.level)
+            end as office_level,
             {{ extract_city_from_office_name("candidacies.position_name") }} as city,
             coalesce(
                 regexp_extract(
@@ -45,20 +49,28 @@ with
     ),
 
     -- Look up election dates to generate gp_candidacy_id
-    -- Must use the same coalesce(general, primary, runoff) fallback as
-    -- int__civics_candidacy_ballotready to ensure IDs match across models
+    -- Must use the same year-based grouping as int__civics_candidacy_ballotready
+    -- to ensure IDs match across models (br_election_id differs between primary
+    -- and general stages, so grouping by year rolls them up correctly)
     candidacy_election_dates as (
         select
             br_candidate_id,
             br_position_id,
-            br_election_id,
+            year(election_day) as election_year,
             max(
                 case when not is_primary and not is_runoff then election_day end
             ) as general_election_date,
-            max(case when is_primary then election_day end) as primary_election_date,
-            max(case when is_runoff then election_day end) as runoff_election_date
+            max(
+                case when is_primary and not is_runoff then election_day end
+            ) as primary_election_date,
+            max(
+                case when not is_primary and is_runoff then election_day end
+            ) as general_runoff_election_date,
+            max(
+                case when is_primary and is_runoff then election_day end
+            ) as primary_runoff_election_date
         from candidacies
-        group by br_candidate_id, br_position_id, br_election_id
+        group by br_candidate_id, br_position_id, year(election_day)
     ),
 
     candidacy_stages as (
@@ -73,7 +85,7 @@ with
                         "s.state",
                         "s.party_affiliation",
                         "s.candidate_office",
-                        "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.runoff_election_date) as string)",
+                        "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.general_runoff_election_date, ced.primary_runoff_election_date) as string)",
                         "s.district",
                     ]
                 )
@@ -90,7 +102,7 @@ with
                                 "s.state",
                                 "s.party_affiliation",
                                 "s.candidate_office",
-                                "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.runoff_election_date) as string)",
+                                "cast(coalesce(ced.general_election_date, ced.primary_election_date, ced.general_runoff_election_date, ced.primary_runoff_election_date) as string)",
                                 "s.district",
                             ]
                         ),
@@ -145,7 +157,7 @@ with
             candidacy_election_dates as ced
             on s.br_candidate_id = ced.br_candidate_id
             and s.br_position_id = ced.br_position_id
-            and s.br_election_id = ced.br_election_id
+            and year(s.election_day) = ced.election_year
     ),
 
     -- Only include stages with valid candidacy and election_stage references

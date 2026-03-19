@@ -1482,3 +1482,30 @@ sources:
           Insert-only raw stream for the gp_api_db campaign table. Contains
           all historical snapshots including overwritten campaign data from
           users who reused their campaign for a new election.
+
+  - name: er_source
+    schema: er_source
+    description: >
+      Output tables from the Splink-based entity resolution pipeline that matches
+      BallotReady and TechSpeed candidacy-stage records. The pipeline uses probabilistic
+      record linkage (Fellegi-Sunter model trained via EM) to identify which records from
+      each source refer to the same candidacy (same person + same office + same election).
+
+    tables:
+      - name: clustered_candidacy_stages
+        description: >
+          Cluster assignments produced by Splink's connected-components clustering
+          (threshold: 0.95 match probability). Each row is a single candidacy-stage record
+          from either BallotReady or TechSpeed, annotated with a cluster_id that groups
+          records believed to represent the same real-world candidacy-stage. Clusters that
+          span both sources form the BR↔TS crosswalk; single-record clusters indicate
+          unmatched records.
+
+      - name: pairwise_candidacy_stages
+        description: >
+          Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),
+          after post-prediction filters for person identity, race-level agreement, and
+          race ID consistency. Each row is a pair of candidacy-stage records with Splink
+          match weights, match probabilities, per-comparison gamma levels, Bayes factors,
+          and term-frequency adjustments. Useful for auditing match quality and investigating
+          edge cases.

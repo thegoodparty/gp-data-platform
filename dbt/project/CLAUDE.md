@@ -17,10 +17,9 @@ When building multiple models, use quotes around the models in the `--select` ar
 
 **IMPORTANT** - When working on dbt models, it may be helpful to inspect
 existing sources/models in Databricks, as well as models that you have added
-and modified after creating them. Do so by running the `inspect_data` utility
-macro:
+and modified after creating them. Do so by running `dbt show` for custom
+queries or the `inspect_data` utility macro, which includes:
 
-Output includes:
   - Relation name and type
   - Total row count
   - Column details table (name, data type, non-null count, % populated)
@@ -34,6 +33,7 @@ Output includes:
 dbt run                               # Run transformations
 dbt test                              # Data quality tests
 dbt build                             # Run + test
+dbt show                              # Query the data in databricks
 
 # Inpect models/sources:
 dbt run-operation inspect_data --args '{"model": "model_name"}'
@@ -107,13 +107,13 @@ etc.
 *   A Candidacy comprises a Candidate and an Election
 **Election**
 *   The full election cycle for a specific position in a specific year
-*   Encompasses all stages (primary, general, runoff)
+*   Encompasses all stages (primary, general, primary runoff, general runoff)
 *   Example: "Seattle Mayor 2026" (the entire election)
 *   An Election comprises multiple Stages
 **Election-Stage**
-*   A single phase within an election (primary, general, or runoff)
+*   A single phase within an election (primary, general, primary runoff, or general runoff)
 *   Example: "Seattle Mayor 2026 Primary" or "Seattle Mayor 2026 General"
-*   Values: Primary, General, Runoff
+*   Values: Primary, General, Primary Runoff, General Runoff
 **Candidacy-Stage**
 *   The intersection of a candidacy and a specific stage
 *   Contains vendor-specific IDs and stage-specific results

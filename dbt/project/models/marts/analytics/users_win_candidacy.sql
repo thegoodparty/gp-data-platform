@@ -66,13 +66,15 @@ with
             cand.viability_score,
             cand.win_number,
             cand.primary_election_date,
+            cand.primary_runoff_election_date,
             cand.general_election_date,
-            cand.runoff_election_date,
+            cand.general_runoff_election_date,
 
             -- Election results by stage
             pr.election_result as primary_election_result,
             ge.election_result as general_election_result,
-            ro.election_result as runoff_election_result
+            pro.election_result as primary_runoff_election_result,
+            gro.election_result as general_runoff_election_result
 
         from {{ ref("campaigns") }} c
 
@@ -107,9 +109,14 @@ with
             and ge.stage_type = 'general'
 
         left join
-            stage_results ro
-            on cand.gp_candidacy_id = ro.gp_candidacy_id
-            and ro.stage_type = 'runoff'
+            stage_results pro
+            on cand.gp_candidacy_id = pro.gp_candidacy_id
+            and pro.stage_type = 'primary runoff'
+
+        left join
+            stage_results gro
+            on cand.gp_candidacy_id = gro.gp_candidacy_id
+            and gro.stage_type = 'general runoff'
     )
 
 select *

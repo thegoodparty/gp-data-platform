@@ -6,22 +6,27 @@
 -- CRITICAL: UUID fields MUST match int__hubspot_companies_w_contacts_2025 pattern
 -- to ensure same candidacy from different sources gets same gp_candidacy_id
 with
+    clean_states as (select * from {{ ref("clean_states") }}),
+
     source as (
         select
-            * except (election_date),
+            ts.* except (election_date, state),
+            -- Standardize state to 2-letter postal code via clean_states seed
+            coalesce(cs.state_cleaned_postal_code, ts.state) as state,
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
+            try_cast(number_of_seats_available as int) as seats_available,
             coalesce(
-                try_cast(primary_election_date as date),
-                try_to_date(primary_election_date, 'MM/dd/yyyy'),
-                try_to_date(primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(primary_election_date, 'MM/dd/yy')
+                try_cast(ts.primary_election_date as date),
+                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
+                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
+                try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as primary_election_date_parsed,
             coalesce(
-                try_cast(general_election_date as date),
-                try_to_date(general_election_date, 'MM/dd/yyyy'),
-                try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy')
+                try_cast(ts.general_election_date as date),
+                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
+                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
+                try_to_date(ts.general_election_date, 'MM/dd/yy')
             ) as general_election_date_parsed,
             -- Parsed election_date for generate_gp_election_id macro
             -- HubSpot stores DATE type which becomes ISO string; parse TechSpeed to
@@ -31,23 +36,25 @@ with
             -- Note: Must duplicate parsing expression since we can't reference alias
             -- in same SELECT
             coalesce(
-                try_cast(general_election_date as date),
-                try_to_date(general_election_date, 'MM/dd/yyyy'),
-                try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy'),
-                try_cast(primary_election_date as date),
-                try_to_date(primary_election_date, 'MM/dd/yyyy'),
-                try_to_date(primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(primary_election_date, 'MM/dd/yy')
+                try_cast(ts.general_election_date as date),
+                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
+                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
+                try_to_date(ts.general_election_date, 'MM/dd/yy'),
+                try_cast(ts.primary_election_date as date),
+                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
+                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
+                try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date,  -- parsed DATE for format parity with HubSpot
             -- Parse birth_date for UUID generation (format normalization)
             coalesce(
-                try_cast(birth_date as date),
-                try_to_date(birth_date, 'MM-dd-yyyy'),
-                try_to_date(birth_date, 'MM/dd/yyyy'),
-                try_to_date(birth_date, 'yyyy-MM-dd')
+                try_cast(ts.birth_date as date),
+                try_to_date(ts.birth_date, 'MM-dd-yyyy'),
+                try_to_date(ts.birth_date, 'MM/dd/yyyy'),
+                try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
-        from {{ ref("int__techspeed_candidates_clean") }}
+        from {{ ref("int__techspeed_candidates_clean") }} as ts
+        left join
+            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
 
     candidacies as (
@@ -148,7 +155,8 @@ with
             -- Election dates (using pre-parsed values from source CTE)
             primary_election_date_parsed as primary_election_date,
             general_election_date_parsed as general_election_date,
-            cast(null as date) as runoff_election_date,
+            cast(null as date) as primary_runoff_election_date,
+            cast(null as date) as general_runoff_election_date,
 
             -- Assessment fields (populated downstream)
             cast(null as float) as viability_score,
