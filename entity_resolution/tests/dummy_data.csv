@@ -1,0 +1,19 @@
+unique_id,source_name,first_name,last_name,first_name_aliases,election_date,party,email,phone,state,official_office_name,district_identifier,br_race_id,source_id,candidate_office,office_level,office_type,district_raw,seat_name,br_candidacy_id,election_stage
+br_001,ballotready,Jane,Doe,"[""jane"", ""janet""]",2024-11-05,Independent,jane.doe@example.com,5551234567,WI,City Council Member,District 3,race_100,br_src_001,City Council,local,legislative,District 3,Seat A,cand_001,general
+ts_001,techspeed,Janet,Doe,"[""janet"", ""jane""]",2024-11-05,Independent,jane.doe@example.com,5551234567,WI,City Council,District 3,race_100,ts_src_001,City Council,local,legislative,Dist 3,Seat A,,general
+br_002,ballotready,Robert,Smith,"[""robert"", ""bob"", ""rob""]",2024-11-05,Republican,,5559876543,NC,Durham County Board of Education,At-Large,race_200,br_src_002,School Board,local,school_board,At-Large,,cand_002,general
+ts_002,techspeed,Bob,Smith,"[""bob"", ""robert""]",2024-11-05,Republican,,5559876543,NC,Durham School Board,At-Large,race_200,ts_src_002,School Board,local,school_board,At Large,,,general
+br_003,ballotready,Alice,Johnson,"[""alice""]",2024-11-05,Democrat,alice.j@example.com,,PA,State Representative,HD-42,race_300,br_src_003,State Representative,state,legislative,House District 42,,cand_003,general
+ts_003,techspeed,Alice,Johnson,"[""alice""]",2024-11-05,Democrat,alice.j@example.com,,PA,State Representative,HD-42,race_300,ts_src_003,State Representative,state,legislative,HD 42,,,general
+br_004,ballotready,Carlos,Martinez,"[""carlos""]",2024-11-05,Democrat,carlos.m@example.com,5551110001,TX,County Commissioner,Precinct 2,race_400,br_src_004,County Commissioner,local,executive,Precinct 2,,cand_004,general
+br_005,ballotready,Diana,Patel,"[""diana""]",2024-11-05,Independent,diana.p@example.com,5551110002,OH,Mayor,,race_500,br_src_005,Mayor,local,executive,,,cand_005,general
+br_006,ballotready,Ethan,Williams,"[""ethan""]",2024-11-05,Republican,,5551110003,GA,State Senator,SD-15,race_600,br_src_006,State Senator,state,legislative,Senate District 15,,cand_006,general
+br_007,ballotready,Fatima,Ali,"[""fatima""]",2024-11-05,Democrat,fatima.a@example.com,,MI,City Clerk,,race_700,br_src_007,City Clerk,local,executive,,,cand_007,general
+ts_004,techspeed,George,Kim,"[""george""]",2024-11-05,Republican,george.k@example.com,5552220001,AZ,School Board Trustee,Ward 1,race_800,ts_src_004,School Board,local,school_board,Ward 1,,,general
+ts_005,techspeed,Hannah,Brown,"[""hannah""]",2024-11-05,Democrat,hannah.b@example.com,5552220002,VA,Town Council,,race_900,ts_src_005,Town Council,local,legislative,,,,general
+ts_006,techspeed,Isaac,Garcia,"[""isaac""]",2024-11-05,Independent,,5552220003,CO,County Assessor,,race_1000,ts_src_006,County Assessor,local,executive,,,,general
+ts_007,techspeed,Julia,Lee,"[""julia""]",2024-11-05,Democrat,julia.l@example.com,,MN,State Representative,HD-28,race_1100,ts_src_007,State Representative,state,legislative,House District 28,,,general
+br_008,ballotready,Kevin,Taylor,"[""kevin""]",2024-11-05,Republican,kevin.t@example.com,5551110004,FL,Circuit Court Judge,Group 5,race_1200,br_src_008,Circuit Judge,local,judicial,Group 5,,cand_008,general
+ts_008,techspeed,Laura,Chen,"[""laura""]",2024-11-05,Democrat,laura.c@example.com,5552220004,WA,City Council Position 7,Position 7,race_1300,ts_src_008,City Council,local,legislative,Position 7,,,general
+br_009,ballotready,Marcus,Davis,"[""marcus""]",2024-11-05,Independent,,5551110005,OR,County Sheriff,,race_1400,br_src_009,Sheriff,local,executive,,,cand_009,general
+ts_009,techspeed,Nina,Wilson,"[""nina""]",2024-11-05,Republican,nina.w@example.com,,NV,Assembly Member,AD-12,race_1500,ts_src_009,Assembly Member,state,legislative,Assembly District 12,,,general
