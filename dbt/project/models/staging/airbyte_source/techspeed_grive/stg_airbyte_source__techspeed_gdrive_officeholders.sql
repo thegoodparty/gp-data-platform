@@ -50,7 +50,7 @@ with
             {{ adapter.quote("normalized_position_id") }},
             {{ adapter.quote("normalized_location") }},
             {{ adapter.quote("level") }},
-            {{ adapter.quote("tier") }},
+            cast({{ adapter.quote("tier") }} as int) as tier,
             {{ adapter.quote("party") }},
             {{ adapter.quote("partisan") }},
             {{ adapter.quote("is_incumbent") }} as is_incumbent_raw,
@@ -77,20 +77,28 @@ with
             end as is_uncontested,
             {{ adapter.quote("seats_available") }},
             {{ adapter.quote("general_election_day") }},
-            try_cast(
-                {{ adapter.quote("general_election_day") }} as date
+            coalesce(
+                try_cast({{ adapter.quote("general_election_day") }} as date),
+                try_to_date({{ adapter.quote("general_election_day") }}, 'MM/dd/yyyy'),
+                try_to_date({{ adapter.quote("general_election_day") }}, 'M/d/yyyy')
             ) as general_election_date,
             {{ adapter.quote("primary_election_day") }},
-            try_cast(
-                {{ adapter.quote("primary_election_day") }} as date
+            coalesce(
+                try_cast({{ adapter.quote("primary_election_day") }} as date),
+                try_to_date({{ adapter.quote("primary_election_day") }}, 'MM/dd/yyyy'),
+                try_to_date({{ adapter.quote("primary_election_day") }}, 'M/d/yyyy')
             ) as primary_election_date,
             {{ adapter.quote("filing_deadline") }},
-            try_cast(
-                {{ adapter.quote("filing_deadline") }} as date
+            coalesce(
+                try_cast({{ adapter.quote("filing_deadline") }} as date),
+                try_to_date({{ adapter.quote("filing_deadline") }}, 'MM/dd/yyyy'),
+                try_to_date({{ adapter.quote("filing_deadline") }}, 'M/d/yyyy')
             ) as filing_deadline_date,
             {{ adapter.quote("date_processed") }},
-            try_cast(
-                {{ adapter.quote("date_processed") }} as date
+            coalesce(
+                try_cast({{ adapter.quote("date_processed") }} as date),
+                try_to_date({{ adapter.quote("date_processed") }}, 'MM/dd/yyyy'),
+                try_to_date({{ adapter.quote("date_processed") }}, 'M/d/yyyy')
             ) as date_processed_date,
             {{ adapter.quote("running_for_re_election_2025") }},
             {{ adapter.quote("running_for_re_election_2026") }},
