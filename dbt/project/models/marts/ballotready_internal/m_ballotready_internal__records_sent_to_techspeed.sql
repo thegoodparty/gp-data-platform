@@ -75,7 +75,7 @@ with
             )
     ),
     with_office_type as (
-        select *, {{ map_ballotready_office_type("candidate_office") }} as office_type
+        select *, {{ map_office_type("candidate_office") }} as office_type
         from br_for_techspeed
     ),
     with_candidate_code as (

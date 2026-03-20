@@ -1,15 +1,16 @@
 {{ config(materialized="table", tags=["civics", "entity_resolution"]) }}
 
--- Entity Resolution prematch: BallotReady x TechSpeed candidacy-stages
--- Unions candidacy-stage records from both sources into a standardized schema
+-- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ candidacy-stages
+-- Unions candidacy-stage records from all sources into a standardized schema
 -- for Splink matching.
 --
 -- Grain: One row per source candidacy-stage record (candidate + office + election date)
 -- Key: unique_id (source_name || '|' || source_id)
 --
--- Both upstream sources are already at the candidacy-stage grain:
+-- All upstream sources are already at the candidacy-stage grain:
 -- - BallotReady staging: one row per candidate per race (election stage)
 -- - TechSpeed clean: one row per candidate per election date
+-- - DDHQ election results: one row per candidate per race
 --
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
@@ -67,7 +68,7 @@ with
                 when lower(br.level) = 'city' then 'Local' else initcap(br.level)
             end as office_level,
             {{
-                map_ballotready_office_type(
+                map_office_type(
                     generate_candidate_office_from_position(
                         "br.position_name",
                         "br.normalized_position_name",
@@ -125,7 +126,7 @@ with
         left join person_emails as pe on br.br_candidate_id = pe.person_database_id
     ),
 
-    -- State name → 2-letter code mapping for TechSpeed
+    -- State name → 2-letter code mapping for TechSpeed and DDHQ
     clean_states as (select * from {{ ref("clean_states") }}),
 
     -- TechSpeed: each row in int__techspeed_candidates_clean is already at
@@ -198,12 +199,142 @@ with
         from ts_clean as ts
     ),
 
+    -- DDHQ election results: each row is a candidate x race (candidacy-stage)
+    ddhq_staging as (
+        select *
+        from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+        where
+            race_id is not null
+            and candidate_id is not null
+            and candidate is not null
+            and trim(candidate) != ''
+            -- Require splittable name (first + last)
+            and size(split(trim(candidate), ' ')) >= 2
+            and date is not null
+            and date >= '2026-01-01'
+    ),
+
+    -- Compute candidate_office once so map_office_type can reference it
+    -- without re-evaluating the full CASE expression
+    ddhq_with_office as (
+        select
+            ddhq.*,
+            coalesce(
+                cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code
+            ) as state,
+            {{ parse_ddhq_candidate_office("ddhq.race_name") }} as candidate_office,
+            -- Strip state prefix from race_name so office names align with
+            -- BR/TS for Splink JW matching (e.g. "New York Senate District 5"
+            -- → "Senate District 5")
+            trim(
+                case
+                    when cs_two.state_cleaned_postal_code is not null
+                    then
+                        substring(
+                            ddhq.race_name,
+                            length(
+                                concat(
+                                    split(ddhq.race_name, ' ')[0],
+                                    ' ',
+                                    split(ddhq.race_name, ' ')[1]
+                                )
+                            )
+                            + 2
+                        )
+                    when cs_one.state_cleaned_postal_code is not null
+                    then
+                        substring(
+                            ddhq.race_name, length(split(ddhq.race_name, ' ')[0]) + 2
+                        )
+                end
+            ) as official_office_name
+        from ddhq_staging as ddhq
+        left join
+            clean_states as cs_one
+            on upper(split(ddhq.race_name, ' ')[0]) = upper(trim(cs_one.state_raw))
+        left join
+            clean_states as cs_two
+            on upper(
+                concat(
+                    split(ddhq.race_name, ' ')[0], ' ', split(ddhq.race_name, ' ')[1]
+                )
+            )
+            = upper(trim(cs_two.state_raw))
+        where
+            coalesce(cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code)
+            is not null
+    ),
+
+    ddhq_stages as (
+        select
+            'ddhq' as source_name,
+            cast(d.candidate_id as string)
+            || '_'
+            || cast(d.race_id as string) as source_id,
+            lower(
+                trim(split({{ remove_name_suffixes("trim(d.candidate)") }}, ' ')[0])
+            ) as first_name,
+            lower(
+                trim(
+                    element_at(
+                        split({{ remove_name_suffixes("trim(d.candidate)") }}, ' '), -1
+                    )
+                )
+            ) as last_name,
+            d.state,
+            {{ parse_party_affiliation("d.candidate_party") }} as party,
+            d.candidate_office,
+            {{ parse_ddhq_office_level("d.race_name") }} as office_level,
+            {{ map_office_type("d.candidate_office") }} as office_type,
+            -- Extract district/ward from race_name
+            -- Try keyword-prefixed first (Ward 3, District 5), then fall back
+            -- to any trailing number (Board of Supervisors 19)
+            coalesce(
+                nullif(
+                    regexp_extract(
+                        d.race_name,
+                        '(?i)(?:ward|district|seat|place|position|zone) ([^ ]+)$'
+                    ),
+                    ''
+                ),
+                nullif(regexp_extract(d.race_name, ' ([0-9]+)$'), '')
+            ) as district_raw,
+            coalesce(
+                try_cast(
+                    regexp_extract(
+                        d.race_name,
+                        '(?i)(?:ward|district|seat|place|position|zone) ([0-9]+)$'
+                    ) as int
+                ),
+                try_cast(regexp_extract(d.race_name, ' ([0-9]+)$') as int)
+            ) as district_identifier,
+            d.date as election_date,
+            case
+                when lower(d.election_type) like '%runoff%'
+                then 'Runoff'
+                when lower(d.election_type) like '%primary%'
+                then 'Primary'
+                else 'General'
+            end as election_stage,
+            cast(null as string) as email,
+            cast(null as string) as phone,
+            cast(null as string) as br_race_id,
+            d.official_office_name,
+            cast(null as string) as br_candidacy_id,
+            cast(null as string) as seat_name,
+            cast(null as string) as partisan_type
+        from ddhq_with_office as d
+    ),
+
     unioned as (
         select *
         from ballotready_stages
         union all
         select *
         from techspeed_stages
+        union all
+        select *
+        from ddhq_stages
     )
 
 -- Splink treats empty strings as real values for exact matching, so convert
@@ -228,7 +359,7 @@ select
     nullif(email, '') as email,
     nullif(phone, '') as phone,
     try_cast(br_race_id as int) as br_race_id,
-    lower(trim(official_office_name)) as official_office_name,
+    nullif(lower(trim(official_office_name)), '') as official_office_name,
     nullif(br_candidacy_id, '') as br_candidacy_id,
     nullif(seat_name, '') as seat_name,
     partisan_type

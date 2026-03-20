@@ -2,6 +2,7 @@ with
     source as (
         select * from {{ source("airbyte_source", "ddhq_gdrive_election_results") }}
     ),
+
     renamed as (
         select
             {{ adapter.quote("_airbyte_raw_id") }},
@@ -29,6 +30,15 @@ with
             {{ adapter.quote("_ab_source_file_last_modified") }},
             {{ adapter.quote("total_number_of_ballots_in_race") }}
         from source
+    ),
+
+    invalid as (
+        select _airbyte_raw_id
+        from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results_invalid") }}
     )
+
 select *
 from renamed
+where
+    _airbyte_raw_id
+    not in (select _airbyte_raw_id from invalid where _airbyte_raw_id is not null)

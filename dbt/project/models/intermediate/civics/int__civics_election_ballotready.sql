@@ -46,7 +46,7 @@ with
             }} as candidate_office,
             initcap(br_position.level) as office_level,
             {{
-                map_ballotready_office_type(
+                map_office_type(
                     generate_candidate_office_from_position(
                         "br_position.name",
                         "br_normalized.name",

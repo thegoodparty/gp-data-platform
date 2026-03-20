@@ -911,26 +911,29 @@ models:
 
   - name: int__er_prematch_candidacy_stages
     description: >
-      Entity resolution prematch table: BallotReady x TechSpeed candidacy-stages
-      unioned into a standardized schema for Splink probabilistic matching.
+      Entity resolution prematch table: BallotReady x TechSpeed x DDHQ
+      candidacy-stages unioned into a standardized schema for Splink
+      probabilistic matching.
 
       Grain: One row per source candidacy-stage record (candidate + office + election date).
 
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
-      int__techspeed_candidates_clean (TS), with clean_states for state
-      standardization and int__ballotready_person for API contact data.
+      int__techspeed_candidates_clean (TS),
+      stg_airbyte_source__ddhq_gdrive_election_results (DDHQ), with
+      clean_states for state standardization and int__ballotready_person for
+      API contact data.
 
     columns:
       - name: unique_id
         description: >
           Primary key for Splink — source_name || '|' || source_id.
-          Guaranteed unique across both sources.
+          Guaranteed unique across all sources.
         data_tests:
           - unique
           - not_null
 
       - name: source_name
-        description: Origin of the record ('ballotready' or 'techspeed')
+        description: Origin of the record ('ballotready', 'techspeed', or 'ddhq')
         data_tests:
           - not_null
           - accepted_values:
@@ -938,10 +941,12 @@ models:
                 values:
                   - ballotready
                   - techspeed
+                  - ddhq
 
       - name: source_id
         description: >
-          Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code.
+          Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
+          DDHQ: candidate_id_race_id.
         data_tests:
           - not_null
 
