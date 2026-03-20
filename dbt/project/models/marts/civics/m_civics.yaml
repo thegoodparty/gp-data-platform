@@ -97,19 +97,33 @@ models:
 
   - name: campaigns
     description: >
-      Goodparty.org application campaigns.
+      Goodparty.org application campaigns with historical version tracking.
 
-      One row per campaign with user information denormalized.
+      When a user reuses their campaign for a new election, the product database
+      overwrites the campaign row in place. This model recovers historical
+      versions from Airbyte's insert-only raw stream, so both past and current
+      campaign data are available for tracking historical performance and
+      election results.
 
-      Grain: One row per campaign.
-
-      Limitations: Win/loss outcome data requires future work and is not included in this MVP.
+      Grain: One row per campaign version (a campaign may have multiple rows if
+      the user reused it for different elections).
 
     columns:
-      - name: campaign_id
-        description: Primary key - unique campaign identifier from gp-api production database
+      - name: campaign_version_id
+        description: >
+          Primary key - surrogate key derived from campaign_id and election
+          context fields (election date, position, office, state). Uniquely
+          identifies each historical version of a campaign.
         data_tests:
           - unique
+          - not_null
+
+      - name: campaign_id
+        description: >
+          Campaign identifier from the gp-api production database. Not unique
+          in this table — a campaign may have multiple historical versions if
+          the user reused it for a new election.
+        data_tests:
           - not_null
 
       - name: campaign_slug
@@ -161,6 +175,9 @@ models:
       - name: is_demo
         description: Whether the campaign is a demo/test account (exclude from production counts)
 
+      - name: did_win
+        description: Whether the candidate won their election. May be null if the outcome has not been recorded.
+
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge
 
@@ -188,6 +205,14 @@ models:
           and ballot data. This ID can be used to join with BallotReady position data
           for additional office metadata such as filing deadlines, term lengths,
           geographic boundaries, and partisan type.
+
+      - name: is_latest_version
+        description: >
+          Whether this is the most recent version of the campaign (true) or a
+          historical version that was overwritten (false). When filtering to
+          current campaigns only, use `where is_latest_version`.
+        data_tests:
+          - not_null
 
   - name: candidacy
     description: >

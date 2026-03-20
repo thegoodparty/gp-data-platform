@@ -1,10 +1,13 @@
 with
-    campaigns as (select * from {{ ref("stg_airbyte_source__gp_api_db_campaign") }}),
+    campaigns as (
+        select * from {{ ref("stg_airbyte_internal__raw_gp_api_db_campaign") }}
+    ),
 
     users as (select * from {{ ref("stg_airbyte_source__gp_api_db_user") }}),
 
     joined as (
         select
+            c.campaign_version_id,
             c.id as campaign_id,
             c.slug as campaign_slug,
 
@@ -31,6 +34,7 @@ with
             c.is_active,
             c.is_pro,
             c.is_demo,
+            c.did_win,
 
             -- Pledge Status
             c.details:pledged::boolean as is_pledged,
@@ -49,7 +53,14 @@ with
                     '/([0-9]+)$',
                     1
                 ) as bigint
-            ) as ballotready_position_id
+            ) as ballotready_position_id,
+
+            -- Version tracking
+            row_number() over (
+                partition by c.id
+                order by c.updated_at desc nulls last, c._airbyte_extracted_at desc
+            )
+            = 1 as is_latest_version
 
         from campaigns c
         left join users u on c.user_id = u.id

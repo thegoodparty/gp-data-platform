@@ -16,6 +16,7 @@ with
     final as (
         select
             -- Campaign fields
+            c.campaign_version_id,
             c.campaign_id,
             c.campaign_slug,
             c.hubspot_id,
@@ -39,6 +40,7 @@ with
             c.campaign_party,
             c.election_level,
             c.ballotready_position_id,
+            c.is_latest_version,
             true as is_win_user,
 
             -- User fields
@@ -84,9 +86,16 @@ with
             {{ ref("int__icp_offices") }} icp
             on c.ballotready_position_id = icp.br_database_position_id
 
-        -- Candidacy for election dates
+        -- Candidacy: version-aware join using election_date so each campaign
+        -- version matches the candidacy from its own election cycle.
+        -- Falls back to campaign_id alone when election_date is NULL to avoid
+        -- silently dropping candidacy data for campaigns with missing dates.
         left join
-            {{ ref("candidacy") }} cand on c.campaign_id = cand.product_campaign_id
+            {{ ref("candidacy") }} cand
+            on c.campaign_id = cand.product_campaign_id
+            and (
+                c.election_date = cand.general_election_date or c.election_date is null
+            )
 
         -- Stage results pivoted
         left join

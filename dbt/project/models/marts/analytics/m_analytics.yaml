@@ -705,13 +705,20 @@ models:
       User and campaign activity report combining campaign data with user attributes,
       ICP office classifications, candidacy details, and election results by stage.
 
-      Grain: One row per campaign.
+      Grain: One row per campaign version.
 
     columns:
-      - name: campaign_id
-        description: Primary key - unique campaign identifier from gp-api production database
+      - name: campaign_version_id
+        description: >
+          Primary key - surrogate key uniquely identifying each historical
+          version of a campaign.
         data_tests:
           - unique
+          - not_null
+
+      - name: campaign_id
+        description: Campaign identifier from gp-api production database. Not unique — a campaign may have multiple historical versions.
+        data_tests:
           - not_null
 
       - name: campaign_slug
@@ -801,6 +808,14 @@ models:
 
       - name: ballotready_position_id
         description: Numeric identifier for the political position in BallotReady's database
+
+      - name: is_latest_version
+        description: >
+          Whether this is the most recent version of the campaign (true) or a
+          historical version that was overwritten (false). Filter with
+          `where is_latest_version` to restore one-row-per-campaign behavior.
+        data_tests:
+          - not_null
 
       - name: is_win_user
         description: Whether this is a Win platform user (always true in this model, as it is campaign-based)
@@ -932,7 +947,7 @@ models:
           arguments:
             combination_of_columns:
               - user_id
-              - campaign_id
+              - campaign_version_id
       - dbt_utils.expression_is_true:
           arguments:
             expression: "campaign_updated_at >= campaign_created_at"

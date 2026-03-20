@@ -1470,6 +1470,19 @@ sources:
       - name: voter_outreach_campaign_completed
         description: Segment web app event - voter outreach campaign completed
 
+  - name: airbyte_internal
+    schema: airbyte_internal
+    description: >
+      Airbyte internal raw data tables. These are insert-only tables that
+      contain every record Airbyte has ever extracted, preserving historical
+      snapshots even when source rows are updated or overwritten.
+    tables:
+      - name: airbyte_source_raw__stream_gp_api_db_campaign
+        description: >
+          Insert-only raw stream for the gp_api_db campaign table. Contains
+          all historical snapshots including overwritten campaign data from
+          users who reused their campaign for a new election.
+
   - name: er_source
     schema: er_source
     description: >
