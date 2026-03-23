@@ -1,0 +1,1765 @@
+{
+  "benchmarks": {
+    "questions": [
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS state_legislative_elections_2026\n",
+              "FROM `goodparty_data_catalog`.`mart_civics`.`election`\n",
+              "WHERE election_year = 2026\n",
+              "  AND candidate_office IN ('State Representative', 'State Senate');"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f123a64f2f15cf90364b5c80c62c12",
+        "question": [
+          "How many state legislative elections do we have in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  state,\n",
+              "  COUNT(*) AS candidate_count\n",
+              "FROM goodparty_data_catalog.mart_civics.candidate\n",
+              "WHERE state IS NOT NULL\n",
+              "GROUP BY state\n",
+              "ORDER BY candidate_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f11b5225921bdea9d258744706caba",
+        "question": [
+          "Which states have the highest candidate counts?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  `campaign_party`,\n",
+              "  COUNT(*) AS campaign_count\n",
+              "FROM\n",
+              "  `goodparty_data_catalog`.`mart_civics`.`campaigns`\n",
+              "WHERE\n",
+              "  `is_demo` = FALSE\n",
+              "GROUP BY\n",
+              "  `campaign_party`\n",
+              "ORDER BY\n",
+              "  campaign_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f11b5207551b1888913c66ca80022f",
+        "question": [
+          "Show campaigns by party."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  CAST(COUNT(CASE WHEN cy.candidacy_result = 'Won' THEN 1 END) AS DOUBLE)\n",
+              "  / NULLIF(COUNT(*), 0) AS win_rate\n",
+              "FROM goodparty_data_catalog.mart_civics.campaigns c\n",
+              "LEFT JOIN goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "  ON c.campaign_id = cy.product_campaign_id\n",
+              "WHERE c.is_demo = FALSE\n",
+              "  AND c.election_date >= '2024-01-01'\n",
+              "  AND c.election_date < '2028-01-01'\n",
+              "  AND c.election_date <= CURRENT_DATE();"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f11b51cc781144bed0cd1339f70609",
+        "question": [
+          "What is our win rate for non-demo campaigns with past elections in 2024 through 2027?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  `office_level`,\n",
+              "  COUNT(*) AS candidacy_count\n",
+              "FROM\n",
+              "  `goodparty_data_catalog`.`mart_civics`.`candidacy`\n",
+              "WHERE\n",
+              "  `office_level` IS NOT NULL\n",
+              "GROUP BY\n",
+              "  `office_level`\n",
+              "ORDER BY\n",
+              "  candidacy_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f11b51b2b511ab9f1ee1fbcdd6de75",
+        "question": [
+          "Show candidacies by office level."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  `campaign_state`,\n",
+              "  COUNT(*) AS verified_non_demo_campaigns\n",
+              "FROM\n",
+              "  `goodparty_data_catalog`.`mart_civics`.`campaigns`\n",
+              "WHERE\n",
+              "  `is_verified` = TRUE\n",
+              "  AND `is_demo` = FALSE\n",
+              "  AND `campaign_state` IS NOT NULL\n",
+              "GROUP BY\n",
+              "  `campaign_state`\n",
+              "ORDER BY\n",
+              "  verified_non_demo_campaigns DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f11b5197c31e7f8ee243fecb9f4926",
+        "question": [
+          "Show verified non-demo campaigns by state."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  try_divide(\n",
+              "    100.0\n",
+              "      * COUNT(\n",
+              "        CASE\n",
+              "          WHEN `has_campaign` = TRUE THEN 1\n",
+              "        END\n",
+              "      ),\n",
+              "    NULLIF(COUNT(*), 0)\n",
+              "  ) AS percent_users_with_campaign\n",
+              "FROM\n",
+              "  `goodparty_data_catalog`.`mart_civics`.`users`;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f11b516a4a12499f4ddd3da43ed4d2",
+        "question": [
+          "What percent of users have campaigns?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  cy.office_type,\n",
+              "  COUNT(*) AS unverified_candidacy_count\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "JOIN goodparty_data_catalog.mart_civics.election e\n",
+              "  ON cy.gp_election_id = e.gp_election_id\n",
+              "WHERE cy.is_verified = FALSE\n",
+              "  AND e.state = 'TX'\n",
+              "GROUP BY cy.office_type\n",
+              "ORDER BY unverified_candidacy_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d65b514a8aed11c6cd0eb2e68",
+        "question": [
+          "Show unverified candidacies by office type in TX."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS win_icp_candidacies_co_2025\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "JOIN goodparty_data_catalog.mart_civics.election e\n",
+              "  ON cy.gp_election_id = e.gp_election_id\n",
+              "WHERE cy.is_win_icp = TRUE\n",
+              "  AND e.state = 'CO'\n",
+              "  AND e.election_year = 2025;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d57b2114dad5c21fa8a085bac",
+        "question": [
+          "How many win-ICP candidacies in Colorado elections for 2025?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS verified_non_demo_campaigns_ca\n",
+              "FROM goodparty_data_catalog.mart_civics.campaigns\n",
+              "WHERE is_verified = TRUE\n",
+              "  AND is_demo = FALSE\n",
+              "  AND campaign_state = 'CA';"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d45b7127c9051a0977d5ef82e",
+        "question": [
+          "How many verified non-demo campaigns are in California?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  cd.state,\n",
+              "  COUNT(*) AS win_icp_candidacy_count\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "JOIN goodparty_data_catalog.mart_civics.candidate cd\n",
+              "  ON cy.gp_candidate_id = cd.gp_candidate_id\n",
+              "WHERE cy.is_win_icp = TRUE\n",
+              "  AND cd.state IS NOT NULL\n",
+              "GROUP BY cd.state\n",
+              "ORDER BY win_icp_candidacy_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d39d216c38e5212506b8885e1",
+        "question": [
+          "Show win-ICP candidacies by candidate state."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  COALESCE(cy.candidacy_result, 'UNKNOWN') AS candidacy_result,\n",
+              "  COUNT(*) AS mapped_candidacy_count\n",
+              "FROM goodparty_data_catalog.mart_civics.campaigns camp\n",
+              "JOIN goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "  ON camp.campaign_id = cy.product_campaign_id\n",
+              "WHERE camp.is_verified = TRUE\n",
+              "  AND camp.is_demo = FALSE\n",
+              "GROUP BY COALESCE(cy.candidacy_result, 'UNKNOWN')\n",
+              "ORDER BY mapped_candidacy_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d2dcd19e8bca406c9e1b6f22c",
+        "question": [
+          "For verified campaigns, show mapped candidacy outcomes."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  e.election_year,\n",
+              "  CAST(COUNT(CASE WHEN cy.candidacy_result = 'Won' THEN 1 END) AS DOUBLE)\n",
+              "    / NULLIF(COUNT(*), 0) AS win_rate\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "JOIN goodparty_data_catalog.mart_civics.election e\n",
+              "  ON cy.gp_election_id = e.gp_election_id\n",
+              "WHERE e.election_year IS NOT NULL\n",
+              "GROUP BY e.election_year\n",
+              "ORDER BY e.election_year;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d20ae1018a9c01701f558b12d",
+        "question": [
+          "Show win rate by election year"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  e.state,\n",
+              "  COUNT(*) AS candidacy_count\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "JOIN goodparty_data_catalog.mart_civics.election e\n",
+              "  ON cy.gp_election_id = e.gp_election_id\n",
+              "WHERE e.state IS NOT NULL\n",
+              "GROUP BY e.state\n",
+              "ORDER BY candidacy_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198d0d04111388148bfa22cf532c",
+        "question": [
+          "Show candidacy counts by election state"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  cd.full_name AS candidate_name,\n",
+              "  cy.candidacy_result\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy cy\n",
+              "JOIN goodparty_data_catalog.mart_civics.candidate cd\n",
+              "  ON cy.gp_candidate_id = cd.gp_candidate_id\n",
+              "WHERE cd.full_name IS NOT NULL\n",
+              "  AND cy.candidacy_result IS NOT NULL;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198ce668144d964e880986bf4316",
+        "question": [
+          "Show candidate full name with candidacy result."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  u.user_id,\n",
+              "  COUNT(c.campaign_id) AS campaign_count\n",
+              "FROM goodparty_data_catalog.mart_civics.users u\n",
+              "JOIN goodparty_data_catalog.mart_civics.campaigns c\n",
+              "  ON c.user_id = u.user_id\n",
+              "WHERE c.is_demo = FALSE\n",
+              "GROUP BY u.user_id\n",
+              "ORDER BY campaign_count DESC, u.user_id\n",
+              "LIMIT 20;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1198cd0e81fcbae03b5b02742d22b",
+        "question": [
+          "Show top 20 users by non-demo campaign count."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS pledged_candidates\n",
+              "FROM goodparty_data_catalog.mart_civics.users\n",
+              "WHERE has_pledged_campaign = TRUE;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190dc4ce1c4885b99594dc286978",
+        "question": [
+          "How many GoodParty pledged candidates do we have?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS users_with_campaign\n",
+              "FROM goodparty_data_catalog.mart_civics.users\n",
+              "WHERE has_campaign = TRUE;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190dba9913b1b61f203b5a276c77",
+        "question": [
+          "How many users have a campaign?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS win_icp_eligible_candidacies\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy\n",
+              "WHERE is_win_icp = TRUE;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190d63ed17cca9d0ab40cb56bda2",
+        "question": [
+          "How many win-ICP eligible candidacies do we have?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  e.state,\n",
+              "  COUNT(*) AS candidacy_count\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy c\n",
+              "JOIN goodparty_data_catalog.mart_civics.election e\n",
+              "  ON c.gp_election_id = e.gp_election_id\n",
+              "GROUP BY e.state\n",
+              "ORDER BY candidacy_count DESC;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190d54cd11eda398d5cb0c808242",
+        "question": [
+          "Show candidacies by state."
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS serve_users\n",
+              "FROM goodparty_data_catalog.mart_civics.users\n",
+              "WHERE is_serve_user = TRUE;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190d4b8a1089a300c246ad1c5748",
+        "question": [
+          "How many Serve users do we have?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT\n",
+              "  CAST(COUNT(CASE WHEN candidacy_result = 'Won' THEN 1 END) AS DOUBLE)\n",
+              "  / NULLIF(COUNT(*), 0) AS win_rate\n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190d42121f3b872c1d35152bdf5b",
+        "question": [
+          "What is our overall win rate in civics candidacy data?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS verified_campaigns\n",
+              "FROM goodparty_data_catalog.mart_civics.campaigns\n",
+              "WHERE is_verified = TRUE\n",
+              "  AND is_demo = FALSE;"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1190d2f9a1c9ba5f1d965f11eb9e2",
+        "question": [
+          "How many verified campaigns do we have?"
+        ]
+      }
+    ]
+  },
+  "config": {
+    "sample_questions": [
+      {
+        "id": "01f0f7977d991cbfabc174b6b68107e0",
+        "question": [
+          "How many \"Serve\" users do we have, and what definition are we using?"
+        ]
+      },
+      {
+        "id": "01f0f79762041a0d985780173ddb3f86",
+        "question": [
+          "Help me understand signup trends leading up to a user's election date"
+        ]
+      },
+      {
+        "id": "01f0f797349010f890e7bc4a0dee4c35",
+        "question": [
+          "Describe available datasets and known limitations"
+        ]
+      }
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {
+        "column_configs": [
+          {
+            "column_name": "campaign_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "campaign_office",
+            "description": [
+              "Political office the candidate is running for..WARNING: This is not well-populated and unreliable for definitive answers on campaign offices. Warn the users about this."
+            ],
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "campaign_party",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "campaign_slug",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "campaign_state",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_level",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "hubspot_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_active",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_demo",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_pledged",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_pro",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_verified",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_email",
+            "exclude": true
+          },
+          {
+            "column_name": "user_first_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_last_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_phone",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_zip",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          }
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.campaigns"
+      },
+      {
+        "column_configs": [
+          {
+            "column_name": "br_position_database_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "candidacy_result",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "candidate_id_source",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "candidate_office",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "general_election_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_candidacy_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_candidate_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_election_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "hubspot_company_ids",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "hubspot_contact_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_incumbent",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_open_seat",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_partisan",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_pledged",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_serve_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_verified",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_supersize_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "office_level",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "office_type",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "official_office_name",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "party_affiliation",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "primary_election_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "product_campaign_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "runoff_election_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "verification_status_reason",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "viability_score",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "win_number",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "win_number_model",
+            "enable_format_assistance": true
+          }
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.candidacy"
+      },
+      {
+        "column_configs": [
+          {
+            "column_name": "candidate_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "candidate_party",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_result",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_result_source",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_stage_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_candidacy_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_candidacy_stage_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_election_stage_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "has_match",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_serve_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_supersize_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_winner",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "match_confidence",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "match_reasoning",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "match_top_candidates",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "source_candidate_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "source_race_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "votes_received",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          }
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.candidacy_stage"
+      },
+      {
+        "column_configs": [
+          {
+            "column_name": "birth_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "candidate_id_tier",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "email",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "facebook_url",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "first_name",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "full_name",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_candidate_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "hubspot_contact_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "instagram_handle",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "last_name",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "linkedin_url",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "phone_number",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "prod_db_user_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "state",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "street_address",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "twitter_handle",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "website_url",
+            "enable_format_assistance": true
+          }
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.candidate"
+      },
+      {
+        "column_configs": [
+          {
+            "column_name": "br_normalized_position_type",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "br_position_database_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "candidate_office",
+            "description": [
+              "Simplified/standardized office *type*, not the office name."
+            ],
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "city",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "district",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_year",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "filing_deadline",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_election_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "has_ddhq_match",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "icp_normalized_position_name",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "icp_voter_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_appointed",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_judicial",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_serve_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_uncontested",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_supersize_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "number_of_opponents",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "office_level",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "office_type",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "official_office_name",
+            "description": [
+              "Formal office title for the election, including the district. Preferred for filtering for position names."
+            ],
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "open_seat",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "population",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "seat_name",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "seats_available",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "state",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "term_start_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          }
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.election"
+      },
+      {
+        "column_configs": [
+          {
+            "column_name": "br_election_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "br_position_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "br_race_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "ddhq_race_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_date",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "election_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "filing_address",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "filing_period_end_on",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "filing_period_start_on",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "filing_phone",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "filing_requirements",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_election_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "gp_election_stage_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_primary",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_retention",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_runoff",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_serve_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_win_supersize_icp",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "number_of_seats",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "partisan_type",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "race_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "stage_type",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "total_votes_cast",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          }
+        ],
+        "description": [
+          "Election stages (primary, general, runoff) combining 2025 DDHQ archive and 2026+ BallotReady data.\n",
+          "\n",
+          "Use this table for questions that involve individual \"races\" or \"election stages\", like primary, runoff, and general elections separately. \n",
+          "\n",
+          "Grain: One row per election stage.\n"
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.election_stage"
+      },
+      {
+        "column_configs": [
+          {
+            "column_name": "active_campaign_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "campaign_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "email"
+          },
+          {
+            "column_name": "first_campaign_created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "first_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "has_campaign",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "has_pledged_campaign",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "has_verified_campaign",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "is_serve_user",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "last_campaign_created_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "last_name",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "non_demo_campaign_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "phone",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "pledged_campaign_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "pro_campaign_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "updated_at",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "user_id",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "verified_campaign_count",
+            "enable_format_assistance": true
+          },
+          {
+            "column_name": "zip",
+            "enable_entity_matching": true,
+            "enable_format_assistance": true
+          }
+        ],
+        "identifier": "goodparty_data_catalog.mart_civics.users"
+      }
+    ]
+  },
+  "instructions": {
+    "example_question_sqls": [
+      {
+        "id": "01f118eec83c1d2c86dddbcc99af01b8",
+        "question": [
+          "How many verified campaigns do we have?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS verified_campaigns\n",
+          "FROM goodparty_data_catalog.mart_civics.campaigns\n",
+          "WHERE is_verified = TRUE\n",
+          "  AND is_demo = FALSE;\n"
+        ]
+      },
+      {
+        "id": "01f118eed054185fbc398f604cb84fda",
+        "question": [
+          "How many Serve users do we have?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS serve_users\n",
+          "FROM goodparty_data_catalog.mart_civics.users\n",
+          "WHERE is_serve_user = TRUE;\n"
+        ]
+      },
+      {
+        "id": "01f118eed7261521a77123d6a194b98e",
+        "question": [
+          "How many users have a campaign?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS users_with_campaign\n",
+          "FROM goodparty_data_catalog.mart_civics.users\n",
+          "WHERE has_campaign = TRUE;\n"
+        ]
+      },
+      {
+        "id": "01f118eee15714d0be7d284b30759965",
+        "question": [
+          "How many GoodParty pledged candidates do we have?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS pledged_candidates\n",
+          "FROM goodparty_data_catalog.mart_civics.users\n",
+          "WHERE has_pledged_campaign = TRUE;\n"
+        ]
+      },
+      {
+        "id": "01f118eeeb7c1d15a19800e179082c7b",
+        "question": [
+          "How many win-ICP eligible candidacies do we have?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS win_icp_eligible_candidacies\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy\n",
+          "WHERE is_win_icp = TRUE;\n"
+        ]
+      },
+      {
+        "id": "01f118ef090310e1a031feeac7cd2feb",
+        "question": [
+          "How many serve-ICP eligible do we have?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS serve_icp_eligible_elected_officials\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy\n",
+          "WHERE is_serve_icp = TRUE;\n"
+        ]
+      },
+      {
+        "id": "01f118ef21481955a7df61575fd46480",
+        "question": [
+          "Show candidacies by election state (election-matched only)."
+        ],
+        "sql": [
+          "SELECT\n",
+          "  e.state,\n",
+          "  COUNT(*) AS candidacy_count\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy c\n",
+          "JOIN goodparty_data_catalog.mart_civics.election e\n",
+          "  ON c.gp_election_id = e.gp_election_id\n",
+          "GROUP BY e.state\n",
+          "ORDER BY candidacy_count DESC;\n",
+          "\n"
+        ]
+      },
+      {
+        "id": "01f118ef2b511236895235892b359046",
+        "question": [
+          "Show office mix for candidacies."
+        ],
+        "sql": [
+          "SELECT\n",
+          "  candidate_office,\n",
+          "  COUNT(*) AS candidacy_count\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy\n",
+          "GROUP BY candidate_office\n",
+          "ORDER BY candidacy_count DESC;\n"
+        ]
+      },
+      {
+        "id": "01f11bdd008c148a8e20ec2ca81da0f9",
+        "question": [
+          "What is the win rate for non-demo campaigns with past elections?"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  CAST(COUNT(CASE WHEN cy.candidacy_result = 'Won' THEN 1 END) AS DOUBLE)\n",
+          "  / NULLIF(COUNT(*), 0) AS win_rate,\n",
+          "  COUNT(*) AS total_campaigns,\n",
+          "  COUNT(CASE WHEN cy.candidacy_result = 'Won' THEN 1 END) AS won_count\n",
+          "FROM goodparty_data_catalog.mart_civics.campaigns c\n",
+          "LEFT JOIN goodparty_data_catalog.mart_civics.candidacy cy\n",
+          "  ON c.campaign_id = cy.product_campaign_id\n",
+          "WHERE c.is_demo = FALSE\n",
+          "  AND c.election_date <= CURRENT_DATE()"
+        ]
+      },
+      {
+        "id": "01f11bdd0a841618816547132679f40f",
+        "question": [
+          "What is the overall win rate across all candidacies?"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  CAST(COUNT(CASE WHEN candidacy_result = 'Won' THEN 1 END) AS DOUBLE)\n",
+          "  / NULLIF(COUNT(*), 0) AS win_rate,\n",
+          "  COUNT(*) AS total_candidacies,\n",
+          "  COUNT(CASE WHEN candidacy_result = 'Won' THEN 1 END) AS won_count\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy"
+        ]
+      }
+    ],
+    "join_specs": [
+      {
+        "id": "01f118eb3f9712cf9a79cae8b61c19c7",
+        "instruction": [
+          "Use for campaign-to-user questions. Full coverage for campaigns. For pure user metrics, prefer users table directly to avoid duplication."
+        ],
+        "left": {
+          "alias": "campaigns",
+          "identifier": "goodparty_data_catalog.mart_civics.campaigns"
+        },
+        "right": {
+          "alias": "users",
+          "identifier": "goodparty_data_catalog.mart_civics.users"
+        },
+        "sql": [
+          "`campaigns`.`user_id` = `users`.`user_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
+      },
+      {
+        "id": "01f118eb5a611b3cbbf5bdd96d8975e2",
+        "instruction": [
+          "Use for candidate identity/contact with candidacy outcomes. Keep candidacy as base table for candidacy counts."
+        ],
+        "left": {
+          "alias": "candidacy",
+          "identifier": "goodparty_data_catalog.mart_civics.candidacy"
+        },
+        "right": {
+          "alias": "candidate",
+          "identifier": "goodparty_data_catalog.mart_civics.candidate"
+        },
+        "sql": [
+          "`candidacy`.`gp_candidate_id` = `candidate`.`gp_candidate_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
+      },
+      {
+        "id": "01f118eb68921776b7ccd0bca4411765",
+        "instruction": [
+          "Use only for election context (state/year/date). Coverage is partial (~60% of candidacies match). For total candidacy metrics (win rate, ICP, pledged), do not use this join."
+        ],
+        "left": {
+          "alias": "candidacy",
+          "identifier": "goodparty_data_catalog.mart_civics.candidacy"
+        },
+        "right": {
+          "alias": "election",
+          "identifier": "goodparty_data_catalog.mart_civics.election"
+        },
+        "sql": [
+          "`candidacy`.`gp_election_id` = `election`.`gp_election_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
+      },
+      {
+        "id": "01f118eb77151029af058d5e7f6530a9",
+        "instruction": [
+          "Conditional mapping only (~17.4% candidacies have product_campaign_id). Use only when campaign mapping is explicitly required; not for global totals."
+        ],
+        "left": {
+          "alias": "candidacy",
+          "identifier": "goodparty_data_catalog.mart_civics.candidacy"
+        },
+        "right": {
+          "alias": "campaigns",
+          "identifier": "goodparty_data_catalog.mart_civics.campaigns"
+        },
+        "sql": [
+          "`candidacy`.`product_campaign_id` = `campaigns`.`campaign_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
+      }
+    ],
+    "sql_snippets": {
+      "expressions": [
+        {
+          "alias": "signup_month",
+          "display_name": "user signup month",
+          "id": "01f0f70fd59f129392b57fb9cfa5b749",
+          "instruction": [
+            "WHEN_TO_USE: Use when aggregating or segmenting user signups by month for cohort or time trend analysis. For signup trends only; not MAU/DAU/WAU. SCOPE_TABLES: users (mart_civics). TIMEFRAME_HINT: Groups all dates within each calendar month together based on signup timestamp."
+          ],
+          "sql": [
+            "date_trunc('MONTH', `users`.`created_at`)"
+          ],
+          "synonyms": [
+            "user signup cohort month"
+          ]
+        },
+        {
+          "display_name": "campaign_created_month",
+          "id": "01f118ee68f51c599f124e7a56bc8951",
+          "instruction": [
+            "Use for campaign creation trends."
+          ],
+          "sql": [
+            "date_trunc('MONTH', `campaigns`.`created_at`)"
+          ],
+          "synonyms": [
+            "campaign creation month"
+          ]
+        },
+        {
+          "alias": "mapped_candidacy_outcome_with_unknown",
+          "display_name": "mapped candidacy outcome (with NULL as 'UNKNOWN')",
+          "id": "01f1198db51f15b69b89f622d2867157",
+          "instruction": [
+            "WHEN_TO_USE: Use when aggregating or grouping by candidacy_result to produce complete counts, including candidacies missing an explicit result (NULL). SCOPE_TABLES: candidacy (mart_civics). RISK_IF_MISUSED: Do not use if only actual known outcomes are wanted; always check if NULLs should appear as 'UNKNOWN'."
+          ],
+          "sql": [
+            "COALESCE(`candidacy`.`candidacy_result`, 'UNKNOWN')"
+          ]
+        }
+      ],
+      "filters": [
+        {
+          "display_name": "serve user",
+          "id": "01f0f70e2f5511e9889baa07b7a047af",
+          "instruction": [
+            "WHEN_TO_USE: Use this filter when counting, segmenting, or aggregating serve users in metrics related to Goodparty.org application usage. SCOPE_TABLES: users (mart_civics). RISK_IF_MISUSED: Do not use unless 'serve user' is requested, as this logic is specific to company-defined platform usage involving completed polls via elected office."
+          ],
+          "sql": [
+            "`users`.`is_serve_user` = TRUE"
+          ],
+          "synonyms": [
+            "serve users",
+            "serve"
+          ]
+        },
+        {
+          "display_name": "election_date in calendar year 2025",
+          "id": "01f0f711ebdc128caa28fc372aa28d2a",
+          "instruction": [
+            "WHEN_TO_USE: Use when aggregating or filtering campaign data specifically by the 2025 calendar year based on election dates. SCOPE_TABLES: mart_civics.campaigns. TIMEFRAME_HINT: This is a strict calendar year (Jan 1, 2025 to just before Jan 1, 2026), not fiscal or other year blocks. RISK_IF_MISUSED: Do not use for arbitrary 'last 12 months' or 'campaigns created in 2025' without user request."
+          ],
+          "sql": [
+            "`campaigns`.`election_date` >= '2025-01-01' AND `campaigns`.`election_date` < '2026-01-01'"
+          ]
+        },
+        {
+          "display_name": "verified_campaign",
+          "id": "01f118ede1ae1901bca30769c201beb3",
+          "instruction": [
+            "Canonical definition for “verified campaign”."
+          ],
+          "sql": [
+            "`campaigns`.`is_verified` = TRUE AND `campaigns`.`is_demo` = FALSE"
+          ],
+          "synonyms": [
+            "verified campaigns",
+            "production verified campaigns"
+          ]
+        },
+        {
+          "display_name": "non_demo_campaign",
+          "id": "01f118ee01961f1a8fef7bb26aa62fc7",
+          "instruction": [
+            "Default campaign scope unless user asks to include demos."
+          ],
+          "sql": [
+            "`campaigns`.`is_demo` = FALSE"
+          ],
+          "synonyms": [
+            "non demo",
+            "production campaigns"
+          ]
+        },
+        {
+          "display_name": "active_campaign",
+          "id": "01f118ee0dbd176a9307e81bc98525d6",
+          "instruction": [
+            "Use for “active campaign” questions only."
+          ],
+          "sql": [
+            "`campaigns`.`is_active` = TRUE"
+          ],
+          "synonyms": [
+            "active campaigns",
+            "live campaigns"
+          ]
+        },
+        {
+          "display_name": "user_has_campaign",
+          "id": "01f118ee29f911ee919bf788e06db0a6",
+          "instruction": [
+            "User-level campaign attachment metric."
+          ],
+          "sql": [
+            "`users`.`has_campaign` = TRUE"
+          ],
+          "synonyms": [
+            "users with campaign",
+            "candidate users"
+          ]
+        },
+        {
+          "display_name": "user_has_pledged_campaign",
+          "id": "01f118ee327a15f384b989e42309e53c",
+          "instruction": [
+            "Canonical for “GoodParty pledged candidates”."
+          ],
+          "sql": [
+            "`users`.`has_pledged_campaign` = TRUE"
+          ],
+          "synonyms": [
+            "pledged candidates",
+            "pledged users",
+            "goodparty candidates"
+          ]
+        },
+        {
+          "display_name": "win_icp_eligible",
+          "id": "01f118ee3eff183db4385f8afb892358",
+          "instruction": [
+            "NULL is unknown; this filter is only explicit true."
+          ],
+          "sql": [
+            "`candidacy`.`is_win_icp` = TRUE"
+          ],
+          "synonyms": [
+            "icp eligible",
+            "win icp"
+          ]
+        },
+        {
+          "display_name": "candidacy_won",
+          "id": "01f118ee473313d6be5089ebb958e392",
+          "instruction": [
+            "Use as win numerator component."
+          ],
+          "sql": [
+            "`candidacy`.`candidacy_result` = 'Won'"
+          ],
+          "synonyms": [
+            "won candidacies",
+            "winners"
+          ]
+        },
+        {
+          "display_name": "candidacies in TX",
+          "id": "01f1198d883913f4b68b640187e10fa9",
+          "instruction": [
+            "WHEN_TO_USE: Only when the question specifies a state-level filter for candidacies via election context (e.g., 'in TX'); SCOPE_TABLES: Use when joining candidacy to election; RISK_IF_MISUSED: Filtering by candidate.state instead would misattribute candidacies for elections in other states."
+          ],
+          "sql": [
+            "`election`.`state` = 'TX'"
+          ]
+        },
+        {
+          "display_name": "unverified candidacies",
+          "id": "01f1198d883a1bed89d30a2b4c6ecb2f",
+          "instruction": [
+            "WHEN_TO_USE: Use when the question or logic specifically needs to exclude verified candidacies or measure those not meeting verification; SCOPE_TABLES: candidacy table."
+          ],
+          "sql": [
+            "`candidacy`.`is_verified` = FALSE"
+          ]
+        },
+        {
+          "display_name": "join candidacy to election",
+          "id": "01f1198d883c10f58ae6088dfc4e21f4",
+          "instruction": [
+            "WHEN_TO_USE: When extracting candidacy information that depends on election-level attributes (like state, office type); SCOPE_TABLES: candidacy, election; RISK_IF_MISUSED: Using candidate join instead would misalign dimensions for state/office analyses."
+          ],
+          "sql": [
+            "`candidacy`.`gp_election_id` = `election`.`gp_election_id`"
+          ]
+        }
+      ],
+      "measures": [
+        {
+          "alias": "current_serve_users",
+          "display_name": "current serve users",
+          "id": "01f0f7ab2c461378837fa97d743c0ecf",
+          "instruction": [
+            "WHEN_TO_USE: Use to report the current number of serve users; requires filtering for is_serve_user = TRUE; SCOPE_TABLES: users (mart_civics). RISK_IF_MISUSED: Do not use without the serve-user filter, as it would return all users."
+          ],
+          "sql": [
+            "COUNT(*)"
+          ]
+        },
+        {
+          "alias": "months_remaining_2026",
+          "display_name": "months remaining until end of 2026",
+          "id": "01f0f7ab2c46170c9bc4c5fd0ccf3c82",
+          "instruction": [
+            "WHEN_TO_USE: Use to project metrics through a fixed period (here, end of year) from most recent actual data. SCOPE_TABLES: users (mart_civics), designed for forecasting in planning exercises."
+          ],
+          "sql": [
+            "DATEDIFF(MONTH, MAX(`users`.`created_at`), DATE('2026-12-31'))"
+          ]
+        },
+        {
+          "display_name": "win_rate",
+          "id": "01f118ee51bc1e2fb6d28f22355d23ba",
+          "instruction": [
+            "Always use COUNT(*) denominator; never COUNT(candidacy_result)."
+          ],
+          "sql": [
+            "CAST(COUNT(CASE WHEN `candidacy`.`candidacy_result` = 'Won' THEN 1 END) AS DOUBLE) / NULLIF(COUNT(*), 0)"
+          ],
+          "synonyms": [
+            "overall win rate",
+            "victory rate"
+          ]
+        }
+      ]
+    },
+    "text_instructions": [
+      {
+        "content": [
+          "## Canonical Definitions\n",
+          "\n",
+          "- Verified Campaign = `campaigns.is_verified = true AND campaigns.is_demo = false`\n",
+          "- Win ICP Eligible = `candidacy.is_win_icp = true`\n",
+          "- Win Rate = `COUNT(CASE WHEN candidacy_result = 'Won' THEN 1 END) / COUNT(*)`\n",
+          "- GoodParty Pledged Candidate (user-level) = `users.has_pledged_campaign = true`\n",
+          "- Pledged Campaign (campaign-level) = `campaigns.is_pledged = true`\n",
+          "\n",
+          "If a requested metric is not defined above, ask a clarifying question before answering.\n",
+          "\n",
+          "## Disambiguation Rules\n",
+          "\n",
+          "- `candidate.*` fields describe political candidates; `users.*` fields describe GoodParty app users.\n",
+          "- `campaigns.is_verified` and `candidacy.is_verified` are different concepts; ask which one the user means if unclear.\n",
+          "- If user asks \"verified records\" without entity, ask: \"Do you mean verified campaigns or verified candidacies?\"\n",
+          "- For office grouping, default to `candidacy.candidate_office`.\n",
+          "- Use `election.candidate_office` only when election context is explicitly requested.\n",
+          "- For state questions, clarify whether user means `election.state`, `candidate.state`, or `campaigns.campaign_state` when ambiguous.\n",
+          "- For candidacy questions with geographic filters (for example \"candidacies in TX\"), default to `election.state`; use `candidate.state` only if user explicitly asks for candidate residence state.\n",
+          "- If user asks \"records by state\" without entity, ask a clarifying question first; do not assume campaign records.\n",
+          "- Do not carry filters from prior turns unless the user explicitly asks to reuse the previous scope.\n",
+          "- For candidate names, prefer `candidate.full_name` when available; otherwise use `CONCAT_WS(' ', candidate.first_name, candidate.last_name)`.\n",
+          "\n",
+          "## Calculation and Filtering Defaults\n",
+          "\n",
+          "- For campaign production metrics, default to excluding demo campaigns (`is_demo = false`) unless user asks to include demos.\n",
+          "- For win rate, always use `COUNT(*)` denominator (do not use `COUNT(candidacy_result)`).\n",
+          "- Treat NULL ICP flags as unknown (not explicit false) unless user asks for strict false.\n",
+          "- When grouping by `campaign_state` or `campaign_office`, include NULL/unclassified bucket in the response.\n",
+          "- Do not add implicit `IS NOT NULL` filters unless requested by the user or required for the metric definition.\n",
+          "- When filtering on a text column (e.g. election_stage.race_name), if no results are returned from an exact string match, attempt to correct for user error input with fuzzy match with levenstein distance and then `ai_similarity` to try to find the next closest match.\n",
+          "\n",
+          "## Time Logic\n",
+          "\n",
+          "- Election context: use `election.election_year` or `election.election_date`.\n",
+          "- User/campaign lifecycle context: use the entity `created_at`.\n",
+          "- Use `created_at` as a proxy for the start of a \"subscription\"\n",
+          "- If time range or period is missing, ask a follow-up question.\n",
+          "- For trend questions, ask for both time grain and time window if either is missing (for example weekly vs monthly, last 30 days vs 90 days vs YTD); do not choose one silently.\n",
+          "- If a user asks about \"signup\" trends, clarify whether they mean campaign creation trends or user signup trends unless the entity is explicit.\n",
+          "\n",
+          "## Out-of-Scope Terms\n",
+          "\n",
+          "- If asked about MAU/DAU/WAU, outreach volume, engagement activity, or similar product-activity metrics, respond that those metrics are out of scope for this civics pilot.\n",
+          "- Do not approximate MAU/outreach using `created_at` trends.\n",
+          "- Offer closest in-scope alternatives: Serve user count, user signup trends, campaign counts, candidacy/election metrics.\n",
+          "\n",
+          "## Response Behavior\n",
+          "\n",
+          "- Keep responses concise and business-readable.\n",
+          "- State key filters used in plain language.\n",
+          "- Return only columns needed to answer the question; avoid unrelated extra fields.\n",
+          "- If confidence is low due to ambiguity, ask a clarifying question.\n",
+          "- If you do not know the answer and don't have the data to answer the question, say you do not know.\n"
+        ],
+        "id": "01f118eaeff51a35ae830531465cfd93"
+      }
+    ]
+  },
+  "version": 2
+}

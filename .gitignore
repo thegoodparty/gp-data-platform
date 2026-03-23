@@ -32,6 +32,11 @@ dbt/project/dbt_internal_packages/
 .env
 .env.local
 
+# Genie export artifacts
+genie/**/raw/
+genie/**/redacted/
+genie/**/metadata/
+
 # ignore tmp_data
 tmp_data/
 
