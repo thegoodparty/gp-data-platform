@@ -48,6 +48,7 @@ select
     properties_start_date,
 
     -- election context
+    properties_incumbent,
     properties_uncontested,
     properties_number_opponents,
     properties_number_of_seats_available,
