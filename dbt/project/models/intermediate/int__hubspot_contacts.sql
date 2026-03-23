@@ -63,7 +63,7 @@ select
     cast(null as date) as runoff_election_date,
 
     -- Election context
-    tbl_hs_contacts.properties_incumbent as is_incumbent,
+    cast(null as string) as is_incumbent,
     tbl_hs_contacts.properties_uncontested as is_uncontested,
     tbl_hs_contacts.properties_number_opponents as number_of_opponents,
 
