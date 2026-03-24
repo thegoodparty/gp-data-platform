@@ -4,6 +4,7 @@ select
     contacts,
 
     -- candidate information
+    properties_br_race_id as br_race_id,
     properties_candidate_name as candidate_name,
     properties_candidate_email as candidate_email,
     properties_candidate_office as candidate_office,
