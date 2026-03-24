@@ -982,6 +982,64 @@ models:
                   - General
                   - Runoff
 
+  - name: int__er_prematch_elected_officials
+    description: >
+      Entity resolution prematch table: BallotReady x TechSpeed elected
+      officials unioned into a standardized schema for Splink probabilistic
+      matching.
+
+      Grain: One row per office-holder term (BR) / officeholder-position (TS).
+
+      Sources: int__civics_elected_official_ballotready (BR),
+      int__civics_elected_official_techspeed (TS), with nicknames seed for
+      first_name alias arrays.
+
+      Unlike the candidacy prematch, elected officials have no election_date
+      or br_race_id. Splink blocking anchors on state + office name + last
+      name and contact info (phone, email).
+
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id.
+          Guaranteed unique across all sources.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: source_name
+        description: Origin of the record ('ballotready' or 'techspeed')
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - techspeed
+
+      - name: source_id
+        description: >
+          Source-specific identifier. BR: br_office_holder_id;
+          TS: ts_officeholder_id_ts_position_id.
+        data_tests:
+          - not_null
+
+      - name: first_name
+        description: Official first name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Official last name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+
   - name: int__civics_election_ballotready
     description: >
       BallotReady elections transformed into civics mart election schema.
