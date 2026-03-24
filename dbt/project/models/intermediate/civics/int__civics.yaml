@@ -1019,20 +1019,27 @@ models:
 
       - name: source_id
         description: >
-          Source-specific identifier. BR: br_office_holder_id;
-          TS: ts_officeholder_id_ts_position_id.
+          Source-specific identifier. BR: br_office_holder_id (string);
+          TS: gp_elected_official_id (salted UUID from ts_officeholder_id +
+          position_id + office_name_clean).
         data_tests:
           - not_null
 
       - name: first_name
-        description: Official first name (lowercased, trimmed)
+        description: Official first name (lowercased, trimmed; blank names filtered out)
         data_tests:
           - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "!= ''"
 
       - name: last_name
-        description: Official last name (lowercased, trimmed)
+        description: Official last name (lowercased, trimmed; blank names filtered out)
         data_tests:
           - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "!= ''"
 
       - name: state
         description: U.S. state (2-letter code)

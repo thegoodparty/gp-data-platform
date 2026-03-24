@@ -23,12 +23,15 @@ with
     ),
 
     -- BallotReady elected officials (from intermediate)
-    -- All historical data included; exclude state='US' (6 national-level rows
-    -- that aren't valid state abbreviations and won't match TS data)
+    -- Exclude: vacancies (no real person), blank names, state='US' (national)
     br_elected as (
         select *
         from {{ ref("int__civics_elected_official_ballotready") }}
-        where length(state) = 2 and state != 'US'
+        where
+            coalesce(is_vacant, false) = false
+            and nullif(trim(first_name), '') is not null
+            and nullif(trim(last_name), '') is not null
+            and state != 'US'
     ),
 
     ballotready_officials as (
@@ -42,9 +45,16 @@ with
             candidate_office,
             office_level,
             office_type,
-            district as district_raw,
-            -- Derive numeric district from position_name (same pattern as candidacy
-            -- prematch)
+            -- Derive district_raw from position_name with same expanded regex as
+            -- candidacy prematch (the intermediate's district column uses a narrower
+            -- regex that misses Region, Precinct, Circuit, etc.)
+            coalesce(
+                regexp_extract(
+                    position_name,
+                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Position|Area|Region|Circuit|Division|Post|Section|Subdivision|Seat) (.+)$'
+                ),
+                ''
+            ) as district_raw,
             coalesce(
                 try_cast(
                     regexp_extract(
@@ -59,9 +69,15 @@ with
                 )
             ) as district_identifier,
             email,
-            -- Truncate to 10 digits: strips country code and extensions
-            -- (e.g. "603-868-5100 ext. 2002" → "6038685100")
-            substring({{ clean_phone_number("phone") }}, 1, 10) as phone,
+            -- Normalize to 10-digit US phone: strip country code prefix '1' if
+            -- 11 digits, otherwise truncate (handles extensions like "ext. 2002")
+            case
+                when
+                    length({{ clean_phone_number("phone") }}) = 11
+                    and {{ clean_phone_number("phone") }} like '1%'
+                then substring({{ clean_phone_number("phone") }}, 2, 10)
+                else substring({{ clean_phone_number("phone") }}, 1, 10)
+            end as phone,
             position_name as official_office_name,
             city,
             term_start_date,
@@ -100,7 +116,13 @@ with
                 regexp_extract(district, '([0-9]+)') as int
             ) as district_identifier,
             email,
-            substring({{ clean_phone_number("phone") }}, 1, 10) as phone,
+            case
+                when
+                    length({{ clean_phone_number("phone") }}) = 11
+                    and {{ clean_phone_number("phone") }} like '1%'
+                then substring({{ clean_phone_number("phone") }}, 2, 10)
+                else substring({{ clean_phone_number("phone") }}, 1, 10)
+            end as phone,
             position_name as official_office_name,
             city,
             cast(null as date) as term_start_date,
