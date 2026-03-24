@@ -78,7 +78,11 @@ with
     techspeed_officials as (
         select
             'techspeed' as source_name,
-            ts_officeholder_id || '_' || coalesce(ts_position_id, '') as source_id,
+            ts_officeholder_id
+            || '_'
+            || coalesce(ts_position_id, '')
+            || '_'
+            || coalesce(trim(position_name), '') as source_id,
             lower(trim(first_name)) as first_name,
             lower(trim(last_name)) as last_name,
             state,

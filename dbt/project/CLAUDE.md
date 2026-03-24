@@ -3,7 +3,7 @@
 Before running pre-commit hooks or dbt commands, activate the Poetry virtualenv:
 
 ```bash
-cd /Users/sanjay/Desktop/workspaces/gp-data-platform/dbt/project
+cd dbt/project
 eval $(poetry env activate)
 ```
 
@@ -29,7 +29,7 @@ databricks auth login --host https://dbc-3d8ca484-79f3.cloud.databricks.com
 Quick validation:
 
 ```bash
-cd /Users/sanjay/Desktop/workspaces/gp-ai-projects
+cd /path/to/gp-ai-projects
 .venv/bin/python -c "from shared.databricks_client import DatabricksClient; print('ok' if DatabricksClient().test_connection() else 'fail')"
 ```
 
