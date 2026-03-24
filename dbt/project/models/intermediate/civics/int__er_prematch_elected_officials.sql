@@ -93,7 +93,10 @@ with
     ts_elected as (
         select *
         from {{ ref("int__civics_elected_official_techspeed") }}
-        where state is not null
+        where
+            state is not null
+            and nullif(trim(first_name), '') is not null
+            and nullif(trim(last_name), '') is not null
     ),
 
     techspeed_officials as (
