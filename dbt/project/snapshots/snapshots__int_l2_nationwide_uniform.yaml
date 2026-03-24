@@ -9,7 +9,7 @@ snapshots:
         - nationwide_uniform
         - uniform
         - snapshot
-        - weekly
+        - monthly
       unique_key: LALVOTERID
       strategy: check
       check_cols:

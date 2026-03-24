@@ -57,6 +57,7 @@ models:
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       # optional: comma/space-separated list like \"AK,AL\" for iterative runs
       l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
@@ -72,6 +73,7 @@ models:
   - name: int__l2_nationwide_haystaq_scores
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       # optional: comma/space-separated list like \"AK,AL\" for iterative runs
       l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
@@ -87,6 +89,7 @@ models:
   - name: int__l2_nationwide_uniform_w_haystaq
     description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       # optional: comma/space-separated list like \"AK,AL\" for iterative runs
       l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"

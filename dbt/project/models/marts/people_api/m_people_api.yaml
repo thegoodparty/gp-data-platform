@@ -35,6 +35,8 @@ models:
                 field: l2_district_type
 
   - name: m_people_api__districtvoter
+    config:
+      tags: ["monthly"]
     description: >
       This model creates the district voter table in the mart layer using the voter table.
     columns:
@@ -80,6 +82,8 @@ models:
             severity: error
 
   - name: m_people_api__voter
+    config:
+      tags: ["monthly"]
     description: >
       This model creates the voter table in the mart layer using the hubspot data
     columns:
@@ -118,6 +122,8 @@ models:
                   - Unknown
 
   - name: m_people_api__districtstats
+    config:
+      tags: ["monthly"]
     description: >
       District statistics aggregating voter demographic data per district.
       Computes bucket distributions for age, homeowner status, education,
@@ -222,6 +228,8 @@ models:
             district_type: "State"
 
   - name: m_people_api__districtstats_py
+    config:
+      tags: ["monthly"]
     tests:
       - dbt_utils.equality:
           arguments:

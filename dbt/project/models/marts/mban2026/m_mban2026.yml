@@ -2,6 +2,8 @@ version: 2
 
 models:
   - name: deid_voters
+    config:
+      tags: ["monthly"]
     description: |
       De-identified nationwide voter data for MBAN Analytics program (2026).
 
