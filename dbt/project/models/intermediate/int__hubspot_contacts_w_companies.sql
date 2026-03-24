@@ -45,7 +45,7 @@ with
             coalesce(
                 tbl_gp_db_campaign.data:name::string,
                 tbl_contacts.full_name,
-                tbl_companies.properties_candidate_name
+                tbl_companies.candidate_name
             ) as full_name,
             tbl_gp_db_campaign.data:name::string as full_name_gp_db,
             coalesce(
@@ -61,91 +61,87 @@ with
             coalesce(
                 tbl_gp_db_campaign.details:email::string,
                 tbl_contacts.email,
-                tbl_companies.properties_candidate_email
+                tbl_companies.candidate_email
             ) as email,
             tbl_gp_db_campaign.details:email::string as email_gp_db,
-            coalesce(
-                tbl_contacts.phone_number, tbl_companies.properties_phone
-            ) as phone_number,
+            coalesce(tbl_contacts.phone_number, tbl_companies.phone) as phone_number,
             coalesce(
                 tbl_gp_db_campaign.details:website::string,
                 tbl_contacts.website_url,
-                tbl_companies.properties_website
+                tbl_companies.website
             ) as website_url,
             tbl_gp_db_campaign.details:website::string as website_url_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:linkedin::string,
                 tbl_contacts.linkedin_url,
-                tbl_companies.properties_linkedin_company_page
+                tbl_companies.linkedin_company_page
             ) as linkedin_url,
             tbl_gp_db_campaign.details:linkedin::string as linkedin_url_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:twitter::string,
                 tbl_contacts.twitter_handle,
-                tbl_companies.properties_twitterhandle
+                tbl_companies.twitter_handle
             ) as twitter_handle,
             tbl_gp_db_campaign.details:twitter::string as twitter_handle_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:facebook::string,
                 tbl_contacts.facebook_url,
-                tbl_companies.properties_facebook_url
+                tbl_companies.facebook_url
             ) as facebook_url,
             tbl_gp_db_campaign.details:facebook::string as facebook_url_gp_db,
             coalesce(
-                tbl_contacts.street_address, tbl_companies.properties_address
+                tbl_contacts.street_address, tbl_companies.address
             ) as street_address,
             coalesce(
-                tbl_contacts.official_office_name,
-                tbl_companies.properties_official_office_name
+                tbl_contacts.official_office_name, tbl_companies.official_office_name
             ) as official_office_name,
             coalesce(
-                tbl_contacts.candidate_office, tbl_companies.properties_candidate_office
+                tbl_contacts.candidate_office, tbl_companies.candidate_office
             ) as candidate_office,
             coalesce(
-                tbl_contacts.office_level, tbl_companies.properties_office_level
+                tbl_contacts.office_level, tbl_companies.office_level
             ) as office_level,
             coalesce(
-                tbl_contacts.office_type, tbl_companies.properties_office_type
+                tbl_contacts.office_type, tbl_companies.office_type
             ) as office_type,
             coalesce(
                 tbl_gp_db_campaign.details:party::string,
                 tbl_contacts.party_affiliation,
-                tbl_companies.properties_candidate_party
+                tbl_companies.candidate_party
             ) as party_affiliation,
             tbl_gp_db_campaign.details:party::string as party_affiliation_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:`partisanType`::string,
                 tbl_contacts.is_partisan,
-                try_cast(tbl_companies.properties_partisan_np as string)
+                try_cast(tbl_companies.partisan_np as string)
             ) as is_partisan,
             tbl_gp_db_campaign.details:`partisanType`::string as is_partisan_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:state::string,
                 tbl_contacts.state,
                 tbl_states_company.state_cleaned_postal_code,
-                tbl_companies.properties_state
+                tbl_companies.state
             ) as state,
             tbl_gp_db_campaign.details:state::string as state_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:city::string,
                 tbl_contacts.city,
-                tbl_companies.properties_city
+                tbl_companies.city
             ) as city,
             tbl_gp_db_campaign.details:city::string as city_gp_db,
             coalesce(
                 tbl_gp_db_campaign.details:district::string,
                 tbl_contacts.district,
-                tbl_companies.properties_candidate_district
+                tbl_companies.candidate_district
             ) as district,
             tbl_gp_db_campaign.details:district::string as district_gp_db,
             coalesce(
-                tbl_contacts.seat,
-                cast(tbl_companies.properties_candidates_seats as string)
+                tbl_contacts.seat, cast(tbl_companies.candidates_seats as string)
             ) as seat,
             coalesce(
                 tbl_gp_db_campaign.details:`filingDeadline`::string,
                 tbl_contacts.filing_deadline,
-                tbl_companies.properties_filing_deadline
+                tbl_companies.filing_deadline
             ) as filing_deadline,
             tbl_gp_db_campaign.details:`filingDeadline`::string
             as filing_deadline_gp_db,
@@ -154,31 +150,29 @@ with
                     tbl_gp_db_campaign.details:`primaryElectionDate`::string as date
                 ),
                 tbl_contacts.primary_election_date,
-                tbl_companies.properties_primary_date
+                tbl_companies.primary_date
             ) as primary_election_date,
             tbl_gp_db_campaign.details:`primaryElectionDate`::string
             as primary_election_date_gp_db,
             coalesce(
                 try_cast(tbl_gp_db_campaign.details:`electionDate`::string as date),
                 tbl_contacts.general_election_date,
-                tbl_companies.properties_election_date
+                tbl_companies.election_date
             ) as general_election_date,
             tbl_gp_db_campaign.details:`electionDate`::string
             as general_election_date_gp_db,
             coalesce(
-                tbl_contacts.runoff_election_date, tbl_companies.properties_runoff_date
+                tbl_contacts.runoff_election_date, tbl_companies.runoff_date
             ) as runoff_election_date,
             coalesce(
-                tbl_contacts.is_incumbent,
-                try_cast(tbl_companies.properties_incumbent as string)
+                tbl_contacts.is_incumbent, try_cast(tbl_companies.incumbent as string)
             ) as is_incumbent,
             coalesce(
                 tbl_contacts.is_uncontested,
-                try_cast(tbl_companies.properties_uncontested as string)
+                try_cast(tbl_companies.uncontested as string)
             ) as is_uncontested,
             coalesce(
-                tbl_contacts.number_of_opponents,
-                tbl_companies.properties_number_of_opponents
+                tbl_contacts.number_of_opponents, tbl_companies.number_of_opponents
             ) as number_of_opponents,
             tbl_contacts.created_at,
             tbl_contacts.updated_at,
@@ -194,14 +188,14 @@ with
             tbl_contacts.population as population,
             tbl_contacts.email_contacts as email_contacts,
             tbl_contacts.companies as extra_companies,
-            tbl_companies.properties_open_seat_ as is_open_seat,
-            tbl_companies.properties_general_election_result as candidacy_result,
+            tbl_companies.open_seat as is_open_seat,
+            tbl_companies.general_election_result as candidacy_result,
             coalesce(
                 tbl_contacts.verified_candidate_status,
-                tbl_companies.properties_verified_candidates
+                tbl_companies.verified_candidates
             ) as verified_candidate,
             coalesce(
-                tbl_contacts.pledge_status, tbl_companies.properties_pledge_status
+                tbl_contacts.pledge_status, tbl_companies.pledge_status
             ) as pledge_status,
             tbl_engagements.company_id_association,
             tbl_engagements.contact_id_association,
@@ -213,16 +207,14 @@ with
 
             -- Matching logic
             case
-                when
-                    lower(tbl_contacts.email)
-                    = lower(tbl_companies.properties_candidate_email)
+                when lower(tbl_contacts.email) = lower(tbl_companies.candidate_email)
                 then 1
                 else 0
             end as email_match,
 
             case
                 when
-                    lower(trim(tbl_companies.properties_candidate_name)) = lower(
+                    lower(trim(tbl_companies.candidate_name)) = lower(
                         trim(
                             concat(tbl_contacts.first_name, ' ', tbl_contacts.last_name)
                         )
@@ -240,8 +232,7 @@ with
             on tbl_companies.id = tbl_engagements.company_id_association
         left join
             {{ ref("clean_states") }} as tbl_states_company
-            on trim(upper(tbl_companies.properties_state))
-            = tbl_states_company.state_raw
+            on trim(upper(tbl_companies.state)) = tbl_states_company.state_raw
         left join
             {{ ref("stg_airbyte_source__gp_api_db_campaign") }} as tbl_gp_db_campaign
             on tbl_companies.id = tbl_gp_db_campaign.data:hubspotid::string

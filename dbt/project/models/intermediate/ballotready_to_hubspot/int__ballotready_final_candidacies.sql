@@ -20,7 +20,7 @@ with
     -- Existing HubSpot phone numbers for deduplication (any contact with a phone)
     hubspot_phones as (
         select distinct
-            nullif(trim(regexp_replace(properties_phone, '[^0-9]', '')), '') as phone
+            nullif(trim(regexp_replace(phone, '[^0-9]', '')), '') as phone_clean
         from {{ ref("int__hubspot_ytd_candidacies") }}
     ),
 
@@ -43,8 +43,9 @@ with
         where
             t1.br_candidate_code
             not in (select hubspot_candidate_code from hubspot_candidate_codes)
-            and t1.phone
-            not in (select phone from hubspot_phones where phone is not null)
+            and t1.phone not in (
+                select phone_clean from hubspot_phones where phone_clean is not null
+            )
     ),
 
     -- write formatted new batch data to a table
