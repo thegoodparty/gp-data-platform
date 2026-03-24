@@ -53,6 +53,6 @@ select
     properties_viability_2_0 as viability_score,
 
     -- metadata
-    createdat,
-    updatedat
+    createdat as created_at,
+    updatedat as updated_at
 from {{ source("airbyte_source", "hubspot_api_companies") }}
