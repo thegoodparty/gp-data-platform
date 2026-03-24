@@ -1,7 +1,7 @@
 /*
 Deduplication for this voter data is done by comparing each row against a snapshot. With the current size of
-220 MM rows/voters and ~350 columns, this processes takes nearly 5 hours. For this reason, it is tagged "weekly"
-for infrequent runs.
+220 MM rows/voters and ~350 columns, this processes takes nearly 5 hours. For this reason, it is tagged "monthly"
+since L2 data loads monthly.
 */
 {{
     config(
@@ -9,7 +9,7 @@ for infrequent runs.
         unique_key="LALVOTERID",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
-        tags=["mart", "people_api", "voter", "weekly"],
+        tags=["mart", "people_api", "voter", "monthly"],
     )
 }}
 
