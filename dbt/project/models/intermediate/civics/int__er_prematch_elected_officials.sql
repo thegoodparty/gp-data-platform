@@ -23,8 +23,13 @@ with
     ),
 
     -- BallotReady elected officials (from intermediate)
-    -- All historical data included
-    br_elected as (select * from {{ ref("int__civics_elected_official_ballotready") }}),
+    -- All historical data included; exclude state='US' (6 national-level rows
+    -- that aren't valid state abbreviations and won't match TS data)
+    br_elected as (
+        select *
+        from {{ ref("int__civics_elected_official_ballotready") }}
+        where length(state) = 2 and state != 'US'
+    ),
 
     ballotready_officials as (
         select
@@ -78,7 +83,11 @@ with
     techspeed_officials as (
         select
             'techspeed' as source_name,
-            ts_officeholder_id || '_' || coalesce(ts_position_id, '') as source_id,
+            -- gp_elected_official_id is a salted UUID from (ts_officeholder_id,
+            -- position_id, office_name_clean) — the true unique key. Using the
+            -- simpler ts_officeholder_id_position_id composite is NOT unique
+            -- because TechSpeed reuses ID pairs across different people.
+            cast(gp_elected_official_id as string) as source_id,
             lower(trim(first_name)) as first_name,
             lower(trim(last_name)) as last_name,
             state,

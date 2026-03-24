@@ -1,38 +1,3 @@
-## Environment Setup
-
-Before running pre-commit hooks or dbt commands, activate the Poetry virtualenv:
-
-```bash
-cd /Users/sanjay/Desktop/workspaces/gp-data-platform/dbt/project
-eval $(poetry env activate)
-```
-
-This is required for pre-commit hooks (sqlfmt, pytest) to find their
-dependencies. Without it, pytest will fail with `ModuleNotFoundError` for
-airflow, pandas, pyspark, etc.
-
-## Databricks Query Access
-
-For exploratory data analysis, use the `databricks-query` skill which queries
-via the `gp-ai-projects` DatabricksClient. Auth resolves in order:
-
-1. `DATABRICKS_TOKEN` env var
-2. Databricks CLI cached token (`databricks auth token`)
-3. `DATABRICKS_API_KEY` fallback in `.env`
-
-To set up Databricks CLI auth (recommended — no long-lived PAT needed):
-
-```bash
-databricks auth login --host https://dbc-3d8ca484-79f3.cloud.databricks.com
-```
-
-Quick validation:
-
-```bash
-cd /Users/sanjay/Desktop/workspaces/gp-ai-projects
-.venv/bin/python -c "from shared.databricks_client import DatabricksClient; print('ok' if DatabricksClient().test_connection() else 'fail')"
-```
-
 ## Workflow
 
 Use the `gh` cli to make pull-requests and interact with GitHub.
