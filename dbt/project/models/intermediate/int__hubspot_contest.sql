@@ -9,51 +9,48 @@ select
     id as contact_id,
 
     -- office information
-    properties_official_office_name as official_office_name,
-    properties_candidate_office as candidate_office,
-    properties_office_type as office_type,
-    properties_office_level as office_level,
-    properties_partisan_type as partisan_type,
+    official_office_name,
+    candidate_office,
+    office_type,
+    office_level,
+    partisan_type,
 
     -- geographic information
-    properties_state as state,
-    properties_city as city,
-    properties_candidate_district as district,
+    state,
+    city,
+    candidate_district as district,
     coalesce(
         case
-            when properties_official_office_name like '% - Seat %'
-            then regexp_extract(properties_official_office_name, ' - Seat ([^,]+)')
-            when properties_official_office_name like '% - Group %'
-            then regexp_extract(properties_official_office_name, ' - Group ([^,]+)')
-            when properties_official_office_name like '%, Seat %'
-            then regexp_extract(properties_official_office_name, ', Seat ([^,]+)')
-            when properties_official_office_name like '%: % - Seat %'
-            then regexp_extract(properties_official_office_name, ' - Seat ([^,]+)')
-            when properties_official_office_name like '% - Position %'
-            then
-                regexp_extract(
-                    properties_official_office_name, ' - Position ([^\\s(]+)'
-                )
+            when official_office_name like '% - Seat %'
+            then regexp_extract(official_office_name, ' - Seat ([^,]+)')
+            when official_office_name like '% - Group %'
+            then regexp_extract(official_office_name, ' - Group ([^,]+)')
+            when official_office_name like '%, Seat %'
+            then regexp_extract(official_office_name, ', Seat ([^,]+)')
+            when official_office_name like '%: % - Seat %'
+            then regexp_extract(official_office_name, ' - Seat ([^,]+)')
+            when official_office_name like '% - Position %'
+            then regexp_extract(official_office_name, ' - Position ([^\\s(]+)')
             else null
         end,
         -- properties_candidate_seat,  # add in once updated in hubspot
         ''
     ) as seat_name,
-    properties_population as population,
+    population,
 
     -- election context
-    properties_number_opponents as number_of_opponents,
-    properties_number_of_seats_available as seats_available,
-    properties_uncontested as uncontested,
-    properties_open_seat as open_seat,
-    properties_start_date as term_start_date,
-    properties_election_date as election_date,
-    cast(left(properties_election_date, 4) as integer) as election_year,
+    number_opponents as number_of_opponents,
+    number_of_seats_available as seats_available,
+    uncontested,
+    open_seat,
+    start_date as term_start_date,
+    election_date,
+    cast(left(election_date, 4) as integer) as election_year,
 
     -- election dates
-    properties_filing_deadline as filing_deadline,
-    properties_primary_election_date as primary_election_date,
-    properties_general_election_date as general_election_date,
+    filing_deadline,
+    primary_election_date,
+    general_election_date,
     cast(null as date) as runoff_election_date,  -- get from campaign
 
     -- election results
@@ -92,6 +89,6 @@ select
 from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 where
     1 = 1
-    and properties_official_office_name is not null
-    and properties_office_type is not null
-    and properties_candidate_office is not null
+    and official_office_name is not null
+    and office_type is not null
+    and candidate_office is not null
