@@ -18,6 +18,7 @@ select
     properties_address as address,
 
     -- candidate information
+    properties_br_race_id as br_race_id,
     properties_candidate_id_source as candidate_id_source,
     properties_candidate_id_tier as candidate_id_tier,
     properties_pledge_status as pledge_status,
