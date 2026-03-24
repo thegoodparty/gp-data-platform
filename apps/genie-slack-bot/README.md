@@ -4,12 +4,11 @@ A Slack bot that connects [Databricks AI/BI Genie](https://docs.databricks.com/a
 
 Built on the [Genie Conversation API](https://docs.databricks.com/aws/en/genie/conversation-api) and deployed as a [Databricks App](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/).
 
-## Current Scope (Beta Pilot)
+## Current Scope
 
-- **Genie space:** Civics Genie (DATA-1570) — 5-table pilot covering elected officials, candidates, and related civic data
+- **Genie space:** Civics Genie (DATA-1570) — 7-table space covering elections, election stages, candidates, candidacies, candidacy stages, campaigns, and users
 - **Auth model:** Single service principal (M2M) — all users share the same data access
 - **Slack surface:** `#genie-feedback` channel + direct messages to the bot
-- **Users:** Beta testers on the data platform team
 - **Runtime:** Socket mode bot plus lightweight HTTP health endpoint for Databricks App readiness
 
 ## Architecture
@@ -36,10 +35,13 @@ Unity Catalog (civics mart tables)
 
 **Key behavior:**
 - Each new Slack thread starts a new Genie conversation
-- In channels, users should `@mention` the bot for each follow-up question during beta
+- In channels, users should `@mention` the bot for each follow-up question
 - In DMs, each top-level message starts a new Genie conversation and replies in that DM thread continue it
 - Bot posts a "Thinking..." indicator that updates in-place with the answer
 - Tabular results rendered as formatted code blocks (max 10 rows)
+- Every successful response includes a **Genie Console deeplink** so users can view full results, charts, and use Inspection mode in the Databricks UI
+- When results exceed 10 rows, the main response text includes a **truncation warning** with the deeplink
+- Users can type **"show sql"** (or similar phrases) in a thread to see the SQL that Genie generated for the last query — this is served from cache without calling Genie again
 - Thumbs up/down feedback flows back to the Genie space Monitoring tab
 - Suggested follow-up questions displayed after each response
 
@@ -49,8 +51,8 @@ Unity Catalog (civics mart tables)
 |------|---------|
 | `app.py` | Entry point — validates config, initializes clients, starts socket mode |
 | `config.py` | Reads and validates environment variables |
-| `databricks_genie_client.py` | Genie Conversation API wrapper (start/continue conversations, poll results, feedback) |
-| `slack_bot.py` | Slack Bolt event handlers, message formatting, feedback buttons |
+| `databricks_genie_client.py` | Genie Conversation API wrapper (start/continue conversations, poll results, feedback, SQL extraction, console deeplinks) |
+| `slack_bot.py` | Slack Bolt event handlers, message formatting, feedback buttons, SQL-on-request, deeplinks |
 | `app.yaml` | Databricks App runtime config — env vars via `valueFrom` references |
 | `requirements.txt` | Python dependencies |
 
@@ -193,18 +195,29 @@ Then test by @mentioning the bot in `#genie-feedback`.
 | In-memory conversation map | App restart resets thread context (existing threads start new Genie conversations) | Persist to Delta table |
 | In-memory feedback map | Feedback routing state resets on restart and is bounded with eviction | Persist feedback state if long-lived threads matter |
 | No chart rendering | Genie auto-generated charts don't render in Slack; users see tables + reasoning text | Render charts as images, upload to Slack |
-| Table results capped at 10 rows | Longer results truncated | Add pagination or link to full results in Genie UI |
+| Table results capped at 10 rows | Longer results truncated; truncation warning + deeplink now shown in main text | Add pagination if needed |
 | Single service principal | All users see the same data | Move to U2M OAuth for per-user permissions |
 | No channel restriction for new mentions | Bot responds to new `@mentions` in any channel it's added to, plus DMs | Add channel allowlist in event handler |
 
+## Deferred Improvements
+
+The following are tracked but deferred from the current phase:
+
+| Item | Rationale |
+|------|-----------|
+| **Automatic 0-row retry** | Space config hardening should reduce 0-count results at the source. Revisit if benchmarks still show frequent failures. |
+| **SDK migration** | The Databricks SDK `GenieAPI` is a thin wrapper with no inspection/refinement capabilities. The bot's custom retry logic is more valuable. Revisit if SDK adds inspection mode. |
+| **`office_level` dbt normalization** | 29 casing variants in the data. Using `UPPER()` in Genie instructions as stopgap. Revisit in next dbt model update. |
+| **Chart/visualization rendering** | Genie Conversation API does not return chart data — UI only. Deeplink is the workaround. |
+
 ## Expanding to General Availability
 
-When moving from beta pilot to broader rollout, consider:
+When moving to broader rollout, consider:
 
 ### Genie Space
 
-- Expand beyond 5 civics tables — add tables to the Genie space and update SP grants
-- Add more SQL examples and disambiguation instructions based on beta feedback
+- Add tables to the Genie space and update SP grants as the data model expands
+- Add more SQL examples and disambiguation instructions based on production feedback
 - Review Genie Monitoring tab for common failure patterns and refine instructions
 
 ### Auth Model

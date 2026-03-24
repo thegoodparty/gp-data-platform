@@ -1388,6 +1388,124 @@
           "  COUNT(CASE WHEN candidacy_result = 'Won' THEN 1 END) AS won_count\n",
           "FROM goodparty_data_catalog.mart_civics.candidacy"
         ]
+      },
+      {
+        "id": "01f127ccb08f1599a1d55c35674cafd5",
+        "question": [
+          "How many state legislative elections in 2026?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS state_legislative_elections\n",
+          "FROM goodparty_data_catalog.mart_civics.election\n",
+          "WHERE election_year = 2026\n",
+          "  AND candidate_office IN ('State Representative', 'State Senate');\n"
+        ]
+      },
+      {
+        "id": "01f127ccbfdd141cbee9a5eb325f42e8",
+        "question": [
+          "How many election stages by type in 2026?"
+        ],
+        "sql": [
+          "SELECT stage_type, COUNT(*) AS stage_count\n",
+          "FROM goodparty_data_catalog.mart_civics.election_stage\n",
+          "WHERE YEAR(election_date) = 2026\n",
+          "GROUP BY stage_type\n",
+          "ORDER BY stage_count DESC;\n"
+        ]
+      },
+      {
+        "id": "01f127ccd23c19959fdc007d81dc77a8",
+        "question": [
+          "Candidacy stage results for Texas primaries"
+        ],
+        "sql": [
+          "SELECT cs.candidate_name, cs.election_result, cs.votes_received, es.race_name\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy_stage cs\n",
+          "JOIN goodparty_data_catalog.mart_civics.election_stage es\n",
+          "  ON cs.gp_election_stage_id = es.gp_election_stage_id\n",
+          "JOIN goodparty_data_catalog.mart_civics.election e\n",
+          "  ON es.gp_election_id = e.gp_election_id\n",
+          "WHERE es.stage_type = 'primary'\n",
+          "  AND e.state = 'TX'\n",
+          "  AND cs.election_result IS NOT NULL;\n"
+        ]
+      },
+      {
+        "id": "01f127cce0481f0c923192c1e44db4a9",
+        "question": [
+          "Win rate at primary stage level"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  CAST(COUNT(CASE WHEN cs.election_result = 'Won' THEN 1 END) AS DOUBLE) / NULLIF(COUNT(*), 0) AS primary_win_rate,\n",
+          "  COUNT(*) AS total_primary_candidacies,\n",
+          "  COUNT(CASE WHEN cs.election_result = 'Won' THEN 1 END) AS won_count\n",
+          "FROM goodparty_data_catalog.mart_civics.candidacy_stage cs\n",
+          "JOIN goodparty_data_catalog.mart_civics.election_stage es\n",
+          "  ON cs.gp_election_stage_id = es.gp_election_stage_id\n",
+          "WHERE es.stage_type = 'primary'\n",
+          "  AND cs.election_result IS NOT NULL;\n"
+        ]
+      },
+      {
+        "id": "01f127ccea051fb6ac019884091804c8",
+        "question": [
+          "Campaigns created last month (canonical — NOT \"last 30 days\")"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS campaigns_last_month\n",
+          "FROM goodparty_data_catalog.mart_civics.campaigns\n",
+          "WHERE created_at >= date_trunc('MONTH', DATEADD(MONTH, -1, CURRENT_DATE()))\n",
+          "  AND created_at < date_trunc('MONTH', CURRENT_DATE());\n"
+        ]
+      },
+      {
+        "id": "01f127ccf2701e2c95c7a76482eb3cf7",
+        "question": [
+          "Campaigns created in the last 30 days (rolling — different from \"last month\")"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS campaigns_last_30_days\n",
+          "FROM goodparty_data_catalog.mart_civics.campaigns\n",
+          "WHERE created_at >= DATEADD(DAY, -30, CURRENT_DATE());\n"
+        ]
+      },
+      {
+        "id": "01f127ce4c40195293ace4ba17c95bc2",
+        "question": [
+          "How many federal elections in 2026?"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS federal_elections\n",
+          "FROM goodparty_data_catalog.mart_civics.election\n",
+          "WHERE election_year = 2026\n",
+          "  AND UPPER(office_level) = 'FEDERAL';\n"
+        ]
+      },
+      {
+        "id": "01f127ce54601904b371d6d9bed51da0",
+        "question": [
+          "Elections by office level in 2026"
+        ],
+        "sql": [
+          "SELECT office_level, COUNT(*) AS election_count\n",
+          "FROM goodparty_data_catalog.mart_civics.election\n",
+          "WHERE election_year = 2026\n",
+          "GROUP BY office_level\n",
+          "ORDER BY election_count DESC;\n"
+        ]
+      },
+      {
+        "id": "01f127ce5a32118ea95129702d4344db",
+        "question": [
+          " Users signed up this year"
+        ],
+        "sql": [
+          "SELECT COUNT(*) AS users_ytd\n",
+          "FROM goodparty_data_catalog.mart_civics.users\n",
+          "WHERE created_at >= date_trunc('YEAR', CURRENT_DATE());\n"
+        ]
       }
     ],
     "join_specs": [
@@ -1462,6 +1580,60 @@
           "`candidacy`.`product_campaign_id` = `campaigns`.`campaign_id`",
           "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
         ]
+      },
+      {
+        "id": "01f127c905d71c14bc583a1b3af681c2",
+        "instruction": [
+          "Use to access election-level attributes (candidate_office, office_level, office_type, state, city, district) for election stages."
+        ],
+        "left": {
+          "alias": "election_stage",
+          "identifier": "goodparty_data_catalog.mart_civics.election_stage"
+        },
+        "right": {
+          "alias": "election",
+          "identifier": "goodparty_data_catalog.mart_civics.election"
+        },
+        "sql": [
+          "`election_stage`.`gp_election_id` = `election`.`gp_election_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
+      },
+      {
+        "id": "01f127cba9cd1a999997b2edc5c03164",
+        "instruction": [
+          "Use for candidacy context (office, party, verification status) with stage-level results. "
+        ],
+        "left": {
+          "alias": "candidacy_stage",
+          "identifier": "goodparty_data_catalog.mart_civics.candidacy_stage"
+        },
+        "right": {
+          "alias": "candidacy",
+          "identifier": "goodparty_data_catalog.mart_civics.candidacy"
+        },
+        "sql": [
+          "`candidacy_stage`.`gp_candidacy_id` = `candidacy`.`gp_candidacy_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
+      },
+      {
+        "id": "01f127cbdd1913f99ce207d23dcd587d",
+        "instruction": [
+          "Use for election stage context (stage_type, election_date, race_name) with candidacy-stage results."
+        ],
+        "left": {
+          "alias": "candidacy_stage",
+          "identifier": "goodparty_data_catalog.mart_civics.candidacy_stage"
+        },
+        "right": {
+          "alias": "election_stage",
+          "identifier": "goodparty_data_catalog.mart_civics.election_stage"
+        },
+        "sql": [
+          "`candidacy_stage`.`gp_election_stage_id` = `election_stage`.`gp_election_stage_id`",
+          "--rt=FROM_RELATIONSHIP_TYPE_MANY_TO_ONE--"
+        ]
       }
     ],
     "sql_snippets": {
@@ -1502,6 +1674,34 @@
           ],
           "sql": [
             "COALESCE(`candidacy`.`candidacy_result`, 'UNKNOWN')"
+          ]
+        },
+        {
+          "display_name": "election stage year",
+          "id": "01f127ce2c96197d86410e97a0a084fe",
+          "instruction": [
+            "Year extracted from the election stage date"
+          ],
+          "sql": [
+            "YEAR(election_stage.election_date)"
+          ],
+          "synonyms": [
+            "stage year",
+            "race year"
+          ]
+        },
+        {
+          "display_name": "election stage type",
+          "id": "01f127ce342d1a23af41df4dcfb103e7",
+          "instruction": [
+            "Type of election stage: general, primary, primary runoff, general runoff"
+          ],
+          "sql": [
+            "election_stage.stage_type"
+          ],
+          "synonyms": [
+            "stage type",
+            "race type"
           ]
         }
       ],
@@ -1658,6 +1858,131 @@
           "sql": [
             "`candidacy`.`gp_election_id` = `election`.`gp_election_id`"
           ]
+        },
+        {
+          "display_name": "general election stages",
+          "id": "01f127cdb33f13cca4b940963445c87e",
+          "instruction": [
+            "Filter for general election stages only"
+          ],
+          "sql": [
+            "election_stage.stage_type = 'general'"
+          ],
+          "synonyms": [
+            "general elections",
+            "generals"
+          ]
+        },
+        {
+          "display_name": "primary election stages",
+          "id": "01f127cdc2441dd4862d5b941436569c",
+          "instruction": [
+            "Filter for primary election stages only"
+          ],
+          "sql": [
+            "election_stage.stage_type = 'primary'"
+          ],
+          "synonyms": [
+            "primaries",
+            "primary elections"
+          ]
+        },
+        {
+          "display_name": "runoff election stages",
+          "id": "01f127cdd11e171ab85d7dd55e62e34a",
+          "instruction": [
+            "Filter for all runoff stages (both general and primary runoffs)"
+          ],
+          "sql": [
+            "election_stage.stage_type IN ('general runoff', 'primary runoff')"
+          ],
+          "synonyms": [
+            "runoffs",
+            "runoff elections"
+          ]
+        },
+        {
+          "display_name": "state legislative elections",
+          "id": "01f127cddb1a19fca2dfc85f9273bd7c",
+          "instruction": [
+            "Filter for state legislative elections. Do NOT use office_level for this — use candidate_office."
+          ],
+          "sql": [
+            "election.candidate_office IN ('State Representative', 'State Senate')"
+          ],
+          "synonyms": [
+            "state leg",
+            "state house",
+            "state senate"
+          ]
+        },
+        {
+          "display_name": "federal elections",
+          "id": "01f127cde5cb18f68a8aa3e86d5a96f0",
+          "instruction": [
+            "Filter for federal-level elections. Uses UPPER() for case-insensitive matching."
+          ],
+          "sql": [
+            "UPPER(election.office_level) = 'FEDERAL'"
+          ],
+          "synonyms": [
+            "federal races"
+          ]
+        },
+        {
+          "display_name": "winning candidacy stages",
+          "id": "01f127ce033416c4a1fed0eb5cdc023a",
+          "instruction": [
+            "Filter for candidacy stages where the candidate won"
+          ],
+          "sql": [
+            "candidacy_stage.election_result = 'Won'"
+          ],
+          "synonyms": [
+            "winners",
+            "won"
+          ]
+        },
+        {
+          "display_name": "campaigns created last month",
+          "id": "01f127ce0cdc13418e3686ea11d509e9",
+          "instruction": [
+            "Campaigns created in the previous full calendar month. Not the same as \"last 30 days\"."
+          ],
+          "sql": [
+            "campaigns.created_at >= date_trunc('MONTH', DATEADD(MONTH, -1, CURRENT_DATE())) AND campaigns.created_at < date_trunc('MONTH', CURRENT_DATE())"
+          ],
+          "synonyms": [
+            "last month campaigns"
+          ]
+        },
+        {
+          "display_name": "campaigns created YTD",
+          "id": "01f127ce196f12ce82ff6294d35b29d2",
+          "instruction": [
+            "Campaigns created in the current calendar year to date"
+          ],
+          "sql": [
+            "campaigns.created_at >= date_trunc('YEAR', CURRENT_DATE())"
+          ],
+          "synonyms": [
+            "this year campaigns",
+            "ytd campaigns"
+          ]
+        },
+        {
+          "display_name": "Texas elections",
+          "id": "01f127ce23841d5194620b7586731686",
+          "instruction": [
+            "Filter elections in Texas. State uses postal abbreviations."
+          ],
+          "sql": [
+            "election.state = 'TX'"
+          ],
+          "synonyms": [
+            "texas",
+            "TX"
+          ]
         }
       ],
       "measures": [
@@ -1696,66 +2021,71 @@
             "overall win rate",
             "victory rate"
           ]
+        },
+        {
+          "display_name": "stage win rate",
+          "id": "01f127ce3e3d155fba58c46fe7f355f6",
+          "instruction": [
+            "Win rate at the candidacy stage level. Denominator includes all rows (including NULL results)."
+          ],
+          "sql": [
+            "CAST(COUNT(CASE WHEN candidacy_stage.election_result = 'Won' THEN 1 END) AS DOUBLE) / NULLIF(COUNT(*), 0)"
+          ],
+          "synonyms": [
+            "win rate",
+            "win percentage"
+          ]
         }
       ]
     },
     "text_instructions": [
       {
         "content": [
-          "## Canonical Definitions\n",
+          "TABLE ROUTING:\n",
+          "- \"elections\" → use the election table (grain: one row per position + year).\n",
+          "- \"races\", \"stages\", \"primaries\", \"runoffs\" → use the election_stage table (grain: one row per stage per election).\n",
+          "- \"candidacy results\", \"votes\", \"who won\" at the stage level → use candidacy_stage.\n",
+          "- \"overall candidacy outcome\" → use candidacy (has aggregated candidacy_result).\n",
+          "- election_stage does NOT carry candidate_office, office_level, office_type, state, city, or district. To filter election stages by those attributes, JOIN election_stage to election on gp_election_id.\n",
           "\n",
-          "- Verified Campaign = `campaigns.is_verified = true AND campaigns.is_demo = false`\n",
-          "- Win ICP Eligible = `candidacy.is_win_icp = true`\n",
-          "- Win Rate = `COUNT(CASE WHEN candidacy_result = 'Won' THEN 1 END) / COUNT(*)`\n",
-          "- GoodParty Pledged Candidate (user-level) = `users.has_pledged_campaign = true`\n",
-          "- Pledged Campaign (campaign-level) = `campaigns.is_pledged = true`\n",
+          "ELECTION CLASSIFICATION:\n",
+          "- \"state legislative\" → election.candidate_office IN ('State Representative', 'State Senate'). Do NOT use office_level = 'state legislative' — that value does not exist.\n",
+          "- \"federal\" → UPPER(election.office_level) = 'FEDERAL'\n",
+          "- \"congressional\" → election.office_type = 'Congressional' OR election.candidate_office = 'US House'\n",
+          "- \"local\" → UPPER(election.office_level) = 'LOCAL'\n",
+          "- \"county\" → UPPER(election.office_level) = 'COUNTY'\n",
+          "- \"city\" or \"municipal\" → UPPER(election.office_level) = 'CITY'\n",
+          "- \"school board\" → election.office_type = 'School Board' OR election.candidate_office = 'School Board'\n",
+          "- \"judicial\" → election.is_judicial = TRUE\n",
+          "- IMPORTANT: office_level has casing inconsistencies (Local, CITY, local, etc.). Always use UPPER(election.office_level) for comparisons.\n",
           "\n",
-          "If a requested metric is not defined above, ask a clarifying question before answering.\n",
+          "STAGE TYPES:\n",
+          "- election_stage.stage_type values: 'general', 'primary', 'primary runoff', 'general runoff'.\n",
+          "- is_primary = TRUE when stage_type IN ('primary', 'primary runoff').\n",
+          "- is_runoff = TRUE when stage_type IN ('general runoff', 'primary runoff').\n",
+          "- Prefer stage_type for explicit filtering over the boolean flags.\n",
+          "- candidacy_stage.election_result values: 'Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', or NULL. 61% of candidacy_stage rows have NULL election_result (future elections or no result data yet).\n",
           "\n",
-          "## Disambiguation Rules\n",
+          "STATE CODES:\n",
+          "- election.state uses two-letter postal abbreviations (TX, NY, CA, FL). When the user says \"Texas\", use state = 'TX'. Map full state names to postal codes.\n",
           "\n",
-          "- `candidate.*` fields describe political candidates; `users.*` fields describe GoodParty app users.\n",
-          "- `campaigns.is_verified` and `candidacy.is_verified` are different concepts; ask which one the user means if unclear.\n",
-          "- If user asks \"verified records\" without entity, ask: \"Do you mean verified campaigns or verified candidacies?\"\n",
-          "- For office grouping, default to `candidacy.candidate_office`.\n",
-          "- Use `election.candidate_office` only when election context is explicitly requested.\n",
-          "- For state questions, clarify whether user means `election.state`, `candidate.state`, or `campaigns.campaign_state` when ambiguous.\n",
-          "- For candidacy questions with geographic filters (for example \"candidacies in TX\"), default to `election.state`; use `candidate.state` only if user explicitly asks for candidate residence state.\n",
-          "- If user asks \"records by state\" without entity, ask a clarifying question first; do not assume campaign records.\n",
-          "- Do not carry filters from prior turns unless the user explicitly asks to reuse the previous scope.\n",
-          "- For candidate names, prefer `candidate.full_name` when available; otherwise use `CONCAT_WS(' ', candidate.first_name, candidate.last_name)`.\n",
+          "TIME SEMANTICS:\n",
+          "- \"past month\" or \"last month\" → previous full calendar month: created_at >= date_trunc('MONTH', DATEADD(MONTH, -1, CURRENT_DATE())) AND created_at < date_trunc('MONTH', CURRENT_DATE())\n",
+          "- \"last 30 days\" → rolling 30 days: created_at >= DATEADD(DAY, -30, CURRENT_DATE())\n",
+          "- \"this month\" → current month to date: created_at >= date_trunc('MONTH', CURRENT_DATE())\n",
+          "- \"this year\" or \"YTD\" → calendar year to date: created_at >= date_trunc('YEAR', CURRENT_DATE())\n",
+          "- \"last year\" → previous full calendar year: created_at >= date_trunc('YEAR', DATEADD(YEAR, -1, CURRENT_DATE())) AND created_at < date_trunc('YEAR', CURRENT_DATE())\n",
+          "- \"last month\" and \"last 30 days\" are NOT synonyms — they produce different date ranges.\n",
+          "- If time range is missing from the question, ask a clarifying question. Do NOT silently choose a default.\n",
           "\n",
-          "## Calculation and Filtering Defaults\n",
+          "CREATED_AT APPROXIMATION:\n",
+          "- Use created_at as an approximate proxy for subscription start. It reflects account creation, not a formal subscription event. Warn the user of this approximation.\n",
           "\n",
-          "- For campaign production metrics, default to excluding demo campaigns (`is_demo = false`) unless user asks to include demos.\n",
-          "- For win rate, always use `COUNT(*)` denominator (do not use `COUNT(candidacy_result)`).\n",
-          "- Treat NULL ICP flags as unknown (not explicit false) unless user asks for strict false.\n",
-          "- When grouping by `campaign_state` or `campaign_office`, include NULL/unclassified bucket in the response.\n",
-          "- Do not add implicit `IS NOT NULL` filters unless requested by the user or required for the metric definition.\n",
-          "- When filtering on a text column (e.g. election_stage.race_name), if no results are returned from an exact string match, attempt to correct for user error input with fuzzy match with levenstein distance and then `ai_similarity` to try to find the next closest match.\n",
+          "FUZZY MATCHING:\n",
+          "- When filtering on text columns (race_name, election_name, candidate_name, official_office_name) and an exact match returns 0 results, attempt a case-insensitive LIKE match first, then try Levenshtein distance. Do not use ai_similarity.\n",
           "\n",
-          "## Time Logic\n",
-          "\n",
-          "- Election context: use `election.election_year` or `election.election_date`.\n",
-          "- User/campaign lifecycle context: use the entity `created_at`.\n",
-          "- Use `created_at` as a proxy for the start of a \"subscription\"\n",
-          "- If time range or period is missing, ask a follow-up question.\n",
-          "- For trend questions, ask for both time grain and time window if either is missing (for example weekly vs monthly, last 30 days vs 90 days vs YTD); do not choose one silently.\n",
-          "- If a user asks about \"signup\" trends, clarify whether they mean campaign creation trends or user signup trends unless the entity is explicit.\n",
-          "\n",
-          "## Out-of-Scope Terms\n",
-          "\n",
-          "- If asked about MAU/DAU/WAU, outreach volume, engagement activity, or similar product-activity metrics, respond that those metrics are out of scope for this civics pilot.\n",
-          "- Do not approximate MAU/outreach using `created_at` trends.\n",
-          "- Offer closest in-scope alternatives: Serve user count, user signup trends, campaign counts, candidacy/election metrics.\n",
-          "\n",
-          "## Response Behavior\n",
-          "\n",
-          "- Keep responses concise and business-readable.\n",
-          "- State key filters used in plain language.\n",
-          "- Return only columns needed to answer the question; avoid unrelated extra fields.\n",
-          "- If confidence is low due to ambiguity, ask a clarifying question.\n",
-          "- If you do not know the answer and don't have the data to answer the question, say you do not know.\n"
+          "OUT OF SCOPE:\n",
+          "- If asked about MAU/DAU/WAU, outreach volume, engagement activity, or similar product-activity metrics, respond that those metrics are out of scope for this civics data space.\n"
         ],
         "id": "01f118eaeff51a35ae830531465cfd93"
       }

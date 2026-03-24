@@ -28,6 +28,10 @@ class DatabricksGenieClient:
         logger.info("✓ Using OAuth M2M authentication via app service principal")
         logger.info("✓ Genie space ID: %s", self.space_id)
 
+    def get_console_url(self, conversation_id: str) -> str:
+        """Construct a deeplink URL to view this conversation in the Genie console."""
+        return f"{self.host}/genie/rooms/{self.space_id}/chats/{conversation_id}"
+
     @staticmethod
     def _extract_status_code(error: Exception) -> Optional[int]:
         for attr in ("status_code", "http_status_code", "error_code"):
@@ -376,6 +380,7 @@ class DatabricksGenieClient:
 
             response_text = ""
             query_attachment_id = None
+            sql_text = None
 
             if attachments:
                 for attachment in attachments:
@@ -395,6 +400,11 @@ class DatabricksGenieClient:
                         attachment_id = attachment.get("attachment_id")
                         if isinstance(attachment_id, str):
                             query_attachment_id = attachment_id
+
+                        # Extract the generated SQL query
+                        raw_sql = query_data.get("query")
+                        if isinstance(raw_sql, str) and raw_sql.strip():
+                            sql_text = raw_sql.strip()
 
                         if description:
                             response_text += description + "\n\n"
@@ -441,6 +451,8 @@ class DatabricksGenieClient:
                 "query_result": query_result,
                 "result_data": result_data,
                 "suggested_questions": suggested_questions,
+                "sql_text": sql_text,
+                "console_url": self.get_console_url(actual_conversation_id),
             }
         else:
             raw_error = response.get("error")

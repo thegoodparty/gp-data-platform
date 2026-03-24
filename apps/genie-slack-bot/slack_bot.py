@@ -19,6 +19,19 @@ SLACK_TEXT_LIMIT = 3900
 MAX_CONVERSATION_THREADS = 1000
 MAX_FEEDBACK_MESSAGES = 2000
 MAX_RECENT_EVENT_KEYS = 2000
+MAX_SQL_CACHE_ENTRIES = 1000
+
+# Regex matching explicit SQL-request phrases (case-insensitive).
+# Kept narrow to avoid false positives on legitimate questions containing "sql".
+SQL_REQUEST_PATTERN = re.compile(
+    r"^\s*("
+    r"show\s*(me\s+)?(the\s+)?sql"
+    r"|what\s+(sql|query)\s+(did\s+you\s+)?(run|generate|use)"
+    r"|generated?\s+sql"
+    r"|show\s*(me\s+)?(the\s+)?query"
+    r")\s*\??\s*$",
+    re.IGNORECASE,
+)
 
 
 class SlackGenieBot:
@@ -46,6 +59,9 @@ class SlackGenieBot:
 
         # message_ts -> (conversation_id, message_id) for feedback routing
         self.message_feedback_map: OrderedDict[str, Tuple[str, str]] = OrderedDict()
+
+        # conversation_scope -> latest SQL text for SQL-on-request
+        self.sql_cache: OrderedDict[str, str] = OrderedDict()
 
         # channel:message_ts -> monotonic timestamp for event de-duplication
         self.recent_event_keys: OrderedDict[str, float] = OrderedDict()
@@ -125,6 +141,44 @@ class SlackGenieBot:
                 )
                 return
 
+            # --- SQL-on-request: intercept before hitting Genie ---
+            if SQL_REQUEST_PATTERN.match(text):
+                cached_sql = self._get_mapping(self.sql_cache, conversation_scope)
+                if isinstance(cached_sql, str):
+                    logger.info(
+                        "SQL-on-request: returning cached SQL for %s",
+                        conversation_scope,
+                    )
+                    sql_response = f"*Generated SQL:*\n```sql\n{cached_sql}\n```"
+                    # Include deeplink if we have a conversation mapping
+                    sql_conv_id = self._get_mapping(
+                        self.conversation_map, conversation_scope
+                    )
+                    if isinstance(sql_conv_id, str):
+                        sql_url = self.genie_client.get_console_url(sql_conv_id)
+                        sql_response += f"\n<{sql_url}|View in Genie Console>"
+                    self._post_message(
+                        client,
+                        channel=channel,
+                        text=sql_response,
+                        thread_ts=thread_ts,
+                    )
+                else:
+                    no_sql_msg = "No query has been run in this thread yet."
+                    sql_conv_id = self._get_mapping(
+                        self.conversation_map, conversation_scope
+                    )
+                    if isinstance(sql_conv_id, str):
+                        sql_url = self.genie_client.get_console_url(sql_conv_id)
+                        no_sql_msg += f" <{sql_url}|Open Genie Console>"
+                    self._post_message(
+                        client,
+                        channel=channel,
+                        text=no_sql_msg,
+                        thread_ts=thread_ts,
+                    )
+                return
+
             # Post a thinking indicator that we will UPDATE in-place
             thinking_resp = self._post_message(
                 client,
@@ -174,8 +228,48 @@ class SlackGenieBot:
                     MAX_CONVERSATION_THREADS,
                 )
 
+            # Cache SQL for SQL-on-request
+            sql_text = result.get("sql_text")
+            if isinstance(sql_text, str):
+                self._remember_mapping(
+                    self.sql_cache,
+                    conversation_scope,
+                    sql_text,
+                    MAX_SQL_CACHE_ENTRIES,
+                )
+
             # Format the response
             response_text = self._format_response(result)
+
+            # Append truncation warning to main text when results exceed 10 rows
+            console_url = result.get("console_url")
+            result_data = result.get("result_data")
+            if result_data:
+                data = result_data.get("data", {})
+                raw_row_count = data.get("row_count")
+                if isinstance(raw_row_count, int):
+                    total_rows = (
+                        raw_row_count
+                        if raw_row_count > 0
+                        else len(data.get("data_array", []))
+                    )
+                elif isinstance(raw_row_count, str) and raw_row_count.isdigit():
+                    total_rows = int(raw_row_count)
+                else:
+                    total_rows = len(data.get("data_array", []))
+
+                if total_rows > 10:
+                    truncation_note = f"\n\n_Showing 10 of {total_rows} rows"
+                    if isinstance(console_url, str):
+                        truncation_note += (
+                            f" — <{console_url}|view full results in Genie Console>"
+                        )
+                    truncation_note += "_"
+                    response_text += truncation_note
+
+            # Append console deeplink footer to every successful response
+            if result.get("success") and isinstance(console_url, str):
+                response_text += f"\n\n<{console_url}|View in Genie Console>"
 
             # ---- UPDATE the thinking message with the actual answer ----
             if thinking_ts:
@@ -206,11 +300,12 @@ class SlackGenieBot:
                 )
 
             # Send query result data if available
-            result_data = result.get("result_data")
             if result_data:
                 data = result_data.get("data", {})
                 if data.get("data_array"):
-                    self._send_query_results(channel, thread_ts, result_data, client)
+                    self._send_query_results(
+                        channel, thread_ts, result_data, client, console_url
+                    )
 
             # Send suggested follow-up questions
             suggested_questions = result.get("suggested_questions", [])
@@ -252,6 +347,23 @@ class SlackGenieBot:
                     logger.warning(
                         "Missing conversation_id or message_id - cannot create feedback buttons"
                     )
+
+            # --- Structured observability log ---
+            if result.get("success"):
+                logger.info(
+                    "genie_request_complete: "
+                    "slack_user=%s channel=%s channel_type=%s "
+                    "thread_ts=%s genie_conversation_id=%s "
+                    "genie_message_id=%s has_sql=%s has_results=%s",
+                    event.get("user"),
+                    channel,
+                    event.get("channel_type"),
+                    thread_ts,
+                    result.get("conversation_id"),
+                    result.get("message_id"),
+                    sql_text is not None,
+                    result_data is not None,
+                )
 
         except Exception as error:
             logger.error("Error handling message: %s", error, exc_info=True)
@@ -406,7 +518,9 @@ class SlackGenieBot:
     # Rich message senders
     # ------------------------------------------------------------------
 
-    def _send_query_results(self, channel, thread_ts, result_data, client):
+    def _send_query_results(
+        self, channel, thread_ts, result_data, client, console_url=None
+    ):
         try:
             data = result_data.get("data", {})
             schema = result_data.get("schema", {})
