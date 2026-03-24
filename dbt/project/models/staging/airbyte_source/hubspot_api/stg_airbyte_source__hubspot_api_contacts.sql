@@ -51,7 +51,9 @@ select
     properties_incumbent as incumbent,
     properties_uncontested as uncontested,
     properties_number_opponents as number_opponents,
-    cast(cast(properties_number_of_seats_available as float) as int) as number_of_seats_available,
+    cast(
+        cast(properties_number_of_seats_available as float) as int
+    ) as number_of_seats_available,
 
     -- metadata
     createdat as created_at,
