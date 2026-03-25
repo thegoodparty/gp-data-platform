@@ -13,7 +13,9 @@ with
             {{ adapter.quote("party") }},
             {{ adapter.quote("phone") }},
             {{ adapter.quote("state") }},
-            nullif(lower(replace({{ adapter.quote("partisan") }}, '-', '')), '') as partisan,
+            nullif(
+                lower(replace({{ adapter.quote("partisan") }}, '-', '')), ''
+            ) as partisan,
             {{ adapter.quote("last_name") }},
             {{ adapter.quote("open_seat") }},
             {{ adapter.quote("ts_status") }},
