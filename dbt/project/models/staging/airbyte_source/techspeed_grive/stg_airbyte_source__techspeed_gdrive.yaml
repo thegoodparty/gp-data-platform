@@ -6,6 +6,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: partisan
+        description: "Whether the race is partisan or nonpartisan"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['partisan', 'nonpartisan']
   - name: stg_airbyte_source__techspeed_gdrive_officeholders
     description: Officeholders data load from TechSpeed Google Drive
     # TODO: Add person-level ts_officeholder_id tests if/when candidates moves to id-based key tests.
