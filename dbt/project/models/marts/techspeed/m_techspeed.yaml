@@ -2,6 +2,8 @@ version: 2
 
 models:
   - name: m_techspeed__candidate_to_hubspot
+    config:
+      tags: ["monthly"]
     description: "Mart model for techspeed candidates with HubSpot integration, materialized as view due to column naming constraints"
     columns:
       - name: "`Candidate ID Source`"

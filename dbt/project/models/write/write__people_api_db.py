@@ -654,7 +654,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         unique_key="id",
         on_schema_change="append_new_columns",
         enabled=True,
-        tags=["l2", "databricks", "people_api", "write", "weekly"],
+        tags=["l2", "databricks", "people_api", "write", "monthly"],
     )
 
     # get dbt configs
