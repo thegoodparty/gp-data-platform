@@ -44,6 +44,7 @@ select
     tbl_hs_contacts.properties_city as city,
     tbl_hs_contacts.properties_candidate_district as district,
     tbl_hs_contacts.properties_open_seat as seat,
+    {{ cast_to_boolean("tbl_hs_contacts.properties_open_seat") }} as is_open_seat,
     try_cast(tbl_hs_contacts.properties_population as int) as population,
 
     -- Election dates

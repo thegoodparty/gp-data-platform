@@ -42,6 +42,12 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: geofence_is_not_exact
+        description: Whether the geofence boundary is approximate
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: stg_airbyte_source__ballotready_s3_office_holders_v3
     description: Office Holders data load from ballotready csvs in s3 bucket

@@ -49,6 +49,7 @@ select
     tbl_hs_contacts.city,
     tbl_hs_contacts.candidate_district as district,
     cast(null as string) as seat,
+    tbl_hs_contacts.is_open_seat,
     tbl_hs_contacts.population,
 
     -- Election dates

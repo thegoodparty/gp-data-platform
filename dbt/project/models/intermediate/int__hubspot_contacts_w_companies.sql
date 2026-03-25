@@ -193,7 +193,9 @@ with
             tbl_contacts.population as population,
             tbl_contacts.email_contacts as email_contacts,
             tbl_contacts.companies as extra_companies,
-            tbl_companies.is_open_seat,
+            coalesce(
+                tbl_contacts.is_open_seat, tbl_companies.is_open_seat
+            ) as is_open_seat,
             tbl_companies.general_election_result as candidacy_result,
             coalesce(
                 tbl_contacts.verified_candidate_status,

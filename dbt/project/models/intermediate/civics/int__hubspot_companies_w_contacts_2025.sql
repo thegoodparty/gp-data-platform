@@ -445,7 +445,7 @@ with
             tbl_contacts.population,
             tbl_contacts.email as email_contacts,
             tbl_contacts.companies as extra_companies,
-            cast(null as boolean) as is_open_seat,
+            tbl_contacts.is_open_seat,
             null as candidacy_result,
             nullif(tbl_contacts.verified_candidate_status, '') as verified_candidate,
             tbl_contacts.is_pledged,
