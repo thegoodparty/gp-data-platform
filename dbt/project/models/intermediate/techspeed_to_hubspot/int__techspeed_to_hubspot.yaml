@@ -121,9 +121,7 @@ models:
         tests:
           - accepted_values:
               arguments:
-                values: ['Partisan', 'Nonpartisan', 'partisan', 'nonpartisan']
-              config:
-                where: "partisan is not null"
+                values: ['partisan', 'nonpartisan']
       - name: election_date
         description: "Election date (general or primary)"
         tests:

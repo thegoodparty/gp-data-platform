@@ -83,7 +83,7 @@ with
             number_of_candidates,
             number_of_seats_available,
             open_seat,
-            partisan,
+            lower(replace(partisan, '-', '')) as partisan,
             try_cast(
                 trim(regexp_replace(population, '[^0-9]', '')) as integer
             ) as population,
