@@ -45,38 +45,16 @@ with
             candidate_office,
             office_level,
             office_type,
-            -- Derive district_raw from position_name with same expanded regex as
-            -- candidacy prematch (the intermediate's district column uses a narrower
-            -- regex that misses Region, Precinct, Circuit, etc.)
-            coalesce(
-                regexp_extract(
-                    position_name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Position|Area|Region|Circuit|Division|Post|Section|Subdivision|Seat) (.+)$'
-                ),
-                ''
-            ) as district_raw,
-            coalesce(
-                try_cast(
-                    regexp_extract(
-                        position_name,
-                        '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Position|Area|Region|Circuit|Division|Post|Section|Subdivision|Seat) ([0-9]+)'
-                    ) as int
-                ),
-                try_cast(
-                    regexp_extract(
-                        position_name, '([0-9]+)(?:st|nd|rd|th) Congressional'
-                    ) as int
-                )
-            ) as district_identifier,
+            {{ extract_district_raw("position_name") }} as district_raw,
+            {{ extract_district_identifier("position_name") }} as district_identifier,
             email,
             -- Normalize to 10-digit US phone: strip country code prefix '1' if
             -- 11 digits, otherwise truncate (handles extensions like "ext. 2002")
+            -- phone is already cleaned upstream via clean_phone_number macro
             case
-                when
-                    length({{ clean_phone_number("phone") }}) = 11
-                    and {{ clean_phone_number("phone") }} like '1%'
-                then substring({{ clean_phone_number("phone") }}, 2, 10)
-                else substring({{ clean_phone_number("phone") }}, 1, 10)
+                when length(phone) = 11 and phone like '1%'
+                then substring(phone, 2, 10)
+                else substring(phone, 1, 10)
             end as phone,
             position_name as official_office_name,
             city,
@@ -120,11 +98,9 @@ with
             ) as district_identifier,
             email,
             case
-                when
-                    length({{ clean_phone_number("phone") }}) = 11
-                    and {{ clean_phone_number("phone") }} like '1%'
-                then substring({{ clean_phone_number("phone") }}, 2, 10)
-                else substring({{ clean_phone_number("phone") }}, 1, 10)
+                when length(phone) = 11 and phone like '1%'
+                then substring(phone, 2, 10)
+                else substring(phone, 1, 10)
             end as phone,
             position_name as official_office_name,
             city,

@@ -75,30 +75,9 @@ with
                     )
                 )
             }} as office_type,
-            -- Derive district from position_name
-            -- Captures "- District 3", "- Ward 2", "- Precinct 4", etc. at end of name
-            coalesce(
-                regexp_extract(
-                    br.position_name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Position|Area|Region|Circuit|Division|Post|Section|Subdivision|Seat) (.+)$'
-                ),
-                ''
-            ) as district_raw,
-            -- Extract numeric district identifier; also captures congressional
-            -- districts like "Texas 33rd Congressional District"
-            coalesce(
-                try_cast(
-                    regexp_extract(
-                        br.position_name,
-                        '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Position|Area|Region|Circuit|Division|Post|Section|Subdivision|Seat) ([0-9]+)'
-                    ) as int
-                ),
-                try_cast(
-                    regexp_extract(
-                        br.position_name, '([0-9]+)(?:st|nd|rd|th) Congressional'
-                    ) as int
-                )
-            ) as district_identifier,
+            {{ extract_district_raw("br.position_name") }} as district_raw,
+            {{ extract_district_identifier("br.position_name") }}
+            as district_identifier,
             -- Single election date at candidacy-stage grain
             br.election_day as election_date,
             -- Derive election stage from is_primary / is_runoff flags
