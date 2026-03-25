@@ -118,7 +118,7 @@ select
     term_start_date,
     is_uncontested,
     number_of_opponents,
-    open_seat,
+    is_open_seat,
     has_ddhq_match,
     br_position_database_id,
     is_judicial,

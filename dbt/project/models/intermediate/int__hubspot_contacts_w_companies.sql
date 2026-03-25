@@ -111,9 +111,15 @@ with
             ) as party_affiliation,
             tbl_gp_db_campaign.details:party::string as party_affiliation_gp_db,
             coalesce(
-                tbl_gp_db_campaign.details:`partisanType`::string,
+                {{
+                    cast_to_boolean(
+                        "tbl_gp_db_campaign.details:`partisanType`::string",
+                        ["partisan", "partisan for primary only"],
+                        ["nonpartisan"],
+                    )
+                }},
                 tbl_contacts.is_partisan,
-                try_cast(tbl_companies.is_partisan as string)
+                tbl_companies.is_partisan
             ) as is_partisan,
             tbl_gp_db_campaign.details:`partisanType`::string as is_partisan_gp_db,
             coalesce(
@@ -165,12 +171,10 @@ with
                 tbl_contacts.runoff_election_date, tbl_companies.runoff_date
             ) as runoff_election_date,
             coalesce(
-                tbl_contacts.is_incumbent,
-                try_cast(tbl_companies.is_incumbent as string)
+                tbl_contacts.is_incumbent, tbl_companies.is_incumbent
             ) as is_incumbent,
             coalesce(
-                tbl_contacts.is_uncontested,
-                try_cast(tbl_companies.is_uncontested as string)
+                tbl_contacts.is_uncontested, tbl_companies.is_uncontested
             ) as is_uncontested,
             coalesce(
                 tbl_contacts.number_of_opponents, tbl_companies.number_of_opponents

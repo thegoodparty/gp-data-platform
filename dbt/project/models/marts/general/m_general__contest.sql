@@ -33,7 +33,7 @@ with
             tbl_contest.candidate_office,
             tbl_contest.office_type,
             tbl_contest.office_level,
-            tbl_contest.is_partisan as partisanship_type,
+            tbl_contest.is_partisan,
 
             -- geographic information
             tbl_contest.state,

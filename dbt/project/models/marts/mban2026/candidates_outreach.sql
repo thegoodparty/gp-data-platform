@@ -15,7 +15,7 @@ select
     h.is_incumbent,
     h.is_open_seat,
     h.number_of_opponents,
-    h.is_partisan as partisan_type,
+    h.is_partisan,
     h.seats_available,
 
     -- Outreach fields (may be null for HubSpot companies without outreach)
