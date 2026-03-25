@@ -112,7 +112,7 @@ with
             last_name,
             concat(first_name, ' ', last_name) as full_name,
             nullif(trim(email), '') as email,
-            nullif(trim(phone_clean), '') as phone,
+            {{ clean_phone_number("phone") }} as phone,
             office_name as position_name,
             office_normalized as normalized_position_name,
             candidate_office,
