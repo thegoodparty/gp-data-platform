@@ -1,9 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        unique_key="techspeed_candidate_code",
-        incremental_strategy="merge",
-        on_schema_change="append_new_columns",
+        materialized="table",
         tags=["intermediate", "techspeed", "hubspot"],
     )
 }}
@@ -63,11 +60,6 @@ with
             _airbyte_extracted_at,
             _ab_source_file_url
         from {{ ref("int__techspeed_candidates_clean") }}
-        {% if is_incremental() %}
-            where
-                _airbyte_extracted_at
-                > (select max(_airbyte_extracted_at) from {{ this }})
-        {% endif %}
     )
 
 select
