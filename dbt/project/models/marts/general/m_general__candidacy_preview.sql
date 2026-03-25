@@ -76,7 +76,7 @@ with
             tbl_contacts.party_affiliation,
             tbl_contacts.is_partisan,
             tbl_contacts.verified_candidate,
-            tbl_contacts.pledge_status,
+            tbl_contacts.is_pledged,
 
             -- Geographic representation
             tbl_contacts.state,

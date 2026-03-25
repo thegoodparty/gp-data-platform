@@ -62,7 +62,7 @@ with
                 regexp_extract(candidacies.position_name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name,
-            br_position.partisan_type
+            br_position.is_partisan
         from candidacies
         left join br_position on candidacies.br_position_id = br_position.database_id
         left join
@@ -95,7 +95,7 @@ with
             any_value(district) as district,
             any_value(seat_name) as seat_name,
             any_value(parties) as parties,
-            any_value(partisan_type) as partisan_type,
+            any_value(is_partisan) as is_partisan,
             any_value(number_of_seats) as seats_available,
             any_value(_airbyte_extracted_at) as _airbyte_extracted_at,
 
@@ -184,14 +184,6 @@ with
                 else null
             end as candidacy_result,
 
-            case
-                when partisan_type = 'partisan'
-                then 'Partisan'
-                when partisan_type = 'nonpartisan'
-                then 'Nonpartisan'
-                else null
-            end as is_partisan,
-
             -- Compute office_type here so it's available for generate_gp_election_id
             {{ map_office_type("candidate_office") }} as office_type,
 
@@ -253,8 +245,8 @@ with
             -- Candidacy attributes
             party_affiliation,
             -- BallotReady does not provide incumbent or open seat data
-            cast(null as string) as is_incumbent,
-            cast(null as string) as is_open_seat,
+            cast(null as boolean) as is_incumbent,
+            cast(null as boolean) as is_open_seat,
             candidate_office,
             official_office_name,
             office_level,

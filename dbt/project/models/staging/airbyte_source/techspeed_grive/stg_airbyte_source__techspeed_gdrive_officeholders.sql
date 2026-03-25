@@ -52,29 +52,10 @@ with
             {{ adapter.quote("level") }},
             cast({{ adapter.quote("tier") }} as int) as tier,
             {{ adapter.quote("party") }},
-            {{ adapter.quote("partisan") }},
-            {{ adapter.quote("is_incumbent") }} as is_incumbent_raw,
-            case
-                when
-                    lower(trim({{ adapter.quote("is_incumbent") }}))
-                    in ('true', 'yes', '1')
-                then true
-                when
-                    lower(trim({{ adapter.quote("is_incumbent") }}))
-                    in ('false', 'no', '0')
-                then false
-            end as is_incumbent,
-            {{ adapter.quote("is_uncontested") }} as is_uncontested_raw,
-            case
-                when
-                    lower(trim({{ adapter.quote("is_uncontested") }}))
-                    in ('true', 'yes', '1')
-                then true
-                when
-                    lower(trim({{ adapter.quote("is_uncontested") }}))
-                    in ('false', 'no', '0')
-                then false
-            end as is_uncontested,
+            {{ cast_to_boolean("partisan", ["partisan"], ["nonpartisan"]) }}
+            as is_partisan,
+            {{ cast_to_boolean("is_incumbent") }} as is_incumbent,
+            {{ cast_to_boolean("is_uncontested") }} as is_uncontested,
             {{ adapter.quote("seats_available") }},
             {{ adapter.quote("general_election_day") }},
             coalesce(

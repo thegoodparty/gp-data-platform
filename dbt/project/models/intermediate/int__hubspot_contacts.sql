@@ -33,7 +33,7 @@ select
     tbl_hs_contacts.address as street_address,
     tbl_hs_contacts.candidate_id_source,
     tbl_hs_contacts.candidate_id_tier,
-    tbl_hs_contacts.pledge_status,
+    tbl_hs_contacts.is_pledged,
     tbl_hs_contacts.verified_candidate_status,
 
     -- Office information
@@ -42,13 +42,13 @@ select
     tbl_hs_contacts.office_level,
     tbl_hs_contacts.office_type,
     tbl_hs_contacts.party_affiliation,
-    tbl_hs_contacts.partisan_type as is_partisan,
+    tbl_hs_contacts.is_partisan,
 
     -- Geographic information
     coalesce(tbl_states.state_cleaned_postal_code, tbl_hs_contacts.state) as state,
     tbl_hs_contacts.city,
     tbl_hs_contacts.candidate_district as district,
-    tbl_hs_contacts.open_seat as seat,
+    tbl_hs_contacts.is_open_seat as seat,
     tbl_hs_contacts.population,
 
     -- Election dates
@@ -60,8 +60,8 @@ select
     cast(null as date) as runoff_election_date,
 
     -- Election context
-    tbl_hs_contacts.incumbent as is_incumbent,
-    tbl_hs_contacts.uncontested as is_uncontested,
+    tbl_hs_contacts.is_incumbent,
+    tbl_hs_contacts.is_uncontested,
     tbl_hs_contacts.number_opponents as number_of_opponents,
 
     -- Metadata

@@ -13,7 +13,7 @@ select
     candidate_office,
     office_type,
     office_level,
-    partisan_type,
+    is_partisan,
 
     -- geographic information
     state,
@@ -41,8 +41,8 @@ select
     -- election context
     number_opponents as number_of_opponents,
     number_of_seats_available as seats_available,
-    uncontested,
-    open_seat,
+    is_uncontested,
+    is_open_seat,
     start_date as term_start_date,
     election_date,
     cast(left(election_date, 4) as integer) as election_year,

@@ -33,7 +33,7 @@ with
             tbl_contest.candidate_office,
             tbl_contest.office_type,
             tbl_contest.office_level,
-            tbl_contest.partisan_type as partisanship_type,
+            tbl_contest.is_partisan as partisanship_type,
 
             -- geographic information
             tbl_contest.state,
@@ -44,8 +44,8 @@ with
             -- election context
             tbl_contest.number_of_opponents,
             tbl_contest.seats_available,
-            tbl_contest.uncontested,
-            tbl_contest.open_seat,
+            tbl_contest.is_uncontested,
+            tbl_contest.is_open_seat,
             tbl_contest.term_start_date,
             -- term_length_years, -- to add
             -- election dates

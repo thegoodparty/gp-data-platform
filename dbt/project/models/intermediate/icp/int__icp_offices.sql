@@ -25,15 +25,15 @@ select
     l2_match.l2_district_type,
     l2_match.is_matched,
     district_counts.voter_count,
-    position.judicial,
-    position.appointed,
+    position.is_judicial,
+    position.is_appointed,
     position.updated_at,
 
     -- ICP-Office-Win Flag
     case
         when
-            position.judicial = true
-            or position.appointed = true
+            position.is_judicial
+            or position.is_appointed
             or normalized_position.name not in (select name from icp_position_names)
         then false
         when district_counts.voter_count is null
@@ -46,8 +46,8 @@ select
     -- ICP-Office-Serve Flag
     case
         when
-            position.judicial = true
-            or position.appointed = true
+            position.is_judicial
+            or position.is_appointed
             or normalized_position.name not in (select name from icp_position_names)
         then false
         when district_counts.voter_count is null
@@ -62,8 +62,8 @@ select
     -- These need separate consideration outside the standard Win process
     case
         when
-            position.judicial = true
-            or position.appointed = true
+            position.is_judicial
+            or position.is_appointed
             or normalized_position.name not in (select name from icp_position_names)
         then false
         when district_counts.voter_count is null

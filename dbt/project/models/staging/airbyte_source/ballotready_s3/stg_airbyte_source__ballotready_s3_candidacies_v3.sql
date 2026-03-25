@@ -33,7 +33,7 @@ with
             is_primary = 'true' as is_primary,
             election_id as br_election_id,
             geofence_id as br_geofence_id,
-            is_judicial,
+            {{ cast_to_boolean("is_judicial") }} as is_judicial,
             middle_name,
             cast(position_id as int) as br_position_id,
             candidacy_id as br_candidacy_id,
@@ -43,8 +43,8 @@ with
                 then null
                 else cast(election_day as date)
             end as election_day,
-            is_retention,
-            is_unexpired,
+            {{ cast_to_boolean("is_retention") }} as is_retention,
+            {{ cast_to_boolean("is_unexpired") }} as is_unexpired,
             election_name,
             position_name,
             sub_area_name,
@@ -54,7 +54,7 @@ with
             _ab_source_file_url,
             candidacy_created_at,
             candidacy_updated_at,
-            geofence_is_not_exact,
+            {{ cast_to_boolean("geofence_is_not_exact") }} as geofence_is_not_exact,
             normalized_position_id as br_normalized_position_id,
             sub_area_name_secondary,
             normalized_position_name,

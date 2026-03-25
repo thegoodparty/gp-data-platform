@@ -109,8 +109,18 @@ with
                 tbl_contacts.party_affiliation
             ) as party_affiliation,
             coalesce(
-                tbl_gp_db_campaign.details:`partisanType`::string,
-                try_cast(cwc.properties_partisan_np as string),
+                {{
+                    cast_to_boolean(
+                        "tbl_gp_db_campaign.details:`partisanType`::string",
+                        ["partisan", "partisan for primary only"],
+                        ["nonpartisan"],
+                    )
+                }},
+                {{
+                    cast_to_boolean(
+                        "cwc.properties_partisan_np", ["partisan"], ["nonpartisan"]
+                    )
+                }},
                 tbl_contacts.is_partisan
             ) as is_partisan,
             coalesce(
@@ -155,10 +165,15 @@ with
                 cwc.properties_runoff_date, tbl_contacts.runoff_election_date
             ) as runoff_election_date,
             coalesce(
-                try_cast(cwc.properties_incumbent as string), tbl_contacts.is_incumbent
+                {{ cast_to_boolean("cwc.properties_incumbent") }},
+                tbl_contacts.is_incumbent
             ) as is_incumbent,
             coalesce(
-                try_cast(cwc.properties_uncontested as string),
+                {{
+                    cast_to_boolean(
+                        "cwc.properties_uncontested", ["uncontested"], ["contested"]
+                    )
+                }},
                 tbl_contacts.is_uncontested
             ) as is_uncontested,
             coalesce(
@@ -177,7 +192,7 @@ with
             tbl_contacts.population as population,
             tbl_contacts.email as email_contacts,
             tbl_contacts.companies as extra_companies,
-            cwc.properties_open_seat_ as is_open_seat,
+            {{ cast_to_boolean("cwc.properties_open_seat_") }} as is_open_seat,
             cwc.properties_general_election_result as candidacy_result,
             nullif(
                 coalesce(
@@ -186,25 +201,10 @@ with
                 ),
                 ''
             ) as verified_candidate,
-            case
-                when
-                    lower(
-                        coalesce(
-                            cwc.properties_pledge_status, tbl_contacts.pledge_status
-                        )
-                    )
-                    = 'yes'
-                then true
-                when
-                    lower(
-                        coalesce(
-                            cwc.properties_pledge_status, tbl_contacts.pledge_status
-                        )
-                    )
-                    = 'no'
-                then false
-                else null
-            end as is_pledged,
+            coalesce(
+                {{ cast_to_boolean("cwc.properties_pledge_status") }},
+                tbl_contacts.is_pledged
+            ) as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
             -- BallotReady Position Database ID (decoded from base64 positionId in
             -- campaign details)
@@ -301,8 +301,18 @@ with
                 cwoc.properties_candidate_party
             ) as party_affiliation,
             coalesce(
-                tbl_gp_db_campaign.details:`partisanType`::string,
-                try_cast(cwoc.properties_partisan_np as string)
+                {{
+                    cast_to_boolean(
+                        "tbl_gp_db_campaign.details:`partisanType`::string",
+                        ["partisan", "partisan for primary only"],
+                        ["nonpartisan"],
+                    )
+                }},
+                {{
+                    cast_to_boolean(
+                        "cwoc.properties_partisan_np", ["partisan"], ["nonpartisan"]
+                    )
+                }}
             ) as is_partisan,
             coalesce(
                 tbl_gp_db_campaign.details:state::string,
@@ -332,8 +342,12 @@ with
                 try_cast(tbl_gp_db_campaign.details:`electionDate`::string as date)
             ) as general_election_date,
             cwoc.properties_runoff_date as runoff_election_date,
-            try_cast(cwoc.properties_incumbent as string) as is_incumbent,
-            try_cast(cwoc.properties_uncontested as string) as is_uncontested,
+            {{ cast_to_boolean("cwoc.properties_incumbent") }} as is_incumbent,
+            {{
+                cast_to_boolean(
+                    "cwoc.properties_uncontested", ["uncontested"], ["contested"]
+                )
+            }} as is_uncontested,
             cwoc.properties_number_of_opponents as number_of_opponents,
             cwoc.updatedat as updated_at,
             cwoc.createdat as created_at,
@@ -342,16 +356,10 @@ with
             null as population,
             null as email_contacts,
             null as extra_companies,
-            cwoc.properties_open_seat_ as is_open_seat,
+            {{ cast_to_boolean("cwoc.properties_open_seat_") }} as is_open_seat,
             cwoc.properties_general_election_result as candidacy_result,
             nullif(cwoc.properties_verified_candidates, '') as verified_candidate,
-            case
-                when lower(cwoc.properties_pledge_status) = 'yes'
-                then true
-                when lower(cwoc.properties_pledge_status) = 'no'
-                then false
-                else null
-            end as is_pledged,
+            {{ cast_to_boolean("cwoc.properties_pledge_status") }} as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
             cast(
                 regexp_extract(
@@ -437,16 +445,10 @@ with
             tbl_contacts.population,
             tbl_contacts.email as email_contacts,
             tbl_contacts.companies as extra_companies,
-            null as is_open_seat,
+            cast(null as boolean) as is_open_seat,
             null as candidacy_result,
             nullif(tbl_contacts.verified_candidate_status, '') as verified_candidate,
-            case
-                when lower(tbl_contacts.pledge_status) = 'yes'
-                then true
-                when lower(tbl_contacts.pledge_status) = 'no'
-                then false
-                else null
-            end as is_pledged,
+            tbl_contacts.is_pledged,
             null as product_campaign_id,
             null as br_position_database_id,
             null as win_number,

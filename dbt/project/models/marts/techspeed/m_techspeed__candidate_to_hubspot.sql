@@ -117,8 +117,16 @@ with
             coalesce(f.uncontested, '') as `Uncontested`,
             coalesce(f.number_of_candidates, '') as `Number of Candidates`,
             coalesce(f.number_of_seats_available, '') as `Number of Seats Available`,
-            coalesce(f.open_seat, '') as `Open Seat`,
-            coalesce(f.partisan, '') as `Partisan Type`,
+            case
+                when f.is_open_seat then 'Yes' when not f.is_open_seat then 'No' else ''
+            end as `Open Seat`,
+            case
+                when f.is_partisan
+                then 'Partisan'
+                when not f.is_partisan
+                then 'Nonpartisan'
+                else ''
+            end as `Partisan Type`,
             coalesce(f.type, '') as `Type`,
             coalesce(f.contact_owner, '') as `Contact Owner`,
             coalesce(f.owner_name, '') as `Owner Name`,

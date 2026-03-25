@@ -24,24 +24,26 @@ with
             state,
             from_json(issues, 'ARRAY<STRUCT<databaseId:INT, id:STRING>>') as issues,
             salary,
-            judicial,
+            {{ cast_to_boolean("judicial") }} as is_judicial,
             cast(roworder as int) as row_order,
-            appointed,
+            {{ cast_to_boolean("appointed") }} as is_appointed,
             to_timestamp(createdat) as created_at,
-            retention,
+            {{ cast_to_boolean("retention") }} as is_retention,
             to_timestamp(updatedat) as updated_at,
             cast(databaseid as int) as database_id,
-            hasprimary as has_primary,
+            {{ cast_to_boolean("hasprimary") }} as has_primary,
             cast(minimumage as float) as minimum_age,
             description,
             filingphone as filing_phone,
             subareaname as sub_area_name,
+            {{ cast_to_boolean("partisantype", ["partisan"], ["nonpartisan"]) }}
+            as is_partisan,
             partisantype as partisan_type,
             cast(subareavalue as string) as sub_area_value,
             filingaddress as filing_address,
-            staggeredterm as staggered_term,
+            {{ cast_to_boolean("staggeredterm") }} as is_staggered_term,
             employmenttype as employment_type,
-            mustberesident as must_be_resident,
+            {{ cast_to_boolean("mustberesident") }} as must_be_resident,
             cast(maximumfilingfee as int) as maximum_filing_fee,
             runningmatestyle as running_matrix_style,
             cast(selectionsallowed as int) as selections_allowed,
@@ -52,16 +54,20 @@ with
             from_json(
                 electionfrequencies, 'ARRAY<STRUCT<databaseId:INT, id:STRING>>'
             ) as election_frequencies,
-            hasunknownboundaries as has_unknown_boundaries,
-            mustberegisteredvoter as must_be_registered_voter,
+            {{ cast_to_boolean("hasunknownboundaries") }} as has_unknown_boundaries,
+            {{ cast_to_boolean("mustberegisteredvoter") }} as must_be_registered_voter,
             paperworkinstructions as paperwork_instructions,
-            hasmajorityvoteprimary as has_majority_vote_primary,
-            hasrankedchoicegeneral as has_ranked_choice_general,
-            hasrankedchoiceprimary as has_ranked_choice_primary,
+            {{ cast_to_boolean("hasmajorityvoteprimary") }}
+            as has_majority_vote_primary,
+            {{ cast_to_boolean("hasrankedchoicegeneral") }}
+            as has_ranked_choice_general,
+            {{ cast_to_boolean("hasrankedchoiceprimary") }}
+            as has_ranked_choice_primary,
             eligibilityrequirements as eligibility_requirements,
             cast(rankedchoicemaxvotesgeneral as int) as ranked_choice_max_votes_general,
             cast(rankedchoicemaxvotesprimary as int) as ranked_choice_max_votes_primary,
-            musthaveprofessionalexperience as must_have_professional_experience
+            {{ cast_to_boolean("musthaveprofessionalexperience") }}
+            as must_have_professional_experience
 
         from source
 

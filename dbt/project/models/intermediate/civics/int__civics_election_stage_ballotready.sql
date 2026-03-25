@@ -48,7 +48,7 @@ with
             br_position.database_id as br_position_database_id,
             br_position.sub_area_name,
             br_position.sub_area_value,
-            br_position.retention as is_retention,
+            br_position.is_retention,
             br_position.seats as position_seats,
             br_position.name as official_office_name,
             {{
