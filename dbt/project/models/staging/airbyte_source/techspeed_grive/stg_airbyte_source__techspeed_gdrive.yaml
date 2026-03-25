@@ -6,12 +6,36 @@ models:
         data_tests:
           - not_null
           - unique
-      - name: partisan
-        description: "Whether the race is partisan or nonpartisan"
+      - name: is_partisan
+        description: Whether the race is partisan
         data_tests:
           - accepted_values:
               arguments:
-                values: ['partisan', 'nonpartisan']
+                values: [true, false]
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_primary
+        description: Whether this is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_uncontested
+        description: Whether the race is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
   - name: stg_airbyte_source__techspeed_gdrive_officeholders
     description: Officeholders data load from TechSpeed Google Drive
     # TODO: Add person-level ts_officeholder_id tests if/when candidates moves to id-based key tests.
@@ -20,6 +44,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: is_incumbent
         data_tests:
           - accepted_values:

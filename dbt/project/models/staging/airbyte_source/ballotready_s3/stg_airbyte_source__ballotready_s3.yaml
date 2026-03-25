@@ -24,6 +24,24 @@ models:
                 - GENERAL_WIN
                 - PRIMARY_WIN
                 - LOSS
+      - name: is_judicial
+        description: Whether the position is judicial
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_retention
+        description: Whether the position is a retention election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_unexpired
+        description: Whether the term is unexpired
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: stg_airbyte_source__ballotready_s3_office_holders_v3
     description: Office Holders data load from ballotready csvs in s3 bucket
