@@ -32,7 +32,14 @@ select
     o.audience_request,
     o.voter_file_filter_id,
     o.createdat as outreach_created_at,
-    o.updatedat as outreach_updated_at
+    o.updatedat as outreach_updated_at,
+
+    --l2 fields
+    l.name as l2name,
+    l.state as l2_state,
+    l.l2_district_name,
+    l.l2_district_type
+
 from {{ ref("stg_airbyte_source__hubspot_api_companies") }} as h
 left join
     {{ ref("stg_airbyte_source__gp_api_db_campaign") }} as c
@@ -42,3 +49,6 @@ left join
     on c.id = o.campaignid
     and o.outreach_type = 'text'
     and o.date >= '2023-01-01'
+left join
+    {{ ref("stg_model_predictions__llm_l2_br_match_20250811") }} as l
+    on h.candidate_office = l.name
