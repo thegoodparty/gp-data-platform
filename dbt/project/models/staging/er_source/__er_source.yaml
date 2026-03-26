@@ -39,7 +39,7 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              values: ["ballotready", "techspeed", "ddhq"]
       - name: first_name
         description: Candidate first name (lowercased, trimmed in prematch).
       - name: last_name
