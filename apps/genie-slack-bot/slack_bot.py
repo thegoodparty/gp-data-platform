@@ -492,7 +492,6 @@ class SlackGenieBot:
             data = result_data.get("data", {})
             schema = result_data.get("schema", {})
             data_array = data.get("data_array", [])
-            row_count = self._extract_row_count(data)
 
             if not data_array:
                 return
@@ -506,8 +505,6 @@ class SlackGenieBot:
             table_text = self._format_data_array(column_names, data_array[:max_rows])
 
             msg = f"*Query Results:*\n```\n{table_text}\n```"
-            if row_count > max_rows:
-                msg += f"\n_Showing {max_rows} of {row_count} rows_"
 
             self._post_message(
                 client,

@@ -5,6 +5,230 @@
         "answer": [
           {
             "content": [
+              "SELECT COUNT(*) AS new_york_elections\n",
+              "FROM goodparty_data_catalog.mart_civics.election\n",
+              "WHERE state = 'NY';"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295ce83d1795a99db6cef76bc7ff",
+        "question": [
+          "How many elections in new york?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS state_legislative_elections\n",
+              "FROM goodparty_data_catalog.mart_civics.election\n",
+              "WHERE candidate_office IN ('State Representative', 'State Senate');"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295ce01a176e82e1ba5189bf0b96",
+        "question": [
+          "How many state legislative elections are there?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS users_ytd\n",
+              "FROM goodparty_data_catalog.mart_civics.users\n",
+              "WHERE created_at >= date_trunc('YEAR', CURRENT_DATE());"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295cd6821ff6aa7fdc7dceea1cdf",
+        "question": [
+          "How many users signed up this year?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS campaigns_last_month\n",
+              "FROM goodparty_data_catalog.mart_civics.campaigns\n",
+              "WHERE created_at >= date_trunc('MONTH', DATEADD(MONTH, -1, CURRENT_DATE()))\n",
+              "  AND created_at < date_trunc('MONTH', CURRENT_DATE());\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295ccdae1d5fa52eb63257c1e133",
+        "question": [
+          "How many campaigns were created last month?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) AS school_board_elections\n",
+              "FROM goodparty_data_catalog.mart_civics.election\n",
+              "WHERE election_year = 2026\n",
+              "  AND (office_type = 'School Board' OR candidate_office = 'School Board');"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295cc5b01887b622e6e6cd50abac",
+        "question": [
+          "How many school board elections in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT office_level, COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.election\n",
+              "WHERE election_year = 2026 \n",
+              "GROUP BY office_level \n",
+              "ORDER BY COUNT(*) DESC\n",
+              "\n",
+              "\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295c41fb1f2db1dee1796f96d5d0",
+        "question": [
+          "Show elections by office level in 2026"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.election\n",
+              "WHERE election_year = 2026 \n",
+              "AND UPPER(office_level) = 'FEDERAL'\n",
+              "\n",
+              "\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295c2db313df895401069fd77bd9",
+        "question": [
+          "How many federal elections in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.election \n",
+              "WHERE election_year = 2026 \n",
+              "AND candidate_office IN ('State Representative', 'State Senate')"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295c1daa1c95a86aee39ee114b51",
+        "question": [
+          "How many state legislative elections do we have in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy_stage\n",
+              "WHERE election_result IS NOT NULL\n",
+              "\n",
+              "\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295bdf9e1c4aa073fd0d0705eb81",
+        "question": [
+          "How many candidacy stages have results?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT election_result, COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.candidacy_stage \n",
+              "GROUP BY election_result \n",
+              "ORDER BY COUNT(*) DESC\n",
+              "\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295bc50d1765a466d4937a15922a",
+        "question": [
+          "Show candidacy stage results by election result"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.election_stage \n",
+              "WHERE stage_type = 'primary' \n",
+              "AND YEAR(election_date) = 2026\n",
+              "\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295ba7f6130c92598026593cb10c",
+        "question": [
+          "How many primaries are there in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) \n",
+              "FROM goodparty_data_catalog.mart_civics.election_stage \n",
+              "WHERE stage_type = 'general' \n",
+              "AND YEAR(election_date) = 2026\n",
+              "\n"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295b973c13a9aecfa16d50c25233",
+        "question": [
+          "How many general elections are there in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
+              "SELECT COUNT(*) FROM goodparty_data_catalog.mart_civics.election_stage WHERE YEAR(election_date) = 2026"
+            ],
+            "format": "SQL"
+          }
+        ],
+        "id": "01f1295b7e3818c6927e16f384977eca",
+        "question": [
+          "How many election stages are there in 2026?"
+        ]
+      },
+      {
+        "answer": [
+          {
+            "content": [
               "SELECT COUNT(*) AS state_legislative_elections_2026\n",
               "FROM `goodparty_data_catalog`.`mart_civics`.`election`\n",
               "WHERE election_year = 2026\n",
@@ -331,29 +555,6 @@
         "id": "01f1198ce668144d964e880986bf4316",
         "question": [
           "Show candidate full name with candidacy result."
-        ]
-      },
-      {
-        "answer": [
-          {
-            "content": [
-              "SELECT\n",
-              "  u.user_id,\n",
-              "  COUNT(c.campaign_id) AS campaign_count\n",
-              "FROM goodparty_data_catalog.mart_civics.users u\n",
-              "JOIN goodparty_data_catalog.mart_civics.campaigns c\n",
-              "  ON c.user_id = u.user_id\n",
-              "WHERE c.is_demo = FALSE\n",
-              "GROUP BY u.user_id\n",
-              "ORDER BY campaign_count DESC, u.user_id\n",
-              "LIMIT 20;"
-            ],
-            "format": "SQL"
-          }
-        ],
-        "id": "01f1198cd0e81fcbae03b5b02742d22b",
-        "question": [
-          "Show top 20 users by non-demo campaign count."
         ]
       },
       {
