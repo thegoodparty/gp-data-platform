@@ -198,21 +198,19 @@ models:
         description: Total number of votes cast in the general election for this race
 
       - name: is_uncontested
-        description: |
-          Whether the race was uncontested.
-          Values: "Contested", "Uncontested", null
+        description: Whether the race was uncontested (boolean)
 
       - name: is_incumbent
-        description: Whether the candidate is an incumbent in this race
+        description: Whether the candidate is an incumbent in this race (boolean)
 
       - name: is_open_seat
-        description: Whether this is an open seat with no incumbent running
+        description: Whether this is an open seat with no incumbent running (boolean)
 
       - name: number_of_opponents
         description: Number of opponents the candidate faces in this race
 
-      - name: partisan_type
-        description: Partisan classification of the race (e.g., partisan, nonpartisan)
+      - name: is_partisan
+        description: Whether the race is partisan (boolean)
 
       - name: seats_available
         description: Number of seats available in this election
