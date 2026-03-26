@@ -136,9 +136,9 @@ models:
         description: Indicates whether the candidate has been verified
         data_type: varchar
 
-      - name: pledge_status
-        description: Status of the candidate's pledge
-        data_type: varchar
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+        data_type: boolean
 
       - name: state
         description: U.S. state for the candidacy
