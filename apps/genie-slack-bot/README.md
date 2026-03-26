@@ -51,8 +51,8 @@ Unity Catalog (civics mart tables)
 |------|---------|
 | `app.py` | Entry point — validates config, initializes clients, starts socket mode |
 | `config.py` | Reads and validates environment variables |
-| `databricks_genie_client.py` | Genie Conversation API wrapper (start/continue conversations, poll results, feedback, SQL extraction, console deeplinks) |
-| `slack_bot.py` | Slack Bolt event handlers, message formatting, feedback buttons, SQL-on-request, deeplinks |
+| `databricks_genie_client.py` | Genie Conversation API wrapper (start/continue conversations, poll results, feedback, SQL extraction, space URL) |
+| `slack_bot.py` | Slack Bolt event handlers, message formatting, feedback buttons, SQL-on-request, console link |
 | `app.yaml` | Databricks App runtime config — env vars via `valueFrom` references |
 | `requirements.txt` | Python dependencies |
 

@@ -21,17 +21,8 @@ MAX_FEEDBACK_MESSAGES = 2000
 MAX_RECENT_EVENT_KEYS = 2000
 MAX_SQL_CACHE_ENTRIES = 1000
 
-# Regex matching explicit SQL-request phrases (case-insensitive).
-# Kept narrow to avoid false positives on legitimate questions containing "sql".
-SQL_REQUEST_PATTERN = re.compile(
-    r"^\s*("
-    r"show\s*(me\s+)?(the\s+)?sql"
-    r"|what\s+(sql|query)\s+(did\s+you\s+)?(run|generate|use)"
-    r"|generated?\s+sql"
-    r"|show\s*(me\s+)?(the\s+)?query"
-    r")\s*\??\s*$",
-    re.IGNORECASE,
-)
+# Exact phrases that trigger the SQL-on-request feature (lowercased).
+SQL_REQUEST_PHRASES = frozenset({"show sql", "show me the sql", "show query"})
 
 
 class SlackGenieBot:
@@ -141,19 +132,13 @@ class SlackGenieBot:
                 )
                 return
 
-            # --- SQL-on-request: intercept before hitting Genie ---
-            if SQL_REQUEST_PATTERN.match(text):
+            # --- SQL-on-request: exact phrase match ---
+            if text.strip().lower() in SQL_REQUEST_PHRASES:
                 cached_sql = self._get_mapping(self.sql_cache, conversation_scope)
-                console_url = self.genie_client.get_console_url()
+                space_url = self.genie_client.get_space_url()
                 if isinstance(cached_sql, str):
-                    logger.info(
-                        "SQL-on-request: returning cached SQL for %s",
-                        conversation_scope,
-                    )
-                    sql_response = (
-                        f"*Generated SQL:*\n```sql\n{cached_sql}\n```"
-                        f"\n<{console_url}|Open Genie Console>"
-                    )
+                    sql_response = f"*Generated SQL:*\n```sql\n{cached_sql}\n```"
+                    sql_response += f"\n<{space_url}|Open Genie Console>"
                     self._post_message(
                         client,
                         channel=channel,
@@ -164,10 +149,8 @@ class SlackGenieBot:
                     self._post_message(
                         client,
                         channel=channel,
-                        text=(
-                            "No query has been run in this thread yet."
-                            f" <{console_url}|Open Genie Console>"
-                        ),
+                        text=f"No query has been run in this thread yet."
+                        f" <{space_url}|Open Genie Console>",
                         thread_ts=thread_ts,
                     )
                 return
@@ -234,29 +217,20 @@ class SlackGenieBot:
             # Format the response
             response_text = self._format_response(result)
 
-            # Append truncation warning to main text when results exceed 10 rows
+            # Append truncation warning when results exceed 10 rows
             result_data = result.get("result_data")
             if result_data:
-                data = result_data.get("data", {})
-                raw_row_count = data.get("row_count")
-                if isinstance(raw_row_count, int):
-                    total_rows = (
-                        raw_row_count
-                        if raw_row_count > 0
-                        else len(data.get("data_array", []))
-                    )
-                elif isinstance(raw_row_count, str) and raw_row_count.isdigit():
-                    total_rows = int(raw_row_count)
-                else:
-                    total_rows = len(data.get("data_array", []))
-
+                total_rows = self._extract_row_count(result_data.get("data", {}))
                 if total_rows > 10:
                     response_text += f"\n\n_Showing 10 of {total_rows} rows_"
 
-            # Append Genie space link to every successful response
+            # Append console footer to every successful response
             if result.get("success"):
-                console_url = self.genie_client.get_console_url()
-                response_text += f"\n\n<{console_url}|Open Genie Console>"
+                space_url = self.genie_client.get_space_url()
+                response_text += (
+                    f"\n\n<{space_url}|Open Genie Console>"
+                    " — _for charts, full results, and deeper analysis_"
+                )
 
             # ---- UPDATE the thinking message with the actual answer ----
             if thinking_ts:
@@ -397,6 +371,16 @@ class SlackGenieBot:
             return text
         return text[: SLACK_TEXT_LIMIT - len("\n\n_(truncated)_")] + "\n\n_(truncated)_"
 
+    @staticmethod
+    def _extract_row_count(data: Dict[str, Any]) -> int:
+        """Extract total row count from a query result data dict."""
+        raw = data.get("row_count")
+        if isinstance(raw, int):
+            return raw if raw > 0 else len(data.get("data_array", []))
+        if isinstance(raw, str) and raw.isdigit():
+            return int(raw)
+        return len(data.get("data_array", []))
+
     def _post_message(
         self,
         client,
@@ -508,13 +492,7 @@ class SlackGenieBot:
             data = result_data.get("data", {})
             schema = result_data.get("schema", {})
             data_array = data.get("data_array", [])
-            raw_row_count = data.get("row_count")
-            if isinstance(raw_row_count, int):
-                row_count = raw_row_count if raw_row_count > 0 else len(data_array)
-            elif isinstance(raw_row_count, str) and raw_row_count.isdigit():
-                row_count = int(raw_row_count)
-            else:
-                row_count = len(data_array)
+            row_count = self._extract_row_count(data)
 
             if not data_array:
                 return

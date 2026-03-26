@@ -28,8 +28,8 @@ class DatabricksGenieClient:
         logger.info("✓ Using OAuth M2M authentication via app service principal")
         logger.info("✓ Genie space ID: %s", self.space_id)
 
-    def get_console_url(self) -> str:
-        """Return the URL for this Genie space in the Databricks console."""
+    def get_space_url(self) -> str:
+        """Construct a URL to the Genie space root (new chat as the logged-in user)."""
         return f"{self.host}/genie/rooms/{self.space_id}"
 
     @staticmethod
@@ -401,7 +401,6 @@ class DatabricksGenieClient:
                         if isinstance(attachment_id, str):
                             query_attachment_id = attachment_id
 
-                        # Extract the generated SQL query
                         raw_sql = query_data.get("query")
                         if isinstance(raw_sql, str) and raw_sql.strip():
                             sql_text = raw_sql.strip()
