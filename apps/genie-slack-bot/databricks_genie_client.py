@@ -28,9 +28,9 @@ class DatabricksGenieClient:
         logger.info("✓ Using OAuth M2M authentication via app service principal")
         logger.info("✓ Genie space ID: %s", self.space_id)
 
-    def get_console_url(self, conversation_id: str) -> str:
-        """Construct a deeplink URL to view this conversation in the Genie console."""
-        return f"{self.host}/genie/rooms/{self.space_id}/chats/{conversation_id}"
+    def get_console_url(self) -> str:
+        """Return the URL for this Genie space in the Databricks console."""
+        return f"{self.host}/genie/rooms/{self.space_id}"
 
     @staticmethod
     def _extract_status_code(error: Exception) -> Optional[int]:
@@ -452,7 +452,6 @@ class DatabricksGenieClient:
                 "result_data": result_data,
                 "suggested_questions": suggested_questions,
                 "sql_text": sql_text,
-                "console_url": self.get_console_url(actual_conversation_id),
             }
         else:
             raw_error = response.get("error")

@@ -77,9 +77,9 @@ class FakeGenieClient:
         self.host = self.FAKE_HOST
         self.space_id = self.FAKE_SPACE_ID
 
-    def get_console_url(self, conversation_id: str) -> str:
+    def get_console_url(self) -> str:
         """Return a deterministic console URL for tests."""
-        return f"{self.host}/genie/rooms/{self.space_id}/chats/{conversation_id}"
+        return f"{self.host}/genie/rooms/{self.space_id}"
 
     def ask_question(self, text, conversation_id=None, on_message_sent=None):
         """Return a deterministic Genie response for tests."""
@@ -96,7 +96,6 @@ class FakeGenieClient:
             "result_data": None,
             "suggested_questions": [],
             "sql_text": None,
-            "console_url": self.get_console_url(conversation_id),
         }
 
     def send_message_feedback(self, **kwargs):
@@ -497,7 +496,6 @@ def test_fast_thread_follow_up_reuses_existing_conversation_scope():
                 "result_data": None,
                 "suggested_questions": [],
                 "sql_text": None,
-                "console_url": self.get_console_url(resolved_conversation_id),
             }
 
     genie_client = CoordinatedFakeGenieClient()
@@ -568,9 +566,9 @@ def test_successful_response_includes_console_deeplink():
     # The thinking message is updated in-place with the answer
     assert len(client.updates) >= 1
     updated_text = client.updates[0]["text"]
-    expected_url = genie_client.get_console_url("conv-1")
+    expected_url = genie_client.get_console_url()
     assert expected_url in updated_text
-    assert "View in Genie Console" in updated_text
+    assert "Open Genie Console" in updated_text
 
 
 def test_truncation_warning_in_main_response_when_rows_exceed_10():
@@ -598,7 +596,6 @@ def test_truncation_warning_in_main_response_when_rows_exceed_10():
                 },
                 "suggested_questions": [],
                 "sql_text": "SELECT * FROM elections",
-                "console_url": self.get_console_url(conversation_id),
             }
 
     genie_client = TruncatingFakeGenieClient()
@@ -618,7 +615,7 @@ def test_truncation_warning_in_main_response_when_rows_exceed_10():
 
     updated_text = client.updates[0]["text"]
     assert "Showing 10 of 25 rows" in updated_text
-    assert "view full results in Genie Console" in updated_text
+    assert "Open Genie Console" in updated_text
 
 
 def test_sql_on_request_returns_cached_sql():
@@ -640,7 +637,6 @@ def test_sql_on_request_returns_cached_sql():
                 "result_data": None,
                 "suggested_questions": [],
                 "sql_text": "SELECT COUNT(*) FROM election WHERE candidate_office IN ('State Representative', 'State Senate')",
-                "console_url": self.get_console_url(conversation_id),
             }
 
     genie_client = SqlFakeGenieClient()
@@ -679,7 +675,7 @@ def test_sql_on_request_returns_cached_sql():
     sql_post = [p for p in client.posts if "candidate_office" in p.get("text", "")]
     assert len(sql_post) == 1
     assert "```sql" in sql_post[0]["text"]
-    assert "View in Genie Console" in sql_post[0]["text"]
+    assert "Open Genie Console" in sql_post[0]["text"]
 
 
 def test_sql_on_request_without_prior_query():
@@ -770,7 +766,6 @@ def test_no_truncation_warning_when_10_rows_or_fewer():
                 },
                 "suggested_questions": [],
                 "sql_text": None,
-                "console_url": self.get_console_url(conversation_id),
             }
 
     genie_client = SmallResultGenieClient()
@@ -790,5 +785,5 @@ def test_no_truncation_warning_when_10_rows_or_fewer():
 
     updated_text = client.updates[0]["text"]
     assert "Showing 10 of" not in updated_text
-    # But deeplink should still be present
-    assert "View in Genie Console" in updated_text
+    # But space link should still be present
+    assert "Open Genie Console" in updated_text

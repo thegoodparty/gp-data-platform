@@ -144,19 +144,16 @@ class SlackGenieBot:
             # --- SQL-on-request: intercept before hitting Genie ---
             if SQL_REQUEST_PATTERN.match(text):
                 cached_sql = self._get_mapping(self.sql_cache, conversation_scope)
+                console_url = self.genie_client.get_console_url()
                 if isinstance(cached_sql, str):
                     logger.info(
                         "SQL-on-request: returning cached SQL for %s",
                         conversation_scope,
                     )
-                    sql_response = f"*Generated SQL:*\n```sql\n{cached_sql}\n```"
-                    # Include deeplink if we have a conversation mapping
-                    sql_conv_id = self._get_mapping(
-                        self.conversation_map, conversation_scope
+                    sql_response = (
+                        f"*Generated SQL:*\n```sql\n{cached_sql}\n```"
+                        f"\n<{console_url}|Open Genie Console>"
                     )
-                    if isinstance(sql_conv_id, str):
-                        sql_url = self.genie_client.get_console_url(sql_conv_id)
-                        sql_response += f"\n<{sql_url}|View in Genie Console>"
                     self._post_message(
                         client,
                         channel=channel,
@@ -164,17 +161,13 @@ class SlackGenieBot:
                         thread_ts=thread_ts,
                     )
                 else:
-                    no_sql_msg = "No query has been run in this thread yet."
-                    sql_conv_id = self._get_mapping(
-                        self.conversation_map, conversation_scope
-                    )
-                    if isinstance(sql_conv_id, str):
-                        sql_url = self.genie_client.get_console_url(sql_conv_id)
-                        no_sql_msg += f" <{sql_url}|Open Genie Console>"
                     self._post_message(
                         client,
                         channel=channel,
-                        text=no_sql_msg,
+                        text=(
+                            "No query has been run in this thread yet."
+                            f" <{console_url}|Open Genie Console>"
+                        ),
                         thread_ts=thread_ts,
                     )
                 return
@@ -242,7 +235,6 @@ class SlackGenieBot:
             response_text = self._format_response(result)
 
             # Append truncation warning to main text when results exceed 10 rows
-            console_url = result.get("console_url")
             result_data = result.get("result_data")
             if result_data:
                 data = result_data.get("data", {})
@@ -259,17 +251,12 @@ class SlackGenieBot:
                     total_rows = len(data.get("data_array", []))
 
                 if total_rows > 10:
-                    truncation_note = f"\n\n_Showing 10 of {total_rows} rows"
-                    if isinstance(console_url, str):
-                        truncation_note += (
-                            f" — <{console_url}|view full results in Genie Console>"
-                        )
-                    truncation_note += "_"
-                    response_text += truncation_note
+                    response_text += f"\n\n_Showing 10 of {total_rows} rows_"
 
-            # Append console deeplink footer to every successful response
-            if result.get("success") and isinstance(console_url, str):
-                response_text += f"\n\n<{console_url}|View in Genie Console>"
+            # Append Genie space link to every successful response
+            if result.get("success"):
+                console_url = self.genie_client.get_console_url()
+                response_text += f"\n\n<{console_url}|Open Genie Console>"
 
             # ---- UPDATE the thinking message with the actual answer ----
             if thinking_ts:
@@ -303,9 +290,7 @@ class SlackGenieBot:
             if result_data:
                 data = result_data.get("data", {})
                 if data.get("data_array"):
-                    self._send_query_results(
-                        channel, thread_ts, result_data, client, console_url
-                    )
+                    self._send_query_results(channel, thread_ts, result_data, client)
 
             # Send suggested follow-up questions
             suggested_questions = result.get("suggested_questions", [])
@@ -518,9 +503,7 @@ class SlackGenieBot:
     # Rich message senders
     # ------------------------------------------------------------------
 
-    def _send_query_results(
-        self, channel, thread_ts, result_data, client, console_url=None
-    ):
+    def _send_query_results(self, channel, thread_ts, result_data, client):
         try:
             data = result_data.get("data", {})
             schema = result_data.get("schema", {})

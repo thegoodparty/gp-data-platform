@@ -39,8 +39,8 @@ Unity Catalog (civics mart tables)
 - In DMs, each top-level message starts a new Genie conversation and replies in that DM thread continue it
 - Bot posts a "Thinking..." indicator that updates in-place with the answer
 - Tabular results rendered as formatted code blocks (max 10 rows)
-- Every successful response includes a **Genie Console deeplink** so users can view full results, charts, and use Inspection mode in the Databricks UI
-- When results exceed 10 rows, the main response text includes a **truncation warning** with the deeplink
+- Every successful response includes a link to **Open Genie Console** so users can ask follow-up questions with Inspection mode, charts, and full results in the Databricks UI (note: Inspection/Analysis is UI-only and not available via the Conversation API)
+- When results exceed 10 rows, the main response text includes a **truncation warning**
 - Users can type **"show sql"** (or similar phrases) in a thread to see the SQL that Genie generated for the last query — this is served from cache without calling Genie again
 - Thumbs up/down feedback flows back to the Genie space Monitoring tab
 - Suggested follow-up questions displayed after each response
