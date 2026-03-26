@@ -263,12 +263,12 @@ models:
     description: >
       Archived HubSpot contacts from 2026-01-22 snapshot. Source data for civics mart.
     columns:
-      - name: pledge_status
-        description: Raw pledge status string from HubSpot (before boolean transformation)
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
         data_tests:
           - accepted_values:
               arguments:
-                values: ["yes", "no"]
+                values: [true, false]
       - name: verified_candidate_status
         description: >
           Raw verification status from HubSpot contacts. Empty strings allowed

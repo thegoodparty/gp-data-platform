@@ -26,7 +26,13 @@ with
             tbl_ddhq_matches.ddhq_candidate_id as source_candidate_id,
             tbl_ddhq_matches.ddhq_race_id as source_race_id,
             tbl_ddhq_matches.ddhq_candidate_party as candidate_party,
-            tbl_ddhq_matches.ddhq_is_winner as is_winner,
+            case
+                when tbl_ddhq_matches.ddhq_is_winner = 'Y'
+                then true
+                when tbl_ddhq_matches.ddhq_is_winner = 'N'
+                then false
+                else null
+            end as is_winner,
             -- Coalesce HubSpot companies result with DDHQ result for comprehensive
             -- coverage
             -- HubSpot only has general election results, so only use it for general
@@ -38,9 +44,9 @@ with
                     else null
                 end,
                 case
-                    when tbl_ddhq_matches.ddhq_is_winner
+                    when tbl_ddhq_matches.ddhq_is_winner = 'Y'
                     then 'Won'
-                    when not tbl_ddhq_matches.ddhq_is_winner
+                    when tbl_ddhq_matches.ddhq_is_winner = 'N'
                     then 'Lost'
                     else null
                 end
