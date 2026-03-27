@@ -52,3 +52,4 @@ left join
 left join
     {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as l
     on h.candidate_office = l.name
+    and h.state = l.state
