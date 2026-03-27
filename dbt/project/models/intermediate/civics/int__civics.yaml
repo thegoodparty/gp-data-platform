@@ -503,6 +503,10 @@ models:
         description: Foreign key to election table
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_techspeed')
+                field: gp_election_id
 
       - name: br_race_id
         description: >
@@ -585,6 +589,27 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+
+      - name: has_ddhq_match
+        description: Whether there is a DDHQ match (always false for TechSpeed)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_judicial
+        description: Whether the office is judicial (always null for TechSpeed)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_appointed
+        description: Whether the office is appointed (always null for TechSpeed)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: created_at
         data_tests:
