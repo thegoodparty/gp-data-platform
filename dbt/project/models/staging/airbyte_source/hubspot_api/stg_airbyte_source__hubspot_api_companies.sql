@@ -12,15 +12,16 @@ select
     properties_candidate_district as candidate_district,
     cast(properties_candidates_seats as int) as candidates_seats,
     properties_verified_candidates as verified_candidates,
-    properties_pledge_status as pledge_status,
-    properties_incumbent as incumbent,
+    {{ cast_to_boolean("properties_pledge_status") }} as is_pledged,
+    {{ cast_to_boolean("properties_incumbent") }} as is_incumbent,
 
     -- office information
     properties_official_office_name as official_office_name,
     properties_office_level as office_level,
     properties_office_type as office_type,
-    properties_partisan_np as partisan_np,
-    properties_open_seat_ as open_seat,
+    {{ cast_to_boolean("properties_partisan_np", ["partisan"], ["nonpartisan"]) }}
+    as is_partisan,
+    {{ cast_to_boolean("properties_open_seat_") }} as is_open_seat,
 
     -- contact information
     properties_phone as phone,
@@ -41,7 +42,8 @@ select
     properties_runoff_date as runoff_date,
 
     -- election context
-    properties_uncontested as uncontested,
+    {{ cast_to_boolean("properties_uncontested", ["uncontested"], ["contested"]) }}
+    as is_uncontested,
     properties_number_of_opponents as number_of_opponents,
     cast(properties_seats_available as int) as seats_available,
 

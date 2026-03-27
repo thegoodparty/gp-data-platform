@@ -13,7 +13,7 @@ with
             {{ adapter.quote("votes") }},
             cast(try_cast({{ adapter.quote("race_id") }} as float) as int) as race_id,
             {{ adapter.quote("candidate") }},
-            {{ adapter.quote("is_winner") }},
+            {{ cast_to_boolean("is_winner", ["y"], ["n"]) }} as is_winner,
             {{ adapter.quote("race_name") }},
             cast(
                 cast(nullif({{ adapter.quote("candidate_id") }}, '') as float) as int

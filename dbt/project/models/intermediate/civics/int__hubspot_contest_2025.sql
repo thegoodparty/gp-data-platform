@@ -41,8 +41,9 @@ select
     try_cast(
         try_cast(properties_number_of_seats_available as double) as int
     ) as seats_available,
-    properties_uncontested as uncontested,
-    properties_open_seat as open_seat,
+    {{ cast_to_boolean("properties_uncontested", ["uncontested"], ["contested"]) }}
+    as is_uncontested,
+    {{ cast_to_boolean("properties_open_seat") }} as is_open_seat,
     properties_start_date as term_start_date,
     properties_election_date as election_date,
     cast(left(properties_election_date, 4) as integer) as election_year,

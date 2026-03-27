@@ -34,8 +34,8 @@ models:
           - is_uuid
       - name: verified_candidate
         description: "Indicates whether the candidate has been verified"
-      - name: pledge_status
-        description: "Status of the candidate's pledge"
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
     tests:
     - dbt_utils.unique_combination_of_columns:
         arguments:

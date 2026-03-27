@@ -6,6 +6,36 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_uncontested
+        description: Whether the race is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
   - name: stg_airbyte_source__hubspot_api_contacts
     description: Contacts data load from HubSpot API
     columns:
@@ -13,14 +43,36 @@ models:
         data_tests:
           - not_null
           - unique
-      - name: pledge_status
-        description: "Raw pledge status from HubSpot (expected values: yes, no, Yes, No, or null)"
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
         data_tests:
           - accepted_values:
               arguments:
-                values: ['yes', 'no', 'Yes', 'No']
-              config:
-                where: "pledge_status is not null and trim(pledge_status) != ''"
+                values: [true, false]
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_uncontested
+        description: Whether the race is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
   - name: stg_airbyte_source__hubspot_api_deals
     description: Deals data load from HubSpot API
     columns:

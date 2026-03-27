@@ -78,15 +78,15 @@ with
             cast(null as int) as population,
             rs.number_of_seats as seats_available,
             cast(null as date) as term_start_date,
-            cast(null as string) as is_uncontested,
+            cast(null as boolean) as is_uncontested,
             cast(null as string) as number_of_opponents,
-            cast(null as string) as open_seat,
+            cast(null as boolean) as is_open_seat,
             false as has_ddhq_match,
 
             -- BallotReady enrichment
             rs.br_position_id as br_position_database_id,
-            br_position.judicial as is_judicial,
-            br_position.appointed as is_appointed,
+            br_position.is_judicial,
+            br_position.is_appointed,
             br_normalized.name as br_normalized_position_type,
 
             -- Timestamps
@@ -118,7 +118,7 @@ select
     term_start_date,
     is_uncontested,
     number_of_opponents,
-    open_seat,
+    is_open_seat,
     has_ddhq_match,
     br_position_database_id,
     is_judicial,

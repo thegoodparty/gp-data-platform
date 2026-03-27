@@ -14,7 +14,7 @@ with
             {{ adapter.quote("_airbyte_generation_id") }},
             {{ adapter.quote("_airbyte_meta") }},
             {{ adapter.quote("_airbyte_raw_id") }},
-            cast({{ adapter.quote("appointed") }} as boolean) as appointed,
+            cast({{ adapter.quote("appointed") }} as boolean) as is_appointed,
             try_cast({{ adapter.quote("candidacy_id") }} as int) as br_candidacy_id,
             try_cast({{ adapter.quote("candidate_id") }} as int) as br_candidate_id,
             from_json(
