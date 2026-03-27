@@ -56,7 +56,9 @@ with
             'primary' as stage_type,
             primary_election_date_parsed as stage_election_date
         from source
-        where primary_election_date_parsed is not null
+        where
+            primary_election_date_parsed is not null
+            and year(primary_election_date_parsed) between 1900 and 2030
     ),
 
     -- Unpivot: general stage rows
@@ -66,7 +68,9 @@ with
             'general' as stage_type,
             general_election_date_parsed as stage_election_date
         from source
-        where general_election_date_parsed is not null
+        where
+            general_election_date_parsed is not null
+            and year(general_election_date_parsed) between 1900 and 2030
     ),
 
     unpivoted as (

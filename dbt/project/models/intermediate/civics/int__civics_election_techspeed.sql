@@ -51,11 +51,24 @@ with
             any_value(election_date) as election_date,
             any_value(year(election_date)) as election_year,
             any_value(
-                coalesce(
-                    try_cast(filing_deadline as date),
-                    try_to_date(filing_deadline, 'MM/dd/yyyy'),
-                    try_to_date(filing_deadline, 'MM-dd-yyyy')
-                )
+                case
+                    when
+                        year(
+                            coalesce(
+                                try_cast(filing_deadline as date),
+                                try_to_date(filing_deadline, 'MM/dd/yyyy'),
+                                try_to_date(filing_deadline, 'MM-dd-yyyy')
+                            )
+                        )
+                        between 1900 and 2030
+                    then
+                        coalesce(
+                            try_cast(filing_deadline as date),
+                            try_to_date(filing_deadline, 'MM/dd/yyyy'),
+                            try_to_date(filing_deadline, 'MM-dd-yyyy')
+                        )
+                    else null
+                end
             ) as filing_deadline,
             any_value(population) as population,
             any_value(seats_available) as seats_available,
@@ -91,7 +104,7 @@ with
             min(_airbyte_extracted_at) as created_at,
             max(_airbyte_extracted_at) as updated_at
         from source
-        where election_date is not null
+        where election_date is not null and year(election_date) between 1900 and 2030
         group by gp_election_id
     )
 
