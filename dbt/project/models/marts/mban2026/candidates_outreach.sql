@@ -50,5 +50,5 @@ left join
     and o.outreach_type = 'text'
     and o.date >= '2023-01-01'
 left join
-    {{ ref("stg_model_predictions__llm_l2_br_match_20250811") }} as l
+    {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as l
     on h.candidate_office = l.name
