@@ -150,20 +150,33 @@ with
             cast(br_race_id as string) as source_race_id,
             party as candidate_party,
 
+            -- Only apply election_result to the general stage. TechSpeed results
+            -- are candidate-level (not stage-specific) and refer to the final
+            -- outcome, which is the general election. Applying to both stages
+            -- would incorrectly mark the primary as Won too.
             case
-                when election_result is not null and trim(election_result) != ''
+                when
+                    stage_type = 'general'
+                    and election_result is not null
+                    and trim(election_result) != ''
                 then true
                 else null
             end as is_winner,
 
             case
-                when election_result is not null and trim(election_result) != ''
+                when
+                    stage_type = 'general'
+                    and election_result is not null
+                    and trim(election_result) != ''
                 then 'Won'
                 else null
             end as election_result,
 
             case
-                when election_result is not null and trim(election_result) != ''
+                when
+                    stage_type = 'general'
+                    and election_result is not null
+                    and trim(election_result) != ''
                 then 'techspeed'
                 else null
             end as election_result_source,
@@ -171,7 +184,9 @@ with
             cast(null as float) as match_confidence,
             cast(null as string) as match_reasoning,
             cast(null as string) as match_top_candidates,
-            election_result is not null and trim(election_result) != '' as has_match,
+            stage_type = 'general'
+            and election_result is not null
+            and trim(election_result) != '' as has_match,
             cast(null as string) as votes_received,
             stage_election_date as election_stage_date,
             _airbyte_extracted_at as created_at,
