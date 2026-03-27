@@ -19,6 +19,10 @@ SLACK_TEXT_LIMIT = 3900
 MAX_CONVERSATION_THREADS = 1000
 MAX_FEEDBACK_MESSAGES = 2000
 MAX_RECENT_EVENT_KEYS = 2000
+MAX_SQL_CACHE_ENTRIES = 1000
+
+# Exact phrases that trigger the SQL-on-request feature (lowercased).
+SQL_REQUEST_PHRASES = frozenset({"show sql", "show me the sql", "show query"})
 
 
 class SlackGenieBot:
@@ -46,6 +50,9 @@ class SlackGenieBot:
 
         # message_ts -> (conversation_id, message_id) for feedback routing
         self.message_feedback_map: OrderedDict[str, Tuple[str, str]] = OrderedDict()
+
+        # conversation_scope -> latest SQL text for SQL-on-request
+        self.sql_cache: OrderedDict[str, str] = OrderedDict()
 
         # channel:message_ts -> monotonic timestamp for event de-duplication
         self.recent_event_keys: OrderedDict[str, float] = OrderedDict()
@@ -125,6 +132,29 @@ class SlackGenieBot:
                 )
                 return
 
+            # --- SQL-on-request: exact phrase match ---
+            if text.strip().lower() in SQL_REQUEST_PHRASES:
+                cached_sql = self._get_mapping(self.sql_cache, conversation_scope)
+                space_url = self.genie_client.get_space_url()
+                if isinstance(cached_sql, str):
+                    sql_response = f"*Generated SQL:*\n```sql\n{cached_sql}\n```"
+                    sql_response += f"\n<{space_url}|Open Genie Console>"
+                    self._post_message(
+                        client,
+                        channel=channel,
+                        text=sql_response,
+                        thread_ts=thread_ts,
+                    )
+                else:
+                    self._post_message(
+                        client,
+                        channel=channel,
+                        text=f"No query has been run in this thread yet."
+                        f" <{space_url}|Open Genie Console>",
+                        thread_ts=thread_ts,
+                    )
+                return
+
             # Post a thinking indicator that we will UPDATE in-place
             thinking_resp = self._post_message(
                 client,
@@ -174,8 +204,33 @@ class SlackGenieBot:
                     MAX_CONVERSATION_THREADS,
                 )
 
+            # Cache SQL for SQL-on-request
+            sql_text = result.get("sql_text")
+            if isinstance(sql_text, str):
+                self._remember_mapping(
+                    self.sql_cache,
+                    conversation_scope,
+                    sql_text,
+                    MAX_SQL_CACHE_ENTRIES,
+                )
+
             # Format the response
             response_text = self._format_response(result)
+
+            # Append truncation warning when results exceed 10 rows
+            result_data = result.get("result_data")
+            if result_data:
+                total_rows = self._extract_row_count(result_data.get("data", {}))
+                if total_rows > 10:
+                    response_text += f"\n\n_Showing 10 of {total_rows} rows_"
+
+            # Append console footer to every successful response
+            if result.get("success"):
+                space_url = self.genie_client.get_space_url()
+                response_text += (
+                    f"\n\n<{space_url}|Open Genie Console>"
+                    " — _for charts, full results, and deeper analysis_"
+                )
 
             # ---- UPDATE the thinking message with the actual answer ----
             if thinking_ts:
@@ -206,7 +261,6 @@ class SlackGenieBot:
                 )
 
             # Send query result data if available
-            result_data = result.get("result_data")
             if result_data:
                 data = result_data.get("data", {})
                 if data.get("data_array"):
@@ -252,6 +306,23 @@ class SlackGenieBot:
                     logger.warning(
                         "Missing conversation_id or message_id - cannot create feedback buttons"
                     )
+
+            # --- Structured observability log ---
+            if result.get("success"):
+                logger.info(
+                    "genie_request_complete: "
+                    "slack_user=%s channel=%s channel_type=%s "
+                    "thread_ts=%s genie_conversation_id=%s "
+                    "genie_message_id=%s has_sql=%s has_results=%s",
+                    event.get("user"),
+                    channel,
+                    event.get("channel_type"),
+                    thread_ts,
+                    result.get("conversation_id"),
+                    result.get("message_id"),
+                    sql_text is not None,
+                    result_data is not None,
+                )
 
         except Exception as error:
             logger.error("Error handling message: %s", error, exc_info=True)
@@ -299,6 +370,16 @@ class SlackGenieBot:
         if len(text) <= SLACK_TEXT_LIMIT:
             return text
         return text[: SLACK_TEXT_LIMIT - len("\n\n_(truncated)_")] + "\n\n_(truncated)_"
+
+    @staticmethod
+    def _extract_row_count(data: Dict[str, Any]) -> int:
+        """Extract total row count from a query result data dict."""
+        raw = data.get("row_count")
+        if isinstance(raw, int):
+            return raw if raw > 0 else len(data.get("data_array", []))
+        if isinstance(raw, str) and raw.isdigit():
+            return int(raw)
+        return len(data.get("data_array", []))
 
     def _post_message(
         self,
@@ -411,13 +492,6 @@ class SlackGenieBot:
             data = result_data.get("data", {})
             schema = result_data.get("schema", {})
             data_array = data.get("data_array", [])
-            raw_row_count = data.get("row_count")
-            if isinstance(raw_row_count, int):
-                row_count = raw_row_count if raw_row_count > 0 else len(data_array)
-            elif isinstance(raw_row_count, str) and raw_row_count.isdigit():
-                row_count = int(raw_row_count)
-            else:
-                row_count = len(data_array)
 
             if not data_array:
                 return
@@ -431,8 +505,6 @@ class SlackGenieBot:
             table_text = self._format_data_array(column_names, data_array[:max_rows])
 
             msg = f"*Query Results:*\n```\n{table_text}\n```"
-            if row_count > max_rows:
-                msg += f"\n_Showing {max_rows} of {row_count} rows_"
 
             self._post_message(
                 client,
