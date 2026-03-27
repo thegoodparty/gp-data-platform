@@ -569,8 +569,22 @@ models:
                 field: id
       - name: sent_at
         description: "Timestamp when the message was sent"
+      - name: content
+        description: "Content/body of the individual message"
+      - name: created_at
+        description: "Timestamp when the record was created"
+      - name: elected_office_id
+        description: "Foreign key reference to the elected office"
+      - name: is_opt_out
+        description: "Whether the person has opted out of messages"
+      - name: person_cell_phone
+        description: "Cell phone number of the person"
       - name: person_id
         description: "Foreign key reference to the person who received the message"
+      - name: sender
+        description: "Sender of the message"
+      - name: updated_at
+        description: "Timestamp when the record was last updated"
   - name: stg_airbyte_source__gp_api_db_poll_issues
     description: raw data load from gp_api_db postgres db from table `poll_issues`
     columns:
