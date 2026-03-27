@@ -160,13 +160,8 @@ with
                 else null
             end as is_partisan,
 
-            -- Election result mapped from TechSpeed election_result field
-            -- Source values are Won/Unopposed variants, normalized to 'Won'
-            case
-                when election_result is not null and trim(election_result) != ''
-                then 'Won'
-                else null
-            end as candidacy_result,
+            -- Election results are tracked at the candidacy_stage level, not here
+            cast(null as string) as candidacy_result,
 
             -- Election dates (using pre-parsed values from source CTE)
             primary_election_date_parsed as primary_election_date,

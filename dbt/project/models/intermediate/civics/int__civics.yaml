@@ -395,17 +395,6 @@ models:
               arguments:
                 values: [true, false]
 
-      - name: candidacy_result
-        description: >
-          Result of the candidacy. Mapped from TechSpeed election_result field.
-          Won/Unopposed source variants are normalized to 'Won'.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - Won
-                  - Lost
-
       - name: general_election_date
         description: >
           General election date. May be NULL for records that only have a
