@@ -29,23 +29,19 @@ with
             }} as techspeed_candidate_code,
             coalesce(
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as primary_election_date_parsed,
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy')
             ) as general_election_date_parsed,
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy'),
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date

@@ -24,14 +24,12 @@ with
             -- Parse primary_election_date
             coalesce(
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as primary_election_date_parsed,
             -- Parse general_election_date
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy')
             ) as general_election_date_parsed,
@@ -39,11 +37,9 @@ with
             -- primary)
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy'),
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date
@@ -99,6 +95,9 @@ with
             stage_election_date,
             stage_type,
             is_primary,
+            -- These fields are race-level (same across all candidates in a race).
+            -- any_value() is safe here because the GROUP BY already partitions by
+            -- all race-defining fields; these are just race attributes carried along.
             any_value(election_date) as election_date,
             any_value(seats_available) as seats_available,
             any_value(br_race_id) as br_race_id,

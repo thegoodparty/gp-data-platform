@@ -19,11 +19,9 @@ with
             try_cast(number_of_seats_available as int) as seats_available,
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy'),
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date
@@ -48,7 +46,9 @@ with
                 partition by gp_election_id
                 order by
                     case when general_election_date is not null then 0 else 1 end,
-                    _airbyte_extracted_at desc
+                    _airbyte_extracted_at desc,
+                    first_name,
+                    last_name
             )
             = 1
     ),
@@ -71,7 +71,6 @@ with
                     year(
                         coalesce(
                             try_cast(filing_deadline as date),
-                            try_to_date(filing_deadline, 'MM/dd/yyyy'),
                             try_to_date(filing_deadline, 'MM-dd-yyyy')
                         )
                     )
@@ -79,12 +78,13 @@ with
                 then
                     coalesce(
                         try_cast(filing_deadline as date),
-                        try_to_date(filing_deadline, 'MM/dd/yyyy'),
                         try_to_date(filing_deadline, 'MM-dd-yyyy')
                     )
                 else null
             end as filing_deadline,
-            population,
+            try_cast(
+                trim(regexp_replace(cast(population as string), '[^0-9]', '')) as int
+            ) as population,
             seats_available,
             cast(null as date) as term_start_date,
             -- String-typed to match existing mart contract

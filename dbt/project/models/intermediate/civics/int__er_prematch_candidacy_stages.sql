@@ -108,7 +108,8 @@ with
     -- State name → 2-letter code mapping for TechSpeed and DDHQ
     clean_states as (select * from {{ ref("clean_states") }}),
 
-    -- TechSpeed: sourced from staging to preserve candidacy-stage grain
+    -- TechSpeed: sourced from staging, unpivoted into primary/general stage rows
+    -- to preserve candidacy-stage grain
     ts_staging as (
         select
             ts.*,
@@ -121,35 +122,56 @@ with
                     "ts.office_type",
                     "ts.city",
                 )
-            }} as techspeed_candidate_code
+            }} as techspeed_candidate_code,
+            coalesce(
+                try_cast(ts.primary_election_date as date),
+                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
+                try_to_date(ts.primary_election_date, 'MM/dd/yy')
+            ) as primary_date_parsed,
+            coalesce(
+                try_cast(ts.general_election_date as date),
+                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
+                try_to_date(ts.general_election_date, 'MM/dd/yy')
+            ) as general_date_parsed
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
         left join
             clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
+    ),
+
+    -- Unpivot: one row per stage date (mirrors civics election_stage pattern)
+    ts_primary as (
+        select *, 'Primary' as election_stage, primary_date_parsed as election_date
+        from ts_staging
         where
-            coalesce(
-                try_cast(general_election_date as date),
-                try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy'),
-                try_cast(primary_election_date as date),
-                try_to_date(primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(primary_election_date, 'MM/dd/yy')
-            )
-            >= '2026-01-01'
-            and coalesce(
-                try_cast(general_election_date as date),
-                try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy'),
-                try_cast(primary_election_date as date),
-                try_to_date(primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(primary_election_date, 'MM/dd/yy')
-            )
-            < '2050-01-01'
+            primary_date_parsed is not null
+            and primary_date_parsed >= '2026-01-01'
+            and year(primary_date_parsed) between 1900 and 2050
+    ),
+
+    ts_general as (
+        select *, 'General' as election_stage, general_date_parsed as election_date
+        from ts_staging
+        where
+            general_date_parsed is not null
+            and general_date_parsed >= '2026-01-01'
+            and year(general_date_parsed) between 1900 and 2050
+    ),
+
+    ts_unpivoted as (
+        select *
+        from ts_primary
+        union all
+        select *
+        from ts_general
     ),
 
     techspeed_stages as (
         select
             'techspeed' as source_name,
-            ts.techspeed_candidate_code as source_id,
+            -- Stage-grain source_id (candidate_code + stage) for uniqueness
+            ts.techspeed_candidate_code
+            || '__'
+            || lower(ts.election_stage) as source_id,
             lower(trim(ts.first_name)) as first_name,
             lower(trim(ts.last_name)) as last_name,
             ts.state_code as state,
@@ -161,22 +183,8 @@ with
             try_cast(
                 regexp_extract(ts.district, '([0-9]+)') as int
             ) as district_identifier,
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM/dd/yy'),
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM/dd/yy')
-            ) as election_date,
-            -- Map is_primary to election stage (was election_type from _clean)
-            case
-                when
-                    upper(trim(cast(ts.is_primary as string)))
-                    in ('YES', 'TRUE', 'PRIMARY')
-                then 'Primary'
-                else 'General'
-            end as election_stage,
+            ts.election_date,
+            ts.election_stage,
             ts.email,
             ts.phone,
             ts.br_race_id,
@@ -184,7 +192,15 @@ with
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
-        from ts_staging as ts
+        from ts_unpivoted as ts
+        -- Dedupe: staging is not deduplicated, keep first appearance per
+        -- candidate-stage to avoid duplicate source_ids
+        qualify
+            row_number() over (
+                partition by techspeed_candidate_code, election_stage
+                order by _ab_source_file_url asc
+            )
+            = 1
     ),
 
     -- DDHQ election results: each row is a candidate x race (candidacy-stage)

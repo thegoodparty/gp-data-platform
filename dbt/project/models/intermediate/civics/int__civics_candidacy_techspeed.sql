@@ -29,13 +29,11 @@ with
             }} as techspeed_candidate_code,
             coalesce(
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as primary_election_date_parsed,
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy')
             ) as general_election_date_parsed,
@@ -48,11 +46,9 @@ with
             -- in same SELECT
             coalesce(
                 try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.general_election_date, 'MM/dd/yy'),
                 try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date,  -- parsed DATE for format parity with HubSpot
@@ -60,7 +56,6 @@ with
             coalesce(
                 try_cast(ts.birth_date as date),
                 try_to_date(ts.birth_date, 'MM-dd-yyyy'),
-                try_to_date(ts.birth_date, 'MM/dd/yyyy'),
                 try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts

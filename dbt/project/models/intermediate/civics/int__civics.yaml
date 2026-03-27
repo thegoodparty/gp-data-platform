@@ -646,13 +646,12 @@ models:
                 field: gp_election_stage_id
 
       - name: election_result
-        description: Result of the election stage (Won or null)
+        description: Result of the election stage (Won or null, general stages only)
         data_tests:
           - accepted_values:
               arguments:
                 values:
                   - Won
-                  - Lost
 
       - name: is_winner
         description: Whether the candidate won the election stage
