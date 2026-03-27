@@ -50,10 +50,18 @@ left join
     and o.outreach_type = 'text'
     and o.date >= '2023-01-01'
 left join
-    {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as l
+    (select distinct
+            name,
+            state,
+            l2_district_name,
+            l2_district_type
+     from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+    ) as l
     -- Match to L2 based on a combination of candidate office and state, which
     -- requires converting HubSpot state full names to state postal code abbreviations
-    on h.candidate_office = l.name
+    on h.candidate_office is not null
+    and h.candidate_office != ''
+    and h.candidate_office = l.name
     and CASE INITCAP(h.state) 
         WHEN 'Alabama' THEN 'AL'                                                  
         WHEN 'Alaska' THEN 'AK'                                                     
@@ -108,6 +116,3 @@ left join
         WHEN 'District Of Columbia' THEN 'DC'                                       
         ELSE h.state
     END = l.state
-
-where candidate_office is not null
-and candidate_office != ''
