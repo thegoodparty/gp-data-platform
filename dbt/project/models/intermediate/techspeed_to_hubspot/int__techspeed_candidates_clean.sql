@@ -88,6 +88,7 @@ with
                 trim(regexp_replace(population, '[^0-9]', '')) as integer
             ) as population,
             br_race_id,
+            election_result,
             type,
             contact_owner,
             owner_name,
@@ -259,6 +260,7 @@ select
     partisan,
     population,
     br_race_id,
+    election_result,
     type,
     contact_owner,
     owner_name,

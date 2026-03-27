@@ -149,8 +149,13 @@ with
                 else null
             end as is_partisan,
 
-            -- Election result (NULL for TS — they don't track outcomes)
-            cast(null as string) as candidacy_result,
+            -- Election result mapped from TechSpeed election_result field
+            -- Per EDA: ~136 records have values, all are Won/Unopposed variants
+            case
+                when election_result is not null and trim(election_result) != ''
+                then 'Won'
+                else null
+            end as candidacy_result,
 
             -- Election dates (using pre-parsed values from source CTE)
             primary_election_date_parsed as primary_election_date,

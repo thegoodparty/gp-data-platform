@@ -67,6 +67,7 @@ with
             partisan,
             population,
             br_race_id,
+            election_result,
 
             -- Assign constant values
             'Self-Filer Lead' as `type`,
@@ -122,6 +123,7 @@ select
     partisan,
     population,
     br_race_id,
+    election_result,
     type,
     contact_owner,
     owner_name,
