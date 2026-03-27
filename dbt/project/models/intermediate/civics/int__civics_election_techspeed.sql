@@ -1,7 +1,7 @@
 {{ config(materialized="table", tags=["civics", "techspeed"]) }}
 
 -- TechSpeed candidates → Civics mart election schema
--- Source: int__techspeed_candidates_clean (candidate-level)
+-- Source: stg_airbyte_source__techspeed_gdrive_candidates
 --
 -- Grain: One row per election (position + election year)
 --
@@ -13,7 +13,7 @@ with
 
     source as (
         select
-            ts.* except (election_date, state),
+            ts.* except (state),
             coalesce(cs.state_cleaned_postal_code, ts.state) as state,
             cast(null as string) as seat_name,
             try_cast(number_of_seats_available as int) as seats_available,
@@ -27,14 +27,9 @@ with
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date
-        from {{ ref("int__techspeed_candidates_clean") }} as ts
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
         left join
             clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
-        where
-            ts.first_name is not null
-            and ts.last_name is not null
-            and ts.state is not null
-            and ts.techspeed_candidate_code is not null
     ),
 
     with_election_id as (
@@ -95,11 +90,11 @@ with
             -- String-typed to match existing mart contract
             case
                 when
-                    upper(trim(cast(uncontested as string)))
+                    upper(trim(cast(is_uncontested as string)))
                     in ('UNCONTESTED', 'YES', 'TRUE')
                 then 'true'
                 when
-                    upper(trim(cast(uncontested as string)))
+                    upper(trim(cast(is_uncontested as string)))
                     in ('CONTESTED', 'NO', 'FALSE')
                 then 'false'
                 else null

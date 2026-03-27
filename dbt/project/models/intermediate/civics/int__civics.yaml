@@ -311,7 +311,7 @@ models:
 
       Grain: One row per candidacy (candidate + election combination).
 
-      Source: int__techspeed_candidates_clean
+      Source: stg_airbyte_source__techspeed_gdrive_candidates
 
       Key design decisions:
       - UUID fields aligned with int__hubspot_companies_w_contacts_2025 for cross-source consistency
@@ -437,7 +437,7 @@ models:
 
       Grain: One row per unique person (deduplicated on identity fields).
 
-      Source: int__techspeed_candidates_clean
+      Source: stg_airbyte_source__techspeed_gdrive_candidates
 
       UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
       first_name, last_name, state, birth_date, email, phone_number
@@ -484,7 +484,7 @@ models:
 
       Grain: One row per election stage (race + stage type).
 
-      Source: int__techspeed_candidates_clean, unpivoted from candidate-level
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted from candidate-level
       into primary/general stage rows, then aggregated to race-level.
 
       gp_election_stage_id uses a composite key (NOT br_race_id) because a
@@ -563,7 +563,7 @@ models:
 
       Grain: One row per election (position + election year).
 
-      Source: int__techspeed_candidates_clean, grouped by election-defining
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, grouped by election-defining
       fields. Enriched with population, filing_deadline, and contested status
       from the source data.
 
@@ -625,7 +625,7 @@ models:
 
       Grain: One row per candidacy stage (candidate + election stage).
 
-      Source: int__techspeed_candidates_clean, unpivoted into primary/general
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted into primary/general
       stage rows. Each candidate with both dates produces two rows.
 
       Won/Unopposed election results mapped to general stages when available.
@@ -1136,7 +1136,7 @@ models:
       Grain: One row per source candidacy-stage record (candidate + office + election date).
 
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
-      int__techspeed_candidates_clean (TS),
+      stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ), with
       clean_states for state standardization and int__ballotready_person for
       API contact data.

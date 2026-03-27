@@ -1,7 +1,7 @@
 {{ config(materialized="table", tags=["civics", "techspeed"]) }}
 
 -- TechSpeed candidates → Civics mart election_stage schema
--- Source: int__techspeed_candidates_clean (candidate-level, one row per candidate)
+-- Source: stg_airbyte_source__techspeed_gdrive_candidates
 --
 -- Grain: One row per election stage (race + stage type)
 --
@@ -16,7 +16,7 @@ with
 
     source as (
         select
-            ts.* except (election_date, state),
+            ts.* except (state),
             coalesce(cs.state_cleaned_postal_code, ts.state) as state,
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
@@ -47,14 +47,9 @@ with
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
                 try_to_date(ts.primary_election_date, 'MM/dd/yy')
             ) as election_date
-        from {{ ref("int__techspeed_candidates_clean") }} as ts
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
         left join
             clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
-        where
-            ts.first_name is not null
-            and ts.last_name is not null
-            and ts.state is not null
-            and ts.techspeed_candidate_code is not null
     ),
 
     -- Unpivot: one row per candidate per stage date

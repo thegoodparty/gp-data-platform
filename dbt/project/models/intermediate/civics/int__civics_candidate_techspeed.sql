@@ -1,6 +1,7 @@
 {{ config(materialized="table", tags=["civics", "techspeed"]) }}
 
 -- TechSpeed candidates → Civics mart candidate schema
+-- Source: stg_airbyte_source__techspeed_gdrive_candidates
 -- Deduplicates on person-level identity (name + state + contact info)
 --
 -- CRITICAL: UUID fields MUST match int__civics_candidate_2025.sql pattern
@@ -22,7 +23,7 @@ with
                 try_to_date(ts.birth_date, 'MM/dd/yyyy'),
                 try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
-        from {{ ref("int__techspeed_candidates_clean") }} as ts
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
         left join
             clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),

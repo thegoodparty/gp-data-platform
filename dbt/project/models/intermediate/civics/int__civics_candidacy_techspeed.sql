@@ -1,7 +1,8 @@
 {{ config(materialized="table", tags=["civics", "techspeed"]) }}
 
 -- TechSpeed candidates → Civics mart candidacy schema
--- Source: int__techspeed_candidates_clean (already deduplicated, has candidate_code)
+-- Source: stg_airbyte_source__techspeed_gdrive_candidates (preserves candidacy-stage
+-- grain)
 --
 -- CRITICAL: UUID fields MUST match int__hubspot_companies_w_contacts_2025 pattern
 -- to ensure same candidacy from different sources gets same gp_candidacy_id
@@ -10,12 +11,22 @@ with
 
     source as (
         select
-            ts.* except (election_date, state),
+            ts.* except (state),
             -- Standardize state to 2-letter postal code via clean_states seed
             coalesce(cs.state_cleaned_postal_code, ts.state) as state,
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
             try_cast(number_of_seats_available as int) as seats_available,
+            -- Generate candidate code inline (was provided by _clean)
+            {{
+                generate_candidate_code(
+                    "ts.first_name",
+                    "ts.last_name",
+                    "ts.state",
+                    "ts.office_type",
+                    "ts.city",
+                )
+            }} as techspeed_candidate_code,
             coalesce(
                 try_cast(ts.primary_election_date as date),
                 try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
@@ -52,7 +63,7 @@ with
                 try_to_date(ts.birth_date, 'MM/dd/yyyy'),
                 try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
-        from {{ ref("int__techspeed_candidates_clean") }} as ts
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
         left join
             clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
@@ -120,9 +131,9 @@ with
             -- Candidacy attributes
             party as party_affiliation,
             case
-                when candidate_type = 'Incumbent'
+                when upper(trim(cast(is_incumbent as string))) in ('TRUE', 'YES')
                 then true
-                when candidate_type = 'Challenger'
+                when upper(trim(cast(is_incumbent as string))) in ('FALSE', 'NO')
                 then false
                 else null
             end as is_incumbent,

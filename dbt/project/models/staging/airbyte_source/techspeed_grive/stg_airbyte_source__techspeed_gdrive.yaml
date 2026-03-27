@@ -1,17 +1,46 @@
 models:
   - name: stg_airbyte_source__techspeed_gdrive_candidates
-    description: Candidates data load from TechSpeed Google Drive
+    description: >
+      Candidates data from TechSpeed Google Drive. Renames source columns,
+      cleans phone numbers, normalizes date separators (slash → dash), and
+      trims text fields. Invalid rows (null name/state) are filtered via
+      anti-join to the _invalid model.
     columns:
       - name: _airbyte_raw_id
         data_tests:
           - not_null
           - unique
+      - name: first_name
+        data_tests:
+          - not_null
+      - name: last_name
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
       - name: partisan
-        description: "Whether the race is partisan or nonpartisan"
+        description: Whether the race is partisan or nonpartisan
         data_tests:
           - accepted_values:
               arguments:
-                values: ['partisan', 'nonpartisan']
+                values: ["partisan", "nonpartisan"]
+
+  - name: stg_airbyte_source__techspeed_gdrive_candidates_invalid
+    description: >
+      TechSpeed candidate rows that fail data quality checks.
+      Currently catches rows with null/empty first_name, last_name, or state.
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - not_null
+      - name: invalid_reason
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["null_name_or_state"]
+
   - name: stg_airbyte_source__techspeed_gdrive_officeholders
     description: Officeholders data load from TechSpeed Google Drive
     # TODO: Add person-level ts_officeholder_id tests if/when candidates moves to id-based key tests.
@@ -30,6 +59,7 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+
   - name: stg_airbyte_source__techspeed_gdrive_marketing_data_enrichment
     description: Marketing data enrichment load from TechSpeed Google Drive
     columns:

@@ -213,12 +213,19 @@ with
             )
             = 1
     ),
-    -- deduplicate on phone number, and order by the source file url
-    -- in ascending order. This is to ensure that we only keep the record the
-    -- first time it appears so we don't overwrite the record with a later one
+    -- Deduplicate on phone number. NULL phone rows skip phone-based dedup
+    -- to avoid Databricks NULL partition collapse (all NULLs group into one
+    -- partition, only 1 survives).
     candidates_deduped_on_phone as (
         select *
         from candidates_deduped_on_name_state_office_type
+        where phone is null
+
+        union all
+
+        select *
+        from candidates_deduped_on_name_state_office_type
+        where phone is not null
         qualify
             row_number() over (partition by phone order by _ab_source_file_url asc) = 1
     )
