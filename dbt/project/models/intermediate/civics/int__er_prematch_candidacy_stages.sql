@@ -201,6 +201,8 @@ with
             and trim(candidate) != ''
             -- Require splittable name (first + last)
             and size(split(trim(candidate), ' ')) >= 2
+            and candidate_first_name is not null
+            and candidate_last_name is not null
             and election_date is not null
             and election_date >= '2026-01-01'
     ),
