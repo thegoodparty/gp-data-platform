@@ -219,7 +219,8 @@ with
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
             as tbl_ddhq_election_results_source
-            on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
+            on tbl_ddhq_election_results_source.ddhq_race_id
+            = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
     -- TODO: add incrementality once DDHQ matches are incremental

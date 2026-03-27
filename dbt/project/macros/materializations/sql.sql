@@ -4,6 +4,6 @@
 
     {% call statement("main") -%} {{ sql }} {%- endcall %}
 
-    {{ return({"relations": []}) }}
+    {{ return({"relations": [target_relation]}) }}
 
 {% endmaterialization %}

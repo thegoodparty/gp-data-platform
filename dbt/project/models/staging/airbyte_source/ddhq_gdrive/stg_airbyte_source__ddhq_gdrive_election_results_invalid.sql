@@ -13,19 +13,17 @@ with
 
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            cast({{ adapter.quote("date") }} as date) as date,
-            cast(try_cast({{ adapter.quote("race_id") }} as float) as int) as race_id,
-            {{ adapter.quote("candidate") }},
-            {{ adapter.quote("is_winner") }},
-            {{ adapter.quote("race_name") }},
-            cast(
-                cast(nullif({{ adapter.quote("candidate_id") }}, '') as float) as int
-            ) as candidate_id,
-            {{ adapter.quote("election_type") }},
-            {{ adapter.quote("candidate_party") }},
-            {{ adapter.quote("_ab_source_file_url") }}
+            _airbyte_raw_id,
+            _airbyte_extracted_at,
+            cast(date as date) as election_date,
+            cast(try_cast(race_id as float) as int) as ddhq_race_id,
+            candidate,
+            is_winner,
+            race_name,
+            cast(cast(nullif(candidate_id, '') as float) as int) as candidate_id,
+            election_type,
+            candidate_party,
+            _ab_source_file_url
         from source
     ),
 
@@ -63,8 +61,8 @@ with
 select
     _airbyte_raw_id,
     _airbyte_extracted_at,
-    date,
-    race_id,
+    election_date,
+    ddhq_race_id,
     candidate_id,
     candidate,
     race_name,
