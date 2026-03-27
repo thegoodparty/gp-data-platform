@@ -150,7 +150,7 @@ with
             end as is_partisan,
 
             -- Election result mapped from TechSpeed election_result field
-            -- Per EDA: ~136 records have values, all are Won/Unopposed variants
+            -- Source values are Won/Unopposed variants, normalized to 'Won'
             case
                 when election_result is not null and trim(election_result) != ''
                 then 'Won'

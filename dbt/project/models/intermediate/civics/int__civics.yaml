@@ -398,7 +398,7 @@ models:
       - name: candidacy_result
         description: >
           Result of the candidacy. Mapped from TechSpeed election_result field.
-          ~136 records have values (Won/Unopposed variants mapped to 'Won').
+          Won/Unopposed source variants are normalized to 'Won'.
         data_tests:
           - accepted_values:
               arguments:
@@ -628,7 +628,7 @@ models:
       Source: int__techspeed_candidates_clean, unpivoted into primary/general
       stage rows. Each candidate with both dates produces two rows.
 
-      Election results (Won/Unopposed) mapped for the ~136 records that have them.
+      Won/Unopposed election results mapped to general stages when available.
 
     columns:
       - name: gp_candidacy_stage_id
