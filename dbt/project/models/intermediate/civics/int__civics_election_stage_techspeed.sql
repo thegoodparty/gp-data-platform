@@ -74,6 +74,8 @@ with
             any_value(election_date) as election_date,
             any_value(seats_available) as seats_available,
             any_value(br_race_id) as br_race_id,
+            -- String, not boolean: mart contract requires string because BallotReady
+            -- has 3 values ('partisan', 'nonpartisan', 'partisan for primary only')
             any_value(
                 case
                     when is_partisan
