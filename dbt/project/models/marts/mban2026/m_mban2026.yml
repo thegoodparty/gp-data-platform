@@ -281,7 +281,7 @@ models:
       - Multi-seat election analysis
 
     columns:
-      - name: race_id
+      - name: ddhq_race_id
         description: Unique identifier for the race from DDHQ
         data_tests:
           - not_null
@@ -303,7 +303,7 @@ models:
           Type of election (e.g., "General", "Primary", "Runoff").
           Indicates the stage of the electoral process.
 
-      - name: date
+      - name: election_date
         description: Date of the election
 
       - name: votes
@@ -390,7 +390,7 @@ models:
         description: LLM reasoning explaining why this DDHQ candidate was matched
 
       - name: ddhq_race_id
-        description: DDHQ race identifier. Join key to mban_election_results.race_id.
+        description: DDHQ race identifier. Join key to mban_election_results.ddhq_race_id.
 
       - name: ddhq_candidate_id
         description: DDHQ candidate identifier. Join key to mban_election_results.candidate_id.
