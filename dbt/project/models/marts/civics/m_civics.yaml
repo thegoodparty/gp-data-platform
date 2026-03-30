@@ -91,22 +91,21 @@ models:
         data_tests:
           - not_null
 
-      - name: has_serve_organization
+      - name: is_serve_user
         description: >
-          Whether the user has at least one Serve organization (linked to an
-          elected office). This is the authoritative way to identify Serve users
-          now that the Organization entity exists. Previously, we used a
-          completed-poll proxy since campaigns were the only entity and there
-          was no explicit Win/Serve distinction.
+          Whether the user is a Serve user. True if the user has a Serve
+          organization (organization_type = 'serve') or has ever completed a
+          poll through an elected office. The organization check is the
+          authoritative source; the poll check preserves backwards compatibility
+          for users who used Serve before the Organization entity was introduced.
         data_tests:
           - not_null
 
-      - name: is_serve_activated
+      - name: is_poll_user
         description: >
-          Whether the user has activated the Serve product by completing a poll.
-          This is stricter than has_serve_organization — it requires a completed
-          poll through an elected office. This was the original is_serve_user
-          proxy before the Organization entity was introduced.
+          Whether the user has completed a poll through an elected office.
+          This was the original proxy for identifying Serve users before the
+          Organization entity existed.
         data_tests:
           - not_null
 
