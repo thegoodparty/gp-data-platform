@@ -37,7 +37,8 @@ with
             _airbyte_data:is_verified::boolean as is_verified,
             _airbyte_data:date_verified::timestamp as date_verified,
             _airbyte_data:vendor_ts_data::string as vendor_ts_data,
-            _airbyte_data:completed_task_ids::string as completed_task_ids
+            _airbyte_data:completed_task_ids::string as completed_task_ids,
+            _airbyte_data:organization_slug::string as organization_slug
         from source
     ),
 
@@ -94,5 +95,6 @@ select
     is_verified,
     date_verified,
     vendor_ts_data,
-    completed_task_ids
+    completed_task_ids,
+    organization_slug
 from deduplicated

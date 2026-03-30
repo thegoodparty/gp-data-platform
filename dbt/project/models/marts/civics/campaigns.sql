@@ -10,6 +10,7 @@ with
             c.campaign_version_id,
             c.id as campaign_id,
             c.slug as campaign_slug,
+            c.organization_slug,
 
             c.data:hubspotid::string as hubspot_id,
 
@@ -42,18 +43,8 @@ with
             -- Election Context
             try_cast(c.details:electiondate::string as date) as election_date,
             c.details:state::string as campaign_state,
-            c.details:office::string as campaign_office,
             c.details:party::string as campaign_party,
             c.details:level::string as election_level,
-
-            -- BallotReady Position ID (decoded from base64)
-            cast(
-                regexp_extract(
-                    cast(unbase64(c.details:positionid::string) as string),
-                    '/([0-9]+)$',
-                    1
-                ) as bigint
-            ) as ballotready_position_id,
 
             -- Version tracking
             row_number() over (

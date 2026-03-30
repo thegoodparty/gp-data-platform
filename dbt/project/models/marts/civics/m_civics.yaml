@@ -37,6 +37,21 @@ models:
       - name: updated_at
         description: Timestamp when user account was last updated
 
+      - name: organization_count
+        description: Total number of organizations owned by this user
+        data_tests:
+          - not_null
+
+      - name: win_organization_count
+        description: Number of Win organizations (linked to a campaign)
+        data_tests:
+          - not_null
+
+      - name: serve_organization_count
+        description: Number of Serve organizations (linked to an elected office)
+        data_tests:
+          - not_null
+
       - name: campaign_count
         description: Total number of campaigns created by this user
 
@@ -129,6 +144,11 @@ models:
       - name: campaign_slug
         description: URL-friendly campaign identifier used in app URLs
 
+      - name: organization_slug
+        description: >
+          Foreign key to the organizations table. Links this campaign to its
+          parent organization entity, which holds position and district data.
+
       - name: hubspot_id
         description: HubSpot company identifier associated with this campaign
 
@@ -187,24 +207,11 @@ models:
       - name: campaign_state
         description: U.S. state where the campaign is running
 
-      - name: campaign_office
-        description: Political office the candidate is running for
-
       - name: campaign_party
         description: Political party affiliation
 
       - name: election_level
         description: Level of election (local, state, federal)
-
-      - name: ballotready_position_id
-        description: >
-          The numeric identifier for the political position (office) in BallotReady's
-          database. This ID is extracted from the base64-encoded `positionId` stored
-          in the campaign details, which originates from BallotReady's GraphQL API.
-          BallotReady is a third-party service that provides comprehensive election
-          and ballot data. This ID can be used to join with BallotReady position data
-          for additional office metadata such as filing deadlines, term lengths,
-          geographic boundaries, and partisan type.
 
       - name: is_latest_version
         description: >
@@ -213,6 +220,88 @@ models:
           current campaigns only, use `where is_latest_version`.
         data_tests:
           - not_null
+
+  - name: organizations
+    description: >
+      Organizations from gp-api, representing the central entity that ties a
+      user to either a Campaign (Win) or ElectedOffice (Serve). Each
+      organization holds the position and district data that was previously
+      stored on the campaign entity.
+
+      Grain: One row per organization.
+
+    columns:
+      - name: organization_slug
+        description: Primary key - unique slug identifier for the organization
+        data_tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        description: Foreign key to users table - the user who owns this organization
+        data_tests:
+          - not_null
+
+      - name: user_email
+        description: Owner's email address
+
+      - name: user_first_name
+        description: Owner's first name
+
+      - name: user_last_name
+        description: Owner's last name
+
+      - name: position_id
+        description: >
+          Election-api position UUID. Populated when the user selected a
+          BallotReady-sourced office. This is the election-api position ID,
+          not the BallotReady database ID.
+
+      - name: custom_position_name
+        description: >
+          Free-text position name entered by the user for custom offices not
+          found in BallotReady. Mutually exclusive with position_id in practice.
+
+      - name: override_district_id
+        description: >
+          L2 district ID override. Set when the district was manually selected
+          via the district picker or matched via silver match. When null, the
+          matched L2 district is fetched from the election-api.
+
+      - name: campaign_id
+        description: >
+          Foreign key to campaigns table. Populated for Win organizations.
+          NULL for Serve organizations.
+
+      - name: elected_office_id
+        description: >
+          Foreign key to elected_office. Populated for Serve organizations.
+          NULL for Win organizations.
+
+      - name: organization_type
+        description: >
+          Whether this organization is a Win (campaign) or Serve (elected office)
+          organization.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["win", "serve"]
+
+      - name: created_at
+        description: Timestamp when the organization was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the organization was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
 
   - name: candidacy
     description: >

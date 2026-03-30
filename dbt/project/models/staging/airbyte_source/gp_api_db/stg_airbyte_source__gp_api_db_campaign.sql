@@ -22,7 +22,8 @@ with
             {{ adapter.quote("is_verified") }},
             {{ adapter.quote("date_verified") }},
             {{ adapter.quote("vendor_ts_data") }},
-            {{ adapter.quote("completed_task_ids") }}
+            {{ adapter.quote("completed_task_ids") }},
+            {{ adapter.quote("organization_slug") }}
 
         from source
     )
