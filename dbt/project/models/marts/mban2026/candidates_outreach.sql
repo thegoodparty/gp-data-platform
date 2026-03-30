@@ -35,7 +35,7 @@ select
     o.updatedat as outreach_updated_at,
 
     -- l2 fields
-    l.name as l2name,
+    l.name as l2_name,
     l.state as l2_state,
     l.l2_district_name,
     l.l2_district_type

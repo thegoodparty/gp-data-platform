@@ -263,7 +263,7 @@ models:
       - name: outreach_updated_at
         description: Timestamp when the outreach campaign was last updated
 
-      - name: l2name
+      - name: l2_name
         description: |
           BallotReady office name from the L2 district match model.
           Null if no L2 match was found for this candidate_office + state.
