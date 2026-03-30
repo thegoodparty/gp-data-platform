@@ -101,7 +101,14 @@ with
             any_value(election_date) as election_date,
             any_value(seats_available) as seats_available,
             any_value(br_race_id) as br_race_id,
-            any_value(is_partisan) as partisan_type,
+            any_value(
+                case
+                    when is_partisan
+                    then 'partisan'
+                    when not is_partisan
+                    then 'nonpartisan'
+                end
+            ) as partisan_type,
             min(_airbyte_extracted_at) as created_at,
             max(_airbyte_extracted_at) as updated_at
         from unpivoted

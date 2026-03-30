@@ -7,9 +7,9 @@
 -- Grain: One row per source candidacy-stage record (candidate + office + election date)
 -- Key: unique_id (source_name || '|' || source_id)
 --
--- All upstream sources are already at the candidacy-stage grain:
+-- All upstream sources are at the candidacy-stage grain:
 -- - BallotReady staging: one row per candidate per race (election stage)
--- - TechSpeed clean: one row per candidate per election date
+-- - TechSpeed staging: unpivoted into primary/general stage rows, deduped
 -- - DDHQ election results: one row per candidate per race
 --
 with
