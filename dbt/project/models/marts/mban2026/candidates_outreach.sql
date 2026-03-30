@@ -56,8 +56,9 @@ left join
     (
         select distinct name, state, l2_district_name, l2_district_type
         from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        where l2_district_type != 'NOT_MATCHED'
     ) as l
     on h.candidate_office is not null
     and h.candidate_office != ''
-    and h.candidate_office = l.name
+    and lower(trim(h.candidate_office)) = lower(trim(l.name))
     and tbl_states.state_cleaned_postal_code = l.state

@@ -263,6 +263,26 @@ models:
       - name: outreach_updated_at
         description: Timestamp when the outreach campaign was last updated
 
+      - name: l2name
+        description: |
+          BallotReady office name from the L2 district match model.
+          Null if no L2 match was found for this candidate_office + state.
+
+      - name: l2_state
+        description: |
+          State postal code from the L2 district match model.
+          Should match the normalized state; null if no L2 match.
+
+      - name: l2_district_name
+        description: |
+          L2 electoral district name (e.g., "AUSTIN CITY (EST.)", "FLAT ROCK VLG").
+          Null if no L2 match was found.
+
+      - name: l2_district_type
+        description: |
+          L2 district type classification (e.g., "Township", "City").
+          Null if no L2 match was found.
+
   - name: mban_election_results
     description: |
       DDHQ election results data for MBAN Analytics program (2026).
