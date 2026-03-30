@@ -104,6 +104,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
         _str_cols = [
             "ddhq_is_winner",
             "ddhq_election_type",
+            "ddhq_candidate",
+            "ddhq_race_name",
+            "ddhq_candidate_party",
+            "ddhq_embedding_text",
         ]
         _ts_cols = [
             "ddhq_date",

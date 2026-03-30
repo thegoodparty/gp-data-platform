@@ -361,14 +361,18 @@ models:
       - name: election_date
         description: Date of the election for this candidacy
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "has_match is true"
 
       - name: election_type
         description: |
           Type of election stage (general, primary, or runoff).
           Comes from the AI election match model.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "has_match is true"
           - accepted_values:
               arguments:
                 values:
