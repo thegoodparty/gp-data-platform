@@ -9,7 +9,8 @@
 --
 -- All upstream sources are at the candidacy-stage grain:
 -- - BallotReady staging: one row per candidate per race (election stage)
--- - TechSpeed staging: unpivoted into primary/general stage rows, deduped
+-- - TechSpeed staging: dates/state pre-parsed, unpivoted into primary/general
+-- stage rows, deduped per candidate-stage
 -- - DDHQ election results: one row per candidate per race
 --
 with
@@ -105,15 +106,15 @@ with
         left join person_emails as pe on br.br_candidate_id = pe.person_database_id
     ),
 
-    -- State name → 2-letter code mapping for TechSpeed and DDHQ
+    -- State name → 2-letter code mapping (used by DDHQ section)
     clean_states as (select * from {{ ref("clean_states") }}),
 
-    -- TechSpeed: sourced from staging, unpivoted into primary/general stage rows
-    -- to preserve candidacy-stage grain
+    -- TechSpeed: sourced from staging (dates and state already parsed),
+    -- unpivoted into primary/general stage rows
     ts_staging as (
         select
             ts.*,
-            coalesce(cs.state_cleaned_postal_code, ts.state) as state_code,
+            ts.state_postal_code as state_code,
             {{
                 generate_candidate_code(
                     "ts.first_name",
@@ -122,39 +123,33 @@ with
                     "ts.office_type",
                     "ts.city",
                 )
-            }} as techspeed_candidate_code,
-            coalesce(
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yy')
-            ) as primary_date_parsed,
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yy')
-            ) as general_date_parsed
+            }} as techspeed_candidate_code
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
-        left join
-            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
 
     -- Unpivot: one row per stage date (mirrors civics election_stage pattern)
     ts_primary as (
-        select *, 'Primary' as election_stage, primary_date_parsed as election_date
+        select
+            *,
+            'Primary' as election_stage,
+            primary_election_date_parsed as election_date
         from ts_staging
         where
-            primary_date_parsed is not null
-            and primary_date_parsed >= '2026-01-01'
-            and year(primary_date_parsed) between 1900 and 2050
+            primary_election_date_parsed is not null
+            and primary_election_date_parsed >= '2026-01-01'
+            and year(primary_election_date_parsed) between 1900 and 2050
     ),
 
     ts_general as (
-        select *, 'General' as election_stage, general_date_parsed as election_date
+        select
+            *,
+            'General' as election_stage,
+            general_election_date_parsed as election_date
         from ts_staging
         where
-            general_date_parsed is not null
-            and general_date_parsed >= '2026-01-01'
-            and year(general_date_parsed) between 1900 and 2050
+            general_election_date_parsed is not null
+            and general_election_date_parsed >= '2026-01-01'
+            and year(general_election_date_parsed) between 1900 and 2050
     ),
 
     ts_unpivoted as (

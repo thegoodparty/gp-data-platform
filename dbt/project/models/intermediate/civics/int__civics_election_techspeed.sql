@@ -9,25 +9,13 @@
 -- deterministic output. Picks one candidate per gp_election_id, preferring
 -- rows with a general election date and the latest extraction timestamp.
 with
-    clean_states as (select * from {{ ref("clean_states") }}),
-
     source as (
         select
-            ts.* except (state),
-            coalesce(cs.state_cleaned_postal_code, ts.state) as state,
-            cast(null as string) as seat_name,
-            try_cast(number_of_seats_available as int) as seats_available,
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yy'),
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yy')
-            ) as election_date
+            ts.*,
+            -- Aliases for generate_gp_election_id macro compatibility
+            state_postal_code as state,
+            cast(null as string) as seat_name
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
-        left join
-            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
 
     with_election_id as (
@@ -45,7 +33,9 @@ with
             row_number() over (
                 partition by gp_election_id
                 order by
-                    case when general_election_date is not null then 0 else 1 end,
+                    case
+                        when general_election_date_parsed is not null then 0 else 1
+                    end,
                     _airbyte_extracted_at desc,
                     first_name,
                     last_name
@@ -66,25 +56,8 @@ with
             seat_name,
             election_date,
             year(election_date) as election_year,
-            case
-                when
-                    year(
-                        coalesce(
-                            try_cast(filing_deadline as date),
-                            try_to_date(filing_deadline, 'MM-dd-yyyy')
-                        )
-                    )
-                    between 1900 and 2030
-                then
-                    coalesce(
-                        try_cast(filing_deadline as date),
-                        try_to_date(filing_deadline, 'MM-dd-yyyy')
-                    )
-                else null
-            end as filing_deadline,
-            try_cast(
-                trim(regexp_replace(cast(population as string), '[^0-9]', '')) as int
-            ) as population,
+            filing_deadline_parsed as filing_deadline,
+            population,
             seats_available,
             cast(null as date) as term_start_date,
             -- Keep boolean type to match BallotReady election intermediate

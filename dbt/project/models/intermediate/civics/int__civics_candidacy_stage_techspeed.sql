@@ -9,14 +9,12 @@
 -- Links to int__civics_candidacy_techspeed (gp_candidacy_id) and
 -- int__civics_election_stage_techspeed (gp_election_stage_id).
 with
-    clean_states as (select * from {{ ref("clean_states") }}),
-
     source as (
         select
-            ts.* except (state),
-            coalesce(cs.state_cleaned_postal_code, ts.state) as state,
+            ts.*,
+            -- Aliases for consistency
+            state_postal_code as state,
             cast(null as string) as seat_name,
-            try_cast(number_of_seats_available as int) as seats_available,
             -- Generate candidate code inline (was provided by _clean)
             {{
                 generate_candidate_code(
@@ -26,28 +24,8 @@ with
                     "ts.office_type",
                     "ts.city",
                 )
-            }} as techspeed_candidate_code,
-            coalesce(
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yy')
-            ) as primary_election_date_parsed,
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yy')
-            ) as general_election_date_parsed,
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yy'),
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yy')
-            ) as election_date
+            }} as techspeed_candidate_code
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
-        left join
-            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
 
     -- Unpivot: primary stage rows

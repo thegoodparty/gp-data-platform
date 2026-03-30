@@ -12,40 +12,13 @@
 -- gp_election_stage_id is generated from a composite key (NOT br_race_id) because
 -- a single br_race_id would collide across the two stage types.
 with
-    clean_states as (select * from {{ ref("clean_states") }}),
-
     source as (
         select
-            ts.* except (state, is_primary),
-            coalesce(cs.state_cleaned_postal_code, ts.state) as state,
-            -- Add missing columns required by generate_gp_election_id macro
-            cast(null as string) as seat_name,
-            try_cast(number_of_seats_available as int) as seats_available,
-            -- Parse primary_election_date
-            coalesce(
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yy')
-            ) as primary_election_date_parsed,
-            -- Parse general_election_date
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yy')
-            ) as general_election_date_parsed,
-            -- election_date for generate_gp_election_id macro (coalesce general,
-            -- primary)
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yy'),
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yy')
-            ) as election_date
+            ts.*,
+            -- Aliases for generate_gp_election_id macro compatibility
+            state_postal_code as state,
+            cast(null as string) as seat_name
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
-        left join
-            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
     ),
 
     -- Unpivot: one row per candidate per stage date
@@ -128,10 +101,6 @@ with
 
     election_stages as (
         select
-            -- gp_election_stage_id: composite key (NOT br_race_id)
-            -- Includes official_office_name to distinguish different positions
-            -- that share the same candidate_office (e.g., "City Council - Place 2"
-            -- vs "City Council - Place 4")
             {{
                 generate_salted_uuid(
                     fields=[
@@ -147,10 +116,8 @@ with
                 )
             }} as gp_election_stage_id,
 
-            -- gp_election_id: same logic as candidacy model
             {{ generate_gp_election_id() }} as gp_election_id,
 
-            -- Source IDs
             cast(br_race_id as string) as br_race_id,
             cast(null as string) as br_election_id,
             cast(null as bigint) as br_position_id,
@@ -159,7 +126,6 @@ with
             stage_type,
             stage_election_date as election_date,
 
-            -- Constructed names
             state
             || ' '
             || cast(year(stage_election_date) as string)

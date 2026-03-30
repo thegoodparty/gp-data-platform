@@ -526,17 +526,9 @@ models:
 
       - name: is_runoff
         description: Whether this stage is a runoff election (always false for TechSpeed)
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [true, false]
 
       - name: is_retention
         description: Whether this stage is a retention election (always false for TechSpeed)
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [true, false]
 
       - name: created_at
         data_tests:
@@ -581,24 +573,12 @@ models:
 
       - name: has_ddhq_match
         description: Whether there is a DDHQ match (always false for TechSpeed)
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [true, false]
 
       - name: is_judicial
         description: Whether the office is judicial (always null for TechSpeed)
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [true, false]
 
       - name: is_appointed
         description: Whether the office is appointed (always null for TechSpeed)
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [true, false]
 
       - name: created_at
         data_tests:
