@@ -84,7 +84,10 @@ with
             coalesce(cs.verified_campaign_count > 0, false) as has_verified_campaign,
             coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign,
 
-            case when su.user_id is not null then true else false end as is_serve_user,
+            coalesce(os.serve_organization_count > 0, false) as has_serve_organization,
+            case
+                when su.user_id is not null then true else false
+            end as is_serve_activated,
             su.eo_activated_at
         from users u
         left join organization_stats os on u.id = os.user_id
