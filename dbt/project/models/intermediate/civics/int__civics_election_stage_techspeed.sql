@@ -129,12 +129,16 @@ with
     election_stages as (
         select
             -- gp_election_stage_id: composite key (NOT br_race_id)
+            -- Includes official_office_name to distinguish different positions
+            -- that share the same candidate_office (e.g., "City Council - Place 2"
+            -- vs "City Council - Place 4")
             {{
                 generate_salted_uuid(
                     fields=[
                         "'techspeed'",
                         "state",
                         "candidate_office",
+                        "official_office_name",
                         "district",
                         "city",
                         "cast(stage_election_date as string)",

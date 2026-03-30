@@ -120,6 +120,7 @@ with
                                 "'techspeed'",
                                 "state",
                                 "candidate_office",
+                                "official_office_name",
                                 "district",
                                 "city",
                                 "cast(stage_election_date as string)",
@@ -138,6 +139,7 @@ with
                         "'techspeed'",
                         "state",
                         "candidate_office",
+                        "official_office_name",
                         "district",
                         "city",
                         "cast(stage_election_date as string)",
@@ -185,9 +187,8 @@ with
             cast(null as float) as match_confidence,
             cast(null as string) as match_reasoning,
             cast(null as string) as match_top_candidates,
-            stage_type = 'general'
-            and election_result is not null
-            and trim(election_result) != '' as has_match,
+            -- No DDHQ matching for TechSpeed — has_match is always false
+            false as has_match,
             cast(null as string) as votes_received,
             stage_election_date as election_stage_date,
             _airbyte_extracted_at as created_at,

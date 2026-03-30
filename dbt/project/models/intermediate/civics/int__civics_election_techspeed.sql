@@ -87,10 +87,10 @@ with
             ) as population,
             seats_available,
             cast(null as date) as term_start_date,
-            -- Cast booleans to string to match existing mart contract
-            cast(is_uncontested as string) as is_uncontested,
+            -- Keep boolean type to match BallotReady election intermediate
+            is_uncontested,
             cast(null as string) as number_of_opponents,
-            cast(is_open_seat as string) as open_seat,
+            is_open_seat,
             false as has_ddhq_match,
             cast(null as bigint) as br_position_database_id,
             cast(null as boolean) as is_judicial,
