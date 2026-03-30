@@ -72,7 +72,7 @@ with
             district,
             start_at as term_start_date,
             end_at as term_end_date,
-            appointed as is_appointed,
+            is_appointed,
             is_judicial,
             is_vacant,
             is_off_cycle,

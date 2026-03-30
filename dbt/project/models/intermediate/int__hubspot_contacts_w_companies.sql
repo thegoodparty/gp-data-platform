@@ -111,9 +111,15 @@ with
             ) as party_affiliation,
             tbl_gp_db_campaign.details:party::string as party_affiliation_gp_db,
             coalesce(
-                tbl_gp_db_campaign.details:`partisanType`::string,
+                {{
+                    cast_to_boolean(
+                        "tbl_gp_db_campaign.details:`partisanType`::string",
+                        ["partisan", "partisan for primary only"],
+                        ["nonpartisan"],
+                    )
+                }},
                 tbl_contacts.is_partisan,
-                try_cast(tbl_companies.partisan_np as string)
+                tbl_companies.is_partisan
             ) as is_partisan,
             tbl_gp_db_campaign.details:`partisanType`::string as is_partisan_gp_db,
             coalesce(
@@ -165,11 +171,10 @@ with
                 tbl_contacts.runoff_election_date, tbl_companies.runoff_date
             ) as runoff_election_date,
             coalesce(
-                tbl_contacts.is_incumbent, try_cast(tbl_companies.incumbent as string)
+                tbl_contacts.is_incumbent, tbl_companies.is_incumbent
             ) as is_incumbent,
             coalesce(
-                tbl_contacts.is_uncontested,
-                try_cast(tbl_companies.uncontested as string)
+                tbl_contacts.is_uncontested, tbl_companies.is_uncontested
             ) as is_uncontested,
             coalesce(
                 tbl_contacts.number_of_opponents, tbl_companies.number_of_opponents
@@ -188,15 +193,15 @@ with
             tbl_contacts.population as population,
             tbl_contacts.email_contacts as email_contacts,
             tbl_contacts.companies as extra_companies,
-            tbl_companies.open_seat as is_open_seat,
+            coalesce(
+                tbl_contacts.is_open_seat, tbl_companies.is_open_seat
+            ) as is_open_seat,
             tbl_companies.general_election_result as candidacy_result,
             coalesce(
                 tbl_contacts.verified_candidate_status,
                 tbl_companies.verified_candidates
             ) as verified_candidate,
-            coalesce(
-                tbl_contacts.pledge_status, tbl_companies.pledge_status
-            ) as pledge_status,
+            coalesce(tbl_contacts.is_pledged, tbl_companies.is_pledged) as is_pledged,
             tbl_engagements.company_id_association,
             tbl_engagements.contact_id_association,
             tbl_gp_db_campaign.id as product_campaign_id,
@@ -299,7 +304,7 @@ select
     is_open_seat,
     candidacy_result,
     verified_candidate,
-    pledge_status,
+    is_pledged,
     filing_deadline,
     filing_deadline_gp_db,
     primary_election_date,

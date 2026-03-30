@@ -65,12 +65,18 @@ def load_slack_bot_module():
 class FakeGenieClient:
     """Test double for the Genie client."""
 
+    FAKE_SPACE_URL = "https://dbc-test.cloud.databricks.com/genie/rooms/test-space-id"
+
     def __init__(self):
         """Initialize captured call state."""
         self.calls = []
         self.counter = 0
         self.feedback_calls = []
         self.feedback_success = True
+
+    def get_space_url(self) -> str:
+        """Return a deterministic space URL for tests."""
+        return self.FAKE_SPACE_URL
 
     def ask_question(self, text, conversation_id=None, on_message_sent=None):
         """Return a deterministic Genie response for tests."""
@@ -86,6 +92,7 @@ class FakeGenieClient:
             "response": f"response-{self.counter}",
             "result_data": None,
             "suggested_questions": [],
+            "sql_text": None,
         }
 
     def send_message_feedback(self, **kwargs):
@@ -485,6 +492,7 @@ def test_fast_thread_follow_up_reuses_existing_conversation_scope():
                 "response": f"response-{self.counter}",
                 "result_data": None,
                 "suggested_questions": [],
+                "sql_text": None,
             }
 
     genie_client = CoordinatedFakeGenieClient()
@@ -529,3 +537,211 @@ def test_fast_thread_follow_up_reuses_existing_conversation_scope():
         ("How many elections do we have?", None),
         ("How many by year?", "conv-1"),
     ]
+
+
+# ------------------------------------------------------------------
+# Console footer, SQL-on-request, and truncation tests
+# ------------------------------------------------------------------
+
+
+def test_successful_response_includes_console_footer():
+    bot, _ = build_bot()
+    client = FakeSlackClient()
+
+    bot._handle_message(
+        {
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "700.100",
+            "text": "<@U123BOT> How many elections?",
+        },
+        None,
+        client,
+    )
+
+    assert len(client.updates) >= 1
+    updated_text = client.updates[0]["text"]
+    assert "Open Genie Console" in updated_text
+    assert "deeper analysis" in updated_text
+
+
+def test_sql_on_request_returns_cached_sql():
+    slack_bot = load_slack_bot_module()
+
+    class SqlFakeGenieClient(FakeGenieClient):
+        def ask_question(self, text, conversation_id=None, on_message_sent=None):
+            self.calls.append((text, conversation_id))
+            self.counter += 1
+            conversation_id = conversation_id or f"conv-{self.counter}"
+            if on_message_sent is not None:
+                on_message_sent(conversation_id, f"msg-{self.counter}")
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "message_id": f"msg-{self.counter}",
+                "response": "473 federal elections",
+                "result_data": None,
+                "suggested_questions": [],
+                "sql_text": "SELECT COUNT(*) FROM election WHERE UPPER(office_level) = 'FEDERAL'",
+            }
+
+    genie_client = SqlFakeGenieClient()
+    bot = slack_bot.SlackGenieBot("xoxb-test", "secret", "xapp-test", genie_client)
+    client = FakeSlackClient()
+
+    bot._handle_message(
+        {
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "900.100",
+            "text": "<@U123BOT> How many federal elections?",
+        },
+        None,
+        client,
+    )
+
+    bot._handle_message(
+        {
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "900.200",
+            "thread_ts": "900.100",
+            "text": "show sql",
+        },
+        None,
+        client,
+    )
+
+    # Genie was only called once
+    assert len(genie_client.calls) == 1
+
+    # SQL was posted back
+    sql_post = [p for p in client.posts if "office_level" in p.get("text", "")]
+    assert len(sql_post) == 1
+    assert "```sql" in sql_post[0]["text"]
+
+
+def test_sql_on_request_without_prior_query():
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    bot._remember_mapping(bot.conversation_map, "C123:950.100", "conv-existing", 1000)
+
+    bot._handle_message(
+        {
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "950.200",
+            "thread_ts": "950.100",
+            "text": "show sql",
+        },
+        None,
+        client,
+    )
+
+    assert len(genie_client.calls) == 0
+    assert len(client.posts) == 1
+    assert "No query has been run" in client.posts[0]["text"]
+
+
+def test_sql_request_exact_match_only():
+    slack_bot = load_slack_bot_module()
+    phrases = slack_bot.SQL_REQUEST_PHRASES
+
+    assert "show sql" in phrases
+    assert "show me the sql" in phrases
+    assert "show query" in phrases
+    # These should NOT be in the set
+    assert "what sql did you run" not in phrases
+    assert "How many sql servers" not in phrases
+
+
+def test_truncation_warning_when_rows_exceed_10():
+    slack_bot = load_slack_bot_module()
+
+    class TruncatingFakeGenieClient(FakeGenieClient):
+        def ask_question(self, text, conversation_id=None, on_message_sent=None):
+            self.calls.append((text, conversation_id))
+            self.counter += 1
+            conversation_id = conversation_id or f"conv-{self.counter}"
+            if on_message_sent is not None:
+                on_message_sent(conversation_id, f"msg-{self.counter}")
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "message_id": f"msg-{self.counter}",
+                "response": "Here are the results.",
+                "result_data": {
+                    "data": {
+                        "data_array": [["row"] for _ in range(25)],
+                        "row_count": 25,
+                    },
+                    "schema": {"columns": [{"name": "col1"}]},
+                },
+                "suggested_questions": [],
+                "sql_text": None,
+            }
+
+    genie_client = TruncatingFakeGenieClient()
+    bot = slack_bot.SlackGenieBot("xoxb-test", "secret", "xapp-test", genie_client)
+    client = FakeSlackClient()
+
+    bot._handle_message(
+        {
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "800.100",
+            "text": "<@U123BOT> Show all elections",
+        },
+        None,
+        client,
+    )
+
+    updated_text = client.updates[0]["text"]
+    assert "Showing 10 of 25 rows" in updated_text
+
+
+def test_no_truncation_warning_when_10_rows_or_fewer():
+    slack_bot = load_slack_bot_module()
+
+    class SmallResultGenieClient(FakeGenieClient):
+        def ask_question(self, text, conversation_id=None, on_message_sent=None):
+            self.calls.append((text, conversation_id))
+            self.counter += 1
+            conversation_id = conversation_id or f"conv-{self.counter}"
+            if on_message_sent is not None:
+                on_message_sent(conversation_id, f"msg-{self.counter}")
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "message_id": f"msg-{self.counter}",
+                "response": "3 results found.",
+                "result_data": {
+                    "data": {
+                        "data_array": [["a"], ["b"], ["c"]],
+                        "row_count": 3,
+                    },
+                    "schema": {"columns": [{"name": "col1"}]},
+                },
+                "suggested_questions": [],
+                "sql_text": None,
+            }
+
+    genie_client = SmallResultGenieClient()
+    bot = slack_bot.SlackGenieBot("xoxb-test", "secret", "xapp-test", genie_client)
+    client = FakeSlackClient()
+
+    bot._handle_message(
+        {
+            "channel": "C123",
+            "channel_type": "channel",
+            "ts": "1000.100",
+            "text": "<@U123BOT> Show me something",
+        },
+        None,
+        client,
+    )
+
+    updated_text = client.updates[0]["text"]
+    assert "Showing 10 of" not in updated_text
+    assert "Open Genie Console" in updated_text

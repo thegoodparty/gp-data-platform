@@ -87,26 +87,10 @@ with
             ) as population,
             seats_available,
             cast(null as date) as term_start_date,
-            -- String-typed to match existing mart contract
-            case
-                when
-                    upper(trim(cast(is_uncontested as string)))
-                    in ('UNCONTESTED', 'YES', 'TRUE')
-                then 'true'
-                when
-                    upper(trim(cast(is_uncontested as string)))
-                    in ('CONTESTED', 'NO', 'FALSE')
-                then 'false'
-                else null
-            end as is_uncontested,
+            -- Cast booleans to string to match existing mart contract
+            cast(is_uncontested as string) as is_uncontested,
             cast(null as string) as number_of_opponents,
-            case
-                when upper(trim(cast(open_seat as string))) in ('YES', 'TRUE')
-                then 'true'
-                when upper(trim(cast(open_seat as string))) in ('NO', 'FALSE')
-                then 'false'
-                else null
-            end as open_seat,
+            cast(is_open_seat as string) as open_seat,
             false as has_ddhq_match,
             cast(null as bigint) as br_position_database_id,
             cast(null as boolean) as is_judicial,

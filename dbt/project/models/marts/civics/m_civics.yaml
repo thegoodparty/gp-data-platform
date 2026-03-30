@@ -259,9 +259,17 @@ models:
 
       - name: is_incumbent
         description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: is_open_seat
         description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: candidate_office
         description: Simplified/standardized office name
@@ -327,6 +335,10 @@ models:
 
       - name: is_partisan
         description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: primary_election_date
         description: Date of the primary election
@@ -694,12 +706,20 @@ models:
 
       - name: is_uncontested
         description: Whether the election is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: number_of_opponents
         description: Number of opponents in the race (may contain string values like '10+')
 
-      - name: open_seat
+      - name: is_open_seat
         description: Whether the election is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: has_ddhq_match
         description: Whether there is a DDHQ match for this election

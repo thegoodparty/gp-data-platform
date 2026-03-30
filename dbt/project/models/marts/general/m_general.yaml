@@ -136,9 +136,9 @@ models:
         description: Indicates whether the candidate has been verified
         data_type: varchar
 
-      - name: pledge_status
-        description: Status of the candidate's pledge
-        data_type: varchar
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+        data_type: boolean
 
       - name: state
         description: U.S. state for the candidacy
@@ -188,7 +188,7 @@ models:
         description: Is the candidacy Incumbent, challenger
         data_type: boolean
 
-      - name: uncontested
+      - name: is_uncontested
         description: Whether the number of open seats is less than or equal to number of candidates running
         data_type: boolean
 
@@ -200,7 +200,7 @@ models:
         description: Total number of seats in race
         data_type: integer
 
-      - name: open_seat
+      - name: is_open_seat
         description: Whether this race is for an open seat
         data_type: boolean
 

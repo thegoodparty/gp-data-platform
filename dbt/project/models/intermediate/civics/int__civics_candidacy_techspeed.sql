@@ -125,20 +125,8 @@ with
 
             -- Candidacy attributes
             party as party_affiliation,
-            case
-                when upper(trim(cast(is_incumbent as string))) in ('TRUE', 'YES')
-                then true
-                when upper(trim(cast(is_incumbent as string))) in ('FALSE', 'NO')
-                then false
-                else null
-            end as is_incumbent,
-            case
-                when upper(trim(cast(open_seat as string))) in ('YES', 'TRUE')
-                then true
-                when upper(trim(cast(open_seat as string))) in ('NO', 'FALSE')
-                then false
-                else null
-            end as is_open_seat,
+            is_incumbent,
+            is_open_seat,
             candidate_office,
             official_office_name,
             office_level,
@@ -147,13 +135,7 @@ with
             false as is_pledged,  -- TS records are leads, not pledged candidates
             true as is_verified,  -- TS data is verified by definition
             cast(null as string) as verification_status_reason,  -- Only populated when is_verified is false
-            case
-                when lower(trim(cast(partisan as string))) = 'partisan'
-                then true
-                when lower(trim(cast(partisan as string))) = 'nonpartisan'
-                then false
-                else null
-            end as is_partisan,
+            is_partisan,
 
             -- Election results are tracked at the candidacy_stage level, not here
             cast(null as string) as candidacy_result,

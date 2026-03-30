@@ -77,6 +77,71 @@ models:
                   - REGIONAL
                   - STATE
                   - TOWNSHIP
+      - name: is_judicial
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_appointed
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_retention
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_primary
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_staggered_term
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: must_be_resident
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_unknown_boundaries
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: must_be_registered_voter
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_majority_vote_primary
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_ranked_choice_general
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_ranked_choice_primary
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: must_have_professional_experience
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
   - name: stg_airbyte_source__ballotready_api_position_to_place
     description: Position data scan from [`positions` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/positions)
     columns:

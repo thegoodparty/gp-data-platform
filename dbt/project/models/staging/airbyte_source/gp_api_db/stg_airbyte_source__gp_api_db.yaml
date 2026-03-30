@@ -60,8 +60,6 @@ models:
         description: "Foreign key reference to the user who holds this elected office"
         tests:
           - not_null
-      - name: is_active
-        description: "Whether the elected office term is currently active"
       - name: created_at
         description: "Timestamp when the elected office record was created"
         tests:
@@ -72,16 +70,10 @@ models:
           - not_null
       - name: campaign_id
         description: "Foreign key reference to the campaign associated with this elected office"
-      - name: elected_date
-        description: "Date when the user was elected to office"
       - name: sworn_in_date
         description: "Date when the user was sworn in to office"
-      - name: term_end_date
-        description: "Date when the elected office term ends"
-      - name: term_start_date
-        description: "Date when the elected office term started"
-      - name: term_length_days
-        description: "Length of the elected office term in days"
+      - name: organization_slug
+        description: "Slug identifier for the organization associated with this elected office"
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:
@@ -577,8 +569,22 @@ models:
                 field: id
       - name: sent_at
         description: "Timestamp when the message was sent"
+      - name: content
+        description: "Content/body of the individual message"
+      - name: created_at
+        description: "Timestamp when the record was created"
+      - name: elected_office_id
+        description: "Foreign key reference to the elected office"
+      - name: is_opt_out
+        description: "Whether the person has opted out of messages"
+      - name: person_cell_phone
+        description: "Cell phone number of the person"
       - name: person_id
         description: "Foreign key reference to the person who received the message"
+      - name: sender
+        description: "Sender of the message"
+      - name: updated_at
+        description: "Timestamp when the record was last updated"
   - name: stg_airbyte_source__gp_api_db_poll_issues
     description: raw data load from gp_api_db postgres db from table `poll_issues`
     columns:

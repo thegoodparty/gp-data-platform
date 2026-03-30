@@ -2,9 +2,9 @@ models:
   - name: stg_airbyte_source__techspeed_gdrive_candidates
     description: >
       Candidates data from TechSpeed Google Drive. Renames source columns,
-      cleans phone numbers, normalizes date separators (slash → dash), and
-      trims text fields. Invalid rows (null name/state) are filtered via
-      anti-join to the _invalid model.
+      cleans phone numbers, normalizes date separators (slash to dash), trims
+      text fields, and casts boolean columns via cast_to_boolean. Invalid rows
+      (null name/state) are filtered via anti-join to the _invalid model.
     columns:
       - name: _airbyte_raw_id
         data_tests:
@@ -19,12 +19,36 @@ models:
       - name: state
         data_tests:
           - not_null
-      - name: partisan
-        description: Whether the race is partisan or nonpartisan
+      - name: is_partisan
+        description: Whether the race is partisan
         data_tests:
           - accepted_values:
               arguments:
-                values: ["partisan", "nonpartisan"]
+                values: [true, false]
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_primary
+        description: Whether this is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_uncontested
+        description: Whether the race is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: stg_airbyte_source__techspeed_gdrive_candidates_invalid
     description: >
@@ -49,6 +73,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: is_incumbent
         data_tests:
           - accepted_values:

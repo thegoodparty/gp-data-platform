@@ -30,7 +30,7 @@ with
             tbl_contacts.official_office_name,
             tbl_contacts.office_level,
             tbl_contacts.candidacy_result,
-            tbl_contacts.pledge_status,
+            tbl_contacts.is_pledged,
             tbl_contacts.verified_candidate,
             tbl_contacts.is_partisan,
             tbl_contacts.primary_election_date,

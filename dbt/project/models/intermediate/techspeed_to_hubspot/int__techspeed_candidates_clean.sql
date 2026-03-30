@@ -82,8 +82,8 @@ with
             uncontested,
             number_of_candidates,
             number_of_seats_available,
-            open_seat,
-            partisan,
+            is_open_seat,
+            is_partisan,
             try_cast(
                 trim(regexp_replace(population, '[^0-9]', '')) as integer
             ) as population,
@@ -263,8 +263,8 @@ select
     uncontested,
     number_of_candidates,
     number_of_seats_available,
-    open_seat,
-    partisan,
+    is_open_seat,
+    is_partisan,
     population,
     br_race_id,
     election_result,

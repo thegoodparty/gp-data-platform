@@ -108,20 +108,18 @@ models:
                 values: ['Incumbent', 'Challenger']
               config:
                 where: "candidate_type is not null"
-      - name: open_seat
-        description: "Whether the seat is open (Yes/No variants)"
+      - name: is_open_seat
+        description: Whether the seat is open
         tests:
           - accepted_values:
               arguments:
-                values: ['Yes', 'No', 'YES', 'NO', 'yes', 'no', 'TRUE', 'FALSE']
-              config:
-                where: "open_seat is not null and open_seat != ''"
-      - name: partisan
-        description: "Whether the race is partisan or nonpartisan"
+                values: [true, false]
+      - name: is_partisan
+        description: Whether the race is partisan
         tests:
           - accepted_values:
               arguments:
-                values: ['partisan', 'nonpartisan']
+                values: [true, false]
       - name: election_date
         description: "Election date (general or primary)"
         tests:

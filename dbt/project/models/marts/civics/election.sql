@@ -54,7 +54,7 @@ select
     deduplicated.term_start_date,
     deduplicated.is_uncontested,
     deduplicated.number_of_opponents,
-    deduplicated.open_seat,
+    deduplicated.is_open_seat,
     deduplicated.has_ddhq_match,
     deduplicated.br_position_database_id,
     deduplicated.is_judicial,

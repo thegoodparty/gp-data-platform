@@ -22,7 +22,7 @@ select
     tbl_hs_contacts.properties_address as street_address,
     tbl_hs_contacts.properties_candidate_id_source as candidate_id_source,
     tbl_hs_contacts.properties_candidate_id_tier as candidate_id_tier,
-    lower(tbl_hs_contacts.properties_pledge_status) as pledge_status,
+    {{ cast_to_boolean("tbl_hs_contacts.properties_pledge_status") }} as is_pledged,
     tbl_hs_contacts.properties_verified_candidate_status as verified_candidate_status,
 
     -- Office information
@@ -31,7 +31,11 @@ select
     tbl_hs_contacts.properties_office_level as office_level,
     tbl_hs_contacts.properties_office_type as office_type,
     tbl_hs_contacts.properties_party_affiliation as party_affiliation,
-    tbl_hs_contacts.properties_partisan_type as is_partisan,
+    {{
+        cast_to_boolean(
+            "tbl_hs_contacts.properties_partisan_type", ["partisan"], ["nonpartisan"]
+        )
+    }} as is_partisan,
 
     -- Geographic information
     coalesce(
@@ -40,6 +44,7 @@ select
     tbl_hs_contacts.properties_city as city,
     tbl_hs_contacts.properties_candidate_district as district,
     tbl_hs_contacts.properties_open_seat as seat,
+    {{ cast_to_boolean("tbl_hs_contacts.properties_open_seat") }} as is_open_seat,
     try_cast(tbl_hs_contacts.properties_population as int) as population,
 
     -- Election dates
@@ -52,8 +57,12 @@ select
     cast(null as date) as runoff_election_date,
 
     -- Election context
-    tbl_hs_contacts.properties_incumbent as is_incumbent,
-    tbl_hs_contacts.properties_uncontested as is_uncontested,
+    {{ cast_to_boolean("tbl_hs_contacts.properties_incumbent") }} as is_incumbent,
+    {{
+        cast_to_boolean(
+            "tbl_hs_contacts.properties_uncontested", ["uncontested"], ["contested"]
+        )
+    }} as is_uncontested,
     tbl_hs_contacts.properties_number_opponents as number_of_opponents,
 
     -- Metadata

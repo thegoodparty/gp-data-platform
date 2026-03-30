@@ -36,13 +36,14 @@ with
             replace(filing_deadline, '/', '-') as filing_deadline,
             election_result,
 
-            -- Race metadata
+            -- Race metadata (booleans via cast_to_boolean from PR #280)
             party,
-            nullif(lower(replace(partisan, '-', '')), '') as partisan,
-            is_incumbent,
-            is_primary,
-            is_uncontested,
-            open_seat,
+            {{ cast_to_boolean("partisan", ["partisan"], ["nonpartisan"]) }}
+            as is_partisan,
+            {{ cast_to_boolean("is_incumbent") }} as is_incumbent,
+            {{ cast_to_boolean("is_primary") }} as is_primary,
+            {{ cast_to_boolean("is_uncontested") }} as is_uncontested,
+            {{ cast_to_boolean("open_seat") }} as is_open_seat,
             is_veteran,
             population,
             number_candidates as number_of_candidates,
