@@ -30,12 +30,12 @@ with
             coalesce(
                 try_cast(ts.primary_election_date as date),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM/dd/yy')
+                try_to_date(ts.primary_election_date, 'MM-dd-yy')
             ) as primary_election_date_parsed,
             coalesce(
                 try_cast(ts.general_election_date as date),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM/dd/yy')
+                try_to_date(ts.general_election_date, 'MM-dd-yy')
             ) as general_election_date_parsed,
             -- Parsed election_date for generate_gp_election_id macro
             -- HubSpot stores DATE type which becomes ISO string; parse TechSpeed to
@@ -47,15 +47,16 @@ with
             coalesce(
                 try_cast(ts.general_election_date as date),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM/dd/yy'),
+                try_to_date(ts.general_election_date, 'MM-dd-yy'),
                 try_cast(ts.primary_election_date as date),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM/dd/yy')
+                try_to_date(ts.primary_election_date, 'MM-dd-yy')
             ) as election_date,  -- parsed DATE for format parity with HubSpot
             -- Parse birth_date for UUID generation (format normalization)
             coalesce(
                 try_cast(ts.birth_date as date),
                 try_to_date(ts.birth_date, 'MM-dd-yyyy'),
+                try_to_date(ts.birth_date, 'MM/dd/yyyy'),
                 try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts

@@ -20,10 +20,10 @@ with
             coalesce(
                 try_cast(ts.general_election_date as date),
                 try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM/dd/yy'),
+                try_to_date(ts.general_election_date, 'MM-dd-yy'),
                 try_cast(ts.primary_election_date as date),
                 try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM/dd/yy')
+                try_to_date(ts.primary_election_date, 'MM-dd-yy')
             ) as election_date
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
         left join

@@ -20,6 +20,7 @@ with
             coalesce(
                 try_cast(ts.birth_date as date),
                 try_to_date(ts.birth_date, 'MM-dd-yyyy'),
+                try_to_date(ts.birth_date, 'MM/dd/yyyy'),
                 try_to_date(ts.birth_date, 'yyyy-MM-dd')
             ) as birth_date_parsed
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
