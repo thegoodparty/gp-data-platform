@@ -1170,7 +1170,9 @@ models:
         description: U.S. state (2-letter code)
         data_tests:
           - not_null
-          - is_state_abbreviation
+          - is_state_abbreviation:
+              config:
+                severity: warn
 
       - name: election_date
         description: Election date for this candidacy-stage

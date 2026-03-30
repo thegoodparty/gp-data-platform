@@ -16,7 +16,7 @@ with
 
     source as (
         select
-            ts.* except (state),
+            ts.* except (state, is_primary),
             coalesce(cs.state_cleaned_postal_code, ts.state) as state,
             -- Add missing columns required by generate_gp_election_id macro
             cast(null as string) as seat_name,
