@@ -9,7 +9,7 @@
 with
     source as (
         select
-            ts.*,
+            ts.* except (state),
             -- Alias for generate_gp_election_id macro compatibility
             state_postal_code as state,
             cast(null as string) as seat_name,

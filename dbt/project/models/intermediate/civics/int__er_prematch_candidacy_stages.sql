@@ -113,7 +113,7 @@ with
     -- unpivoted into primary/general stage rows
     ts_staging as (
         select
-            ts.*,
+            ts.* except (election_date),
             ts.state_postal_code as state_code,
             {{
                 generate_candidate_code(
