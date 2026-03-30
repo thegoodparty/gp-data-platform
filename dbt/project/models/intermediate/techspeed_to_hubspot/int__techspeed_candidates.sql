@@ -47,7 +47,7 @@ with
                 then 'Contested'
             end as uncontested,
             number_of_candidates,
-            seats_available,
+            seats_available as number_of_seats_available,
             is_open_seat,
             is_partisan,
             population,
@@ -103,7 +103,7 @@ select
     election_type,
     uncontested,
     number_of_candidates,
-    seats_available,
+    number_of_seats_available,
     is_open_seat,
     is_partisan,
     population,

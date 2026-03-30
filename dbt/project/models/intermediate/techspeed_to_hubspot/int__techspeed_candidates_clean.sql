@@ -81,7 +81,7 @@ with
             election_type,
             uncontested,
             number_of_candidates,
-            seats_available,
+            number_of_seats_available,
             is_open_seat,
             is_partisan,
             try_cast(
@@ -262,7 +262,7 @@ select
     election_type,
     uncontested,
     number_of_candidates,
-    seats_available,
+    number_of_seats_available,
     is_open_seat,
     is_partisan,
     population,
