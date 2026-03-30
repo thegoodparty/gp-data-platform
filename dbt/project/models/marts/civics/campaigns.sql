@@ -5,6 +5,12 @@ with
 
     users as (select * from {{ ref("stg_airbyte_source__gp_api_db_user") }}),
 
+    organizations as (
+        select * from {{ ref("stg_airbyte_source__gp_api_db_organization") }}
+    ),
+
+    positions as (select * from {{ ref("m_election_api__position") }}),
+
     joined as (
         select
             c.campaign_version_id,
@@ -46,6 +52,10 @@ with
             c.details:party::string as campaign_party,
             c.details:level::string as election_level,
 
+            -- Position data (via organization -> election-api position)
+            p.name as campaign_office,
+            p.br_database_id as ballotready_position_id,
+
             -- Version tracking
             row_number() over (
                 partition by c.id
@@ -55,6 +65,8 @@ with
 
         from campaigns c
         left join users u on c.user_id = u.id
+        left join organizations o on c.organization_slug = o.slug
+        left join positions p on o.position_id = p.id
     )
 
 select *

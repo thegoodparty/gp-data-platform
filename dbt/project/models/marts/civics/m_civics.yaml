@@ -213,6 +213,17 @@ models:
       - name: election_level
         description: Level of election (local, state, federal)
 
+      - name: campaign_office
+        description: >
+          Position name from the election-api, joined via organization ->
+          position. Replaces the deprecated campaign.details.office field.
+
+      - name: ballotready_position_id
+        description: >
+          BallotReady position database ID, joined via organization ->
+          election-api position. Replaces the deprecated base64-decoded
+          campaign.details.positionId field.
+
       - name: is_latest_version
         description: >
           Whether this is the most recent version of the campaign (true) or a
@@ -257,6 +268,19 @@ models:
           BallotReady-sourced office. This is the election-api position ID,
           not the BallotReady database ID.
 
+      - name: position_name
+        description: >
+          Position name from the election-api position table. Populated when
+          position_id is set and the position exists in the election-api mart.
+
+      - name: ballotready_position_id
+        description: >
+          BallotReady position database ID, resolved via the election-api
+          position table. Useful for joining with BallotReady data.
+
+      - name: position_state
+        description: U.S. state for the position from the election-api
+
       - name: custom_position_name
         description: >
           Free-text position name entered by the user for custom offices not
@@ -267,6 +291,17 @@ models:
           L2 district ID override. Set when the district was manually selected
           via the district picker or matched via silver match. When null, the
           matched L2 district is fetched from the election-api.
+
+      - name: district_id
+        description: >
+          L2 district UUID from the election-api, resolved via the position's
+          matched district. NULL when position has no district match.
+
+      - name: l2_district_type
+        description: L2 district type (e.g., "State Senate", "Congressional District")
+
+      - name: l2_district_name
+        description: L2 district name (e.g., "District 5", "CA")
 
       - name: campaign_id
         description: >
