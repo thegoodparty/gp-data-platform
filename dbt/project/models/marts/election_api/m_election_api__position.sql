@@ -22,8 +22,12 @@ with
         inner join
             {{ ref("int__enhanced_position") }} as tbl_position
             on tbl_match.br_database_id = tbl_position.br_database_id
-        -- Manual overrides for incorrect LLM matches (e.g. at-large positions
-        -- matched to individual districts instead of the city-level district)
+        -- Manual overrides for incorrect LLM matches. The LLM can mismap
+        -- at-large positions to numbered sub-districts (e.g. KC Council
+        -- At-Large District 3 → City_Council_Commissioner_District instead
+        -- of City). At-large seats are voted on by the entire city/state, so
+        -- they must map to the city-wide or state-wide L2 district, not the
+        -- numbered sub-district they're associated with.
         left join
             {{ ref("l2_br_match_overrides") }} as tbl_override
             on tbl_match.br_database_id = tbl_override.br_database_id
