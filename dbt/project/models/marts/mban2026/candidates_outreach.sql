@@ -19,20 +19,20 @@ select
     h.seats_available,
 
     -- Outreach fields (may be null for HubSpot companies without outreach)
-    o.id as outreach_id,
-    o.campaignid as campaign_id,
-    o.name as outreach_name,
-    o.title as outreach_title,
-    o.script,
-    o.status as outreach_status,
-    o.outreach_type,
-    o.date as outreach_date,
-    o.message,
-    o.phone_list_id,
-    o.audience_request,
-    o.voter_file_filter_id,
-    o.createdat as outreach_created_at,
-    o.updatedat as outreach_updated_at,
+    co.id as outreach_id,
+    co.campaignid as campaign_id,
+    co.name as outreach_name,
+    co.title as outreach_title,
+    co.script,
+    co.status as outreach_status,
+    co.outreach_type,
+    co.date as outreach_date,
+    co.message,
+    co.phone_list_id,
+    co.audience_request,
+    co.voter_file_filter_id,
+    co.createdat as outreach_created_at,
+    co.updatedat as outreach_updated_at,
 
     -- l2 fields
     l.name as l2_name,
@@ -45,13 +45,31 @@ left join
     {{ ref("clean_states") }} as tbl_states
     on trim(upper(h.state)) = tbl_states.state_raw
 left join
-    {{ ref("stg_airbyte_source__gp_api_db_campaign") }} as c
-    on h.id = get_json_object(c.data, '$.hubspotId')
-left join
-    {{ ref("stg_airbyte_source__gp_api_db_outreach") }} as o
-    on c.id = o.campaignid
-    and o.outreach_type = 'text'
-    and o.date >= '2023-01-01'
+    (
+        select
+            get_json_object(c.data, '$.hubspotId') as hubspot_id,
+            o.id,
+            o.campaignid,
+            o.name,
+            o.title,
+            o.script,
+            o.status,
+            o.outreach_type,
+            o.date,
+            o.message,
+            o.phone_list_id,
+            o.audience_request,
+            o.voter_file_filter_id,
+            o.createdat,
+            o.updatedat
+        from {{ ref("stg_airbyte_source__gp_api_db_campaign") }} as c
+        inner join
+            {{ ref("stg_airbyte_source__gp_api_db_outreach") }} as o
+            on c.id = o.campaignid
+            and o.outreach_type = 'text'
+            and o.date >= '2023-01-01'
+    ) as co
+    on h.id = co.hubspot_id
 left join
     (
         select distinct name, state, l2_district_name, l2_district_type
