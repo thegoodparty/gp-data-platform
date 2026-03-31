@@ -175,6 +175,8 @@ with
                 then null
                 when last_name is null
                 then null
+                when nullif(trim(suggested_last), '') is null
+                then null
                 when state is null
                 then null
                 when office_type is null
