@@ -31,11 +31,15 @@ with
             p.state as position_state,
             o.custom_position_name,
 
-            -- District data (via position -> district, or override)
+            -- District data (override takes priority over position match)
             o.override_district_id,
-            p.district_id,
-            d.l2_district_type,
-            d.l2_district_name,
+            coalesce(o.override_district_id, p.district_id) as district_id,
+            coalesce(
+                d_override.l2_district_type, d.l2_district_type
+            ) as l2_district_type,
+            coalesce(
+                d_override.l2_district_name, d.l2_district_name
+            ) as l2_district_name,
 
             -- Linked entities
             c.id as campaign_id,
@@ -54,6 +58,7 @@ with
         left join users u on o.owner_id = u.id
         left join positions p on o.position_id = p.id
         left join districts d on p.district_id = d.id
+        left join districts d_override on o.override_district_id = d_override.id
     )
 
 select *

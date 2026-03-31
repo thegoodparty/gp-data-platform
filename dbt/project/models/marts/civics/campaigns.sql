@@ -52,9 +52,19 @@ with
             c.details:party::string as campaign_party,
             c.details:level::string as election_level,
 
-            -- Position data (via organization -> election-api position)
-            p.name as campaign_office,
-            p.br_database_id as ballotready_position_id,
+            -- Position data (via organization -> election-api position,
+            -- with legacy fallback for campaigns missing the org->position join)
+            coalesce(p.name, c.details:office::string) as campaign_office,
+            coalesce(
+                p.br_database_id,
+                cast(
+                    regexp_extract(
+                        cast(unbase64(c.details:positionid::string) as string),
+                        '/([0-9]+)$',
+                        1
+                    ) as bigint
+                )
+            ) as ballotready_position_id,
 
             -- Version tracking
             row_number() over (
