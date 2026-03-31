@@ -13,10 +13,10 @@ with
 
     polls as (select * from {{ ref("stg_airbyte_source__gp_api_db_poll") }}),
 
-    serve_users as (
+    poll_users as (
         /*
-            For metrics, this is our proxy for whether the user is a "serve"
-            user. eo_activated_at is the earliest poll creation date.
+            Users who have completed at least one poll through an elected
+            office. eo_activated_at is the earliest poll creation date.
         */
         select eo.user_id, min(p.created_at) as eo_activated_at
         from elected_offices eo
@@ -92,7 +92,7 @@ with
         from users u
         left join organization_stats os on u.id = os.user_id
         left join campaign_stats cs on u.id = cs.user_id
-        left join serve_users su on u.id = su.user_id
+        left join poll_users su on u.id = su.user_id
     )
 
 select *
