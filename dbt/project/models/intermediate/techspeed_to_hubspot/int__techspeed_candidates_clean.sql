@@ -199,6 +199,7 @@ with
             and trim(first_name) <> ''
             and trim(last_name) is not null
             and trim(last_name) <> ''
+            and nullif(trim(suggested_last), '') is not null
             and trim(state) is not null
             and trim(state) <> ''
             and trim(city) is not null
