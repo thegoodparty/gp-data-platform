@@ -106,6 +106,8 @@ sources:
         description: raw data load from gp_api_db postgres db from table `poll_issues`
       - name: gp_api_db_poll_individual_message
         description: raw data load from gp_api_db postgres db from table `poll_individual_message`
+      - name: gp_api_db_organization
+        description: raw data load from gp_api_db postgres db from table `organization`
       - name: gp_api_db_user
         description: raw data load from gp_api_db postgres db from table `user`
       - name: gp_api_db_website
