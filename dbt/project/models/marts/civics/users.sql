@@ -30,7 +30,10 @@ with
             o.owner_id as user_id,
             count(*) as organization_count,
             count(c.id) as win_organization_count,
-            count(eo.id) as serve_organization_count
+            count(eo.id) as serve_organization_count,
+            min(
+                case when eo.id is not null then o.created_at end
+            ) as first_serve_org_created_at
         from organizations o
         left join campaigns c on o.slug = c.organization_slug
         left join elected_offices eo on o.slug = eo.organization_slug
@@ -88,7 +91,9 @@ with
                 os.serve_organization_count > 0 or pu.user_id is not null, false
             ) as is_serve_user,
             case when pu.user_id is not null then true else false end as is_poll_user,
-            pu.eo_activated_at
+            least(
+                pu.eo_activated_at, os.first_serve_org_created_at
+            ) as serve_activated_at
         from users u
         left join organization_stats os on u.id = os.user_id
         left join campaign_stats cs on u.id = cs.user_id

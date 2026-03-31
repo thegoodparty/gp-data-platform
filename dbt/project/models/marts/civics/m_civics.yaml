@@ -109,11 +109,12 @@ models:
         data_tests:
           - not_null
 
-      - name: eo_activated_at
+      - name: serve_activated_at
         description: >
-          Timestamp when the user became a "Serve" user. This is the creation
-          timestamp of their first completed poll. NULL for users who are not
-          Serve users (is_serve_user = false).
+          Earliest timestamp indicating when the user became a Serve user.
+          This is the earlier of: the creation date of their first Serve
+          organization, or the creation date of their first completed poll.
+          NULL for users who are not Serve users (is_serve_user = false).
 
   - name: campaigns
     description: >

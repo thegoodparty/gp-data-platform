@@ -8,6 +8,10 @@ models:
           - unique
       - name: organization_slug
         description: "Foreign key to the organization table"
+        data_tests:
+          - unique:
+              config:
+                where: "organization_slug is not null"
   - name: stg_airbyte_source__gp_api_db_campaign_position
     description: raw data load from gp_api_db postgres db from table `campaign_position`
     columns:
@@ -102,6 +106,10 @@ models:
         description: "Date when the user was sworn in to office"
       - name: organization_slug
         description: "Slug identifier for the organization associated with this elected office"
+        data_tests:
+          - unique:
+              config:
+                where: "organization_slug is not null"
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:
