@@ -50,19 +50,7 @@ models:
               arguments:
                 values: [true, false]
     tests:
-      - dbt_utils.expression_is_true:
-          name: techspeed_both_dates_under_5pct
-          description: >
-            Warns if more than 5% of rows have both primary and general dates
-            populated. Currently ~0.6%. If TechSpeed changes their data delivery
-            to populate both columns, we may need to revisit the stage-type logic
-            (primary takes priority assumption).
-          expression: >
-            (sum(case when primary_election_date_parsed is not null
-                      and general_election_date_parsed is not null
-                 then 1 else 0 end) * 100.0 / count(*)) < 5
-          config:
-            severity: warn
+      - techspeed_both_dates_under_5pct
 
   - name: stg_airbyte_source__techspeed_gdrive_candidates_invalid
     description: >
