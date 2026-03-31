@@ -48,6 +48,10 @@ with
         where
             coalesce(primary_election_date_parsed, general_election_date_parsed)
             is not null
+            and year(
+                coalesce(primary_election_date_parsed, general_election_date_parsed)
+            )
+            between 1900 and 2050
     ),
 
     candidacy_stages as (
