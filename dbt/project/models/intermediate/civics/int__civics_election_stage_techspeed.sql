@@ -74,16 +74,7 @@ with
             any_value(election_date) as election_date,
             any_value(seats_available) as seats_available,
             any_value(br_race_id) as br_race_id,
-            -- String, not boolean: mart contract requires string because BallotReady
-            -- has 3 values ('partisan', 'nonpartisan', 'partisan for primary only')
-            any_value(
-                case
-                    when is_partisan
-                    then 'partisan'
-                    when not is_partisan
-                    then 'nonpartisan'
-                end
-            ) as partisan_type,
+            any_value(is_partisan) as is_partisan,
             min(_airbyte_extracted_at) as created_at,
             max(_airbyte_extracted_at) as updated_at
         from unpivoted
@@ -140,7 +131,7 @@ with
             false as is_retention,
             seats_available as number_of_seats,
             cast(null as string) as total_votes_cast,
-            partisan_type,
+            is_partisan,
             cast(null as date) as filing_period_start_on,
             cast(null as date) as filing_period_end_on,
             cast(null as string) as filing_requirements,
