@@ -1,7 +1,7 @@
 select
     -- identifiers
     id,
-    contacts,
+    contacts,  -- noqa: L019
 
     -- candidate information
     properties_br_race_id as br_race_id,
