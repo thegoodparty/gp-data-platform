@@ -88,6 +88,7 @@ with
                 trim(regexp_replace(population, '[^0-9]', '')) as integer
             ) as population,
             br_race_id,
+            election_result,
             type,
             contact_owner,
             owner_name,
@@ -174,6 +175,8 @@ with
                 then null
                 when last_name is null
                 then null
+                when nullif(trim(suggested_last), '') is null
+                then null
                 when state is null
                 then null
                 when office_type is null
@@ -196,6 +199,7 @@ with
             and trim(first_name) <> ''
             and trim(last_name) is not null
             and trim(last_name) <> ''
+            and nullif(trim(suggested_last), '') is not null
             and trim(state) is not null
             and trim(state) <> ''
             and trim(city) is not null
@@ -212,12 +216,19 @@ with
             )
             = 1
     ),
-    -- deduplicate on phone number, and order by the source file url
-    -- in ascending order. This is to ensure that we only keep the record the
-    -- first time it appears so we don't overwrite the record with a later one
+    -- Deduplicate on phone number. NULL phone rows skip phone-based dedup
+    -- to avoid Databricks NULL partition collapse (all NULLs group into one
+    -- partition, only 1 survives).
     candidates_deduped_on_phone as (
         select *
         from candidates_deduped_on_name_state_office_type
+        where phone is null
+
+        union all
+
+        select *
+        from candidates_deduped_on_name_state_office_type
+        where phone is not null
         qualify
             row_number() over (partition by phone order by _ab_source_file_url asc) = 1
     )
@@ -259,6 +270,7 @@ select
     is_partisan,
     population,
     br_race_id,
+    election_result,
     type,
     contact_owner,
     owner_name,

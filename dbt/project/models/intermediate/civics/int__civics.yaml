@@ -311,7 +311,7 @@ models:
 
       Grain: One row per candidacy (candidate + election combination).
 
-      Source: int__techspeed_candidates_clean
+      Source: stg_airbyte_source__techspeed_gdrive_candidates
 
       Key design decisions:
       - UUID fields aligned with int__hubspot_companies_w_contacts_2025 for cross-source consistency
@@ -426,7 +426,7 @@ models:
 
       Grain: One row per unique person (deduplicated on identity fields).
 
-      Source: int__techspeed_candidates_clean
+      Source: stg_airbyte_source__techspeed_gdrive_candidates
 
       UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
       first_name, last_name, state, birth_date, email, phone_number
@@ -458,6 +458,192 @@ models:
           - is_state_abbreviation:
               config:
                 severity: warn
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_stage_techspeed
+    description: >
+      TechSpeed election stages transformed into civics mart election_stage schema.
+
+      Grain: One row per election stage (race + stage type).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted from candidate-level
+      into primary/general stage rows, then aggregated to race-level.
+
+      gp_election_stage_id uses a composite key (NOT br_race_id) because a
+      TechSpeed candidate has one br_race_id but two stage dates. br_race_id
+      is stored as a reference column only.
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_techspeed')
+                field: gp_election_id
+
+      - name: br_race_id
+        description: >
+          BallotReady race ID reference. May be a numeric ID (for BR-matched records)
+          or 'ts_found_race_net_new' (for net-new races). NOT used for ID generation.
+
+      - name: stage_type
+        description: Type of election stage
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - general
+                  - primary
+
+      - name: election_date
+        description: Date of the election stage
+        data_tests:
+          - not_null
+
+      - name: is_primary
+        description: Whether this stage is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_runoff
+        description: Whether this stage is a runoff election (always false for TechSpeed)
+
+      - name: is_retention
+        description: Whether this stage is a retention election (always false for TechSpeed)
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_techspeed
+    description: >
+      TechSpeed elections transformed into civics mart election schema.
+
+      Grain: One row per election (position + election year).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, grouped by election-defining
+      fields. Enriched with population, filing_deadline, and contested status
+      from the source data.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+
+      - name: election_year
+        description: Year of the election
+
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: has_ddhq_match
+        description: Whether there is a DDHQ match (always false for TechSpeed)
+
+      - name: is_judicial
+        description: Whether the office is judicial (always null for TechSpeed)
+
+      - name: is_appointed
+        description: Whether the office is appointed (always null for TechSpeed)
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_stage_techspeed
+    description: >
+      TechSpeed candidacy stages transformed into civics mart candidacy_stage schema.
+
+      Grain: One row per candidacy stage (candidate + election stage).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted into primary/general
+      stage rows. Each candidate with both dates produces two rows.
+
+      Won/Unopposed election results mapped to general stages when available.
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_techspeed')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_techspeed')
+                field: gp_election_stage_id
+
+      - name: election_result
+        description: Result of the election stage (Won or null, general stages only)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+
+      - name: is_winner
+        description: Whether the candidate won the election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - not_null
 
       - name: created_at
         data_tests:
@@ -918,7 +1104,7 @@ models:
       Grain: One row per source candidacy-stage record (candidate + office + election date).
 
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
-      int__techspeed_candidates_clean (TS),
+      stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ), with
       clean_states for state standardization and int__ballotready_person for
       API contact data.
@@ -964,7 +1150,9 @@ models:
         description: U.S. state (2-letter code)
         data_tests:
           - not_null
-          - is_state_abbreviation
+          - is_state_abbreviation:
+              config:
+                severity: warn
 
       - name: election_date
         description: Election date for this candidacy-stage

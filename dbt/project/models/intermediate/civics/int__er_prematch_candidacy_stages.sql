@@ -7,9 +7,10 @@
 -- Grain: One row per source candidacy-stage record (candidate + office + election date)
 -- Key: unique_id (source_name || '|' || source_id)
 --
--- All upstream sources are already at the candidacy-stage grain:
+-- All upstream sources are at the candidacy-stage grain:
 -- - BallotReady staging: one row per candidate per race (election stage)
--- - TechSpeed clean: one row per candidate per election date
+-- - TechSpeed staging: dates/state pre-parsed, unpivoted into primary/general
+-- stage rows, deduped per candidate-stage
 -- - DDHQ election results: one row per candidate per race
 --
 with
@@ -105,45 +106,59 @@ with
         left join person_emails as pe on br.br_candidate_id = pe.person_database_id
     ),
 
-    -- State name → 2-letter code mapping for TechSpeed and DDHQ
+    -- State name → 2-letter code mapping (used by DDHQ section)
     clean_states as (select * from {{ ref("clean_states") }}),
 
-    -- TechSpeed: each row in int__techspeed_candidates_clean is already at
-    -- the candidacy-stage grain (one candidate + one election date)
-    ts_clean as (
-        select ts.*, coalesce(cs.state_cleaned_postal_code, ts.state) as state_code
-        from {{ ref("int__techspeed_candidates_clean") }} as ts
-        left join
-            clean_states as cs on upper(trim(ts.state)) = upper(trim(cs.state_raw))
+    -- TechSpeed: sourced from staging (dates and state already parsed),
+    -- unpivoted into primary/general stage rows
+    ts_staging as (
+        select
+            ts.* except (election_date),
+            ts.state_postal_code as state_code,
+            {{
+                generate_candidate_code(
+                    "ts.first_name",
+                    "ts.last_name",
+                    "ts.state",
+                    "ts.office_type",
+                    "ts.city",
+                )
+            }} as techspeed_candidate_code
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
+    ),
+
+    -- Determine stage type: primary takes priority over general (mirrors civics
+    -- election_stage pattern). If both dates exist, candidate is at primary stage.
+    ts_with_stage as (
+        select
+            *,
+            case
+                when primary_election_date_parsed is not null
+                then 'Primary'
+                else 'General'
+            end as election_stage,
+            case
+                when primary_election_date_parsed is not null
+                then primary_election_date_parsed
+                else general_election_date_parsed
+            end as election_date
+        from ts_staging
         where
-            coalesce(
-                try_cast(general_election_date as date),
-                try_to_date(general_election_date, 'MM/dd/yyyy'),
-                try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy'),
-                try_cast(primary_election_date as date),
-                try_to_date(primary_election_date, 'MM/dd/yyyy'),
-                try_to_date(primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(primary_election_date, 'MM/dd/yy')
-            )
+            coalesce(primary_election_date_parsed, general_election_date_parsed)
             >= '2026-01-01'
-            and coalesce(
-                try_cast(general_election_date as date),
-                try_to_date(general_election_date, 'MM/dd/yyyy'),
-                try_to_date(general_election_date, 'MM-dd-yyyy'),
-                try_to_date(general_election_date, 'MM/dd/yy'),
-                try_cast(primary_election_date as date),
-                try_to_date(primary_election_date, 'MM/dd/yyyy'),
-                try_to_date(primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(primary_election_date, 'MM/dd/yy')
+            and year(
+                coalesce(primary_election_date_parsed, general_election_date_parsed)
             )
-            < '2050-01-01'
+            between 1900 and 2050
     ),
 
     techspeed_stages as (
         select
             'techspeed' as source_name,
-            ts.techspeed_candidate_code as source_id,
+            -- Stage-grain source_id (candidate_code + stage) for uniqueness
+            ts.techspeed_candidate_code
+            || '__'
+            || lower(ts.election_stage) as source_id,
             lower(trim(ts.first_name)) as first_name,
             lower(trim(ts.last_name)) as last_name,
             ts.state_code as state,
@@ -155,19 +170,8 @@ with
             try_cast(
                 regexp_extract(ts.district, '([0-9]+)') as int
             ) as district_identifier,
-            -- Single election date: coalesce general > primary (same as election_date
-            -- column)
-            coalesce(
-                try_cast(ts.general_election_date as date),
-                try_to_date(ts.general_election_date, 'MM/dd/yyyy'),
-                try_to_date(ts.general_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.general_election_date, 'MM/dd/yy'),
-                try_cast(ts.primary_election_date as date),
-                try_to_date(ts.primary_election_date, 'MM/dd/yyyy'),
-                try_to_date(ts.primary_election_date, 'MM-dd-yyyy'),
-                try_to_date(ts.primary_election_date, 'MM/dd/yy')
-            ) as election_date,
-            initcap(ts.election_type) as election_stage,
+            ts.election_date,
+            ts.election_stage,
             ts.email,
             ts.phone,
             ts.br_race_id,
@@ -175,7 +179,15 @@ with
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
-        from ts_clean as ts
+        from ts_with_stage as ts
+        -- Dedupe: staging is not deduplicated, keep first appearance per
+        -- candidate-stage to avoid duplicate source_ids
+        qualify
+            row_number() over (
+                partition by techspeed_candidate_code, election_stage
+                order by _ab_source_file_url asc
+            )
+            = 1
     ),
 
     -- DDHQ election results: each row is a candidate x race (candidacy-stage)
