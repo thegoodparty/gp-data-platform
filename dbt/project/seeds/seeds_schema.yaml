@@ -102,6 +102,10 @@ seeds:
         description: Corrected L2 district name
         data_tests:
           - not_null
+      - name: reason
+        description: Why this override is needed
+        data_tests:
+          - not_null
 
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
