@@ -7,7 +7,7 @@ All models materialize as tables in the `mart_mban2026` schema.
 | Model | Grain | Description |
 |---|---|---|
 | `candidates_outreach` | hubspot_id x outreach_id | HubSpot candidacies with text outreach campaigns |
-| `mban_election_results` | race_id x candidate_id | DDHQ election results (pass-through) |
+| `mban_election_results` | ddhq_race_id x candidate_id | DDHQ election results (pass-through) |
 | `mban_candidacy_election_results` | hubspot_company_id x election_date x election_type | AI-matched DDHQ election links per candidacy |
 | `deid_voters` | LALVOTERID | De-identified nationwide voter data |
 
@@ -48,7 +48,7 @@ select
     er.total_number_of_ballots_in_race
 from mart_mban2026.mban_candidacy_election_results as cer
 left join mart_mban2026.mban_election_results as er
-    on cer.ddhq_race_id = er.race_id
+    on cer.ddhq_race_id = er.ddhq_race_id
     and cer.ddhq_candidate_id = er.candidate_id
 ```
 
@@ -72,6 +72,6 @@ from mart_mban2026.candidates_outreach as co
 left join mart_mban2026.mban_candidacy_election_results as cer
     on co.hubspot_id = cer.hubspot_company_id
 left join mart_mban2026.mban_election_results as er
-    on cer.ddhq_race_id = er.race_id
+    on cer.ddhq_race_id = er.ddhq_race_id
     and cer.ddhq_candidate_id = er.candidate_id
 ```

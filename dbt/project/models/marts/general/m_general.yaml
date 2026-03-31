@@ -300,7 +300,7 @@ models:
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__ddhq_gdrive_election_results')
-                field: "race_id"
+                field: "ddhq_race_id"
                 config:
                   where: "ddhq_race_id is not null"
       - name: ddhq_candidate_id

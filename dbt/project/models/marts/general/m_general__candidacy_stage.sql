@@ -47,7 +47,7 @@ with
             -- tbl_ddhq_election_results_source.votes /
             -- tbl_ddhq_election_results_source.total_number_of_ballots_in_race as
             -- votes_percentage,
-            tbl_ddhq_election_results_source.date as ddhq_election_stage_date,
+            tbl_ddhq_election_results_source.election_date as ddhq_election_stage_date,
             tbl_contacts.created_at,
             tbl_contacts.updated_at
         from {{ ref("int__hubspot_contacts_w_companies") }} as tbl_contacts
@@ -57,7 +57,8 @@ with
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
             as tbl_ddhq_election_results_source
-            on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
+            on tbl_ddhq_election_results_source.ddhq_race_id
+            = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
         qualify

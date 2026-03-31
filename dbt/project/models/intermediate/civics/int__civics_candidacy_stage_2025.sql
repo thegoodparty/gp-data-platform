@@ -66,7 +66,7 @@ with
             tbl_ddhq_matches.top_10_candidates as match_top_candidates,
             tbl_ddhq_matches.has_match,
             tbl_ddhq_election_results_source.votes as votes_received,
-            tbl_ddhq_election_results_source.date as election_stage_date,
+            tbl_ddhq_election_results_source.election_date as election_stage_date,
             tbl_companies.created_at,
             tbl_companies.updated_at
         from {{ ref("int__hubspot_companies_w_contacts_2025") }} as tbl_companies
@@ -76,7 +76,8 @@ with
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
             as tbl_ddhq_election_results_source
-            on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
+            on tbl_ddhq_election_results_source.ddhq_race_id
+            = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
         left join

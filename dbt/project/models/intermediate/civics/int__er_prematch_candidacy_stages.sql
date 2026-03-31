@@ -195,14 +195,16 @@ with
         select *
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
         where
-            race_id is not null
+            ddhq_race_id is not null
             and candidate_id is not null
             and candidate is not null
             and trim(candidate) != ''
             -- Require splittable name (first + last)
             and size(split(trim(candidate), ' ')) >= 2
-            and date is not null
-            and date >= '2026-01-01'
+            and candidate_first_name is not null
+            and candidate_last_name is not null
+            and election_date is not null
+            and election_date >= '2026-01-01'
     ),
 
     -- Compute candidate_office once so map_office_type can reference it
@@ -261,17 +263,9 @@ with
             'ddhq' as source_name,
             cast(d.candidate_id as string)
             || '_'
-            || cast(d.race_id as string) as source_id,
-            lower(
-                trim(split({{ remove_name_suffixes("trim(d.candidate)") }}, ' ')[0])
-            ) as first_name,
-            lower(
-                trim(
-                    element_at(
-                        split({{ remove_name_suffixes("trim(d.candidate)") }}, ' '), -1
-                    )
-                )
-            ) as last_name,
+            || cast(d.ddhq_race_id as string) as source_id,
+            lower(trim(d.candidate_first_name)) as first_name,
+            lower(trim(d.candidate_last_name)) as last_name,
             d.state,
             {{ parse_party_affiliation("d.candidate_party") }} as party,
             d.candidate_office,
@@ -299,7 +293,7 @@ with
                 ),
                 try_cast(regexp_extract(d.race_name, ' ([0-9]+)$') as int)
             ) as district_identifier,
-            d.date as election_date,
+            d.election_date,
             case
                 when lower(d.election_type) like '%runoff%'
                 then 'Runoff'
