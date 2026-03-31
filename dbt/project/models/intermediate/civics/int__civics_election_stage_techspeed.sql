@@ -31,7 +31,7 @@ with
         from source
         where
             primary_election_date_parsed is not null
-            and year(primary_election_date_parsed) between 1900 and 2030
+            and year(primary_election_date_parsed) between 1900 and 2050
     ),
 
     general_stages as (
@@ -43,7 +43,7 @@ with
         from source
         where
             general_election_date_parsed is not null
-            and year(general_election_date_parsed) between 1900 and 2030
+            and year(general_election_date_parsed) between 1900 and 2050
     ),
 
     unpivoted as (

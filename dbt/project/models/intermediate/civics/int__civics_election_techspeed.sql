@@ -21,7 +21,7 @@ with
     with_election_id as (
         select {{ generate_gp_election_id() }} as gp_election_id, source.*
         from source
-        where election_date is not null and year(election_date) between 1900 and 2030
+        where election_date is not null and year(election_date) between 1900 and 2050
     ),
 
     -- Pick one representative row per election. Prefer rows with a general
