@@ -21,37 +21,26 @@ with
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
     ),
 
-    -- Unpivot: one row per candidate per stage date
-    primary_stages as (
+    -- Determine stage type: primary takes priority over general. If TechSpeed
+    -- populates both dates, the candidate is at the primary stage.
+    with_stage as (
         select
             *,
-            'primary' as stage_type,
-            primary_election_date_parsed as stage_election_date,
-            true as is_primary
+            case
+                when primary_election_date_parsed is not null
+                then 'primary'
+                else 'general'
+            end as stage_type,
+            case
+                when primary_election_date_parsed is not null
+                then primary_election_date_parsed
+                else general_election_date_parsed
+            end as stage_election_date,
+            primary_election_date_parsed is not null as is_primary
         from source
         where
-            primary_election_date_parsed is not null
-            and year(primary_election_date_parsed) between 1900 and 2050
-    ),
-
-    general_stages as (
-        select
-            *,
-            'general' as stage_type,
-            general_election_date_parsed as stage_election_date,
-            false as is_primary
-        from source
-        where
-            general_election_date_parsed is not null
-            and year(general_election_date_parsed) between 1900 and 2050
-    ),
-
-    unpivoted as (
-        select *
-        from primary_stages
-        union all
-        select *
-        from general_stages
+            coalesce(primary_election_date_parsed, general_election_date_parsed)
+            is not null
     ),
 
     -- Aggregate to race-level (one row per race + stage, not per candidate)
@@ -77,7 +66,7 @@ with
             any_value(is_partisan) as is_partisan,
             min(_airbyte_extracted_at) as created_at,
             max(_airbyte_extracted_at) as updated_at
-        from unpivoted
+        from with_stage
         group by
             state,
             candidate_office,

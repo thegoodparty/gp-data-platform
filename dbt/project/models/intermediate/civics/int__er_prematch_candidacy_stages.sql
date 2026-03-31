@@ -127,37 +127,29 @@ with
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
     ),
 
-    -- Unpivot: one row per stage date (mirrors civics election_stage pattern)
-    ts_primary as (
+    -- Determine stage type: primary takes priority over general (mirrors civics
+    -- election_stage pattern). If both dates exist, candidate is at primary stage.
+    ts_with_stage as (
         select
             *,
-            'Primary' as election_stage,
-            primary_election_date_parsed as election_date
+            case
+                when primary_election_date_parsed is not null
+                then 'Primary'
+                else 'General'
+            end as election_stage,
+            case
+                when primary_election_date_parsed is not null
+                then primary_election_date_parsed
+                else general_election_date_parsed
+            end as election_date
         from ts_staging
         where
-            primary_election_date_parsed is not null
-            and primary_election_date_parsed >= '2026-01-01'
-            and year(primary_election_date_parsed) between 1900 and 2050
-    ),
-
-    ts_general as (
-        select
-            *,
-            'General' as election_stage,
-            general_election_date_parsed as election_date
-        from ts_staging
-        where
-            general_election_date_parsed is not null
-            and general_election_date_parsed >= '2026-01-01'
-            and year(general_election_date_parsed) between 1900 and 2050
-    ),
-
-    ts_unpivoted as (
-        select *
-        from ts_primary
-        union all
-        select *
-        from ts_general
+            coalesce(primary_election_date_parsed, general_election_date_parsed)
+            >= '2026-01-01'
+            and year(
+                coalesce(primary_election_date_parsed, general_election_date_parsed)
+            )
+            between 1900 and 2050
     ),
 
     techspeed_stages as (
@@ -187,7 +179,7 @@ with
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
-        from ts_unpivoted as ts
+        from ts_with_stage as ts
         -- Dedupe: staging is not deduplicated, keep first appearance per
         -- candidate-stage to avoid duplicate source_ids
         qualify
