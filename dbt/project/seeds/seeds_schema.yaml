@@ -74,6 +74,35 @@ seeds:
         data_tests:
           - not_null
 
+  - name: l2_br_match_overrides
+    description: >
+      Manual overrides for LLM-generated L2-to-BallotReady district matches.
+      When the Gemini string matcher maps a BR position to the wrong L2
+      district, add a row here with the correct l2_district_type and
+      l2_district_name. These take precedence over the LLM match in the
+      election-api position mart.
+    columns:
+      - name: br_database_id
+        description: BallotReady position database ID to override
+        data_tests:
+          - unique
+          - not_null
+      - name: br_position_name
+        description: Human-readable BR position name (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
+      - name: l2_district_type
+        description: Corrected L2 district type
+        data_tests:
+          - not_null
+      - name: l2_district_name
+        description: Corrected L2 district name
+        data_tests:
+          - not_null
+
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
     columns:

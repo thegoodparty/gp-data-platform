@@ -14,7 +14,7 @@ with
             tbl_match.br_database_id,
             tbl_position.br_position_id as br_position_id,
             tbl_position.name,
-            tbl_match.state,
+            coalesce(tbl_override.state, tbl_match.state) as state,
             tbl_district.id as district_id,
             tbl_position.created_at,
             tbl_position.updated_at
@@ -22,11 +22,18 @@ with
         inner join
             {{ ref("int__enhanced_position") }} as tbl_position
             on tbl_match.br_database_id = tbl_position.br_database_id
+        -- Manual overrides for incorrect LLM matches (e.g. at-large positions
+        -- matched to individual districts instead of the city-level district)
+        left join
+            {{ ref("l2_br_match_overrides") }} as tbl_override
+            on tbl_match.br_database_id = tbl_override.br_database_id
         left join
             {{ ref("m_election_api__district") }} as tbl_district
-            on tbl_match.state = tbl_district.state
-            and tbl_match.l2_district_type = tbl_district.l2_district_type
-            and tbl_match.l2_district_name = tbl_district.l2_district_name
+            on coalesce(tbl_override.state, tbl_match.state) = tbl_district.state
+            and coalesce(tbl_override.l2_district_type, tbl_match.l2_district_type)
+            = tbl_district.l2_district_type
+            and coalesce(tbl_override.l2_district_name, tbl_match.l2_district_name)
+            = tbl_district.l2_district_name
         where
             tbl_match.l2_district_name not in (
                 'County Committee Female Member',
@@ -36,7 +43,8 @@ with
             )
             and tbl_district.id is not null
             and (
-                (
+                tbl_override.br_database_id is not null
+                or (
                     lower(tbl_match.l2_district_type) = 'state'
                     and tbl_match.confidence >= 95
                 )
