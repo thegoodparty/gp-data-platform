@@ -23,6 +23,14 @@ with
             u.created_at as _user_created_at,
             p.name as _position_name,
             p.br_database_id as _position_br_database_id,
+            c.details:office::string as _legacy_office,
+            cast(
+                regexp_extract(
+                    cast(unbase64(c.details:positionid::string) as string),
+                    '/([0-9]+)$',
+                    1
+                ) as bigint
+            ) as _legacy_br_position_id,
             row_number() over (
                 partition by c.id
                 order by c.updated_at desc nulls last, c._airbyte_extracted_at desc
@@ -71,30 +79,13 @@ with
             -- For historical versions: use legacy snapshot to stay faithful
             case
                 when is_latest_version
-                then coalesce(_position_name, details:office::string)
-                else details:office::string
+                then coalesce(_position_name, _legacy_office)
+                else _legacy_office
             end as campaign_office,
             case
                 when is_latest_version
-                then
-                    coalesce(
-                        _position_br_database_id,
-                        cast(
-                            regexp_extract(
-                                cast(unbase64(details:positionid::string) as string),
-                                '/([0-9]+)$',
-                                1
-                            ) as bigint
-                        )
-                    )
-                else
-                    cast(
-                        regexp_extract(
-                            cast(unbase64(details:positionid::string) as string),
-                            '/([0-9]+)$',
-                            1
-                        ) as bigint
-                    )
+                then coalesce(_position_br_database_id, _legacy_br_position_id)
+                else _legacy_br_position_id
             end as ballotready_position_id,
 
             is_latest_version
