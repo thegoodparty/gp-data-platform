@@ -283,6 +283,12 @@ models:
           L2 district type classification (e.g., "Township", "City").
           Null if no L2 match was found.
 
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - hubspot_id
+            - outreach_id
+
   - name: mban_election_results
     description: |
       DDHQ election results data for MBAN Analytics program (2026).
