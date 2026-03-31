@@ -85,14 +85,14 @@ with
             coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign,
 
             coalesce(
-                os.serve_organization_count > 0 or su.user_id is not null, false
+                os.serve_organization_count > 0 or pu.user_id is not null, false
             ) as is_serve_user,
-            case when su.user_id is not null then true else false end as is_poll_user,
-            su.eo_activated_at
+            case when pu.user_id is not null then true else false end as is_poll_user,
+            pu.eo_activated_at
         from users u
         left join organization_stats os on u.id = os.user_id
         left join campaign_stats cs on u.id = cs.user_id
-        left join poll_users su on u.id = su.user_id
+        left join poll_users pu on u.id = pu.user_id
     )
 
 select *
