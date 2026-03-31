@@ -91,9 +91,7 @@ with
                 os.serve_organization_count > 0 or pu.user_id is not null, false
             ) as is_serve_user,
             case when pu.user_id is not null then true else false end as is_poll_user,
-            least(
-                pu.eo_activated_at, os.first_serve_org_created_at
-            ) as serve_activated_at
+            least(pu.eo_activated_at, os.first_serve_org_created_at) as eo_activated_at
         from users u
         left join organization_stats os on u.id = os.user_id
         left join campaign_stats cs on u.id = cs.user_id
