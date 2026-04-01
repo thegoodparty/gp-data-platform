@@ -1,3 +1,38 @@
+with
+
+    campaign_outreach as (
+        select
+            get_json_object(c.data, '$.hubspotId') as hubspot_id,
+            o.id,
+            o.campaignid,
+            o.name,
+            o.title,
+            o.script,
+            o.status,
+            o.outreach_type,
+            o.date,
+            o.message,
+            o.phone_list_id,
+            o.audience_request,
+            o.voter_file_filter_id,
+            o.createdat,
+            o.updatedat
+        from {{ ref("stg_airbyte_source__gp_api_db_campaign") }} as c
+        inner join
+            {{ ref("stg_airbyte_source__gp_api_db_outreach") }} as o
+            on c.id = o.campaignid
+            and o.outreach_type = 'text'
+            and o.date >= '2023-01-01'
+    ),
+
+    l2_districts as (
+        select name, state, l2_district_name, l2_district_type
+        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+        where l2_district_type != 'NOT_MATCHED'
+        qualify
+            row_number() over (partition by name, state order by l2_district_name) = 1
+    )
+
 select
     -- HubSpot company fields (candidacy-level data)
     h.id as hubspot_id,
@@ -44,38 +79,9 @@ from {{ ref("stg_airbyte_source__hubspot_api_companies") }} as h
 left join
     {{ ref("clean_states") }} as tbl_states
     on trim(upper(h.state)) = tbl_states.state_raw
+left join campaign_outreach as co on h.id = co.hubspot_id
 left join
-    (
-        select
-            get_json_object(c.data, '$.hubspotId') as hubspot_id,
-            o.id,
-            o.campaignid,
-            o.name,
-            o.title,
-            o.script,
-            o.status,
-            o.outreach_type,
-            o.date,
-            o.message,
-            o.phone_list_id,
-            o.audience_request,
-            o.voter_file_filter_id,
-            o.createdat,
-            o.updatedat
-        from {{ ref("stg_airbyte_source__gp_api_db_campaign") }} as c
-        inner join
-            {{ ref("stg_airbyte_source__gp_api_db_outreach") }} as o
-            on c.id = o.campaignid
-            and o.outreach_type = 'text'
-            and o.date >= '2023-01-01'
-    ) as co
-    on h.id = co.hubspot_id
-left join
-    (
-        select distinct name, state, l2_district_name, l2_district_type
-        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
-        where l2_district_type != 'NOT_MATCHED'
-    ) as l
+    l2_districts as l
     on h.candidate_office is not null
     and h.candidate_office != ''
     and lower(trim(h.candidate_office)) = lower(trim(l.name))
