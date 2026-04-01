@@ -87,6 +87,10 @@ seeds:
         data_tests:
           - unique
           - not_null
+          - relationships:
+              arguments:
+                to: ref('int__enhanced_position')
+                field: br_database_id
       - name: br_position_name
         description: Human-readable BR position name (for documentation only, not used in joins)
         data_tests:
@@ -94,6 +98,16 @@ seeds:
       - name: state
         data_tests:
           - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US"
+                ]
       - name: l2_district_type
         description: Corrected L2 district type
         data_tests:
@@ -106,6 +120,14 @@ seeds:
         description: Why this override is needed
         data_tests:
           - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              concat(state, '|', l2_district_type, '|', l2_district_name) in (
+                select concat(state, '|', l2_district_type, '|', l2_district_name)
+                from {{ ref('m_election_api__district') }}
+              )
 
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
