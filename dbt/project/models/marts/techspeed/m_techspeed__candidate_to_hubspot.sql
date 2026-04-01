@@ -115,8 +115,8 @@ with
             coalesce(cast(f.election_date as string), '') as `Election Date`,
             coalesce(f.election_type, '') as `Election Type`,
             coalesce(f.uncontested, '') as `Uncontested`,
-            coalesce(f.number_of_candidates, '') as `Number of Candidates`,
-            coalesce(f.number_of_seats_available, '') as `Number of Seats Available`,
+            f.number_of_candidates as `Number of Candidates`,
+            f.number_of_seats_available as `Number of Seats Available`,
             case
                 when f.is_open_seat then 'Yes' when not f.is_open_seat then 'No' else ''
             end as `Open Seat`,
