@@ -52,7 +52,10 @@ with
                 )
             )
             {% if is_incremental() %}
-                and tbl_position.updated_at > (select max(updated_at) from {{ this }})
+                and (
+                    tbl_position.updated_at > (select max(updated_at) from {{ this }})
+                    or tbl_override.br_database_id is not null
+                )
             {% endif %}
     ),
 
