@@ -154,7 +154,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     hubspot_candidate_codes: DataFrame = hubspot_ytd_candidacies.filter(
         col("hubspot_candidate_code").isNotNull()
     ).withColumnRenamed("id", "hubspot_contact_id")
+    # Disable Arrow optimization to avoid ChunkedArray conversion error
+    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "false")
     hubspot_candidate_codes = hubspot_candidate_codes.toPandas()
+    session.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
 
     udf_perform_fuzzy_matching = wrap_perform_fuzzy_matching(
         hubspot_candidate_codes, threshold=FUZZY_THRESHOLD, top_n=TOP_N_MATCHES

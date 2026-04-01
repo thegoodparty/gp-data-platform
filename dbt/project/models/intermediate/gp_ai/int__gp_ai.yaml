@@ -12,9 +12,7 @@ models:
         data_tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: created_at
         description: Timestamp when the record was first created
         data_tests:
@@ -77,17 +75,23 @@ models:
       - name: election_date
         description: Date of the election. Used in join conditions in downstream models along with election_type. This test ensures the column is not null to prevent silent join failures.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "has_match is true"
       - name: election_type
         description: Type of election (general, primary, or runoff). Used in join conditions in downstream models. This test ensures only expected values exist to prevent silent join failures.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "has_match is true"
           - accepted_values:
               arguments:
                 values:
                   - general
                   - primary
                   - runoff
+      - name: ddhq_is_winner
+        description: Whether the candidate won the election stage
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

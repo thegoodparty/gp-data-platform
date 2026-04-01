@@ -32,14 +32,14 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(tbl_contest.official_office_name, '')",
-                        "coalesce(tbl_contest.candidate_office, '')",
-                        "coalesce(tbl_contest.office_type, '')",
-                        "coalesce(tbl_contest.office_level, '')",
-                        "coalesce(tbl_contest.state, '')",
-                        "coalesce(tbl_contest.city, '')",
-                        "coalesce(tbl_contest.district, '')",
-                        "coalesce(tbl_contest.seat_name, '')",
+                        "tbl_contest.official_office_name",
+                        "tbl_contest.candidate_office",
+                        "tbl_contest.office_type",
+                        "tbl_contest.office_level",
+                        "tbl_contest.state",
+                        "tbl_contest.city",
+                        "tbl_contest.district",
+                        "tbl_contest.seat_name",
                     ]
                 )
             }} as gp_contest_id,
@@ -76,7 +76,7 @@ with
             tbl_contacts.party_affiliation,
             tbl_contacts.is_partisan,
             tbl_contacts.verified_candidate,
-            tbl_contacts.pledge_status,
+            tbl_contacts.is_pledged,
 
             -- Geographic representation
             tbl_contacts.state,
@@ -219,7 +219,8 @@ with
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
             as tbl_ddhq_election_results_source
-            on tbl_ddhq_election_results_source.race_id = tbl_ddhq_matches.ddhq_race_id
+            on tbl_ddhq_election_results_source.ddhq_race_id
+            = tbl_ddhq_matches.ddhq_race_id
             and tbl_ddhq_election_results_source.candidate_id
             = tbl_ddhq_matches.ddhq_candidate_id
     -- TODO: add incrementality once DDHQ matches are incremental

@@ -51,19 +51,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["l2", "haystaq", "s3", "databricks", "load"],
     )
 
-    dbt_env_name = dbt.config.get("dbt_environment")
     s3_bucket = dbt.config.get("l2_s3_bucket")
     databricks_schema_override = dbt.config.get("l2_haystaq_databricks_schema")
 
     if databricks_schema_override:
         databricks_schema = databricks_schema_override
     else:
-        if dbt_env_name == "dev":
-            databricks_schema = "dbt_hugh_source"
-        elif dbt_env_name == "prod":
-            databricks_schema = "dbt_source"
-        else:
-            raise ValueError(f"Invalid `dbt_env_name`: {dbt_env_name}")
+        databricks_schema = f"{dbt.this.schema}_source"
 
     s3_files_loaded: DataFrame = dbt.ref("load__l2_haystaq_sftp_to_s3")
     state_list = [

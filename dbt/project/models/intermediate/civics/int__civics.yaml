@@ -1,0 +1,1445 @@
+models:
+  - name: int__civics_election_2025
+    description: >
+      Historical archive of elections from the general mart with election dates
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_election_stage_2025
+    description: >
+      Historical archive of election stages (primary, general, primary runoff, general runoff) from the
+      general mart with election stage dates on or before 2025-12-31.
+      Snapshot from 2026-01-22.
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_2025')
+                field: gp_election_id
+      - name: ddhq_race_id
+        description: DDHQ race identifier
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Type of election stage (primary, general, primary runoff, general runoff)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - primary
+                  - general
+                  - primary runoff
+                  - general runoff
+      - name: ddhq_election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_2025
+    description: >
+      Historical archive of candidacies from the general mart with elections
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - internally generated unique identifier for candidacies
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_2025')
+                field: gp_candidate_id
+      - name: gp_election_id
+        description: Foreign key to election table (referential integrity enforced at mart level)
+      - name: is_pledged
+        description: >
+          Whether the candidate has taken the GoodParty pledge (boolean).
+          A pledged candidate agreed to 4 qualifying statements either on the
+          GoodParty website or via communication with the politics team.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_verified
+        description: >
+          Whether the candidacy has been verified to exist (boolean).
+          True if verified, false otherwise. Set automatically if candidate data
+          came from Techspeed or BallotReady. For inbound candidates, verification
+          was done manually by the politics team by checking for evidence of a
+          legitimate campaign (campaign website, filing information, Facebook page,
+          etc.). Manual verification was discontinued in 2026.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: verification_status_reason
+        description: >
+          Reason why a candidacy is not verified. Only populated when is_verified
+          is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
+          Write In.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "No"
+                  - "Unresponsive"
+                  - "Can\\'t Determine"
+                  - "Partisan Candidate"
+                  - "Write In"
+      - name: general_election_date
+        description: Date of the general election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_candidate_2025
+    description: >
+      Historical archive of candidates from the general mart with elections
+      on or before 2025-12-31. Snapshot from 2026-01-22.
+    columns:
+      - name: gp_candidate_id
+        description: Primary key - internally generated unique identifier for candidates
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+          config:
+            # Companies without associated contacts may have null names
+            error_if: ">200"
+            warn_if: ">150"
+
+  - name: int__civics_candidacy_stage_2025
+    description: >
+      Historical archive of candidacy stages (primary, general, primary runoff, general runoff results)
+      from the general mart with election stages on or before 2025-12-31.
+      Uses archived HubSpot data from 2026-01-22 for election results.
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_2025')
+                field: gp_candidacy_id
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_2025')
+                field: gp_election_stage_id
+      - name: is_winner
+        description: Whether the candidate won the election stage (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: election_result
+        description: >
+          Normalized result of the election stage.
+          Standard values: Won, Lost, Runoff, Withdrew, Not on Ballot.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
+                  - Withdrew
+                  - Not on Ballot
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2025-12-31'"
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__hubspot_contacts_2025
+    description: >
+      Archived HubSpot contacts from 2026-01-22 snapshot. Source data for civics mart.
+    columns:
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: verified_candidate_status
+        description: >
+          Raw verification status from HubSpot contacts. Empty strings allowed
+          and converted to nulls in downstream int__hubspot_companies_w_contacts_2025.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "Yes"
+                  - "No"
+                  - "Unresponsive"
+                  - "Can\\'t Determine"
+                  - "Partisan Candidate"
+                  - "Write In"
+                  - ""
+
+  - name: int__hubspot_companies_w_contacts_2025
+    description: >
+      Archived HubSpot companies joined with contacts from 2026-01-22 snapshot.
+      Upstream source for civics candidacy data. Empty strings in verified_candidate
+      are converted to nulls at this layer.
+    columns:
+      - name: verified_candidate
+        description: >
+          Verification status from HubSpot. Empty strings converted to nulls.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "Yes"
+                  - "No"
+                  - "Unresponsive"
+                  - "Can\\'t Determine"
+                  - "Partisan Candidate"
+                  - "Write In"
+
+  - name: int__civics_candidacy_techspeed
+    description: >
+      TechSpeed candidates transformed into civics mart candidacy schema.
+
+      Grain: One row per candidacy (candidate + election combination).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates
+
+      Key design decisions:
+      - UUID fields aligned with int__hubspot_companies_w_contacts_2025 for cross-source consistency
+      - br_candidacy_id is NULL; will be populated via COALESCE when TS adds it
+      - candidate_code is the linkage key to BallotReady data
+      - No HubSpot dependency
+      - Election-level attributes (population, seats, etc.) NOT included — those belong in election table
+
+    columns:
+      - name: gp_candidacy_id
+        description: >
+          Primary key - internally generated UUID for candidacies.
+          Generated from: first_name, last_name, state, party, candidate_office,
+          election_date, district (matches HubSpot pattern).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: br_candidacy_id
+        description: BallotReady candidacy ID - NULL for TechSpeed-sourced records (future COALESCE target)
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_techspeed')
+                field: gp_candidate_id
+
+      - name: hubspot_company_ids
+        description: HubSpot company IDs (NULL for TechSpeed-sourced records)
+
+      - name: candidate_code
+        description: Deterministic linkage key (first_name__last_name__state__office_type__city)
+        data_tests:
+          - not_null
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["techspeed"]
+
+      - name: is_verified
+        description: Whether candidacy is verified (always TRUE for TechSpeed data)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_pledged
+        description: Whether candidate took GoodParty pledge (always FALSE for TechSpeed leads)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_incumbent
+        description: Whether candidate is incumbent (boolean, NULL if unknown)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_open_seat
+        description: Whether seat is open (boolean, NULL if unknown)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_partisan
+        description: Whether race is partisan (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: general_election_date
+        description: >
+          General election date. May be NULL for records that only have a
+          primary election date (e.g. early 2026 primaries before general
+          dates are set). At least one of general/primary must be non-null.
+
+      - name: primary_election_date
+        description: >
+          Primary election date. May be NULL when only a general election
+          date is available. At least one of general/primary must be non-null.
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: techspeed_candidacy_has_general_or_primary_date
+          arguments:
+            expression: "coalesce(general_election_date, primary_election_date) is not null"
+
+  - name: int__civics_candidate_techspeed
+    description: >
+      TechSpeed candidates transformed into civics mart candidate schema.
+
+      Grain: One row per unique person (deduplicated on identity fields).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates
+
+      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
+      first_name, last_name, state, birth_date, email, phone_number
+
+    columns:
+      - name: gp_candidate_id
+        description: >
+          Primary key - internally generated UUID for candidates.
+          Generated from: first_name, last_name, state, birth_date, email, phone_number.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: first_name
+        description: Candidate's first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate's last name
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state
+        data_tests:
+          - not_null
+          - is_state_abbreviation:
+              config:
+                severity: warn
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_stage_techspeed
+    description: >
+      TechSpeed election stages transformed into civics mart election_stage schema.
+
+      Grain: One row per election stage (race + stage type).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted from candidate-level
+      into primary/general stage rows, then aggregated to race-level.
+
+      gp_election_stage_id uses a composite key (NOT br_race_id) because a
+      TechSpeed candidate has one br_race_id but two stage dates. br_race_id
+      is stored as a reference column only.
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_techspeed')
+                field: gp_election_id
+
+      - name: br_race_id
+        description: >
+          BallotReady race ID reference. May be a numeric ID (for BR-matched records)
+          or 'ts_found_race_net_new' (for net-new races). NOT used for ID generation.
+
+      - name: stage_type
+        description: Type of election stage
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - general
+                  - primary
+
+      - name: election_date
+        description: Date of the election stage
+        data_tests:
+          - not_null
+
+      - name: is_primary
+        description: Whether this stage is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_runoff
+        description: Whether this stage is a runoff election (always false for TechSpeed)
+
+      - name: is_retention
+        description: Whether this stage is a retention election (always false for TechSpeed)
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_techspeed
+    description: >
+      TechSpeed elections transformed into civics mart election schema.
+
+      Grain: One row per election (position + election year).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, grouped by election-defining
+      fields. Enriched with population, filing_deadline, and contested status
+      from the source data.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+
+      - name: election_year
+        description: Year of the election
+
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: has_ddhq_match
+        description: Whether there is a DDHQ match (always false for TechSpeed)
+
+      - name: is_judicial
+        description: Whether the office is judicial (always null for TechSpeed)
+
+      - name: is_appointed
+        description: Whether the office is appointed (always null for TechSpeed)
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_stage_techspeed
+    description: >
+      TechSpeed candidacy stages transformed into civics mart candidacy_stage schema.
+
+      Grain: One row per candidacy stage (candidate + election stage).
+
+      Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted into primary/general
+      stage rows. Each candidate with both dates produces two rows.
+
+      Won/Unopposed election results mapped to general stages when available.
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_techspeed')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_techspeed')
+                field: gp_election_stage_id
+
+      - name: election_result
+        description: Result of the election stage (Won or null, general stages only)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+
+      - name: is_winner
+        description: Whether the candidate won the election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - not_null
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidate_ballotready
+    description: >
+      BallotReady candidates transformed into civics mart candidate schema.
+
+      Grain: One row per unique person (deduplicated on gp_candidate_id).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      augmented with int__ballotready_person for contact/URL data from API.
+
+    columns:
+      - name: gp_candidate_id
+        description: >
+          Primary key - internally generated UUID for candidates.
+          Generated from: first_name, last_name, state, birth_date (null), email, phone.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              description: >
+                Every candidate must have at least one candidacy. Failures
+                indicate an ID-generation mismatch between candidate and
+                candidacy models (e.g. different email coalesce logic).
+              arguments:
+                to: ref('int__civics_candidacy_ballotready')
+                field: gp_candidate_id
+              config:
+                # A small number of candidates may have candidacy rows where
+                # all election dates are null after rollup, causing them to be
+                # filtered out of the candidacy table. Large spikes indicate
+                # an ID-generation bug.
+                warn_if: ">15"
+                error_if: ">50"
+
+      - name: first_name
+        description: Candidate's first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate's last name
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_ballotready
+    description: >
+      BallotReady candidacies transformed into civics mart candidacy schema.
+
+      Grain: One row per candidacy (candidate + position + election year).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections),
+      rolled up from race-level to candidacy-level by grouping on
+      br_candidate_id + br_position_id + br_election_id.
+
+    columns:
+      - name: gp_candidacy_id
+        description: >
+          Primary key - internally generated UUID for candidacies.
+          Generated from: first_name, last_name, state, party, candidate_office,
+          election_date, district.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_ballotready')
+                field: gp_candidate_id
+
+      - name: gp_election_id
+        description: Foreign key to election table
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+
+      - name: is_verified
+        description: Whether candidacy is verified (always true for BallotReady data)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: is_pledged
+        description: Whether candidate took GoodParty pledge (always false for BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: candidacy_result
+        description: Result of the candidacy (Won, Lost, Runoff, or null)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_elected_official_ballotready
+    description: >
+      BallotReady office holders transformed into the civics mart
+      elected_officials schema.
+
+      Grain: One row per office-holder term.
+
+      Source: stg_airbyte_source__ballotready_s3_office_holders_v3.
+      Includes the contacts parser fix for Ruby nil values in staging.
+
+    columns:
+      - name: gp_elected_official_id
+        description: >
+          Primary key - internally generated UUID for elected officials.
+          Generated from the BallotReady office-holder natural key to preserve
+          uniqueness at the office-holder term grain.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: br_office_holder_id
+        description: BallotReady natural key for the office-holder term record
+        data_tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        description: Elected official first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Elected official last name
+        data_tests:
+          - not_null
+
+      - name: phone
+        description: >
+          Canonical phone number, preferring office_phone, then central_phone,
+          then any remaining non-null BallotReady phone value
+
+      - name: position_name
+        description: Raw BallotReady office name
+        data_tests:
+          - not_null
+
+      - name: br_position_id
+        description: BallotReady position identifier
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+
+      - name: office_level
+        description: >
+          Office level derived from BallotReady level values.
+          City-level offices are mapped to Local.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
+      - name: party_affiliation
+        description: Normalized party affiliation from the first BallotReady party value
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: office_phone
+        description: Phone number from a BallotReady contact with type = office
+
+      - name: central_phone
+        description: Phone number from a BallotReady contact with type = central
+
+      - name: candidate_id_source
+        description: Source system identifier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_elected_official_techspeed
+    description: >
+      TechSpeed office holders transformed into the civics mart
+      elected_officials schema.
+
+      Grain: One row per officeholder-position (current snapshot, deduplicated).
+
+      Source: stg_airbyte_source__techspeed_gdrive_officeholders.
+
+    columns:
+      - name: gp_elected_official_id
+        description: >
+          Primary key - internally generated UUID for elected officials.
+          Generated from composite key: ts_officeholder_id + position_id +
+          office_name_clean to handle source ID collisions.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: ts_officeholder_id
+        description: >
+          TechSpeed officeholder ID. Not unique — source reuses across
+          genuinely different people. Carried for traceability only.
+        data_tests:
+          - not_null
+
+      - name: ts_position_id
+        description: TechSpeed position ID
+        data_tests:
+          - not_null
+
+      - name: ts_normalized_position_id
+        description: TechSpeed normalized position ID
+
+      - name: first_name
+        description: Elected official first name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Elected official last name
+        data_tests:
+          - not_null
+
+      - name: full_name
+        description: Concatenated first + last name
+
+      - name: email
+        description: >
+          Contact email. ~34.6% may be wrong-person (sourced from
+          fastpeoplesearch.com lookups). Treat with skepticism.
+
+      - name: phone
+        description: Cleaned phone number (punctuation stripped in staging)
+
+      - name: position_name
+        description: Raw TechSpeed office name (from office_name field)
+        data_tests:
+          - not_null
+
+      - name: normalized_position_name
+        description: TechSpeed normalized office name (from office_normalized field)
+
+      - name: candidate_office
+        description: Office name via initcap(office_normalized), used for display
+
+      - name: state
+        description: >
+          U.S. state (2-letter code, via clean_states join).
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+          - is_state_abbreviation:
+              config:
+                severity: warn
+
+      - name: city
+        description: City from source data
+
+      - name: district
+        description: Electoral district name
+
+      - name: office_level
+        description: >
+          Office level derived from TechSpeed level field.
+          City-level offices are mapped to Local.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+
+      - name: office_type
+        description: >
+          Normalized office type derived from TechSpeed office_type field
+          via a 34-variant case normalization map.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - City Council
+                  - Town Council
+                  - School Board
+                  - Mayor
+                  - Judge
+                  - Clerk/Treasurer
+                  - County Supervisor
+                  - Sheriff
+                  - State House
+                  - State Senate
+                  - Surveyor
+                  - Attorney
+                  - Other
+
+      - name: party_affiliation
+        description: Normalized party affiliation via parse_party_affiliation macro
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: is_incumbent
+        description: Whether the officeholder is an incumbent (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_judicial
+        description: Whether the position is judicial, derived from source office_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_uncontested
+        description: Whether the position is uncontested (boolean, may be null)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: mailing_address_line_1
+        description: Street address for mailing
+
+      - name: mailing_city
+        description: City for mailing address
+
+      - name: mailing_state
+        description: State for mailing address (2-letter code)
+
+      - name: mailing_zip
+        description: Postal code for mailing address
+
+      - name: tier
+        description: TechSpeed tier classification (integer)
+
+      - name: county_municipality
+        description: County or municipality from source data
+
+      - name: normalized_location
+        description: TechSpeed normalized location string
+
+      - name: ts_status
+        description: TechSpeed record status
+
+      - name: candidate_id_source
+        description: Source system identifier (always 'techspeed')
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - techspeed
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__er_prematch_candidacy_stages
+    description: >
+      Entity resolution prematch table: BallotReady x TechSpeed x DDHQ
+      candidacy-stages unioned into a standardized schema for Splink
+      probabilistic matching.
+
+      Grain: One row per source candidacy-stage record (candidate + office + election date).
+
+      Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
+      stg_airbyte_source__techspeed_gdrive_candidates (TS),
+      stg_airbyte_source__ddhq_gdrive_election_results (DDHQ), with
+      clean_states for state standardization and int__ballotready_person for
+      API contact data.
+
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id.
+          Guaranteed unique across all sources.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: source_name
+        description: Origin of the record ('ballotready', 'techspeed', or 'ddhq')
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - techspeed
+                  - ddhq
+
+      - name: source_id
+        description: >
+          Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
+          DDHQ: candidate_id_race_id.
+        data_tests:
+          - not_null
+
+      - name: first_name
+        description: Candidate first name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: last_name
+        description: Candidate last name (lowercased, trimmed)
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation:
+              config:
+                severity: warn
+
+      - name: election_date
+        description: Election date for this candidacy-stage
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: Type of election stage (Primary, General, Runoff)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Primary
+                  - General
+                  - Runoff
+
+  - name: int__er_prematch_elected_officials
+    description: >
+      Entity resolution prematch table: BallotReady x TechSpeed elected
+      officials unioned into a standardized schema for Splink probabilistic
+      matching.
+
+      Grain: One row per office-holder term (BR) / officeholder-position (TS).
+
+      Sources: int__civics_elected_official_ballotready (BR),
+      int__civics_elected_official_techspeed (TS), with nicknames seed for
+      first_name alias arrays.
+
+      Unlike the candidacy prematch, elected officials have no election_date
+      or br_race_id. Splink blocking anchors on state + office name + last
+      name and contact info (phone, email).
+
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id.
+          Guaranteed unique across all sources.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: source_name
+        description: Origin of the record ('ballotready' or 'techspeed')
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - techspeed
+
+      - name: source_id
+        description: >
+          Source-specific identifier. BR: br_office_holder_id (string);
+          TS: gp_elected_official_id (salted UUID from ts_officeholder_id +
+          position_id + office_name_clean).
+        data_tests:
+          - not_null
+
+      - name: first_name
+        description: Official first name (lowercased, trimmed; blank names filtered out)
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "!= ''"
+
+      - name: last_name
+        description: Official last name (lowercased, trimmed; blank names filtered out)
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "!= ''"
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation
+
+  - name: int__civics_election_ballotready
+    description: >
+      BallotReady elections transformed into civics mart election schema.
+
+      Grain: One row per election (position + election date).
+
+      Source: Rolled up from int__civics_election_stage_ballotready, which
+      sources from BallotReady API race, election, and position tables.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2026-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: election_year
+        description: Year of the election
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2026
+                max_value: 2030
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_election_stage_ballotready
+    description: >
+      BallotReady election stages transformed into civics mart election_stage schema.
+
+      Grain: One row per election stage (position + election + stage type).
+
+      Source: BallotReady API race, election, and position tables (2026+ elections).
+      This model is the foundation for int__civics_election_ballotready, which
+      rolls up stages into elections.
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_election_id
+        description: Foreign key to election table (referential integrity guaranteed by the election model rolling up from this model)
+        data_tests:
+          - not_null
+
+      - name: br_race_id
+        description: BallotReady race ID (maps to election stage concept)
+        data_tests:
+          - not_null
+
+      - name: br_election_id
+        description: BallotReady election ID
+
+      - name: br_position_id
+        description: BallotReady position ID (used for ICP join)
+
+      - name: stage_type
+        description: Type of election stage
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - general
+                  - primary
+                  - primary runoff
+                  - general runoff
+
+      - name: election_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2026-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: election_name
+        description: >
+          Overarching election event name from BallotReady (e.g., "Illinois Primary Election").
+          Describes the election event, not the specific race/office.
+
+      - name: race_name
+        description: >
+          Office-specific label constructed from BallotReady position fields
+          (e.g., "IL Franklin County Board - Full Term"). Analogous to DDHQ race name.
+
+      - name: is_primary
+        description: Whether this stage is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_runoff
+        description: Whether this stage is a runoff election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_retention
+        description: Whether this stage is a retention election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: number_of_seats
+        description: Number of seats available for this race
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_candidacy_stage_ballotready
+    description: >
+      BallotReady candidacy stages transformed into civics mart candidacy_stage schema.
+
+      Grain: One row per candidacy stage (each BallotReady S3 candidacy row is a stage).
+
+      Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections).
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_ballotready')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_ballotready')
+                field: gp_election_stage_id
+              config:
+                error_if: ">=100"
+
+      - name: election_result
+        description: Result of the election stage (Won, Lost, Runoff, or null)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+                  - Lost
+                  - Runoff
+
+      - name: is_winner
+        description: Whether the candidate won the election stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - true
+                  - false
+
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'2026-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null

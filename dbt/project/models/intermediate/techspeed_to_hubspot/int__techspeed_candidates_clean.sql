@@ -9,7 +9,7 @@
 }}
 
 with
-    candidates_wo_suffix as (
+    candidates_cleaned as (
         select
             case
                 when candidate_id_source = 'ts_found_race_net_new'
@@ -82,12 +82,13 @@ with
             uncontested,
             number_of_candidates,
             number_of_seats_available,
-            open_seat,
-            partisan,
+            is_open_seat,
+            is_partisan,
             try_cast(
                 trim(regexp_replace(population, '[^0-9]', '')) as integer
             ) as population,
-            ballotready_race_id,
+            br_race_id,
+            election_result,
             type,
             contact_owner,
             owner_name,
@@ -98,24 +99,11 @@ with
             end as uploaded,
             _ab_source_file_url,
             _airbyte_extracted_at,
-            {{ remove_techspeed_name_suffixes("last_name") }} as last_name_no_suffix
-        from {{ ref("int__techspeed_candidates") }}
-        {% if is_incremental() %}
-            where
-                _airbyte_extracted_at
-                > (select max(_airbyte_extracted_at) from {{ this }})
-        {% endif %}
-    ),
-    candidates_w_clean_comma as (
-        select
-            * except (last_name_no_suffix),
+            -- Remove name suffixes (Jr, Sr, II, III, etc.)
+            {{ remove_name_suffixes("last_name") }} as last_name_no_suffix,
             -- Remove trailing commas
-            regexp_replace(last_name_no_suffix, ',$', '') as last_name_no_comma
-        from candidates_wo_suffix
-    ),
-    candidates_w_clean_space as (
-        select
-            * except (last_name_no_comma),
+            regexp_replace(last_name_no_suffix, ',$', '') as last_name_no_comma,
+            -- Remove trailing single character after space
             case
                 when
                     length(last_name_no_comma) >= 2
@@ -123,12 +111,7 @@ with
                     = ' '
                 then substring(last_name_no_comma, 1, length(last_name_no_comma) - 2)
                 else last_name_no_comma
-            end as last_name_trimmed
-        from candidates_w_clean_comma
-    ),
-    candidates_w_clean_initials as (
-        select
-            * except (last_name_trimmed),
+            end as last_name_trimmed,
             -- Handle middle initial with period but no space
             case
                 when
@@ -137,12 +120,7 @@ with
                     and substring(last_name_trimmed, 3, 1) != ' '
                 then substring(last_name_trimmed, 3)
                 else last_name_trimmed
-            end as last_name_clean
-        from candidates_w_clean_space
-    ),
-    candidates_w_extracted_last_name as (
-        select
-            * except (last_name_clean),
+            end as last_name_clean,
             -- Extract suggested last name (everything after last space)
             case
                 when last_name_clean like '% %'
@@ -182,7 +160,12 @@ with
                     end
                 else last_name_clean
             end as suggested_last
-        from candidates_w_clean_initials
+        from {{ ref("int__techspeed_candidates") }}
+        {% if is_incremental() %}
+            where
+                _airbyte_extracted_at
+                > (select max(_airbyte_extracted_at) from {{ this }})
+        {% endif %}
     ),
     candidates_deduped_on_name_state_office_type as (
         select
@@ -191,6 +174,8 @@ with
                 when first_name is null
                 then null
                 when last_name is null
+                then null
+                when nullif(trim(suggested_last), '') is null
                 then null
                 when state is null
                 then null
@@ -207,13 +192,14 @@ with
                         )
                     }}
             end as techspeed_candidate_code
-        from candidates_w_extracted_last_name
+        from candidates_cleaned
         where
             -- Filter out records with null or empty required fields for candidate code
             trim(first_name) is not null
             and trim(first_name) <> ''
             and trim(last_name) is not null
             and trim(last_name) <> ''
+            and nullif(trim(suggested_last), '') is not null
             and trim(state) is not null
             and trim(state) <> ''
             and trim(city) is not null
@@ -230,12 +216,19 @@ with
             )
             = 1
     ),
-    -- deduplicate on phone number, and order by the source file url
-    -- in ascending order. This is to ensure that we only keep the record the
-    -- first time it appears so we don't overwrite the record with a later one
+    -- Deduplicate on phone number. NULL phone rows skip phone-based dedup
+    -- to avoid Databricks NULL partition collapse (all NULLs group into one
+    -- partition, only 1 survives).
     candidates_deduped_on_phone as (
         select *
         from candidates_deduped_on_name_state_office_type
+        where phone is null
+
+        union all
+
+        select *
+        from candidates_deduped_on_name_state_office_type
+        where phone is not null
         qualify
             row_number() over (partition by phone order by _ab_source_file_url asc) = 1
     )
@@ -273,10 +266,11 @@ select
     uncontested,
     number_of_candidates,
     number_of_seats_available,
-    open_seat,
-    partisan,
+    is_open_seat,
+    is_partisan,
     population,
-    ballotready_race_id,
+    br_race_id,
+    election_result,
     type,
     contact_owner,
     owner_name,

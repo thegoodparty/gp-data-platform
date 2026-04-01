@@ -2,7 +2,17 @@ from datetime import datetime
 
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import col, collect_list, concat, length, lit, size, when
+from pyspark.sql.functions import (
+    array_distinct,
+    array_union,
+    col,
+    collect_list,
+    concat,
+    length,
+    lit,
+    size,
+    when,
+)
 from pyspark.sql.types import (
     ArrayType,
     StringType,
@@ -45,6 +55,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
     # get the max loaded for this table and compare against latest changes to l2 uniform data
+    existing_table = None
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
         max_loaded_at = existing_table.agg({"loaded_at": "max"}).collect()[0][0]
@@ -133,5 +144,34 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # drop rows which have no district names or the size of the array is 0
     final_result = final_result.filter(col("district_names").isNotNull())
     final_result = final_result.filter(size(col("district_names")) > 0)
+
+    # On incremental runs, merge new district_names with existing ones so that
+    # the upsert doesn't overwrite previously captured districts.
+    if existing_table is not None:
+        final_result = (
+            final_result.alias("new")
+            .join(
+                existing_table.select(
+                    "zip_code",
+                    "state_postal_code",
+                    "district_type",
+                    col("district_names").alias("existing_district_names"),
+                ),
+                on=["zip_code", "state_postal_code", "district_type"],
+                how="left",
+            )
+            .withColumn(
+                "district_names",
+                when(
+                    col("existing_district_names").isNotNull(),
+                    array_distinct(
+                        array_union(
+                            col("district_names"), col("existing_district_names")
+                        )
+                    ),
+                ).otherwise(col("district_names")),
+            )
+            .drop("existing_district_names")
+        )
 
     return final_result

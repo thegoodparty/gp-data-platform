@@ -1,0 +1,8 @@
+select *
+from
+    {{
+        source(
+            "segment_storage_source_web_app",
+            "navigation_dashboard_click_voter_outreach",
+        )
+    }}

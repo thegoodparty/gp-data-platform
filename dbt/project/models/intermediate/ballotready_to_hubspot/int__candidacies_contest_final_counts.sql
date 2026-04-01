@@ -20,25 +20,21 @@ with
                 concat_ws(
                     '__',
                     regexp_replace(
-                        regexp_replace(trim(properties_official_office_name), ' ', '-'),
+                        regexp_replace(trim(official_office_name), ' ', '-'),
                         '[^a-zA-Z0-9-]',
                         ''
                     ),
                     regexp_replace(
-                        regexp_replace(trim(properties_election_date), ' ', '-'),
+                        regexp_replace(trim(election_date), ' ', '-'),
                         '[^a-zA-Z0-9-]',
                         ''
                     )
                 )
             ) as contest_id,
-            count(properties_lastname) as numcands,
-            cast(
-                cast(properties_number_of_seats_available as float) as int
-            ) as number_of_seats_available
+            count(last_name) as numcands,
+            number_of_seats_available
         from {{ ref("int__hubspot_ytd_candidacies") }}
-        where
-            properties_official_office_name is not null
-            and properties_election_date is not null
+        where official_office_name is not null and election_date is not null
         group by contest_id, number_of_seats_available
     ),
 

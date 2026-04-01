@@ -2,64 +2,143 @@ with
     source as (
         select * from {{ source("airbyte_source", "techspeed_gdrive_candidates") }}
     ),
+
+    clean_states as (select * from {{ ref("clean_states") }}),
+
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            {{ adapter.quote("city") }},
-            {{ adapter.quote("email") }},
-            {{ adapter.quote("party") }},
-            {{ adapter.quote("phone") }},
-            {{ adapter.quote("state") }},
-            {{ adapter.quote("partisan") }},
-            {{ adapter.quote("last_name") }},
-            {{ adapter.quote("open_seat") }},
-            {{ adapter.quote("ts_status") }},
-            {{ adapter.quote("first_name") }},
-            {{ adapter.quote("is_primary") }},
-            {{ adapter.quote("is_veteran") }},
-            {{ adapter.quote("population") }},
-            {{ adapter.quote("source_url") }},
-            {{ adapter.quote("ts_comment") }},
-            {{ adapter.quote("office_name") }},
-            {{ adapter.quote("office_type") }},
-            {{ adapter.quote("phone_clean") }},
-            {{ adapter.quote("postal_code") }},
-            {{ adapter.quote("website_url") }},
-            {{ adapter.quote("email_source") }},
-            {{ adapter.quote("facebook_url") }},
-            {{ adapter.quote("is_incumbent") }},
-            {{ adapter.quote("linkedin_url") }},
-            {{ adapter.quote("office_level") }},
-            {{ adapter.quote("phone_source") }},
-            {{ adapter.quote("district_name") }},
-            {{ adapter.quote("date_processed") }},
-            {{ adapter.quote("is_uncontested") }},
-            {{ adapter.quote("street_address") }},
-            {{ adapter.quote("twitter_handle") }},
-            {{ adapter.quote("election_result") }},
-            {{ adapter.quote("filing_deadline") }},
-            {{ adapter.quote("seats_available") }},
-            {{ adapter.quote("instagram_handle") }},
-            {{ adapter.quote("candidate_id_tier") }},
-            {{ adapter.quote("number_candidates") }},
-            {{ adapter.quote("office_normalized") }},
-            {{ adapter.quote("_ab_source_file_url") }},
-            {{ adapter.quote("ballotready_race_id") }},
-            {{ adapter.quote("candidate_id_source") }},
-            {{ adapter.quote("county_municipality") }},
-            {{ adapter.quote("normalized_location") }},
-            {{ adapter.quote("phone_type_select_1") }},
-            {{ adapter.quote("general_election_date") }},
-            {{ adapter.quote("primary_election_date") }},
-            {{ adapter.quote("ts_found_race_net_new") }},
-            {{ adapter.quote("date_of_birth_mmddyyyy") }},
-            {{ adapter.quote("ts_found_candidate_net_new") }},
-            {{ adapter.quote("_ab_source_file_last_modified") }}
+            -- Airbyte metadata
+            _airbyte_raw_id,
+            _airbyte_extracted_at,
+            _airbyte_meta,
+            _airbyte_generation_id,
 
-        from source
+            -- Candidate identity
+            trim(first_name) as first_name,
+            trim(last_name) as last_name,
+            trim(src.state) as state,
+            coalesce(
+                cs.state_cleaned_postal_code, trim(src.state)
+            ) as state_postal_code,
+            email,
+            {{ clean_phone_number("phone") }} as phone,
+            date_of_birth_mmddyyyy as birth_date,
+            coalesce(
+                try_cast(date_of_birth_mmddyyyy as date),
+                try_to_date(date_of_birth_mmddyyyy, 'MM-dd-yyyy'),
+                try_to_date(date_of_birth_mmddyyyy, 'MM/dd/yyyy'),
+                try_to_date(date_of_birth_mmddyyyy, 'yyyy-MM-dd')
+            ) as birth_date_parsed,
+            street_address,
+            postal_code,
+
+            -- Office / position
+            trim(office_name) as official_office_name,
+            trim(office_normalized) as candidate_office,
+            office_type,
+            office_level,
+            trim(district_name) as district,
+            trim(normalized_location) as city,
+            county_municipality,
+
+            -- Election dates (raw strings with slash→dash normalization)
+            replace(primary_election_date, '/', '-') as primary_election_date,
+            replace(general_election_date, '/', '-') as general_election_date,
+            replace(filing_deadline, '/', '-') as filing_deadline,
+            -- Parsed DATE columns
+            coalesce(
+                try_cast(replace(primary_election_date, '/', '-') as date),
+                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yyyy'),
+                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yy')
+            ) as primary_election_date_parsed,
+            coalesce(
+                try_cast(replace(general_election_date, '/', '-') as date),
+                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yyyy'),
+                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yy')
+            ) as general_election_date_parsed,
+            case
+                when
+                    year(
+                        coalesce(
+                            try_cast(replace(filing_deadline, '/', '-') as date),
+                            try_to_date(
+                                replace(filing_deadline, '/', '-'), 'MM-dd-yyyy'
+                            )
+                        )
+                    )
+                    between 1900 and 2050
+                then
+                    coalesce(
+                        try_cast(replace(filing_deadline, '/', '-') as date),
+                        try_to_date(replace(filing_deadline, '/', '-'), 'MM-dd-yyyy')
+                    )
+            end as filing_deadline_parsed,
+            -- Coalesced election date (general preferred, fallback to primary)
+            coalesce(
+                try_cast(replace(general_election_date, '/', '-') as date),
+                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yyyy'),
+                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yy'),
+                try_cast(replace(primary_election_date, '/', '-') as date),
+                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yyyy'),
+                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yy')
+            ) as election_date,
+            election_result,
+
+            -- Race metadata (booleans via cast_to_boolean from PR #280)
+            party,
+            {{ cast_to_boolean("partisan", ["partisan"], ["nonpartisan"]) }}
+            as is_partisan,
+            {{ cast_to_boolean("is_incumbent") }} as is_incumbent,
+            {{ cast_to_boolean("is_primary") }} as is_primary,
+            {{ cast_to_boolean("is_uncontested") }} as is_uncontested,
+            {{ cast_to_boolean("open_seat") }} as is_open_seat,
+            is_veteran,
+            try_cast(
+                trim(regexp_replace(cast(population as string), '[^0-9]', '')) as int
+            ) as population,
+            number_candidates as number_of_candidates,
+            try_cast(seats_available as int) as seats_available,
+            ballotready_race_id as br_race_id,
+
+            -- Source tracking
+            candidate_id_source,
+            candidate_id_tier,
+            ts_found_race_net_new,
+            ts_found_candidate_net_new,
+            ts_status,
+            ts_comment,
+
+            -- Contact sourcing
+            phone_clean,
+            phone_source,
+            phone_type_select_1,
+            email_source,
+            source_url,
+            date_processed,
+
+            -- Social / web
+            website_url,
+            facebook_url,
+            linkedin_url,
+            twitter_handle,
+            instagram_handle,
+
+            -- Airbyte source file metadata
+            _ab_source_file_url,
+            _ab_source_file_last_modified
+
+        from source as src
+        left join
+            clean_states as cs on upper(trim(src.state)) = upper(trim(cs.state_raw))
+    ),
+
+    invalid as (
+        select _airbyte_raw_id
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates_invalid") }}
     )
+
 select *
 from renamed
+where
+    _airbyte_raw_id
+    not in (select _airbyte_raw_id from invalid where _airbyte_raw_id is not null)

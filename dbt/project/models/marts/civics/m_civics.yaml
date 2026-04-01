@@ -37,6 +37,21 @@ models:
       - name: updated_at
         description: Timestamp when user account was last updated
 
+      - name: organization_count
+        description: Total number of organizations owned by this user
+        data_tests:
+          - not_null
+
+      - name: win_organization_count
+        description: Number of Win organizations (linked to a campaign)
+        data_tests:
+          - not_null
+
+      - name: serve_organization_count
+        description: Number of Serve organizations (linked to an elected office)
+        data_tests:
+          - not_null
+
       - name: campaign_count
         description: Total number of campaigns created by this user
 
@@ -78,22 +93,28 @@ models:
 
       - name: is_serve_user
         description: >
-          Whether the user is a "Serve" user. A user is considered a Serve user
-          if they have created a poll through an elected office and the poll has
-          been completed (is_completed = true).  This approximates a user
-          creating a poll and viewing their results, which is the current
-          definition for Serve platform usage. Note: Whether users actually
-          viewed their results is tracked in Amplitude, not in the product
-          database, so this flag uses poll completion as a proxy for viewing
-          results.
+          Whether the user is a Serve user. True if the user has a Serve
+          organization (organization_type = 'serve') or has ever completed a
+          poll through an elected office. The organization check is the
+          authoritative source; the poll check preserves backwards compatibility
+          for users who used Serve before the Organization entity was introduced.
+        data_tests:
+          - not_null
+
+      - name: is_poll_user
+        description: >
+          Whether the user has completed a poll through an elected office.
+          This was the original proxy for identifying Serve users before the
+          Organization entity existed.
         data_tests:
           - not_null
 
       - name: eo_activated_at
         description: >
-          Timestamp when the user became a "Serve" user. This is the creation
-          timestamp of their first completed poll. NULL for users who are not
-          Serve users (is_serve_user = false).
+          Earliest timestamp indicating when the user became a Serve user.
+          This is the earlier of: the creation date of their first Serve
+          organization, or the creation date of their first completed poll.
+          NULL for users who are not Serve users (is_serve_user = false).
         data_tests:
           - not_null:
               config:
@@ -101,23 +122,45 @@ models:
 
   - name: campaigns
     description: >
-      Goodparty.org application campaigns.
+      Goodparty.org application campaigns with historical version tracking.
 
-      One row per campaign with user information denormalized.
+      When a user reuses their campaign for a new election, the product database
+      overwrites the campaign row in place. This model recovers historical
+      versions from Airbyte's insert-only raw stream, so both past and current
+      campaign data are available for tracking historical performance and
+      election results.
 
-      Grain: One row per campaign.
-
-      Limitations: Win/loss outcome data requires future work and is not included in this MVP.
+      Grain: One row per campaign version (a campaign may have multiple rows if
+      the user reused it for different elections).
 
     columns:
-      - name: campaign_id
-        description: Primary key - unique campaign identifier from gp-api production database
+      - name: campaign_version_id
+        description: >
+          Primary key - surrogate key derived from campaign_id and election
+          context fields (election date, position, office, state). Uniquely
+          identifies each historical version of a campaign.
         data_tests:
           - unique
           - not_null
 
+      - name: campaign_id
+        description: >
+          Campaign identifier from the gp-api production database. Not unique
+          in this table — a campaign may have multiple historical versions if
+          the user reused it for a new election.
+        data_tests:
+          - not_null
+
       - name: campaign_slug
         description: URL-friendly campaign identifier used in app URLs
+
+      - name: organization_slug
+        description: >
+          Foreign key to the organizations table. Links this campaign to its
+          parent organization entity, which holds position and district data.
+
+      - name: hubspot_id
+        description: HubSpot company identifier associated with this campaign
 
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
@@ -162,6 +205,9 @@ models:
       - name: is_demo
         description: Whether the campaign is a demo/test account (exclude from production counts)
 
+      - name: did_win
+        description: Whether the candidate won their election. May be null if the outcome has not been recorded.
+
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge
 
@@ -171,21 +217,933 @@ models:
       - name: campaign_state
         description: U.S. state where the campaign is running
 
-      - name: campaign_office
-        description: Political office the candidate is running for
-
       - name: campaign_party
         description: Political party affiliation
 
       - name: election_level
         description: Level of election (local, state, federal)
 
+      - name: campaign_office
+        description: >
+          Position name from the election-api, joined via organization ->
+          position. Replaces the deprecated campaign.details.office field.
+
       - name: ballotready_position_id
         description: >
+          BallotReady position database ID, joined via organization ->
+          election-api position. Replaces the deprecated base64-decoded
+          campaign.details.positionId field.
+
+      - name: is_latest_version
+        description: >
+          Whether this is the most recent version of the campaign (true) or a
+          historical version that was overwritten (false). When filtering to
+          current campaigns only, use `where is_latest_version`.
+        data_tests:
+          - not_null
+
+  - name: organizations
+    description: >
+      Organizations from gp-api, representing the central entity that ties a
+      user to either a Campaign (Win) or ElectedOffice (Serve). Each
+      organization holds the position and district data that was previously
+      stored on the campaign entity.
+
+      Grain: One row per organization.
+
+    columns:
+      - name: organization_slug
+        description: Primary key - unique slug identifier for the organization
+        data_tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        description: Foreign key to users table - the user who owns this organization
+        data_tests:
+          - not_null
+
+      - name: user_email
+        description: Owner's email address
+
+      - name: user_first_name
+        description: Owner's first name
+
+      - name: user_last_name
+        description: Owner's last name
+
+      - name: position_id
+        description: >
+          Election-api position UUID. Populated when the user selected a
+          BallotReady-sourced office. This is the election-api position ID,
+          not the BallotReady database ID.
+
+      - name: position_name
+        description: >
+          Position name from the election-api position table. Populated when
+          position_id is set and the position exists in the election-api mart.
+
+      - name: ballotready_position_id
+        description: >
+          BallotReady position database ID, resolved via the election-api
+          position table. Useful for joining with BallotReady data.
+
+      - name: position_state
+        description: U.S. state for the position from the election-api
+
+      - name: custom_position_name
+        description: >
+          Free-text position name entered by the user for custom offices not
+          found in BallotReady. Mutually exclusive with position_id in practice.
+
+      - name: override_district_id
+        description: >
+          L2 district ID override. Set when the district was manually selected
+          via the district picker or matched via silver match. When null, the
+          matched L2 district is fetched from the election-api.
+
+      - name: district_id
+        description: >
+          L2 district UUID from the election-api, resolved via the position's
+          matched district. NULL when position has no district match.
+
+      - name: l2_district_type
+        description: L2 district type (e.g., "State Senate", "Congressional District")
+
+      - name: l2_district_name
+        description: L2 district name (e.g., "District 5", "CA")
+
+      - name: campaign_id
+        description: >
+          Foreign key to campaigns table. Populated for Win organizations.
+          NULL for Serve organizations.
+
+      - name: elected_office_id
+        description: >
+          Foreign key to elected_office. Populated for Serve organizations.
+          NULL for Win organizations.
+
+      - name: organization_type
+        description: >
+          Whether this organization is a Win (campaign) or Serve (elected office)
+          organization.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["win", "serve"]
+
+      - name: created_at
+        description: Timestamp when the organization was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the organization was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: candidacy
+    description: >
+      Candidacies combining 2025 HubSpot archive and 2026+ BallotReady data.
+
+      Grain: One row per candidacy.
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - internally generated unique identifier for candidacies
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidate_id
+        description: Foreign key to candidate table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('candidate')
+                field: gp_candidate_id
+
+      - name: gp_election_id
+        description: Foreign key to election table (no relationship test - matches m_general behavior)
+
+      - name: product_campaign_id
+        description: Campaign ID from the GoodParty product database
+
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM
+
+      - name: hubspot_company_ids
+        description: >
+          Comma-separated HubSpot company IDs associated with this candidacy.
+          A candidacy may link to multiple HubSpot companies.
+
+      - name: candidate_id_source
+        description: Source system for the candidate data (BallotReady, Techspeed, Product, etc.)
+
+      - name: party_affiliation
+        description: Candidate's political party
+
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: candidate_office
+        description: Simplified/standardized office name
+
+      - name: official_office_name
+        description: Formal office title the candidate is running for
+
+      - name: office_level
+        description: Level of office (local, state, federal)
+
+      - name: office_type
+        description: >
+          Standardized type of office sourced from HubSpot properties.
+          Common values include School Board, City Council, Town Council,
+          Mayor, Judge, State House, State Senate, Congressional,
+          Statewide/Governor, Sheriff, Alderman, Attorney, Clerk/Treasurer,
+          County Supervisor, President, and Other.
+
+      - name: candidacy_result
+        description: >
+          Result of the candidacy. Values:
+          - Won: Candidate won the election
+          - Lost: Candidate lost the election
+          - Runoff: Election resulted in a runoff
+          - Withdrew: Candidate withdrew from the race
+          - Not on Ballot: Candidate was not on the ballot
+          - Cannot Determine: Result could not be determined
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                    "Cannot Determine",
+                  ]
+              config:
+                where: "candidacy_result is not null"
+
+      - name: is_pledged
+        description: >
+          Whether the candidate has taken the GoodParty pledge (boolean).
+          A pledged candidate agreed to 4 qualifying statements either on the
+          GoodParty website or via communication with the politics team.
+
+      - name: is_verified
+        description: >
+          Whether the candidacy has been verified to exist (boolean).
+          True if verified, false otherwise. Set automatically if candidate data
+          came from Techspeed or BallotReady. For inbound candidates, verification
+          was done manually by the politics team by checking for evidence of a
+          legitimate campaign (campaign website, filing information, Facebook page,
+          etc.). Manual verification was discontinued in 2026.
+
+      - name: verification_status_reason
+        description: >
+          Reason why a candidacy is not verified. Only populated when is_verified
+          is false. Values: No, Unresponsive, Can't Determine, Partisan Candidate,
+          Write In.
+
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: primary_election_date
+        description: Date of the primary election
+
+      - name: general_election_date
+        description: Date of the general election
+
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election, if applicable
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election, if applicable
+
+      - name: br_position_database_id
+        description: >
           The numeric identifier for the political position (office) in BallotReady's
-          database. This ID is extracted from the base64-encoded `positionId` stored
-          in the campaign details, which originates from BallotReady's GraphQL API.
-          BallotReady is a third-party service that provides comprehensive election
-          and ballot data. This ID can be used to join with BallotReady position data
-          for additional office metadata such as filing deadlines, term lengths,
-          geographic boundaries, and partisan type.
+          database. For HubSpot-sourced records, extracted from the base64-encoded
+          positionId in campaign details. For BallotReady-sourced records, comes
+          directly from the S3 candidacy data.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
+              config:
+                where: "br_position_database_id is not null"
+                # Some position IDs may not exist in the API position table yet
+                # (API data is loaded incrementally, S3 data may be ahead).
+                warn_if: ">50"
+                error_if: ">100"
+
+      - name: viability_score
+        description: Model-generated viability rating
+
+      - name: win_number
+        description: Estimated votes needed to win
+
+      - name: win_number_model
+        description: Model version used for win number calculation
+
+      - name: is_win_icp
+        description: >
+          Whether this candidacy's position meets the Win ICP criteria
+          (500-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this candidacy's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this candidacy's position meets all ICP criteria but has >100,000
+          voters, requiring separate consideration outside the standard Win process.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: candidate
+    description: >
+      Candidates combining 2025 HubSpot archive and 2026+ BallotReady data.
+
+      Grain: One row per candidate.
+
+    columns:
+      - name: gp_candidate_id
+        description: Primary key - internally generated unique identifier for candidates
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: hubspot_contact_id
+        description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+
+      - name: prod_db_user_id
+        description: User ID from the GoodParty production database
+
+      - name: candidate_id_tier
+        description: Internal confidence/priority tier for the candidate
+
+      - name: first_name
+        description: Candidate's first name
+
+      - name: last_name
+        description: Candidate's last name
+
+      - name: full_name
+        description: Candidate's full name
+
+      - name: birth_date
+        description: Candidate's date of birth
+
+      - name: state
+        description: U.S. state for the candidate
+        data_tests:
+          - is_state_abbreviation
+
+      - name: email
+        description: Candidate's email address
+
+      - name: phone_number
+        description: Candidate's phone number
+
+      - name: street_address
+        description: Candidate's street address
+
+      - name: website_url
+        description: Candidate's campaign website
+
+      - name: linkedin_url
+        description: Candidate's LinkedIn profile URL
+
+      - name: twitter_handle
+        description: Candidate's Twitter handle
+
+      - name: facebook_url
+        description: Candidate's Facebook page URL
+
+      - name: instagram_handle
+        description: Candidate's Instagram handle
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(first_name is not null) or (last_name is not null) or (full_name is not null)"
+          config:
+            # Companies without associated contacts may have null names
+            error_if: ">200"
+            warn_if: ">150"
+
+  - name: candidacy_stage
+    description: >
+      Candidacy stages (primary, general, primary runoff, general runoff results) combining 2025 HubSpot/DDHQ archive
+      and 2026+ BallotReady data.
+
+      Grain: One row per candidacy stage (candidacy + election stage combination).
+
+    columns:
+      - name: gp_candidacy_stage_id
+        description: Primary key - internally generated unique identifier for candidacy stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidacy_id
+        description: Foreign key to candidacy table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        description: Foreign key to election_stage table
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('election_stage')
+                field: gp_election_stage_id
+              config:
+                error_if: ">=100"
+
+      - name: candidate_name
+        description: Name of the candidate
+
+      - name: source_candidate_id
+        description: Candidate identifier from the source system (e.g., DDHQ)
+
+      - name: source_race_id
+        description: Race identifier from the source system (e.g., DDHQ)
+
+      - name: candidate_party
+        description: Candidate's political party affiliation
+
+      - name: is_winner
+        description: Whether the candidate won the election stage (boolean)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: election_result
+        description: >
+          Result of the election stage. Values:
+          - Won: Candidate won this election stage
+          - Lost: Candidate lost this election stage
+          - Runoff: Election stage resulted in a runoff
+          - Withdrew: Candidate withdrew from the race
+          - Not on Ballot: Candidate was not on the ballot for this stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
+              config:
+                where: "election_result is not null"
+
+      - name: election_result_source
+        description: >
+          Source of the election_result value.
+          Values: 'hubspot', 'ddhq', 'ballotready', or null if no result available.
+
+      - name: match_confidence
+        description: Confidence score for the candidate-to-source match
+
+      - name: match_reasoning
+        description: Reasoning for the candidate-to-source match
+
+      - name: match_top_candidates
+        description: Top candidate matches considered during matching
+
+      - name: has_match
+        description: Whether a match to source election data was found
+
+      - name: votes_received
+        description: Number of votes received in this election stage
+
+      - name: election_stage_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: is_win_icp
+        description: >
+          Whether this candidacy stage's position meets the Win ICP criteria
+          (500-100,000 voters). Derived from the election_stage table's ICP flags.
+          NULL for records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this candidacy stage's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from the election_stage table's ICP flags.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this candidacy stage's position meets all ICP criteria but has
+          >100,000 voters, requiring separate consideration outside the standard
+          Win process. Derived from the election_stage table's ICP flags.
+          NULL for records without BallotReady position match.
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: election
+    description: >
+      Elections combining 2025 HubSpot archive and 2026+ BallotReady data.
+
+      Grain: One row per election.
+
+    columns:
+      - name: gp_election_id
+        description: Primary key - internally generated unique identifier for elections
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: official_office_name
+        description: Formal office title for the election
+
+      - name: candidate_office
+        description: Simplified/standardized office name
+
+      - name: office_level
+        description: Level of office (local, state, federal)
+
+      - name: office_type
+        description: Type of office (executive, legislative, judicial, etc.)
+
+      - name: state
+        description: U.S. state for the election
+        data_tests:
+          - is_state_abbreviation
+
+      - name: city
+        description: City for the election
+
+      - name: district
+        description: Electoral district
+
+      - name: seat_name
+        description: Specific seat name
+
+      - name: election_date
+        description: Date of the election
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: election_year
+        description: Year of the election
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1900
+                max_value: 2030
+              config:
+                where: "election_year is not null"
+
+      - name: filing_deadline
+        description: Filing deadline for the election
+
+      - name: population
+        description: Population of the electoral district
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: seats_available
+        description: Number of seats available in the election
+
+      - name: term_start_date
+        description: Start date of the term
+
+      - name: is_uncontested
+        description: Whether the election is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: number_of_opponents
+        description: Number of opponents in the race (may contain string values like '10+')
+
+      - name: is_open_seat
+        description: Whether the election is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: has_ddhq_match
+        description: Whether there is a DDHQ match for this election
+
+      - name: br_position_database_id
+        description: >
+          The numeric identifier for the political position (office) in BallotReady's
+          database. Derived from the candidacy associated with this election. Can be
+          used to join with BallotReady position data for additional office metadata.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
+              config:
+                where: "br_position_database_id is not null"
+                # Some position IDs may not exist in the API position table yet
+                # (API data is loaded incrementally, S3 data may be ahead).
+                warn_if: ">20"
+                error_if: ">50"
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_judicial is not null"
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_appointed is not null"
+
+      - name: br_normalized_position_type
+        description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
+
+      - name: icp_voter_count
+        description: >
+          Voter count from the L2 district match used to determine ICP eligibility.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without a matched L2 district.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "icp_voter_count is not null"
+
+      - name: icp_normalized_position_name
+        description: >
+          BallotReady normalized position type used in ICP eligibility determination.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_icp
+        description: >
+          Whether this election's position meets the Win ICP criteria
+          (500-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this election's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this election's position meets all ICP criteria but has >100,000
+          voters, requiring separate consideration outside the standard Win process.
+          Derived from int__icp_offices via br_position_database_id.
+          NULL for records without BallotReady position match.
+
+      - name: primary_election_date
+        description: Date of the primary election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2050-12-31'"
+
+      - name: general_election_date
+        description: Date of the general election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2050-12-31'"
+
+      - name: primary_runoff_election_date
+        description: Date of the primary runoff election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2050-12-31'"
+
+      - name: general_runoff_election_date
+        description: Date of the general runoff election stage, if applicable
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2050-12-31'"
+
+      - name: created_at
+        description: Timestamp when the record was created
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: election_stage
+    description: >
+      Election stages (primary, general, primary runoff, general runoff) combining 2025 DDHQ archive
+      and 2026+ BallotReady data.
+
+      Grain: One row per election stage.
+
+    columns:
+      - name: gp_election_stage_id
+        description: Primary key - internally generated unique identifier for election stages
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_election_id
+        description: Foreign key to election table
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('election')
+                field: gp_election_id
+
+      - name: br_race_id
+        description: >
+          BallotReady race ID. Populated for 2026+ BallotReady records,
+          NULL for 2025 archive records.
+
+      - name: br_election_id
+        description: >
+          BallotReady election ID. Populated for 2026+ BallotReady records,
+          NULL for 2025 archive records.
+
+      - name: br_position_id
+        description: >
+          BallotReady position ID. Used for ICP join. Populated for 2026+
+          BallotReady records, NULL for 2025 archive records.
+
+      - name: ddhq_race_id
+        description: >
+          DDHQ race identifier. Populated for 2025 archive records,
+          NULL for 2026+ BallotReady records.
+
+      - name: stage_type
+        description: Type of election stage (primary, general, primary runoff, general runoff)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - general
+                  - primary
+                  - primary runoff
+                  - general runoff
+
+      - name: election_date
+        description: Date of the election stage
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: "'1900-01-01'"
+                max_value: "'2030-12-31'"
+
+      - name: election_name
+        description: >
+          Overarching election event name (e.g., "Illinois Primary Election").
+          Populated for 2026+ BallotReady records, NULL for 2025 archive records.
+
+      - name: race_name
+        description: >
+          Office-specific race label. For 2025 records this is the DDHQ race name
+          (e.g., "WI Tigerton Village Trustee"). For 2026+ records this is
+          constructed from BallotReady position fields
+          (e.g., "IL Franklin County Board - Full Term").
+
+      - name: is_primary
+        description: Whether this stage is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_runoff
+        description: Whether this stage is a runoff election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_retention
+        description: Whether this stage is a retention election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: number_of_seats
+        description: Number of seats available for this race (BallotReady only)
+
+      - name: total_votes_cast
+        description: Total votes cast in the election stage (may contain string values like 'uncontested')
+
+      - name: partisan_type
+        description: >
+          The partisan type of the position (e.g., "partisan", "nonpartisan").
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: filing_period_start_on
+        description: >
+          Start date of the candidate filing period for this race.
+          Sourced from BallotReady filing period data. NULL for 2025 archive records
+          or races without filing period information.
+
+      - name: filing_period_end_on
+        description: >
+          End date (deadline) of the candidate filing period for this race.
+          Sourced from BallotReady filing period data. NULL for 2025 archive records
+          or races without filing period information.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= filing_period_start_on"
+              config:
+                where: "filing_period_end_on is not null and filing_period_start_on is not null"
+
+      - name: filing_requirements
+        description: >
+          Filing requirements for the position (e.g., petition signatures, fees).
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: filing_address
+        description: >
+          Address of the filing office for this position.
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: filing_phone
+        description: >
+          Phone number of the filing office for this position.
+          Sourced from BallotReady position data. NULL for 2025 archive records.
+
+      - name: is_win_icp
+        description: >
+          Whether this election stage's position meets the Win ICP criteria
+          (500-100,000 voters). Derived from int__icp_offices via br_position_id.
+          NULL for 2025 archive records without BallotReady position match.
+
+      - name: is_serve_icp
+        description: >
+          Whether this election stage's position meets the Serve ICP criteria
+          (1,000-100,000 voters). Derived from int__icp_offices via br_position_id.
+          NULL for 2025 archive records without BallotReady position match.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this election stage's position meets all ICP criteria but has
+          >100,000 voters, requiring separate consideration outside the standard
+          Win process. Derived from int__icp_offices via br_position_id.
+          NULL for 2025 archive records without BallotReady position match.
+
+      - name: created_at
+        description: Timestamp when the record was created (from Airbyte extraction)
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Timestamp when the record was last updated

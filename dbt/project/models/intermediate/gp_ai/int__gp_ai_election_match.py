@@ -1,6 +1,7 @@
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
 from pyspark.sql.types import (
+    StringType,
     TimestampNTZType,
     TimestampType,
 )
@@ -95,6 +96,28 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 parquet_df = parquet_df.withColumn(
                     field.name, col(field.name).cast(TimestampType())
                 )
+
+        # Parquet files may store nullable string/timestamp columns as DOUBLE
+        # when all values are null.  Cast them to match the expected schema so
+        # downstream SQL comparisons (e.g. ddhq_is_winner = 'Y') don't fail
+        # with CAST_INVALID_INPUT errors.
+        _str_cols = [
+            "ddhq_is_winner",
+            "ddhq_election_type",
+            "ddhq_candidate",
+            "ddhq_race_name",
+            "ddhq_candidate_party",
+            "ddhq_embedding_text",
+        ]
+        _ts_cols = [
+            "ddhq_date",
+        ]
+        for c in _str_cols:
+            if c in parquet_df.columns:
+                parquet_df = parquet_df.withColumn(c, col(c).cast(StringType()))
+        for c in _ts_cols:
+            if c in parquet_df.columns:
+                parquet_df = parquet_df.withColumn(c, col(c).cast(TimestampType()))
 
         # trigger a cache to ensure the parquet file is loaded
         parquet_df.cache()

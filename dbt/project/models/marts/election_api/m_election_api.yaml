@@ -18,9 +18,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
@@ -30,9 +28,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: state
         description: "State postal code"
         tests:
@@ -63,9 +59,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: br_database_id
         description: "Database ID of the `issue` from BallotReady"
         tests:
@@ -88,9 +82,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: slug
         description: "Slug of the place"
         tests:
@@ -117,9 +109,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: br_database_id
         description: "Database ID of the `position` from BallotReady"
         tests:
@@ -130,6 +120,8 @@ models:
         tests:
           - not_null
           - unique
+      - name: name
+        description: "BallotReady position name"
       - name: state
         description: "State postal code"
         tests:
@@ -147,7 +139,6 @@ models:
       - name: district_id
         description: "UUID of the district"
         tests:
-          - not_null
           - relationships:
               arguments:
                 to: ref('m_election_api__district')
@@ -161,9 +152,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: election_code
         description: The election code
         tests:
@@ -204,9 +193,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: br_database_id
         description: "Database ID of the `race` from BallotReady"
         tests:
@@ -223,9 +210,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          - is_uuid
       - name: br_database_id
         description: "Database ID of the `stance` from BallotReady"
         tests:

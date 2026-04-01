@@ -2,6 +2,8 @@ version: 2
 
 models:
   - name: deid_voters
+    config:
+      tags: ["monthly"]
     description: |
       De-identified nationwide voter data for MBAN Analytics program (2026).
 
@@ -196,9 +198,22 @@ models:
         description: Total number of votes cast in the general election for this race
 
       - name: is_uncontested
-        description: |
-          Whether the race was uncontested.
-          Values: "Contested", "Uncontested", null
+        description: Whether the race was uncontested (boolean)
+
+      - name: is_incumbent
+        description: Whether the candidate is an incumbent in this race (boolean)
+
+      - name: is_open_seat
+        description: Whether this is an open seat with no incumbent running (boolean)
+
+      - name: number_of_opponents
+        description: Number of opponents the candidate faces in this race
+
+      - name: is_partisan
+        description: Whether the race is partisan (boolean)
+
+      - name: seats_available
+        description: Number of seats available in this election
 
       - name: outreach_id
         description: |
@@ -248,6 +263,32 @@ models:
       - name: outreach_updated_at
         description: Timestamp when the outreach campaign was last updated
 
+      - name: l2_name
+        description: |
+          BallotReady office name from the L2 district match model.
+          Null if no L2 match was found for this candidate_office + state.
+
+      - name: l2_state
+        description: |
+          State postal code from the L2 district match model.
+          Should match the normalized state; null if no L2 match.
+
+      - name: l2_district_name
+        description: |
+          L2 electoral district name (e.g., "AUSTIN CITY (EST.)", "FLAT ROCK VLG").
+          Null if no L2 match was found.
+
+      - name: l2_district_type
+        description: |
+          L2 district type classification (e.g., "Township", "City").
+          Null if no L2 match was found.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - hubspot_id
+            - outreach_id
+
   - name: mban_election_results
     description: |
       DDHQ election results data for MBAN Analytics program (2026).
@@ -266,7 +307,7 @@ models:
       - Multi-seat election analysis
 
     columns:
-      - name: race_id
+      - name: ddhq_race_id
         description: Unique identifier for the race from DDHQ
         data_tests:
           - not_null
@@ -288,7 +329,7 @@ models:
           Type of election (e.g., "General", "Primary", "Runoff").
           Indicates the stage of the electoral process.
 
-      - name: date
+      - name: election_date
         description: Date of the election
 
       - name: votes
@@ -311,3 +352,78 @@ models:
 
       - name: total_number_of_ballots_in_race
         description: Total number of ballots cast in this race
+
+  - name: mban_candidacy_election_results
+    description: |
+      DDHQ election match results surfaced per HubSpot candidacy for MBAN Analytics program (2026).
+
+      This model bridges HubSpot candidacies to DDHQ election data via AI-powered matching
+      (int__gp_ai_election_match). Each candidacy can have multiple rows for different
+      election stages (general, primary, runoff).
+
+      **Grain:** One row per (hubspot_company_id, election_date, election_type)
+
+      **Data Sources:**
+      - int__hubspot_companies_w_contacts_2025 (company_id → gp_candidacy_id mapping)
+      - int__gp_ai_election_match (AI-powered DDHQ match data)
+
+      **Use Cases:**
+      - Linking candidacies to their DDHQ election match
+      - Analyzing match quality via confidence scores and reasoning
+      - Join to candidates_outreach via hubspot_company_id for candidacy details
+      - Join to mban_election_results via ddhq_race_id + ddhq_candidate_id for vote totals
+
+    columns:
+      - name: hubspot_company_id
+        description: HubSpot company ID representing the candidacy. Join key to candidates_outreach.hubspot_id.
+        data_tests:
+          - not_null
+
+      - name: gp_candidacy_id
+        description: Unique candidacy identifier derived from candidate + election attributes
+        data_tests:
+          - not_null
+
+      - name: election_date
+        description: Date of the election for this candidacy
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
+
+      - name: election_type
+        description: |
+          Type of election stage (general, primary, or runoff).
+          Comes from the AI election match model.
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
+          - accepted_values:
+              arguments:
+                values:
+                  - general
+                  - primary
+                  - runoff
+
+      - name: has_match
+        description: Whether the AI matching process found a DDHQ match for this candidacy/election
+
+      - name: match_confidence
+        description: LLM confidence score for the DDHQ match quality
+
+      - name: match_reasoning
+        description: LLM reasoning explaining why this DDHQ candidate was matched
+
+      - name: ddhq_race_id
+        description: DDHQ race identifier. Join key to mban_election_results.ddhq_race_id.
+
+      - name: ddhq_candidate_id
+        description: DDHQ candidate identifier. Join key to mban_election_results.candidate_id.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - hubspot_company_id
+            - election_date
+            - election_type

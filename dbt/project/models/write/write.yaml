@@ -60,6 +60,7 @@ models:
     description: >
       This model writes data from Databricks to the people api database.
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
       people_db_host: "{{ env_var('DBT_PEOPLE_DB_HOST') }}"

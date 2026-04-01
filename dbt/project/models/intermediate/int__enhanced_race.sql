@@ -28,11 +28,10 @@ with
     filing_period_ids as (
         select
             tbl_race.database_id as race_database_id,
-            /*
-            Take the filing period. Of the 1MM races, only 10k have more than 1 filing period.
-            In these cases, the last value is the latest filing period.
-            */
-            last(fp.databaseid) as filing_period_database_id
+            -- Of 1M+ races, only ~10k have >1 filing period; take the highest
+            -- database_id (most recent). Using max() instead of last() for
+            -- determinism — last() is non-deterministic with GROUP BY in Spark.
+            max(fp.databaseid) as filing_period_database_id
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_race
         lateral view explode(filing_periods) as fp
         group by race_database_id

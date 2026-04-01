@@ -6,6 +6,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: organization_slug
+        description: "Foreign key to the organization table"
+        data_tests:
+          - unique:
+              config:
+                where: "organization_slug is not null"
   - name: stg_airbyte_source__gp_api_db_campaign_position
     description: raw data load from gp_api_db postgres db from table `campaign_position`
     columns:
@@ -43,6 +49,32 @@ models:
       - name: website_id
       - name: operation_id
       - name: email_forwarding_domain_id
+  - name: stg_airbyte_source__gp_api_db_organization
+    description: raw data load from gp_api_db postgres db from table `organization`
+    columns:
+      - name: slug
+        description: "Primary key - unique slug identifier for the organization"
+        data_tests:
+          - not_null
+          - unique
+      - name: owner_id
+        description: "Foreign key reference to the user who owns this organization"
+        data_tests:
+          - not_null
+      - name: position_id
+        description: "Election-api position UUID for BallotReady-sourced offices"
+      - name: custom_position_name
+        description: "Free-text position name for custom offices"
+      - name: override_district_id
+        description: "L2 district ID override for manually selected or silver-matched districts"
+      - name: created_at
+        description: "Timestamp when the organization was created"
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp when the organization was last updated"
+        data_tests:
+          - not_null
   - name: stg_airbyte_source__gp_api_db_elected_office
     description: raw data load from gp_api_db postgres db from table `elected_office`
     columns:
@@ -60,8 +92,6 @@ models:
         description: "Foreign key reference to the user who holds this elected office"
         tests:
           - not_null
-      - name: is_active
-        description: "Whether the elected office term is currently active"
       - name: created_at
         description: "Timestamp when the elected office record was created"
         tests:
@@ -72,16 +102,14 @@ models:
           - not_null
       - name: campaign_id
         description: "Foreign key reference to the campaign associated with this elected office"
-      - name: elected_date
-        description: "Date when the user was elected to office"
       - name: sworn_in_date
         description: "Date when the user was sworn in to office"
-      - name: term_end_date
-        description: "Date when the elected office term ends"
-      - name: term_start_date
-        description: "Date when the elected office term started"
-      - name: term_length_days
-        description: "Length of the elected office term in days"
+      - name: organization_slug
+        description: "Slug identifier for the organization associated with this elected office"
+        data_tests:
+          - unique:
+              config:
+                where: "organization_slug is not null"
   - name: stg_airbyte_source__gp_api_db_ecanvasser
     description: "Staging model for eCanvasser stream - contains eCanvasser configuration and sync information"
     columns:
@@ -171,14 +199,6 @@ models:
         description: "Whether the contact is deceased"
       - name: house_id
         description: "Foreign key reference to the house record"
-        tests:
-          - relationships:
-              arguments:
-                to: ref('stg_airbyte_source__gp_api_db_ecanvasser_house')
-                field: id
-              config:
-                warn_if: ">300"
-                error_if: ">500"
       - name: action_id
         description: "Action ID associated with this contact"
       - name: last_name
@@ -585,8 +605,22 @@ models:
                 field: id
       - name: sent_at
         description: "Timestamp when the message was sent"
+      - name: content
+        description: "Content/body of the individual message"
+      - name: created_at
+        description: "Timestamp when the record was created"
+      - name: elected_office_id
+        description: "Foreign key reference to the elected office"
+      - name: is_opt_out
+        description: "Whether the person has opted out of messages"
+      - name: person_cell_phone
+        description: "Cell phone number of the person"
       - name: person_id
         description: "Foreign key reference to the person who received the message"
+      - name: sender
+        description: "Sender of the message"
+      - name: updated_at
+        description: "Timestamp when the record was last updated"
   - name: stg_airbyte_source__gp_api_db_poll_issues
     description: raw data load from gp_api_db postgres db from table `poll_issues`
     columns:

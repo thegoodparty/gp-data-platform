@@ -3,41 +3,80 @@ models:
   - name: stg_airbyte_source__ballotready_s3_candidacies_v3
     description: Candidacies data load from ballotready csvs in s3 bucket
     columns:
-      - name: candidacy_id
+      - name: br_candidacy_id
         data_tests:
           - not_null
           - unique
-      - name: id
+      - name: br_id
         data_tests:
           - not_null
           - unique
+      - name: br_race_id
+        data_tests:
+          - not_null
       - name: election_result
         data_tests:
           - accepted_values:
+              values:
+                - WON
+                - LOST
+                - RUNOFF
+                - GENERAL_WIN
+                - PRIMARY_WIN
+                - LOSS
+      - name: is_judicial
+        description: Whether the position is judicial
+        data_tests:
+          - accepted_values:
               arguments:
-                values:
-                  - WON
-                  - LOST
-                  - RUNOFF
-                  - GENERAL_WIN
-                  - PRIMARY_WIN
-                  - LOSS
-                  - ''
-              config:
-                where: "election_result is not null"
+                values: [true, false]
+      - name: is_retention
+        description: Whether the position is a retention election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_unexpired
+        description: Whether the term is unexpired
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: geofence_is_not_exact
+        description: Whether the geofence boundary is approximate
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: stg_airbyte_source__ballotready_s3_office_holders_v3
     description: Office Holders data load from ballotready csvs in s3 bucket
     columns:
-      - name: id
+      - name: br_id
         data_tests:
           - not_null
           - unique
+      - name: email
+        description: Primary contact email extracted from the BallotReady contacts array
+      - name: office_phone
+        description: Phone number from a BallotReady contact with type = office
+      - name: central_phone
+        description: Phone number from a BallotReady contact with type = central
+      - name: phone
+        description: Canonical phone number preferring office_phone, then central_phone, then any remaining contact phone
+      - name: website_url
+        description: Website URL extracted from the BallotReady urls array
+      - name: linkedin_url
+        description: LinkedIn URL extracted from the BallotReady urls array
+      - name: facebook_url
+        description: Facebook URL extracted from the BallotReady urls array
+      - name: twitter_url
+        description: Twitter URL extracted from the BallotReady urls array
 
   - name: stg_airbyte_source__ballotready_s3_recruitment_v1
     description: Recruitment data load from ballotready csvs in s3 bucket
     columns:
-      - name: id
+      - name: br_id
         data_tests:
           - not_null
           - unique

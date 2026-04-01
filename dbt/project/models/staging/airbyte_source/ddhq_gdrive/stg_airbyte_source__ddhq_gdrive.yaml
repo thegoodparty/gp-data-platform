@@ -3,13 +3,41 @@ models:
   - name: stg_airbyte_source__ddhq_gdrive_election_results
     description: Election results data load from ddhq google drive
     columns:
-      - name: race_id
+      - name: ddhq_race_id
         data_tests:
           - not_null
+      - name: is_winner
+        description: Whether the candidate won the election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
-              - race_id
+              - ddhq_race_id
               - candidate_id
               - candidate
+
+  - name: stg_airbyte_source__ddhq_gdrive_election_results_invalid
+    description: >
+      DDHQ election results rows that fail data quality checks.
+      Captures rows with null candidate_id (non-numeric source values)
+      or race_name that does not start with a recognized state name
+      (e.g. city-prefixed names like "Grand Prairie City Council").
+      Used for data quality monitoring and investigation.
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - unique
+          - not_null
+      - name: invalid_reason
+        description: Why this row was excluded (null_candidate_id or unresolvable_state)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - null_candidate_id
+                  - unresolvable_state

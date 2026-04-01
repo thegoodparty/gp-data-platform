@@ -7,15 +7,13 @@ with
             first_name,
             last_name,
             case
-                when upper(is_incumbent) = 'TRUE'
+                when is_incumbent
                 then 'Incumbent'
-                when upper(is_incumbent) = 'FALSE'
+                when not is_incumbent
                 then 'Challenger'
             end as candidate_type,
             email,
-            replace(
-                replace(replace(replace(phone, '-', ''), '_', ''), '[', ''), ']', ''
-            ) as phone,
+            phone,
             candidate_id_tier,
             party,
             website_url,
@@ -23,14 +21,14 @@ with
             instagram_handle,
             twitter_handle,
             facebook_url,
-            date_of_birth_mmddyyyy as birth_date,
+            birth_date,
             street_address,
             postal_code,
-            district_name as district,
-            normalized_location as city,
+            district,
+            city,
             state,
-            office_name as official_office_name,
-            office_normalized as candidate_office,
+            official_office_name,
+            candidate_office,
             office_type,
             office_level,
             filing_deadline,
@@ -38,37 +36,23 @@ with
             general_election_date,
             -- Transform is_primary to Election Type
             case
-                when
-                    (
-                        upper(is_primary) = 'YES'
-                        or upper(is_primary) = 'TRUE'
-                        or upper(is_primary) = 'PRIMARY'
-                    )
-                then 'Primary'
-                when
-                    (
-                        upper(is_primary) = 'NO'
-                        or upper(is_primary) = 'FALSE'
-                        or upper(is_primary) = 'GENERAL'
-                    )
-                then 'General'
-                else is_primary
+                when is_primary then 'Primary' when not is_primary then 'General'
             end as election_type,
 
             -- Transform is_uncontested to Uncontested
             case
-                when upper(is_uncontested) = 'NO'
-                then 'Contested'
-                when upper(is_uncontested) = 'YES'
+                when is_uncontested
                 then 'Uncontested'
-                else is_uncontested
+                when not is_uncontested
+                then 'Contested'
             end as uncontested,
-            number_candidates as number_of_candidates,
+            number_of_candidates,
             seats_available as number_of_seats_available,
-            open_seat,
-            partisan,
+            is_open_seat,
+            is_partisan,
             population,
-            ballotready_race_id,
+            br_race_id,
+            election_result,
 
             -- Assign constant values
             'Self-Filer Lead' as `type`,
@@ -120,10 +104,11 @@ select
     uncontested,
     number_of_candidates,
     number_of_seats_available,
-    open_seat,
-    partisan,
+    is_open_seat,
+    is_partisan,
     population,
-    ballotready_race_id,
+    br_race_id,
+    election_result,
     type,
     contact_owner,
     owner_name,

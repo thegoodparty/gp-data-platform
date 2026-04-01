@@ -36,10 +36,7 @@ with
             tier as geographic_tier,
             number_of_seats as number_of_seats_available,
             case
-                when is_primary = 'false'
-                then 'General'
-                when is_primary = 'true'
-                then 'Primary'
+                when not is_primary then 'General' when is_primary then 'Primary'
             end as election_type,
             case
                 when parties like '%Independent%'
@@ -203,7 +200,7 @@ with
                     "first_name", "last_name", "official_office_name"
                 )
             }} as candidate_slug,
-            {{ map_ballotready_office_type("candidate_office") }} as office_type,
+            {{ map_office_type("candidate_office") }} as office_type,
             'Self-Filer Lead' as type,
             'jesse@goodparty.org' as contact_owner,
             'Jesse Diliberto' as owner_name,
@@ -247,8 +244,9 @@ with
                         )
                     )
             end as br_contest_id,
-            candidacy_id,
-            race_id as ballotready_race_id,
+            br_candidacy_id,
+            br_race_id,
+            br_position_id,
             parties,
             candidacy_created_at,
             candidacy_updated_at

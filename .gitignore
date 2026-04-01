@@ -32,14 +32,30 @@ dbt/project/dbt_internal_packages/
 .env
 .env.local
 
+# Genie export artifacts
+genie/**/raw/
+genie/**/redacted/
+genie/**/metadata/
+
 # ignore tmp_data
 tmp_data/
-CLAUDE.md
 
 # Logs (including root level) and things I don't want to commit
 logs/
 
 # Local dev files
 .tickets/
+.claude/skills/l2-uniform-drift-remediator/dbt_logs/*
+!.claude/skills/l2-uniform-drift-remediator/dbt_logs/.gitkeep
+!.claude/skills/l2-uniform-drift-remediator/dbt_logs/README.md
 .pre-commit-cache/
 test_data/
+.databricks/
+
+# Entity resolution local data and results
+entity_resolution/data/
+entity_resolution/results/*.csv
+
+# Claude runbook
+.claude/RUNBOOK.md
+claude.md

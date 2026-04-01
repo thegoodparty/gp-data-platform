@@ -1,13 +1,3 @@
-{{
-    config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="candidacy_id",
-        auto_liquid_cluster=true,
-        tags=["mart", "ballotready", "hubspot", "historical"],
-    )
-}}
-
 -- Historical tracking table for BallotReady records sent to HubSpot
 -- This table maintains an audit trail of all candidates that have been processed
 -- for HubSpot upload, including fuzzy match results and viability scores
@@ -19,6 +9,8 @@ with
     br_final_candidacies as (
         select * from {{ ref("int__ballotready_final_candidacies") }}
     ),
+
+    icp_offices as (select * from {{ ref("int__icp_offices") }}),
 
     -- Combine fuzzy match results with final candidacies
     combined_records as (
@@ -48,8 +40,8 @@ with
             fc.contact_owner,
             fc.owner_name,
             fc.candidate_id_source,
-            fc.candidacy_id,
-            fc.ballotready_race_id,
+            fc.br_candidacy_id,
+            fc.br_race_id,
             fc.br_contest_id,
             fc.br_candidate_code,
             fc.uncontested,
@@ -68,14 +60,18 @@ with
             fd.fuzzy_matched_office_type,
             fd.match_type,
             -- Placeholder for future viability score calculation
-            cast(null as string) as viability_score
+            cast(null as string) as viability_score,
+            icp.icp_office_win as icp_win,
+            icp.icp_office_serve as icp_serve,
+            icp.icp_win_supersize
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
+        left join icp_offices icp on fc.br_position_id = icp.br_database_position_id
     )
 
 select
-    candidacy_id,
-    ballotready_race_id,
+    br_candidacy_id as candidacy_id,
+    br_race_id as ballotready_race_id,
     cast(election_date as date) as election_date,
     official_office_name,
     candidate_office,
@@ -121,17 +117,18 @@ select
     fuzzy_matched_office_type,
     -- Viability score placeholder
     viability_score,
+    -- ICP flags
+    icp_win,
+    icp_serve,
+    icp_win_supersize,
     current_timestamp() as upload_timestamp
 from combined_records
 -- Only include records that haven't been processed yet
 where
-    candidacy_id not in (
-        select candidacy_id
+    br_candidacy_id not in (
+        select br_candidacy_id
         from {{ ref("stg_historical__ballotready_records_sent_to_hubspot") }}
     )
-    {% if is_incremental() %}
-        and candidacy_id
-        not in (select candidacy_id from {{ this }} where candidacy_id is not null)
-    {% endif %}
 qualify
-    row_number() over (partition by candidacy_id order by candidacy_updated_at desc) = 1
+    row_number() over (partition by br_candidacy_id order by candidacy_updated_at desc)
+    = 1

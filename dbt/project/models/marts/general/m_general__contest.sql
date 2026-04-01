@@ -16,14 +16,14 @@ with
             {{
                 generate_salted_uuid(
                     fields=[
-                        "coalesce(tbl_contest.official_office_name, '')",
-                        "coalesce(tbl_contest.candidate_office, '')",
-                        "coalesce(tbl_contest.office_type, '')",
-                        "coalesce(tbl_contest.office_level, '')",
-                        "coalesce(tbl_contest.state, '')",
-                        "coalesce(tbl_contest.city, '')",
-                        "coalesce(tbl_contest.district, '')",
-                        "coalesce(tbl_contest.seat_name, '')",
+                        "tbl_contest.official_office_name",
+                        "tbl_contest.candidate_office",
+                        "tbl_contest.office_type",
+                        "tbl_contest.office_level",
+                        "tbl_contest.state",
+                        "tbl_contest.city",
+                        "tbl_contest.district",
+                        "tbl_contest.seat_name",
                     ]
                 )
             }} as gp_contest_id,
@@ -33,7 +33,7 @@ with
             tbl_contest.candidate_office,
             tbl_contest.office_type,
             tbl_contest.office_level,
-            tbl_contest.partisan_type as partisanship_type,
+            tbl_contest.is_partisan,
 
             -- geographic information
             tbl_contest.state,
@@ -44,8 +44,8 @@ with
             -- election context
             tbl_contest.number_of_opponents,
             tbl_contest.seats_available,
-            tbl_contest.uncontested,
-            tbl_contest.open_seat,
+            tbl_contest.is_uncontested,
+            tbl_contest.is_open_seat,
             tbl_contest.term_start_date,
             -- term_length_years, -- to add
             -- election dates

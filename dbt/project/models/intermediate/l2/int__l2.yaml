@@ -9,9 +9,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"
         tests:
@@ -54,11 +52,12 @@ models:
         tests:
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
-                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       # optional: comma/space-separated list like \"AK,AL\" for iterative runs
       l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
@@ -74,6 +73,7 @@ models:
   - name: int__l2_nationwide_haystaq_scores
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       # optional: comma/space-separated list like \"AK,AL\" for iterative runs
       l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
@@ -89,6 +89,7 @@ models:
   - name: int__l2_nationwide_uniform_w_haystaq
     description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
     config:
+      tags: ["monthly"]
       dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
       # optional: comma/space-separated list like \"AK,AL\" for iterative runs
       l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
@@ -162,7 +163,7 @@ models:
               - zip_code
               - district_type
               - district_name
-              - br_race_database_id
+              - br_database_id
 
   - name: int__zip_code_to_l2_district
     description: "Zip code to L2 district mapping"

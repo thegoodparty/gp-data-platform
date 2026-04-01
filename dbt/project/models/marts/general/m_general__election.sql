@@ -27,9 +27,9 @@ with
             tbl_contest.population,
             tbl_contest.seats_available,
             tbl_contest.term_start_date,
-            tbl_contest.uncontested as is_uncontested,
+            tbl_contest.is_uncontested,
             tbl_contest.number_of_opponents,
-            tbl_contest.open_seat,
+            tbl_contest.is_open_seat,
             case
                 when tbl_ddhq_matches.ddhq_race_id is not null then true else false
             end as has_ddhq_match,

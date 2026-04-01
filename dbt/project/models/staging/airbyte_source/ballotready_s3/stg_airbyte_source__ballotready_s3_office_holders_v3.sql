@@ -14,18 +14,26 @@ with
             {{ adapter.quote("_airbyte_generation_id") }},
             {{ adapter.quote("_airbyte_meta") }},
             {{ adapter.quote("_airbyte_raw_id") }},
-            cast({{ adapter.quote("appointed") }} as boolean) as appointed,
-            try_cast({{ adapter.quote("candidacy_id") }} as int) as candidacy_id,
-            try_cast({{ adapter.quote("candidate_id") }} as int) as candidate_id,
+            cast({{ adapter.quote("appointed") }} as boolean) as is_appointed,
+            try_cast({{ adapter.quote("candidacy_id") }} as int) as br_candidacy_id,
+            try_cast({{ adapter.quote("candidate_id") }} as int) as br_candidate_id,
             from_json(
-                regexp_replace({{ adapter.quote("contacts") }}, '=>', ':'),
+                regexp_replace(
+                    replace(
+                        replace({{ adapter.quote("contacts") }}, '=>nil,', '=>null,'),
+                        '=>nil}',
+                        '=>null}'
+                    ),
+                    '=>',
+                    ':'
+                ),
                 'ARRAY<STRUCT<email: STRING, phone: STRING, type: STRING>>'
             ) as contacts,
             try_cast({{ adapter.quote("end_at") }} as date) as end_at,
             {{ adapter.quote("first_name") }},
-            {{ adapter.quote("geo_id") }},
-            try_cast({{ adapter.quote("geofence_id") }} as int) as geofence_id,
-            cast({{ adapter.quote("id") }} as int) as id,
+            {{ adapter.quote("geo_id") }} as br_geo_id,
+            try_cast({{ adapter.quote("geofence_id") }} as int) as br_geofence_id,
+            cast({{ adapter.quote("id") }} as int) as br_id,
             cast({{ adapter.quote("is_judicial") }} as boolean) as is_judicial,
             cast({{ adapter.quote("is_off_cycle") }} as boolean) as is_off_cycle,
             cast({{ adapter.quote("is_vacant") }} as boolean) as is_vacant,
@@ -36,7 +44,7 @@ with
             {{ adapter.quote("nickname") }},
             try_cast(
                 {{ adapter.quote("normalized_position_id") }} as int
-            ) as normalized_position_id,
+            ) as br_normalized_position_id,
             {{ adapter.quote("normalized_position_name") }},
             try_cast({{ adapter.quote("number_of_seats") }} as int) as number_of_seats,
             cast(
@@ -44,7 +52,7 @@ with
             ) as office_holder_created_at,
             try_cast(
                 {{ adapter.quote("office_holder_id") }} as int
-            ) as office_holder_id,
+            ) as br_office_holder_id,
             {{ adapter.quote("office_holder_mailing_address_line_1") }},
             {{ adapter.quote("office_holder_mailing_address_line_2") }},
             {{ adapter.quote("office_holder_mailing_city") }},
@@ -58,7 +66,7 @@ with
                 regexp_replace({{ adapter.quote("party_names") }}, '=>', ':'),
                 'ARRAY<STRING>'
             ) as party_names,
-            try_cast({{ adapter.quote("position_id") }} as int) as position_id,
+            try_cast({{ adapter.quote("position_id") }} as int) as br_position_id,
             {{ adapter.quote("position_name") }},
             try_cast({{ adapter.quote("start_at") }} as date) as start_at,
             {{ adapter.quote("state") }},
@@ -74,6 +82,41 @@ with
                 'ARRAY<STRUCT<url: STRING, type: STRING>>'
             ) as urls
         from source
+    ),
+    flattened_contacts_and_urls as (
+        select
+            renamed.*,
+            get(
+                filter(contacts, x -> x.type = 'primary' and x.email is not null), 0
+            ).email as email,
+            get(
+                filter(contacts, x -> x.type = 'office' and x.phone is not null), 0
+            ).phone as office_phone,
+            get(
+                filter(contacts, x -> x.type = 'central' and x.phone is not null), 0
+            ).phone as central_phone,
+            coalesce(
+                get(
+                    filter(contacts, x -> x.type = 'office' and x.phone is not null), 0
+                ).phone,
+                get(
+                    filter(contacts, x -> x.type = 'central' and x.phone is not null), 0
+                ).phone,
+                get(filter(contacts, x -> x.phone is not null), 0).phone
+            ) as phone,
+            get(
+                filter(urls, x -> x.type = 'website' and x.url is not null), 0
+            ).url as website_url,
+            get(
+                filter(urls, x -> x.type = 'linkedin' and x.url is not null), 0
+            ).url as linkedin_url,
+            get(
+                filter(urls, x -> x.type = 'facebook' and x.url is not null), 0
+            ).url as facebook_url,
+            get(
+                filter(urls, x -> x.type = 'twitter' and x.url is not null), 0
+            ).url as twitter_url
+        from renamed
     )
 select *
-from renamed
+from flattened_contacts_and_urls

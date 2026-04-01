@@ -9,9 +9,7 @@ models:
         data_tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
   - name: m_general__candidacy
     description: >
@@ -23,9 +21,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: candidacy_id
         description: Unique identifier for a person running in an election from source
@@ -50,9 +46,7 @@ models:
         # data_type: uuid
         tests:
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: companies_id_main
         description: Need to know person in growth system
         # data_type: varchar
@@ -142,9 +136,9 @@ models:
         description: Indicates whether the candidate has been verified
         data_type: varchar
 
-      - name: pledge_status
-        description: Status of the candidate's pledge
-        data_type: varchar
+      - name: is_pledged
+        description: Whether the candidate has taken the GoodParty pledge
+        data_type: boolean
 
       - name: state
         description: U.S. state for the candidacy
@@ -194,7 +188,7 @@ models:
         description: Is the candidacy Incumbent, challenger
         data_type: boolean
 
-      - name: uncontested
+      - name: is_uncontested
         description: Whether the number of open seats is less than or equal to number of candidates running
         data_type: boolean
 
@@ -206,7 +200,7 @@ models:
         description: Total number of seats in race
         data_type: integer
 
-      - name: open_seat
+      - name: is_open_seat
         description: Whether this race is for an open seat
         data_type: boolean
 
@@ -231,17 +225,13 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: gp_candidacy_id
         description: Internally generated unique identifier for candidacies
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: prod_db_user_id
         description: Identifier for the candidate in the production database
     tests:
@@ -252,6 +242,8 @@ models:
             column_name: hubspot_contact_id
           config:
             where: "hubspot_contact_id is not null"
+            warn_if: ">0"
+            error_if: ">1000"
       - relationships:
           arguments:
             to: ref('int__hubspot_contacts_w_companies')
@@ -259,6 +251,8 @@ models:
             column_name: gp_candidacy_id
           config:
             where: "gp_candidacy_id is not null"
+            warn_if: ">0"
+            error_if: ">1000"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
@@ -276,9 +270,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: gp_candidacy_id
         description: Identifier to link to candidacy
         tests:
@@ -287,6 +279,9 @@ models:
               arguments:
                 to: ref('int__hubspot_contacts_w_companies')
                 field: "gp_candidacy_id"
+              config:
+                warn_if: ">0"
+                error_if: ">1000"
       - name: gp_election_stage_id
         description: Identifier to link to election stage
         tests:
@@ -294,8 +289,6 @@ models:
               arguments:
                 to: ref('m_general__election_stage')
                 field: gp_election_stage_id
-                config:
-                  where: "gp_election_stage_id is not null"
       - name: ddhq_candidacy_id
         description: DDHQ candidate identifier
       - name: ddhq_candidate
@@ -307,7 +300,7 @@ models:
           - relationships:
               arguments:
                 to: ref('stg_airbyte_source__ddhq_gdrive_election_results')
-                field: "race_id"
+                field: "ddhq_race_id"
                 config:
                   where: "ddhq_race_id is not null"
       - name: ddhq_candidate_id
@@ -323,8 +316,14 @@ models:
         description: Candidate party from DDHQ
         data_type: varchar
       - name: ddhq_is_winner
-        description: Whether the candidate won the election stage
+        description: Whether the candidate won the election stage (boolean, transformed from DDHQ Y/N)
         data_type: boolean
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "ddhq_is_winner is not null"
       - name: ddhq_llm_confidence
         description: LLM confidence score for the match
         data_type: float
@@ -363,9 +362,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: hubspot_contact_id
         description: Unique identifier from HubSpot for the contact
         tests:
@@ -455,9 +452,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
   - name: m_general__election
     description: >
@@ -469,9 +464,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: population
         description: Population of candidate's district
         data_type: bigint
@@ -507,9 +500,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: gp_election_id
         description: Identifier to link to election
         tests:
@@ -530,6 +521,10 @@ models:
       - name: election_stage
         description: Type of election stage (e.g., primary, general, runoff)
         data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['general', 'primary', 'runoff']
       - name: ddhq_election_stage_date
         description: Date of the election stage
         data_type: date

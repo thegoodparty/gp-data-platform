@@ -11,9 +11,7 @@ models:
         tests:
           - not_null
           - unique
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
 
       - name: candidacy_id
         description: Unique identifier for a person running in an election from source
@@ -38,9 +36,7 @@ models:
         # data_type: uuid
         tests:
           - not_null
-          - dbt_expectations.expect_column_values_to_match_regex:
-              arguments:
-                regex: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - is_uuid
       - name: companies_id_main
         description: Need to know person in growth system
         # data_type: varchar
@@ -174,7 +170,7 @@ models:
         description: Is the candidacy Incumbent, challenger
         data_type: boolean
 
-      - name: uncontested
+      - name: is_uncontested
         description: Whether the number of open seats is less than or equal to number of candidates running
         data_type: boolean
 
@@ -186,7 +182,7 @@ models:
         description: Total number of seats in race
         data_type: integer
 
-      - name: open_seat
+      - name: is_open_seat
         description: Whether this race is for an open seat
         data_type: boolean
 

@@ -1,11 +1,97 @@
 models:
   - name: stg_airbyte_source__techspeed_gdrive_candidates
-    description: Candidates data load from TechSpeed Google Drive
+    description: >
+      Candidates data from TechSpeed Google Drive. Renames source columns,
+      cleans phone numbers, normalizes date separators (slash to dash), trims
+      text fields, and casts boolean columns via cast_to_boolean. Invalid rows
+      (null name/state) are filtered via anti-join to the _invalid model.
     columns:
       - name: _airbyte_raw_id
         data_tests:
           - not_null
           - unique
+      - name: first_name
+        data_tests:
+          - not_null
+      - name: last_name
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_incumbent
+        description: Whether the candidate is the incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_open_seat
+        description: Whether the race is for an open seat
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_primary
+        description: Whether this is a primary election
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_uncontested
+        description: Whether the race is uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+    tests:
+      - techspeed_both_dates_under_5pct
+
+  - name: stg_airbyte_source__techspeed_gdrive_candidates_invalid
+    description: >
+      TechSpeed candidate rows that fail data quality checks.
+      Currently catches rows with null/empty first_name, last_name, or state.
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - not_null
+      - name: invalid_reason
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["null_name_or_state"]
+
+  - name: stg_airbyte_source__techspeed_gdrive_officeholders
+    description: Officeholders data load from TechSpeed Google Drive
+    # TODO: Add person-level ts_officeholder_id tests if/when candidates moves to id-based key tests.
+    columns:
+      - name: _airbyte_raw_id
+        data_tests:
+          - not_null
+          - unique
+      - name: is_partisan
+        description: Whether the race is partisan
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_incumbent
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_uncontested
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
   - name: stg_airbyte_source__techspeed_gdrive_marketing_data_enrichment
     description: Marketing data enrichment load from TechSpeed Google Drive
     columns:

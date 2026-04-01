@@ -1,7 +1,64 @@
 select
-    -- fmt: off
-    * except (createdAt, updatedAt),
-    createdAt as created_at,
-    updatedAt as updated_at
-    -- fmt: on
+    -- identifiers
+    id,
+    companies,
+
+    -- personal information
+    properties_full_name as full_name,
+    properties_firstname as first_name,
+    properties_lastname as last_name,
+    properties_birth_date as birth_date,
+    properties_email as email,
+    properties_phone as phone,
+    properties_website as website,
+    properties_instagram_handle as instagram_handle,
+    properties_linkedin_url as linkedin_url,
+    properties_twitterhandle as twitter_handle,
+    properties_facebook_url as facebook_url,
+    properties_address as address,
+
+    -- candidate information
+    properties_br_race_id as br_race_id,
+    properties_candidate_id_source as candidate_id_source,
+    properties_candidate_id_tier as candidate_id_tier,
+    {{ cast_to_boolean("properties_pledge_status") }} as is_pledged,
+    properties_verified_candidate_status as verified_candidate_status,
+    properties_type as type,
+    properties_product_user as product_user,
+
+    -- office information
+    properties_official_office_name as official_office_name,
+    properties_candidate_office as candidate_office,
+    properties_office_level as office_level,
+    properties_office_type as office_type,
+    properties_party_affiliation as party_affiliation,
+    {{ cast_to_boolean("properties_partisan_type", ["partisan"], ["nonpartisan"]) }}
+    as is_partisan,
+
+    -- geographic information
+    properties_state as state,
+    properties_city as city,
+    properties_candidate_district as candidate_district,
+    {{ cast_to_boolean("properties_open_seat") }} as is_open_seat,
+    cast(properties_population as int) as population,
+
+    -- election dates
+    properties_filing_deadline as filing_deadline,
+    properties_primary_election_date as primary_election_date,
+    properties_election_date as election_date,
+    properties_general_election_date as general_election_date,
+    properties_start_date as start_date,
+
+    -- election context
+    {{ cast_to_boolean("properties_incumbent") }} as is_incumbent,
+    {{ cast_to_boolean("properties_uncontested", ["uncontested"], ["contested"]) }}
+    as is_uncontested,
+    properties_number_opponents as number_opponents,
+    cast(
+        cast(properties_number_of_seats_available as float) as int
+    ) as number_of_seats_available,
+
+    -- metadata
+    createdat as created_at,
+    updatedat as updated_at
 from {{ source("airbyte_source", "hubspot_api_contacts") }}
