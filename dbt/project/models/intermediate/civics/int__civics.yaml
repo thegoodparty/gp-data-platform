@@ -1163,7 +1163,7 @@ models:
       - name: election_stage
         description: >
           Type of election stage (Primary, General, Runoff).
-          Null for product_db records which lack stage info.
+          Null for product_db records without a BallotReady position link.
         data_tests:
           - not_null:
               config:

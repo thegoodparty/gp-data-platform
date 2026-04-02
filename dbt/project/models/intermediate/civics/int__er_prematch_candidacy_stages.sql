@@ -312,11 +312,58 @@ with
     ),
 
     -- Product Database: GP platform campaign data (joins already resolved
-    -- in the campaigns mart: campaign + user + organization + position)
+    -- in the campaigns mart: campaign + user + organization + position).
+    -- Fanned out by election stage via BR API race table so each campaign
+    -- produces one row per stage (Primary, General, Runoff).
+    pd_campaigns as (
+        select *
+        from {{ ref("campaigns") }}
+        where
+            election_date >= '2026-01-01'
+            and campaign_state is not null
+            and not coalesce(is_demo, false)
+            and is_latest_version
+            and user_first_name is not null
+            and user_last_name is not null
+    ),
+
+    -- BR API race: one row per position x stage, gives us br_race_id
+    -- and election_stage for the fan-out. Deduped to one race per
+    -- position+stage (a position may have multiple races of the same type).
+    br_race as (
+        select
+            position.databaseid as br_position_id,
+            database_id as br_race_id,
+            case
+                when is_primary
+                then 'Primary'
+                when is_runoff
+                then 'Runoff'
+                else 'General'
+            end as election_stage
+        from {{ ref("stg_airbyte_source__ballotready_api_race") }}
+        qualify
+            row_number() over (
+                partition by
+                    position.databaseid,
+                    case
+                        when is_primary
+                        then 'Primary'
+                        when is_runoff
+                        then 'Runoff'
+                        else 'General'
+                    end
+                order by database_id desc
+            )
+            = 1
+    ),
+
     product_db_stages as (
         select
             'product_db' as source_name,
-            cast(c.campaign_id as string) as source_id,
+            cast(c.campaign_id as string)
+            || '__'
+            || lower(coalesce(r.election_stage, 'unknown')) as source_id,
             lower(trim(c.user_first_name)) as first_name,
             lower(trim(c.user_last_name)) as last_name,
             upper(trim(c.campaign_state)) as state,
@@ -337,22 +384,16 @@ with
             cast(null as string) as district_raw,
             cast(null as int) as district_identifier,
             c.election_date,
-            cast(null as string) as election_stage,
+            r.election_stage,
             c.user_email as email,
             c.user_phone as phone,
-            cast(null as string) as br_race_id,
+            cast(r.br_race_id as string) as br_race_id,
             trim(c.campaign_office) as official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
-        from {{ ref("campaigns") }} as c
-        where
-            c.election_date >= '2026-01-01'
-            and c.campaign_state is not null
-            and not coalesce(c.is_demo, false)
-            and c.is_latest_version
-            and c.user_first_name is not null
-            and c.user_last_name is not null
+        from pd_campaigns as c
+        left join br_race as r on c.ballotready_position_id = r.br_position_id
     ),
 
     unioned as (
