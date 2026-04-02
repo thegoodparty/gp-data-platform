@@ -323,8 +323,10 @@ with
             {{ parse_party_affiliation("c.campaign_party") }} as party,
             trim(c.campaign_office) as candidate_office,
             case
-                when lower(c.election_level) in ('city', 'county')
+                when lower(c.election_level) in ('city', 'local')
                 then 'Local'
+                when lower(c.election_level) = 'county'
+                then 'County'
                 when lower(c.election_level) = 'state'
                 then 'State'
                 when lower(c.election_level) = 'federal'
