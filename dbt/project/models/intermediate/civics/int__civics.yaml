@@ -1097,17 +1097,17 @@ models:
 
   - name: int__er_prematch_candidacy_stages
     description: >
-      Entity resolution prematch table: BallotReady x TechSpeed x DDHQ
-      candidacy-stages unioned into a standardized schema for Splink
-      probabilistic matching.
+      Entity resolution prematch table: BallotReady x TechSpeed x DDHQ x
+      Product DB candidacy-stages unioned into a standardized schema for
+      Splink probabilistic matching.
 
       Grain: One row per source candidacy-stage record (candidate + office + election date).
 
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
       stg_airbyte_source__techspeed_gdrive_candidates (TS),
-      stg_airbyte_source__ddhq_gdrive_election_results (DDHQ), with
-      clean_states for state standardization and int__ballotready_person for
-      API contact data.
+      stg_airbyte_source__ddhq_gdrive_election_results (DDHQ),
+      campaigns mart (Product DB), with clean_states for state standardization
+      and int__ballotready_person for API contact data.
 
     columns:
       - name: unique_id
@@ -1119,7 +1119,7 @@ models:
           - not_null
 
       - name: source_name
-        description: Origin of the record ('ballotready', 'techspeed', or 'ddhq')
+        description: Origin of the record ('ballotready', 'techspeed', 'ddhq', or 'product_db')
         data_tests:
           - not_null
           - accepted_values:
@@ -1128,11 +1128,12 @@ models:
                   - ballotready
                   - techspeed
                   - ddhq
+                  - product_db
 
       - name: source_id
         description: >
           Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
-          DDHQ: candidate_id_race_id.
+          DDHQ: candidate_id_race_id; Product DB: campaign_id.
         data_tests:
           - not_null
 
@@ -1160,9 +1161,13 @@ models:
           - not_null
 
       - name: election_stage
-        description: Type of election stage (Primary, General, Runoff)
+        description: >
+          Type of election stage (Primary, General, Runoff).
+          Null for product_db records which lack stage info.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "source_name != 'product_db'"
           - accepted_values:
               arguments:
                 values:

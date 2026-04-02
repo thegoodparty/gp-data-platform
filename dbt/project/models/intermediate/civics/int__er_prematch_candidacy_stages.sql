@@ -1,8 +1,8 @@
 {{ config(materialized="table", tags=["civics", "entity_resolution"]) }}
 
--- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ candidacy-stages
--- Unions candidacy-stage records from all sources into a standardized schema
--- for Splink matching.
+-- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ x Product DB
+-- candidacy-stages. Unions candidacy-stage records from all sources into a
+-- standardized schema for Splink matching.
 --
 -- Grain: One row per source candidacy-stage record (candidate + office + election date)
 -- Key: unique_id (source_name || '|' || source_id)
@@ -311,6 +311,48 @@ with
         from ddhq_with_office as d
     ),
 
+    -- Product Database: GP platform campaign data (joins already resolved
+    -- in the campaigns mart: campaign + user + organization + position)
+    product_db_stages as (
+        select
+            'product_db' as source_name,
+            cast(c.campaign_id as string) as source_id,
+            lower(trim(c.user_first_name)) as first_name,
+            lower(trim(c.user_last_name)) as last_name,
+            upper(trim(c.campaign_state)) as state,
+            {{ parse_party_affiliation("c.campaign_party") }} as party,
+            trim(c.campaign_office) as candidate_office,
+            case
+                when lower(c.election_level) in ('city', 'county')
+                then 'Local'
+                when lower(c.election_level) = 'state'
+                then 'State'
+                when lower(c.election_level) = 'federal'
+                then 'Federal'
+                else null
+            end as office_level,
+            {{ map_office_type("trim(c.campaign_office)") }} as office_type,
+            cast(null as string) as district_raw,
+            cast(null as int) as district_identifier,
+            c.election_date,
+            cast(null as string) as election_stage,
+            c.user_email as email,
+            c.user_phone as phone,
+            cast(null as string) as br_race_id,
+            trim(c.campaign_office) as official_office_name,
+            cast(null as string) as br_candidacy_id,
+            cast(null as string) as seat_name,
+            cast(null as string) as partisan_type
+        from {{ ref("campaigns") }} as c
+        where
+            c.election_date >= '2026-01-01'
+            and c.campaign_state is not null
+            and not coalesce(c.is_demo, false)
+            and c.is_latest_version
+            and c.user_first_name is not null
+            and c.user_last_name is not null
+    ),
+
     unioned as (
         select *
         from ballotready_stages
@@ -320,6 +362,9 @@ with
         union all
         select *
         from ddhq_stages
+        union all
+        select *
+        from product_db_stages
     )
 
 -- Splink treats empty strings as real values for exact matching, so convert
