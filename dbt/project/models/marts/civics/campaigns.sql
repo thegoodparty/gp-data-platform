@@ -63,10 +63,11 @@ with
             case
                 when v.is_latest_version
                 then
-                    coalesce(
-                        bnl_org.normalized_position_name,
-                        bnl_legacy.normalized_position_name
-                    )
+                    case
+                        when v._position_br_database_id is not null
+                        then bnl_org.normalized_position_name
+                        else bnl_legacy.normalized_position_name
+                    end
                 else bnl_legacy.normalized_position_name
             end as _normalized_position_name
         from versioned as v
