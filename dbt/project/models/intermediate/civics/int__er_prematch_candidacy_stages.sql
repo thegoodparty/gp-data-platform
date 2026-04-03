@@ -12,6 +12,8 @@
 -- - TechSpeed staging: dates/state pre-parsed, unpivoted into primary/general
 -- stage rows, deduped per candidate-stage
 -- - DDHQ election results: one row per candidate per race
+-- - GP API: campaigns mart fanned out by BR API race into one row per stage,
+-- enriched with normalized position names and stage-specific dates
 --
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
@@ -331,10 +333,10 @@ with
         from ddhq_with_office as d
     ),
 
-    -- Product Database: GP platform campaign data (joins already resolved
+    -- GP API: campaign data from the GP platform (joins already resolved
     -- in the campaigns mart: campaign + user + organization + position).
     -- Fanned out by election stage via BR API race table so each campaign
-    -- produces one row per stage (Primary, General, Runoff).
+    -- produces one row per stage (Primary, General, Runoff, Special, etc.).
     pd_campaigns as (
         select *
         from {{ ref("campaigns") }}
