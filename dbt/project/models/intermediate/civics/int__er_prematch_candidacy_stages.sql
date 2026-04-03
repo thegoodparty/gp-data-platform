@@ -83,34 +83,11 @@ with
             as district_identifier,
             -- Single election date at candidacy-stage grain
             br.election_day as election_date,
-            -- Derive election stage from is_primary / is_runoff flags and
-            -- election_name. BR election names consistently contain "Special"
-            -- for special elections (e.g. "Georgia Special General", "Florida
-            -- House Special Primary") — set by BallotReady's editorial team.
-            -- False positives (e.g. a city named "Special City") are guarded
-            -- by a race_count <= 10 test on the upstream BR election staging
-            -- model: real special elections have 1-6 races, while a regular
-            -- election mismatched by name would have hundreds.
-            case
-                when
-                    br.is_primary
-                    and br.is_runoff
-                    and lower(br.election_name) like '%special%'
-                then 'Primary Special Runoff'
-                when br.is_primary and br.is_runoff
-                then 'Primary Runoff'
-                when br.is_primary and lower(br.election_name) like '%special%'
-                then 'Primary Special'
-                when br.is_primary
-                then 'Primary'
-                when br.is_runoff and lower(br.election_name) like '%special%'
-                then 'General Special Runoff'
-                when br.is_runoff
-                then 'General Runoff'
-                when lower(br.election_name) like '%special%'
-                then 'General Special'
-                else 'General'
-            end as election_stage,
+            {{
+                derive_election_stage(
+                    "br.is_primary", "br.is_runoff", "br.election_name"
+                )
+            }} as election_stage,
             coalesce(br.email, pe.api_email) as email,
             br.phone as phone,
             cast(br.br_race_id as string) as br_race_id,
@@ -336,8 +313,8 @@ with
     -- GP API: campaign data from the GP platform (joins already resolved
     -- in the campaigns mart: campaign + user + organization + position).
     -- Fanned out by election stage via BR API race table so each campaign
-    -- produces one row per stage (Primary, General, Runoff, Special, etc.).
-    pd_campaigns as (
+    -- produces one row per stage (Primary, General, Runoff, Special variants).
+    gp_api_campaigns as (
         select *
         from {{ ref("campaigns") }}
         where
@@ -358,26 +335,11 @@ with
         select
             race.position.databaseid as br_position_id,
             race.database_id as br_race_id,
-            case
-                when
-                    race.is_primary
-                    and race.is_runoff
-                    and lower(election.name) like '%special%'
-                then 'Primary Special Runoff'
-                when race.is_primary and race.is_runoff
-                then 'Primary Runoff'
-                when race.is_primary and lower(election.name) like '%special%'
-                then 'Primary Special'
-                when race.is_primary
-                then 'Primary'
-                when race.is_runoff and lower(election.name) like '%special%'
-                then 'General Special Runoff'
-                when race.is_runoff
-                then 'General Runoff'
-                when lower(election.name) like '%special%'
-                then 'General Special'
-                else 'General'
-            end as election_stage,
+            {{
+                derive_election_stage(
+                    "race.is_primary", "race.is_runoff", "election.name"
+                )
+            }} as election_stage,
             election.election_day
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as race
         inner join
@@ -388,16 +350,15 @@ with
             and election.election_day >= '2026-01-01'
     ),
 
-    gp_api_stages as (
+    -- Compute candidate_office once so map_office_type can reference it
+    -- without re-evaluating the full CASE expression (same pattern as
+    -- ddhq_with_office above).
+    gp_api_with_office as (
         select
-            'gp_api' as source_name,
-            cast(c.campaign_id as string)
-            || '__'
-            || lower(coalesce(r.election_stage, 'unknown')) as source_id,
-            lower(trim(c.user_first_name)) as first_name,
-            lower(trim(c.user_last_name)) as last_name,
-            upper(trim(c.campaign_state)) as state,
-            {{ parse_party_affiliation("c.campaign_party") }} as party,
+            c.*,
+            r.br_race_id,
+            r.election_stage,
+            r.election_day,
             -- Use the same normalization as BallotReady when we have the
             -- normalized_position_name; fall back to raw campaign_office
             coalesce(
@@ -408,42 +369,8 @@ with
                     )
                 }},
                 initcap(trim(c.campaign_office))
-            ) as candidate_office,
-            case
-                when lower(c.election_level) in ('city', 'local')
-                then 'Local'
-                when lower(c.election_level) = 'county'
-                then 'County'
-                when lower(c.election_level) = 'state'
-                then 'State'
-                when lower(c.election_level) = 'federal'
-                then 'Federal'
-                else null
-            end as office_level,
-            {{
-                map_office_type(
-                    "coalesce("
-                    ~ generate_candidate_office_from_position(
-                        "c.campaign_office",
-                        "c.normalized_position_name",
-                    )
-                    ~ ", initcap(trim(c.campaign_office)))"
-                )
-            }} as office_type,
-            cast(null as string) as district_raw,
-            cast(null as int) as district_identifier,
-            -- Use stage-specific date from BR election when available;
-            -- fall back to campaign's generic date for unlinked campaigns
-            coalesce(r.election_day, c.election_date) as election_date,
-            r.election_stage,
-            c.user_email as email,
-            c.user_phone as phone,
-            cast(r.br_race_id as string) as br_race_id,
-            trim(c.campaign_office) as official_office_name,
-            cast(null as string) as br_candidacy_id,
-            cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
-        from pd_campaigns as c
+            ) as candidate_office
+        from gp_api_campaigns as c
         inner join
             br_race as r
             on c.ballotready_position_id = r.br_position_id
@@ -458,6 +385,43 @@ with
                     r.br_race_id desc nulls last
             )
             = 1
+    ),
+
+    gp_api_stages as (
+        select
+            'gp_api' as source_name,
+            cast(g.campaign_id as string)
+            || '__'
+            || lower(g.election_stage) as source_id,
+            lower(trim(g.user_first_name)) as first_name,
+            lower(trim(g.user_last_name)) as last_name,
+            upper(trim(g.campaign_state)) as state,
+            {{ parse_party_affiliation("g.campaign_party") }} as party,
+            g.candidate_office,
+            case
+                when lower(g.election_level) in ('city', 'local')
+                then 'Local'
+                when lower(g.election_level) = 'county'
+                then 'County'
+                when lower(g.election_level) = 'state'
+                then 'State'
+                when lower(g.election_level) = 'federal'
+                then 'Federal'
+                else null
+            end as office_level,
+            {{ map_office_type("g.candidate_office") }} as office_type,
+            cast(null as string) as district_raw,
+            cast(null as int) as district_identifier,
+            g.election_day as election_date,
+            g.election_stage,
+            g.user_email as email,
+            g.user_phone as phone,
+            cast(g.br_race_id as string) as br_race_id,
+            trim(g.campaign_office) as official_office_name,
+            cast(null as string) as br_candidacy_id,
+            cast(null as string) as seat_name,
+            cast(null as string) as partisan_type
+        from gp_api_with_office as g
     ),
 
     unioned as (
