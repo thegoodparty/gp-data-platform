@@ -12,26 +12,17 @@ with
     positions as (select * from {{ ref("m_election_api__position") }}),
 
     -- Lookup: BR position database_id → normalized_position_name
-    -- Uses BR API position to get the normalized_position ref, then
-    -- resolves the name from the candidacies S3 data.
+    -- Resolves via BR API position's normalized_position ref to the
+    -- normalized position model (fetched from CivicEngine API).
     br_normalized_lookup as (
         select
             brp.database_id as br_database_id,
             brp.name as br_position_name,
-            npn.normalized_position_name
+            np.name as normalized_position_name
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
         inner join
-            (
-                select
-                    br_normalized_position_id,
-                    min(normalized_position_name) as normalized_position_name
-                from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-                where
-                    normalized_position_name is not null
-                    and br_normalized_position_id is not null
-                group by br_normalized_position_id
-            ) as npn
-            on brp.normalized_position.databaseid = npn.br_normalized_position_id
+            {{ ref("int__ballotready_normalized_position") }} as np
+            on brp.normalized_position.databaseid = np.database_id
     ),
 
     versioned as (
