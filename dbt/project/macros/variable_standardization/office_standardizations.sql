@@ -138,6 +138,24 @@
                 'village trustee'
             )
         then 'Town Council'
+        -- Explicitly mapped to Other (not just else fallthrough)
+        when
+            lower({{ column_name }}) in (
+                'board of trustees',
+                'community college board',
+                'dependent district board',
+                'elections supervisor',
+                'fire board',
+                'hawaiian affairs board',
+                'highway superintendent',
+                'insurance commissioner',
+                'library board',
+                'parks and recreation board',
+                'port board',
+                'township assessor',
+                'water supply board'
+            )
+        then 'Other'
         else 'Other'
     end
 {% endmacro %}
