@@ -368,7 +368,17 @@ with
             lower(trim(c.user_last_name)) as last_name,
             upper(trim(c.campaign_state)) as state,
             {{ parse_party_affiliation("c.campaign_party") }} as party,
-            trim(c.campaign_office) as candidate_office,
+            -- Use the same normalization as BallotReady when we have the
+            -- normalized_position_name; fall back to raw campaign_office
+            coalesce(
+                {{
+                    generate_candidate_office_from_position(
+                        "c.campaign_office",
+                        "c.normalized_position_name",
+                    )
+                }},
+                trim(c.campaign_office)
+            ) as candidate_office,
             case
                 when lower(c.election_level) in ('city', 'local')
                 then 'Local'
@@ -380,7 +390,16 @@ with
                 then 'Federal'
                 else null
             end as office_level,
-            {{ map_office_type("trim(c.campaign_office)") }} as office_type,
+            {{
+                map_office_type(
+                    "coalesce("
+                    ~ generate_candidate_office_from_position(
+                        "c.campaign_office",
+                        "c.normalized_position_name",
+                    )
+                    ~ ", trim(c.campaign_office))"
+                )
+            }} as office_type,
             cast(null as string) as district_raw,
             cast(null as int) as district_identifier,
             c.election_date,

@@ -11,6 +11,26 @@ with
 
     positions as (select * from {{ ref("m_election_api__position") }}),
 
+    -- Lookup: BR position database_id → normalized_position_name
+    -- Uses BR API position to get the normalized_position ref, then
+    -- resolves the name from the candidacies S3 data.
+    br_normalized_lookup as (
+        select
+            brp.database_id as br_database_id,
+            brp.name as br_position_name,
+            npn.normalized_position_name
+        from {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
+        inner join
+            (
+                select distinct br_normalized_position_id, normalized_position_name
+                from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+                where
+                    normalized_position_name is not null
+                    and br_normalized_position_id is not null
+            ) as npn
+            on brp.normalized_position.databaseid = npn.br_normalized_position_id
+    ),
+
     versioned as (
         select
             c.*,
@@ -40,6 +60,22 @@ with
         left join users u on c.user_id = u.id
         left join organizations o on c.organization_slug = o.slug
         left join positions p on o.position_id = p.id
+    ),
+
+    -- Resolve normalized_position_name via both org and legacy paths
+    with_normalized as (
+        select
+            v.*,
+            coalesce(
+                bnl_org.normalized_position_name, bnl_legacy.normalized_position_name
+            ) as _normalized_position_name
+        from versioned as v
+        left join
+            br_normalized_lookup as bnl_org
+            on v._position_br_database_id = bnl_org.br_database_id
+        left join
+            br_normalized_lookup as bnl_legacy
+            on v._legacy_br_position_id = bnl_legacy.br_database_id
     ),
 
     final as (
@@ -87,9 +123,10 @@ with
                 then coalesce(_position_br_database_id, _legacy_br_position_id)
                 else _legacy_br_position_id
             end as ballotready_position_id,
+            _normalized_position_name as normalized_position_name,
 
             is_latest_version
-        from versioned
+        from with_normalized
     )
 
 select *
