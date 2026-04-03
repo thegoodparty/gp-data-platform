@@ -60,9 +60,15 @@ with
     with_normalized as (
         select
             v.*,
-            coalesce(
-                bnl_org.normalized_position_name, bnl_legacy.normalized_position_name
-            ) as _normalized_position_name
+            case
+                when v.is_latest_version
+                then
+                    coalesce(
+                        bnl_org.normalized_position_name,
+                        bnl_legacy.normalized_position_name
+                    )
+                else bnl_legacy.normalized_position_name
+            end as _normalized_position_name
         from versioned as v
         left join
             br_normalized_lookup as bnl_org
