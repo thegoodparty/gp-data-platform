@@ -327,35 +327,28 @@ with
             and user_last_name is not null
     ),
 
-    -- BR API race: one row per position x stage, gives us br_race_id
-    -- and election_stage for the fan-out. Deduped to one race per
-    -- position+stage (a position may have multiple races of the same type).
+    -- BR API race: position x stage with stage-specific election dates.
+    -- Joined to BR election for the actual date per stage. Excludes
+    -- disabled races and pre-2026 elections.
     br_race as (
         select
-            position.databaseid as br_position_id,
-            database_id as br_race_id,
+            race.position.databaseid as br_position_id,
+            race.database_id as br_race_id,
             case
-                when is_primary
+                when race.is_primary
                 then 'Primary'
-                when is_runoff
+                when race.is_runoff
                 then 'Runoff'
                 else 'General'
-            end as election_stage
-        from {{ ref("stg_airbyte_source__ballotready_api_race") }}
-        qualify
-            row_number() over (
-                partition by
-                    position.databaseid,
-                    case
-                        when is_primary
-                        then 'Primary'
-                        when is_runoff
-                        then 'Runoff'
-                        else 'General'
-                    end
-                order by database_id desc
-            )
-            = 1
+            end as election_stage,
+            election.election_day
+        from {{ ref("stg_airbyte_source__ballotready_api_race") }} as race
+        inner join
+            {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
+            on race.election.databaseid = election.database_id
+        where
+            not coalesce(race.is_disabled, false)
+            and election.election_day >= '2026-01-01'
     ),
 
     product_db_stages as (
@@ -402,7 +395,9 @@ with
             }} as office_type,
             cast(null as string) as district_raw,
             cast(null as int) as district_identifier,
-            c.election_date,
+            -- Use stage-specific date from BR election when available;
+            -- fall back to campaign's generic date for unlinked campaigns
+            coalesce(r.election_day, c.election_date) as election_date,
             r.election_stage,
             c.user_email as email,
             c.user_phone as phone,
@@ -412,7 +407,18 @@ with
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
         from pd_campaigns as c
-        left join br_race as r on c.ballotready_position_id = r.br_position_id
+        left join
+            br_race as r
+            on c.ballotready_position_id = r.br_position_id
+            and year(r.election_day) = year(c.election_date)
+        -- Dedup: a position may have multiple races of the same stage type
+        -- in the same year; keep the one with the latest race ID
+        qualify
+            row_number() over (
+                partition by c.campaign_id, r.election_stage
+                order by r.br_race_id desc nulls last
+            )
+            = 1
     ),
 
     unioned as (
