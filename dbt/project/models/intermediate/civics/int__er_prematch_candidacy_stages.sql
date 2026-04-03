@@ -409,7 +409,7 @@ with
             'gp_api' as source_name,
             cast(g.campaign_id as string)
             || '__'
-            || lower(g.election_stage) as source_id,
+            || replace(lower(g.election_stage), ' ', '_') as source_id,
             lower(trim(g.user_first_name)) as first_name,
             lower(trim(g.user_last_name)) as last_name,
             upper(trim(g.campaign_state)) as state,
