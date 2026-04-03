@@ -1098,7 +1098,7 @@ models:
   - name: int__er_prematch_candidacy_stages
     description: >
       Entity resolution prematch table: BallotReady x TechSpeed x DDHQ x
-      Product DB candidacy-stages unioned into a standardized schema for
+      GP API candidacy-stages unioned into a standardized schema for
       Splink probabilistic matching.
 
       Grain: One row per source candidacy-stage record (candidate + office + election date).
@@ -1106,8 +1106,10 @@ models:
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
       stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ),
-      campaigns mart (Product DB), with clean_states for state standardization
-      and int__ballotready_person for API contact data.
+      campaigns mart (GP API) enriched with BallotReady API data for
+      election stages, race IDs, and normalized position names. Also uses
+      clean_states for state standardization and int__ballotready_person
+      for API contact data.
 
     columns:
       - name: unique_id
@@ -1119,7 +1121,7 @@ models:
           - not_null
 
       - name: source_name
-        description: Origin of the record ('ballotready', 'techspeed', 'ddhq', or 'product_db')
+        description: Origin of the record ('ballotready', 'techspeed', 'ddhq', or 'gp_api')
         data_tests:
           - not_null
           - accepted_values:
@@ -1128,7 +1130,7 @@ models:
                   - ballotready
                   - techspeed
                   - ddhq
-                  - product_db
+                  - gp_api
 
       - name: source_id
         description: >
@@ -1164,18 +1166,20 @@ models:
       - name: election_stage
         description: >
           Type of election stage (Primary, General, Runoff).
-          Null for product_db records without a BallotReady position link
+          Null for gp_api records without a BallotReady position link
           or without a matching 2026 race for their position.
         data_tests:
           - not_null:
               config:
-                where: "source_name != 'product_db'"
+                where: "source_name != 'gp_api'"
           - accepted_values:
               arguments:
                 values:
                   - Primary
                   - General
                   - Runoff
+                  - Primary Runoff
+                  - General Runoff
 
   - name: int__er_prematch_elected_officials
     description: >

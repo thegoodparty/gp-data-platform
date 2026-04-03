@@ -1,6 +1,6 @@
 {{ config(materialized="table", tags=["civics", "entity_resolution"]) }}
 
--- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ x Product DB
+-- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ x GP API
 -- candidacy-stages. Unions candidacy-stage records from all sources into a
 -- standardized schema for Splink matching.
 --
@@ -336,10 +336,12 @@ with
             race.position.databaseid as br_position_id,
             race.database_id as br_race_id,
             case
+                when race.is_primary and race.is_runoff
+                then 'Primary Runoff'
                 when race.is_primary
                 then 'Primary'
                 when race.is_runoff
-                then 'Runoff'
+                then 'General Runoff'
                 else 'General'
             end as election_stage,
             election.election_day
@@ -352,9 +354,9 @@ with
             and election.election_day >= '2026-01-01'
     ),
 
-    product_db_stages as (
+    gp_api_stages as (
         select
-            'product_db' as source_name,
+            'gp_api' as source_name,
             cast(c.campaign_id as string)
             || '__'
             || lower(coalesce(r.election_stage, 'unknown')) as source_id,
@@ -435,7 +437,7 @@ with
         from ddhq_stages
         union all
         select *
-        from product_db_stages
+        from gp_api_stages
     )
 
 -- Splink treats empty strings as real values for exact matching, so convert
