@@ -320,12 +320,12 @@ with
         from {{ ref("campaigns") }}
         where
             election_date >= '2026-01-01'
-            and campaign_state is not null
+            and nullif(trim(campaign_state), '') is not null
             and not coalesce(is_demo, false)
             and is_latest_version
-            and user_first_name is not null
-            and user_last_name is not null
-            and campaign_office is not null
+            and nullif(trim(user_first_name), '') is not null
+            and nullif(trim(user_last_name), '') is not null
+            and nullif(trim(campaign_office), '') is not null
     ),
 
     -- BR API race: position x stage with stage-specific election dates.
