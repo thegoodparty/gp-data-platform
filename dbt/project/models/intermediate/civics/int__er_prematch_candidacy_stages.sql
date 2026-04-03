@@ -81,12 +81,28 @@ with
             as district_identifier,
             -- Single election date at candidacy-stage grain
             br.election_day as election_date,
-            -- Derive election stage from is_primary / is_runoff flags
+            -- Derive election stage from is_primary / is_runoff flags and
+            -- election_name. BR election names consistently contain "Special"
+            -- for special elections (e.g. "Georgia Special General", "Florida
+            -- House Special Primary") — set by BallotReady's editorial team.
             case
+                when
+                    br.is_primary
+                    and br.is_runoff
+                    and lower(br.election_name) like '%special%'
+                then 'Primary Special Runoff'
+                when br.is_primary and br.is_runoff
+                then 'Primary Runoff'
+                when br.is_primary and lower(br.election_name) like '%special%'
+                then 'Primary Special'
                 when br.is_primary
                 then 'Primary'
+                when br.is_runoff and lower(br.election_name) like '%special%'
+                then 'General Special Runoff'
                 when br.is_runoff
-                then 'Runoff'
+                then 'General Runoff'
+                when lower(br.election_name) like '%special%'
+                then 'General Special'
                 else 'General'
             end as election_stage,
             coalesce(br.email, pe.api_email) as email,
@@ -330,18 +346,30 @@ with
 
     -- BR API race: position x stage with stage-specific election dates.
     -- Joined to BR election for the actual date per stage. Excludes
-    -- disabled races and pre-2026 elections.
+    -- disabled races and pre-2026 elections. Detects special elections
+    -- via election name (see ballotready_stages comment for rationale).
     br_race as (
         select
             race.position.databaseid as br_position_id,
             race.database_id as br_race_id,
             case
+                when
+                    race.is_primary
+                    and race.is_runoff
+                    and lower(election.name) like '%special%'
+                then 'Primary Special Runoff'
                 when race.is_primary and race.is_runoff
                 then 'Primary Runoff'
+                when race.is_primary and lower(election.name) like '%special%'
+                then 'Primary Special'
                 when race.is_primary
                 then 'Primary'
+                when race.is_runoff and lower(election.name) like '%special%'
+                then 'General Special Runoff'
                 when race.is_runoff
                 then 'General Runoff'
+                when lower(election.name) like '%special%'
+                then 'General Special'
                 else 'General'
             end as election_stage,
             election.election_day

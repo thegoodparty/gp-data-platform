@@ -1180,6 +1180,10 @@ models:
                   - Runoff
                   - Primary Runoff
                   - General Runoff
+                  - Primary Special
+                  - General Special
+                  - Primary Special Runoff
+                  - General Special Runoff
 
   - name: int__er_prematch_elected_officials
     description: >
