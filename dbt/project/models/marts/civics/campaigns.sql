@@ -22,11 +22,14 @@ with
         from {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
         inner join
             (
-                select distinct br_normalized_position_id, normalized_position_name
+                select
+                    br_normalized_position_id,
+                    min(normalized_position_name) as normalized_position_name
                 from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
                 where
                     normalized_position_name is not null
                     and br_normalized_position_id is not null
+                group by br_normalized_position_id
             ) as npn
             on brp.normalized_position.databaseid = npn.br_normalized_position_id
     ),
