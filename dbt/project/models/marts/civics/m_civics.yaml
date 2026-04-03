@@ -222,6 +222,14 @@ models:
 
       - name: election_level
         description: Level of election (city, county, state, federal)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - city
+                  - county
+                  - state
+                  - federal
 
       - name: campaign_office
         description: >

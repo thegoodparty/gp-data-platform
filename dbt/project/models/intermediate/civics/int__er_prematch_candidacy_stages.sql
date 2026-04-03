@@ -293,7 +293,24 @@ with
                 try_cast(regexp_extract(d.race_name, ' ([0-9]+)$') as int)
             ) as district_identifier,
             d.election_date,
+            -- DDHQ election_type contains both stage and special indicators
+            -- (e.g. "Special Election Primary", "Special General Election")
             case
+                when
+                    lower(d.election_type) like '%special%'
+                    and lower(d.election_type) like '%runoff%'
+                    and lower(d.election_type) like '%primary%'
+                then 'Primary Special Runoff'
+                when
+                    lower(d.election_type) like '%special%'
+                    and lower(d.election_type) like '%runoff%'
+                then 'General Special Runoff'
+                when
+                    lower(d.election_type) like '%special%'
+                    and lower(d.election_type) like '%primary%'
+                then 'Primary Special'
+                when lower(d.election_type) like '%special%'
+                then 'General Special'
                 when lower(d.election_type) like '%runoff%'
                 then 'Runoff'
                 when lower(d.election_type) like '%primary%'
