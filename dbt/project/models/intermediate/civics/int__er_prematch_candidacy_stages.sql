@@ -413,11 +413,13 @@ with
             on c.ballotready_position_id = r.br_position_id
             and year(r.election_day) = year(c.election_date)
         -- Dedup: a position may have multiple races of the same stage type
-        -- in the same year; keep the one with the latest race ID
+        -- in the same year; pick the race closest to the campaign's date
         qualify
             row_number() over (
                 partition by c.campaign_id, r.election_stage
-                order by r.br_race_id desc nulls last
+                order by
+                    abs(datediff(r.election_day, c.election_date)) asc,
+                    r.br_race_id desc nulls last
             )
             = 1
     ),
