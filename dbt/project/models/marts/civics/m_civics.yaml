@@ -221,7 +221,7 @@ models:
         description: Political party affiliation
 
       - name: election_level
-        description: Level of election (local, state, federal)
+        description: Level of election (city, county, state, federal)
 
       - name: campaign_office
         description: >
