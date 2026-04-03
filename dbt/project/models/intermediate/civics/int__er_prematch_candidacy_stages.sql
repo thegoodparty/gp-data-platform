@@ -438,7 +438,7 @@ with
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
         from pd_campaigns as c
-        left join
+        inner join
             br_race as r
             on c.ballotready_position_id = r.br_position_id
             and year(r.election_day) = year(c.election_date)

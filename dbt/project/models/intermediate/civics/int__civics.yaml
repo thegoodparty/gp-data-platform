@@ -1165,13 +1165,11 @@ models:
 
       - name: election_stage
         description: >
-          Type of election stage (Primary, General, Runoff).
-          Null for gp_api records without a BallotReady position link
-          or without a matching 2026 race for their position.
+          Type of election stage (Primary, General, Runoff, etc.).
+          GP API records without a BallotReady position link or matching
+          2026 race are excluded from this table.
         data_tests:
-          - not_null:
-              config:
-                where: "source_name != 'gp_api'"
+          - not_null
           - accepted_values:
               arguments:
                 values:
