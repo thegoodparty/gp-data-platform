@@ -325,6 +325,7 @@ with
             and is_latest_version
             and user_first_name is not null
             and user_last_name is not null
+            and campaign_office is not null
     ),
 
     -- BR API race: position x stage with stage-specific election dates.
@@ -370,7 +371,7 @@ with
                         "c.normalized_position_name",
                     )
                 }},
-                trim(c.campaign_office)
+                initcap(trim(c.campaign_office))
             ) as candidate_office,
             case
                 when lower(c.election_level) in ('city', 'local')
@@ -390,7 +391,7 @@ with
                         "c.campaign_office",
                         "c.normalized_position_name",
                     )
-                    ~ ", trim(c.campaign_office))"
+                    ~ ", initcap(trim(c.campaign_office)))"
                 )
             }} as office_type,
             cast(null as string) as district_raw,
