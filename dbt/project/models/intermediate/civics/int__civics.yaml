@@ -1133,7 +1133,8 @@ models:
       - name: source_id
         description: >
           Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
-          DDHQ: candidate_id_race_id; Product DB: campaign_id.
+          DDHQ: candidate_id_race_id; Product DB: campaign_id__election_stage
+          (e.g. 12345__general, 12345__unknown for unlinked campaigns).
         data_tests:
           - not_null
 

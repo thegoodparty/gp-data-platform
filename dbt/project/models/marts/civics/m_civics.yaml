@@ -234,6 +234,13 @@ models:
           election-api position. Replaces the deprecated base64-decoded
           campaign.details.positionId field.
 
+      - name: normalized_position_name
+        description: >
+          BallotReady normalized position name (e.g. "City Legislature",
+          "Governor") resolved via the BR API position's normalized_position
+          reference. Used for standardizing candidate_office across sources
+          in entity resolution.
+
       - name: is_latest_version
         description: >
           Whether this is the most recent version of the campaign (true) or a
