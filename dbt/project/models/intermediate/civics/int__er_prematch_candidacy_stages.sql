@@ -85,6 +85,10 @@ with
             -- election_name. BR election names consistently contain "Special"
             -- for special elections (e.g. "Georgia Special General", "Florida
             -- House Special Primary") — set by BallotReady's editorial team.
+            -- False positives (e.g. a city named "Special City") are guarded
+            -- by a race_count <= 10 test on the upstream BR election staging
+            -- model: real special elections have 1-6 races, while a regular
+            -- election mismatched by name would have hundreds.
             case
                 when
                     br.is_primary
