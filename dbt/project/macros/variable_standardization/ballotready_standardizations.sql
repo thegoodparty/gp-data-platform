@@ -192,11 +192,11 @@
     position_name_col, normalized_position_name_col
 ) %}
     case
-        when {{ position_name_col }} like '%Village President%'
+        when {{ position_name_col }} ilike '%Village President%'
         then 'Village President'
-        when {{ position_name_col }} like '%Town Chair%'
+        when {{ position_name_col }} ilike '%Town Chair%'
         then 'Town Chair'
-        when {{ position_name_col }} like '%Water Supply District%'
+        when {{ position_name_col }} ilike '%Water Supply District%'
         then 'Water Supply Board'
         when {{ normalized_position_name_col }} = 'City Legislature'
         then 'City Council'
