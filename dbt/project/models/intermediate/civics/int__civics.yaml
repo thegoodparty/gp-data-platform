@@ -1177,7 +1177,6 @@ models:
                 values:
                   - Primary
                   - General
-                  - Runoff
                   - Primary Runoff
                   - General Runoff
                   - Primary Special

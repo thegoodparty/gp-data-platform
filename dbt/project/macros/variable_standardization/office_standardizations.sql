@@ -43,7 +43,6 @@
                 'city clerk',
                 'township clerk',
                 'clerk/treasurer',
-                'county clerk',
                 'county court clerk'
             )
         then 'Clerk/Treasurer'
@@ -76,7 +75,6 @@
             lower({{ column_name }}) in (
                 'circuit court',
                 'circuit court judge',
-                'county court judge',
                 'district court',
                 'judge',
                 'probate court',
@@ -105,9 +103,7 @@
         when lower({{ column_name }}) in ('board of education', 'school board')
         then 'School Board'
         -- Sheriff
-        when
-            lower({{ column_name }})
-            in ('constable', 'county constable', 'county sheriff', 'sheriff')
+        when lower({{ column_name }}) in ('constable', 'county constable', 'sheriff')
         then 'Sheriff'
         when lower({{ column_name }}) like 'county sheriff%'
         then 'Sheriff'

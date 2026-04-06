@@ -53,6 +53,25 @@ with
         where database_id is not null
     ),
 
+    -- Compute candidate_office once so map_office_type can reference it
+    -- without re-evaluating the full CASE expression (same pattern as
+    -- ddhq_with_office and gp_api_with_office below).
+    br_with_office as (
+        select
+            br.*,
+            br_position.partisan_type,
+            coalesce(br.email, pe.api_email) as _email,
+            {{
+                generate_candidate_office_from_position(
+                    "br.position_name",
+                    "br.normalized_position_name",
+                )
+            }} as candidate_office
+        from br_staging as br
+        left join br_position on br.br_position_id = br_position.database_id
+        left join person_emails as pe on br.br_candidate_id = pe.person_database_id
+    ),
+
     ballotready_stages as (
         select
             'ballotready' as source_name,
@@ -61,48 +80,32 @@ with
             lower(trim(br.last_name)) as last_name,
             br.state,
             {{ parse_party_affiliation("br.parties") }} as party,
-            {{
-                generate_candidate_office_from_position(
-                    "br.position_name",
-                    "br.normalized_position_name",
-                )
-            }} as candidate_office,
+            br.candidate_office,
             case
                 when lower(br.level) = 'city' then 'Local' else initcap(br.level)
             end as office_level,
-            {{
-                map_office_type(
-                    generate_candidate_office_from_position(
-                        "br.position_name",
-                        "br.normalized_position_name",
-                    )
-                )
-            }} as office_type,
+            {{ map_office_type("br.candidate_office") }} as office_type,
             {{ extract_district_raw("br.position_name") }} as district_raw,
             {{ extract_district_identifier("br.position_name") }}
             as district_identifier,
-            -- Single election date at candidacy-stage grain
             br.election_day as election_date,
             {{
                 derive_election_stage(
                     "br.is_primary", "br.is_runoff", "br.election_name"
                 )
             }} as election_stage,
-            coalesce(br.email, pe.api_email) as email,
+            br._email as email,
             br.phone as phone,
             cast(br.br_race_id as string) as br_race_id,
             br.position_name as official_office_name,
             br.br_candidacy_id,
-            -- Derive seat_name from position_name (same regex as candidacy model)
             coalesce(
                 regexp_extract(br.position_name, '[-, ] (?:Seat|Group) ([^,]+)'),
                 regexp_extract(br.position_name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name,
-            br_position.partisan_type
-        from br_staging as br
-        left join br_position on br.br_position_id = br_position.database_id
-        left join person_emails as pe on br.br_candidate_id = pe.person_database_id
+            br.partisan_type
+        from br_with_office as br
     ),
 
     -- State name → 2-letter code mapping (used by DDHQ section)
@@ -312,7 +315,7 @@ with
                 when lower(d.election_type) like '%special%'
                 then 'General Special'
                 when lower(d.election_type) like '%runoff%'
-                then 'Runoff'
+                then 'General Runoff'
                 when lower(d.election_type) like '%primary%'
                 then 'Primary'
                 else 'General'
