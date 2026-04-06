@@ -51,6 +51,21 @@ seeds:
         - dbt_expectations.expect_column_distinct_values_to_equal_set:
             arguments:
               value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=true) }}"
+  - name: us_states
+    description: "One row per U.S. state/territory mapping postal code to human-readable name"
+    columns:
+      - name: state_postal_code
+        description: "2-letter state postal code"
+        data_tests:
+          - unique
+          - not_null
+          - is_state_abbreviation
+      - name: state_name
+        description: "Human-readable state name"
+        data_tests:
+          - unique
+          - not_null
+
   - name: nicknames
     description: >
       Mapping of given names to their common nicknames/aliases.

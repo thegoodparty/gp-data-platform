@@ -60,6 +60,10 @@ models:
         +tags: ["mart", "analytics"]
       mban2026:
         +schema: mart_mban2026
+    write:
+      write__people_api_db:
+        # Disabled due to performance issues (timing out)
+        +enabled: false
     staging:
       airbyte_source:
         stripe_api:

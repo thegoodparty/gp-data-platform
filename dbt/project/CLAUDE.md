@@ -2,23 +2,20 @@
 
 Use the `gh` cli to make pull-requests and interact with GitHub.
 
-Assume we're using the dbt *cloud* cli, not the dbt-core cli. As such you do
-not need to specify `--defer` or the location of a state file, as it's
-configured in dbt cloud. Unless instructed otherwise, do not invoke dbt via
-`poetry`, as the dbt cloud cli should be installed at the system level, and
-invoking dbt via `poetry` risks invoking the dbt-core cli unintentionally.
-
-When adding or modifying models and/or tests, run `dbt build` on the modified
+- We use the dbt *cloud* cli, not the dbt-core cli.
+- You do not need to specify `--defer` or the location of a state file in dbt cloud.
+- Do not invoke dbt via `poetry`.dbt cloud cli is installed at the system level
+- When adding or modifying models and/or tests, run `dbt build` on the modified
 objects to ensure they build as exected.
 
 When building multiple models, use quotes around the models in the `--select` argument:
     - Bad: `dbt build --select my_model1 my_model2`
     - Good: `dbt build --select "my_model1 my_model2"`
 
-**IMPORTANT** - When working on dbt models, it may be helpful to inspect
-existing sources/models in Databricks, as well as models that you have added
-and modified after creating them. Do so by running `dbt show` for custom
-queries or the `inspect_data` utility macro, which includes:
+**IMPORTANT** - When working on dbt models, inspect existing sources/models in
+Databricks, as well as models that you have added and modified after creating
+them. Do so by running `dbt show` for custom queries or the `inspect_data`
+utility macro, which includes:
 
   - Relation name and type
   - Total row count
@@ -29,26 +26,16 @@ queries or the `inspect_data` utility macro, which includes:
 ## Helpful Commands
 
 ```
-# dbt (must be run from in dbt/project/ directory
+# dbt (must be run from in dbt/project/ directory)
 dbt run                               # Run transformations
 dbt test                              # Data quality tests
 dbt build                             # Run + test
 dbt show                              # Query the data in databricks
 
 # Inpect models/sources:
-dbt run-operation inspect_data --args '{"model": "model_name"}'
+dbt show --inline "select distinct candidate_office from {{ ref('int__civics_candidacy_ballotready') }} order by candidate_office" --limit 50
 ```
 
-```
-# For models
-dbt run-operation inspect_data --args '{"model": "my_model_name"}'
-
-# For sources
-dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_name": "gp_api_db_campaign"}'
-
-# With custom sample size
-dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_name": "gp_api_db_user", "sample_size": 10}'
-```
 ## Code Conventions
 
 - Most dbt tests do *not* need a `config.where: some_column_is_not_null`. For
@@ -67,6 +54,12 @@ dbt run-operation inspect_data --args '{"source_name": "airbyte_source", "table_
   subquery is NULL (the entire expression evaluates to UNKNOWN).
     - Good: `where main.id not in (select id from other_table where id is not null)`
     - Bad: `where main.id not in (select id from other_table)`
+- Utilize Databrick's support for lateral column references to reduce the number
+  of chained CTEs by referencing a modified column lower in the same select
+  block
+- Avoid subqueries in favor of CTEs
+- Prefer to keep join blocks flat with minimal transformations in the join
+  condition by moving the needed transformation up to the SELECT clause
 
 ## Building and Testing Models
 
