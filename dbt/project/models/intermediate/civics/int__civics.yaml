@@ -1165,7 +1165,7 @@ models:
 
       - name: election_stage
         description: >
-          Type of election stage. Values: Primary, General, Runoff,
+          Type of election stage. Values: Primary, General,
           Primary Runoff, General Runoff, Primary Special, General Special,
           Primary Special Runoff, General Special Runoff. GP API records
           without a BallotReady position link or matching 2026 race are

@@ -314,6 +314,10 @@ with
                 then 'Primary Special'
                 when lower(d.election_type) like '%special%'
                 then 'General Special'
+                when
+                    lower(d.election_type) like '%runoff%'
+                    and lower(d.election_type) like '%primary%'
+                then 'Primary Runoff'
                 when lower(d.election_type) like '%runoff%'
                 then 'General Runoff'
                 when lower(d.election_type) like '%primary%'
