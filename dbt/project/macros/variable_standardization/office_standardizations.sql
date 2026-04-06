@@ -18,12 +18,8 @@
         -- Alderman
         when lower({{ column_name }}) in ('alderman', 'alderperson')
         then 'Alderman'
-        -- Attorney
-        when
-            lower({{ column_name }})
-            in ('attorney', 'district attorney', 'county attorney')
-        then 'Attorney'
-        when lower({{ column_name }}) like 'state attorney%'
+        -- Attorney (catch all variants: City Attorney, County Attorney, etc.)
+        when lower({{ column_name }}) like '%attorney%'
         then 'Attorney'
         -- City Council
         when
@@ -70,27 +66,17 @@
         then 'County Supervisor'
         when lower({{ column_name }}) like 'board of supervisor%'
         then 'County Supervisor'
-        -- Judge
+        -- Judge (catch all variants: magistrate, appellate, etc.)
         when
-            lower({{ column_name }}) in (
-                'circuit court',
-                'circuit court judge',
-                'district court',
-                'judge',
-                'probate court',
-                'supreme court',
-                'trial court judge'
-            )
+            lower({{ column_name }}) like '%judge%'
+            or lower({{ column_name }}) like '%magistrate%'
+            or lower({{ column_name }}) like '%justice of the peace%'
+            or lower({{ column_name }})
+            in ('circuit court', 'district court', 'probate court', 'supreme court')
         then 'Judge'
-        when lower({{ column_name }}) like 'justice of the peace%'
+        when lower({{ column_name }}) like '%appellate court%'
         then 'Judge'
-        when lower({{ column_name }}) like 'state trial court%'
-        then 'Judge'
-        when lower({{ column_name }}) like 'state appellate court%'
-        then 'Judge'
-        when lower({{ column_name }}) like 'state supreme court%'
-        then 'Judge'
-        when lower({{ column_name }}) like 'county court judge%'
+        when lower({{ column_name }}) like '%supreme court%'
         then 'Judge'
         -- Mayor
         when

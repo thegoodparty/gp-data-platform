@@ -368,6 +368,7 @@ with
             r.br_race_id,
             r.election_stage,
             r.election_day,
+            brp.level as br_position_level,
             -- Use the same normalization as BallotReady when we have the
             -- normalized_position_name; fall back to raw campaign_office
             coalesce(
@@ -384,6 +385,9 @@ with
             br_race as r
             on c.ballotready_position_id = r.br_position_id
             and year(r.election_day) = year(c.election_date)
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
+            on c.ballotready_position_id = brp.database_id
         -- Dedup: a position may have multiple races of the same stage type
         -- in the same year; pick the race closest to the campaign's date
         qualify
@@ -407,6 +411,7 @@ with
             upper(trim(g.campaign_state)) as state,
             {{ parse_party_affiliation("g.campaign_party") }} as party,
             g.candidate_office,
+            -- Prefer campaign election_level; fall back to BR position level
             case
                 when lower(g.election_level) in ('city', 'local')
                 then 'Local'
@@ -416,11 +421,20 @@ with
                 then 'State'
                 when lower(g.election_level) = 'federal'
                 then 'Federal'
+                when lower(g.br_position_level) in ('city', 'local', 'township')
+                then 'Local'
+                when lower(g.br_position_level) in ('county', 'regional')
+                then 'County'
+                when lower(g.br_position_level) = 'state'
+                then 'State'
+                when lower(g.br_position_level) = 'federal'
+                then 'Federal'
                 else null
             end as office_level,
             {{ map_office_type("g.candidate_office") }} as office_type,
-            cast(null as string) as district_raw,
-            cast(null as int) as district_identifier,
+            {{ extract_district_raw("g.campaign_office") }} as district_raw,
+            {{ extract_district_identifier("g.campaign_office") }}
+            as district_identifier,
             g.election_day as election_date,
             g.election_stage,
             g.user_email as email,
