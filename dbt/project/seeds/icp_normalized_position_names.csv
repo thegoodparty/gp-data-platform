@@ -1,216 +1,220 @@
-name,branch,category
-U.S. Representative,legislative,federal
-U.S. Senator,legislative,federal
-Delegate to the U.S. House,legislative,federal
-State Representative,legislative,state
-State Senator,legislative,state
-State Governor's Council,legislative,state
-County Legislature//Executive Board,legislative,county
-County Legislative Chair (non-executive),legislative,county
-County Legislature/Surveyor (Joint),legislative,county
-County Legislative Fiscal Authority Board,legislative,county
-County Legislative Review Board,legislative,county
-County Legislature/Township Supervisor (Joint)//Executive Board/Township Supervisor (Joint),legislative,county
-City Legislature,legislative,city
-City Legislature Chair//President of Council,legislative,city
-City Board of Selectmen,legislative,city
-City Board of Finance,legislative,city
-City Ward Moderator,legislative,city
-Town Meeting Board,legislative,town
-Town Moderator,legislative,town
-Town Assistant Moderator,legislative,town
-Township Trustee//Township Council,legislative,township
-Metro Council Member,legislative,metro
-Metro Council President,legislative,metro
-Council of Governments,legislative,regional
-President of the United States of America,executive,chief_executive
-Vice President of the United States of America,executive,chief_executive
-Governor,executive,chief_executive
-Lieutenant Governor,executive,chief_executive
-County Executive Head,executive,chief_executive
-County Executive Head/County Judge (Joint),executive,chief_executive
-County Vice Mayor,executive,chief_executive
-City Executive//Mayor,executive,chief_executive
-City Vice-Mayor//Mayor Pro Tem,executive,chief_executive
-City Manager//First Selectmen,executive,chief_executive
-NYC Borough President,executive,chief_executive
-Township Supervisor,executive,chief_executive
-Township Mayor,executive,chief_executive
-Township Executive,executive,chief_executive
-Township Board Head,executive,chief_executive
-Island Manager,executive,chief_executive
-Secretary of State,executive,state_officer
-State Attorney General,executive,state_officer
-State Auditor,executive,state_officer
-State Treasurer,executive,state_officer
-State Comptroller//Controller,executive,state_officer
-State Agriculture Secretary,executive,state_officer
-State Agriculture Secretary/Consumer Services Secretary (Joint),executive,state_officer
-State Agriculture and Industries Commissioner,executive,state_officer
-State Insurance Commissioner,executive,state_officer
-State Insurance Commissioner/Fire Safety Commissioner (Joint),executive,state_officer
-State Commissioner of Insurance/Commissioner of Securities (Joint),executive,state_officer
-State Labor Commissioner,executive,state_officer
-State Corporation Commissioner,executive,state_officer
-State Tax Commissioner//Board of Equalization,executive,state_officer
-State Mine Inspector,executive,state_officer
-State Superintendent of Schools,executive,state_officer
-State Commissioner of Public Lands,executive,state_officer
-State Commissioner of School/Commissioner of Public Lands (Joint),executive,state_officer
-State Utilities Board//Public Services Board//Public Regulation Board//Railroad(TX) Board,executive,state_officer
-County Sheriff,executive,county_officer
-County Attorney,executive,county_officer
-County Solicitor General,executive,county_officer
-County Constable,executive,county_officer
-County (High) Bailiff,executive,county_officer
-County Marshal,executive,county_officer
-County Public Defender,executive,county_officer
-County Assessor//Property Appraiser,executive,county_officer
-County Auditor,executive,county_officer
-County Clerk,executive,county_officer
-County Treasurer//Finance Officer,executive,county_officer
-County Controller//Comptroller,executive,county_officer
-County (Tax) Collector,executive,county_officer
-County Commissioner of Revenue,executive,county_officer
-County Tax Commissioner,executive,county_officer
-County Recorder//Register of Deeds//Register of Mesne Conveyance,executive,county_officer
-County Register of Wills,executive,county_officer
-County Surveyor,executive,county_officer
-County Probate Administrator//Register of Probate//Public Administrator,executive,county_officer
-County Prothonotary//Court of Common Pleas Clerk,executive,county_officer
-County Coroner//Medical Examiner,executive,county_officer
-County Jailer,executive,county_officer
-County Mine Inspector,executive,county_officer
-County Justice of the Peace (Non-Judicial),executive,county_officer
-County Drain Commissioner,executive,county_officer
-County Engineer,executive,county_officer
-County Highway Commissioner,executive,county_officer
-County Road Clerk,executive,county_officer
-County Road Commission Head,executive,county_officer
-County Road Commissioner,executive,county_officer
-County Land Commissioner,executive,county_officer
-County License Commissioner//License Director,executive,county_officer
-County Director of Elections,executive,county_officer
-County Superintendent of Schools,executive,county_officer
-County Court Clerk,executive,county_court_clerk
-County Criminal Court Clerk,executive,county_court_clerk
-County Juvenile Court Clerk,executive,county_court_clerk
-County Probate Court Clerk,executive,county_court_clerk
-County Superior Court Clerk,executive,county_court_clerk
-County Supreme Court Clerk,executive,county_court_clerk
-County Deputy Court Clerk,executive,county_court_clerk
-City Court Clerk,executive,county_court_clerk
-County Court Clerk/Comptroller (Joint),executive,county_court_clerk
-County Court Clerk/Treasurer (Joint),executive,county_court_clerk
-County Court Clerk/School Superintendent/Surveyor (Joint),executive,county_court_clerk
-County Prothonotary/Clerk of Courts (Joint),executive,county_court_clerk
-County Prothonotary/Register of Wills/Recorder of Deeds/Clerk of Orphans Court/Court Clerk (Joint),executive,county_court_clerk
-County (Tax) Assessor/Clerk (Joint),executive,county_joint
-County (Tax) Assessor/Collector (Joint),executive,county_joint
-County (Tax) Assessor/Recorder (Joint),executive,county_joint
-County Assessor/Treasurer (Joint),executive,county_joint
-County (Tax) Collector/Treasurer (Joint),executive,county_joint
-County Attorney/Auditor (Joint),executive,county_joint
-County Attorney/Public Administrator (Joint),executive,county_joint
-County Auditor/Clerk (Joint),executive,county_joint
-County Auditor/Controller/Clerk (Joint),executive,county_joint
-County Auditor/Controller/Treasurer/Tax Collector (Joint),executive,county_joint
-County Auditor/Recorder (Joint),executive,county_joint
-County Auditor/Recorder/Clerk (Joint),executive,county_joint
-County Auditor/Treasurer (Joint),executive,county_joint
-County Auditor/Treasurer/Tax Collector (Joint),executive,county_joint
-County Clerk/Collector/Treasurer (Joint),executive,county_joint
-County Clerk/County Recorder/District Court Clerk (Joint),executive,county_joint
-County Clerk/District Court Clerk (Joint),executive,county_joint
-County Clerk/Recorder (Joint),executive,county_joint
-County Clerk/Recorder/Assessor (Joint),executive,county_joint
-County Clerk/Recorder/Assessor/Surveyor (Joint),executive,county_joint
-County Clerk/Recorder/Auditor/Public Administrator/Surveyor (Joint),executive,county_joint
-County Clerk/Recorder/Controller/Auditor (Joint),executive,county_joint
-County Clerk/Recorder/Election Administrator (Joint),executive,county_joint
-County Clerk/Recorder/Election Administrator/Surveyor (Joint),executive,county_joint
-County Clerk/Recorder/Public Administrator (Joint),executive,county_joint
-County Clerk/Recorder/Surveyor (Joint),executive,county_joint
-County Clerk/Recorder/Surveyor/Auditor (Joint),executive,county_joint
-County Clerk/Recorder/Treasurer/School Superintendent (Joint),executive,county_joint
-County Clerk/School Superintendent (Joint),executive,county_joint
-County Clerk/Treasurer (Joint),executive,county_joint
-County Controller/Auditor (Joint),executive,county_joint
-County Coroner/Public Administrator (Joint),executive,county_joint
-County Coroner/Sheriff (Joint),executive,county_joint
-County Court Clerk/Public Administrator (Joint),executive,county_joint
-County Court Clerk/Recorder (Joint),executive,county_joint
-County Chancery/Circuit Court Clerk (Joint),executive,county_joint
-County Recorder of Deeds/Register of Wills (Joint),executive,county_joint
-County Recorder/Court Clerk/Emergency Services Director (Joint),executive,county_joint
-County Recorder/Surveyor (Joint),executive,county_joint
-County Recorder/Treasurer (Joint),executive,county_joint
-County Recorder/Treasurer/Clerk (Joint),executive,county_joint
-County Recorder/Treasurer/Court Clerk (Joint),executive,county_joint
-County Register of Wills/Clerk of Orphans Court (Joint),executive,county_joint
-County Register of Wills/Recorder of Deeds/Clerk of Orphans Court (Joint),executive,county_joint
-County Sheriff/Coroner/Marshal (Joint),executive,county_joint
-County Sheriff/Coroner/Public Administrator (Joint),executive,county_joint
-County Sheriff/Tax Assessor (Joint),executive,county_joint
-County Sheriff/Tax Assessor/Tax Collector (Joint),executive,county_joint
-County Superintendent of Schools/Treasurer (Joint),executive,county_joint
-County Treasurer/Assessor/School Superintendent (Joint),executive,county_joint
-County Treasurer/Assessor/Surveyor (Joint),executive,county_joint
-County Treasurer/Public Administrator/Assessor (Joint),executive,county_joint
-County Treasurer/Public Administrator/Collector (Joint),executive,county_joint
-County Treasurer/School Superintendent/Public Administrator (Joint),executive,county_joint
-City Attorney,executive,city_officer
-City Prosecutor,executive,city_officer
-City Public Advocate,executive,city_officer
-City Constable,executive,city_officer
-City Police Chief//Marshal,executive,city_officer
-City Fire Chief,executive,city_officer
-City Fire Commissioner,executive,city_officer
-City Auditor,executive,city_officer
-City Assessor//Lister,executive,city_officer
-City Clerk//Ward Officer,executive,city_officer
-City Comptroller,executive,city_officer
-City Treasurer//Finance Officer,executive,city_officer
-City Recorder,executive,city_officer
-City (Tax) Collector//Receiver,executive,city_officer
-City Registrar of Voters,executive,city_officer
-City Highway Supervisor,executive,city_officer
-City Public Works Commissioner,executive,city_officer
-City Road Commissioner,executive,city_officer
-City Sewer Commissioner,executive,city_officer
-City Street Commissioner,executive,city_officer
-City Water Commissioner,executive,city_officer
-City Ward Clerk,executive,city_officer
-City Ward Supervisor,executive,city_officer
-City Clerk/Collector (Joint),executive,city_joint
-City Clerk/Treasurer (Joint),executive,city_joint
-City Collector/Treasurer (Joint),executive,city_joint
-City Comptroller/Treasurer (Joint),executive,city_joint
-City Finance Director/Public Records Director (Joint),executive,city_joint
-City Recorder/Treasurer (Joint),executive,city_joint
-Township (Tax) Collector//Receiver,executive,township_officer
-Township Assessor,executive,township_officer
-Township Auditor,executive,township_officer
-Township Clerk,executive,township_officer
-Township Constable,executive,township_officer
-Township Controller,executive,township_officer
-Township Director of Law,executive,township_officer
-Township Highway Superintendent,executive,township_officer
-Township Land Commissioner,executive,township_officer
-Township Treasurer//Fiscal Officer,executive,township_officer
-Township Assessor/(Tax) Collector (Joint)//Township Assessor/Receiver (Joint),executive,township_joint
-Township Clerk/(Tax) Collector (Joint)//Township Clerk/Receiver (Joint),executive,township_joint
-Township Clerk/Assessor (Joint),executive,township_joint
-Township Clerk/Treasurer (Joint),executive,township_joint
-Township Supervisor/Auditor (Joint),executive,township_joint
-Township Supervisor/Constable (Joint),executive,township_joint
-Town Clerk (as separate from city clerk - CT only),executive,town_officer
-Town Director of Public Welfare,executive,town_officer
-Town Sergeant,executive,town_officer
-Town Supervisor of the Checklist,executive,town_officer
-Town Trustee of the Trust Fund,executive,town_officer
-District Attorney,executive,other
-District Public Defender,executive,other
-Land Commissioner,executive,other
-Metro Council Auditor,executive,other
-Supreme Court Clerk,executive,other
+name,branch,category,serve_eligible
+U.S. Representative,legislative,federal,true
+U.S. Senator,legislative,federal,true
+Delegate to the U.S. House,legislative,federal,true
+State Representative,legislative,state,true
+State Senator,legislative,state,true
+State Governor's Council,legislative,state,true
+County Legislature//Executive Board,legislative,county,true
+County Legislative Chair (non-executive),legislative,county,true
+County Legislature/Surveyor (Joint),legislative,county,true
+County Legislative Fiscal Authority Board,legislative,county,true
+County Legislative Review Board,legislative,county,true
+County Legislature/Township Supervisor (Joint)//Executive Board/Township Supervisor (Joint),legislative,county,true
+City Legislature,legislative,city,true
+City Legislature Chair//President of Council,legislative,city,true
+City Board of Selectmen,legislative,city,true
+City Board of Finance,legislative,city,true
+City Ward Moderator,legislative,city,true
+Town Meeting Board,legislative,town,true
+Town Moderator,legislative,town,true
+Town Assistant Moderator,legislative,town,true
+Township Trustee//Township Council,legislative,township,true
+Metro Council Member,legislative,metro,true
+Metro Council President,legislative,metro,true
+Council of Governments,legislative,regional,true
+President of the United States of America,executive,chief_executive,true
+Vice President of the United States of America,executive,chief_executive,true
+Governor,executive,chief_executive,true
+Lieutenant Governor,executive,chief_executive,true
+County Executive Head,executive,chief_executive,true
+County Executive Head/County Judge (Joint),executive,chief_executive,true
+County Vice Mayor,executive,chief_executive,true
+City Executive//Mayor,executive,chief_executive,true
+City Vice-Mayor//Mayor Pro Tem,executive,chief_executive,true
+City Manager//First Selectmen,executive,chief_executive,true
+NYC Borough President,executive,chief_executive,true
+Township Supervisor,executive,chief_executive,true
+Township Mayor,executive,chief_executive,true
+Township Executive,executive,chief_executive,true
+Township Board Head,executive,chief_executive,true
+Island Manager,executive,chief_executive,true
+Secretary of State,executive,state_officer,true
+State Attorney General,executive,state_officer,true
+State Auditor,executive,state_officer,true
+State Treasurer,executive,state_officer,true
+State Comptroller//Controller,executive,state_officer,true
+State Agriculture Secretary,executive,state_officer,true
+State Agriculture Secretary/Consumer Services Secretary (Joint),executive,state_officer,true
+State Agriculture and Industries Commissioner,executive,state_officer,true
+State Insurance Commissioner,executive,state_officer,true
+State Insurance Commissioner/Fire Safety Commissioner (Joint),executive,state_officer,true
+State Commissioner of Insurance/Commissioner of Securities (Joint),executive,state_officer,true
+State Labor Commissioner,executive,state_officer,true
+State Corporation Commissioner,executive,state_officer,true
+State Tax Commissioner//Board of Equalization,executive,state_officer,true
+State Mine Inspector,executive,state_officer,true
+State Superintendent of Schools,executive,state_officer,true
+State Commissioner of Public Lands,executive,state_officer,true
+State Commissioner of School/Commissioner of Public Lands (Joint),executive,state_officer,true
+State Utilities Board//Public Services Board//Public Regulation Board//Railroad(TX) Board,executive,state_officer,true
+County Sheriff,executive,county_officer,true
+County Attorney,executive,county_officer,true
+County Solicitor General,executive,county_officer,true
+County Constable,executive,county_officer,true
+County (High) Bailiff,executive,county_officer,true
+County Marshal,executive,county_officer,true
+County Public Defender,executive,county_officer,true
+County Assessor//Property Appraiser,executive,county_officer,true
+County Auditor,executive,county_officer,true
+County Clerk,executive,county_officer,true
+County Treasurer//Finance Officer,executive,county_officer,true
+County Controller//Comptroller,executive,county_officer,true
+County (Tax) Collector,executive,county_officer,true
+County Commissioner of Revenue,executive,county_officer,true
+County Tax Commissioner,executive,county_officer,true
+County Recorder//Register of Deeds//Register of Mesne Conveyance,executive,county_officer,true
+County Register of Wills,executive,county_officer,true
+County Surveyor,executive,county_officer,true
+County Probate Administrator//Register of Probate//Public Administrator,executive,county_officer,true
+County Prothonotary//Court of Common Pleas Clerk,executive,county_officer,true
+County Coroner//Medical Examiner,executive,county_officer,true
+County Jailer,executive,county_officer,true
+County Mine Inspector,executive,county_officer,true
+County Justice of the Peace (Non-Judicial),executive,county_officer,true
+County Drain Commissioner,executive,county_officer,true
+County Engineer,executive,county_officer,true
+County Highway Commissioner,executive,county_officer,true
+County Road Clerk,executive,county_officer,true
+County Road Commission Head,executive,county_officer,true
+County Road Commissioner,executive,county_officer,true
+County Land Commissioner,executive,county_officer,true
+County License Commissioner//License Director,executive,county_officer,true
+County Director of Elections,executive,county_officer,true
+County Superintendent of Schools,executive,county_officer,true
+County Court Clerk,executive,county_court_clerk,true
+County Criminal Court Clerk,executive,county_court_clerk,true
+County Juvenile Court Clerk,executive,county_court_clerk,true
+County Probate Court Clerk,executive,county_court_clerk,true
+County Superior Court Clerk,executive,county_court_clerk,true
+County Supreme Court Clerk,executive,county_court_clerk,true
+County Deputy Court Clerk,executive,county_court_clerk,true
+City Court Clerk,executive,county_court_clerk,true
+County Court Clerk/Comptroller (Joint),executive,county_court_clerk,true
+County Court Clerk/Treasurer (Joint),executive,county_court_clerk,true
+County Court Clerk/School Superintendent/Surveyor (Joint),executive,county_court_clerk,true
+County Prothonotary/Clerk of Courts (Joint),executive,county_court_clerk,true
+County Prothonotary/Register of Wills/Recorder of Deeds/Clerk of Orphans Court/Court Clerk (Joint),executive,county_court_clerk,true
+County (Tax) Assessor/Clerk (Joint),executive,county_joint,true
+County (Tax) Assessor/Collector (Joint),executive,county_joint,true
+County (Tax) Assessor/Recorder (Joint),executive,county_joint,true
+County Assessor/Treasurer (Joint),executive,county_joint,true
+County (Tax) Collector/Treasurer (Joint),executive,county_joint,true
+County Attorney/Auditor (Joint),executive,county_joint,true
+County Attorney/Public Administrator (Joint),executive,county_joint,true
+County Auditor/Clerk (Joint),executive,county_joint,true
+County Auditor/Controller/Clerk (Joint),executive,county_joint,true
+County Auditor/Controller/Treasurer/Tax Collector (Joint),executive,county_joint,true
+County Auditor/Recorder (Joint),executive,county_joint,true
+County Auditor/Recorder/Clerk (Joint),executive,county_joint,true
+County Auditor/Treasurer (Joint),executive,county_joint,true
+County Auditor/Treasurer/Tax Collector (Joint),executive,county_joint,true
+County Clerk/Collector/Treasurer (Joint),executive,county_joint,true
+County Clerk/County Recorder/District Court Clerk (Joint),executive,county_joint,true
+County Clerk/District Court Clerk (Joint),executive,county_joint,true
+County Clerk/Recorder (Joint),executive,county_joint,true
+County Clerk/Recorder/Assessor (Joint),executive,county_joint,true
+County Clerk/Recorder/Assessor/Surveyor (Joint),executive,county_joint,true
+County Clerk/Recorder/Auditor/Public Administrator/Surveyor (Joint),executive,county_joint,true
+County Clerk/Recorder/Controller/Auditor (Joint),executive,county_joint,true
+County Clerk/Recorder/Election Administrator (Joint),executive,county_joint,true
+County Clerk/Recorder/Election Administrator/Surveyor (Joint),executive,county_joint,true
+County Clerk/Recorder/Public Administrator (Joint),executive,county_joint,true
+County Clerk/Recorder/Surveyor (Joint),executive,county_joint,true
+County Clerk/Recorder/Surveyor/Auditor (Joint),executive,county_joint,true
+County Clerk/Recorder/Treasurer/School Superintendent (Joint),executive,county_joint,true
+County Clerk/School Superintendent (Joint),executive,county_joint,true
+County Clerk/Treasurer (Joint),executive,county_joint,true
+County Controller/Auditor (Joint),executive,county_joint,true
+County Coroner/Public Administrator (Joint),executive,county_joint,true
+County Coroner/Sheriff (Joint),executive,county_joint,true
+County Court Clerk/Public Administrator (Joint),executive,county_joint,true
+County Court Clerk/Recorder (Joint),executive,county_joint,true
+County Chancery/Circuit Court Clerk (Joint),executive,county_joint,true
+County Recorder of Deeds/Register of Wills (Joint),executive,county_joint,true
+County Recorder/Court Clerk/Emergency Services Director (Joint),executive,county_joint,true
+County Recorder/Surveyor (Joint),executive,county_joint,true
+County Recorder/Treasurer (Joint),executive,county_joint,true
+County Recorder/Treasurer/Clerk (Joint),executive,county_joint,true
+County Recorder/Treasurer/Court Clerk (Joint),executive,county_joint,true
+County Register of Wills/Clerk of Orphans Court (Joint),executive,county_joint,true
+County Register of Wills/Recorder of Deeds/Clerk of Orphans Court (Joint),executive,county_joint,true
+County Sheriff/Coroner/Marshal (Joint),executive,county_joint,true
+County Sheriff/Coroner/Public Administrator (Joint),executive,county_joint,true
+County Sheriff/Tax Assessor (Joint),executive,county_joint,true
+County Sheriff/Tax Assessor/Tax Collector (Joint),executive,county_joint,true
+County Superintendent of Schools/Treasurer (Joint),executive,county_joint,true
+County Treasurer/Assessor/School Superintendent (Joint),executive,county_joint,true
+County Treasurer/Assessor/Surveyor (Joint),executive,county_joint,true
+County Treasurer/Public Administrator/Assessor (Joint),executive,county_joint,true
+County Treasurer/Public Administrator/Collector (Joint),executive,county_joint,true
+County Treasurer/School Superintendent/Public Administrator (Joint),executive,county_joint,true
+City Attorney,executive,city_officer,true
+City Prosecutor,executive,city_officer,true
+City Public Advocate,executive,city_officer,true
+City Constable,executive,city_officer,true
+City Police Chief//Marshal,executive,city_officer,true
+City Fire Chief,executive,city_officer,true
+City Fire Commissioner,executive,city_officer,true
+City Auditor,executive,city_officer,true
+City Assessor//Lister,executive,city_officer,true
+City Clerk//Ward Officer,executive,city_officer,true
+City Comptroller,executive,city_officer,true
+City Treasurer//Finance Officer,executive,city_officer,true
+City Recorder,executive,city_officer,true
+City (Tax) Collector//Receiver,executive,city_officer,true
+City Registrar of Voters,executive,city_officer,true
+City Highway Supervisor,executive,city_officer,true
+City Public Works Commissioner,executive,city_officer,true
+City Road Commissioner,executive,city_officer,true
+City Sewer Commissioner,executive,city_officer,true
+City Street Commissioner,executive,city_officer,true
+City Water Commissioner,executive,city_officer,true
+City Ward Clerk,executive,city_officer,true
+City Ward Supervisor,executive,city_officer,true
+City Clerk/Collector (Joint),executive,city_joint,true
+City Clerk/Treasurer (Joint),executive,city_joint,true
+City Collector/Treasurer (Joint),executive,city_joint,true
+City Comptroller/Treasurer (Joint),executive,city_joint,true
+City Finance Director/Public Records Director (Joint),executive,city_joint,true
+City Recorder/Treasurer (Joint),executive,city_joint,true
+Township (Tax) Collector//Receiver,executive,township_officer,true
+Township Assessor,executive,township_officer,true
+Township Auditor,executive,township_officer,true
+Township Clerk,executive,township_officer,true
+Township Constable,executive,township_officer,true
+Township Controller,executive,township_officer,true
+Township Director of Law,executive,township_officer,true
+Township Highway Superintendent,executive,township_officer,true
+Township Land Commissioner,executive,township_officer,true
+Township Treasurer//Fiscal Officer,executive,township_officer,true
+Township Assessor/(Tax) Collector (Joint)//Township Assessor/Receiver (Joint),executive,township_joint,true
+Township Clerk/(Tax) Collector (Joint)//Township Clerk/Receiver (Joint),executive,township_joint,true
+Township Clerk/Assessor (Joint),executive,township_joint,true
+Township Clerk/Treasurer (Joint),executive,township_joint,true
+Township Supervisor/Auditor (Joint),executive,township_joint,true
+Township Supervisor/Constable (Joint),executive,township_joint,true
+Town Clerk (as separate from city clerk - CT only),executive,town_officer,true
+Town Director of Public Welfare,executive,town_officer,true
+Town Sergeant,executive,town_officer,true
+Town Supervisor of the Checklist,executive,town_officer,true
+Town Trustee of the Trust Fund,executive,town_officer,true
+District Attorney,executive,other,true
+District Public Defender,executive,other,true
+Land Commissioner,executive,other,true
+Metro Council Auditor,executive,other,true
+Supreme Court Clerk,executive,other,true
+County Board of Education,legislative,school_board,false
+Local School Board,legislative,school_board,false
+Local School Board Chair,legislative,school_board,false
+Local School Board of Trustees (ME only),legislative,school_board,false

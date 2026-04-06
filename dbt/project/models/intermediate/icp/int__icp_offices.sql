@@ -13,7 +13,9 @@ with
 
     district_counts as (select * from {{ ref("int__l2_district_aggregations") }}),
 
-    icp_position_names as (select name from {{ ref("icp_normalized_position_names") }})
+    icp_position_names as (
+        select name, serve_eligible from {{ ref("icp_normalized_position_names") }}
+    )
 
 select
     position.database_id as br_database_position_id,
@@ -48,7 +50,8 @@ select
         when
             position.is_judicial
             or position.is_appointed
-            or normalized_position.name not in (select name from icp_position_names)
+            or normalized_position.name
+            not in (select name from icp_position_names where serve_eligible)
         then false
         when district_counts.voter_count is null
         then null
