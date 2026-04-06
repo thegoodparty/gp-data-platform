@@ -299,33 +299,16 @@ with
             ) as district_identifier,
             d.election_date,
             -- DDHQ election_type contains both stage and special indicators
-            -- (e.g. "Special Election Primary", "Special General Election")
-            case
-                when
-                    lower(d.election_type) like '%special%'
-                    and lower(d.election_type) like '%runoff%'
-                    and lower(d.election_type) like '%primary%'
-                then 'Primary Special Runoff'
-                when
-                    lower(d.election_type) like '%special%'
-                    and lower(d.election_type) like '%runoff%'
-                then 'General Special Runoff'
-                when
-                    lower(d.election_type) like '%special%'
-                    and lower(d.election_type) like '%primary%'
-                then 'Primary Special'
-                when lower(d.election_type) like '%special%'
-                then 'General Special'
-                when
-                    lower(d.election_type) like '%runoff%'
-                    and lower(d.election_type) like '%primary%'
-                then 'Primary Runoff'
-                when lower(d.election_type) like '%runoff%'
-                then 'General Runoff'
-                when lower(d.election_type) like '%primary%'
-                then 'Primary'
-                else 'General'
-            end as election_stage,
+            -- (e.g. "Special Election Primary", "Special General Election").
+            -- Derive boolean-like expressions from the string to reuse the
+            -- shared derive_election_stage macro.
+            {{
+                derive_election_stage(
+                    "lower(d.election_type) like '%primary%'",
+                    "lower(d.election_type) like '%runoff%'",
+                    "d.election_type",
+                )
+            }} as election_stage,
             cast(null as string) as email,
             cast(null as string) as phone,
             cast(null as string) as br_race_id,
