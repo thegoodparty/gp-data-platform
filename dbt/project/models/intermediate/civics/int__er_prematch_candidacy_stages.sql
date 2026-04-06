@@ -60,6 +60,8 @@ with
         select
             br.*,
             br_position.partisan_type,
+            -- BR S3 candidacies sometimes lack emails; fill gaps from the
+            -- BR API person entity when available
             coalesce(br.email, pe.api_email) as _email,
             {{
                 generate_candidate_office_from_position(
