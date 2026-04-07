@@ -11,6 +11,10 @@
 -- Now sources from the Dec 2, 2025 manual snapshot — the same data that was
 -- already in production (no API run ever succeeded; fallback was always active).
 -- Splink modelling replaces this pipeline going forward.
+--
+-- CLEANUP TODO: To fully remove this model, update the 6 downstream consumers
+-- listed in int__gp_ai.yaml to reference the snapshot directly or migrate to
+-- civics mart / splink data, then delete this file.
 with
     snapshot as (
         select *, 'manual_run' as run_id
