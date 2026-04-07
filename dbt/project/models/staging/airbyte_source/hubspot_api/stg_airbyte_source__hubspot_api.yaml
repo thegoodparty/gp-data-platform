@@ -108,3 +108,36 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__feedback_submissions
+    description: >
+      Staged HubSpot Feedback Survey submissions. Contains responses from all
+      feedback surveys including PMF, user satisfaction, and research
+      compensation surveys. One row per submission.
+    columns:
+      - name: submission_id
+        description: Unique identifier for the feedback submission
+        data_tests:
+          - not_null
+          - unique
+      - name: hs_survey_id
+        description: HubSpot survey identifier
+        data_tests:
+          - not_null
+      - name: submitted_at
+        description: Timestamp when the survey response was submitted
+        data_tests:
+          - not_null
+      - name: survey_type
+        description: Type of survey (CUSTOM, KNOWLEDGE, etc.)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["CUSTOM", "KNOWLEDGE"]
+      - name: survey_channel
+        description: Channel through which the survey was delivered
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["WEB"]
