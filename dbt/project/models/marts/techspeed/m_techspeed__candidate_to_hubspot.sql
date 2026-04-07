@@ -151,7 +151,10 @@ with
             case
                 when
                     icp.icp_win_effective_date is not null
-                    and f.general_election_date < icp.icp_win_effective_date
+                    and (
+                        f.general_election_date is null
+                        or f.general_election_date < icp.icp_win_effective_date
+                    )
                 then false
                 else
                     coalesce(
@@ -176,7 +179,10 @@ with
             case
                 when
                     icp.icp_win_effective_date is not null
-                    and f.general_election_date < icp.icp_win_effective_date
+                    and (
+                        f.general_election_date is null
+                        or f.general_election_date < icp.icp_win_effective_date
+                    )
                 then false
                 else
                     coalesce(

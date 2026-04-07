@@ -92,7 +92,10 @@ select
     case
         when
             icp.icp_win_effective_date is not null
-            and deduplicated.election_date < icp.icp_win_effective_date
+            and (
+                deduplicated.election_date is null
+                or deduplicated.election_date < icp.icp_win_effective_date
+            )
         then false
         else icp.icp_office_win
     end as is_win_icp,
@@ -100,7 +103,10 @@ select
     case
         when
             icp.icp_win_effective_date is not null
-            and deduplicated.election_date < icp.icp_win_effective_date
+            and (
+                deduplicated.election_date is null
+                or deduplicated.election_date < icp.icp_win_effective_date
+            )
         then false
         else icp.icp_win_supersize
     end as is_win_supersize_icp,

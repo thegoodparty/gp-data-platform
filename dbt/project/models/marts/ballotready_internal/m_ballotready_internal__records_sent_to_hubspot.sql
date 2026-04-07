@@ -64,7 +64,10 @@ with
             case
                 when
                     icp.icp_win_effective_date is not null
-                    and fc.election_date < icp.icp_win_effective_date
+                    and (
+                        fc.election_date is null
+                        or fc.election_date < icp.icp_win_effective_date
+                    )
                 then false
                 else icp.icp_office_win
             end as icp_win,
@@ -72,7 +75,10 @@ with
             case
                 when
                     icp.icp_win_effective_date is not null
-                    and fc.election_date < icp.icp_win_effective_date
+                    and (
+                        fc.election_date is null
+                        or fc.election_date < icp.icp_win_effective_date
+                    )
                 then false
                 else icp.icp_win_supersize
             end as icp_win_supersize
