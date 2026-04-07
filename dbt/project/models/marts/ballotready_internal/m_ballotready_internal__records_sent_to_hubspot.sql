@@ -61,9 +61,21 @@ with
             fd.match_type,
             -- Placeholder for future viability score calculation
             cast(null as string) as viability_score,
-            icp.icp_office_win as icp_win,
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and fc.election_date < icp.icp_win_effective_date
+                then false
+                else icp.icp_office_win
+            end as icp_win,
             icp.icp_office_serve as icp_serve,
-            icp.icp_win_supersize
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and fc.election_date < icp.icp_win_effective_date
+                then false
+                else icp.icp_win_supersize
+            end as icp_win_supersize
         from br_final_candidacies fc
         left join br_fuzzy_deduped fd on fc.br_candidate_code = fd.br_candidate_code
         left join icp_offices icp on fc.br_position_id = icp.br_database_position_id
