@@ -104,9 +104,9 @@ etc.
 *   Example: "Seattle Mayor 2026" (the entire election)
 *   An Election comprises multiple Stages
 **Election-Stage**
-*   A single phase within an election (primary, general, primary runoff, or general runoff)
+*   A single phase within an election (primary, general, runoff, or special variants)
 *   Example: "Seattle Mayor 2026 Primary" or "Seattle Mayor 2026 General"
-*   Values: Primary, General, Primary Runoff, General Runoff
+*   Values: Primary, General, Primary Runoff, General Runoff, Primary Special, General Special, Primary Special Runoff, General Special Runoff
 **Candidacy-Stage**
 *   The intersection of a candidacy and a specific stage
 *   Contains vendor-specific IDs and stage-specific results

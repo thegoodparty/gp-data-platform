@@ -220,6 +220,10 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
+        config:
+          freshness:
+            warn_after: { count: 90, period: day }
+            error_after: { count: 180, period: day }
         columns:
           - name: is_incumbent
             data_tests:
