@@ -47,6 +47,18 @@ models:
                   - general
                   - primary
                   - runoff
+      - name: ddhq_race_id
+        description: Unique identifier for the race in the DDHQ data.
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
+      - name: ddhq_candidate_id
+        description: Unique identifier for the candidate in the DDHQ data.
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

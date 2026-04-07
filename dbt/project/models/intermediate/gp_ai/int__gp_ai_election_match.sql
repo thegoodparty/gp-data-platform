@@ -23,7 +23,7 @@ with
         qualify
             row_number() over (
                 partition by gp_candidacy_id, election_date, election_type
-                order by gp_candidacy_id
+                order by row_index desc
             )
             = 1
     )
