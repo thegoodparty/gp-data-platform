@@ -89,7 +89,13 @@ select
     deduplicated.filing_requirements,
     deduplicated.filing_address,
     deduplicated.filing_phone,
-    icp.icp_office_win as is_win_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and deduplicated.election_date < icp.icp_win_effective_date
+        then false
+        else icp.icp_office_win
+    end as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
     icp.icp_win_supersize as is_win_supersize_icp,
     deduplicated.created_at,
