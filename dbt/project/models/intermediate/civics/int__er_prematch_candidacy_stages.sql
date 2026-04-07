@@ -110,9 +110,6 @@ with
         from br_with_office as br
     ),
 
-    -- State name → 2-letter code mapping (used by DDHQ section)
-    clean_states as (select * from {{ ref("clean_states") }}),
-
     -- TechSpeed: sourced from staging (dates and state already parsed),
     -- unpivoted into primary/general stage rows
     ts_staging as (
@@ -194,7 +191,9 @@ with
             = 1
     ),
 
-    -- DDHQ election results: each row is a candidate x race (candidacy-stage)
+    -- DDHQ election results: each row is a candidate x race (candidacy-stage).
+    -- State resolution, office derivation, and district extraction now come
+    -- from the staging model.
     ddhq_staging as (
         select *
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
@@ -209,57 +208,7 @@ with
             and candidate_last_name is not null
             and election_date is not null
             and election_date >= '2026-01-01'
-    ),
-
-    -- Compute candidate_office once so map_office_type can reference it
-    -- without re-evaluating the full CASE expression
-    ddhq_with_office as (
-        select
-            ddhq.*,
-            coalesce(
-                cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code
-            ) as state,
-            {{ parse_ddhq_candidate_office("ddhq.race_name") }} as candidate_office,
-            -- Strip state prefix from race_name so office names align with
-            -- BR/TS for Splink JW matching (e.g. "New York Senate District 5"
-            -- → "Senate District 5")
-            trim(
-                case
-                    when cs_two.state_cleaned_postal_code is not null
-                    then
-                        substring(
-                            ddhq.race_name,
-                            length(
-                                concat(
-                                    split(ddhq.race_name, ' ')[0],
-                                    ' ',
-                                    split(ddhq.race_name, ' ')[1]
-                                )
-                            )
-                            + 2
-                        )
-                    when cs_one.state_cleaned_postal_code is not null
-                    then
-                        substring(
-                            ddhq.race_name, length(split(ddhq.race_name, ' ')[0]) + 2
-                        )
-                end
-            ) as official_office_name
-        from ddhq_staging as ddhq
-        left join
-            clean_states as cs_one
-            on upper(split(ddhq.race_name, ' ')[0]) = upper(trim(cs_one.state_raw))
-        left join
-            clean_states as cs_two
-            on upper(
-                concat(
-                    split(ddhq.race_name, ' ')[0], ' ', split(ddhq.race_name, ' ')[1]
-                )
-            )
-            = upper(trim(cs_two.state_raw))
-        where
-            coalesce(cs_two.state_cleaned_postal_code, cs_one.state_cleaned_postal_code)
-            is not null
+            and state_postal_code is not null
     ),
 
     ddhq_stages as (
@@ -270,31 +219,14 @@ with
             || cast(d.ddhq_race_id as string) as source_id,
             lower(trim(d.candidate_first_name)) as first_name,
             lower(trim(d.candidate_last_name)) as last_name,
-            d.state,
-            {{ parse_party_affiliation("d.candidate_party") }} as party,
+            d.state_postal_code as state,
+            d.party_affiliation as party,
             d.candidate_office,
-            {{ parse_ddhq_office_level("d.race_name") }} as office_level,
-            {{ map_office_type("d.candidate_office") }} as office_type,
-            -- Extract district/ward from race_name
-            -- Try keyword-prefixed first (Ward 3, District 5), then fall back
-            -- to any trailing number (Board of Supervisors 19)
+            d.office_level,
+            d.office_type,
+            d.district as district_raw,
             coalesce(
-                nullif(
-                    regexp_extract(
-                        d.race_name,
-                        '(?i)(?:ward|district|seat|place|position|zone) ([^ ]+)$'
-                    ),
-                    ''
-                ),
-                nullif(regexp_extract(d.race_name, ' ([0-9]+)$'), '')
-            ) as district_raw,
-            coalesce(
-                try_cast(
-                    regexp_extract(
-                        d.race_name,
-                        '(?i)(?:ward|district|seat|place|position|zone) ([0-9]+)$'
-                    ) as int
-                ),
+                try_cast(regexp_extract(d.district, '([0-9]+)') as int),
                 try_cast(regexp_extract(d.race_name, ' ([0-9]+)$') as int)
             ) as district_identifier,
             d.election_date,
@@ -316,7 +248,7 @@ with
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type
-        from ddhq_with_office as d
+        from ddhq_staging as d
     ),
 
     -- GP API: campaign data from the GP platform (joins already resolved
