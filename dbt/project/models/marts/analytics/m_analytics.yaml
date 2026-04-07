@@ -1154,6 +1154,10 @@ models:
         description: HubSpot contact ID of the respondent
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__hubspot_api_contacts')
+                field: id
       - name: contact_email
         description: Email address of the respondent
         data_tests:
@@ -1185,3 +1189,7 @@ models:
         description: HubSpot contact ID of the respondent
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__hubspot_api_contacts')
+                field: id

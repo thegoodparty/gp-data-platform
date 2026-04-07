@@ -49,9 +49,9 @@ with
                 then 'Not Disappointed'
                 when 'N/A - I no longer use GoodParty'
                 then 'N/A'
-                else s.pmf_response
+                else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,
-            s.pmf_response = 'Option 1' as is_very_disappointed,
+            coalesce(s.pmf_response = 'Option 1', false) as is_very_disappointed,
 
             -- respondent info (from submission)
             s.hs_contact_id,
