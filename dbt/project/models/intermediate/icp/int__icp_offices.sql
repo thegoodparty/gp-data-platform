@@ -77,7 +77,7 @@ select
         else true
     end as icp_win_supersize,
 
-    icp_position_names.win_effective_date
+    icp_position_names.win_effective_date as icp_win_effective_date
 
 from position
 
