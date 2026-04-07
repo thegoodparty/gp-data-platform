@@ -4,7 +4,7 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
 
 - We use the dbt *cloud* cli, not the dbt-core cli.
 - You do not need to specify `--defer` or the location of a state file in dbt cloud.
-- Do not invoke dbt via `poetry`.dbt cloud cli is installed at the system level
+- Do not invoke dbt via `poetry`.dbt cloud cli is installed at the system level.
 - When adding or modifying models and/or tests, run `dbt build` on the modified
 objects to ensure they build as exected.
 
