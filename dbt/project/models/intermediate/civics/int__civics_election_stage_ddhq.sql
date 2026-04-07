@@ -28,7 +28,7 @@ with
             || cast(year(any_value(election_date)) as string)
             || ' '
             || initcap(any_value(election_stage)) as election_name,
-            any_value(state_postal_code) || ' ' || any_value(race_name) as race_name,
+            any_value(race_name) as race_name,
 
             any_value(election_stage) in ('primary', 'primary runoff') as is_primary,
             any_value(election_stage)

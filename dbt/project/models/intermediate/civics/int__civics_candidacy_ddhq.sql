@@ -35,9 +35,15 @@ with
             cast(null as string) as verification_status_reason,
             cast(null as boolean) as is_partisan,
 
-            -- Candidacy result: prefer general, then primary
+            -- Candidacy result: runoff is the final determination
             coalesce(
+                max(
+                    case when election_stage = 'general runoff' then election_result end
+                ),
                 max(case when election_stage = 'general' then election_result end),
+                max(
+                    case when election_stage = 'primary runoff' then election_result end
+                ),
                 max(case when election_stage = 'primary' then election_result end)
             ) as candidacy_result,
 

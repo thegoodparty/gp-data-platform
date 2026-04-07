@@ -112,17 +112,31 @@
         then 'City Council'
 
         -- Special districts and other offices
-        when lower({{ race_name_col }}) like '%library%'
+        when
+            lower({{ race_name_col }}) like '%library board%'
+            or lower({{ race_name_col }}) like '%library district%'
+            or lower({{ race_name_col }}) like '%library trustee%'
         then 'Library Board'
-        when lower({{ race_name_col }}) like '%fire%'
+        when
+            lower({{ race_name_col }}) like '%fire district%'
+            or lower({{ race_name_col }}) like '%fire board%'
+            or lower({{ race_name_col }}) like '%fire commission%'
+            or lower({{ race_name_col }}) like '%fire department%'
         then 'Fire Board'
         when
-            lower({{ race_name_col }}) like '%park%'
-            or lower({{ race_name_col }}) like '%recreation%'
+            lower({{ race_name_col }}) like '%park district%'
+            or lower({{ race_name_col }}) like '%park board%'
+            or lower({{ race_name_col }}) like '%parks and recreation%'
+            or lower({{ race_name_col }}) like '%recreation district%'
+            or lower({{ race_name_col }}) like '%recreation board%'
         then 'Parks and Recreation Board'
         when
-            lower({{ race_name_col }}) like '%water%'
-            or lower({{ race_name_col }}) like '%sewer%'
+            lower({{ race_name_col }}) like '%water district%'
+            or lower({{ race_name_col }}) like '%water board%'
+            or lower({{ race_name_col }}) like '%water authority%'
+            or lower({{ race_name_col }}) like '%sewer district%'
+            or lower({{ race_name_col }}) like '%sewer board%'
+            or lower({{ race_name_col }}) like '%water supply%'
         then 'Water Supply Board'
         when
             lower({{ race_name_col }}) like '%drainage%'
@@ -144,6 +158,8 @@
             lower({{ race_name_col }}) like '%state senate%'
             or lower({{ race_name_col }}) like '%state house%'
             or lower({{ race_name_col }}) like '%state assembly%'
+            or lower({{ race_name_col }}) like '%state circuit court%'
+            or lower({{ race_name_col }}) like '%court of appeals%'
         then 'State'
         else 'Local'
     end

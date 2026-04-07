@@ -151,7 +151,13 @@ with
             cd.primary_runoff_date as candidacy_primary_runoff_date,
 
             -- === Candidacy-stage-specific derived columns ===
-            case when s.is_winner then 'Won' else 'Lost' end as election_result,
+            case
+                when s.is_winner
+                then 'Won'
+                when s.is_winner = false
+                then 'Lost'
+                else null
+            end as election_result,
             'ddhq' as election_result_source
 
         from source as s
