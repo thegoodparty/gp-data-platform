@@ -14,7 +14,8 @@ with
     district_counts as (select * from {{ ref("int__l2_district_aggregations") }}),
 
     icp_position_names as (
-        select name, serve_eligible from {{ ref("icp_normalized_position_names") }}
+        select name, serve_eligible, win_effective_date
+        from {{ ref("icp_normalized_position_names") }}
     )
 
 select
@@ -74,7 +75,9 @@ select
         when district_counts.voter_count <= 100000
         then false
         else true
-    end as icp_win_supersize
+    end as icp_win_supersize,
+
+    icp_position_names.win_effective_date
 
 from position
 
