@@ -5,9 +5,9 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
 - We use the dbt *cloud* cli, not the dbt-core cli.
 - You do not need to specify `--defer` or the location of a state file in dbt cloud.
 - Do not invoke dbt via `poetry`. dbt cloud cli is installed at the system level.
-- Before committing, activate the poetry environment from `dbt/` so pre-commit
-  hooks (pytest) can find dependencies like `pyspark` and `airflow`:
-  `source $(cd dbt && poetry env info --path)/bin/activate`
+- When running `git commit`, use `poetry run` from the `dbt/` directory so the
+  pre-commit pytest hook can find `pyspark` and `airflow`:
+  `cd dbt && poetry run git commit ...`
 - When adding or modifying models and/or tests, run `dbt build` on the modified
 objects to ensure they build as exected.
 
