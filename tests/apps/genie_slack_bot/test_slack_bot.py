@@ -155,7 +155,8 @@ def test_duplicate_thread_reply_event_is_processed_once():
     }
 
     bot._handle_message(root_event, None, client)
-    assert bot._should_handle_message_event(reply_event) is True
+    # Channel thread replies are routed via app_mention, not the message handler.
+    assert bot._should_handle_message_event(reply_event) is False
 
     bot._handle_message(reply_event, None, client)
     bot._handle_message(reply_event, None, client)
@@ -286,7 +287,8 @@ def test_channel_follow_up_reuses_parent_thread_conversation():
 
     bot._handle_message(mention_event, None, client)
 
-    assert bot._should_handle_message_event(reply_event) is True
+    # Channel thread replies are routed via app_mention, not the message handler.
+    assert bot._should_handle_message_event(reply_event) is False
 
     bot._handle_message(reply_event, None, client)
 
@@ -525,7 +527,11 @@ def test_fast_thread_follow_up_reuses_existing_conversation_scope():
     root_thread.start()
 
     assert genie_client.first_message_sent.wait(timeout=2)
-    assert bot._should_handle_message_event(reply_event) is True
+    # Channel thread replies are routed via app_mention, not the message handler.
+    assert bot._should_handle_message_event(reply_event) is False
+    # The conversation mapping IS eagerly available for the app_mention handler:
+    conversation_key = bot._get_conversation_key("C123", "400.100")
+    assert bot._has_mapping(bot.conversation_map, conversation_key) is True
 
     bot._handle_message(reply_event, None, client)
 
