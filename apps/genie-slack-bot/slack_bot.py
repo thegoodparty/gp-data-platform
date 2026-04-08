@@ -421,23 +421,11 @@ class SlackGenieBot:
             return False
         if event.get("channel_type") == "im":
             return True
-        channel = event.get("channel")
-        thread_ts = event.get("thread_ts")
-        if not isinstance(channel, str) or not isinstance(thread_ts, str):
-            return False
-        conversation_scope = self._get_conversation_key(channel, thread_ts)
-        has_mapping = self._has_mapping(self.conversation_map, conversation_scope)
-        if not has_mapping:
-            logger.debug(
-                "Ignoring threaded Slack reply without known Genie conversation: "
-                "channel=%s channel_type=%s thread_ts=%s ts=%s conversation_key=%s",
-                channel,
-                event.get("channel_type"),
-                thread_ts,
-                event.get("ts"),
-                conversation_scope,
-            )
-        return has_mapping
+        # Non-DM messages (channels, groups, MPIMs) are handled exclusively
+        # by the app_mention handler.  Returning False here prevents the bot
+        # from replying to every message in a channel thread after a single
+        # @mention creates a conversation mapping.
+        return False
 
     @staticmethod
     def _get_conversation_key(channel: str, thread_ts: str) -> str:

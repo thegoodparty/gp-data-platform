@@ -745,3 +745,29 @@ def test_no_truncation_warning_when_10_rows_or_fewer():
     updated_text = client.updates[0]["text"]
     assert "Showing 10 of" not in updated_text
     assert "Open Genie Console" in updated_text
+
+
+def test_channel_thread_reply_without_mention_ignored_even_if_mapped():
+    """After an @mention creates a conversation, thread replies without
+    @mention must NOT be handled by the message handler.
+    """
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    mention_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "800.100",
+        "text": "<@U123BOT> How many elections?",
+    }
+    bot._handle_message(mention_event, None, client)
+    assert len(genie_client.calls) == 1
+
+    reply_without_mention = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "800.200",
+        "thread_ts": "800.100",
+        "text": "How many by year?",
+    }
+    assert bot._should_handle_message_event(reply_without_mention) is False
