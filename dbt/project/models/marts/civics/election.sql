@@ -66,9 +66,35 @@ select
     stage_dates.general_runoff_election_date,
     icp.voter_count as icp_voter_count,
     icp.normalized_position_type as icp_normalized_position_name,
-    icp.icp_office_win as is_win_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                coalesce(stage_dates.general_election_date, deduplicated.election_date)
+                is null
+                or coalesce(
+                    stage_dates.general_election_date, deduplicated.election_date
+                )
+                < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_office_win
+    end as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    icp.icp_win_supersize as is_win_supersize_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                coalesce(stage_dates.general_election_date, deduplicated.election_date)
+                is null
+                or coalesce(
+                    stage_dates.general_election_date, deduplicated.election_date
+                )
+                < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_win_supersize
+    end as is_win_supersize_icp,
     deduplicated.created_at,
     deduplicated.updated_at
 

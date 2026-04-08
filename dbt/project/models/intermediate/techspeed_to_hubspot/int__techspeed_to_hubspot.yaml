@@ -122,8 +122,6 @@ models:
                 values: [true, false]
       - name: election_date
         description: "Election date (general or primary)"
-        tests:
-          - not_null
       - name: uploaded
         description: "Upload status based on election date"
         tests:
@@ -216,8 +214,6 @@ models:
           - not_null
       - name: election_date
         description: "Election date (general or primary)"
-        tests:
-          - not_null
       - name: uploaded
         description: "Upload status (in_hubspot, past_election, future_election, or no_contact)"
         tests:

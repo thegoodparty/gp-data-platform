@@ -32,8 +32,8 @@ with
             office_type,
             office_level,
             filing_deadline,
-            primary_election_date,
-            general_election_date,
+            primary_election_date_parsed as primary_election_date,
+            general_election_date_parsed as general_election_date,
             -- Transform is_primary to Election Type
             case
                 when is_primary then 'Primary' when not is_primary then 'General'

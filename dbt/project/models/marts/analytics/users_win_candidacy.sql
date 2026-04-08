@@ -48,9 +48,29 @@ with
             u.eo_activated_at,
 
             -- ICP fields
-            icp.icp_office_win,
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and (
+                        coalesce(cand.general_election_date, c.election_date) is null
+                        or coalesce(cand.general_election_date, c.election_date)
+                        < icp.icp_win_effective_date
+                    )
+                then false
+                else icp.icp_office_win
+            end as icp_office_win,
             icp.icp_office_serve,
-            icp.icp_win_supersize,
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and (
+                        coalesce(cand.general_election_date, c.election_date) is null
+                        or coalesce(cand.general_election_date, c.election_date)
+                        < icp.icp_win_effective_date
+                    )
+                then false
+                else icp.icp_win_supersize
+            end as icp_win_supersize,
             initcap(icp.br_position_name) as ballotready_position_name,
             initcap(icp.l2_district_name) as l2_district_name,
             initcap(icp.l2_district_type) as l2_district_type,
