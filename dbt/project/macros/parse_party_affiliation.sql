@@ -1,5 +1,7 @@
 {% macro parse_party_affiliation(column) %}
     case
+        when nullif(trim({{ column }}), '') is null
+        then null
         when {{ column }} ilike '%independent%'
         then 'Independent'
         when {{ column }} ilike '%nonpartisan%'

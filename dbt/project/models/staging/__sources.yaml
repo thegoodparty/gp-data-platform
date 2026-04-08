@@ -64,6 +64,14 @@ sources:
         description: raw data load from s3 data dump sent from ballotready
       - name: ddhq_gdrive_election_results
         description: raw data load from ddhq google drive for election results
+        columns:
+          - name: race_name
+            data_tests:
+              - dbt_expectations.expect_column_values_to_match_regex:
+                  arguments:
+                    regex: "^[A-Z]{2} "
+                  config:
+                    where: "race_name is not null"
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position
@@ -212,6 +220,10 @@ sources:
         description: raw data load from Techspeed Google Drive
       - name: techspeed_gdrive_officeholders
         description: raw data load from Techspeed Google Drive
+        config:
+          freshness:
+            warn_after: { count: 90, period: day }
+            error_after: { count: 180, period: day }
         columns:
           - name: is_incumbent
             data_tests:

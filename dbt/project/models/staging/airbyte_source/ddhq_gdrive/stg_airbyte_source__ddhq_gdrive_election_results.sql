@@ -34,13 +34,67 @@ with
         from source
     ),
 
+    clean_states as (select * from {{ ref("clean_states") }}),
+
+    us_states as (select * from {{ ref("us_states") }}),
+
+    -- Resolve state postal code from the 2-letter prefix of race_name.
+    -- A source-level test confirms all race_names match ^[A-Z]{2} .
+    with_state as (
+        select
+            r.*,
+            split(r.race_name, ' ')[0] as state_prefix,
+            cs.state_cleaned_postal_code as state_postal_code,
+            us.state_name
+        from renamed as r
+        left join
+            clean_states as cs
+            on upper(split(r.race_name, ' ')[0]) = upper(trim(cs.state_raw))
+        left join us_states as us on cs.state_cleaned_postal_code = us.state_postal_code
+    ),
+
+    with_derived_fields as (
+        select
+            * except (state_prefix),
+            trim(
+                substring(race_name, length(state_prefix) + 2)
+            ) as official_office_name,
+            {{ parse_ddhq_candidate_office("race_name") }} as candidate_office,
+            {{ map_office_type("candidate_office") }} as office_type,
+            {{ parse_ddhq_office_level("race_name") }} as office_level,
+            coalesce(
+                nullif(
+                    regexp_extract(
+                        race_name,
+                        '(?i)(?:ward|district|seat|place|position|zone) ([^ ]+)$'
+                    ),
+                    ''
+                ),
+                nullif(regexp_extract(race_name, ' ([0-9]+)$'), ''),
+                ''
+            ) as district,
+            case
+                when
+                    lower(election_type) like '%runoff%'
+                    and lower(election_type) like '%primary%'
+                then 'primary runoff'
+                when lower(election_type) like '%runoff%'
+                then 'general runoff'
+                when lower(election_type) like '%primary%'
+                then 'primary'
+                else 'general'
+            end as election_stage,
+            {{ parse_party_affiliation("candidate_party") }} as party_affiliation
+        from with_state
+    ),
+
     invalid as (
         select _airbyte_raw_id
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results_invalid") }}
     )
 
 select *
-from renamed
+from with_derived_fields
 where
     _airbyte_raw_id
     not in (select _airbyte_raw_id from invalid where _airbyte_raw_id is not null)
