@@ -108,3 +108,59 @@ models:
         data_tests:
           - not_null
           - unique
+  - name: stg_airbyte_source__hubspot_api_feedback_submissions
+    description: >
+      Staged HubSpot Feedback Survey submissions. Contains responses from all
+      feedback surveys including PMF, user satisfaction, and research
+      compensation surveys. One row per submission.
+    columns:
+      - name: submission_id
+        description: Unique identifier for the feedback submission
+        data_tests:
+          - not_null
+          - unique
+      - name: hs_survey_id
+        description: >
+          HubSpot survey identifier. Known surveys:
+          2 = User research compensation,
+          3 = Win - User research compensation,
+          8 = PMF - Web survey (March18,2026),
+          9 = Win User satisfaction survey (5 stars) (Web),
+          10 = Win User satisfaction survey (5 stars) (Web) (3+ Sessions + ICP),
+          5058880 = Knowledge base feedback.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["2", "3", "8", "9", "10", "5058880"]
+      - name: submitted_at
+        description: Timestamp when the survey response was submitted
+        data_tests:
+          - not_null
+      - name: survey_type
+        description: Type of survey (CUSTOM, KNOWLEDGE, etc.)
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["CUSTOM", "KNOWLEDGE"]
+      - name: survey_channel
+        description: Channel through which the survey was delivered
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["WEB"]
+      - name: pmf_response
+        description: >
+          Raw PMF survey option value. Only populated for survey_id 8.
+          Values: Option 1 (Very Disappointed), Option 2 (Somewhat Disappointed),
+          Not disappointed, N/A - I no longer use GoodParty.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "Option 1"
+                  - "Option 2"
+                  - "Not disappointed"
+                  - "N/A - I no longer use GoodParty"

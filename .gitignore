@@ -49,6 +49,8 @@ logs/
 !.claude/skills/l2-uniform-drift-remediator/dbt_logs/.gitkeep
 !.claude/skills/l2-uniform-drift-remediator/dbt_logs/README.md
 .pre-commit-cache/
+.worktrees/
+.playwright-cli/
 test_data/
 .databricks/
 

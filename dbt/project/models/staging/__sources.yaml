@@ -138,6 +138,11 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_tickets
         description: raw data load from HubSpot data model
+      - name: hubspot_api_feedback_submissions
+        description: >
+          HubSpot Feedback Survey submissions ingested via custom Airbyte
+          Connector Builder source. Contains responses from all feedback
+          surveys (PMF, user satisfaction, research compensation, etc.).
       - name: stripe_api_accounts
         description: Stripe account information and settings
         config:
