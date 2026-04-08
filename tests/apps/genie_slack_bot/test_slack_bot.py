@@ -777,3 +777,67 @@ def test_channel_thread_reply_without_mention_ignored_even_if_mapped():
         "text": "How many by year?",
     }
     assert bot._should_handle_message_event(reply_without_mention) is False
+
+
+def test_channel_mention_in_thread_continues_conversation():
+    """An @mention reply in a channel thread reuses the existing conversation
+    when routed through app_mention -> _handle_message.
+    """
+    bot, genie_client = build_bot()
+    client = FakeSlackClient()
+
+    mention_event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "810.100",
+        "text": "<@U123BOT> How many elections?",
+    }
+    bot._handle_message(mention_event, None, client)
+
+    mention_reply = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "810.200",
+        "thread_ts": "810.100",
+        "text": "<@U123BOT> How many by year?",
+    }
+    bot._handle_message(mention_reply, None, client)
+
+    assert genie_client.calls == [
+        ("How many elections?", None),
+        ("How many by year?", "conv-1"),
+    ]
+
+
+def test_top_level_channel_message_without_mention_ignored():
+    """A top-level channel message with no @mention is not handled."""
+    bot, _ = build_bot()
+
+    event = {
+        "channel": "C123",
+        "channel_type": "channel",
+        "ts": "820.100",
+        "text": "Hello everyone",
+    }
+    assert bot._should_handle_message_event(event) is False
+
+
+def test_group_and_mpim_messages_not_handled_by_message_handler():
+    """Private channels (group) and multi-person DMs (mpim) require @mention."""
+    bot, _ = build_bot()
+
+    group_event = {
+        "channel": "G123",
+        "channel_type": "group",
+        "ts": "830.100",
+        "text": "How many elections?",
+    }
+    mpim_event = {
+        "channel": "G456",
+        "channel_type": "mpim",
+        "ts": "840.100",
+        "text": "How many elections?",
+    }
+
+    assert bot._should_handle_message_event(group_event) is False
+    assert bot._should_handle_message_event(mpim_event) is False
