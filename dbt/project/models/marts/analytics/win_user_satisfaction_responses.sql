@@ -8,7 +8,7 @@ with
 
     submissions as (
         select *
-        from {{ ref("stg_airbyte_source__feedback_submissions") }}
+        from {{ ref("stg_airbyte_source__hubspot_api_feedback_submissions") }}
         where hs_survey_id in ('9', '10')
     ),
 

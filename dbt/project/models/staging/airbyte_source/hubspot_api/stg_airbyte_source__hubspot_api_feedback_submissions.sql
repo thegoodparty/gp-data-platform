@@ -39,4 +39,4 @@ select
     cast(updatedat as timestamp) as updated_at,
     _airbyte_extracted_at
 
-from {{ source("airbyte_source", "feedback_submissions") }}
+from {{ source("airbyte_source", "hubspot_api_feedback_submissions") }}
