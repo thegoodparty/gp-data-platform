@@ -1,0 +1,75 @@
+version: 2
+
+models:
+  - name: int__civics_ddhq_coverage_gaps
+    description: >
+      Election stages from BallotReady / TechSpeed without DDHQ coverage.
+      Uses the Splink ER clustered candidacy-stage data to identify races
+      (by br_race_id) where no candidate was matched to a DDHQ record.
+      Race-level attributes prefer BallotReady values, falling back to
+      TechSpeed. Enriched with ICP flags from the election_stage mart.
+
+      Grain: one row per br_race_id (election stage) without DDHQ coverage.
+
+    columns:
+      - name: br_race_id
+        description: BallotReady race ID identifying the election stage.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: state
+        description: Two-letter US state postal code.
+        data_tests:
+          - not_null
+
+      - name: candidate_office
+        description: Normalized office name (e.g. US House, State Senate, Mayor).
+
+      - name: office_level
+        description: Office level (Federal, State, County, Local, Regional, Township).
+
+      - name: office_type
+        description: Office type (Executive, Legislative, Judicial, School Board, Other).
+
+      - name: election_date
+        description: Date of the election stage.
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: Election stage (Primary, General, or Runoff).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["Primary", "General", "Runoff"]
+
+      - name: official_office_name
+        description: Full office name from the source (lowercased, trimmed).
+
+      - name: partisan_type
+        description: Partisan classification of the race.
+
+      - name: seat_name
+        description: Seat or position name from the source.
+
+      - name: br_candidate_count
+        description: Number of distinct BallotReady candidates in this race within the ER data.
+
+      - name: ts_candidate_count
+        description: Number of distinct TechSpeed candidates in this race within the ER data.
+
+      - name: is_win_icp
+        description: Whether the race is a Win ICP office.
+        data_tests:
+          - not_null
+
+      - name: is_serve_icp
+        description: Whether the race is a Serve ICP office.
+        data_tests:
+          - not_null
+
+      - name: is_win_supersize_icp
+        description: Whether the race is a Win supersize ICP office.
+        data_tests:
+          - not_null
