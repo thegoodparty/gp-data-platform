@@ -1,50 +1,117 @@
 -- Civics mart candidacy_stage table
--- Union of 2025 HubSpot archive and 2026+ BallotReady data
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+--
+-- The 2026+ portion uses an entity-resolution crosswalk to match BR and TS
+-- candidacy_stages, then applies survivorship rules (BR wins by default).
 with
-    combined as (
+    -- =========================================================================
+    -- 2025 archive (pass-through, no merge needed)
+    -- =========================================================================
+    archive_2025 as (
         select
             gp_candidacy_stage_id,
             gp_candidacy_id,
             gp_election_stage_id,
             candidate_name,
-            source_candidate_id,
-            source_race_id,
+            cast(source_candidate_id as string) as source_candidate_id,
+            cast(source_race_id as string) as source_race_id,
             candidate_party,
             is_winner,
             election_result,
             election_result_source,
-            match_confidence,
+            cast(match_confidence as float) as match_confidence,
             match_reasoning,
             match_top_candidates,
             has_match,
             votes_received,
             election_stage_date,
             created_at,
-            updated_at
+            updated_at,
+            array('hubspot') as source_systems
         from {{ ref("int__civics_candidacy_stage_2025") }}
+    ),
 
-        union all
+    -- =========================================================================
+    -- Crosswalk pairs + FK remaps from shared intermediate
+    -- =========================================================================
+    crosswalk_pairs as (
+        select distinct br_candidacy_stage_id as br_id, ts_candidacy_stage_id as ts_id
+        from {{ ref("int__civics_crosswalk") }}
+    ),
 
+    candidacy_remap as (
+        select distinct ts_candidacy_id as ts_id, br_candidacy_id as br_id
+        from {{ ref("int__civics_crosswalk") }}
+    ),
+
+    election_stage_remap as (
+        select distinct ts_election_stage_id as ts_id, br_election_stage_id as br_id
+        from {{ ref("int__civics_crosswalk") }}
+    ),
+
+    -- =========================================================================
+    -- Merge 2026+ BR + TS with survivorship (BR wins by default)
+    -- =========================================================================
+    merged_2026 as (
         select
-            gp_candidacy_stage_id,
-            gp_candidacy_id,
-            gp_election_stage_id,
-            candidate_name,
-            source_candidate_id,
-            source_race_id,
-            candidate_party,
-            is_winner,
-            election_result,
-            election_result_source,
-            match_confidence,
-            match_reasoning,
-            match_top_candidates,
-            has_match,
-            votes_received,
-            election_stage_date,
-            created_at,
-            updated_at
-        from {{ ref("int__civics_candidacy_stage_ballotready") }}
+            coalesce(
+                br.gp_candidacy_stage_id, ts.gp_candidacy_stage_id
+            ) as gp_candidacy_stage_id,
+            coalesce(
+                br.gp_candidacy_id, cr.br_id, ts.gp_candidacy_id
+            ) as gp_candidacy_id,
+            coalesce(
+                br.gp_election_stage_id, esr.br_id, ts.gp_election_stage_id
+            ) as gp_election_stage_id,
+            coalesce(br.candidate_name, ts.candidate_name) as candidate_name,
+            coalesce(
+                br.source_candidate_id, ts.source_candidate_id
+            ) as source_candidate_id,
+            coalesce(br.source_race_id, ts.source_race_id) as source_race_id,
+            coalesce(br.candidate_party, ts.candidate_party) as candidate_party,
+            coalesce(br.is_winner, ts.is_winner) as is_winner,
+            coalesce(br.election_result, ts.election_result) as election_result,
+            coalesce(
+                br.election_result_source, ts.election_result_source
+            ) as election_result_source,
+            coalesce(br.match_confidence, ts.match_confidence) as match_confidence,
+            coalesce(br.match_reasoning, ts.match_reasoning) as match_reasoning,
+            coalesce(
+                br.match_top_candidates, ts.match_top_candidates
+            ) as match_top_candidates,
+            coalesce(br.has_match, ts.has_match) as has_match,
+            coalesce(br.votes_received, ts.votes_received) as votes_received,
+            coalesce(
+                br.election_stage_date, ts.election_stage_date
+            ) as election_stage_date,
+            coalesce(br.created_at, ts.created_at) as created_at,
+            coalesce(br.updated_at, ts.updated_at) as updated_at,
+            array_compact(
+                array(
+                    case
+                        when br.gp_candidacy_stage_id is not null then 'ballotready'
+                    end,
+                    case when ts.gp_candidacy_stage_id is not null then 'techspeed' end
+                )
+            ) as source_systems
+        from {{ ref("int__civics_candidacy_stage_ballotready") }} as br
+        full outer join crosswalk_pairs as cw on br.gp_candidacy_stage_id = cw.br_id
+        full outer join
+            {{ ref("int__civics_candidacy_stage_techspeed") }} as ts
+            on cw.ts_id = ts.gp_candidacy_stage_id
+        left join candidacy_remap as cr on ts.gp_candidacy_id = cr.ts_id
+        left join election_stage_remap as esr on ts.gp_election_stage_id = esr.ts_id
+    ),
+
+    -- =========================================================================
+    -- Combine archive + merged 2026+
+    -- =========================================================================
+    combined as (
+        select *
+        from archive_2025
+        union all
+        select *
+        from merged_2026
     ),
 
     deduplicated as (
@@ -77,6 +144,7 @@ select
     es.is_win_icp,
     es.is_serve_icp,
     es.is_win_supersize_icp,
+    deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 

@@ -1,4 +1,32 @@
 models:
+  - name: int__civics_crosswalk
+    description: >
+      Entity resolution crosswalk pairs between BallotReady and TechSpeed
+      candidacy_stages, rolled up to all grain levels (candidacy_stage,
+      candidacy, election_stage, candidate, election). Materialized once and
+      referenced by all civics mart models for merge pairing and FK remapping.
+    columns:
+      - name: br_candidacy_stage_id
+        description: BallotReady candidacy_stage ID
+      - name: ts_candidacy_stage_id
+        description: TechSpeed candidacy_stage ID
+      - name: br_candidacy_id
+        description: BallotReady candidacy ID
+      - name: ts_candidacy_id
+        description: TechSpeed candidacy ID
+      - name: br_election_stage_id
+        description: BallotReady election_stage ID
+      - name: ts_election_stage_id
+        description: TechSpeed election_stage ID
+      - name: br_candidate_id
+        description: BallotReady candidate ID
+      - name: ts_candidate_id
+        description: TechSpeed candidate ID
+      - name: br_election_id
+        description: BallotReady election ID
+      - name: ts_election_id
+        description: TechSpeed election ID
+
   - name: int__civics_election_2025
     description: >
       Historical archive of elections from the general mart with election dates
@@ -1408,6 +1436,11 @@ models:
                 field: gp_election_stage_id
               config:
                 error_if: ">=100"
+
+      - name: br_candidacy_id
+        description: >
+          BallotReady candidacy ID (database_id from S3 source). Used by the
+          entity-resolution crosswalk to match BR candidacy_stages to TechSpeed.
 
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)

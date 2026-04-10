@@ -8,122 +8,102 @@
     - TS: pre-populated in upstream model
 
   This macro normalizes those values into a consistent office_type.
+  All comparisons use lower() so casing differences don't cause mismatches.
   Usage: {{ map_office_type(column_name) }}
 #}
 {% macro map_office_type(column_name) %}
     case
-        when {{ column_name }} = 'Alderman'
+        when lower({{ column_name }}) in ('alderman', 'alderperson')
         then 'Alderman'
-        when {{ column_name }} = 'Alderperson'
-        then 'Alderman'
-        when {{ column_name }} = 'Attorney'
+        when lower({{ column_name }}) like '%attorney%'
         then 'Attorney'
-        when {{ column_name }} = 'City Commission'
+        when
+            lower({{ column_name }}) in (
+                'city commission',
+                'city commissioner',
+                'city council',
+                'town chair',
+                'township council'
+            )
         then 'City Council'
-        when {{ column_name }} = 'City Commissioner'
-        then 'City Council'
-        when {{ column_name }} = 'City Council'
-        then 'City Council'
-        when {{ column_name }} = 'Town Chair'
-        then 'City Council'
-        when {{ column_name }} = 'Township Council'
-        then 'City Council'
-        when {{ column_name }} = 'Clerk'
+        when
+            lower({{ column_name }})
+            in ('clerk', 'treasurer', 'city clerk', 'township clerk', 'clerk/treasurer')
         then 'Clerk/Treasurer'
-        when {{ column_name }} = 'Treasurer'
-        then 'Clerk/Treasurer'
-        when {{ column_name }} = 'City Clerk'
-        then 'Clerk/Treasurer'
-        when {{ column_name }} = 'Township Clerk'
-        then 'Clerk/Treasurer'
-        when {{ column_name }} = 'Clerk/Treasurer'
-        then 'Clerk/Treasurer'
-        when {{ column_name }} = 'Congressional'
+        when
+            lower({{ column_name }})
+            in ('congressional', 'u.s. representative', 'u.s. senator')
         then 'Congressional'
-        when {{ column_name }} = 'County Commissioner'
+        when
+            lower({{ column_name }}) in (
+                'county commissioner',
+                'county council',
+                'county trustee',
+                'county legislature'
+            )
         then 'County Supervisor'
-        when {{ column_name }} = 'County Council'
-        then 'County Supervisor'
-        when {{ column_name }} = 'County Trustee'
-        then 'County Supervisor'
-        when {{ column_name }} = 'County Legislature'
-        then 'County Supervisor'
-        when {{ column_name }} = 'Circuit Court'
+        when
+            lower({{ column_name }}) like '%judge%'
+            or lower({{ column_name }}) like '%magistrate%'
+            or lower({{ column_name }}) like '%justice of the peace%'
+            or lower({{ column_name }}) in (
+                'circuit court',
+                'circuit court judge',
+                'county court judge',
+                'district court',
+                'probate court',
+                'supreme court',
+                'trial court judge'
+            )
         then 'Judge'
-        when {{ column_name }} = 'Circuit Court Judge'
-        then 'Judge'
-        when {{ column_name }} = 'County Court Judge'
-        then 'Judge'
-        when {{ column_name }} = 'District Court'
-        then 'Judge'
-        when {{ column_name }} = 'Justice of the Peace'
-        then 'Judge'
-        when {{ column_name }} = 'Probate Court'
-        then 'Judge'
-        when {{ column_name }} = 'Supreme Court'
-        then 'Judge'
-        when {{ column_name }} = 'Trial Court Judge'
-        then 'Judge'
-        when {{ column_name }} = 'Judge'
-        then 'Judge'
-        when {{ column_name }} = 'Mayor'
+        when
+            lower({{ column_name }}) in ('mayor', 'village president', 'township mayor')
         then 'Mayor'
-        when {{ column_name }} = 'Village President'
-        then 'Mayor'
-        when {{ column_name }} = 'President'
+        when lower({{ column_name }}) = 'president'
         then 'President'
-        when {{ column_name }} = 'Board of Education'
+        when lower({{ column_name }}) in ('board of education', 'school board')
         then 'School Board'
-        when {{ column_name }} = 'School Board'
-        then 'School Board'
-        when {{ column_name }} = 'Constable'
+        when lower({{ column_name }}) in ('constable', 'county sheriff', 'sheriff')
         then 'Sheriff'
-        when {{ column_name }} = 'County Sheriff'
-        then 'Sheriff'
-        when {{ column_name }} = 'Sheriff'
-        then 'Sheriff'
-        when {{ column_name }} = 'House of Delegates'
+        when
+            lower({{ column_name }}) in (
+                'house of delegates',
+                'house of representatives',
+                'state assembly',
+                'state house',
+                'state representative'
+            )
         then 'State House'
-        when {{ column_name }} = 'House of Representatives'
-        then 'State House'
-        when {{ column_name }} = 'State Assembly'
-        then 'State House'
-        when {{ column_name }} = 'State House'
-        then 'State House'
-        when {{ column_name }} = 'State Senate'
+        when lower({{ column_name }}) in ('state senate', 'state senator')
         then 'State Senate'
-        when {{ column_name }} = 'Governor'
+        when lower({{ column_name }}) in ('governor', 'lieutenant governor')
         then 'Statewide/Governor'
-        when {{ column_name }} = 'Lieutenant Governor'
-        then 'Statewide/Governor'
-        when {{ column_name }} = 'Town Council'
-        then 'Town Council'
-        when {{ column_name }} = 'Town Trustee'
-        then 'Town Council'
-        when {{ column_name }} = 'Township Supervisor'
-        then 'Town Council'
-        when {{ column_name }} = 'Village Board'
-        then 'Town Council'
-        when {{ column_name }} = 'Village Council'
-        then 'Town Council'
-        when {{ column_name }} = 'Village Trustee'
+        when
+            lower({{ column_name }}) in (
+                'town council',
+                'town trustee',
+                'township supervisor',
+                'village board',
+                'village council',
+                'village trustee'
+            )
         then 'Town Council'
         -- Explicitly mapped to Other (not just else fallthrough)
         when
-            {{ column_name }} in (
-                'Board of Trustees',
-                'Community College Board',
-                'Dependent District Board',
-                'Elections Supervisor',
-                'Fire Board',
-                'Hawaiian Affairs Board',
-                'Highway Superintendent',
-                'Insurance Commissioner',
-                'Library Board',
-                'Parks and Recreation Board',
-                'Port Board',
-                'Township Assessor',
-                'Water Supply Board'
+            lower({{ column_name }}) in (
+                'board of trustees',
+                'community college board',
+                'dependent district board',
+                'elections supervisor',
+                'fire board',
+                'hawaiian affairs board',
+                'highway superintendent',
+                'insurance commissioner',
+                'library board',
+                'parks and recreation board',
+                'port board',
+                'township assessor',
+                'water supply board'
             )
         then 'Other'
         else 'Other'

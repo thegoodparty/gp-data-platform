@@ -57,6 +57,7 @@
             or lower({{ race_name_col }}) like '%conservation%'
             or lower({{ race_name_col }}) like '%utility district%'
         then 'Other'
+        else 'Other'
     end
 {% endmacro %}
 

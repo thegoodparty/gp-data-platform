@@ -16,9 +16,10 @@ with
             -- Candidate identity
             trim(first_name) as first_name,
             trim(last_name) as last_name,
-            trim(src.state) as state,
+            trim(regexp_replace(src.state, '[^A-Za-z ]', '')) as state,
             coalesce(
-                cs.state_cleaned_postal_code, trim(src.state)
+                cs.state_cleaned_postal_code,
+                trim(regexp_replace(src.state, '[^A-Za-z ]', ''))
             ) as state_postal_code,
             email,
             {{ clean_phone_number("phone") }} as phone,
@@ -129,7 +130,9 @@ with
 
         from source as src
         left join
-            clean_states as cs on upper(trim(src.state)) = upper(trim(cs.state_raw))
+            clean_states as cs
+            on upper(trim(regexp_replace(src.state, '[^A-Za-z ]', '')))
+            = upper(trim(cs.state_raw))
     ),
 
     invalid as (

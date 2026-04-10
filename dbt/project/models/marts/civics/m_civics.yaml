@@ -350,7 +350,8 @@ models:
 
   - name: candidacy
     description: >
-      Candidacies combining 2025 HubSpot archive and 2026+ BallotReady data.
+      Candidacies combining 2025 HubSpot archive and 2026+ merged BallotReady +
+      TechSpeed data via entity-resolution crosswalk.
 
       Grain: One row per candidacy.
 
@@ -370,6 +371,11 @@ models:
               arguments:
                 to: ref('candidate')
                 field: gp_candidate_id
+              config:
+                # Pre-existing: ~84 hubspot candidacies reference candidate IDs
+                # not present in the candidate table (also fails on main).
+                warn_if: ">100"
+                error_if: ">200"
 
       - name: gp_election_id
         description: Foreign key to election table (no relationship test - matches m_general behavior)
@@ -532,6 +538,13 @@ models:
           Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
+      - name: source_systems
+        description: >
+          Array of source systems contributing to this record.
+          Values: 'hubspot', 'ballotready', 'techspeed'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -549,7 +562,8 @@ models:
 
   - name: candidate
     description: >
-      Candidates combining 2025 HubSpot archive and 2026+ BallotReady data.
+      Candidates combining 2025 HubSpot archive and 2026+ merged BallotReady +
+      TechSpeed data via entity-resolution crosswalk.
 
       Grain: One row per candidate.
 
@@ -611,6 +625,13 @@ models:
       - name: instagram_handle
         description: Candidate's Instagram handle
 
+      - name: source_systems
+        description: >
+          Array of source systems contributing to this record.
+          Values: 'hubspot', 'ballotready', 'techspeed'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -635,8 +656,9 @@ models:
 
   - name: candidacy_stage
     description: >
-      Candidacy stages (primary, general, primary runoff, general runoff results) combining 2025 HubSpot/DDHQ archive
-      and 2026+ BallotReady data.
+      Candidacy stages (primary, general, primary runoff, general runoff results)
+      combining 2025 HubSpot/DDHQ archive and 2026+ merged BallotReady + TechSpeed
+      data via entity-resolution crosswalk.
 
       Grain: One row per candidacy stage (candidacy + election stage combination).
 
@@ -748,6 +770,13 @@ models:
           Win process. Derived from the election_stage table's ICP flags.
           NULL for records without BallotReady position match.
 
+      - name: source_systems
+        description: >
+          Array of source systems contributing to this record.
+          Values: 'hubspot', 'ballotready', 'techspeed'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -765,7 +794,8 @@ models:
 
   - name: election
     description: >
-      Elections combining 2025 HubSpot archive and 2026+ BallotReady data.
+      Elections combining 2025 HubSpot archive and 2026+ merged BallotReady +
+      TechSpeed data via entity-resolution crosswalk.
 
       Grain: One row per election.
 
@@ -965,6 +995,13 @@ models:
                 min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
 
+      - name: source_systems
+        description: >
+          Array of source systems contributing to this record.
+          Values: 'hubspot', 'ballotready', 'techspeed'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -982,8 +1019,9 @@ models:
 
   - name: election_stage
     description: >
-      Election stages (primary, general, primary runoff, general runoff) combining 2025 DDHQ archive
-      and 2026+ BallotReady data.
+      Election stages (primary, general, primary runoff, general runoff) combining
+      2025 DDHQ archive and 2026+ merged BallotReady + TechSpeed data via
+      entity-resolution crosswalk.
 
       Grain: One row per election stage.
 
@@ -1139,6 +1177,13 @@ models:
           >100,000 voters, requiring separate consideration outside the standard
           Win process. Derived from int__icp_offices via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
+
+      - name: source_systems
+        description: >
+          Array of source systems contributing to this record.
+          Values: 'hubspot', 'ballotready', 'techspeed'.
+        data_tests:
+          - not_null
 
       - name: created_at
         description: Timestamp when the record was created (from Airbyte extraction)
