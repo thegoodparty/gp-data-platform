@@ -1,28 +1,32 @@
 -- Election stages from BallotReady / TechSpeed without DDHQ coverage.
 --
 -- Uses the Splink ER clustered candidacy-stage data to identify races
--- (by br_race_id) where no candidate was matched to a DDHQ record.
+-- where no candidate was matched to a DDHQ record.
 -- Race-level attributes prefer BallotReady values, falling back to TechSpeed.
 -- Enriched with ICP flags from the election_stage mart.
 --
--- Grain: one row per br_race_id (election stage) without DDHQ coverage.
+-- Includes both:
+-- 1. Races with a br_race_id (from BallotReady, or TechSpeed with BR linkage)
+-- 2. TechSpeed-only races without a br_race_id
+--
+-- Grain: one row per election stage without DDHQ coverage (keyed by race_key).
 with
     er as (select * from {{ ref("stg_er_source__clustered_candidacy_stages") }}),
 
     -- Clusters containing at least one DDHQ record
     ddhq_clusters as (select distinct cluster_id from er where source_name = 'ddhq'),
 
-    -- BR race IDs where at least one candidate matched to DDHQ
-    br_races_with_ddhq as (
-        select distinct er.br_race_id
+    -- Clusters that matched to DDHQ
+    matched_clusters as (
+        select distinct er.cluster_id
         from er
         inner join ddhq_clusters dc on er.cluster_id = dc.cluster_id
-        where er.br_race_id is not null
     ),
 
-    -- Aggregate to race level, preferring BallotReady over TechSpeed
-    races as (
+    -- Races with a br_race_id, preferring BallotReady over TechSpeed
+    br_races as (
         select
+            cast(br_race_id as string) as race_key,
             br_race_id,
             coalesce(
                 max(case when source_name = 'ballotready' then state end),
@@ -63,35 +67,87 @@ with
                 max(case when source_name = 'techspeed' then seat_name end)
             ) as seat_name,
             count(
-                distinct case when source_name = 'ballotready' then cluster_id end
+                distinct case when source_name = 'ballotready' then er.cluster_id end
             ) as br_candidate_count,
             count(
-                distinct case when source_name = 'techspeed' then cluster_id end
-            ) as ts_candidate_count
+                distinct case when source_name = 'techspeed' then er.cluster_id end
+            ) as ts_candidate_count,
+            -- A race has DDHQ coverage if any candidate's cluster matched DDHQ
+            count(distinct mc.cluster_id) > 0 as has_ddhq_match
         from er
+        left join matched_clusters mc on er.cluster_id = mc.cluster_id
         where source_name in ('ballotready', 'techspeed') and br_race_id is not null
         group by br_race_id
+    ),
+
+    -- TechSpeed-only races without a br_race_id
+    ts_only_races as (
+        select
+            md5(
+                er.state
+                || '|'
+                || er.candidate_office
+                || '|'
+                || cast(er.election_date as string)
+                || '|'
+                || er.election_stage
+                || '|'
+                || coalesce(er.official_office_name, '')
+            ) as race_key,
+            cast(null as int) as br_race_id,
+            er.state,
+            max(er.candidate_office) as candidate_office,
+            max(er.office_level) as office_level,
+            max(er.office_type) as office_type,
+            er.election_date,
+            er.election_stage,
+            er.official_office_name,
+            max(er.partisan_type) as partisan_type,
+            max(er.seat_name) as seat_name,
+            0 as br_candidate_count,
+            count(distinct er.cluster_id) as ts_candidate_count,
+            count(distinct mc.cluster_id) > 0 as has_ddhq_match
+        from er
+        left join matched_clusters mc on er.cluster_id = mc.cluster_id
+        where er.source_name = 'techspeed' and er.br_race_id is null
+        group by
+            er.state,
+            er.candidate_office,
+            er.election_date,
+            er.election_stage,
+            er.official_office_name
+    ),
+
+    all_races as (
+        select *
+        from br_races
+        where not has_ddhq_match
+
+        union all
+
+        select *
+        from ts_only_races
+        where not has_ddhq_match
     )
 
 select
-    races.br_race_id,
-    races.state,
-    races.candidate_office,
-    races.office_level,
-    races.office_type,
-    races.election_date,
-    races.election_stage,
-    races.official_office_name,
-    races.partisan_type,
-    races.seat_name,
-    races.br_candidate_count,
-    races.ts_candidate_count,
+    all_races.race_key,
+    all_races.br_race_id,
+    all_races.state,
+    all_races.candidate_office,
+    all_races.office_level,
+    all_races.office_type,
+    all_races.election_date,
+    all_races.election_stage,
+    all_races.official_office_name,
+    all_races.partisan_type,
+    all_races.seat_name,
+    all_races.br_candidate_count,
+    all_races.ts_candidate_count,
     coalesce(es.is_win_icp, false) as is_win_icp,
     coalesce(es.is_serve_icp, false) as is_serve_icp,
     coalesce(es.is_win_supersize_icp, false) as is_win_supersize_icp
-from races
-left join br_races_with_ddhq as matched on races.br_race_id = matched.br_race_id
+from all_races
 left join
     {{ ref("election_stage") }} as es
-    on cast(races.br_race_id as string) = es.br_race_id
-where matched.br_race_id is null
+    on cast(all_races.br_race_id as string) = es.br_race_id

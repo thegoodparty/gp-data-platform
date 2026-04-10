@@ -9,14 +9,25 @@ models:
       Race-level attributes prefer BallotReady values, falling back to
       TechSpeed. Enriched with ICP flags from the election_stage mart.
 
-      Grain: one row per br_race_id (election stage) without DDHQ coverage.
+      Grain: one row per election stage without DDHQ coverage (keyed by race_key).
+      Includes both races with a br_race_id (BallotReady / TechSpeed with BR
+      linkage) and TechSpeed-only races without one.
 
     columns:
-      - name: br_race_id
-        description: BallotReady race ID identifying the election stage.
+      - name: race_key
+        description: >
+          Surrogate primary key. For races with a br_race_id this is
+          cast(br_race_id as string); for TechSpeed-only races it is an
+          md5 hash of (state, candidate_office, election_date, election_stage,
+          official_office_name).
         data_tests:
           - unique
           - not_null
+
+      - name: br_race_id
+        description: >
+          BallotReady race ID. Null for TechSpeed-only races that have
+          no BallotReady linkage.
 
       - name: state
         description: Two-letter US state postal code.
