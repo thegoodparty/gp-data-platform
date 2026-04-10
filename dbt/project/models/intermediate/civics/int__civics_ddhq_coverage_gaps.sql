@@ -16,13 +16,6 @@ with
     -- Clusters containing at least one DDHQ record
     ddhq_clusters as (select distinct cluster_id from er where source_name = 'ddhq'),
 
-    -- Clusters that matched to DDHQ
-    matched_clusters as (
-        select distinct er.cluster_id
-        from er
-        inner join ddhq_clusters dc on er.cluster_id = dc.cluster_id
-    ),
-
     -- Races with a br_race_id, preferring BallotReady over TechSpeed.
     -- max() is used instead of any_value() because the CASE expression
     -- produces NULLs for non-matching source rows; max() skips those NULLs
@@ -77,9 +70,9 @@ with
                 distinct case when source_name = 'techspeed' then er.cluster_id end
             ) as ts_candidate_count,
             -- A race has DDHQ coverage if any candidate's cluster matched DDHQ
-            count(distinct mc.cluster_id) > 0 as has_ddhq_match
+            count(distinct dc.cluster_id) > 0 as has_ddhq_match
         from er
-        left join matched_clusters mc on er.cluster_id = mc.cluster_id
+        left join ddhq_clusters dc on er.cluster_id = dc.cluster_id
         where source_name in ('ballotready', 'techspeed') and br_race_id is not null
         group by br_race_id
     ),
@@ -100,7 +93,7 @@ with
             ) as race_key,
             cast(null as int) as br_race_id,
             er.state,
-            max(er.candidate_office) as candidate_office,
+            er.candidate_office,
             max(er.office_level) as office_level,
             max(er.office_type) as office_type,
             er.election_date,
@@ -110,9 +103,9 @@ with
             max(er.seat_name) as seat_name,
             0 as br_candidate_count,
             count(distinct er.cluster_id) as ts_candidate_count,
-            count(distinct mc.cluster_id) > 0 as has_ddhq_match
+            count(distinct dc.cluster_id) > 0 as has_ddhq_match
         from er
-        left join matched_clusters mc on er.cluster_id = mc.cluster_id
+        left join ddhq_clusters dc on er.cluster_id = dc.cluster_id
         where er.source_name = 'techspeed' and er.br_race_id is null
         group by
             er.state,
