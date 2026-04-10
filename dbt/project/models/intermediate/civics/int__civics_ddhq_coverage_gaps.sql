@@ -81,13 +81,13 @@ with
     ts_only_races as (
         select
             md5(
-                er.state
+                coalesce(er.state, '')
                 || '|'
-                || er.candidate_office
+                || coalesce(er.candidate_office, '')
                 || '|'
-                || cast(er.election_date as string)
+                || coalesce(cast(er.election_date as string), '')
                 || '|'
-                || er.election_stage
+                || coalesce(er.election_stage, '')
                 || '|'
                 || coalesce(er.official_office_name, '')
             ) as race_key,
@@ -98,7 +98,7 @@ with
             max(er.office_type) as office_type,
             er.election_date,
             er.election_stage,
-            er.official_office_name,
+            coalesce(er.official_office_name, '') as official_office_name,
             max(er.partisan_type) as partisan_type,
             max(er.seat_name) as seat_name,
             0 as br_candidate_count,
@@ -112,7 +112,7 @@ with
             er.candidate_office,
             er.election_date,
             er.election_stage,
-            er.official_office_name
+            coalesce(er.official_office_name, '')
     ),
 
     all_races as (
