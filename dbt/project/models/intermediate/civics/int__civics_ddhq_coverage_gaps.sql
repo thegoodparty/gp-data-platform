@@ -148,9 +148,9 @@ select
     all_races.seat_name,
     all_races.br_candidate_count,
     all_races.ts_candidate_count,
-    coalesce(es.is_win_icp, false) as is_win_icp,
-    coalesce(es.is_serve_icp, false) as is_serve_icp,
-    coalesce(es.is_win_supersize_icp, false) as is_win_supersize_icp
+    es.is_win_icp,
+    es.is_serve_icp,
+    es.is_win_supersize_icp
 from all_races
 left join
     {{ ref("election_stage") }} as es

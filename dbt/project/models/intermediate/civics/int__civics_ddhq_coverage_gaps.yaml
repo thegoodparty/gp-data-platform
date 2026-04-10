@@ -83,16 +83,16 @@ models:
         description: Number of distinct TechSpeed candidates in this race within the ER data.
 
       - name: is_win_icp
-        description: Whether the race is a Win ICP office.
-        data_tests:
-          - not_null
+        description: >
+          Whether the race is a Win ICP office. Null for TechSpeed-only
+          races that have no BallotReady position linkage.
 
       - name: is_serve_icp
-        description: Whether the race is a Serve ICP office.
-        data_tests:
-          - not_null
+        description: >
+          Whether the race is a Serve ICP office. Null for TechSpeed-only
+          races that have no BallotReady position linkage.
 
       - name: is_win_supersize_icp
-        description: Whether the race is a Win supersize ICP office.
-        data_tests:
-          - not_null
+        description: >
+          Whether the race is a Win supersize ICP office. Null for
+          TechSpeed-only races that have no BallotReady position linkage.
