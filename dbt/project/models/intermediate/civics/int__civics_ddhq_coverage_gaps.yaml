@@ -5,7 +5,7 @@ models:
     description: >
       Election stages from BallotReady / TechSpeed without DDHQ coverage.
       Uses the Splink ER clustered candidacy-stage data to identify races
-      (by br_race_id) where no candidate was matched to a DDHQ record.
+      where no candidate was matched to a DDHQ record.
       Race-level attributes prefer BallotReady values, falling back to
       TechSpeed. Enriched with ICP flags from the election_stage mart.
 
