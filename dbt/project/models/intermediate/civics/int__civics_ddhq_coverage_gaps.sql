@@ -23,7 +23,11 @@ with
         inner join ddhq_clusters dc on er.cluster_id = dc.cluster_id
     ),
 
-    -- Races with a br_race_id, preferring BallotReady over TechSpeed
+    -- Races with a br_race_id, preferring BallotReady over TechSpeed.
+    -- max() is used instead of any_value() because the CASE expression
+    -- produces NULLs for non-matching source rows; max() skips those NULLs
+    -- while any_value() could return one. Within a source, values for a
+    -- given br_race_id are identical so max() just picks the single value.
     br_races as (
         select
             cast(br_race_id as string) as race_key,
