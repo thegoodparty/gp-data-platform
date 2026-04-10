@@ -49,11 +49,23 @@ models:
           - not_null
 
       - name: election_stage
-        description: Election stage (Primary, General, or Runoff).
+        description: >
+          Election stage (Primary, General, Primary Runoff, General Runoff,
+          Primary Special, General Special, Primary Special Runoff,
+          General Special Runoff).
         data_tests:
           - not_null
           - accepted_values:
-              values: ["Primary", "General", "Runoff"]
+              values:
+                - "Primary"
+                - "General"
+                - "Runoff"
+                - "Primary Runoff"
+                - "General Runoff"
+                - "Primary Special"
+                - "General Special"
+                - "Primary Special Runoff"
+                - "General Special Runoff"
 
       - name: official_office_name
         description: Full office name from the source (lowercased, trimmed).
