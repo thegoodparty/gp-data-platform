@@ -38,8 +38,7 @@ models:
 
       - name: is_win_user
         description: >
-          Whether user is a Win product user (owns at least one organization
-          linked to a campaign). Source: mart_civics.users.is_win_user
+          Whether user is a Win product user. Source: mart_civics.users.is_win_user.
         data_tests:
           - not_null
 
@@ -486,8 +485,7 @@ models:
 
       - name: is_win_user
         description: >
-          Whether user is a Win product user (owns at least one organization
-          linked to a campaign). Source: mart_civics.users.is_win_user.
+          Whether user is a Win product user. Source: mart_civics.users.is_win_user.
           May be NULL if user doesn't match civics.
 
       - name: is_serve_user
