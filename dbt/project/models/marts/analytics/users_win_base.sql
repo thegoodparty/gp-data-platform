@@ -33,7 +33,7 @@ with
             u.zip,
 
             -- Product flags
-            u.has_campaign as is_win_user,
+            u.is_win_user,
             u.is_serve_user,
             u.eo_activated_at,
 
