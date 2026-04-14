@@ -1,0 +1,52 @@
+{{
+    config(
+        materialized="table",
+        tags=["mart", "election_api", "officepicker"],
+    )
+}}
+
+with
+    future_elections as (
+        select
+            gp_election_id,
+            election_date,
+            election_year,
+            state,
+            official_office_name,
+            office_level,
+            office_type,
+            city,
+            district,
+            is_judicial,
+            br_position_database_id
+        from {{ ref("election") }}
+        where election_date > current_date() and election_year < 2029
+    ),
+
+    zip_to_office as (
+        select zip_code, district_name, br_database_id
+        from {{ ref("int__zip_code_to_br_office") }}
+    ),
+
+    officepicker as (
+        select
+            elec.gp_election_id,
+            elec.official_office_name as display_name,
+            zips.zip_code,
+            elec.election_year,
+            case
+                when elec.is_judicial then 'Judicial' else elec.office_level
+            end as display_office_level,
+            elec.office_type,
+            elec.state,
+            elec.city,
+            elec.district,
+            elec.election_date,
+            elec.br_position_database_id
+        from future_elections as elec
+        left join
+            zip_to_office as zips on zips.br_database_id = elec.br_position_database_id
+    )
+
+select *
+from officepicker
