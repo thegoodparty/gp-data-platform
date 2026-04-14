@@ -202,7 +202,7 @@ models:
                 to: ref('int__enhanced_race')
                 field: br_database_id
 
-  - name: m_election_api__zip_to_office
+  - name: m_election_api__zip_to_position
     description: >
       Maps zip codes to future election offices for the OfficePicker product.
       Joins the civics election mart with the zip-to-BallotReady-office
@@ -219,12 +219,6 @@ models:
               arguments:
                 to: ref('m_election_api__position')
                 field: id
-      - name: gp_election_id
-        description: >
-          GoodParty election identifier (position + year). Foreign key to the
-          election mart.
-        tests:
-          - not_null
       - name: display_name
         description: "Official office name for display in the OfficePicker UI"
       - name: zip_code

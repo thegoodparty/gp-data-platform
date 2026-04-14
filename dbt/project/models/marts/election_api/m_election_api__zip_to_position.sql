@@ -8,7 +8,6 @@
 with
     future_elections as (
         select
-            gp_election_id,
             election_date,
             election_year,
             state,
@@ -36,7 +35,6 @@ with
     officepicker as (
         select
             pos.position_id,
-            elec.gp_election_id,
             elec.official_office_name as display_name,
             zips.zip_code,
             elec.election_year,
