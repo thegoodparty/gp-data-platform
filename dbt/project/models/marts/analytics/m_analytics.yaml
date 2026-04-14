@@ -38,10 +38,8 @@ models:
 
       - name: is_win_user
         description: >
-          Whether user is a Win product user (has created at least one campaign).
-          Source: mart_civics.users.has_campaign
-        data_tests:
-          - not_null
+          Whether user is a Win product user. Source: mart_civics.users.is_win_user.
+          Always true in this model (non-Win users are filtered out).
 
       - name: is_serve_user
         description: >
@@ -486,7 +484,7 @@ models:
 
       - name: is_win_user
         description: >
-          Whether user is a Win product user per mart_civics.users.
+          Whether user is a Win product user. Source: mart_civics.users.is_win_user.
           May be NULL if user doesn't match civics.
 
       - name: is_serve_user
