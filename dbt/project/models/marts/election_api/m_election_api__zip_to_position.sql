@@ -22,7 +22,7 @@ with
         where election_date > current_date() and election_year < 2029
     ),
 
-    zip_to_office as (
+    zip_to_position as (
         select zip_code, district_name, br_database_id
         from {{ ref("int__zip_code_to_br_office") }}
     ),
@@ -49,7 +49,8 @@ with
             elec.br_position_database_id
         from future_elections as elec
         left join
-            zip_to_office as zips on zips.br_database_id = elec.br_position_database_id
+            zip_to_position as zips
+            on zips.br_database_id = elec.br_position_database_id
         left join positions as pos on pos.br_database_id = elec.br_position_database_id
     )
 

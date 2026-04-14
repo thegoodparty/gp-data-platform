@@ -204,11 +204,11 @@ models:
 
   - name: m_election_api__zip_to_position
     description: >
-      Maps zip codes to future election offices for the OfficePicker product.
+      Maps zip codes to future election positions for the OfficePicker product.
       Joins the civics election mart with the zip-to-BallotReady-office
       intermediate model, filtered to upcoming elections (before 2029).
 
-      Grain: One row per (zip_code, gp_election_id) pair. Elections without
+      Grain: One row per (zip_code, position_id) pair. Positions without
       zip coverage will have a null zip_code.
     columns:
       - name: position_id
