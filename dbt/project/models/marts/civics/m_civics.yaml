@@ -76,11 +76,6 @@ models:
       - name: last_campaign_created_at
         description: Timestamp of user's most recent campaign creation
 
-      - name: has_campaign
-        description: Whether user has created at least one campaign
-        data_tests:
-          - not_null
-
       - name: has_verified_campaign
         description: Whether user has at least one verified campaign
         data_tests:
@@ -126,11 +121,6 @@ models:
           - not_null:
               config:
                 where: "is_serve_user = true"
-
-    data_tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "has_campaign = is_win_user"
 
   - name: campaigns
     description: >

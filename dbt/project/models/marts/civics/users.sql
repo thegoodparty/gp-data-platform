@@ -83,7 +83,6 @@ with
             cs.first_campaign_created_at,
             cs.last_campaign_created_at,
 
-            coalesce(cs.campaign_count > 0, false) as has_campaign,
             coalesce(cs.verified_campaign_count > 0, false) as has_verified_campaign,
             coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign,
 
