@@ -13,7 +13,9 @@
 */
 with
     activity as (select * from {{ ref("int__amplitude_win_activity") }}),
-    users as (select * from {{ ref("goodparty_data_catalog", "users") }}),
+    users as (
+        select * from {{ ref("goodparty_data_catalog", "users") }} where is_win_user
+    ),
 
     final as (
         select

@@ -17,7 +17,9 @@
 */
 with
 
-    users as (select * from {{ ref("goodparty_data_catalog", "users") }}),
+    users as (
+        select * from {{ ref("goodparty_data_catalog", "users") }} where is_win_user
+    ),
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
 
     final as (

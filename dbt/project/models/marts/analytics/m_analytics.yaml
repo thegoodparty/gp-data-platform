@@ -39,8 +39,7 @@ models:
       - name: is_win_user
         description: >
           Whether user is a Win product user. Source: mart_civics.users.is_win_user.
-        data_tests:
-          - not_null
+          Always true in this model (non-Win users are filtered out).
 
       - name: is_serve_user
         description: >
