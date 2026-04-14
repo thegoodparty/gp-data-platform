@@ -206,10 +206,11 @@ models:
     description: >
       Maps zip codes to future election positions for the OfficePicker product.
       Joins the civics election mart with the zip-to-BallotReady-office
-      intermediate model, filtered to upcoming elections (before 2029).
+      intermediate model, filtered to elections within two years of the
+      current date.
 
-      Grain: One row per (zip_code, position_id) pair. Positions without
-      zip coverage will have a null zip_code.
+      Grain: One row per (zip_code, position_id, election_date). Positions
+      without zip coverage will have a null zip_code.
     columns:
       - name: position_id
         description: >
@@ -261,6 +262,13 @@ models:
         description: "Database ID of the `position` from BallotReady"
         tests:
           - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - zip_code
+              - position_id
+              - election_date
 
   - name: m_election_api__stance
     description: "Mart model that serves the Election API"

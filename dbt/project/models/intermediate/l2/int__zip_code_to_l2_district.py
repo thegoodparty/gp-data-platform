@@ -99,6 +99,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if district_type not in ["Country", "State"]
     ]
 
+    zip_window = Window.partitionBy("zip_code", "state_postal_code")
+
     for district_type in district_type_from_columns:
         # Get data for this district type from residence
         district_df = (
@@ -125,7 +127,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             "state_postal_code", "zip_code", "district_name"
         ).agg(count("*").alias("voter_count"))
 
-        zip_window = Window.partitionBy("zip_code", "state_postal_code")
         district_df = (
             district_df.withColumn(
                 "total_voters", spark_sum("voter_count").over(zip_window)

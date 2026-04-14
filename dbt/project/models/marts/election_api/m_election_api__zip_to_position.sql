@@ -25,8 +25,7 @@ with
     ),
 
     zip_to_position as (
-        select zip_code, district_name, br_database_id
-        from {{ ref("int__zip_code_to_br_office") }}
+        select zip_code, br_database_id from {{ ref("int__zip_code_to_br_office") }}
     ),
 
     positions as (
