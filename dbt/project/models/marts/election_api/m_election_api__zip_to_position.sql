@@ -37,7 +37,7 @@ with
     officepicker as (
         select
             pos.position_id,
-            elec.official_office_name as display_name,
+            elec.official_office_name as name,
             zips.zip_code,
             elec.election_year,
             case
@@ -48,12 +48,12 @@ with
             elec.city,
             elec.district,
             elec.election_date,
-            elec.br_position_database_id
+            elec.br_position_database_id as br_database_id
         from future_elections as elec
         left join
             zip_to_position as zips
             on zips.br_database_id = elec.br_position_database_id
-        left join positions as pos on pos.br_database_id = elec.br_position_database_id
+        inner join positions as pos on pos.br_database_id = elec.br_position_database_id
     )
 
 select *

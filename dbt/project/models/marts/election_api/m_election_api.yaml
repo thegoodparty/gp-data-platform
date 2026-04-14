@@ -215,12 +215,13 @@ models:
         description: >
           Election API position UUID. Foreign key to m_election_api__position.
         tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('m_election_api__position')
                 field: id
-      - name: display_name
-        description: "Official office name for display in the OfficePicker UI"
+      - name: name
+        description: "BallotReady position name"
       - name: zip_code
         description: "5-digit zip code mapped to this office via L2 district matching"
       - name: election_year
@@ -256,8 +257,8 @@ models:
         description: "Date of the election"
         tests:
           - not_null
-      - name: br_position_database_id
-        description: "BallotReady numeric position identifier, used for upstream joins"
+      - name: br_database_id
+        description: "Database ID of the `position` from BallotReady"
         tests:
           - not_null
 
