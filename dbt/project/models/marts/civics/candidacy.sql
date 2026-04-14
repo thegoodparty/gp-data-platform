@@ -40,21 +40,29 @@ with
     ),
 
     -- =========================================================================
-    -- Crosswalk pairs + FK remaps from shared intermediate
+    -- Derive candidacy-level pairs and FK remaps from cluster membership.
+    -- A TS candidacy maps to a BR candidacy if ANY of their stages share a
+    -- cluster. Same for candidate and election remaps.
     -- =========================================================================
     candidacy_pairs as (
-        select distinct br_candidacy_id as br_id, ts_candidacy_id as ts_id
-        from {{ ref("int__civics_crosswalk") }}
+        select distinct br_m.gp_candidacy_id as br_id, ts_m.gp_candidacy_id as ts_id
+        from {{ ref("int__civics_cluster_members") }} as br_m
+        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
+        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
     ),
 
     candidate_remap as (
-        select distinct ts_candidate_id as ts_id, br_candidate_id as br_id
-        from {{ ref("int__civics_crosswalk") }}
+        select distinct ts_m.gp_candidate_id as ts_id, br_m.gp_candidate_id as br_id
+        from {{ ref("int__civics_cluster_members") }} as br_m
+        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
+        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
     ),
 
     election_remap as (
-        select distinct ts_election_id as ts_id, br_election_id as br_id
-        from {{ ref("int__civics_crosswalk") }}
+        select distinct ts_m.gp_election_id as ts_id, br_m.gp_election_id as br_id
+        from {{ ref("int__civics_cluster_members") }} as br_m
+        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
+        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
     ),
 
     -- =========================================================================
@@ -179,27 +187,9 @@ select
     deduplicated.viability_score,
     deduplicated.win_number,
     deduplicated.win_number_model,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and (
-                deduplicated.general_election_date is null
-                or deduplicated.general_election_date < icp.icp_win_effective_date
-            )
-        then false
-        else icp.icp_office_win
-    end as is_win_icp,
+    icp.icp_office_win as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and (
-                deduplicated.general_election_date is null
-                or deduplicated.general_election_date < icp.icp_win_effective_date
-            )
-        then false
-        else icp.icp_win_supersize
-    end as is_win_supersize_icp,
+    icp.icp_win_supersize as is_win_supersize_icp,
     deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at

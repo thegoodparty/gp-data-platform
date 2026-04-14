@@ -35,11 +35,13 @@ with
     ),
 
     -- =========================================================================
-    -- Crosswalk pairs from shared intermediate
+    -- Derive candidate-level pairs from cluster membership
     -- =========================================================================
     candidate_pairs as (
-        select distinct br_candidate_id as br_id, ts_candidate_id as ts_id
-        from {{ ref("int__civics_crosswalk") }}
+        select distinct br_m.gp_candidate_id as br_id, ts_m.gp_candidate_id as ts_id
+        from {{ ref("int__civics_cluster_members") }} as br_m
+        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
+        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
     ),
 
     -- =========================================================================

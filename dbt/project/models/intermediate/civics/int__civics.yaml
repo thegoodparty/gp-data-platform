@@ -1,31 +1,44 @@
 models:
-  - name: int__civics_crosswalk
+  - name: int__civics_cluster_members
     description: >
-      Entity resolution crosswalk pairs between BallotReady and TechSpeed
-      candidacy_stages, rolled up to all grain levels (candidacy_stage,
-      candidacy, election_stage, candidate, election). Materialized once and
-      referenced by all civics mart models for merge pairing and FK remapping.
+      Entity resolution cluster membership: one row per (cluster_id, source).
+      Maps ER cluster assignments to GP IDs at all grain levels
+      (candidacy_stage, candidacy, candidate, election_stage, election).
+      Referenced by all civics mart models for cross-source merging and FK
+      remapping. Adding a new data source requires only one additional CTE.
     columns:
-      - name: br_candidacy_stage_id
-        description: BallotReady candidacy_stage ID
-      - name: ts_candidacy_stage_id
-        description: TechSpeed candidacy_stage ID
-      - name: br_candidacy_id
-        description: BallotReady candidacy ID
-      - name: ts_candidacy_id
-        description: TechSpeed candidacy ID
-      - name: br_election_stage_id
-        description: BallotReady election_stage ID
-      - name: ts_election_stage_id
-        description: TechSpeed election_stage ID
-      - name: br_candidate_id
-        description: BallotReady candidate ID
-      - name: ts_candidate_id
-        description: TechSpeed candidate ID
-      - name: br_election_id
-        description: BallotReady election ID
-      - name: ts_election_id
-        description: TechSpeed election ID
+      - name: cluster_id
+        description: >
+          Splink cluster identifier grouping records believed to represent
+          the same candidacy-stage across sources.
+        data_tests:
+          - not_null
+      - name: source_name
+        description: Origin data source for this cluster member.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["ballotready", "techspeed"]
+      - name: gp_candidacy_stage_id
+        description: GP candidacy_stage ID for this cluster member.
+        data_tests:
+          - not_null
+      - name: gp_candidacy_id
+        description: GP candidacy ID for this cluster member.
+        data_tests:
+          - not_null
+      - name: gp_candidate_id
+        description: GP candidate ID for this cluster member.
+        data_tests:
+          - not_null
+      - name: gp_election_stage_id
+        description: GP election_stage ID for this cluster member.
+        data_tests:
+          - not_null
+      - name: gp_election_id
+        description: GP election ID for this cluster member.
+        data_tests:
+          - not_null
 
   - name: int__civics_election_2025
     description: >
