@@ -3,6 +3,10 @@ models:
   - name: stg_airbyte_source__ddhq_gdrive_election_results
     description: Election results data load from ddhq google drive
     columns:
+      - name: state_postal_code
+        description: 2-letter state code resolved from race_name prefix via clean_states
+        data_tests:
+          - not_null
       - name: ddhq_race_id
         data_tests:
           - not_null

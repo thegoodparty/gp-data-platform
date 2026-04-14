@@ -148,15 +148,25 @@ with
             v.score_viability_automated,
             -- ICP flags: use BallotReady ICP offices when available,
             -- fall back to candidate_office + population for net-new records.
-            coalesce(
-                icp.icp_office_win,
-                f.population between 500 and 100000
-                and lower(trim(f.candidate_office)) in (
-                    {% for office in icp_qualifying_ts_offices %}
-                        '{{ office }}'{{ ',' if not loop.last }}
-                    {% endfor %}
-                )
-            ) as icp_win,
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and (
+                        f.general_election_date is null
+                        or f.general_election_date < icp.icp_win_effective_date
+                    )
+                then false
+                else
+                    coalesce(
+                        icp.icp_office_win,
+                        f.population between 500 and 100000
+                        and lower(trim(f.candidate_office)) in (
+                            {% for office in icp_qualifying_ts_offices %}
+                                '{{ office }}'{{ ',' if not loop.last }}
+                            {% endfor %}
+                        )
+                    )
+            end as icp_win,
             coalesce(
                 icp.icp_office_serve,
                 f.population between 1000 and 100000
@@ -166,15 +176,25 @@ with
                     {% endfor %}
                 )
             ) as icp_serve,
-            coalesce(
-                icp.icp_win_supersize,
-                f.population > 100000
-                and lower(trim(f.candidate_office)) in (
-                    {% for office in icp_qualifying_ts_offices %}
-                        '{{ office }}'{{ ',' if not loop.last }}
-                    {% endfor %}
-                )
-            ) as icp_win_supersize
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and (
+                        f.general_election_date is null
+                        or f.general_election_date < icp.icp_win_effective_date
+                    )
+                then false
+                else
+                    coalesce(
+                        icp.icp_win_supersize,
+                        f.population > 100000
+                        and lower(trim(f.candidate_office)) in (
+                            {% for office in icp_qualifying_ts_offices %}
+                                '{{ office }}'{{ ',' if not loop.last }}
+                            {% endfor %}
+                        )
+                    )
+            end as icp_win_supersize
         from techspeed_candidates_fuzzy as f
         left join
             techspeed_viability as v

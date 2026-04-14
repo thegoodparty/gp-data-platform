@@ -51,6 +51,21 @@ seeds:
         - dbt_expectations.expect_column_distinct_values_to_equal_set:
             arguments:
               value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=true) }}"
+  - name: us_states
+    description: "One row per U.S. state/territory mapping postal code to human-readable name"
+    columns:
+      - name: state_postal_code
+        description: "2-letter state postal code"
+        data_tests:
+          - unique
+          - not_null
+          - is_state_abbreviation
+      - name: state_name
+        description: "Human-readable state name"
+        data_tests:
+          - unique
+          - not_null
+
   - name: nicknames
     description: >
       Mapping of given names to their common nicknames/aliases.
@@ -119,6 +134,41 @@ seeds:
                 select concat(state, '|', l2_district_type, '|', l2_district_name)
                 from {{ ref('m_election_api__district') }}
               )
+
+  - name: icp_normalized_position_names
+    description: >
+      BallotReady normalized position names that qualify for ICP flags.
+      The serve_eligible column controls whether a position qualifies for
+      Serve ICP (false for school board positions, which are Win-only).
+    columns:
+      - name: name
+        description: BallotReady normalized position name
+        data_tests:
+          - unique
+          - not_null
+      - name: branch
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - legislative
+                  - executive
+      - name: serve_eligible
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: win_effective_date
+        description: >
+          Earliest election date for which the Win ICP flag applies.
+          Null means always eligible; non-null gates the win flag to
+          elections on or after this date (used for school board positions).
+        data_tests:
+          - not_null:
+              config:
+                where: "category = 'school_board'"
 
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"

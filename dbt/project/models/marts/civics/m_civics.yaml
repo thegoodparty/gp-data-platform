@@ -221,7 +221,15 @@ models:
         description: Political party affiliation
 
       - name: election_level
-        description: Level of election (local, state, federal)
+        description: Level of election (city, county, state, federal)
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - city
+                  - county
+                  - state
+                  - federal
 
       - name: campaign_office
         description: >
@@ -233,6 +241,13 @@ models:
           BallotReady position database ID, joined via organization ->
           election-api position. Replaces the deprecated base64-decoded
           campaign.details.positionId field.
+
+      - name: normalized_position_name
+        description: >
+          BallotReady normalized position name (e.g. "City Legislature",
+          "Governor") resolved via the BR API position's normalized_position
+          reference. Used for standardizing candidate_office across sources
+          in entity resolution.
 
       - name: is_latest_version
         description: >

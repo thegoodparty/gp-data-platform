@@ -13,7 +13,10 @@ with
 
     district_counts as (select * from {{ ref("int__l2_district_aggregations") }}),
 
-    icp_position_names as (select name from {{ ref("icp_normalized_position_names") }})
+    icp_position_names as (
+        select name, serve_eligible, win_effective_date
+        from {{ ref("icp_normalized_position_names") }}
+    )
 
 select
     position.database_id as br_database_position_id,
@@ -34,7 +37,7 @@ select
         when
             position.is_judicial
             or position.is_appointed
-            or normalized_position.name not in (select name from icp_position_names)
+            or icp_position_names.name is null
         then false
         when district_counts.voter_count is null
         then null
@@ -48,7 +51,8 @@ select
         when
             position.is_judicial
             or position.is_appointed
-            or normalized_position.name not in (select name from icp_position_names)
+            or icp_position_names.name is null
+            or not icp_position_names.serve_eligible
         then false
         when district_counts.voter_count is null
         then null
@@ -64,14 +68,16 @@ select
         when
             position.is_judicial
             or position.is_appointed
-            or normalized_position.name not in (select name from icp_position_names)
+            or icp_position_names.name is null
         then false
         when district_counts.voter_count is null
         then null
         when district_counts.voter_count <= 100000
         then false
         else true
-    end as icp_win_supersize
+    end as icp_win_supersize,
+
+    icp_position_names.win_effective_date as icp_win_effective_date
 
 from position
 
@@ -86,3 +92,5 @@ left join
     on l2_match.l2_district_name = district_counts.district_name
     and l2_match.l2_district_type = district_counts.district_type
     and position.state = district_counts.state_postal_code
+
+left join icp_position_names on normalized_position.name = icp_position_names.name

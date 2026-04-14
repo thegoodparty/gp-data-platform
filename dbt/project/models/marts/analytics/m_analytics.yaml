@@ -1115,3 +1115,81 @@ models:
           - accepted_values:
               arguments:
                 values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot']
+
+  - name: pmf_survey_responses
+    description: >
+      PMF (Product-Market Fit) web survey responses. Filtered to survey_id 8
+      ("PMF - Web survey"). One row per survey submission, joined to HubSpot
+      contacts for respondent context. PMF Score = (Very Disappointed / total) * 100.
+    columns:
+      - name: submission_id
+        description: Unique identifier for the feedback submission
+        data_tests:
+          - not_null
+          - unique
+      - name: submitted_at
+        description: Timestamp when the survey response was submitted
+        data_tests:
+          - not_null
+      - name: pmf_response
+        description: >
+          Decoded PMF answer: Very Disappointed, Somewhat Disappointed,
+          Not Disappointed, or N/A.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - "Very Disappointed"
+                  - "Somewhat Disappointed"
+                  - "Not Disappointed"
+                  - "N/A"
+      - name: is_very_disappointed
+        description: >
+          Boolean flag for PMF score calculation.
+          PMF Score = SUM(is_very_disappointed) / COUNT(*) * 100.
+        data_tests:
+          - not_null
+      - name: hs_contact_id
+        description: HubSpot contact ID of the respondent
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__hubspot_api_contacts')
+                field: id
+      - name: contact_email
+        description: Email address of the respondent
+        data_tests:
+          - not_null
+
+  - name: win_user_satisfaction_responses
+    description: >
+      Win User satisfaction survey (5 stars) responses. Combines survey_id 9
+      and 10 (same survey, relaunched for ICP filtering). One row per response.
+    columns:
+      - name: submission_id
+        description: Unique identifier for the feedback submission
+        data_tests:
+          - not_null
+          - unique
+      - name: submitted_at
+        description: Timestamp when the survey response was submitted
+        data_tests:
+          - not_null
+      - name: satisfaction_stars
+        description: User satisfaction rating on a 1-5 star scale
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 5
+      - name: hs_contact_id
+        description: HubSpot contact ID of the respondent
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__hubspot_api_contacts')
+                field: id

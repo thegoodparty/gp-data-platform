@@ -1,85 +1,37 @@
 version: 2
 
 models:
-  - name: int__gp_ai_candidacies
-    description: >
-      Intermediate model that creates the candidacies object in the intermediate layer using the HubSpot data.
-      A "candidacy" is a combination of a candidate and a full election for a specific office in a specific year.
-      This is the format used to start the election match process for GP AI.
-    columns:
-      - name: gp_candidacy_id
-        description: Unique identifier for the candidacy in the HubSpot data. Can have multiple matches for the same candidacy in different races.
-        data_tests:
-          - not_null
-          - unique
-          - is_uuid
-      - name: created_at
-        description: Timestamp when the record was first created
-        data_tests:
-          - not_null
-      - name: updated_at
-        description: Timestamp when the record was last updated
-        data_tests:
-          - not_null
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "updated_at >= created_at"
-            config:
-              where: "updated_at is not null and created_at is not null"
-
-  - name: int__gp_ai_start_election_match
-    description: Intermediate model that starts the election match process for GP AI
-    config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      gp_ai_url: "{{ env_var('DBT_GP_AI_URL') }}"
-    columns:
-      - name: run_id
-        description: Unique identifier for the election match process
-        tests:
-          - not_null
-          - unique
-      - name: s3_output.files.parquet
-        description: S3 path to the parquet output file
-        tests:
-          - not_null
-
-    tests:
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "regexp_like(run_id, '^[0-9]{8}_[0-9]{6}$')"
-
   - name: int__gp_ai_election_match
-    description: Intermediate model that fetches and loads the parquet output file from the int__gp_ai_start_election_match model. This model reads the election match results from S3 and loads them into the data warehouse.
+    description: >
+      DEPRECATED (DATA-1834): Frozen snapshot of DDHQ-HubSpot AI election match
+      results from Dec 2, 2025. Previously a Python model that fetched parquet from
+      S3 via the gp-ai API. Splink modelling replaces this pipeline going forward.
+      Kept as a SQL passthrough for backward compatibility with 6 downstream consumers.
+
+      CLEANUP TODO: To fully remove this model, update these downstream consumers
+      to reference stg_model_predictions__candidacy_ddhq_matches_20251202 directly
+      (or migrate to civics mart / splink data), then delete this file and YAML:
+        - m_general__candidacy_stage.sql (LEFT JOIN)
+        - m_general__candidacy_preview.sql (LEFT JOIN, first in DDHQ>BR>LLM waterfall)
+        - m_general__election_stage.sql (FROM — primary source)
+        - int__civics_candidacy_stage_2025.sql (LEFT JOIN, archive)
+        - int__civics_election_stage_2025.sql (FROM, archive)
+        - mban_candidacy_election_results.sql (INNER JOIN — evaluate deprecation)
+      Also consider removing the 5 older unused snapshot staging models:
+        - stg_model_predictions__candidacy_ddhq_matches_2025{0826,0909,0916,1016,1112}
     columns:
       - name: gp_candidacy_id
-        description: Unique identifier for the candidacy in the HubSpot data. Can have multiple matches for the same candidacy in different races.
+        description: Unique identifier for the candidacy in the HubSpot data.
         data_tests:
           - not_null
-      - name: run_id
-        description: Unique identifier for the election match process run, linking back to int__gp_ai_start_election_match
-        data_tests:
-          - not_null
-      - name: ddhq_race_id
-        description: Unique identifier for the race in the DDHQ data. Can have multiple matches for the same candidacy in different races.
-        data_tests:
-          - not_null:
-              config:
-                where: "has_match is true"
-      - name: ddhq_candidate_id
-        description: Unique identifier for the candidate in the DDHQ data. Can have multiple matches for the same candidacy in different races.
-        data_tests:
-          - not_null:
-              config:
-                where: "has_match is true"
       - name: election_date
-        description: Date of the election. Used in join conditions in downstream models along with election_type. This test ensures the column is not null to prevent silent join failures.
+        description: Date of the election.
         data_tests:
           - not_null:
               config:
                 where: "has_match is true"
       - name: election_type
-        description: Type of election (general, primary, or runoff). Used in join conditions in downstream models. This test ensures only expected values exist to prevent silent join failures.
+        description: Type of election (general, primary, or runoff).
         data_tests:
           - not_null:
               config:
@@ -90,8 +42,18 @@ models:
                   - general
                   - primary
                   - runoff
-      - name: ddhq_is_winner
-        description: Whether the candidate won the election stage
+      - name: ddhq_race_id
+        description: Unique identifier for the race in the DDHQ data.
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
+      - name: ddhq_candidate_id
+        description: Unique identifier for the candidate in the DDHQ data.
+        data_tests:
+          - not_null:
+              config:
+                where: "has_match is true"
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

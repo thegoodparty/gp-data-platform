@@ -245,3 +245,37 @@
         else {{ normalized_position_name_col }}
     end
 {% endmacro %}
+
+
+{#
+  Derives election_stage from BallotReady is_primary/is_runoff flags and
+  election name. BR election names consistently contain "Special" for
+  special elections (e.g. "Georgia Special General", "Florida House Special
+  Primary") — set by BallotReady's editorial team. False positives are
+  guarded by a race_count <= 10 test on the upstream BR election staging
+  model.
+
+  Usage: {{ derive_election_stage("br.is_primary", "br.is_runoff", "br.election_name") }}
+#}
+{% macro derive_election_stage(is_primary_col, is_runoff_col, election_name_col) %}
+    case
+        when
+            {{ is_primary_col }}
+            and {{ is_runoff_col }}
+            and lower({{ election_name_col }}) like '%special%'
+        then 'Primary Special Runoff'
+        when {{ is_primary_col }} and {{ is_runoff_col }}
+        then 'Primary Runoff'
+        when {{ is_primary_col }} and lower({{ election_name_col }}) like '%special%'
+        then 'Primary Special'
+        when {{ is_primary_col }}
+        then 'Primary'
+        when {{ is_runoff_col }} and lower({{ election_name_col }}) like '%special%'
+        then 'General Special Runoff'
+        when {{ is_runoff_col }}
+        then 'General Runoff'
+        when lower({{ election_name_col }}) like '%special%'
+        then 'General Special'
+        else 'General'
+    end
+{% endmacro %}
