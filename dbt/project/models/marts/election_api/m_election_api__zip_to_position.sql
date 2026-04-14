@@ -19,7 +19,9 @@ with
             is_judicial,
             br_position_database_id
         from {{ ref("election") }}
-        where election_date > current_date() and election_year < 2029
+        where
+            election_date > current_date()
+            and election_date <= current_date() + interval 2 years
     ),
 
     zip_to_position as (
