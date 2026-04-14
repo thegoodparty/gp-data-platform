@@ -42,7 +42,7 @@ THIS_TABLE_SCHEMA = StructType(
 # Minimum percentage of voters in a zip code that must be assigned to a district
 # for that district to be included. Filters out noise from tiny geographic overlaps.
 # See: https://goodpartyorg.slack.com/archives/C090662DLRM/p1776185747062729
-MIN_VOTER_PCT = 0.001  # 0.1%
+MIN_VOTER_PCT = 0.005  # 0.5%
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
