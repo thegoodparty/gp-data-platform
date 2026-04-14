@@ -211,6 +211,14 @@ models:
       Grain: One row per (zip_code, gp_election_id) pair. Elections without
       zip coverage will have a null zip_code.
     columns:
+      - name: position_id
+        description: >
+          Election API position UUID. Foreign key to m_election_api__position.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__position')
+                field: id
       - name: gp_election_id
         description: >
           GoodParty election identifier (position + year). Foreign key to the

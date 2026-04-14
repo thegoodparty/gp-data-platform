@@ -28,8 +28,14 @@ with
         from {{ ref("int__zip_code_to_br_office") }}
     ),
 
+    positions as (
+        select id as position_id, br_database_id
+        from {{ ref("m_election_api__position") }}
+    ),
+
     officepicker as (
         select
+            pos.position_id,
             elec.gp_election_id,
             elec.official_office_name as display_name,
             zips.zip_code,
@@ -46,6 +52,7 @@ with
         from future_elections as elec
         left join
             zip_to_office as zips on zips.br_database_id = elec.br_position_database_id
+        left join positions as pos on pos.br_database_id = elec.br_position_database_id
     )
 
 select *
