@@ -1,21 +1,6 @@
--- Civics mart: elected_officials
--- Pass-through of BallotReady office holders. BallotReady is the first
--- (and currently only) provider for elected officials. Additional providers
--- (e.g., TechSpeed) will be added once entity resolution is in place.
--- Grain: one row per office-holder term.
-with
-    combined as (select * from {{ ref("int__civics_elected_official_ballotready") }}),
-
-    deduplicated as (
-        select *
-        from combined
-        qualify
-            row_number() over (
-                partition by gp_elected_official_id order by updated_at desc
-            )
-            = 1
-    )
-
+-- BallotReady pass-through. Grain: one row per office-holder term.
+-- Mart-layer `unique` test on gp_elected_official_id will catch any future
+-- provider union that's added without a corresponding dedup step.
 select
     gp_elected_official_id,
     br_office_holder_id,
@@ -58,4 +43,4 @@ select
     candidate_id_source,
     created_at,
     updated_at
-from deduplicated
+from {{ ref("int__civics_elected_official_ballotready") }}

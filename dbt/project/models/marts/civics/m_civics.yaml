@@ -1345,11 +1345,7 @@ models:
           Exact semantics not yet confirmed with BallotReady.
 
       - name: candidate_id_source
-        description: >
-          Source system identifier for the office-holder record. Named for
-          consistency with the candidate-side mart vocabulary (the same
-          column appears across 33 files in the project) rather than renamed
-          locally to `elected_official_source`.
+        description: Source system identifier for the office-holder record (e.g., 'ballotready').
         data_tests:
           - accepted_values:
               arguments:
