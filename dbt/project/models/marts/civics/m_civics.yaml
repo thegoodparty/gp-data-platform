@@ -1380,7 +1380,7 @@ models:
       # Excludes the 37-row 2023-06-16 BR historical backfill batch where
       # updated_at (date of underlying political event) predates created_at
       # (date BR ingested the record). See created_at / updated_at column
-      # descriptions below for BR's timestamp semantics. If a future BR
+      # descriptions above for BR's timestamp semantics. If a future BR
       # backfill produces similar violations, this test will alert.
       - dbt_utils.expression_is_true:
           arguments:

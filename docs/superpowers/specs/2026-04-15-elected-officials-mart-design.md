@@ -160,7 +160,7 @@ These mirror the consumer-facing contract; the intermediate already enforces the
 **Notes:**
 
 - No `relationships` (FK) tests. This entity is independent in the civics mart — no clean FK relationship to `candidate`, `candidacy`, `election`, or `election_stage` exists today (see "Deferred / out of scope" below).
-- No `dbt_utils.expression_is_true` row-level invariants. No sibling civics mart uses them; staying consistent.
+- A model-level `dbt_utils.expression_is_true: updated_at >= created_at` test, matching the pattern used by sibling civics marts (organizations, candidacy, candidate, candidacy_stage, election, election_stage). Uses a `config.where` clause to exclude the 37-row 2023-06-16 BR historical backfill batch where `updated_at` (date of underlying political event) predates `created_at` (date BR ingested the record); see the `created_at`/`updated_at` column descriptions in `m_civics.yaml` for BR's timestamp semantics.
 - `accepted_values` tests do **not** include `config.where` clauses — per project CLAUDE.md, `accepted_values` already skips nulls.
 - `br_position_tier` is documented but untested — its valid integer range hasn't been confirmed with BallotReady.
 
