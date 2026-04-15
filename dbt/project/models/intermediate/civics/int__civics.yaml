@@ -1140,7 +1140,8 @@ models:
       - name: br_position_tier
         description: >
           BallotReady-defined tier classification for the office's position
-          (integer). Originates from BallotReady's Position.tier GraphQL field.
+          (integer). Drawn from the BallotReady S3 office-holders export; the
+          semantics correspond to BallotReady's Position.tier concept.
           Exact semantics not yet confirmed with BallotReady.
 
       - name: state
