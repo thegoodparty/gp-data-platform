@@ -1365,3 +1365,8 @@ models:
         description: Office-holder record last update timestamp from BallotReady.
         data_tests:
           - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
