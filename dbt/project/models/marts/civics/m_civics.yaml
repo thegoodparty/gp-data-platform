@@ -1386,4 +1386,4 @@ models:
           arguments:
             expression: "updated_at >= created_at"
           config:
-            where: "cast(created_at as date) <> '2023-06-16'"
+            where: "NOT (cast(created_at as date) = '2023-06-16' AND cast(updated_at as date) = '2020-11-09')"
