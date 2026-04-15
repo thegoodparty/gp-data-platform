@@ -1137,6 +1137,12 @@ models:
         data_tests:
           - not_null
 
+      - name: br_position_tier
+        description: >
+          BallotReady-defined tier classification for the office's position
+          (integer). Originates from BallotReady's Position.tier GraphQL field.
+          Exact semantics not yet confirmed with BallotReady.
+
       - name: state
         description: U.S. state (2-letter code)
         data_tests:

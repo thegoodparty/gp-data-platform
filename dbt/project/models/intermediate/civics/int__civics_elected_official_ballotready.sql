@@ -87,7 +87,7 @@ with
             nullif(office_holder_mailing_state, '') as mailing_state,
             nullif(office_holder_mailing_zip, '') as mailing_zip,
             br_geo_id,
-            tier,
+            br_position_tier,
             'ballotready' as candidate_id_source,
             office_holder_created_at as created_at,
             office_holder_updated_at as updated_at
@@ -134,7 +134,7 @@ select
     mailing_state,
     mailing_zip,
     br_geo_id,
-    tier,
+    br_position_tier,
     candidate_id_source,
     created_at,
     updated_at
