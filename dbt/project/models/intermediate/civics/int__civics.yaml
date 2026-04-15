@@ -1139,10 +1139,13 @@ models:
 
       - name: br_position_tier
         description: >
-          BallotReady-defined tier classification for the office's position
-          (integer). Drawn from the BallotReady S3 office-holders export; the
-          semantics correspond to BallotReady's Position.tier concept.
-          Exact semantics not yet confirmed with BallotReady.
+          BallotReady's research-tier classification (integer 1-5) for the
+          position the office-holder fills. Per BR docs, positions are
+          organized into five tiers reflecting research effort:
+          (1) Federal, (2) State, (3) County & Municipal,
+          (4) Small Town, Township & School Board,
+          (5) Special Districts and local small-population positions.
+          See https://developers.civicengine.com/docs/api/graphql/reference/objects/position#positiontierint--
 
       - name: state
         description: U.S. state (2-letter code)
