@@ -1,6 +1,9 @@
 /*
     PMF (Product-Market Fit) web survey responses from HubSpot Feedback Surveys.
-    Filtered to survey_id = '8' (PMF - Web survey).
+    Combines the Serve PMF (survey_id '8') and Win PMF (survey_id '12') surveys,
+    which use identical fields but target different audiences. Use the
+    `pmf_variant` column to split or compare cohorts.
+
     Joined to HubSpot contacts for additional user context.
 
     Grain: One row per survey response.
@@ -12,7 +15,7 @@ with
     submissions as (
         select *
         from {{ ref("stg_airbyte_source__hubspot_api_feedback_submissions") }}
-        where hs_survey_id = '8'
+        where hs_survey_id in ('8', '12')
     ),
 
     contacts as (
@@ -34,8 +37,12 @@ with
             s.submission_id,
 
             -- survey metadata
+            s.hs_survey_id,
             s.survey_name,
             s.survey_channel,
+            case
+                s.hs_survey_id when '8' then 'Serve' when '12' then 'Win'
+            end as pmf_variant,
 
             -- PMF response (decoded from internal option names)
             s.pmf_response as pmf_response_raw,
@@ -52,6 +59,7 @@ with
                 else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,
             coalesce(s.pmf_response = 'Option 1', false) as is_very_disappointed,
+            s.pmf_additional_feedback,
 
             -- respondent info (from submission)
             s.hs_contact_id,
