@@ -1357,16 +1357,33 @@ models:
                   - ballotready
 
       - name: created_at
-        description: Office-holder record creation timestamp from BallotReady.
+        description: >
+          Office-holder record creation timestamp — when BallotReady
+          ingested the record into their system. May postdate updated_at
+          for records BR backfilled after the underlying political event
+          (e.g., the 2023-06-16 backfill of historical office-holder
+          records).
         data_tests:
           - not_null
 
       - name: updated_at
-        description: Office-holder record last update timestamp from BallotReady.
+        description: >
+          Office-holder record last update timestamp — reflects when the
+          underlying political data point (e.g., election result) last
+          changed in BallotReady's source, not when BR last touched the
+          record. Can predate created_at for backfilled records; see
+          created_at description.
         data_tests:
           - not_null
 
     tests:
+      # Excludes the 37-row 2023-06-16 BR historical backfill batch where
+      # updated_at (date of underlying political event) predates created_at
+      # (date BR ingested the record). See created_at / updated_at column
+      # descriptions below for BR's timestamp semantics. If a future BR
+      # backfill produces similar violations, this test will alert.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+          config:
+            where: "cast(created_at as date) <> '2023-06-16'"
