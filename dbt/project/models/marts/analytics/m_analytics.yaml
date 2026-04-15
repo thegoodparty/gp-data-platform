@@ -1116,11 +1116,12 @@ models:
 
   - name: pmf_survey_responses
     description: >
-      PMF (Product-Market Fit) web survey responses. Combines the Serve PMF
-      (survey_id 8) and Win PMF (survey_id 12) surveys, which use identical
-      fields but target different audiences. Use `pmf_variant` to split or
-      compare cohorts. One row per survey submission, joined to HubSpot
-      contacts for respondent context.
+      PMF (Product-Market Fit) web survey responses. Combines two HubSpot
+      surveys that share identical fields but target different audiences:
+      'Serve PMF - Web survey' (survey_id 8) and 'Win PMF - Web survey'
+      (survey_id 12). Use `pmf_variant` to split or compare cohorts.
+      One row per survey submission, joined to HubSpot contacts for
+      respondent context.
       PMF Score = (Very Disappointed / total) * 100.
     columns:
       - name: submission_id
@@ -1133,7 +1134,9 @@ models:
         data_tests:
           - not_null
       - name: hs_survey_id
-        description: HubSpot survey ID (8 = Serve PMF, 12 = Win PMF).
+        description: >
+          HubSpot survey ID. 8 = 'Serve PMF - Web survey',
+          12 = 'Win PMF - Web survey'.
         data_tests:
           - not_null
           - accepted_values:
@@ -1141,8 +1144,9 @@ models:
                 values: ['8', '12']
       - name: pmf_variant
         description: >
-          Audience variant of the PMF survey: 'Serve' (survey_id 8) or
-          'Win' (survey_id 12).
+          Audience variant of the PMF survey:
+          'Serve' (survey_id 8, 'Serve PMF - Web survey') or
+          'Win' (survey_id 12, 'Win PMF - Web survey').
         data_tests:
           - not_null
           - accepted_values:

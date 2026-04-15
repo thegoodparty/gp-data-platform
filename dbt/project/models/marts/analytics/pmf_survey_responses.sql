@@ -1,8 +1,10 @@
 /*
     PMF (Product-Market Fit) web survey responses from HubSpot Feedback Surveys.
-    Combines the Serve PMF (survey_id '8') and Win PMF (survey_id '12') surveys,
-    which use identical fields but target different audiences. Use the
-    `pmf_variant` column to split or compare cohorts.
+    Combines two HubSpot surveys that share identical fields but target
+    different audiences:
+      - 'Serve PMF - Web survey' (survey_id '8')
+      - 'Win PMF - Web survey'   (survey_id '12')
+    Use the `pmf_variant` column to split or compare cohorts.
 
     Joined to HubSpot contacts for additional user context.
 
