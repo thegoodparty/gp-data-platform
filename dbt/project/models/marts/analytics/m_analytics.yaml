@@ -1144,9 +1144,10 @@ models:
                 values: ['8', '12']
       - name: pmf_variant
         description: >
-          Audience variant of the PMF survey:
-          'Serve' (survey_id 8, 'Serve PMF - Web survey') or
-          'Win' (survey_id 12, 'Win PMF - Web survey').
+          Audience variant of the PMF survey, derived from the survey_name
+          prefix: 'Serve' (any 'Serve PMF%' survey) or 'Win' (any 'Win PMF%'
+          survey). Pattern-matched on prefix so date-stamped relaunches keep
+          mapping correctly without a code change.
         data_tests:
           - not_null
           - accepted_values:

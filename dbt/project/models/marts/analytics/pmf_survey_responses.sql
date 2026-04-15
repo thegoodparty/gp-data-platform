@@ -42,8 +42,14 @@ with
             s.hs_survey_id,
             s.survey_name,
             s.survey_channel,
+            -- Pattern-match on survey_name prefix so future date-stamped
+            -- relaunches (e.g. 'Serve PMF - Web survey (...)') keep mapping
+            -- to the right variant without a code change.
             case
-                s.hs_survey_id when '8' then 'Serve' when '12' then 'Win'
+                when s.survey_name ilike 'Serve PMF%'
+                then 'Serve'
+                when s.survey_name ilike 'Win PMF%'
+                then 'Win'
             end as pmf_variant,
 
             -- PMF response (decoded from internal option names)
