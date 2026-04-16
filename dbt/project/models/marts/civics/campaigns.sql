@@ -124,7 +124,7 @@ with
                 then coalesce(_position_br_database_id, _legacy_br_position_id)
                 else _legacy_br_position_id
             end as ballotready_position_id,
-            _normalized_position_name as normalized_position_name,
+            cast(_normalized_position_name as string) as normalized_position_name,
 
             is_latest_version
         from with_normalized
