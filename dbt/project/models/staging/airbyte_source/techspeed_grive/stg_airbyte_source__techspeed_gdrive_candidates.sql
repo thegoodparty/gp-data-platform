@@ -21,7 +21,7 @@ with
                 cs.state_cleaned_postal_code,
                 trim(regexp_replace(src.state, '[^A-Za-z ]', ''))
             ) as state_postal_code,
-            email,
+            nullif(trim(email), '') as email,
             {{ clean_phone_number("phone") }} as phone,
             date_of_birth_mmddyyyy as birth_date,
             coalesce(
@@ -30,7 +30,7 @@ with
                 try_to_date(date_of_birth_mmddyyyy, 'MM/dd/yyyy'),
                 try_to_date(date_of_birth_mmddyyyy, 'yyyy-MM-dd')
             ) as birth_date_parsed,
-            street_address,
+            nullif(trim(street_address), '') as street_address,
             postal_code,
 
             -- Office / position
@@ -118,11 +118,11 @@ with
             date_processed,
 
             -- Social / web
-            website_url,
-            facebook_url,
-            linkedin_url,
-            twitter_handle,
-            instagram_handle,
+            nullif(trim(website_url), '') as website_url,
+            nullif(trim(facebook_url), '') as facebook_url,
+            nullif(trim(linkedin_url), '') as linkedin_url,
+            nullif(trim(twitter_handle), '') as twitter_handle,
+            nullif(trim(instagram_handle), '') as instagram_handle,
 
             -- Airbyte source file metadata
             _ab_source_file_url,

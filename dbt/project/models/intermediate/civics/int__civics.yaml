@@ -2,10 +2,15 @@ models:
   - name: int__civics_cluster_members
     description: >
       Entity resolution cluster membership: one row per (cluster_id, source).
-      Maps ER cluster assignments to GP IDs at all grain levels
-      (candidacy_stage, candidacy, candidate, election_stage, election).
-      Referenced by all civics mart models for cross-source merging and FK
-      remapping. Adding a new data source requires only one additional CTE.
+      Exists because the ER pipeline resolves matches at the candidacy_stage
+      grain, but the civics mart requires consistent IDs at higher grains
+      (candidacy, candidate, election_stage, election). This model centralizes
+      the source-specific ER join logic and pre-computes cross-source FK
+      remaps so that mart models can use simple filters instead of repeating
+      self-joins. Without it, each mart would need to independently join the
+      ER cluster table with source-specific conditions and derive its own
+      remap pairs. Adding a new data source requires one additional CTE +
+      extending the remap WHERE clauses.
     columns:
       - name: cluster_id
         description: >
