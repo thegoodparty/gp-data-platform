@@ -12,8 +12,13 @@ with
     -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical election_id.
     -- Deduped per source_candidate_id; any match for this candidacy gives BR's id.
     canonical_election as (
-        select distinct ts_source_candidate_id, canonical_gp_election_id
+        select ts_source_candidate_id, canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
+        qualify
+            row_number() over (
+                partition by ts_source_candidate_id order by canonical_gp_election_id
+            )
+            = 1
     ),
 
     source as (
@@ -26,7 +31,7 @@ with
                 generate_candidate_code(
                     "ts.first_name",
                     "ts.last_name",
-                    "ts.state_postal_code",
+                    "ts.state",
                     "ts.office_type",
                     "ts.city",
                 )

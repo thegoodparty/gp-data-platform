@@ -10,8 +10,13 @@ with
     -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical candidate_id.
     -- Deduped per source_candidate_id (one person may have multiple candidacies).
     canonical_candidate as (
-        select distinct ts_source_candidate_id, canonical_gp_candidate_id
+        select ts_source_candidate_id, canonical_gp_candidate_id
         from {{ ref("int__civics_er_canonical_ids") }}
+        qualify
+            row_number() over (
+                partition by ts_source_candidate_id order by canonical_gp_candidate_id
+            )
+            = 1
     ),
 
     source as (
@@ -30,21 +35,15 @@ with
     ),
 
     candidates_with_id as (
+        -- If ANY candidacy of a person was clustered to BR, all raw rows for
+        -- that person adopt BR's canonical_gp_candidate_id (propagated via a
+        -- window partitioned by the raw TS hash). Otherwise keep the TS hash.
         select
             coalesce(
-                xw.canonical_gp_candidate_id,
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "first_name",
-                            "last_name",
-                            "state_postal_code",
-                            "cast(birth_date_parsed as string)",
-                            "email",
-                            "phone",
-                        ]
-                    )
-                }}
+                max(xw.canonical_gp_candidate_id) over (
+                    partition by {{ generate_ts_gp_candidate_id() }}
+                ),
+                {{ generate_ts_gp_candidate_id() }}
             ) as gp_candidate_id,
 
             cast(null as string) as hubspot_contact_id,

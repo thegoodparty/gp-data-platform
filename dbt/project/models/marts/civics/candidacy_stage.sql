@@ -1,7 +1,7 @@
 -- Civics mart candidacy_stage table
 -- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data.
--- Merge uses cluster_id from entity resolution; pre-computed remaps on
--- cluster_members ensure consistent FKs across stages of matched candidacies.
+-- TS int models remap clustered IDs to BR canonicals via int__civics_er_canonical_ids,
+-- so merging collapses to a full outer join on shared gp_candidacy_stage_id.
 {%- set br_wins_cols = [
     "candidate_name",
     "source_candidate_id",

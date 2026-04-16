@@ -54,80 +54,61 @@ with
             between 1900 and 2050
     ),
 
-    -- ER crosswalk: for clustered TS stages, adopt BR's canonical gp_* IDs
-    canonical as (select * from {{ ref("int__civics_er_canonical_ids") }}),
+    -- ER crosswalk — joined twice below:
+    -- (1) stage grain: canonical stage/election_stage IDs only apply to the
+    -- specific clustered stage.
+    -- (2) candidacy grain: canonical candidacy_id cascades to ALL stages of a
+    -- matched candidacy (so the sibling of a clustered stage aligns with
+    -- int__civics_candidacy_techspeed's gp_candidacy_id).
+    canonical_stage as (
+        select
+            ts_source_candidate_id,
+            ts_stage_election_date,
+            canonical_gp_candidacy_stage_id,
+            canonical_gp_election_stage_id
+        from {{ ref("int__civics_er_canonical_ids") }}
+    ),
+
+    canonical_candidacy as (
+        select ts_source_candidate_id, canonical_gp_candidacy_id
+        from {{ ref("int__civics_er_canonical_ids") }}
+        qualify
+            row_number() over (
+                partition by ts_source_candidate_id order by canonical_gp_candidacy_id
+            )
+            = 1
+    ),
 
     candidacy_stages as (
         select
-            -- gp_candidacy_id: must match int__civics_candidacy_techspeed generation
+            -- gp_candidacy_id: must match int__civics_candidacy_techspeed generation.
+            -- Cascades at candidacy grain (any stage match → BR's candidacy_id
+            -- applies to all stages of that candidacy).
             coalesce(
-                xw.canonical_gp_candidacy_id,
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "first_name",
-                            "last_name",
-                            "state",
-                            "party",
-                            "candidate_office",
-                            "cast(coalesce(general_election_date_parsed, primary_election_date_parsed) as string)",
-                            "district",
-                        ]
-                    )
-                }}
+                xw_cand.canonical_gp_candidacy_id, {{ generate_ts_gp_candidacy_id() }}
             ) as computed_gp_candidacy_id,
 
             -- gp_candidacy_stage_id = hash(gp_candidacy_id, gp_election_stage_id)
             coalesce(
-                xw.canonical_gp_candidacy_stage_id,
+                xw_stage.canonical_gp_candidacy_stage_id,
                 {{
                     generate_salted_uuid(
                         fields=[
-                            generate_salted_uuid(
-                                fields=[
-                                    "first_name",
-                                    "last_name",
-                                    "state",
-                                    "party",
-                                    "candidate_office",
-                                    "cast(coalesce(general_election_date_parsed, primary_election_date_parsed) as string)",
-                                    "district",
-                                ]
-                            ),
-                            generate_salted_uuid(
-                                fields=[
-                                    "'techspeed'",
-                                    "state",
-                                    "candidate_office",
-                                    "official_office_name",
-                                    "district",
-                                    "city",
-                                    "cast(stage_election_date as string)",
-                                    "stage_type",
-                                ]
-                            ),
+                            generate_ts_gp_candidacy_id(),
+                            generate_ts_gp_election_stage_id(),
                         ]
                     )
                 }}
             ) as gp_candidacy_stage_id,
 
-            -- gp_election_stage_id: must match election_stage model's generation
+            -- gp_election_stage_id: race-level. If ANY candidate in this race
+            -- was clustered to a BR race, all candidates adopt BR's stage id
+            -- (matches the race-level cascade in int__civics_election_stage_techspeed).
             coalesce(
-                xw.canonical_gp_election_stage_id,
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "'techspeed'",
-                            "state",
-                            "candidate_office",
-                            "official_office_name",
-                            "district",
-                            "city",
-                            "cast(stage_election_date as string)",
-                            "stage_type",
-                        ]
-                    )
-                }}
+                max(xw_stage.canonical_gp_election_stage_id) over (
+                    partition by {{ generate_ts_gp_election_stage_id() }}
+                ),
+                {{ generate_ts_gp_election_stage_id() }}
             ) as gp_election_stage_id,
 
             concat(first_name, ' ', last_name) as candidate_name,
@@ -178,9 +159,12 @@ with
 
         from with_stage
         left join
-            canonical as xw
-            on with_stage.techspeed_candidate_code = xw.ts_source_candidate_id
-            and with_stage.stage_election_date = xw.ts_stage_election_date
+            canonical_stage as xw_stage
+            on with_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
+            and with_stage.stage_election_date = xw_stage.ts_stage_election_date
+        left join
+            canonical_candidacy as xw_cand
+            on with_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
         where election_date is not null
     ),
 

@@ -30,53 +30,45 @@ with
     -- Deduped to one row per source_candidate_id — all stages of a matched
     -- candidacy share the same BR candidacy/candidate/election IDs.
     canonical_candidacy as (
-        select distinct
+        select
             ts_source_candidate_id,
             canonical_gp_candidacy_id,
             canonical_gp_candidate_id,
             canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
+        qualify
+            row_number() over (
+                partition by ts_source_candidate_id order by canonical_gp_candidacy_id
+            )
+            = 1
     ),
 
     candidacies as (
+        -- gp_candidate_id and gp_election_id use WINDOW propagation so all raw
+        -- rows of the same person/election adopt BR's canonical if ANY candidacy
+        -- of that person/election was matched — matching the propagation used
+        -- in int__civics_candidate_techspeed and int__civics_election_techspeed
+        -- (required for FK relationships to hold).
+        -- gp_candidacy_id is per-row (each candidacy matches its own xw entry).
         select
             coalesce(
-                xw.canonical_gp_candidacy_id,
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "first_name",
-                            "last_name",
-                            "state",
-                            "party",
-                            "candidate_office",
-                            "cast(coalesce(general_election_date_parsed, primary_election_date_parsed) as string)",
-                            "district",
-                        ]
-                    )
-                }}
+                xw.canonical_gp_candidacy_id, {{ generate_ts_gp_candidacy_id() }}
             ) as gp_candidacy_id,
 
             cast(null as string) as br_candidacy_id,
 
             coalesce(
-                xw.canonical_gp_candidate_id,
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "first_name",
-                            "last_name",
-                            "state",
-                            "cast(birth_date_parsed as string)",
-                            "email",
-                            "phone",
-                        ]
-                    )
-                }}
+                max(xw.canonical_gp_candidate_id) over (
+                    partition by {{ generate_ts_gp_candidate_id() }}
+                ),
+                {{ generate_ts_gp_candidate_id() }}
             ) as gp_candidate_id,
 
             coalesce(
-                xw.canonical_gp_election_id, {{ generate_gp_election_id() }}
+                max(xw.canonical_gp_election_id) over (
+                    partition by {{ generate_gp_election_id() }}
+                ),
+                {{ generate_gp_election_id() }}
             ) as gp_election_id,
 
             cast(null as string) as product_campaign_id,
