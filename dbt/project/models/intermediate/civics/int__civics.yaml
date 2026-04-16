@@ -39,6 +39,22 @@ models:
         description: GP election ID for this cluster member.
         data_tests:
           - not_null
+      - name: remap_candidacy_id
+        description: >
+          BR-equivalent gp_candidacy_id for TechSpeed members. NULL for BR
+          members and unmatched TS members.
+      - name: remap_candidate_id
+        description: >
+          BR-equivalent gp_candidate_id for TechSpeed members. NULL for BR
+          members and unmatched TS members.
+      - name: remap_election_stage_id
+        description: >
+          BR-equivalent gp_election_stage_id for TechSpeed members. NULL for
+          BR members and unmatched TS members.
+      - name: remap_election_id
+        description: >
+          BR-equivalent gp_election_id for TechSpeed members. NULL for BR
+          members and unmatched TS members.
 
   - name: int__civics_election_2025
     description: >

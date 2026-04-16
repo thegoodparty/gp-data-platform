@@ -1,25 +1,48 @@
 -- Civics mart candidacy table
 -- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+{%- set br_wins_cols = [
+    "product_campaign_id",
+    "hubspot_contact_id",
+    "hubspot_company_ids",
+    "candidate_id_source",
+    "party_affiliation",
+    "is_open_seat",
+    "candidate_office",
+    "official_office_name",
+    "office_level",
+    "candidacy_result",
+    "is_pledged",
+    "is_verified",
+    "verification_status_reason",
+    "is_partisan",
+    "primary_election_date",
+    "primary_runoff_election_date",
+    "general_election_date",
+    "general_runoff_election_date",
+    "viability_score",
+    "win_number",
+    "win_number_model",
+    "created_at",
+    "updated_at",
+] %}
+
 with
-    -- =========================================================================
-    -- 2025 archive (pass-through)
-    -- =========================================================================
     archive_2025 as (
         select
             gp_candidacy_id,
             gp_candidate_id,
             gp_election_id,
+            -- Column order must match merged_2026 (br_wins_cols loop order,
+            -- then TS-wins, then BR-only, then source_systems)
             product_campaign_id,
             hubspot_contact_id,
             hubspot_company_ids,
             candidate_id_source,
             party_affiliation,
-            is_incumbent,
             is_open_seat,
             candidate_office,
             official_office_name,
             office_level,
-            office_type,
             candidacy_result,
             is_pledged,
             is_verified,
@@ -29,46 +52,38 @@ with
             primary_runoff_election_date,
             general_election_date,
             general_runoff_election_date,
-            br_position_database_id,
             viability_score,
             win_number,
             win_number_model,
             created_at,
             updated_at,
+            is_incumbent,
+            office_type,
+            br_position_database_id,
             array('hubspot') as source_systems
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
-    -- =========================================================================
-    -- Derive candidacy-level pairs and FK remaps from cluster membership.
-    -- A TS candidacy maps to a BR candidacy if ANY of their stages share a
-    -- cluster. Same for candidate and election remaps.
-    -- =========================================================================
+    -- Derived from pre-computed remaps on cluster_members (no self-join needed)
     candidacy_pairs as (
-        select distinct br_m.gp_candidacy_id as br_id, ts_m.gp_candidacy_id as ts_id
-        from {{ ref("int__civics_cluster_members") }} as br_m
-        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
-        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
+        select distinct remap_candidacy_id as br_id, gp_candidacy_id as ts_id
+        from {{ ref("int__civics_cluster_members") }}
+        where source_name = 'techspeed' and remap_candidacy_id is not null
     ),
 
     candidate_remap as (
-        select distinct ts_m.gp_candidate_id as ts_id, br_m.gp_candidate_id as br_id
-        from {{ ref("int__civics_cluster_members") }} as br_m
-        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
-        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
+        select distinct gp_candidate_id as ts_id, remap_candidate_id as br_id
+        from {{ ref("int__civics_cluster_members") }}
+        where source_name = 'techspeed' and remap_candidate_id is not null
     ),
 
     election_remap as (
-        select distinct ts_m.gp_election_id as ts_id, br_m.gp_election_id as br_id
-        from {{ ref("int__civics_cluster_members") }} as br_m
-        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
-        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
+        select distinct gp_election_id as ts_id, remap_election_id as br_id
+        from {{ ref("int__civics_cluster_members") }}
+        where source_name = 'techspeed' and remap_election_id is not null
     ),
 
-    -- =========================================================================
-    -- Merge 2026+ BR + TS with survivorship
     -- BR wins by default; TS wins for is_incumbent
-    -- =========================================================================
     merged_2026 as (
         select
             coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) as gp_candidacy_id,
@@ -78,53 +93,13 @@ with
             coalesce(
                 br.gp_election_id, elec_r.br_id, ts.gp_election_id
             ) as gp_election_id,
-            coalesce(
-                br.product_campaign_id, ts.product_campaign_id
-            ) as product_campaign_id,
-            coalesce(
-                br.hubspot_contact_id, ts.hubspot_contact_id
-            ) as hubspot_contact_id,
-            coalesce(
-                br.hubspot_company_ids, ts.hubspot_company_ids
-            ) as hubspot_company_ids,
-            coalesce(
-                br.candidate_id_source, ts.candidate_id_source
-            ) as candidate_id_source,
-            coalesce(br.party_affiliation, ts.party_affiliation) as party_affiliation,
-            -- TS wins for is_incumbent (TS: 51k, BR: 0)
+            {% for col in br_wins_cols %}
+                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+            {% endfor %}
+            -- TS wins for is_incumbent (TS: 51k populated, BR: 0)
             coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
-            coalesce(br.is_open_seat, ts.is_open_seat) as is_open_seat,
-            coalesce(br.candidate_office, ts.candidate_office) as candidate_office,
-            coalesce(
-                br.official_office_name, ts.official_office_name
-            ) as official_office_name,
-            coalesce(br.office_level, ts.office_level) as office_level,
             br.office_type,
-            coalesce(br.candidacy_result, ts.candidacy_result) as candidacy_result,
-            coalesce(br.is_pledged, ts.is_pledged) as is_pledged,
-            coalesce(br.is_verified, ts.is_verified) as is_verified,
-            coalesce(
-                br.verification_status_reason, ts.verification_status_reason
-            ) as verification_status_reason,
-            coalesce(br.is_partisan, ts.is_partisan) as is_partisan,
-            coalesce(
-                br.primary_election_date, ts.primary_election_date
-            ) as primary_election_date,
-            coalesce(
-                br.primary_runoff_election_date, ts.primary_runoff_election_date
-            ) as primary_runoff_election_date,
-            coalesce(
-                br.general_election_date, ts.general_election_date
-            ) as general_election_date,
-            coalesce(
-                br.general_runoff_election_date, ts.general_runoff_election_date
-            ) as general_runoff_election_date,
             br.br_position_database_id,
-            coalesce(br.viability_score, ts.viability_score) as viability_score,
-            coalesce(br.win_number, ts.win_number) as win_number,
-            coalesce(br.win_number_model, ts.win_number_model) as win_number_model,
-            coalesce(br.created_at, ts.created_at) as created_at,
-            coalesce(br.updated_at, ts.updated_at) as updated_at,
             array_compact(
                 array(
                     case when br.gp_candidacy_id is not null then 'ballotready' end,
@@ -140,9 +115,6 @@ with
         left join election_remap as elec_r on ts.gp_election_id = elec_r.ts_id
     ),
 
-    -- =========================================================================
-    -- Combine archive + merged 2026+
-    -- =========================================================================
     combined as (
         select *
         from archive_2025

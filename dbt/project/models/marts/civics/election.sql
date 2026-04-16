@@ -76,11 +76,11 @@ with
     -- =========================================================================
     -- TechSpeed net-new: elections not matched to any BR via ER clusters
     -- =========================================================================
+    -- Derived from pre-computed remaps on cluster_members (no self-join needed)
     ts_matched_election_ids as (
-        select distinct ts_m.gp_election_id
-        from {{ ref("int__civics_cluster_members") }} as br_m
-        inner join {{ ref("int__civics_cluster_members") }} as ts_m using (cluster_id)
-        where br_m.source_name = 'ballotready' and ts_m.source_name = 'techspeed'
+        select distinct gp_election_id
+        from {{ ref("int__civics_cluster_members") }}
+        where source_name = 'techspeed' and remap_election_id is not null
     ),
 
     ts_net_new as (
