@@ -5,14 +5,15 @@ models:
     description: >
       Unified user-grain view for Win and Serve product OKR metrics tracking.
       Built incrementally as new metrics are added, including Active Candidates
-      (dashboard views in trailing 30 days).
+      (dashboard views in trailing 7, 30, and 90 days).
 
       File is named users_win_base to avoid dbt model name collision with
       mart_civics.users.
 
       Grain: One row per user.
 
-      Source: mart_civics.users + Amplitude milestones.
+      Source: mart_civics.users + mart_civics.campaigns
+      + Amplitude milestones.
 
     columns:
       - name: user_id
@@ -148,10 +149,24 @@ models:
           Total number of Candidate Dashboard view events for this user.
           From int__amplitude_user_milestones.
 
+      - name: is_active_candidate_7d
+        description: >
+          TRUE if user has viewed their Candidate Dashboard at least once
+          in the last 7 days. Uses last_dashboard_viewed_at from Amplitude milestones.
+        data_tests:
+          - not_null
+
       - name: is_active_candidate
         description: >
           TRUE if user has viewed their Candidate Dashboard at least once
           in the last 30 days. Uses last_dashboard_viewed_at from Amplitude milestones.
+        data_tests:
+          - not_null
+
+      - name: is_active_candidate_90d
+        description: >
+          TRUE if user has viewed their Candidate Dashboard at least once
+          in the last 90 days. Uses last_dashboard_viewed_at from Amplitude milestones.
         data_tests:
           - not_null
 
@@ -197,6 +212,22 @@ models:
           REQUIRED filter for Amplitude-based CVR metrics.
         data_tests:
           - not_null
+
+      - name: next_election_date
+        description: >
+          Earliest future election date across the user's non-demo campaigns
+          (latest version only). NULL if no upcoming election.
+
+      - name: last_election_date
+        description: >
+          Most recent election date (past or future) across the user's non-demo
+          campaigns (latest version only). NULL if no campaign has an election date.
+
+      - name: election_date
+        description: >
+          Best available election date for dashboard filtering: next_election_date
+          if the user has an upcoming election, otherwise last_election_date.
+          Use this column for the Active Candidates election date cohort filter.
 
       - name: first_campaign_sent_at
         description: >
@@ -284,6 +315,18 @@ models:
           config:
             where: "first_campaign_sent_at is not null"
       - dbt_utils.expression_is_true:
+          name: active_candidate_7d_has_dashboard_view
+          arguments:
+            expression: "last_dashboard_viewed_at is not null"
+          config:
+            where: "is_active_candidate_7d = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_active_candidate_7d = true"
+          config:
+            where: "last_dashboard_viewed_at >= current_date - interval 7 days"
+      - dbt_utils.expression_is_true:
+          name: active_candidate_30d_has_dashboard_view
           arguments:
             expression: "last_dashboard_viewed_at is not null"
           config:
@@ -293,6 +336,29 @@ models:
             expression: "is_active_candidate = true"
           config:
             where: "last_dashboard_viewed_at >= current_date - interval 30 days"
+      - dbt_utils.expression_is_true:
+          name: active_candidate_90d_has_dashboard_view
+          arguments:
+            expression: "last_dashboard_viewed_at is not null"
+          config:
+            where: "is_active_candidate_90d = true"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_active_candidate_90d = true"
+          config:
+            where: "last_dashboard_viewed_at >= current_date - interval 90 days"
+      - dbt_utils.expression_is_true:
+          name: active_candidate_7d_implies_30d
+          arguments:
+            expression: "is_active_candidate = true"
+          config:
+            where: "is_active_candidate_7d = true"
+      - dbt_utils.expression_is_true:
+          name: active_candidate_30d_implies_90d
+          arguments:
+            expression: "is_active_candidate_90d = true"
+          config:
+            where: "is_active_candidate = true"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "non_demo_campaign_count <= campaign_count"
