@@ -11,7 +11,6 @@ with
             election_date,
             election_year,
             state,
-            official_office_name,
             office_level,
             office_type,
             city,
@@ -29,7 +28,7 @@ with
     ),
 
     positions as (
-        select id as position_id, br_database_id
+        select id as position_id, name, br_database_id
         from {{ ref("m_election_api__position") }}
         where district_id is not null
     ),
@@ -37,7 +36,7 @@ with
     officepicker as (
         select
             pos.position_id,
-            elec.official_office_name as name,
+            pos.name,
             zips.zip_code,
             elec.election_year,
             case
