@@ -55,13 +55,7 @@ with
             }} as office_type,
             br_position.state,
             {{ extract_city_from_office_name("br_position.name") }} as city,
-            coalesce(
-                regexp_extract(
-                    br_position.name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
-                ),
-                ''
-            ) as district,
+            {{ extract_district_geographic("br_position.name") }} as district,
             coalesce(
                 regexp_extract(br_position.name, '[-, ] (?:Seat|Group) ([^,]+)'),
                 regexp_extract(br_position.name, ' - Position ([^\\s(]+)'),
