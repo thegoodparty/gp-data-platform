@@ -22,7 +22,7 @@ with
                 when lower(level) = 'city' then 'Local' else initcap(level)
             end as office_level,
             {{ extract_city_from_office_name("position_name") }} as city,
-            {{ extract_district_raw("position_name") }} as district,
+            {{ extract_district_geographic("position_name") }} as district,
             case
                 when get(party_names, 0) is null
                 then null

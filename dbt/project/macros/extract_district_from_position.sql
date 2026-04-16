@@ -11,6 +11,30 @@
 {% endmacro %}
 
 
+{% macro extract_district_geographic(position_column) %}
+    -- Extract the geographic district string from position_name.
+    --
+    -- Unlike extract_district_raw (which captures ALL suffix keywords including
+    -- seat/post labels for entity-resolution fuzzy matching), this macro is
+    -- scoped to keywords that represent geographic or electoral districts:
+    -- District, Ward, Place, Branch, Subdistrict, Zone, Precinct, Area,
+    -- Region, Circuit, Division, Subdivision.
+    --
+    -- Seat-label keywords (Position, Seat, Post, Section) are intentionally
+    -- excluded because they identify a seat within a district, not the district
+    -- itself. Example: "Aberdeen School Board - Position 1" has district=""
+    -- here (the seat label is not a district), while extract_district_raw
+    -- would return "1" — correct for ER matching, wrong for district semantics.
+    coalesce(
+        regexp_extract(
+            {{ position_column }},
+            '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Area|Region|Circuit|Division|Subdivision) (.+)$'
+        ),
+        ''
+    )
+{% endmacro %}
+
+
 {% macro extract_district_identifier(position_column) %}
     -- Extract the numeric district identifier from position_name.
     -- First tries keyword-prefixed patterns (District 3, Ward 2), then falls
