@@ -31,6 +31,7 @@ with
     positions as (
         select id as position_id, br_database_id
         from {{ ref("m_election_api__position") }}
+        where district_id is not null
     ),
 
     officepicker as (
