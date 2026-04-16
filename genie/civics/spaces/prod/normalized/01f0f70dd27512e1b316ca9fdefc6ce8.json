@@ -368,7 +368,7 @@
               "    100.0\n",
               "      * COUNT(\n",
               "        CASE\n",
-              "          WHEN `has_campaign` = TRUE THEN 1\n",
+              "          WHEN `is_win_user` = TRUE THEN 1\n",
               "        END\n",
               "      ),\n",
               "    NULLIF(COUNT(*), 0)\n",
@@ -579,7 +579,7 @@
             "content": [
               "SELECT COUNT(*) AS users_with_campaign\n",
               "FROM goodparty_data_catalog.mart_civics.users\n",
-              "WHERE has_campaign = TRUE;"
+              "WHERE is_win_user = TRUE;"
             ],
             "format": "SQL"
           }
@@ -1395,7 +1395,7 @@
             "enable_format_assistance": true
           },
           {
-            "column_name": "has_campaign",
+            "column_name": "is_win_user",
             "enable_format_assistance": true
           },
           {
@@ -1491,7 +1491,7 @@
         "sql": [
           "SELECT COUNT(*) AS users_with_campaign\n",
           "FROM goodparty_data_catalog.mart_civics.users\n",
-          "WHERE has_campaign = TRUE;\n"
+          "WHERE is_win_user = TRUE;\n"
         ]
       },
       {
@@ -1974,13 +1974,13 @@
           ]
         },
         {
-          "display_name": "user_has_campaign",
+          "display_name": "user_is_win_user",
           "id": "01f118ee29f911ee919bf788e06db0a6",
           "instruction": [
-            "User-level campaign attachment metric."
+            "User-level Win product user metric."
           ],
           "sql": [
-            "`users`.`has_campaign` = TRUE"
+            "`users`.`is_win_user` = TRUE"
           ],
           "synonyms": [
             "users with campaign",

@@ -13,7 +13,9 @@
 */
 with
     activity as (select * from {{ ref("int__amplitude_win_activity") }}),
-    users as (select * from {{ ref("goodparty_data_catalog", "users") }}),
+    users as (
+        select * from {{ ref("goodparty_data_catalog", "users") }} where is_win_user
+    ),
 
     final as (
         select
@@ -40,7 +42,7 @@ with
             a.last_activity_at,
 
             -- Civics enrichment (nullable when no civics match)
-            u.has_campaign as is_win_user,
+            u.is_win_user,
             u.is_serve_user,
             u.created_at as registered_at,
             date_trunc('month', u.created_at) as registration_month

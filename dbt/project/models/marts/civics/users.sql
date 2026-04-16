@@ -83,9 +83,10 @@ with
             cs.first_campaign_created_at,
             cs.last_campaign_created_at,
 
-            coalesce(cs.campaign_count > 0, false) as has_campaign,
             coalesce(cs.verified_campaign_count > 0, false) as has_verified_campaign,
             coalesce(cs.pledged_campaign_count > 0, false) as has_pledged_campaign,
+
+            coalesce(os.win_organization_count > 0, false) as is_win_user,
 
             coalesce(
                 os.serve_organization_count > 0 or pu.user_id is not null, false

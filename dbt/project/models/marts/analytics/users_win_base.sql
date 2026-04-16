@@ -17,7 +17,9 @@
 */
 with
 
-    users as (select * from {{ ref("goodparty_data_catalog", "users") }}),
+    users as (
+        select * from {{ ref("goodparty_data_catalog", "users") }} where is_win_user
+    ),
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
 
     final as (
@@ -33,7 +35,7 @@ with
             u.zip,
 
             -- Product flags
-            u.has_campaign as is_win_user,
+            u.is_win_user,
             u.is_serve_user,
             u.eo_activated_at,
 

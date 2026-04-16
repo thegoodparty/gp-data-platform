@@ -76,11 +76,6 @@ models:
       - name: last_campaign_created_at
         description: Timestamp of user's most recent campaign creation
 
-      - name: has_campaign
-        description: Whether user has created at least one campaign
-        data_tests:
-          - not_null
-
       - name: has_verified_campaign
         description: Whether user has at least one verified campaign
         data_tests:
@@ -88,6 +83,13 @@ models:
 
       - name: has_pledged_campaign
         description: Whether user has at least one pledged campaign
+        data_tests:
+          - not_null
+
+      - name: is_win_user
+        description: >
+          Whether the user is a Win user. True if the user owns at least one
+          organization linked to a campaign (organization_type = 'win').
         data_tests:
           - not_null
 
