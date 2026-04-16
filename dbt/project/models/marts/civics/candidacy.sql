@@ -64,35 +64,15 @@ with
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
-    -- Derived from pre-computed remaps on cluster_members (no self-join needed)
-    candidacy_pairs as (
-        select distinct remap_candidacy_id as br_id, gp_candidacy_id as ts_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_candidacy_id is not null
-    ),
-
-    candidate_remap as (
-        select distinct gp_candidate_id as ts_id, remap_candidate_id as br_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_candidate_id is not null
-    ),
-
-    election_remap as (
-        select distinct gp_election_id as ts_id, remap_election_id as br_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_election_id is not null
-    ),
-
-    -- BR wins by default; TS wins for is_incumbent
+    -- TS int models remap clustered rows to BR's gp_* IDs (via
+    -- int__civics_er_canonical_ids), so a full outer join on gp_candidacy_id
+    -- merges matched pairs automatically. Unmatched rows on either side pass
+    -- through with NULLs on the opposite side.
     merged_2026 as (
         select
             coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) as gp_candidacy_id,
-            coalesce(
-                br.gp_candidate_id, cand_r.br_id, ts.gp_candidate_id
-            ) as gp_candidate_id,
-            coalesce(
-                br.gp_election_id, elec_r.br_id, ts.gp_election_id
-            ) as gp_election_id,
+            coalesce(br.gp_candidate_id, ts.gp_candidate_id) as gp_candidate_id,
+            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
             {% for col in br_wins_cols %}
                 coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
             {% endfor %}
@@ -107,12 +87,9 @@ with
                 )
             ) as source_systems
         from {{ ref("int__civics_candidacy_ballotready") }} as br
-        full outer join candidacy_pairs as cw on br.gp_candidacy_id = cw.br_id
         full outer join
             {{ ref("int__civics_candidacy_techspeed") }} as ts
-            on cw.ts_id = ts.gp_candidacy_id
-        left join candidate_remap as cand_r on ts.gp_candidate_id = cand_r.ts_id
-        left join election_remap as elec_r on ts.gp_election_id = elec_r.ts_id
+            on br.gp_candidacy_id = ts.gp_candidacy_id
     ),
 
     combined as (
@@ -159,9 +136,27 @@ select
     deduplicated.viability_score,
     deduplicated.win_number,
     deduplicated.win_number_model,
-    icp.icp_office_win as is_win_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                deduplicated.general_election_date is null
+                or deduplicated.general_election_date < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_office_win
+    end as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    icp.icp_win_supersize as is_win_supersize_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                deduplicated.general_election_date is null
+                or deduplicated.general_election_date < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_win_supersize
+    end as is_win_supersize_icp,
     deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at

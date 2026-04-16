@@ -74,16 +74,11 @@ with
     ),
 
     -- =========================================================================
-    -- TechSpeed net-new: elections not matched to any BR via ER clusters
+    -- TechSpeed: full universe. TS int model remaps clustered elections to BR's
+    -- gp_election_id, so matched TS rows get deduped away by the qualify below.
+    -- Only un-clustered TS elections survive as net-new.
     -- =========================================================================
-    -- Derived from pre-computed remaps on cluster_members (no self-join needed)
-    ts_matched_election_ids as (
-        select distinct gp_election_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_election_id is not null
-    ),
-
-    ts_net_new as (
+    ts_2026 as (
         select
             gp_election_id,
             official_office_name,
@@ -112,12 +107,6 @@ with
             updated_at,
             array('techspeed') as source_systems
         from {{ ref("int__civics_election_techspeed") }}
-        where
-            gp_election_id not in (
-                select gp_election_id
-                from ts_matched_election_ids
-                where gp_election_id is not null
-            )
     ),
 
     -- =========================================================================
@@ -131,14 +120,24 @@ with
         from br_2026
         union all
         select *
-        from ts_net_new
+        from ts_2026
     ),
 
     deduplicated as (
         select *
         from combined
         qualify
-            row_number() over (partition by gp_election_id order by updated_at desc) = 1
+            row_number() over (
+                partition by gp_election_id
+                order by
+                    -- BR wins over TS when an election appears in both (same ID
+                    -- because TS int model adopted BR's canonical)
+                    case
+                        when array_contains(source_systems, 'ballotready') then 0 else 1
+                    end,
+                    updated_at desc nulls last
+            )
+            = 1
     ),
 
     -- Pivot election stage dates by type
@@ -191,9 +190,35 @@ select
     stage_dates.general_runoff_election_date,
     icp.voter_count as icp_voter_count,
     icp.normalized_position_type as icp_normalized_position_name,
-    icp.icp_office_win as is_win_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                coalesce(stage_dates.general_election_date, deduplicated.election_date)
+                is null
+                or coalesce(
+                    stage_dates.general_election_date, deduplicated.election_date
+                )
+                < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_office_win
+    end as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    icp.icp_win_supersize as is_win_supersize_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                coalesce(stage_dates.general_election_date, deduplicated.election_date)
+                is null
+                or coalesce(
+                    stage_dates.general_election_date, deduplicated.election_date
+                )
+                < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_win_supersize
+    end as is_win_supersize_icp,
     deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at

@@ -46,51 +46,17 @@ with
         from {{ ref("int__civics_candidacy_stage_2025") }}
     ),
 
-    -- Attach cluster_id for the full outer join
-    br_with_cluster as (
-        select cm.cluster_id, br.*
-        from {{ ref("int__civics_candidacy_stage_ballotready") }} as br
-        left join
-            {{ ref("int__civics_cluster_members") }} as cm
-            on br.gp_candidacy_stage_id = cm.gp_candidacy_stage_id
-            and cm.source_name = 'ballotready'
-    ),
-
-    ts_with_cluster as (
-        select cm.cluster_id, ts.*
-        from {{ ref("int__civics_candidacy_stage_techspeed") }} as ts
-        left join
-            {{ ref("int__civics_cluster_members") }} as cm
-            on ts.gp_candidacy_stage_id = cm.gp_candidacy_stage_id
-            and cm.source_name = 'techspeed'
-    ),
-
-    -- FK remaps applied to ALL TS records (not just those in cluster_members).
-    -- Derived from pre-computed remaps — no self-join needed.
-    candidacy_remap as (
-        select distinct gp_candidacy_id as ts_id, remap_candidacy_id as br_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_candidacy_id is not null
-    ),
-
-    election_stage_remap as (
-        select distinct gp_election_stage_id as ts_id, remap_election_stage_id as br_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_election_stage_id is not null
-    ),
-
-    -- BR wins by default for all columns
+    -- TS int model remaps clustered rows to BR's gp_* IDs (via
+    -- int__civics_er_canonical_ids), so a full outer join on gp_candidacy_stage_id
+    -- merges matched pairs automatically.
     merged_2026 as (
         select
             coalesce(
                 br.gp_candidacy_stage_id, ts.gp_candidacy_stage_id
             ) as gp_candidacy_stage_id,
-            -- FK remaps: BR's ID > cross-cluster BR match > TS's own
+            coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) as gp_candidacy_id,
             coalesce(
-                br.gp_candidacy_id, cr.br_id, ts.gp_candidacy_id
-            ) as gp_candidacy_id,
-            coalesce(
-                br.gp_election_stage_id, esr.br_id, ts.gp_election_stage_id
+                br.gp_election_stage_id, ts.gp_election_stage_id
             ) as gp_election_stage_id,
             {% for col in br_wins_cols %}
                 coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
@@ -103,10 +69,10 @@ with
                     case when ts.gp_candidacy_stage_id is not null then 'techspeed' end
                 )
             ) as source_systems
-        from br_with_cluster as br
-        full outer join ts_with_cluster as ts on br.cluster_id = ts.cluster_id
-        left join candidacy_remap as cr on ts.gp_candidacy_id = cr.ts_id
-        left join election_stage_remap as esr on ts.gp_election_stage_id = esr.ts_id
+        from {{ ref("int__civics_candidacy_stage_ballotready") }} as br
+        full outer join
+            {{ ref("int__civics_candidacy_stage_techspeed") }} as ts
+            on br.gp_candidacy_stage_id = ts.gp_candidacy_stage_id
     ),
 
     combined as (

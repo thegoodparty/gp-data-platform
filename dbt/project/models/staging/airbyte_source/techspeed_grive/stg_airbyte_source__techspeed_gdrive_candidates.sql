@@ -132,7 +132,7 @@ with
         left join
             clean_states as cs
             on upper(trim(regexp_replace(src.state, '[^A-Za-z ]', '')))
-            = upper(trim(cs.state_raw))
+            = upper(trim(regexp_replace(cs.state_raw, '[^A-Za-z ]', '')))
     ),
 
     invalid as (

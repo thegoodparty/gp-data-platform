@@ -52,13 +52,8 @@ with
         from {{ ref("int__civics_candidate_2025") }}
     ),
 
-    -- Derived from pre-computed remaps on cluster_members (no self-join needed)
-    candidate_pairs as (
-        select distinct remap_candidate_id as br_id, gp_candidate_id as ts_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_candidate_id is not null
-    ),
-
+    -- TS int model remaps clustered rows to BR's gp_candidate_id, so a full
+    -- outer join auto-merges matched pairs.
     merged_2026 as (
         select
             coalesce(br.gp_candidate_id, ts.gp_candidate_id) as gp_candidate_id,
@@ -75,10 +70,9 @@ with
                 )
             ) as source_systems
         from {{ ref("int__civics_candidate_ballotready") }} as br
-        full outer join candidate_pairs as cw on br.gp_candidate_id = cw.br_id
         full outer join
             {{ ref("int__civics_candidate_techspeed") }} as ts
-            on cw.ts_id = ts.gp_candidate_id
+            on br.gp_candidate_id = ts.gp_candidate_id
     ),
 
     combined as (

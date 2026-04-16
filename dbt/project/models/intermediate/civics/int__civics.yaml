@@ -1,65 +1,53 @@
 models:
-  - name: int__civics_cluster_members
+  - name: int__civics_er_canonical_ids
     description: >
-      Entity resolution cluster membership: one row per (cluster_id, source).
-      Exists because the ER pipeline resolves matches at the candidacy_stage
-      grain, but the civics mart requires consistent IDs at higher grains
-      (candidacy, candidate, election_stage, election). This model centralizes
-      the source-specific ER join logic and pre-computes cross-source FK
-      remaps so that mart models can use simple filters instead of repeating
-      self-joins. Without it, each mart would need to independently join the
-      ER cluster table with source-specific conditions and derive its own
-      remap pairs. Adding a new data source requires one additional CTE +
-      extending the remap WHERE clauses.
+      Entity resolution crosswalk: maps TechSpeed raw keys
+      (source_candidate_id, stage_election_date) to BallotReady's canonical
+      gp_* IDs for every clustered TS candidacy_stage. TS intermediate models
+      left-join this and coalesce their own hashes over the canonical IDs,
+      so clustered TS rows share IDs with their BR counterparts. Mart models
+      then merge with a simple full-outer-join-on-shared-id pattern, no
+      per-mart remap CTEs. Adding a new source requires one new CTE here;
+      downstream models stay unchanged.
     columns:
-      - name: cluster_id
+      - name: ts_source_candidate_id
         description: >
-          Splink cluster identifier grouping records believed to represent
-          the same candidacy-stage across sources.
+          TechSpeed candidate code (output of generate_candidate_code macro),
+          stripped of any __primary/__general/__runoff stage suffix. Together
+          with ts_stage_election_date this forms the join key from each TS
+          intermediate back to this crosswalk.
         data_tests:
           - not_null
-      - name: source_name
-        description: Origin data source for this cluster member.
+      - name: ts_stage_election_date
+        description: Election date for this specific TS stage (primary or general).
         data_tests:
           - not_null
-          - accepted_values:
-              values: ["ballotready", "techspeed"]
-      - name: gp_candidacy_stage_id
-        description: GP candidacy_stage ID for this cluster member.
+      - name: canonical_gp_candidacy_stage_id
+        description: BR's gp_candidacy_stage_id for the clustered TS stage.
         data_tests:
           - not_null
-      - name: gp_candidacy_id
-        description: GP candidacy ID for this cluster member.
+      - name: canonical_gp_election_stage_id
+        description: BR's gp_election_stage_id for the clustered TS stage.
         data_tests:
           - not_null
-      - name: gp_candidate_id
-        description: GP candidate ID for this cluster member.
+      - name: canonical_gp_candidacy_id
+        description: BR's gp_candidacy_id for the clustered TS candidacy.
         data_tests:
           - not_null
-      - name: gp_election_stage_id
-        description: GP election_stage ID for this cluster member.
+      - name: canonical_gp_candidate_id
+        description: BR's gp_candidate_id for the clustered TS candidate.
         data_tests:
           - not_null
-      - name: gp_election_id
-        description: GP election ID for this cluster member.
+      - name: canonical_gp_election_id
+        description: BR's gp_election_id for the clustered TS election.
         data_tests:
           - not_null
-      - name: remap_candidacy_id
-        description: >
-          BR-equivalent gp_candidacy_id for TechSpeed members. NULL for BR
-          members and unmatched TS members.
-      - name: remap_candidate_id
-        description: >
-          BR-equivalent gp_candidate_id for TechSpeed members. NULL for BR
-          members and unmatched TS members.
-      - name: remap_election_stage_id
-        description: >
-          BR-equivalent gp_election_stage_id for TechSpeed members. NULL for
-          BR members and unmatched TS members.
-      - name: remap_election_id
-        description: >
-          BR-equivalent gp_election_id for TechSpeed members. NULL for BR
-          members and unmatched TS members.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - ts_source_candidate_id
+              - ts_stage_election_date
 
   - name: int__civics_election_2025
     description: >
@@ -1632,7 +1620,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2036-12-31'"
 
       - name: election_year
         description: Year of the election
@@ -1640,7 +1628,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 2026
-                max_value: 2030
+                max_value: 2036
 
       - name: created_at
         data_tests:
@@ -1702,7 +1690,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2036-12-31'"
 
       - name: election_name
         description: >
@@ -1812,7 +1800,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2036-12-31'"
 
       - name: created_at
         data_tests:

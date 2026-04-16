@@ -138,11 +138,6 @@
             or lower({{ race_name_col }}) like '%sewer board%'
             or lower({{ race_name_col }}) like '%water supply%'
         then 'Water Supply Board'
-        when
-            lower({{ race_name_col }}) like '%drainage%'
-            or lower({{ race_name_col }}) like '%conservation%'
-            or lower({{ race_name_col }}) like '%utility district%'
-        then 'Other'
         else 'Other'
     end
 {% endmacro %}

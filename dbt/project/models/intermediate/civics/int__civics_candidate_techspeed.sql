@@ -7,20 +7,45 @@
 -- CRITICAL: UUID fields MUST match int__civics_candidate_2025.sql pattern
 -- to ensure same person from different sources gets same gp_candidate_id
 with
+    -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical candidate_id.
+    -- Deduped per source_candidate_id (one person may have multiple candidacies).
+    canonical_candidate as (
+        select distinct ts_source_candidate_id, canonical_gp_candidate_id
+        from {{ ref("int__civics_er_canonical_ids") }}
+    ),
+
+    source as (
+        select
+            ts.*,
+            {{
+                generate_candidate_code(
+                    "ts.first_name",
+                    "ts.last_name",
+                    "ts.state",
+                    "ts.office_type",
+                    "ts.city",
+                )
+            }} as techspeed_candidate_code
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
+    ),
+
     candidates_with_id as (
         select
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "first_name",
-                        "last_name",
-                        "state_postal_code",
-                        "cast(birth_date_parsed as string)",
-                        "email",
-                        "phone",
-                    ]
-                )
-            }} as gp_candidate_id,
+            coalesce(
+                xw.canonical_gp_candidate_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "first_name",
+                            "last_name",
+                            "state_postal_code",
+                            "cast(birth_date_parsed as string)",
+                            "email",
+                            "phone",
+                        ]
+                    )
+                }}
+            ) as gp_candidate_id,
 
             cast(null as string) as hubspot_contact_id,
             cast(null as string) as prod_db_user_id,
@@ -41,7 +66,10 @@ with
             _airbyte_extracted_at as created_at,
             _airbyte_extracted_at as updated_at
 
-        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }}
+        from source
+        left join
+            canonical_candidate as xw
+            on source.techspeed_candidate_code = xw.ts_source_candidate_id
         where first_name is not null and last_name is not null and state is not null
     ),
 

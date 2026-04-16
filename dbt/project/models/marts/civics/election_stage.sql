@@ -70,57 +70,37 @@ with
     ),
 
     -- =========================================================================
-    -- TechSpeed net-new: election_stages not matched to any BR via ER clusters
+    -- TechSpeed: full universe. TS int model remaps clustered stages to BR's
+    -- gp_election_stage_id AND gp_election_id (via int__civics_er_canonical_ids),
+    -- so matched rows get deduped away by the qualify below.
     -- =========================================================================
-    -- Derived from pre-computed remaps on cluster_members (no self-join needed)
-    ts_matched_election_stage_ids as (
-        select distinct gp_election_stage_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_election_stage_id is not null
-    ),
-
-    -- Remap gp_election_id for net-new TS stages whose parent election IS
-    -- matched to a BR election (ensures valid FK into the election mart)
-    election_remap as (
-        select distinct gp_election_id as ts_id, remap_election_id as br_id
-        from {{ ref("int__civics_cluster_members") }}
-        where source_name = 'techspeed' and remap_election_id is not null
-    ),
-
-    ts_net_new as (
+    ts_2026 as (
         select
-            ts.gp_election_stage_id,
-            coalesce(er.br_id, ts.gp_election_id) as gp_election_id,
-            ts.br_race_id,
-            ts.br_election_id,
-            ts.br_position_id,
-            ts.ddhq_race_id,
-            ts.stage_type,
-            ts.election_date,
-            ts.election_name,
-            ts.race_name,
-            ts.is_primary,
-            ts.is_runoff,
-            ts.is_retention,
-            ts.number_of_seats,
-            ts.total_votes_cast,
+            gp_election_stage_id,
+            gp_election_id,
+            br_race_id,
+            br_election_id,
+            br_position_id,
+            ddhq_race_id,
+            stage_type,
+            election_date,
+            election_name,
+            race_name,
+            is_primary,
+            is_runoff,
+            is_retention,
+            number_of_seats,
+            total_votes_cast,
             cast(null as string) as partisan_type,
-            ts.filing_period_start_on,
-            ts.filing_period_end_on,
-            ts.filing_requirements,
-            ts.filing_address,
-            ts.filing_phone,
-            ts.created_at,
-            ts.updated_at,
+            filing_period_start_on,
+            filing_period_end_on,
+            filing_requirements,
+            filing_address,
+            filing_phone,
+            created_at,
+            updated_at,
             array('techspeed') as source_systems
-        from {{ ref("int__civics_election_stage_techspeed") }} as ts
-        left join election_remap as er on ts.gp_election_id = er.ts_id
-        where
-            ts.gp_election_stage_id not in (
-                select gp_election_stage_id
-                from ts_matched_election_stage_ids
-                where gp_election_stage_id is not null
-            )
+        from {{ ref("int__civics_election_stage_techspeed") }}
     ),
 
     -- =========================================================================
@@ -134,7 +114,7 @@ with
         from br_2026
         union all
         select *
-        from ts_net_new
+        from ts_2026
     ),
 
     deduplicated as (
@@ -142,7 +122,14 @@ with
         from combined
         qualify
             row_number() over (
-                partition by gp_election_stage_id order by created_at desc
+                partition by gp_election_stage_id
+                order by
+                    -- BR wins over TS when a stage appears in both (same ID
+                    -- because TS int model adopted BR's canonical)
+                    case
+                        when array_contains(source_systems, 'ballotready') then 0 else 1
+                    end,
+                    updated_at desc nulls last
             )
             = 1
     )
@@ -169,9 +156,27 @@ select
     deduplicated.filing_requirements,
     deduplicated.filing_address,
     deduplicated.filing_phone,
-    icp.icp_office_win as is_win_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                deduplicated.election_date is null
+                or deduplicated.election_date < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_office_win
+    end as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    icp.icp_win_supersize as is_win_supersize_icp,
+    case
+        when
+            icp.icp_win_effective_date is not null
+            and (
+                deduplicated.election_date is null
+                or deduplicated.election_date < icp.icp_win_effective_date
+            )
+        then false
+        else icp.icp_win_supersize
+    end as is_win_supersize_icp,
     deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
