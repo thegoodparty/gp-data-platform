@@ -7,8 +7,6 @@ models:
 
       Grain: One row per user.
 
-      Limitations: Win/loss outcome data requires future work and is not included in this MVP.
-
     columns:
       - name: user_id
         description: Primary key - unique user identifier from gp-api production database
@@ -235,8 +233,11 @@ models:
 
       - name: campaign_office
         description: >
-          Position name from the election-api, joined via organization ->
-          position. Replaces the deprecated campaign.details.office field.
+          The office name for this campaign version. For the latest version,
+          this prefers the election-api position name resolved through the
+          organization entity. For historical versions, it falls back to the
+          legacy office field from campaign details. Used as the human-readable
+          label for what office the campaign is targeting.
 
       - name: ballotready_position_id
         description: >
@@ -248,8 +249,9 @@ models:
         description: >
           BallotReady normalized position name (e.g. "City Legislature",
           "Governor") resolved via the BR API position's normalized_position
-          reference. Used for standardizing candidate_office across sources
-          in entity resolution.
+          reference. Used for entity resolution — matching product campaigns
+          to BallotReady candidacies by comparing standardized office names
+          across sources.
 
       - name: is_latest_version
         description: >
@@ -392,10 +394,16 @@ models:
         description: Foreign key to election table (no relationship test - matches m_general behavior)
 
       - name: product_campaign_id
-        description: Campaign ID from the GoodParty product database
+        description: >
+          Foreign key linking to campaigns.campaign_id in the civics mart.
+          Only populated for candidates who created a campaign in the GoodParty
+          app. NULL for BallotReady-only or HubSpot-only candidacies.
 
       - name: hubspot_contact_id
-        description: Contact ID from HubSpot CRM
+        description: >
+          Contact ID from HubSpot CRM. Links this candidacy to a HubSpot
+          contact record. NULL for BallotReady-only candidates who have no
+          HubSpot record.
 
       - name: hubspot_company_ids
         description: >
@@ -403,7 +411,11 @@ models:
           A candidacy may link to multiple HubSpot companies.
 
       - name: candidate_id_source
-        description: Source system for the candidate data (BallotReady, Techspeed, Product, etc.)
+        description: >
+          The system that originally provided this candidate record. Values:
+          BallotReady (external candidacy data), Techspeed (civics research
+          vendor), Product (GoodParty app sign-up), or HubSpot (CRM-sourced
+          from 2025 archive).
 
       - name: party_affiliation
         description: Candidate's political party
@@ -423,10 +435,17 @@ models:
                 values: [true, false]
 
       - name: candidate_office
-        description: Simplified/standardized office name
+        description: >
+          Human-readable office name standardized across data sources (e.g.
+          "City Council", "Mayor", "School Board"). Use this for reporting
+          and display; use official_office_name for the full formal title.
 
       - name: official_office_name
-        description: Formal office title the candidate is running for
+        description: >
+          Formal BallotReady office title which may include district and seat
+          details (e.g. "City Council District 5 Seat A", "State Senate
+          District 12"). More specific than candidate_office. NULL for
+          2025 HubSpot archive records.
 
       - name: office_level
         description: >
@@ -538,22 +557,28 @@ models:
 
       - name: is_win_icp
         description: >
-          Whether this candidacy's position meets the Win ICP criteria
-          (500-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          Whether this candidacy's position meets the Win Ideal Customer Profile
+          (ICP) criteria. Win ICP means the office has between 500 and 100,000
+          L2 voters in the district, making it suitable for the Win product.
+          Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
-          Whether this candidacy's position meets the Serve ICP criteria
-          (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          Whether this candidacy's position meets the Serve Ideal Customer
+          Profile (ICP) criteria. Serve ICP means the office has between 1,000
+          and 100,000 L2 voters in the district, making it suitable for the
+          Serve product. Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_win_supersize_icp
         description: >
-          Whether this candidacy's position meets all ICP criteria but has >100,000
-          voters, requiring separate consideration outside the standard Win process.
-          Derived from int__icp_offices via br_position_database_id.
-          NULL for records without BallotReady position match.
+          Whether this candidacy's position meets all Win ICP criteria but has
+          more than 100,000 L2 voters, placing it above the standard Win
+          threshold. These offices require separate consideration outside the
+          standard Win process. Derived from int__icp_offices via
+          br_position_database_id. NULL for records without BallotReady
+          position match.
 
       - name: created_at
         description: Timestamp when the record was created
@@ -585,13 +610,22 @@ models:
           - is_uuid
 
       - name: hubspot_contact_id
-        description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+        description: >
+          Contact ID from HubSpot CRM linking this candidate to a HubSpot
+          contact record. NULL for BallotReady-only candidates who have no
+          HubSpot record.
 
       - name: prod_db_user_id
-        description: User ID from the GoodParty production database
+        description: >
+          Foreign key linking to users.user_id in the civics mart. Populated
+          when this candidate has a GoodParty app account. NULL for candidates
+          known only through external sources (BallotReady, HubSpot).
 
       - name: candidate_id_tier
-        description: Internal confidence/priority tier for the candidate
+        description: >
+          Confidence level from identity resolution indicating how reliably
+          this candidate record was matched or created across sources. Lower
+          tiers represent higher confidence matches.
 
       - name: first_name
         description: Candidate's first name
@@ -694,10 +728,16 @@ models:
         description: Name of the candidate
 
       - name: source_candidate_id
-        description: Candidate identifier from the source system (e.g., DDHQ)
+        description: >
+          The vendor's own identifier for the candidate in this stage. For
+          2025 archive data this is the DDHQ candidate_id; for 2026+ data
+          this is the BallotReady candidacy_id.
 
       - name: source_race_id
-        description: Race identifier from the source system (e.g., DDHQ)
+        description: >
+          The vendor's own identifier for the race. For 2025 archive data
+          this is the DDHQ race_id; for 2026+ data this is the BallotReady
+          race_id.
 
       - name: candidate_party
         description: Candidate's political party affiliation
@@ -730,16 +770,30 @@ models:
           Values: 'hubspot', 'ddhq', 'ballotready', or null if no result available.
 
       - name: match_confidence
-        description: Confidence score for the candidate-to-source match
+        description: >
+          LLM-generated confidence score (0 to 1) from the automated process
+          that matched GoodParty candidates to DDHQ election results. Higher
+          values indicate greater confidence in the match. Only populated for
+          2025 archive records that went through DDHQ matching.
 
       - name: match_reasoning
-        description: Reasoning for the candidate-to-source match
+        description: >
+          LLM-generated reasoning text explaining why the DDHQ match was or
+          was not made. Provides human-readable justification for the
+          match_confidence score. Only populated for 2025 archive records.
 
       - name: match_top_candidates
-        description: Top candidate matches considered during matching
+        description: >
+          Top candidate matches considered during the DDHQ matching process.
+          Shows alternative candidates the LLM evaluated before selecting or
+          rejecting a match.
 
       - name: has_match
-        description: Whether a match to source election data was found
+        description: >
+          Whether this candidacy stage was successfully linked to a vendor's
+          election result data. For 2025 data, this means a DDHQ match was
+          found. For 2026+ data, this means BallotReady result data is
+          available. When true, vote counts and election results are populated.
 
       - name: votes_received
         description: Number of votes received in this election stage
@@ -830,7 +884,10 @@ models:
         description: Specific seat name
 
       - name: election_date
-        description: Date of the election
+        description: >
+          The earliest or primary election date from the source data for this
+          election cycle. For stage-specific dates, use primary_election_date,
+          general_election_date, or the corresponding runoff date columns.
         data_tests:
           - not_null
           - dbt_expectations.expect_column_values_to_be_between:
@@ -882,7 +939,10 @@ models:
                 values: [true, false]
 
       - name: has_ddhq_match
-        description: Whether there is a DDHQ match for this election
+        description: >
+          Whether DDHQ election results data is available for this election.
+          Only applicable to 2025 elections, as DDHQ was the results source
+          for that cycle. Always NULL for 2026+ BallotReady-sourced elections.
 
       - name: br_position_database_id
         description: >
@@ -920,13 +980,20 @@ models:
                 where: "is_appointed is not null"
 
       - name: br_normalized_position_type
-        description: BallotReady normalized position type (e.g. City Council, Mayor, School Board)
+        description: >
+          BallotReady's standardized position category (e.g. "City Council",
+          "Mayor", "School Board"). Used for cross-office comparison, ICP
+          classification, and grouping offices into comparable categories
+          regardless of how individual jurisdictions name them.
 
       - name: icp_voter_count
         description: >
-          Voter count from the L2 district match used to determine ICP eligibility.
-          Derived from int__icp_offices via br_position_database_id.
-          NULL for records without a matched L2 district.
+          L2 voter count for the district, used to determine whether the office
+          falls within GoodParty's Ideal Customer Profile (ICP) target market.
+          Win ICP requires 500 to 100,000 voters; Serve ICP requires 1,000 to
+          100,000 voters. Derived from int__icp_offices via
+          br_position_database_id. NULL for records without a matched L2
+          district.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -1079,10 +1146,11 @@ models:
 
       - name: race_name
         description: >
-          Office-specific race label. For 2025 records this is the DDHQ race name
-          (e.g., "WI Tigerton Village Trustee"). For 2026+ records this is
-          constructed from BallotReady position fields
-          (e.g., "IL Franklin County Board - Full Term").
+          Office-specific race label. Format differs by data era: 2025 records
+          use the DDHQ format (e.g. "WI Tigerton Village Trustee"), while
+          2026+ records use a format constructed from BallotReady position
+          fields (e.g. "IL Franklin County Board - Full Term"). Not directly
+          comparable across eras due to the format difference.
 
       - name: is_primary
         description: Whether this stage is a primary election
@@ -1109,12 +1177,17 @@ models:
         description: Number of seats available for this race (BallotReady only)
 
       - name: total_votes_cast
-        description: Total votes cast in the election stage (may contain string values like 'uncontested')
+        description: >
+          Total votes cast in the election stage. Note: this is a string
+          column because it may contain the value "uncontested" for races
+          without competitive vote tallies, not just numeric values. Cast
+          to integer only after filtering out non-numeric entries.
 
       - name: partisan_type
         description: >
-          The partisan type of the position (e.g., "partisan", "nonpartisan").
-          Sourced from BallotReady position data. NULL for 2025 archive records.
+          Whether the position is "partisan" or "nonpartisan". Sourced from
+          BallotReady position metadata. NULL for 2025 archive records where
+          this data was not available from DDHQ.
 
       - name: filing_period_start_on
         description: >
