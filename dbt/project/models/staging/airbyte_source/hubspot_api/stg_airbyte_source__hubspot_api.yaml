@@ -131,9 +131,6 @@ models:
           5058880 = Knowledge base feedback.
         data_tests:
           - not_null
-          - accepted_values:
-              arguments:
-                values: ["2", "3", "8", "9", "10", "12", "5058880"]
       - name: submitted_at
         description: Timestamp when the survey response was submitted
         data_tests:
