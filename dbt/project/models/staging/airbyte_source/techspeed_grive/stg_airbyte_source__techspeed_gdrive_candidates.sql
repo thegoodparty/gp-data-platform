@@ -3,19 +3,7 @@ with
         select * from {{ source("airbyte_source", "techspeed_gdrive_candidates") }}
     ),
 
-    -- Dedupe on the normalized key: entries like "NEW HAMPSHIRE" and
-    -- "NEW HAMPSHIRE03104" collapse to the same cleaned value, so we pick one
-    -- to avoid fanning out every raw TS row on the state join.
-    clean_states as (
-        select state_raw, state_cleaned_postal_code
-        from {{ ref("clean_states") }}
-        qualify
-            row_number() over (
-                partition by upper(trim(regexp_replace(state_raw, '[^A-Za-z ]', '')))
-                order by state_raw
-            )
-            = 1
-    ),
+    clean_states as (select * from {{ ref("clean_states") }}),
 
     renamed as (
         select
@@ -144,7 +132,7 @@ with
         left join
             clean_states as cs
             on upper(trim(regexp_replace(src.state, '[^A-Za-z ]', '')))
-            = upper(trim(regexp_replace(cs.state_raw, '[^A-Za-z ]', '')))
+            = upper(trim(cs.state_raw))
     ),
 
     invalid as (
