@@ -121,24 +121,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ).otherwise(col("zip_code")),
         )
 
-        # On full refresh, count voters per (zip, district_name) and filter out
-        # districts where fewer than MIN_VOTER_PCT of the zip's voters are
-        # assigned there. On incremental runs, skip the threshold since the
-        # percentage is unreliable on partial batches.
-        if not dbt.is_incremental:
-            district_df = district_df.groupBy(
-                "state_postal_code", "zip_code", "district_name"
-            ).agg(count("*").alias("voter_count"))
+        # Count voters per (zip, district_name) and filter out districts where
+        # fewer than MIN_VOTER_PCT of the zip's voters are assigned there.
+        district_df = district_df.groupBy(
+            "state_postal_code", "zip_code", "district_name"
+        ).agg(count("*").alias("voter_count"))
 
-            district_df = (
-                district_df.withColumn(
-                    "total_voters", spark_sum("voter_count").over(zip_window)
-                )
-                .filter(col("voter_count") / col("total_voters") >= MIN_VOTER_PCT)
-                .drop("voter_count", "total_voters")
+        district_df = (
+            district_df.withColumn(
+                "total_voters", spark_sum("voter_count").over(zip_window)
             )
-        else:
-            district_df = district_df.distinct()
+            .filter(col("voter_count") / col("total_voters") >= MIN_VOTER_PCT)
+            .drop("voter_count", "total_voters")
+        )
 
         district_df = district_df.withColumn("district_type", lit(district_type))
 
