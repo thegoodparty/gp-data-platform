@@ -1273,7 +1273,10 @@ models:
         description: City extracted from position_name via the extract_city_from_office_name macro.
 
       - name: district
-        description: District identifier extracted from position_name via regex.
+        description: >
+          Geographic district extracted from position_name via the
+          extract_district_geographic macro (12 keywords; excludes
+          seat/post labels like Position, Seat, Post, Section).
 
       - name: term_start_date
         description: Office-holder term start date.
