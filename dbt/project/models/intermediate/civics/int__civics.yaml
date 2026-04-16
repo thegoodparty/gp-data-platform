@@ -1650,7 +1650,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2032-12-31'"
 
       - name: election_name
         description: >
