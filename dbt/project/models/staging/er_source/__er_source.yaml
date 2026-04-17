@@ -137,30 +137,170 @@ models:
           - not_null
           - accepted_values:
               values: ["ballotready", "techspeed", "ddhq"]
+      - name: source_id_l
+        description: Left record's source-specific identifier.
+      - name: source_id_r
+        description: Right record's source-specific identifier.
+      - name: source_dataset_l
+        description: Left record's source dataset name.
+      - name: source_dataset_r
+        description: Right record's source dataset name.
+      - name: last_name_l
+        description: Left record's last name.
+      - name: last_name_r
+        description: Right record's last name.
       - name: gamma_last_name
         description: >
           Comparison level for last_name: 3=exact, 2=JW>=0.95, 1=JW>=0.88, 0=else.
           Term-frequency adjusted.
+      - name: tf_last_name_l
+        description: >
+          Term frequency of last_name for the left record. Measures how common
+          the value is across the dataset (0 to 1). Rare values get higher match weight.
+      - name: tf_last_name_r
+        description: >
+          Term frequency of last_name for the right record. Measures how common
+          the value is across the dataset (0 to 1). Rare values get higher match weight.
+      - name: bf_last_name
+        description: >
+          Bayes factor for the last_name comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: bf_tf_adj_last_name
+        description: >
+          Term-frequency-adjusted Bayes factor for last_name. Adjusts the raw
+          Bayes factor by the rarity of each record's value.
+      - name: first_name_l
+        description: Left record's first name.
+      - name: first_name_r
+        description: Right record's first name.
+      - name: first_name_aliases_l
+        description: Left record's first name nickname aliases.
+      - name: first_name_aliases_r
+        description: Right record's first name nickname aliases.
       - name: gamma_first_name
         description: >
           Comparison level for first_name: 3=exact, 2=nickname alias intersection,
           1=JW>=0.92, 0=else. Term-frequency adjusted.
+      - name: tf_first_name_l
+        description: >
+          Term frequency of first_name for the left record. Measures how common
+          the value is across the dataset (0 to 1). Rare values get higher match weight.
+      - name: tf_first_name_r
+        description: >
+          Term frequency of first_name for the right record. Measures how common
+          the value is across the dataset (0 to 1). Rare values get higher match weight.
+      - name: bf_first_name
+        description: >
+          Bayes factor for the first_name comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: bf_tf_adj_first_name
+        description: >
+          Term-frequency-adjusted Bayes factor for first_name. Adjusts the raw
+          Bayes factor by the rarity of each record's value.
+      - name: party_l
+        description: Left record's party affiliation.
+      - name: party_r
+        description: Right record's party affiliation.
       - name: gamma_party
         description: "Comparison level for party: 1=exact match, 0=else."
+      - name: bf_party
+        description: >
+          Bayes factor for the party comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: email_l
+        description: Left record's email address.
+      - name: email_r
+        description: Right record's email address.
       - name: gamma_email
         description: "Comparison level for email: 1=exact match, -1=one or both null, 0=else."
+      - name: bf_email
+        description: >
+          Bayes factor for the email comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: phone_l
+        description: Left record's phone number.
+      - name: phone_r
+        description: Right record's phone number.
       - name: gamma_phone
         description: "Comparison level for phone: 1=exact match, -1=one or both null, 0=else."
+      - name: bf_phone
+        description: >
+          Bayes factor for the phone comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: state_l
+        description: Left record's state postal code.
+      - name: state_r
+        description: Right record's state postal code.
       - name: gamma_state
         description: "Comparison level for state: 1=exact match, 0=else."
+      - name: bf_state
+        description: >
+          Bayes factor for the state comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: election_date_l
+        description: Left record's election date.
+      - name: election_date_r
+        description: Right record's election date.
       - name: gamma_election_date
         description: "Comparison level for election_date: 1=exact match, 0=else."
+      - name: bf_election_date
+        description: >
+          Bayes factor for the election_date comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: official_office_name_l
+        description: Left record's official office name.
+      - name: official_office_name_r
+        description: Right record's official office name.
       - name: gamma_official_office_name
         description: >
           Comparison level for office name: 4=exact, 3=JW>=0.95, 2=JW>=0.88,
           1=JW>=0.75, 0=else.
+      - name: bf_official_office_name
+        description: >
+          Bayes factor for the official_office_name comparison. Values >1 indicate
+          evidence of match; <1 indicate evidence of non-match.
+      - name: district_identifier_l
+        description: Left record's normalized district number.
+      - name: district_identifier_r
+        description: Right record's normalized district number.
       - name: gamma_district_identifier
         description: "Comparison level for district: 1=exact match, -1=one or both null, 0=else."
+      - name: bf_district_identifier
+        description: >
+          Bayes factor for the district_identifier comparison. Values >1 indicate
+          evidence of match; <1 indicate evidence of non-match.
+      - name: br_race_id_l
+        description: Left record's BallotReady race ID.
+      - name: br_race_id_r
+        description: Right record's BallotReady race ID.
+      - name: candidate_office_l
+        description: Left record's candidate office name.
+      - name: candidate_office_r
+        description: Right record's candidate office name.
+      - name: office_level_l
+        description: Left record's office level classification.
+      - name: office_level_r
+        description: Right record's office level classification.
+      - name: office_type_l
+        description: Left record's office type classification.
+      - name: office_type_r
+        description: Right record's office type classification.
+      - name: district_raw_l
+        description: Left record's raw district value.
+      - name: district_raw_r
+        description: Right record's raw district value.
+      - name: seat_name_l
+        description: Left record's seat or position name.
+      - name: seat_name_r
+        description: Right record's seat or position name.
+      - name: br_candidacy_id_l
+        description: Left record's BallotReady candidacy ID.
+      - name: br_candidacy_id_r
+        description: Right record's BallotReady candidacy ID.
+      - name: election_stage_l
+        description: Left record's election stage.
+      - name: election_stage_r
+        description: Right record's election stage.
       - name: match_key
         description: >
           Index of the blocking rule that generated this pair (0-5), corresponding
@@ -302,32 +442,164 @@ models:
           - not_null
           - accepted_values:
               values: ["ballotready", "techspeed"]
+      - name: source_id_l
+        description: Source-specific identifier for the left record.
+      - name: source_id_r
+        description: Source-specific identifier for the right record.
+      - name: source_dataset_l
+        description: Splink internal dataset label for the left record.
+      - name: source_dataset_r
+        description: Splink internal dataset label for the right record.
       - name: gamma_last_name
         description: >
           Comparison level for last_name: 3=exact, 2=JW>=0.95, 1=JW>=0.88, 0=else.
           Term-frequency adjusted.
+      - name: last_name_l
+        description: Left record's last name.
+      - name: last_name_r
+        description: Right record's last name.
+      - name: tf_last_name_l
+        description: >
+          Term frequency of last_name for the left record. Measures how common
+          the value is across the dataset (0 to 1). Rare values get higher match weight.
+      - name: tf_last_name_r
+        description: >
+          Term frequency of last_name for the right record.
+      - name: bf_last_name
+        description: >
+          Bayes factor for the last_name comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: bf_tf_adj_last_name
+        description: >
+          Term-frequency-adjusted Bayes factor for last_name. Adjusts the raw
+          Bayes factor by the rarity of each record's value.
       - name: gamma_first_name
         description: >
           Comparison level for first_name: 3=exact, 2=nickname alias intersection,
           1=JW>=0.92, 0=else. Term-frequency adjusted.
+      - name: first_name_l
+        description: Left record's first name.
+      - name: first_name_r
+        description: Right record's first name.
+      - name: first_name_aliases_l
+        description: Nickname aliases array for the left record's first name.
+      - name: first_name_aliases_r
+        description: Nickname aliases array for the right record's first name.
+      - name: tf_first_name_l
+        description: >
+          Term frequency of first_name for the left record.
+      - name: tf_first_name_r
+        description: >
+          Term frequency of first_name for the right record.
+      - name: bf_first_name
+        description: >
+          Bayes factor for the first_name comparison. Values >1 indicate evidence
+          of match; <1 indicate evidence of non-match.
+      - name: bf_tf_adj_first_name
+        description: >
+          Term-frequency-adjusted Bayes factor for first_name.
       - name: gamma_party
         description: "Comparison level for party: 1=exact match, 0=else."
+      - name: party_l
+        description: Left record's party affiliation.
+      - name: party_r
+        description: Right record's party affiliation.
+      - name: bf_party
+        description: Bayes factor for the party comparison.
       - name: gamma_email
         description: "Comparison level for email: 1=exact match, -1=one or both null, 0=else."
+      - name: email_l
+        description: Left record's email address.
+      - name: email_r
+        description: Right record's email address.
+      - name: bf_email
+        description: Bayes factor for the email comparison.
       - name: gamma_phone
         description: "Comparison level for phone: 1=exact match, -1=one or both null, 0=else."
+      - name: phone_l
+        description: Left record's phone number.
+      - name: phone_r
+        description: Right record's phone number.
+      - name: bf_phone
+        description: Bayes factor for the phone comparison.
       - name: gamma_state
         description: "Comparison level for state: 1=exact match, 0=else."
+      - name: state_l
+        description: Left record's two-letter US state postal code.
+      - name: state_r
+        description: Right record's two-letter US state postal code.
+      - name: bf_state
+        description: Bayes factor for the state comparison.
       - name: gamma_official_office_name
         description: >
           Comparison level for office name: 4=exact, 3=JW>=0.95, 2=JW>=0.88,
           1=JW>=0.75, 0=else.
+      - name: official_office_name_l
+        description: Left record's normalized office name.
+      - name: official_office_name_r
+        description: Right record's normalized office name.
+      - name: bf_official_office_name
+        description: Bayes factor for the official_office_name comparison.
       - name: gamma_district_identifier
         description: "Comparison level for district: 1=exact match, -1=one or both null, 0=else."
+      - name: district_identifier_l
+        description: Left record's normalized district number.
+      - name: district_identifier_r
+        description: Right record's normalized district number.
+      - name: bf_district_identifier
+        description: Bayes factor for the district_identifier comparison.
       - name: gamma_office_type
         description: "Comparison level for office_type: 1=exact match, -1=one or both null, 0=else."
+      - name: office_type_l
+        description: Left record's office type (e.g. Executive, Legislative).
+      - name: office_type_r
+        description: Right record's office type.
+      - name: bf_office_type
+        description: Bayes factor for the office_type comparison.
       - name: gamma_office_level
         description: "Comparison level for office_level: 1=exact match, -1=one or both null, 0=else."
+      - name: office_level_l
+        description: Left record's office level (e.g. Federal, State, County, Local).
+      - name: office_level_r
+        description: Right record's office level.
+      - name: bf_office_level
+        description: Bayes factor for the office_level comparison.
+      - name: candidate_office_l
+        description: Left record's human-readable office name from the source.
+      - name: candidate_office_r
+        description: Right record's human-readable office name from the source.
+      - name: district_raw_l
+        description: Left record's raw district value before normalization.
+      - name: district_raw_r
+        description: Right record's raw district value before normalization.
+      - name: city_l
+        description: Left record's city.
+      - name: city_r
+        description: Right record's city.
+      - name: term_start_date_l
+        description: Left record's term start date, cast to date.
+      - name: term_start_date_r
+        description: Right record's term start date, cast to date.
+      - name: term_end_date_l
+        description: Left record's term end date, cast to date.
+      - name: term_end_date_r
+        description: Right record's term end date, cast to date.
+      - name: br_office_holder_id_l
+        description: Left record's BallotReady office holder ID.
+      - name: br_office_holder_id_r
+        description: Right record's BallotReady office holder ID.
+      - name: br_candidate_id_l
+        description: Left record's BallotReady candidate ID.
+      - name: br_candidate_id_r
+        description: Right record's BallotReady candidate ID.
+      - name: ts_officeholder_id_l
+        description: Left record's TechSpeed officeholder ID.
+      - name: ts_officeholder_id_r
+        description: Right record's TechSpeed officeholder ID.
+      - name: ts_position_id_l
+        description: Left record's TechSpeed position ID.
+      - name: ts_position_id_r
+        description: Right record's TechSpeed position ID.
       - name: match_key
         description: >
           Index of the blocking rule that generated this pair (0-4), corresponding
