@@ -429,7 +429,10 @@ models:
         description: Formal office title the candidate is running for
 
       - name: office_level
-        description: Level of office (local, state, federal)
+        description: >
+          Office level from BallotReady's PositionLevel enum (City, Local,
+          County, Township, State, Regional, Federal). 2025 archive records
+          may have a subset of these values.
 
       - name: office_type
         description: >
@@ -801,7 +804,10 @@ models:
         description: Simplified/standardized office name
 
       - name: office_level
-        description: Level of office (local, state, federal)
+        description: >
+          Office level from BallotReady's PositionLevel enum (City, Local,
+          County, Township, State, Regional, Federal). 2025 archive records
+          may have a subset of these values.
 
       - name: office_type
         description: Type of office (executive, legislative, judicial, etc.)
