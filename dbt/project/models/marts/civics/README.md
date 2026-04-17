@@ -24,6 +24,20 @@ All models materialize as tables in the `mart_civics` schema.
 - **Candidacy Stage** = results for one candidacy in one election phase (primary, general, etc.)
 - **Election** vs **Election Stage**: an election encompasses all stages; election_stage is one phase.
 
+## Which Table Do I Need?
+
+```
+What are you looking for?
++-- A person's info (name, email, state)        --> candidate
++-- What office they ran for, election dates     --> candidacy
++-- Did they win or lose? Vote counts?           --> candidacy_stage
++-- Election details (office, district, dates)   --> election / election_stage
++-- GP app user data (signup, Win/Serve status)  --> users
++-- GP campaign data (verified, pledged, pro)    --> campaigns
++-- Is the office in our target market (ICP)?    --> candidacy.is_win_icp
++-- Win/Serve product linkage                    --> organizations
+```
+
 ## Joining Models
 
 ### Candidacy with candidate details and election results
