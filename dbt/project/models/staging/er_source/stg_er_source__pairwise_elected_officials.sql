@@ -96,10 +96,10 @@ with
             city_r,
 
             -- term context
-            term_start_date_l,
-            term_start_date_r,
-            term_end_date_l,
-            term_end_date_r,
+            cast(term_start_date_l as date) as term_start_date_l,
+            cast(term_start_date_r as date) as term_start_date_r,
+            cast(term_end_date_l as date) as term_end_date_l,
+            cast(term_end_date_r as date) as term_end_date_r,
 
             -- source-specific IDs
             cast(br_office_holder_id_l as int) as br_office_holder_id_l,

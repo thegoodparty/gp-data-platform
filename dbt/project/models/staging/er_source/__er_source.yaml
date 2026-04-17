@@ -279,6 +279,9 @@ models:
           probability >= 0.01.
         data_tests:
           - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0.01
+              max_value: 1.0
       - name: unique_id_l
         description: Composite key (source_name|source_id) for the left record.
         data_tests:
@@ -330,3 +333,7 @@ models:
           Index of the blocking rule that generated this pair (0-4), corresponding
           to: 0=state+office_fuzzy+last_name, 1=state+office_fuzzy+last_name_fuzzy,
           2=state+last_name, 3=phone exact, 4=email exact.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 4
