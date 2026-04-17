@@ -26,14 +26,21 @@ with
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
 
     campaign_elections as (
+        -- Filters out-of-range election_date sentinels (e.g. year 19999) from
+        -- source data so downstream consumers never see garbage.
         select
             user_id,
             min(
                 case when election_date >= current_date then election_date end
             ) as next_election_date,
-            max(election_date) as last_election_date
+            max(
+                case when election_date < current_date then election_date end
+            ) as last_election_date
         from {{ ref("goodparty_data_catalog", "campaigns") }}
-        where not is_demo and election_date is not null and is_latest_version
+        where
+            not is_demo
+            and is_latest_version
+            and election_date between '2000-01-01' and '2050-12-31'
         group by user_id
     ),
 

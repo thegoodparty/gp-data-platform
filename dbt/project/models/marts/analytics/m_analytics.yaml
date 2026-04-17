@@ -222,11 +222,9 @@ models:
 
       - name: last_election_date
         description: >
-          Latest election date (chronologically largest, past or future) across
-          the user's non-demo campaigns (latest version only). For users with only
-          past elections this is the most recent past election; for users with
-          future elections this is the furthest future election.
-          NULL if no campaign has an election date.
+          Most recent past election date across the user's non-demo campaigns
+          (latest version only). NULL if the user has no campaign whose election
+          date is before today.
 
       - name: election_date
         description: >
@@ -367,18 +365,6 @@ models:
             expression: "is_active_candidate_90d = true"
           config:
             where: "is_active_candidate = true"
-      - dbt_utils.expression_is_true:
-          name: next_election_date_is_future
-          arguments:
-            expression: "next_election_date >= current_date"
-          config:
-            where: "next_election_date is not null"
-      - dbt_utils.expression_is_true:
-          name: last_election_date_geq_next
-          arguments:
-            expression: "last_election_date >= next_election_date"
-          config:
-            where: "next_election_date is not null"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "non_demo_campaign_count <= campaign_count"
