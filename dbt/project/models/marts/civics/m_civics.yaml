@@ -729,9 +729,10 @@ models:
 
       - name: source_candidate_id
         description: >
-          The vendor's own identifier for the candidate in this stage. For
-          2025 archive data this is the DDHQ candidate_id; for 2026+ data
-          this is the BallotReady candidacy_id.
+          Vendor identifier carried on the stage row. For 2025 archive data,
+          this is the DDHQ candidate_id (a person-level ID). For 2026+ data,
+          this is the BallotReady candidacy_id (a candidacy-stage-level ID,
+          despite the column name).
 
       - name: source_race_id
         description: >
