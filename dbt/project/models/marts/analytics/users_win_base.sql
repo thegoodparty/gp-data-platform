@@ -12,9 +12,9 @@
     - is_onboarded: US registration with first dashboard view from registration
       time through 14 days. Use with is_post_amplitude_registration and
       registration_country = 'United States' for Amplitude-era denominators.
-    - is_active_candidate: user viewed candidate dashboard in trailing 30 days.
-    - is_active_candidate_7d: same as above but 7-day window.
-    - is_active_candidate_90d: same as above but 90-day window.
+    - is_active_candidate_7d: user viewed candidate dashboard in trailing 7 days.
+    - is_active_candidate: trailing-30-day window (canonical Active Candidates OKR).
+    - is_active_candidate_90d: trailing-90-day window.
     - is_activated: user has at least one voter outreach campaign event.
     - has_completed_onboarding_flow: supplemental onboarding_complete flag.
 */
@@ -81,7 +81,7 @@ with
             -- Onboarding metric
             m.amplitude_registration_completed_at,
             m.first_dashboard_viewed_at,
-            -- Active Candidates metric (approved definition)
+            -- Active Candidates metric (7d/30d/90d windows)
             m.last_dashboard_viewed_at,
             m.dashboard_view_count,
             coalesce(
@@ -116,7 +116,7 @@ with
             ) as has_amplitude_data,
             (u.created_at >= '2023-12-10') as is_post_amplitude_registration,
 
-            -- Election date (from non-demo campaigns, latest version only)
+            -- Election date context (for dashboard cohort filtering)
             ce.next_election_date,
             ce.last_election_date,
             coalesce(ce.next_election_date, ce.last_election_date) as election_date,

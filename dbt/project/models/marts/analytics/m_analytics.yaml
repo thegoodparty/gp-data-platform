@@ -160,6 +160,8 @@ models:
         description: >
           TRUE if user has viewed their Candidate Dashboard at least once
           in the last 30 days. Uses last_dashboard_viewed_at from Amplitude milestones.
+          Canonical Active Candidates OKR metric; is_active_candidate_7d and
+          is_active_candidate_90d are supplemental windows.
         data_tests:
           - not_null
 
@@ -220,8 +222,11 @@ models:
 
       - name: last_election_date
         description: >
-          Most recent election date (past or future) across the user's non-demo
-          campaigns (latest version only). NULL if no campaign has an election date.
+          Latest election date (chronologically largest, past or future) across
+          the user's non-demo campaigns (latest version only). For users with only
+          past elections this is the most recent past election; for users with
+          future elections this is the furthest future election.
+          NULL if no campaign has an election date.
 
       - name: election_date
         description: >
@@ -321,6 +326,7 @@ models:
           config:
             where: "is_active_candidate_7d = true"
       - dbt_utils.expression_is_true:
+          name: active_candidate_7d_window_correctness
           arguments:
             expression: "is_active_candidate_7d = true"
           config:
@@ -332,6 +338,7 @@ models:
           config:
             where: "is_active_candidate = true"
       - dbt_utils.expression_is_true:
+          name: active_candidate_30d_window_correctness
           arguments:
             expression: "is_active_candidate = true"
           config:
@@ -343,6 +350,7 @@ models:
           config:
             where: "is_active_candidate_90d = true"
       - dbt_utils.expression_is_true:
+          name: active_candidate_90d_window_correctness
           arguments:
             expression: "is_active_candidate_90d = true"
           config:
@@ -359,6 +367,18 @@ models:
             expression: "is_active_candidate_90d = true"
           config:
             where: "is_active_candidate = true"
+      - dbt_utils.expression_is_true:
+          name: next_election_date_is_future
+          arguments:
+            expression: "next_election_date >= current_date"
+          config:
+            where: "next_election_date is not null"
+      - dbt_utils.expression_is_true:
+          name: last_election_date_geq_next
+          arguments:
+            expression: "last_election_date >= next_election_date"
+          config:
+            where: "next_election_date is not null"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "non_demo_campaign_count <= campaign_count"
