@@ -179,6 +179,8 @@ models:
       connected-components algorithm, after post-prediction filters enforce
       person identity agreement (last name + first name/email/phone) and
       office compatibility (office_type match or contact-info bypass).
+    config:
+      enabled: false  # TODO: enable once er_source tables are uploaded (blocked on volume permissions)
     columns:
       - name: cluster_id
         description: >
@@ -250,6 +252,8 @@ models:
         description: TechSpeed position ID. Only populated for TS records.
 
   - name: stg_er_source__pairwise_elected_officials
+    config:
+      enabled: false  # TODO: enable once er_source tables are uploaded (blocked on volume permissions)
     description: >
       Staged pairwise predictions from the elected officials entity resolution
       pipeline. Each row is a scored pair of elected official records with Splink
