@@ -1245,12 +1245,14 @@ models:
 
       - name: office_level
         description: >
-          Office level derived from BallotReady level values.
-          City-level offices are mapped to Local.
+          Office level from BallotReady's PositionLevel enum
+          (initcap normalization only, no value collapsing).
+          See https://developers.civicengine.com/docs/api/graphql/reference/enums/position-level
         data_tests:
           - accepted_values:
               arguments:
                 values:
+                  - City
                   - Local
                   - County
                   - Township

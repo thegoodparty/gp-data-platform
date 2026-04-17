@@ -18,9 +18,7 @@ with
                     "normalized_position_name",
                 )
             }} as candidate_office,
-            case
-                when lower(level) = 'city' then 'Local' else initcap(level)
-            end as office_level,
+            initcap(level) as office_level,
             {{ extract_city_from_office_name("position_name") }} as city,
             {{ extract_district_geographic("position_name") }} as district,
             case

@@ -46,10 +46,7 @@ with
             end as is_judicial,
             -- candidate_office: TS-native approach (matches int__techspeed_candidates)
             initcap(trim(office_normalized)) as candidate_office,
-            -- office_level: from level field, city→Local, else initcap
-            case
-                when lower(trim(level)) = 'city' then 'Local' else initcap(trim(level))
-            end as office_level_derived,
+            initcap(trim(level)) as office_level_derived,
             -- office_type: TS-native case normalization map (covers all 34 source
             -- variants)
             case

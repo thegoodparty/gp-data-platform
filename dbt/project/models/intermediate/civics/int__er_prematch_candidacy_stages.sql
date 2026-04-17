@@ -83,9 +83,7 @@ with
             br.state,
             {{ parse_party_affiliation("br.parties") }} as party,
             br.candidate_office,
-            case
-                when lower(br.level) = 'city' then 'Local' else initcap(br.level)
-            end as office_level,
+            initcap(br.level) as office_level,
             {{ map_office_type("br.candidate_office") }} as office_type,
             {{ extract_district_raw("br.position_name") }} as district_raw,
             {{ extract_district_identifier("br.position_name") }}
