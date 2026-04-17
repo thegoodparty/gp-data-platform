@@ -558,27 +558,27 @@ models:
       - name: is_win_icp
         description: >
           Whether this candidacy's position meets the Win Ideal Customer Profile
-          (ICP) criteria. Win ICP means the office has between 500 and 100,000
-          L2 voters in the district, making it suitable for the Win product.
+          (ICP) criteria, based on L2 voter count in the district. Voter-count
+          thresholds are defined in int__icp_offices and may change over time.
           Derived from int__icp_offices via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
           Whether this candidacy's position meets the Serve Ideal Customer
-          Profile (ICP) criteria. Serve ICP means the office has between 1,000
-          and 100,000 L2 voters in the district, making it suitable for the
-          Serve product. Derived from int__icp_offices via br_position_database_id.
+          Profile (ICP) criteria, based on L2 voter count in the district.
+          The Serve voter-count range is a subset of Win, so any Serve-eligible
+          office is also Win-eligible. Thresholds defined in int__icp_offices.
+          Derived via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_win_supersize_icp
         description: >
-          Whether this candidacy's position meets all Win ICP criteria but has
-          more than 100,000 L2 voters, placing it above the standard Win
-          threshold. These offices require separate consideration outside the
-          standard Win process. Derived from int__icp_offices via
-          br_position_database_id. NULL for records without BallotReady
-          position match.
+          Whether this candidacy's position meets ICP criteria but exceeds the
+          upper voter-count threshold for the standard Win process. These
+          offices require separate consideration. Thresholds defined in
+          int__icp_offices. Derived via br_position_database_id.
+          NULL for records without BallotReady position match.
 
       - name: created_at
         description: Timestamp when the record was created
@@ -809,21 +809,24 @@ models:
 
       - name: is_win_icp
         description: >
-          Whether this candidacy stage's position meets the Win ICP criteria
-          (500-100,000 voters). Derived from the election_stage table's ICP flags.
+          Whether this candidacy stage's position meets the Win ICP criteria,
+          based on L2 voter count. Thresholds defined in int__icp_offices.
+          Derived from the election_stage table's ICP flags.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
-          Whether this candidacy stage's position meets the Serve ICP criteria
-          (1,000-100,000 voters). Derived from the election_stage table's ICP flags.
+          Whether this candidacy stage's position meets the Serve ICP criteria,
+          based on L2 voter count. Thresholds defined in int__icp_offices.
+          Derived from the election_stage table's ICP flags.
           NULL for records without BallotReady position match.
 
       - name: is_win_supersize_icp
         description: >
-          Whether this candidacy stage's position meets all ICP criteria but has
-          >100,000 voters, requiring separate consideration outside the standard
-          Win process. Derived from the election_stage table's ICP flags.
+          Whether this candidacy stage's position exceeds the upper voter-count
+          threshold for the standard Win process, requiring separate consideration.
+          Thresholds defined in int__icp_offices.
+          Derived from the election_stage table's ICP flags.
           NULL for records without BallotReady position match.
 
       - name: created_at
@@ -991,8 +994,8 @@ models:
         description: >
           L2 voter count for the district, used to determine whether the office
           falls within GoodParty's Ideal Customer Profile (ICP) target market.
-          Win ICP requires 500 to 100,000 voters; Serve ICP requires 1,000 to
-          100,000 voters. Derived from int__icp_offices via
+          The voter-count thresholds for Win, Serve, and Supersize ICP are
+          defined in int__icp_offices and may change over time. Derived via
           br_position_database_id. NULL for records without a matched L2
           district.
         data_tests:
@@ -1010,21 +1013,23 @@ models:
 
       - name: is_win_icp
         description: >
-          Whether this election's position meets the Win ICP criteria
-          (500-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          Whether this election's position meets the Win ICP criteria, based on
+          L2 voter count. Thresholds defined in int__icp_offices.
+          Derived via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
-          Whether this election's position meets the Serve ICP criteria
-          (1,000-100,000 voters). Derived from int__icp_offices via br_position_database_id.
+          Whether this election's position meets the Serve ICP criteria, based on
+          L2 voter count. Thresholds defined in int__icp_offices.
+          Derived via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: is_win_supersize_icp
         description: >
-          Whether this election's position meets all ICP criteria but has >100,000
-          voters, requiring separate consideration outside the standard Win process.
-          Derived from int__icp_offices via br_position_database_id.
+          Whether this election's position exceeds the upper voter-count threshold
+          for the standard Win process, requiring separate consideration.
+          Thresholds defined in int__icp_offices. Derived via br_position_database_id.
           NULL for records without BallotReady position match.
 
       - name: primary_election_date
@@ -1225,21 +1230,23 @@ models:
 
       - name: is_win_icp
         description: >
-          Whether this election stage's position meets the Win ICP criteria
-          (500-100,000 voters). Derived from int__icp_offices via br_position_id.
+          Whether this election stage's position meets the Win ICP criteria,
+          based on L2 voter count. Thresholds defined in int__icp_offices.
+          Derived via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
 
       - name: is_serve_icp
         description: >
-          Whether this election stage's position meets the Serve ICP criteria
-          (1,000-100,000 voters). Derived from int__icp_offices via br_position_id.
+          Whether this election stage's position meets the Serve ICP criteria,
+          based on L2 voter count. Thresholds defined in int__icp_offices.
+          Derived via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
 
       - name: is_win_supersize_icp
         description: >
-          Whether this election stage's position meets all ICP criteria but has
-          >100,000 voters, requiring separate consideration outside the standard
-          Win process. Derived from int__icp_offices via br_position_id.
+          Whether this election stage's position exceeds the upper voter-count
+          threshold for the standard Win process, requiring separate consideration.
+          Thresholds defined in int__icp_offices. Derived via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
 
       - name: created_at
