@@ -1,126 +1,84 @@
 -- Civics mart election table
--- Union of 2025 archive, 2026+ BallotReady (full universe), and net-new
--- TechSpeed elections not matched to any BR record.
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
 --
--- BallotReady is the authoritative spine for elections (positions).
--- TechSpeed elections only appear when they represent positions BR doesn't cover.
+-- BallotReady is the authoritative spine for elections (positions). TS int
+-- models remap clustered rows to BR's gp_election_id via
+-- int__civics_er_canonical_ids, so a full outer join on gp_election_id merges
+-- matched pairs automatically. Unmatched TS elections pass through as net-new.
+{%- set br_wins_cols = [
+    "official_office_name",
+    "candidate_office",
+    "office_level",
+    "office_type",
+    "state",
+    "city",
+    "district",
+    "seat_name",
+    "election_date",
+    "election_year",
+    "seats_available",
+    "term_start_date",
+    "number_of_opponents",
+    "has_ddhq_match",
+    "created_at",
+    "updated_at",
+] %}
+
+{%- set ts_wins_cols = [
+    "filing_deadline",
+    "population",
+    "is_uncontested",
+    "is_open_seat",
+] %}
+
 with
-    -- =========================================================================
-    -- 2025 archive (pass-through)
-    -- =========================================================================
     archive_2025 as (
         select
             gp_election_id,
-            official_office_name,
-            candidate_office,
-            office_level,
-            office_type,
-            state,
-            city,
-            district,
-            seat_name,
-            election_date,
-            election_year,
-            filing_deadline,
-            population,
-            seats_available,
-            term_start_date,
-            is_uncontested,
-            number_of_opponents,
-            is_open_seat,
-            has_ddhq_match,
+            -- Column order must match merged_since_2026 (br_wins_cols loop order,
+            -- then ts_wins_cols, then BR-only, then source_systems)
+            {% for col in br_wins_cols %} {{ col }}, {% endfor %}
+            {% for col in ts_wins_cols %} {{ col }}, {% endfor %}
             br_position_database_id,
             is_judicial,
             is_appointed,
             br_normalized_position_type,
-            created_at,
-            updated_at,
             array('hubspot') as source_systems
         from {{ ref("int__civics_election_2025") }}
     ),
 
-    -- =========================================================================
-    -- BallotReady: full universe of elections (authoritative spine)
-    -- =========================================================================
-    br_2026 as (
+    merged_since_2026 as (
         select
-            gp_election_id,
-            official_office_name,
-            candidate_office,
-            office_level,
-            office_type,
-            state,
-            city,
-            district,
-            seat_name,
-            election_date,
-            election_year,
-            filing_deadline,
-            population,
-            seats_available,
-            term_start_date,
-            is_uncontested,
-            number_of_opponents,
-            is_open_seat,
-            has_ddhq_match,
-            br_position_database_id,
-            is_judicial,
-            is_appointed,
-            br_normalized_position_type,
-            created_at,
-            updated_at,
-            array('ballotready') as source_systems
-        from {{ ref("int__civics_election_ballotready") }}
+            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
+            {% for col in br_wins_cols %}
+                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+            {% endfor %}
+            -- TS wins: BR always NULL, TS populated from techspeed source
+            {% for col in ts_wins_cols %}
+                coalesce(ts.{{ col }}, br.{{ col }}) as {{ col }},
+            {% endfor %}
+            br.br_position_database_id,
+            br.is_judicial,
+            br.is_appointed,
+            br.br_normalized_position_type,
+            array_compact(
+                array(
+                    case when br.gp_election_id is not null then 'ballotready' end,
+                    case when ts.gp_election_id is not null then 'techspeed' end
+                )
+            ) as source_systems
+        from {{ ref("int__civics_election_ballotready") }} as br
+        full outer join
+            {{ ref("int__civics_election_techspeed") }} as ts
+            on br.gp_election_id = ts.gp_election_id
     ),
 
-    -- =========================================================================
-    -- TechSpeed: full universe. TS int model remaps clustered elections to BR's
-    -- gp_election_id, so matched TS rows get deduped away by the qualify below.
-    -- Only un-clustered TS elections survive as net-new.
-    -- =========================================================================
-    ts_2026 as (
-        select
-            gp_election_id,
-            official_office_name,
-            candidate_office,
-            office_level,
-            office_type,
-            state,
-            city,
-            district,
-            seat_name,
-            election_date,
-            election_year,
-            filing_deadline,
-            population,
-            seats_available,
-            term_start_date,
-            is_uncontested,
-            number_of_opponents,
-            is_open_seat,
-            has_ddhq_match,
-            br_position_database_id,
-            is_judicial,
-            is_appointed,
-            br_normalized_position_type,
-            created_at,
-            updated_at,
-            array('techspeed') as source_systems
-        from {{ ref("int__civics_election_techspeed") }}
-    ),
-
-    -- =========================================================================
-    -- Combine all sources
-    -- =========================================================================
     combined as (
         select *
         from archive_2025
         union all
         select *
-        from br_2026
-        union all
-        select *
-        from ts_2026
+        from merged_since_2026
     ),
 
     deduplicated as (
@@ -128,14 +86,7 @@ with
         from combined
         qualify
             row_number() over (
-                partition by gp_election_id
-                order by
-                    -- BR wins over TS when an election appears in both (same ID
-                    -- because TS int model adopted BR's canonical)
-                    case
-                        when array_contains(source_systems, 'ballotready') then 0 else 1
-                    end,
-                    updated_at desc nulls last
+                partition by gp_election_id order by updated_at desc nulls last
             )
             = 1
     ),
