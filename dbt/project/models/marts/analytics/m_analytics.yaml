@@ -156,7 +156,7 @@ models:
         data_tests:
           - not_null
 
-      - name: is_active_candidate
+      - name: is_active_candidate_30d
         description: >
           TRUE if user has viewed their Candidate Dashboard at least once
           in the last 30 days. Uses last_dashboard_viewed_at from Amplitude milestones.
@@ -334,11 +334,11 @@ models:
           arguments:
             expression: "last_dashboard_viewed_at is not null"
           config:
-            where: "is_active_candidate = true"
+            where: "is_active_candidate_30d = true"
       - dbt_utils.expression_is_true:
           name: active_candidate_30d_window_correctness
           arguments:
-            expression: "is_active_candidate = true"
+            expression: "is_active_candidate_30d = true"
           config:
             where: "last_dashboard_viewed_at >= current_date - interval 30 days"
       - dbt_utils.expression_is_true:
@@ -356,7 +356,7 @@ models:
       - dbt_utils.expression_is_true:
           name: active_candidate_7d_implies_30d
           arguments:
-            expression: "is_active_candidate = true"
+            expression: "is_active_candidate_30d = true"
           config:
             where: "is_active_candidate_7d = true"
       - dbt_utils.expression_is_true:
@@ -364,7 +364,7 @@ models:
           arguments:
             expression: "is_active_candidate_90d = true"
           config:
-            where: "is_active_candidate = true"
+            where: "is_active_candidate_30d = true"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "non_demo_campaign_count <= campaign_count"

@@ -13,7 +13,7 @@
       time through 14 days. Use with is_post_amplitude_registration and
       registration_country = 'United States' for Amplitude-era denominators.
     - is_active_candidate_7d: user viewed candidate dashboard in trailing 7 days.
-    - is_active_candidate: trailing-30-day window (canonical Active Candidates OKR).
+    - is_active_candidate_30d: trailing-30-day window (canonical Active Candidates OKR).
     - is_active_candidate_90d: trailing-90-day window.
     - is_activated: user has at least one voter outreach campaign event.
     - has_completed_onboarding_flow: supplemental onboarding_complete flag.
@@ -96,7 +96,7 @@ with
             ) as is_active_candidate_7d,
             coalesce(
                 m.last_dashboard_viewed_at >= current_date - interval 30 days, false
-            ) as is_active_candidate,
+            ) as is_active_candidate_30d,
             coalesce(
                 m.last_dashboard_viewed_at >= current_date - interval 90 days, false
             ) as is_active_candidate_90d,
