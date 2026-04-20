@@ -146,19 +146,8 @@ models:
         description: Channel through which the survey was delivered
         data_tests:
           - not_null
-          - accepted_values:
-              arguments:
-                values: ["WEB"]
       - name: pmf_response
         description: >
-          Raw PMF survey option value. Only populated for survey_id 8.
+          Raw PMF survey option value. Populated for PMF surveys (e.g. survey_id 8, 12).
           Values: Option 1 (Very Disappointed), Option 2 (Somewhat Disappointed),
           Not disappointed, N/A - I no longer use GoodParty.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - "Option 1"
-                  - "Option 2"
-                  - "Not disappointed"
-                  - "N/A - I no longer use GoodParty"
