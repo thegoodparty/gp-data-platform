@@ -4,14 +4,17 @@
     mart_analytics.users_win_base
 
     Unified user-grain view for product metrics.
-    Source: mart_civics.users + int__amplitude_user_milestones.
+    Source: mart_civics.users + mart_civics.campaigns
+           + int__amplitude_user_milestones.
 
     Metric definitions in this model:
     - is_pro: user has at least one pro campaign.
     - is_onboarded: US registration with first dashboard view from registration
       time through 14 days. Use with is_post_amplitude_registration and
       registration_country = 'United States' for Amplitude-era denominators.
-    - is_active_candidate: user viewed candidate dashboard in trailing 30 days.
+    - is_active_candidate_7d: user viewed candidate dashboard in trailing 7 days.
+    - is_active_candidate_30d: trailing-30-day window (canonical Active Candidates OKR).
+    - is_active_candidate_90d: trailing-90-day window.
     - is_activated: user has at least one voter outreach campaign event.
     - has_completed_onboarding_flow: supplemental onboarding_complete flag.
 */
@@ -21,6 +24,25 @@ with
         select * from {{ ref("goodparty_data_catalog", "users") }} where is_win_user
     ),
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
+
+    campaign_elections as (
+        -- Filters out-of-range election_date sentinels (e.g. year 19999) from
+        -- source data so downstream consumers never see garbage.
+        select
+            user_id,
+            min(
+                case when election_date >= current_date then election_date end
+            ) as next_election_date,
+            max(
+                case when election_date < current_date then election_date end
+            ) as last_election_date
+        from {{ ref("goodparty_data_catalog", "campaigns") }}
+        where
+            not is_demo
+            and is_latest_version
+            and election_date between '2000-01-01' and '2050-12-31'
+        group by user_id
+    ),
 
     final as (
         select
@@ -66,12 +88,18 @@ with
             -- Onboarding metric
             m.amplitude_registration_completed_at,
             m.first_dashboard_viewed_at,
-            -- Active Candidates metric (approved definition)
+            -- Active Candidates metric (7d/30d/90d windows)
             m.last_dashboard_viewed_at,
             m.dashboard_view_count,
             coalesce(
+                m.last_dashboard_viewed_at >= current_date - interval 7 days, false
+            ) as is_active_candidate_7d,
+            coalesce(
                 m.last_dashboard_viewed_at >= current_date - interval 30 days, false
-            ) as is_active_candidate,
+            ) as is_active_candidate_30d,
+            coalesce(
+                m.last_dashboard_viewed_at >= current_date - interval 90 days, false
+            ) as is_active_candidate_90d,
             m.registration_country,
             coalesce(
                 m.registration_country = 'United States'
@@ -95,6 +123,11 @@ with
             ) as has_amplitude_data,
             (u.created_at >= '2023-12-10') as is_post_amplitude_registration,
 
+            -- Election date context (for dashboard cohort filtering)
+            ce.next_election_date,
+            ce.last_election_date,
+            coalesce(ce.next_election_date, ce.last_election_date) as election_date,
+
             -- Activated metric
             m.first_campaign_sent_at,
             (m.first_campaign_sent_at is not null) as is_activated,
@@ -102,6 +135,7 @@ with
             m.total_recipient_count
         from users u
         left join milestones m on u.user_id = m.user_id
+        left join campaign_elections ce on u.user_id = ce.user_id
     )
 
 select *
