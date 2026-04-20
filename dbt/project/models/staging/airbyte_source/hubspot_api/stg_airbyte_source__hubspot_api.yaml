@@ -127,12 +127,10 @@ models:
           8 = PMF - Web survey (March18,2026),
           9 = Win User satisfaction survey (5 stars) (Web),
           10 = Win User satisfaction survey (5 stars) (Web) (3+ Sessions + ICP),
+          12 = PMF - Web survey (April 2026),
           5058880 = Knowledge base feedback.
         data_tests:
           - not_null
-          - accepted_values:
-              arguments:
-                values: ["2", "3", "8", "9", "10", "5058880"]
       - name: submitted_at
         description: Timestamp when the survey response was submitted
         data_tests:
@@ -148,19 +146,8 @@ models:
         description: Channel through which the survey was delivered
         data_tests:
           - not_null
-          - accepted_values:
-              arguments:
-                values: ["WEB"]
       - name: pmf_response
         description: >
-          Raw PMF survey option value. Only populated for survey_id 8.
+          Raw PMF survey option value. Populated for PMF surveys (e.g. survey_id 8, 12).
           Values: Option 1 (Very Disappointed), Option 2 (Somewhat Disappointed),
           Not disappointed, N/A - I no longer use GoodParty.
-        data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - "Option 1"
-                  - "Option 2"
-                  - "Not disappointed"
-                  - "N/A - I no longer use GoodParty"

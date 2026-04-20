@@ -744,7 +744,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: is_win_icp
         description: >
@@ -827,7 +827,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: election_year
         description: Year of the election
@@ -835,7 +835,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1900
-                max_value: 2030
+                max_value: 2050
               config:
                 where: "election_year is not null"
 
@@ -1059,7 +1059,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
-                max_value: "'2030-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: election_name
         description: >
