@@ -80,14 +80,13 @@ with
             tc.ts_phone,
             tc.ts_email,
             -- Term-scoped TS match
-            td.ts_officeholder_id as ts_oh_id,
+            td.ts_officeholder_id,
             case
                 when td.ts_officeholder_id is not null and ic.ts_officeholder_id is null
                 then td.is_incumbent
             end as ts_is_incumbent,
             -- Match flags
-            td.ts_officeholder_id is not null as has_direct_ts_term_match,
-            tc.br_candidate_id is not null as _ts_contact_joined
+            td.ts_officeholder_id is not null as has_direct_ts_term_match
         from br
         left join ts_contact_rollup tc on br.br_candidate_id = tc.br_candidate_id
         left join
@@ -121,7 +120,7 @@ select
     merged.br_position_id,
     merged.br_candidacy_id,
     merged.br_geo_id,
-    merged.ts_oh_id as ts_officeholder_id,
+    merged.ts_officeholder_id,
 
     -- Name (BR)
     merged.first_name,
@@ -131,8 +130,8 @@ select
     merged.full_name,
 
     -- Contact (mixed precedence)
-    coalesce(merged.ts_phone, merged.phone) as phone,
-    coalesce(merged.email, merged.ts_email) as email,
+    coalesce(merged.ts_phone, merged.phone) as phone,  -- TS wins
+    coalesce(merged.email, merged.ts_email) as email,  -- BR wins
     merged.office_phone,
     merged.central_phone,
 
@@ -188,7 +187,7 @@ select
                 when
                     merged.ts_phone is not null
                     or (merged.email is null and merged.ts_email is not null)
-                    or merged.ts_oh_id is not null
+                    or merged.ts_officeholder_id is not null
                 then 'techspeed'
             end
         )
