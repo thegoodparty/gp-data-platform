@@ -1,95 +1,119 @@
 {{ config(tags=["archive"]) }}
 
--- Historical archive of election stages from elections on or before 2025-12-31
--- Uses archived HubSpot data from 2026-01-22 snapshot
--- Inlines m_general__election_stage logic for self-contained archive
+-- Historical archive of election stages from elections on or before 2025-12-31.
+-- Grain: one row per (gp_election_id, stage_type).
+-- Seeded from candidacy dates so HubSpot-only stages are represented. DDHQ
+-- attributes (race_id, race_name, total votes) are left-joined when available.
 with
-    election_stages as (
+    candidate_stage_implied as (
         select
-            {{ generate_salted_uuid(fields=["tbl_ddhq_matches.ddhq_race_id"]) }}
-            as gp_election_stage_id,
-            {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
-            tbl_contest.contact_id as hubspot_contact_id,
-            tbl_ddhq_matches.ddhq_race_id,
-            tbl_ddhq_matches.ddhq_election_type as election_stage,
-            tbl_ddhq_matches.ddhq_date as ddhq_election_stage_date,
-            tbl_ddhq_matches.ddhq_race_name,
-            tbl_ddhq_election_results_source.total_number_of_ballots_in_race
-            as total_votes_cast,
-            tbl_ddhq_election_results_source._airbyte_extracted_at
-        from {{ ref("int__gp_ai_election_match") }} as tbl_ddhq_matches
-        left join
-            {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
-            as tbl_ddhq_election_results_source
-            on tbl_ddhq_election_results_source.ddhq_race_id
-            = tbl_ddhq_matches.ddhq_race_id
-            and tbl_ddhq_election_results_source.candidate_id
-            = tbl_ddhq_matches.ddhq_candidate_id
-        left join
-            {{ ref("int__civics_candidacy_2025") }} as tbl_candidacy
-            on tbl_candidacy.gp_candidacy_id = tbl_ddhq_matches.gp_candidacy_id
-        left join
-            {{ ref("int__hubspot_contest_2025") }} as tbl_contest
-            on tbl_contest.contact_id = tbl_candidacy.hubspot_contact_id
+            gp_election_id,
+            br_position_database_id,
+            'primary' as stage_type,
+            primary_election_date as stage_date,
+            updated_at
+        from {{ ref("int__civics_candidacy_2025") }}
         where
-            tbl_ddhq_matches.ddhq_race_id is not null
-            and tbl_ddhq_matches.ddhq_candidate_id is not null
-        qualify
-            row_number() over (
-                partition by gp_election_stage_id order by _airbyte_extracted_at desc
-            )
-            = 1
-    ),
+            gp_election_id is not null
+            and primary_election_date between '1900-01-01' and '2025-12-31'
 
-    -- Filter to election stages on or before 2025-12-31
-    archived_election_stages as (
-        select *
-        from election_stages
-        where
-            ddhq_election_stage_date <= '2025-12-31'
-            and ddhq_election_stage_date >= '1900-01-01'
-    ),
+        union all
 
-    -- Only include election_stages that have a matching election in the archive
-    valid_elections as (
-        select gp_election_id from {{ ref("int__civics_election_2025") }}
-    ),
-
-    filtered_election_stages as (
         select
-            stage.gp_election_stage_id,
-            stage.gp_election_id,
-            stage.hubspot_contact_id,
-            stage.ddhq_race_id,
-            -- DDHQ uses a single 'runoff' type without distinguishing primary
-            -- vs general. Data confirms all 394 DDHQ runoff records follow a
-            -- general election (387 have a general match, 0 have a primary match),
-            -- so mapping to 'general runoff' is correct. 'primary runoff' only
-            -- comes from BallotReady (2026+), which flags it explicitly.
+            gp_election_id,
+            br_position_database_id,
+            'general' as stage_type,
+            general_election_date as stage_date,
+            updated_at
+        from {{ ref("int__civics_candidacy_2025") }}
+        where
+            gp_election_id is not null
+            and general_election_date between '1900-01-01' and '2025-12-31'
+
+        union all
+
+        select
+            gp_election_id,
+            br_position_database_id,
+            'general runoff' as stage_type,
+            general_runoff_election_date as stage_date,
+            updated_at
+        from {{ ref("int__civics_candidacy_2025") }}
+        where
+            gp_election_id is not null
+            and general_runoff_election_date between '1900-01-01' and '2025-12-31'
+    ),
+
+    -- Aggregate candidacy-level attributes up to stage grain. br_position_id
+    -- is expected to agree within a (gp_election_id, stage_type); 99.7% of
+    -- stages show exactly one distinct value. max() is arbitrary on disagreement.
+    stages_agg as (
+        select
+            gp_election_id,
+            stage_type,
+            max(stage_date) as election_stage_date,
+            max(br_position_database_id) as br_position_id,
+            max(updated_at) as src_updated_at
+        from candidate_stage_implied
+        group by gp_election_id, stage_type
+    ),
+
+    -- DDHQ attribute join, aggregated to (gp_election_id, stage_type) grain.
+    -- Multiple candidate rows per DDHQ race collapse to one via any_value.
+    ddhq_attrs as (
+        select
+            c.gp_election_id,
             case
-                when stage.election_stage = 'runoff'
+                when m.ddhq_election_type = 'runoff'
                 then 'general runoff'
-                else stage.election_stage
-            end as election_stage,
-            stage.ddhq_election_stage_date,
-            stage.ddhq_race_name,
-            stage.total_votes_cast,
-            stage._airbyte_extracted_at as created_at
-        from archived_election_stages as stage
+                else lower(m.ddhq_election_type)
+            end as stage_type,
+            any_value(m.ddhq_race_id) as ddhq_race_id,
+            any_value(m.ddhq_race_name) as ddhq_race_name,
+            any_value(r.total_number_of_ballots_in_race) as total_votes_cast,
+            max(r._airbyte_extracted_at) as _airbyte_extracted_at
+        from {{ ref("int__gp_ai_election_match") }} as m
         inner join
-            valid_elections as election
-            on stage.gp_election_id = election.gp_election_id
+            {{ ref("int__civics_candidacy_2025") }} as c
+            on c.gp_candidacy_id = m.gp_candidacy_id
+        left join
+            {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }} as r
+            on r.ddhq_race_id = m.ddhq_race_id
+            and r.candidate_id = m.ddhq_candidate_id
+        where m.ddhq_race_id is not null and c.gp_election_id is not null
+        group by 1, 2
+    ),
+
+    joined as (
+        select
+            s.gp_election_id,
+            s.stage_type,
+            s.election_stage_date,
+            s.br_position_id,
+            s.src_updated_at,
+            d.ddhq_race_id,
+            d.ddhq_race_name,
+            d.total_votes_cast,
+            d._airbyte_extracted_at
+        from stages_agg as s
+        left join
+            ddhq_attrs as d
+            on s.gp_election_id = d.gp_election_id
+            and s.stage_type = d.stage_type
+        inner join
+            {{ ref("int__civics_election_2025") }} as e
+            on s.gp_election_id = e.gp_election_id
     )
 
 select
-    gp_election_stage_id,
+    {{ generate_salted_uuid(fields=["gp_election_id", "stage_type"]) }}
+    as gp_election_stage_id,
     gp_election_id,
-    hubspot_contact_id,
     ddhq_race_id,
-    election_stage,
-    ddhq_election_stage_date,
+    stage_type as election_stage,
+    election_stage_date as ddhq_election_stage_date,
     ddhq_race_name,
+    br_position_id,
     total_votes_cast,
-    created_at
-
-from filtered_election_stages
+    coalesce(_airbyte_extracted_at, src_updated_at) as created_at
+from joined

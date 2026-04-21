@@ -7,7 +7,7 @@ with
             gp_election_id,
             cast(null as string) as br_race_id,
             cast(null as string) as br_election_id,
-            cast(null as int) as br_position_id,
+            br_position_id,
             ddhq_race_id,
             election_stage as stage_type,
             ddhq_election_stage_date as election_date,

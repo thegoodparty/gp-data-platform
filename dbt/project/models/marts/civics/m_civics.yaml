@@ -1034,7 +1034,9 @@ models:
       - name: br_position_id
         description: >
           BallotReady position ID. Used for ICP join. Populated for 2026+
-          BallotReady records, NULL for 2025 archive records.
+          BallotReady records. For 2025 archive records, populated when any
+          candidacy at this stage has a product DB campaign link (base64-decoded
+          campaign.details.positionId); otherwise NULL.
 
       - name: ddhq_race_id
         description: >
