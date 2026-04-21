@@ -518,8 +518,10 @@ models:
                 where: "br_position_database_id is not null"
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                warn_if: ">50"
-                error_if: ">100"
+                # Threshold raised post-DATA-1714 after the BR+TS candidacy
+                # merge expanded the candidacy universe.
+                warn_if: ">200"
+                error_if: ">300"
 
       - name: viability_score
         description: Model-generated viability rating
