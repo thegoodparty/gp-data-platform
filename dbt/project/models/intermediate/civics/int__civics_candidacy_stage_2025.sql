@@ -64,7 +64,24 @@ with
         where general_runoff_election_date between '1900-01-01' and '2025-12-31'
     ),
 
-    -- Attach DDHQ match (optional). DDHQ's 'runoff' maps to 'general runoff'.
+    -- Pre-project normalized stage_type so downstream joins can stay flat.
+    ddhq_matches as (
+        select
+            gp_candidacy_id,
+            ddhq_race_id,
+            ddhq_candidate_id,
+            ddhq_candidate,
+            ddhq_candidate_party,
+            ddhq_is_winner,
+            llm_confidence,
+            llm_reasoning,
+            top_10_candidates,
+            has_match,
+            {{ normalize_ddhq_stage_type("ddhq_election_type") }} as stage_type
+        from {{ ref("int__gp_ai_election_match") }}
+    ),
+
+    -- Attach DDHQ match (optional).
     with_ddhq as (
         select
             s.gp_candidacy_id,
@@ -87,9 +104,9 @@ with
             r.votes as votes_received
         from candidacy_stages_seed as s
         left join
-            {{ ref("int__gp_ai_election_match") }} as m
+            ddhq_matches as m
             on s.gp_candidacy_id = m.gp_candidacy_id
-            and {{ normalize_ddhq_stage_type("m.ddhq_election_type") }} = s.stage_type
+            and s.stage_type = m.stage_type
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }} as r
             on r.ddhq_race_id = m.ddhq_race_id
@@ -116,13 +133,24 @@ select
     case
         when v.gp_election_id is not null
         then {{ generate_salted_uuid(fields=["w.gp_election_id", "w.stage_type"]) }}
+        else null
     end as gp_election_stage_id,
     w.ddhq_candidate as candidate_name,
     w.ddhq_candidate_id as source_candidate_id,
     w.ddhq_race_id as source_race_id,
     w.ddhq_candidate_party as candidate_party,
+    -- Derive is_winner from DDHQ first, then fall back to the HubSpot-sourced
+    -- stage result so pledged HubSpot Wins aren't left with is_winner = null.
     case
-        when w.ddhq_is_winner = 'Y' then true when w.ddhq_is_winner = 'N' then false
+        when w.ddhq_is_winner = 'Y'
+        then true
+        when w.ddhq_is_winner = 'N'
+        then false
+        when w.hubspot_stage_result = 'Won'
+        then true
+        when w.hubspot_stage_result = 'Lost'
+        then false
+        else null
     end as is_winner,
     -- Stage-aware result: HubSpot carries general-stage results only.
     -- "Cannot Determine" is a valid candidacy_result but not an accepted
@@ -137,6 +165,7 @@ select
         then 'Won'
         when w.ddhq_is_winner = 'N'
         then 'Lost'
+        else null
     end as election_result,
     case
         when
@@ -146,6 +175,7 @@ select
         then 'hubspot'
         when w.ddhq_is_winner is not null
         then 'ddhq'
+        else null
     end as election_result_source,
     w.llm_confidence as match_confidence,
     w.llm_reasoning as match_reasoning,

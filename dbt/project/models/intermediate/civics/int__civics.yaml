@@ -85,6 +85,12 @@ models:
           BallotReady position database ID, sourced from HubSpot-linked product DB
           campaign.details.positionId (base64-decoded upstream). Used for ICP join
           at the mart layer. Null when no candidacy at this stage has a product DB link.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+              config:
+                severity: warn
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
