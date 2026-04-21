@@ -1,6 +1,6 @@
 name,branch,category,serve_eligible,win_effective_date
-U.S. Representative,legislative,federal,true,
 U.S. Senator,legislative,federal,true,
+U.S. Representative,legislative,federal,true,
 Delegate to the U.S. House,legislative,federal,true,
 State Representative,legislative,state,true,
 State Senator,legislative,state,true,
