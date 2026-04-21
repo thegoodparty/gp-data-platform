@@ -44,9 +44,9 @@ with
             and general_runoff_election_date between '1900-01-01' and '2025-12-31'
     ),
 
-    -- Aggregate candidacy-level attributes up to stage grain. br_position_id
-    -- is expected to agree within a (gp_election_id, stage_type); 99.7% of
-    -- stages show exactly one distinct value. max() is arbitrary on disagreement.
+    -- br_position_id is expected to agree within a (gp_election_id, stage_type);
+    -- 99.7% of stages show exactly one distinct value. max() is arbitrary on
+    -- disagreement.
     stages_agg as (
         select
             gp_election_id,
@@ -58,16 +58,10 @@ with
         group by gp_election_id, stage_type
     ),
 
-    -- DDHQ attribute join, aggregated to (gp_election_id, stage_type) grain.
-    -- Multiple candidate rows per DDHQ race collapse to one via any_value.
     ddhq_attrs as (
         select
             c.gp_election_id,
-            case
-                when m.ddhq_election_type = 'runoff'
-                then 'general runoff'
-                else lower(m.ddhq_election_type)
-            end as stage_type,
+            {{ normalize_ddhq_stage_type("m.ddhq_election_type") }} as stage_type,
             any_value(m.ddhq_race_id) as ddhq_race_id,
             any_value(m.ddhq_race_name) as ddhq_race_name,
             any_value(r.total_number_of_ballots_in_race) as total_votes_cast,
@@ -100,11 +94,8 @@ with
             ddhq_attrs as d
             on s.gp_election_id = d.gp_election_id
             and s.stage_type = d.stage_type
-        -- Drops a small number of "ghost" gp_election_ids produced by
-        -- UUID collisions when upstream contest data is entirely missing.
-        -- These candidacy_stages land with null gp_election_stage_id
-        -- (preserved for visibility; not FK-resolvable until the upstream
-        -- data quality issue is fixed).
+        -- Drops residual "ghost" gp_election_ids (contest rows present but
+        -- with all-null identifying fields, which still collision-hash).
         inner join
             {{ ref("int__civics_election_2025") }} as e
             on s.gp_election_id = e.gp_election_id

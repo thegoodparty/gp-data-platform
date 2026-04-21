@@ -89,12 +89,7 @@ with
         left join
             {{ ref("int__gp_ai_election_match") }} as m
             on s.gp_candidacy_id = m.gp_candidacy_id
-            and case
-                when m.ddhq_election_type = 'runoff'
-                then 'general runoff'
-                else lower(m.ddhq_election_type)
-            end
-            = s.stage_type
+            and {{ normalize_ddhq_stage_type("m.ddhq_election_type") }} = s.stage_type
         left join
             {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }} as r
             on r.ddhq_race_id = m.ddhq_race_id
