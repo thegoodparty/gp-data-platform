@@ -31,7 +31,16 @@ with
             tbl_companies.gp_candidacy_id,
             'candidacy_id-tbd' as candidacy_id,
             tbl_candidates.gp_candidate_id as gp_candidate_id,
-            {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
+            -- Null out gp_election_id when the contest left join returned no
+            -- row. Without this guard, every such candidacy gets the
+            -- "all-empty-fields" hash from generate_gp_election_id and collides
+            -- onto a single shared UUID, bucketing tens of thousands of
+            -- unrelated candidacies into one fake election.
+            case
+                when tbl_contest.contact_id is null
+                then null
+                else {{ generate_gp_election_id("tbl_contest") }}
+            end as gp_election_id,
             coalesce(
                 tbl_companies.product_campaign_id, tbl_campaigns.campaign_id
             ) as product_campaign_id,
