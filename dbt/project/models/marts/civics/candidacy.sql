@@ -1,22 +1,48 @@
 -- Civics mart candidacy table
--- Union of 2025 HubSpot archive and 2026+ BallotReady data
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+{%- set br_wins_cols = [
+    "product_campaign_id",
+    "hubspot_contact_id",
+    "hubspot_company_ids",
+    "candidate_id_source",
+    "party_affiliation",
+    "is_open_seat",
+    "candidate_office",
+    "official_office_name",
+    "office_level",
+    "candidacy_result",
+    "is_pledged",
+    "is_verified",
+    "verification_status_reason",
+    "is_partisan",
+    "primary_election_date",
+    "primary_runoff_election_date",
+    "general_election_date",
+    "general_runoff_election_date",
+    "viability_score",
+    "win_number",
+    "win_number_model",
+    "created_at",
+    "updated_at",
+] %}
+
 with
-    combined as (
+    archive_2025 as (
         select
             gp_candidacy_id,
             gp_candidate_id,
             gp_election_id,
+            -- Column order must match merged_2026 (br_wins_cols loop order,
+            -- then TS-wins, then BR-only, then source_systems)
             product_campaign_id,
             hubspot_contact_id,
             hubspot_company_ids,
             candidate_id_source,
             party_affiliation,
-            is_incumbent,
             is_open_seat,
             candidate_office,
             official_office_name,
             office_level,
-            office_type,
             candidacy_result,
             is_pledged,
             is_verified,
@@ -26,47 +52,52 @@ with
             primary_runoff_election_date,
             general_election_date,
             general_runoff_election_date,
-            br_position_database_id,
             viability_score,
             win_number,
             win_number_model,
             created_at,
-            updated_at
+            updated_at,
+            is_incumbent,
+            office_type,
+            br_position_database_id,
+            array('hubspot') as source_systems
         from {{ ref("int__civics_candidacy_2025") }}
+    ),
 
-        union all
-
+    -- TS int models remap clustered rows to BR's gp_* IDs (via
+    -- int__civics_er_canonical_ids), so a full outer join on gp_candidacy_id
+    -- merges matched pairs automatically. Unmatched rows on either side pass
+    -- through with NULLs on the opposite side.
+    merged_2026 as (
         select
-            gp_candidacy_id,
-            gp_candidate_id,
-            gp_election_id,
-            product_campaign_id,
-            hubspot_contact_id,
-            hubspot_company_ids,
-            candidate_id_source,
-            party_affiliation,
-            is_incumbent,
-            is_open_seat,
-            candidate_office,
-            official_office_name,
-            office_level,
-            office_type,
-            candidacy_result,
-            is_pledged,
-            is_verified,
-            verification_status_reason,
-            is_partisan,
-            primary_election_date,
-            primary_runoff_election_date,
-            general_election_date,
-            general_runoff_election_date,
-            br_position_database_id,
-            viability_score,
-            win_number,
-            win_number_model,
-            created_at,
-            updated_at
-        from {{ ref("int__civics_candidacy_ballotready") }}
+            coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) as gp_candidacy_id,
+            coalesce(br.gp_candidate_id, ts.gp_candidate_id) as gp_candidate_id,
+            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
+            {% for col in br_wins_cols %}
+                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+            {% endfor %}
+            -- TS wins for is_incumbent (TS: 51k populated, BR: 0)
+            coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
+            br.office_type,
+            br.br_position_database_id,
+            array_compact(
+                array(
+                    case when br.gp_candidacy_id is not null then 'ballotready' end,
+                    case when ts.gp_candidacy_id is not null then 'techspeed' end
+                )
+            ) as source_systems
+        from {{ ref("int__civics_candidacy_ballotready") }} as br
+        full outer join
+            {{ ref("int__civics_candidacy_techspeed") }} as ts
+            on br.gp_candidacy_id = ts.gp_candidacy_id
+    ),
+
+    combined as (
+        select *
+        from archive_2025
+        union all
+        select *
+        from merged_2026
     ),
 
     deduplicated as (
@@ -126,6 +157,7 @@ select
         then false
         else icp.icp_win_supersize
     end as is_win_supersize_icp,
+    deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 

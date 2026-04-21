@@ -9,7 +9,14 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
   pre-commit pytest hook can find `pyspark` and `airflow`:
   `cd dbt && poetry run git commit ...`
 - When adding or modifying models and/or tests, run `dbt build` on the modified
-objects to ensure they build as exected.
+objects to ensure they build as expected.
+- **Do not use the `+` (upstream) selector prefix during development.** dbt Cloud
+automatically defers to production artifacts, so unmodified upstream models do
+not need to be rebuilt. Using `+model_name` pulls the entire upstream DAG
+(potentially hundreds of models) into the build, which is slow and unnecessary.
+Instead, list only the models you modified:
+    - Bad: `dbt build --select "+my_model"`
+    - Good: `dbt build --select "my_model1 my_model2"`
 
 When building multiple models, use quotes around the models in the `--select` argument:
     - Bad: `dbt build --select my_model1 my_model2`
