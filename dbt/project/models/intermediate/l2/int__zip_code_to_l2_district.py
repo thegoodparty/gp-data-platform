@@ -3,14 +3,16 @@ from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.functions import (
-    array_distinct,
-    array_union,
     col,
     collect_list,
     concat,
+    count,
     length,
     lit,
     size,
+)
+from pyspark.sql.functions import sum as spark_sum
+from pyspark.sql.functions import (
     when,
 )
 from pyspark.sql.types import (
@@ -20,6 +22,7 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+from pyspark.sql.window import Window
 
 THIS_TABLE_SCHEMA = StructType(
     [
@@ -32,6 +35,11 @@ THIS_TABLE_SCHEMA = StructType(
         StructField(name="loaded_at", dataType=TimestampType(), nullable=False),
     ]
 )
+
+
+# Minimum percentage of voters in a zip code that must be assigned to a district
+# for that district to be included. Filters out noise from tiny geographic overlaps.
+MIN_VOTER_PCT = 0.005  # 0.5%
 
 
 def model(dbt, session: SparkSession) -> DataFrame:
@@ -54,21 +62,34 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     l2_uniform_data: DataFrame = dbt.ref("int__l2_nationwide_uniform")
 
-    # get the max loaded for this table and compare against latest changes to l2 uniform data
-    existing_table = None
+    # On incremental runs, identify zip codes with new voter records, then
+    # recompute those zips against the full source population so the voter
+    # percentage threshold is accurate (not skewed by batch size).
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
         max_loaded_at = existing_table.agg({"loaded_at": "max"}).collect()[0][0]
 
-        # Handle case where table is empty (max_loaded_at is None)
         if max_loaded_at is not None:
-            l2_uniform_data = l2_uniform_data.filter(col("loaded_at") > max_loaded_at)
+            new_records = l2_uniform_data.filter(col("loaded_at") > max_loaded_at)
+        else:
+            new_records = l2_uniform_data
 
-        if l2_uniform_data.count() == 0:
+        if new_records.count() == 0:
             return session.createDataFrame(
                 data=[],
                 schema=THIS_TABLE_SCHEMA,
             )
+
+        affected_zips = (
+            new_records.select("Residence_Addresses_Zip", "state_postal_code")
+            .filter(col("Residence_Addresses_Zip").isNotNull())
+            .distinct()
+        )
+        l2_uniform_data = l2_uniform_data.join(
+            affected_zips,
+            on=["Residence_Addresses_Zip", "state_postal_code"],
+            how="inner",
+        )
 
     # Create a list of DataFrames for each district type
     district_dataframes = []
@@ -89,6 +110,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if district_type not in ["Country", "State"]
     ]
 
+    zip_window = Window.partitionBy("zip_code", "state_postal_code")
+
     for district_type in district_type_from_columns:
         # Get data for this district type from residence
         district_df = (
@@ -99,8 +122,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             )
             .filter(col("Residence_Addresses_Zip").isNotNull())
             .filter(col("district_name").isNotNull())
-            .distinct()
-            .withColumn("district_type", lit(district_type))
         )
 
         # if zipcode is 4 characters, pad with a 0
@@ -110,6 +131,22 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 length(col("zip_code")) == 4, concat(lit("0"), col("zip_code"))
             ).otherwise(col("zip_code")),
         )
+
+        # Count voters per (zip, district_name) and filter out districts where
+        # fewer than MIN_VOTER_PCT of the zip's voters are assigned there.
+        district_df = district_df.groupBy(
+            "state_postal_code", "zip_code", "district_name"
+        ).agg(count("*").alias("voter_count"))
+
+        district_df = (
+            district_df.withColumn(
+                "total_voters", spark_sum("voter_count").over(zip_window)
+            )
+            .filter(col("voter_count") / col("total_voters") >= MIN_VOTER_PCT)
+            .drop("voter_count", "total_voters")
+        )
+
+        district_df = district_df.withColumn("district_type", lit(district_type))
 
         district_dataframes.append(district_df)
 
@@ -144,34 +181,5 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # drop rows which have no district names or the size of the array is 0
     final_result = final_result.filter(col("district_names").isNotNull())
     final_result = final_result.filter(size(col("district_names")) > 0)
-
-    # On incremental runs, merge new district_names with existing ones so that
-    # the upsert doesn't overwrite previously captured districts.
-    if existing_table is not None:
-        final_result = (
-            final_result.alias("new")
-            .join(
-                existing_table.select(
-                    "zip_code",
-                    "state_postal_code",
-                    "district_type",
-                    col("district_names").alias("existing_district_names"),
-                ),
-                on=["zip_code", "state_postal_code", "district_type"],
-                how="left",
-            )
-            .withColumn(
-                "district_names",
-                when(
-                    col("existing_district_names").isNotNull(),
-                    array_distinct(
-                        array_union(
-                            col("district_names"), col("existing_district_names")
-                        )
-                    ),
-                ).otherwise(col("district_names")),
-            )
-            .drop("existing_district_names")
-        )
 
     return final_result

@@ -202,6 +202,74 @@ models:
                 to: ref('int__enhanced_race')
                 field: br_database_id
 
+  - name: m_election_api__zip_to_position
+    description: >
+      Maps zip codes to future election positions for the OfficePicker product.
+      Joins the civics election mart with the zip-to-BallotReady-office
+      intermediate model, filtered to elections within two years of the
+      current date.
+
+      Grain: One row per (zip_code, position_id, election_date). Positions
+      without zip coverage will have a null zip_code.
+    columns:
+      - name: position_id
+        description: >
+          Election API position UUID. Foreign key to m_election_api__position.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__position')
+                field: id
+      - name: name
+        description: "BallotReady position name"
+      - name: zip_code
+        description: "5-digit zip code mapped to this office via L2 district matching"
+      - name: election_year
+        description: "Year of the election"
+        tests:
+          - not_null
+      - name: display_office_level
+        description: >
+          Office level for display. Maps judicial positions to 'Judicial',
+          otherwise uses the standard office_level value.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - City
+                  - County
+                  - Federal
+                  - Judicial
+                  - Local
+                  - Regional
+                  - State
+                  - Township
+      - name: office_type
+        description: "Type of office (e.g. City Council, Mayor, Judge)"
+      - name: state
+        description: "Two-letter state postal code"
+      - name: city
+        description: "City associated with the office"
+      - name: district
+        description: "District identifier for the office"
+      - name: election_date
+        description: "Date of the election"
+        tests:
+          - not_null
+      - name: br_database_id
+        description: "Database ID of the `position` from BallotReady"
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - zip_code
+              - position_id
+              - election_date
+
   - name: m_election_api__stance
     description: "Mart model that serves the Election API"
     columns:

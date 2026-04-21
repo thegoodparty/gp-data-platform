@@ -81,8 +81,7 @@ with
                 concat(candidacies.first_name, ' ', candidacies.last_name)
             ) as full_name,
 
-            -- Demographics (STRING to match 2025 HubSpot model type)
-            cast(null as string) as birth_date,
+            cast(null as date) as birth_date,
             candidacies.state,
 
             -- Contact info - prefer S3 data, fall back to API

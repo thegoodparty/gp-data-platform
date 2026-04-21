@@ -25,7 +25,7 @@ with
             phone,
             cast(br_race_id as int) as br_race_id,
             official_office_name,
-            cast(br_candidacy_id as int) as br_candidacy_id,
+            cast(br_candidacy_id as string) as br_candidacy_id,
             seat_name,
             partisan_type
 

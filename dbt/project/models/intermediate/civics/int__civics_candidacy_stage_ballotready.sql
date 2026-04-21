@@ -105,6 +105,7 @@ with
             -- gp_election_stage_id from br_race_id
             {{ generate_salted_uuid(fields=["s.br_race_id"]) }} as gp_election_stage_id,
 
+            cast(s.br_candidacy_id as string) as br_candidacy_id,
             concat(s.first_name, ' ', s.last_name) as candidate_name,
             cast(s.br_candidate_id as string) as source_candidate_id,
             cast(s.br_race_id as string) as source_race_id,
@@ -185,6 +186,7 @@ select
     gp_candidacy_stage_id,
     computed_gp_candidacy_id as gp_candidacy_id,
     gp_election_stage_id,
+    br_candidacy_id,
     candidate_name,
     source_candidate_id,
     source_race_id,

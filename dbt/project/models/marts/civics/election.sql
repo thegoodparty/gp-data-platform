@@ -1,19 +1,94 @@
 -- Civics mart election table
--- Union of 2025 HubSpot archive and 2026+ BallotReady data
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+--
+-- BallotReady is the authoritative spine for elections (positions). TS int
+-- models remap clustered rows to BR's gp_election_id via
+-- int__civics_er_canonical_ids, so a full outer join on gp_election_id merges
+-- matched pairs automatically. Unmatched TS elections pass through as net-new.
+{%- set br_wins_cols = [
+    "official_office_name",
+    "candidate_office",
+    "office_level",
+    "office_type",
+    "state",
+    "city",
+    "district",
+    "seat_name",
+    "election_date",
+    "election_year",
+    "seats_available",
+    "term_start_date",
+    "number_of_opponents",
+    "has_ddhq_match",
+    "created_at",
+    "updated_at",
+] %}
+
+{%- set ts_wins_cols = [
+    "filing_deadline",
+    "population",
+    "is_uncontested",
+    "is_open_seat",
+] %}
+
 with
+    archive_2025 as (
+        select
+            gp_election_id,
+            -- Column order must match merged_since_2026 (br_wins_cols loop order,
+            -- then ts_wins_cols, then BR-only, then source_systems)
+            {% for col in br_wins_cols %} {{ col }}, {% endfor %}
+            {% for col in ts_wins_cols %} {{ col }}, {% endfor %}
+            br_position_database_id,
+            is_judicial,
+            is_appointed,
+            br_normalized_position_type,
+            array('hubspot') as source_systems
+        from {{ ref("int__civics_election_2025") }}
+    ),
+
+    merged_since_2026 as (
+        select
+            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
+            {% for col in br_wins_cols %}
+                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+            {% endfor %}
+            -- TS wins: BR always NULL, TS populated from techspeed source
+            {% for col in ts_wins_cols %}
+                coalesce(ts.{{ col }}, br.{{ col }}) as {{ col }},
+            {% endfor %}
+            br.br_position_database_id,
+            br.is_judicial,
+            br.is_appointed,
+            br.br_normalized_position_type,
+            array_compact(
+                array(
+                    case when br.gp_election_id is not null then 'ballotready' end,
+                    case when ts.gp_election_id is not null then 'techspeed' end
+                )
+            ) as source_systems
+        from {{ ref("int__civics_election_ballotready") }} as br
+        full outer join
+            {{ ref("int__civics_election_techspeed") }} as ts
+            on br.gp_election_id = ts.gp_election_id
+    ),
+
     combined as (
         select *
-        from {{ ref("int__civics_election_2025") }}
+        from archive_2025
         union all
         select *
-        from {{ ref("int__civics_election_ballotready") }}
+        from merged_since_2026
     ),
 
     deduplicated as (
         select *
         from combined
         qualify
-            row_number() over (partition by gp_election_id order by updated_at desc) = 1
+            row_number() over (
+                partition by gp_election_id order by updated_at desc nulls last
+            )
+            = 1
     ),
 
     -- Pivot election stage dates by type
@@ -95,6 +170,7 @@ select
         then false
         else icp.icp_win_supersize
     end as is_win_supersize_icp,
+    deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 

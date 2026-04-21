@@ -9,18 +9,52 @@
 -- deterministic output. Picks one candidate per gp_election_id, preferring
 -- rows with a general election date and the latest extraction timestamp.
 with
+    -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical election_id.
+    -- Deduped per source_candidate_id; any match for this candidacy gives BR's id.
+    canonical_election as (
+        select ts_source_candidate_id, canonical_gp_election_id
+        from {{ ref("int__civics_er_canonical_ids") }}
+        qualify
+            row_number() over (
+                partition by ts_source_candidate_id order by canonical_gp_election_id
+            )
+            = 1
+    ),
+
     source as (
         select
             ts.* except (state),
             -- Aliases for generate_gp_election_id macro compatibility
             state_postal_code as state,
-            cast(null as string) as seat_name
+            cast(null as string) as seat_name,
+            {{
+                generate_candidate_code(
+                    "ts.first_name",
+                    "ts.last_name",
+                    "ts.state",
+                    "ts.office_type",
+                    "ts.city",
+                )
+            }} as techspeed_candidate_code
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
     ),
 
     with_election_id as (
-        select {{ generate_gp_election_id() }} as gp_election_id, source.*
+        -- If ANY candidacy in an election was clustered to BR, all rows of that
+        -- election adopt BR's canonical_gp_election_id (propagated via a window
+        -- partitioned by the raw TS hash). Otherwise keep the TS hash.
+        select
+            coalesce(
+                max(xw.canonical_gp_election_id) over (
+                    partition by {{ generate_gp_election_id() }}
+                ),
+                {{ generate_gp_election_id() }}
+            ) as gp_election_id,
+            source.*
         from source
+        left join
+            canonical_election as xw
+            on source.techspeed_candidate_code = xw.ts_source_candidate_id
         where election_date is not null and year(election_date) between 1900 and 2050
     ),
 

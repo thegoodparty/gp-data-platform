@@ -1583,7 +1583,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2032-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: election_year
         description: Year of the election
@@ -1591,7 +1591,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 2026
-                max_value: 2032
+                max_value: 2050
 
       - name: created_at
         data_tests:
@@ -1653,7 +1653,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2032-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: election_name
         description: >
@@ -1758,7 +1758,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2032-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: created_at
         data_tests:
