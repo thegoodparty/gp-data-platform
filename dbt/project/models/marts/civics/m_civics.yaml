@@ -519,6 +519,7 @@ models:
                 field: database_id
               config:
                 where: "br_position_database_id is not null"
+                severity: warn
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
                 warn_if: ">50"
