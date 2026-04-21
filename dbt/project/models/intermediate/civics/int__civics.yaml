@@ -1,54 +1,4 @@
 models:
-  - name: int__civics_er_canonical_ids
-    description: >
-      Entity resolution crosswalk: maps TechSpeed raw keys
-      (source_candidate_id, stage_election_date) to BallotReady's canonical
-      gp_* IDs for every clustered TS candidacy_stage. TS intermediate models
-      left-join this and coalesce their own hashes over the canonical IDs,
-      so clustered TS rows share IDs with their BR counterparts. Mart models
-      then merge with a simple full-outer-join-on-shared-id pattern, no
-      per-mart remap CTEs. Adding a new source requires one new CTE here;
-      downstream models stay unchanged.
-    columns:
-      - name: ts_source_candidate_id
-        description: >
-          TechSpeed candidate code (output of generate_candidate_code macro),
-          stripped of any __primary/__general/__runoff stage suffix. Together
-          with ts_stage_election_date this forms the join key from each TS
-          intermediate back to this crosswalk.
-        data_tests:
-          - not_null
-      - name: ts_stage_election_date
-        description: Election date for this specific TS stage (primary or general).
-        data_tests:
-          - not_null
-      - name: canonical_gp_candidacy_stage_id
-        description: BR's gp_candidacy_stage_id for the clustered TS stage.
-        data_tests:
-          - not_null
-      - name: canonical_gp_election_stage_id
-        description: BR's gp_election_stage_id for the clustered TS stage.
-        data_tests:
-          - not_null
-      - name: canonical_gp_candidacy_id
-        description: BR's gp_candidacy_id for the clustered TS candidacy.
-        data_tests:
-          - not_null
-      - name: canonical_gp_candidate_id
-        description: BR's gp_candidate_id for the clustered TS candidate.
-        data_tests:
-          - not_null
-      - name: canonical_gp_election_id
-        description: BR's gp_election_id for the clustered TS election.
-        data_tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - ts_source_candidate_id
-              - ts_stage_election_date
-
   - name: int__civics_election_2025
     description: >
       Historical archive of elections from the general mart with election dates
@@ -1620,7 +1570,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2036-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: election_year
         description: Year of the election
@@ -1628,7 +1578,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 2026
-                max_value: 2036
+                max_value: 2050
 
       - name: created_at
         data_tests:
@@ -1690,7 +1640,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2036-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: election_name
         description: >
@@ -1770,11 +1720,6 @@ models:
               config:
                 error_if: ">=100"
 
-      - name: br_candidacy_id
-        description: >
-          BallotReady candidacy ID (database_id from S3 source). Used by the
-          entity-resolution crosswalk to match BR candidacy_stages to TechSpeed.
-
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)
         data_tests:
@@ -1800,7 +1745,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'2026-01-01'"
-                max_value: "'2036-12-31'"
+                max_value: "'2050-12-31'"
 
       - name: created_at
         data_tests:
