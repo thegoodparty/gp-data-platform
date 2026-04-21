@@ -61,7 +61,11 @@ models:
       - name: ddhq_race_id
         description: DDHQ race identifier. Null for HubSpot-only stages with no DDHQ match.
       - name: election_stage
-        description: Type of election stage (primary, general, general runoff)
+        description: >
+          Type of election stage. DDHQ uses a single 'runoff' type without
+          distinguishing primary vs general; for 2025 and earlier data, DDHQ
+          runoff rows are mapped to 'general runoff'. 'primary runoff' only
+          appears in 2026+ BallotReady data, which flags it explicitly.
         data_tests:
           - accepted_values:
               arguments:
