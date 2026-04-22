@@ -185,7 +185,10 @@ select
             'ballotready',
             case
                 when
-                    merged.ts_phone is not null
+                    (
+                        merged.ts_phone is not null
+                        and (merged.phone is null or merged.ts_phone != merged.phone)
+                    )
                     or (merged.email is null and merged.ts_email is not null)
                     or merged.ts_officeholder_id is not null
                 then 'techspeed'
@@ -195,9 +198,13 @@ select
 
     -- has_ts_person_enrichment: output-based — true when at least one contact
     -- field's final value came from TS (not just join presence).
-    -- Phone: TS wins coalesce, so ts_phone non-null means phone output = TS.
+    -- Phone: TS wins coalesce, so TS enriched when ts_phone is non-null AND differs
+    -- from BR phone.
     -- Email: BR wins coalesce, so TS only contributes when BR email is null.
-    (merged.ts_phone is not null)
+    (
+        merged.ts_phone is not null
+        and (merged.phone is null or merged.ts_phone != merged.phone)
+    )
     or (
         merged.email is null and merged.ts_email is not null
     ) as has_ts_person_enrichment,
