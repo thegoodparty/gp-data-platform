@@ -70,6 +70,9 @@ select
     -- Flags
     person_rollup.is_judicial,
     person_rollup.is_incumbent,
+    person_rollup.is_win_icp,
+    person_rollup.is_serve_icp,
+    person_rollup.is_win_supersize_icp,
 
     -- Party
     person_rollup.party_affiliation,
