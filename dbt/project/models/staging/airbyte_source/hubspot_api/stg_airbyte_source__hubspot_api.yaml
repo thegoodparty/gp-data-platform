@@ -103,7 +103,9 @@ models:
         description: >
           Denormalized copy of `gp_api_db_user.id` stored on the HubSpot
           contact. Authoritative source is the users staging model from the
-          gp_api database.
+          gp_api database. Parsed from the HubSpot property
+          `goodparty_org_user_id` (named after the goodparty.org domain, not
+          an "org user" concept — this is the only user-ID key on the contact).
       - name: candidate_id_result
         description: HubSpot-tracked outcome of the candidate-ID research process.
       - name: candidate_type
@@ -288,7 +290,7 @@ models:
         description: HubSpot `notes_last_contacted` — timestamp of last contact activity.
       - name: number_of_serve_calls
         description: Count of Serve calls logged for this contact.
-      - name: pro_update_at
+      - name: pro_upgrade_at
         description: HubSpot `pro_upgrade_date` — timestamp of the Pro upgrade.
       - name: contact_created_at
         description: HubSpot `createdate` — when the contact was created in HubSpot.

@@ -52,7 +52,11 @@ select
     -- cross-system identifiers (sourced from HubSpot snapshot)
     -- NOTE: `goodparty_user_id` mirrors gp_api_db_user.id — the authoritative
     -- source is the users staging model from the gp_api database, not HubSpot.
-    get_json_object(properties, '$.goodparty_org_user_id') as goodparty_user_id,
+    -- The HubSpot property is named after the goodparty.org domain (not an
+    -- "org user" concept); it is the only user-ID key on the contact.
+    cast(
+        get_json_object(properties, '$.goodparty_org_user_id') as int
+    ) as goodparty_user_id,
 
     -- office information
     properties_official_office_name as official_office_name,
@@ -267,7 +271,7 @@ select
     ) as number_of_serve_calls,
     cast(
         get_json_object(properties, '$.pro_upgrade_date') as timestamp
-    ) as pro_update_at,
+    ) as pro_upgrade_at,
 
     -- metadata
     cast(
