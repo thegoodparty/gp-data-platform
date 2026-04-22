@@ -2,7 +2,49 @@
 
 **Status:** Design approved 2026-04-22
 **Ticket:** [DATA-1719](https://goodparty.clickup.com/t/90132012119/DATA-1719)
+**Branch / PR:** `data-1719-civics-gp-api-intermediates` → [PR #335 (draft)](https://github.com/thegoodparty/gp-data-platform/pull/335)
 **Scope of this PR:** Intermediate-layer only. Marts, the `_2025` archive, and any upstream ER source files are out of scope.
+
+## For implementers (read this first)
+
+If you're picking this up in a fresh session, here's the orientation to get productive fast:
+
+**Repo workflow docs (authoritative):**
+- `dbt/project/CLAUDE.md` — dbt Cloud CLI conventions, build/test workflow, `dbt show` and `inspect_data` usage, naming conventions, terminology definitions (Candidate / Candidacy / Election / Election-Stage / Candidacy-Stage), and the ID Mappings table that governs which Product DB ID maps to which civics-mart column.
+- User memory: commits in this repo must be wrapped with `cd dbt && poetry run git commit ...` (or `poetry -C dbt run bash -c "git commit ..."` from the repo root) so pre-commit hooks find pyspark/airflow.
+
+**Reference implementations to pattern-match (in priority order):**
+- `dbt/project/models/intermediate/civics/int__civics_candidacy_ballotready.sql` — full provider candidacy model: staging → enrichment → salted UUID → ER coalesce → referential integrity filter → dedup → final SELECT. This is the closest analog for `_candidacy_gp_api`.
+- `dbt/project/models/intermediate/civics/int__civics_candidate_techspeed.sql` — shows how TechSpeed uses the ER crosswalk: window-propagates `canonical_gp_candidate_id` over a partition keyed by the provider's own person hash. This pattern is what `_candidate_gp_api` uses (see §Per-model specifications → candidate).
+- `dbt/project/models/intermediate/civics/int__civics_candidacy_stage_techspeed.sql` — candidacy-stage grain, including stage-level ER lookup and the candidacy-grain cascade window. Template for `_candidacy_stage_gp_api`.
+- `dbt/project/models/intermediate/civics/int__civics_elected_official_ballotready.sql` — elected_official output schema. Note: no `gp_candidate_id` column — elected_official is its own entity.
+- `dbt/project/models/intermediate/civics/int__civics_er_canonical_ids.sql` — current ER crosswalk (TS-only). The extension for `gp_api` UNIONs a symmetric CTE.
+
+**Mart inputs our intermediates consume:**
+- `dbt/project/models/marts/civics/users.sql` — has `user_id`, `campaign_count`, `is_serve_user`, `is_win_user`, email/name/phone/zip.
+- `dbt/project/models/marts/civics/campaigns.sql` — has `is_latest_version` (filter on this), `user_id`, user fields, `campaign_state`, `campaign_party`, `campaign_office`, `ballotready_position_id`, `normalized_position_name`, `election_date`, `election_level`, `is_demo`, `is_verified`, `is_pledged`, `did_win`, `hubspot_id`.
+- `dbt/project/models/marts/civics/organizations.sql` — org × user × position × district joined, with `organization_type` (`serve` | `win`). Grain is awkward for elected_official consumption; spec sources `stg_..._gp_api_db_elected_office` directly instead.
+
+**Macros referenced in the spec** (all in `dbt/project/macros/`):
+- `generate_salted_uuid(fields=[...])` — deterministic UUID across providers; field ORDER matters for cross-source convergence.
+- `generate_gp_election_id()` — requires `state`, `office_type`, `candidate_office`, `district`, `seats_available`, `general_election_date` in scope.
+- `map_office_type(candidate_office)` — normalizes office strings.
+- `parse_party_affiliation(json_expr)` — used in BR candidacy.
+- `clean_phone_number(phone_expr)` — phone normalization.
+- `extract_city_from_office_name(position_name)` — parses city from office name strings.
+- `generate_candidate_office_from_position(position_name, normalized_position_name)` — used in BR.
+- Similar per-provider ID hashers exist (`generate_ts_gp_candidate_id`, `generate_ts_gp_candidacy_id`, `generate_ts_gp_election_stage_id`). If a Product-DB analog is needed, follow that naming pattern (`generate_gp_api_gp_candidate_id` etc.) — but for Product DB, using native IDs in the salt may remove the need.
+
+**Build / test / commit cycle (from CLAUDE.md):**
+1. `dbt run --select "model_name"` — materialize.
+2. `dbt run-operation inspect_data --args '{"model": "model_name"}'` — counts, types, null rates, sample rows.
+3. Write tests informed by the data in `int__civics.yaml`.
+4. `dbt test --select "model_name"` — must pass before committing.
+5. Commit via `cd dbt && poetry run git commit ...` (pre-commit hooks need the poetry env).
+6. Do not use `+model_name` selectors (upstream prefix) — dbt Cloud defers; upstream selectors pull hundreds of unnecessary models.
+
+**Upstream ER check (do this before writing the crosswalk extension):**
+Run `dbt show --inline "select source_name, count(*) from {{ ref('stg_er_source__clustered_candidacy_stages') }} group by source_name"` — confirm `gp_api` rows are still present. As of 2026-04-22 there were 20,325 rows. If this drops to zero, the ER upstream was reverted and the crosswalk extension will produce no rows.
 
 ## Context and goals
 
