@@ -25,10 +25,15 @@
     -- itself. Example: "Aberdeen School Board - Position 1" has district=""
     -- here (the seat label is not a district), while extract_district_raw
     -- would return "1" — correct for ER matching, wrong for district semantics.
+    --
+    -- Uses ([^,]+) instead of (.+)$ to stop at trailing comma-delimited seat
+    -- labels. E.g., "Circuit 10, Place 1" captures "10" not "10, Place 1".
     coalesce(
-        regexp_extract(
-            {{ position_column }},
-            '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Area|Region|Circuit|Division|Subdivision) (.+)$'
+        trim(
+            regexp_extract(
+                {{ position_column }},
+                '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Area|Region|Circuit|Division|Subdivision) ([^,]+)'
+            )
         ),
         ''
     )
