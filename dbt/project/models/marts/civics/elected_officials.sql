@@ -18,7 +18,8 @@ with
             row_number() over (
                 partition by br_candidate_id
                 order by
-                    term_end_date desc nulls first,
+                    term_start_date desc nulls last,
+                    term_end_date desc nulls last,
                     updated_at desc,
                     br_office_holder_id desc
             )
