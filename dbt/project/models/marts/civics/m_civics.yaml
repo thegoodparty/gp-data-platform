@@ -1463,6 +1463,22 @@ models:
         data_tests:
           - not_null
 
+      - name: is_win_icp
+        description: >
+          Whether this position meets Win ICP criteria (non-judicial,
+          non-appointed, 500-100K voters, recognized position type).
+          NULL when voter count data is unavailable.
+
+      - name: is_serve_icp
+        description: >
+          Whether this position meets Serve ICP criteria (Win criteria
+          plus serve-eligible position type, 1K-100K voters).
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this is a large office (>100K voters) meeting all
+          other Win ICP criteria except the voter count cap.
+
       - name: has_ts_person_enrichment
         description: >
           True when at least one output contact field (phone or email) received
@@ -1582,6 +1598,15 @@ models:
 
       - name: is_incumbent
         description: Whether the official is an incumbent (TS, from latest term)
+
+      - name: is_win_icp
+        description: Win ICP flag from latest term
+
+      - name: is_serve_icp
+        description: Serve ICP flag from latest term
+
+      - name: is_win_supersize_icp
+        description: Win supersize ICP flag from latest term
 
       - name: party_affiliation
         description: Political party affiliation
