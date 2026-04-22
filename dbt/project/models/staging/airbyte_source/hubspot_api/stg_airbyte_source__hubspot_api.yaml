@@ -37,7 +37,21 @@ models:
               arguments:
                 values: [true, false]
   - name: stg_airbyte_source__hubspot_api_contacts
-    description: Contacts data load from HubSpot API
+    description: >
+      Contacts data loaded from the HubSpot API. Most columns are native HubSpot
+      Contact properties. A few columns are denormalized snapshots of data that
+      is authoritative elsewhere in this dbt project — they are kept here for
+      convenience/auditing but downstream models should prefer the authoritative
+      source:
+
+        - `br_candidacy_id`, `br_position_id`, `br_race_id`: BallotReady IDs.
+          Authoritative source is the BallotReady staging/intermediate models.
+        - `goodparty_user_id`: mirrors `gp_api_db_user.id`. Authoritative source
+          is the users staging model from the gp_api database.
+        - `win_icp`, `serve_icp`: HubSpot holds a snapshot of our ICP model
+          output. Authoritative ICP comes from the ICP dbt model.
+        - `win_activated_user`, `serve_activated_user`: mirror activation state
+          from the product users table.
     columns:
       - name: id
         data_tests:
@@ -73,6 +87,211 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: br_candidacy_id
+        description: >
+          BallotReady candidacy ID stored on the HubSpot contact. Not
+          authoritative — prefer BallotReady staging/intermediate models.
+      - name: br_position_id
+        description: >
+          BallotReady position ID stored on the HubSpot contact. Not
+          authoritative — prefer BallotReady staging/intermediate models.
+      - name: br_race_id
+        description: >
+          BallotReady race ID stored on the HubSpot contact. Not authoritative —
+          prefer BallotReady staging/intermediate models.
+      - name: goodparty_user_id
+        description: >
+          Denormalized copy of `gp_api_db_user.id` stored on the HubSpot
+          contact. Authoritative source is the users staging model from the
+          gp_api database.
+      - name: candidate_id_result
+        description: HubSpot-tracked outcome of the candidate-ID research process.
+      - name: candidate_type
+        description: HubSpot classification of the candidate (e.g. Pro, Lead, etc.).
+      - name: is_confirmed_candidate
+        description: Whether HubSpot has confirmed this contact as a running candidate.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_filed_candidate
+        description: Whether the candidate has filed for office per HubSpot.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_pro_candidate
+        description: Whether the contact is flagged as a Pro candidate in HubSpot.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_ever_been_pro
+        description: Whether the contact has ever held Pro status in HubSpot.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: pledge_status
+        description: Raw HubSpot pledge status string (see `is_pledged` for boolean).
+      - name: has_email_pledge
+        description: Whether the contact has submitted an email-based pledge.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_verbal_pledge
+        description: Whether the contact has given a verbal pledge.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_verbal_pro
+        description: Whether the contact has given a verbal Pro commitment.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_verbal_serve
+        description: Whether the contact has given a verbal Serve commitment.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: product_line
+        description: HubSpot product line classification for the contact.
+      - name: product_stage
+        description: HubSpot product stage classification for the contact.
+      - name: hubspot_owner_id
+        description: HubSpot user ID of the contact owner.
+      - name: marketing_contact_status
+        description: HubSpot `hs_marketable_status` — whether the contact is marketable.
+      - name: is_contact_unworked
+        description: HubSpot `hs_is_unworked` — whether the contact has no logged outreach.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: lifecycle_stage
+        description: HubSpot lifecycle stage for the contact.
+      - name: journey_stage
+        description: HubSpot journey stage (`hs_journey_stage`) for the contact.
+      - name: lead_status
+        description: HubSpot lead status.
+      - name: lead_source
+        description: HubSpot lead source.
+      - name: conversion_type
+        description: HubSpot conversion type.
+      - name: lifecycle_current_stage_entered_at
+        description: Timestamp the contact entered its current lifecycle stage.
+      - name: lifecycle_customer_entered_at
+        description: Timestamp the contact first entered the Customer lifecycle stage.
+      - name: lifecycle_evangelist_entered_at
+        description: Timestamp the contact first entered the Evangelist lifecycle stage.
+      - name: lifecycle_lead_entered_at
+        description: Timestamp the contact first entered the Lead lifecycle stage.
+      - name: lifecycle_mql_entered_at
+        description: Timestamp the contact first entered the MQL lifecycle stage.
+      - name: lifecycle_opportunity_entered_at
+        description: Timestamp the contact first entered the Opportunity lifecycle stage.
+      - name: lifecycle_other_entered_at
+        description: Timestamp the contact first entered the Other lifecycle stage.
+      - name: lifecycle_sql_entered_at
+        description: Timestamp the contact first entered the SQL lifecycle stage.
+      - name: lifecycle_subscriber_entered_at
+        description: Timestamp the contact first entered the Subscriber lifecycle stage.
+      - name: win_stage
+        description: Current Win pipeline stage for the contact.
+      - name: win_stage_0_intake_entered_at
+        description: Timestamp the contact entered Win Stage 0 (Intake).
+      - name: win_stage_1_new_assigned_entered_at
+        description: Timestamp the contact entered Win Stage 1 (New/Assigned).
+      - name: win_stage_2_discovery_complete_entered_at
+        description: Timestamp the contact entered Win Stage 2 (Discovery Complete).
+      - name: win_stage_3_pro_presented_entered_at
+        description: Timestamp the contact entered Win Stage 3 (Pro Presented).
+      - name: win_stage_4_pro_consideration_entered_at
+        description: Timestamp the contact entered Win Stage 4 (Pro Consideration).
+      - name: win_stage_5_closed_won_pro_entered_at
+        description: Timestamp the contact entered Win Stage 5 (Closed Won — Pro).
+      - name: win_stage_6_activated_pro_user_entered_at
+        description: Timestamp the contact entered Win Stage 6 (Activated Pro User).
+      - name: win_stage_closed_too_early_entered_at
+        description: Timestamp the contact entered Win Stage Closed (Too Early).
+      - name: win_icp
+        description: >
+          HubSpot snapshot of the Win ICP classification. Not authoritative —
+          authoritative ICP comes from the ICP dbt model.
+      - name: serve_icp
+        description: >
+          HubSpot snapshot of the Serve ICP classification. Not authoritative —
+          authoritative ICP comes from the ICP dbt model.
+      - name: win_activated_user
+        description: >
+          HubSpot snapshot of Win activation status. Not authoritative —
+          sourced from the product users table.
+      - name: serve_activated_user
+        description: >
+          HubSpot snapshot of Serve activation status. Not authoritative —
+          sourced from the product users table.
+      - name: serve_stage
+        description: Current Serve pipeline stage.
+      - name: serve_onboarding_stage
+        description: Serve onboarding stage label.
+      - name: is_serve_opted_in
+        description: Whether the contact has opted into the Serve program.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: has_serve_results_viewed
+        description: Whether the contact has viewed their Serve results.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: serve_opt_in_at
+        description: Timestamp the contact opted into Serve.
+      - name: serve_activated_at
+        description: Timestamp the contact became a Serve activated user.
+      - name: serve_results_received_at
+        description: Timestamp Serve results were received for the contact.
+      - name: serve_results_viewed_at
+        description: Timestamp the contact viewed their Serve results.
+      - name: serve_lifecycle_lead_entered_at
+        description: Timestamp the contact became a Serve lifecycle Lead.
+      - name: serve_lifecycle_converted_entered_at
+        description: Timestamp the contact became a Serve lifecycle Converted.
+      - name: serve_lifecycle_activated_entered_at
+        description: Timestamp the contact became a Serve lifecycle Activated.
+      - name: serve_lifecycle_noshow_sql_entered_at
+        description: Timestamp the contact became a Serve lifecycle No-Show SQL.
+      - name: serve_lifecycle_opportunity_entered_at
+        description: Timestamp the contact became a Serve lifecycle Opportunity.
+      - name: serve_lifecycle_sal_entered_at
+        description: Timestamp the contact became a Serve lifecycle SAL.
+      - name: serve_lifecycle_sql_entered_at
+        description: Timestamp the contact became a Serve lifecycle SQL.
+      - name: serve_lifecycle_churned_entered_at
+        description: Timestamp the contact became Serve lifecycle Churned.
+      - name: serve_lifecycle_not_qualified_entered_at
+        description: Timestamp the contact became Serve lifecycle Not Qualified.
+      - name: serve_lifecycle_scheduled_sql_entered_at
+        description: Timestamp the contact became a Serve lifecycle Scheduled SQL.
+      - name: serve_lifecycle_retained_entered_at
+        description: Timestamp the contact became Serve lifecycle Retained.
+      - name: last_call_at
+        description: Date of the last recorded sales call.
+      - name: last_call_outcome
+        description: Outcome label from the last recorded sales call.
+      - name: last_contacted_at
+        description: HubSpot `notes_last_contacted` — timestamp of last contact activity.
+      - name: number_of_serve_calls
+        description: Count of Serve calls logged for this contact.
+      - name: pro_update_at
+        description: HubSpot `pro_upgrade_date` — timestamp of the Pro upgrade.
+      - name: contact_created_at
+        description: HubSpot `createdate` — when the contact was created in HubSpot.
   - name: stg_airbyte_source__hubspot_api_deals
     description: Deals data load from HubSpot API
     columns:
