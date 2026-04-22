@@ -345,10 +345,10 @@ models:
           HubSpot survey identifier. Known surveys:
           2 = User research compensation,
           3 = Win - User research compensation,
-          8 = PMF - Web survey (March18,2026),
+          8 = Serve PMF - Web survey (March18,2026),
           9 = Win User satisfaction survey (5 stars) (Web),
           10 = Win User satisfaction survey (5 stars) (Web) (3+ Sessions + ICP),
-          12 = PMF - Web survey (April 2026),
+          12 = Win PMF - Web survey (4/13/26),
           5058880 = Knowledge base feedback.
         data_tests:
           - not_null

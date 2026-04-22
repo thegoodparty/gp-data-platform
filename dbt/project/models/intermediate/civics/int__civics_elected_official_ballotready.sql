@@ -18,17 +18,9 @@ with
                     "normalized_position_name",
                 )
             }} as candidate_office,
-            case
-                when lower(level) = 'city' then 'Local' else initcap(level)
-            end as office_level,
+            initcap(level) as office_level,
             {{ extract_city_from_office_name("position_name") }} as city,
-            coalesce(
-                regexp_extract(
-                    position_name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
-                ),
-                ''
-            ) as district,
+            {{ extract_district_geographic("position_name") }} as district,
             case
                 when get(party_names, 0) is null
                 then null
@@ -87,7 +79,7 @@ with
             nullif(office_holder_mailing_state, '') as mailing_state,
             nullif(office_holder_mailing_zip, '') as mailing_zip,
             br_geo_id,
-            tier,
+            br_position_tier,
             'ballotready' as candidate_id_source,
             office_holder_created_at as created_at,
             office_holder_updated_at as updated_at
@@ -134,7 +126,7 @@ select
     mailing_state,
     mailing_zip,
     br_geo_id,
-    tier,
+    br_position_tier,
     candidate_id_source,
     created_at,
     updated_at
