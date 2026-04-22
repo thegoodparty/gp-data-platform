@@ -26,13 +26,20 @@
     -- here (the seat label is not a district), while extract_district_raw
     -- would return "1" — correct for ER matching, wrong for district semantics.
     --
-    -- Uses ([^,]+) instead of (.+)$ to stop at trailing comma-delimited seat
-    -- labels. E.g., "Circuit 10, Place 1" captures "10" not "10, Place 1".
+    -- Two-step extraction: first capture the full remainder after the keyword
+    -- with (.+)$, then strip trailing comma-delimited seat-label suffixes
+    -- (Place, Position, Seat, Post, Section, Group) via regexp_replace.
+    -- This preserves legitimate geographic context like "Bessemer Division",
+    -- "Area 1", "At Large" while removing seat labels like ", Place 1".
     coalesce(
         trim(
-            regexp_extract(
-                {{ position_column }},
-                '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Area|Region|Circuit|Division|Subdivision) ([^,]+)'
+            regexp_replace(
+                regexp_extract(
+                    {{ position_column }},
+                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone|Precinct|Area|Region|Circuit|Division|Subdivision) (.+)$'
+                ),
+                ', *(Place|Position|Seat|Post|Section|Group) +.*$',
+                ''
             )
         ),
         ''
