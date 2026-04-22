@@ -16,8 +16,17 @@ with
             tbl_contest.city,
             tbl_contest.district,
             tbl_contest.seat_name,
-            tbl_contest.election_date,
-            tbl_contest.election_year,
+            -- Fall back to candidacy's general_election_date when the contest
+            -- row is missing or has a null/out-of-range date. Keeps elections
+            -- represented whenever a candidacy references them, closing the
+            -- orphan gap that suppressed ~68k 2025 candidacies' election_stage
+            -- + ICP flagging.
+            coalesce(
+                tbl_contest.election_date, tbl_candidacy.general_election_date
+            ) as election_date,
+            coalesce(
+                tbl_contest.election_year, year(tbl_candidacy.general_election_date)
+            ) as election_year,
             tbl_contest.filing_deadline,
             tbl_contest.population,
             tbl_contest.seats_available,

@@ -518,8 +518,10 @@ models:
                 where: "br_position_database_id is not null"
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                warn_if: ">50"
-                error_if: ">100"
+                # Threshold raised post-DATA-1714 after the BR+TS candidacy
+                # merge expanded the candidacy universe.
+                warn_if: ">200"
+                error_if: ">300"
 
       - name: viability_score
         description: Model-generated viability rating
@@ -1034,7 +1036,9 @@ models:
       - name: br_position_id
         description: >
           BallotReady position ID. Used for ICP join. Populated for 2026+
-          BallotReady records, NULL for 2025 archive records.
+          BallotReady records. For 2025 archive records, populated when any
+          candidacy at this stage has a product DB campaign link (base64-decoded
+          campaign.details.positionId); otherwise NULL.
 
       - name: ddhq_race_id
         description: >
