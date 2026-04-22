@@ -119,11 +119,32 @@ with
             = 1
     ),
 
-    -- Only populate gp_election_stage_id when the corresponding
-    -- (gp_election_id, stage_type) produces a row in election_stage_2025.
-    valid_stages as (
-        select gp_election_id, election_stage as stage_type
-        from {{ ref("int__civics_election_stage_2025") }}
+    -- Compute candidate gp_election_stage_id using the same conditional
+    -- salting as int__civics_election_stage_2025: DDHQ-matched candidacies
+    -- salt on ddhq_race_id (preserves pre-PR IDs and distinguishes distinct
+    -- DDHQ races); HubSpot-only candidacies salt on (gp_election_id, stage_type).
+    with_candidate_stage_id as (
+        select
+            w.*,
+            case
+                when w.ddhq_race_id is not null
+                then {{ generate_salted_uuid(fields=["w.ddhq_race_id"]) }}
+                else
+                    {{
+                        generate_salted_uuid(
+                            fields=["w.gp_election_id", "w.stage_type"]
+                        )
+                    }}
+            end as candidate_gp_election_stage_id
+        from with_ddhq as w
+    ),
+
+    -- FK gate: only keep candidate_gp_election_stage_id when it exists in
+    -- election_stage_2025. HubSpot-only candidacies whose (gp_election_id,
+    -- stage_type) is already covered by a DDHQ race (so the HubSpot-only path
+    -- didn't materialize) land with gp_election_stage_id = null.
+    valid_stage_ids as (
+        select gp_election_stage_id from {{ ref("int__civics_election_stage_2025") }}
     )
 
 select
@@ -131,8 +152,8 @@ select
     as gp_candidacy_stage_id,
     w.gp_candidacy_id,
     case
-        when v.gp_election_id is not null
-        then {{ generate_salted_uuid(fields=["w.gp_election_id", "w.stage_type"]) }}
+        when v.gp_election_stage_id is not null
+        then w.candidate_gp_election_stage_id
         else null
     end as gp_election_stage_id,
     w.ddhq_candidate as candidate_name,
@@ -185,8 +206,6 @@ select
     w.election_stage_date,
     w.created_at,
     w.updated_at
-from with_ddhq as w
+from with_candidate_stage_id as w
 left join
-    valid_stages as v
-    on w.gp_election_id = v.gp_election_id
-    and w.stage_type = v.stage_type
+    valid_stage_ids as v on w.candidate_gp_election_stage_id = v.gp_election_stage_id
