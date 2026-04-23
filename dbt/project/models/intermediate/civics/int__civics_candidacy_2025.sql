@@ -31,7 +31,14 @@ with
             tbl_companies.gp_candidacy_id,
             'candidacy_id-tbd' as candidacy_id,
             tbl_candidates.gp_candidate_id as gp_candidate_id,
-            {{ generate_gp_election_id("tbl_contest") }} as gp_election_id,
+            -- Guard against generate_gp_election_id hashing all-null inputs
+            -- (when the contest left join misses) and bucketing thousands of
+            -- unrelated candidacies onto one shared UUID.
+            case
+                when tbl_contest.contact_id is null
+                then null
+                else {{ generate_gp_election_id("tbl_contest") }}
+            end as gp_election_id,
             coalesce(
                 tbl_companies.product_campaign_id, tbl_campaigns.campaign_id
             ) as product_campaign_id,

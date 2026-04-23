@@ -41,7 +41,7 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed", "ddhq"]
+              values: ["ballotready", "techspeed", "ddhq", "gp_api"]
       - name: first_name
         description: Candidate first name (lowercased, trimmed in prematch).
       - name: last_name
@@ -68,10 +68,18 @@ models:
       - name: election_date
         description: Date of the election stage.
       - name: election_stage
-        description: Election stage (Primary, General, or Runoff).
+        description: Election stage (Primary, General, Runoff, or Special variants).
         data_tests:
           - accepted_values:
-              values: ["Primary", "General", "Runoff"]
+              values:
+                - "Primary"
+                - "General"
+                - "Primary Runoff"
+                - "General Runoff"
+                - "Primary Special"
+                - "General Special"
+                - "Primary Special Runoff"
+                - "General Special Runoff"
       - name: email
         description: Candidate email address (sparse — used as a high-signal comparison in matching).
       - name: phone
@@ -130,13 +138,13 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed", "ddhq"]
+              values: ["ballotready", "techspeed", "ddhq", "gp_api"]
       - name: source_name_r
         description: Origin source for the right record.
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed", "ddhq"]
+              values: ["ballotready", "techspeed", "ddhq", "gp_api"]
       - name: source_id_l
         description: Left record's source-specific identifier.
       - name: source_id_r

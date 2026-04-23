@@ -56,6 +56,20 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: br_position_tier
+        description: >
+          BallotReady's research-tier classification (integer 1-5) for the
+          position the office-holder fills. Per BR docs, positions are
+          organized into five tiers reflecting research effort:
+          (1) Federal, (2) State, (3) County & Municipal,
+          (4) Small Town, Township & School Board,
+          (5) Special Districts and local small-population positions.
+          See https://developers.civicengine.com/docs/api/graphql/reference/objects/position#positiontierint--
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
       - name: email
         description: Primary contact email extracted from the BallotReady contacts array
       - name: office_phone

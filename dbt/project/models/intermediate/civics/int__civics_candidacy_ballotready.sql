@@ -42,13 +42,9 @@ with
                     "candidacies.normalized_position_name",
                 )
             }} as candidate_office,
-            case
-                when lower(candidacies.level) = 'city'
-                then 'Local'
-                else initcap(candidacies.level)
-            end as office_level,
+            initcap(candidacies.level) as office_level,
             {{ extract_city_from_office_name("candidacies.position_name") }} as city,
-            {{ extract_district_civics_hash("candidacies.position_name") }} as district,
+            {{ extract_district_geographic("candidacies.position_name") }} as district,
             coalesce(
                 regexp_extract(
                     candidacies.position_name, '[-, ] (?:Seat|Group) ([^,]+)'

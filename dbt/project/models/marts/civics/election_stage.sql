@@ -40,7 +40,7 @@ with
             created_at,
             cast(null as timestamp) as updated_at,
             cast(null as string) as br_election_id,
-            cast(null as int) as br_position_id,
+            br_position_id,
             ddhq_race_id,
             total_votes_cast,
             cast(null as string) as partisan_type,

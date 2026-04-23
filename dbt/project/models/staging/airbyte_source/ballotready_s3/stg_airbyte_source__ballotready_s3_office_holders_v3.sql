@@ -76,7 +76,7 @@ with
             {{ adapter.quote("sub_area_value_secondary") }},
             {{ adapter.quote("suffix") }},
             {{ adapter.quote("term_date_specificity") }},
-            try_cast({{ adapter.quote("tier") }} as int) as tier,
+            try_cast({{ adapter.quote("tier") }} as int) as br_position_tier,
             from_json(
                 regexp_replace({{ adapter.quote("urls") }}, '=>', ':'),
                 'ARRAY<STRUCT<url: STRING, type: STRING>>'

@@ -39,9 +39,10 @@ models:
 
   - name: int__civics_election_stage_2025
     description: >
-      Historical archive of election stages (primary, general, primary runoff, general runoff) from the
-      general mart with election stage dates on or before 2025-12-31.
-      Snapshot from 2026-01-22.
+      Historical archive of election stages (primary, general, general runoff) from
+      elections on or before 2025-12-31. Grain: one row per (gp_election_id, stage_type).
+      Seeded from candidacy dates so HubSpot-only stages are represented; DDHQ race
+      attributes are left-joined when a match exists.
     columns:
       - name: gp_election_stage_id
         description: Primary key - internally generated unique identifier for election stages
@@ -58,18 +59,19 @@ models:
                 to: ref('int__civics_election_2025')
                 field: gp_election_id
       - name: ddhq_race_id
-        description: DDHQ race identifier
-        data_tests:
-          - not_null
+        description: DDHQ race identifier. Null for HubSpot-only stages with no DDHQ match.
       - name: election_stage
-        description: Type of election stage (primary, general, primary runoff, general runoff)
+        description: >
+          Type of election stage. DDHQ uses a single 'runoff' type without
+          distinguishing primary vs general; for 2025 and earlier data, DDHQ
+          runoff rows are mapped to 'general runoff'. 'primary runoff' only
+          appears in 2026+ BallotReady data, which flags it explicitly.
         data_tests:
           - accepted_values:
               arguments:
                 values:
                   - primary
                   - general
-                  - primary runoff
                   - general runoff
       - name: ddhq_election_stage_date
         description: Date of the election stage
@@ -78,6 +80,17 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
+      - name: br_position_id
+        description: >
+          BallotReady position database ID, sourced from HubSpot-linked product DB
+          campaign.details.positionId (base64-decoded upstream). Used for ICP join
+          at the mart layer. Null when no candidacy at this stage has a product DB link.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+              config:
+                severity: warn
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -195,9 +208,10 @@ models:
 
   - name: int__civics_candidacy_stage_2025
     description: >
-      Historical archive of candidacy stages (primary, general, primary runoff, general runoff results)
-      from the general mart with election stages on or before 2025-12-31.
-      Uses archived HubSpot data from 2026-01-22 for election results.
+      Historical archive of candidacy stages (primary, general, general runoff)
+      from elections on or before 2025-12-31. Grain: one row per (gp_candidacy_id,
+      stage_type) where the candidacy carries a non-null date for that stage.
+      DDHQ is an optional attribute join — HubSpot-only candidacies flow through.
     columns:
       - name: gp_candidacy_stage_id
         description: Primary key - internally generated unique identifier for candidacy stages
@@ -1137,6 +1151,16 @@ models:
         data_tests:
           - not_null
 
+      - name: br_position_tier
+        description: >
+          BallotReady's research-tier classification (integer 1-5) for the
+          position the office-holder fills. Per BR docs, positions are
+          organized into five tiers reflecting research effort:
+          (1) Federal, (2) State, (3) County & Municipal,
+          (4) Small Town, Township & School Board,
+          (5) Special Districts and local small-population positions.
+          See https://developers.civicengine.com/docs/api/graphql/reference/objects/position#positiontierint--
+
       - name: state
         description: U.S. state (2-letter code)
         data_tests:
@@ -1147,12 +1171,14 @@ models:
 
       - name: office_level
         description: >
-          Office level derived from BallotReady level values.
-          City-level offices are mapped to Local.
+          Office level from BallotReady's PositionLevel enum
+          (initcap normalization only, no value collapsing).
+          See https://developers.civicengine.com/docs/api/graphql/reference/enums/position-level
         data_tests:
           - accepted_values:
               arguments:
                 values:
+                  - City
                   - Local
                   - County
                   - Township
@@ -1282,12 +1308,13 @@ models:
 
       - name: office_level
         description: >
-          Office level derived from TechSpeed level field.
-          City-level offices are mapped to Local.
+          Office level from BallotReady's PositionLevel enum, passed through
+          TechSpeed's level field with initcap normalization.
         data_tests:
           - accepted_values:
               arguments:
                 values:
+                  - City
                   - Local
                   - County
                   - Township
