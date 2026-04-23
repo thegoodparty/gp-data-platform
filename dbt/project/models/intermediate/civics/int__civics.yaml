@@ -1869,16 +1869,18 @@ models:
                 values: ["gp_api"]
 
       - name: office_level
+        description: >
+          Source-faithful Product DB election_level. Raw values are
+          {city, county, federal, state}; mart-layer union normalizes to the
+          cross-source enum (Local/County/Township/State/Regional/Federal).
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - Local
-                  - County
-                  - Township
-                  - State
-                  - Regional
-                  - Federal
+                  - city
+                  - county
+                  - federal
+                  - state
 
       - name: candidacy_result
         description: 'Won if did_win, else null. Under-populated: only 165 / 61,548 campaigns have did_win set.'
@@ -2018,16 +2020,17 @@ models:
                 values: ["gp_api"]
 
       - name: office_level
+        description: >
+          Source-faithful Product DB election_level. See
+          int__civics_candidacy_gp_api.office_level for normalization notes.
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - Local
-                  - County
-                  - Township
-                  - State
-                  - Regional
-                  - Federal
+                  - city
+                  - county
+                  - federal
+                  - state
 
       - name: created_at
         data_tests:

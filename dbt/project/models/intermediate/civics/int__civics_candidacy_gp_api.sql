@@ -89,11 +89,11 @@ with
             c.campaign_state as state,
             c.normalized_position_name as official_office_name,
             c.campaign_office as candidate_office,
-            case
-                when lower(c.election_level) = 'city'
-                then 'Local'
-                else initcap(c.election_level)
-            end as office_level,
+            -- Source-faithful: Product DB's raw values are {city, county,
+            -- federal, state} (lowercase). Mart-layer union normalizes to the
+            -- cross-source enum (Local/County/Township/State/Regional/Federal)
+            -- so we don't lose the city-vs-Local distinction here.
+            nullif(c.election_level, '') as office_level,
             {{ map_office_type("c.campaign_office") }} as office_type,
             {{ extract_city_from_office_name("c.normalized_position_name") }} as city,
             -- Narrower keyword set than macros/extract_district_from_position.sql
