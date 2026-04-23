@@ -11,6 +11,28 @@
 {% endmacro %}
 
 
+{% macro extract_district_civics_hash(position_column) %}
+    -- Narrower 6-keyword subset of extract_district_raw, load-bearing for
+    -- civics mart gp_candidacy_id hashing. The salted UUID takes district
+    -- as a hash input, so every civics intermediate that computes a candidacy
+    -- id must use the exact same extraction or hashes diverge across
+    -- sources and ER clustering breaks silently. Used by:
+    -- int__civics_candidacy_ballotready
+    -- int__civics_elected_official_ballotready
+    -- int__civics_candidacy_gp_api
+    -- int__civics_candidacy_stage_gp_api
+    -- Do not widen the keyword list without synchronizing a rebuild of all
+    -- civics_candidacy* and civics_elected_official* models.
+    coalesce(
+        regexp_extract(
+            {{ position_column }},
+            '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
+        ),
+        ''
+    )
+{% endmacro %}
+
+
 {% macro extract_district_identifier(position_column) %}
     -- Extract the numeric district identifier from position_name.
     -- First tries keyword-prefixed patterns (District 3, Ward 2), then falls

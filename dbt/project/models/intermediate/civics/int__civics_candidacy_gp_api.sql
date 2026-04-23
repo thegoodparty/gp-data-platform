@@ -92,16 +92,8 @@ with
             nullif(c.election_level, '') as office_level,
             {{ map_office_type("c.campaign_office") }} as office_type,
             {{ extract_city_from_office_name("c.normalized_position_name") }} as city,
-            -- Narrower keyword set than macros/extract_district_from_position.sql
-            -- on purpose — matches int__civics_candidacy_ballotready's inline
-            -- district parse so salted UUIDs converge across sources.
-            coalesce(
-                regexp_extract(
-                    c.normalized_position_name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
-                ),
-                ''
-            ) as district,
+            {{ extract_district_civics_hash("c.normalized_position_name") }}
+            as district,
             cast(null as string) as seat_name,
             cast(null as int) as seats_available,
             c.election_date,

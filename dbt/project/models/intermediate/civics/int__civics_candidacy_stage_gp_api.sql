@@ -77,16 +77,8 @@ with
             c.created_at,
             c.updated_at,
             nullif(c.campaign_party, '') as party_affiliation,
-            -- Narrower keyword set than macros/extract_district_from_position.sql
-            -- on purpose — matches int__civics_candidacy_ballotready's inline
-            -- district parse so salted UUIDs converge across sources.
-            coalesce(
-                regexp_extract(
-                    c.normalized_position_name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
-                ),
-                ''
-            ) as district,
+            {{ extract_district_civics_hash("c.normalized_position_name") }}
+            as district,
             br.gp_election_stage_id as br_gp_election_stage_id,
             br.stage_election_date
         from latest_campaigns as c

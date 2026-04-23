@@ -22,13 +22,7 @@ with
                 when lower(level) = 'city' then 'Local' else initcap(level)
             end as office_level,
             {{ extract_city_from_office_name("position_name") }} as city,
-            coalesce(
-                regexp_extract(
-                    position_name,
-                    '- (?:District|Ward|Place|Branch|Subdistrict|Zone) (.+)$'
-                ),
-                ''
-            ) as district,
+            {{ extract_district_civics_hash("position_name") }} as district,
             case
                 when get(party_names, 0) is null
                 then null
