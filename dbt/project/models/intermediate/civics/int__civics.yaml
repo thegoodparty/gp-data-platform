@@ -1796,15 +1796,16 @@ models:
       - name: state
         description: >
           Most recent non-demo campaign's campaign_state. Null for users whose
-          only campaigns are demo (warn-only — these users are still candidates
-          and included for downstream joins).
+          only campaigns are demo — these users are still surfaced as
+          candidates (no not_null test: by design, ~33% of rows are null and a
+          warning that always fires is noise).
+          accepted_values mirrors int__civics_elected_official_ballotready and
+          includes 'US' as a known-bad value present in source (~15 rows), so
+          the test only fails when a genuinely new invalid code appears.
         data_tests:
-          - not_null:
-              config:
-                severity: warn
-          - is_state_abbreviation:
-              config:
-                severity: warn
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
 
       - name: created_at
         data_tests:
