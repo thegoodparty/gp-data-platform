@@ -11,3 +11,4 @@ br_database_id,br_position_name,state,l2_district_type,l2_district_name,reason
 267702,Georgia Public Service Commission - District 4,GA,State,GA,Office holder must reside in district but election is statewide (https://ballotpedia.org/Georgia_Public_Service_Commission)
 167255,Georgia Public Service Commission - District 5,GA,State,GA,Office holder must reside in district but election is statewide (https://ballotpedia.org/Georgia_Public_Service_Commission)
 289892,"Circuit Court Judge - Circuit 9, Seat 2",FL,County,ORANGE,FL Circuit 9 spans Orange and Osceola counties; L2 has no Judicial_Circuit_Court_District for FL. Mapping to primary county (Orange) covers ~78% of voters. Multi-county district joins not yet supported (DATA-1837)
+138417,Katy Independent School Board - Position 4,TX,School_District,KATY ISD (EST.),LLM match returned NOT_MATCHED for this seat while the six sibling Katy ISD board positions all matched to School_District / KATY ISD (EST.)
