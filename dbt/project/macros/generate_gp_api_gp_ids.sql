@@ -17,6 +17,12 @@
     email="email",
     phone="phone_number"
 ) %}
+    -- Slot 4 is the birth_date position in the cross-source person hash
+    -- [first_name, last_name, state, birth_date, email, phone]. Product DB
+    -- doesn't track birth dates, so we emit null (matches int__civics_candidate_
+    -- ballotready, which also has no birth date). HubSpot and TechSpeed put a
+    -- real value there. The slot must stay for hashes to converge across
+    -- sources — dropping it would shift every subsequent field and break ER.
     {{
         generate_salted_uuid(
             fields=[
