@@ -1754,3 +1754,325 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+  - name: int__civics_candidate_gp_api
+    description: >
+      Product Database (gp_api_db) users transformed into the civics mart
+      candidate schema. Grain: one row per user with campaign_count > 0.
+
+      ER canonicalization: canonical_gp_candidate_id from
+      int__civics_er_canonical_ids is looked up via the user's latest campaigns
+      and propagated across users sharing the same person hash.
+
+    columns:
+      - name: gp_candidate_id
+        description: >
+          Primary key - UUID generated from (first_name, last_name, state,
+          null birth_date, email, phone). Cross-source compatible with
+          int__civics_candidate_ballotready / _techspeed.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: prod_db_user_id
+        description: Product DB user.id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        data_tests:
+          - not_null
+
+      - name: email
+        data_tests:
+          - not_null
+
+      - name: state
+        description: >
+          Most recent non-demo campaign's campaign_state. Null for users whose
+          only campaigns are demo (warn-only — these users are still candidates
+          and included for downstream joins).
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: gp_api_candidate_updated_ge_created
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_candidacy_gp_api
+    description: >
+      Product Database campaigns transformed into the civics mart candidacy
+      schema. Grain: one row per latest-version campaign with a non-null
+      election_date.
+
+      gp_candidate_id uses the user's derived state (most recent non-demo
+      campaign), NOT the per-campaign state — this keeps the referential
+      integrity join to int__civics_candidate_gp_api intact for users with
+      campaigns in multiple states.
+
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidate_id
+        description: Foreign key to int__civics_candidate_gp_api
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidate_gp_api')
+                field: gp_candidate_id
+
+      - name: gp_election_id
+        data_tests:
+          - not_null
+
+      - name: product_campaign_id
+        description: Product DB campaign.id (latest version)
+        data_tests:
+          - unique
+          - not_null
+
+      - name: candidate_id_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["gp_api"]
+
+      - name: office_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
+      - name: candidacy_result
+        description: 'Won if did_win, else null. Under-populated: only 165 / 61,548 campaigns have did_win set.'
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Won
+
+      - name: is_verified
+        data_tests:
+          - not_null
+
+      - name: is_partisan
+        data_tests:
+          - not_null
+
+      - name: general_election_date
+        data_tests:
+          - not_null
+
+      - name: is_demo
+        data_tests:
+          - not_null
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: gp_api_candidacy_updated_ge_created
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_candidacy_stage_gp_api
+    description: >
+      Product Database campaigns × BR election_stage rows for same position+year.
+      Grain: one row per (campaign × BR election_stage). Campaigns without a
+      ballotready_position_id or without a matching BR stage are dropped.
+
+      Stage-level election results (is_winner, election_result, votes_received)
+      are null — Product DB's did_win is candidacy-grain, not stage-grain.
+
+    columns:
+      - name: gp_candidacy_stage_id
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_candidacy_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_candidacy_gp_api')
+                field: gp_candidacy_id
+
+      - name: gp_election_stage_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_stage_ballotready')
+                field: gp_election_stage_id
+
+      - name: has_match
+        description: No DDHQ matching for gp_api — always false.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [false]
+
+      - name: election_stage_date
+        data_tests:
+          - not_null
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: gp_api_candidacy_stage_updated_ge_created
+          arguments:
+            expression: "updated_at >= created_at"
+
+  - name: int__civics_elected_official_gp_api
+    description: >
+      Product Database elected offices transformed into the civics mart
+      elected_officials schema. Grain: one row per gp_api_db_elected_office
+      row whose campaign_id resolves in the campaigns mart (~9 orphans filtered).
+
+      Sourced from gp_api_db_elected_office (authoritative) — campaigns.did_win
+      is stale for most winning campaigns.
+
+    columns:
+      - name: gp_elected_official_id
+        description: UUID generated from ('gp_api_elected_office', elected_office.id).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: gp_api_elected_office_id
+        description: Product DB elected_office.id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: gp_api_user_id
+        data_tests:
+          - not_null
+
+      - name: gp_api_campaign_id
+        data_tests:
+          - not_null
+
+      - name: state
+        data_tests:
+          - not_null
+
+      - name: candidate_id_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["gp_api"]
+
+      - name: office_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
+      - name: created_at
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_er_canonical_ids
+    description: >
+      Entity resolution crosswalk: provider raw keys → BallotReady canonical
+      gp_* IDs. Wide schema covering TechSpeed (keyed by ts_source_candidate_id
+      + ts_stage_election_date) and Product DB (keyed by gp_api_campaign_id +
+      gp_api_stage_election_date). Provider columns are null on rows from
+      other providers.
+
+    columns:
+      - name: canonical_gp_candidate_id
+        data_tests:
+          - not_null
+
+      - name: canonical_gp_candidacy_id
+        data_tests:
+          - not_null
+
+      - name: canonical_gp_candidacy_stage_id
+        data_tests:
+          - not_null
+
+      - name: canonical_gp_election_stage_id
+        data_tests:
+          - not_null
+
+      - name: canonical_gp_election_id
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: ts_key_unique_in_crosswalk
+          arguments:
+            combination_of_columns:
+              - ts_source_candidate_id
+              - ts_stage_election_date
+          config:
+            where: "ts_source_candidate_id is not null"
+
+      - dbt_utils.unique_combination_of_columns:
+          name: gp_api_key_unique_in_crosswalk
+          arguments:
+            combination_of_columns:
+              - gp_api_campaign_id
+              - gp_api_stage_election_date
+          config:
+            where: "gp_api_campaign_id is not null"
