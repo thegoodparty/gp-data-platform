@@ -8,6 +8,13 @@
 -- ballotready_position_id are dropped — Product DB doesn't track stage grain
 -- natively, so we rely on BR's stage inventory.
 --
+-- Temporal scope: BR's stage inventory (int__civics_election_stage_ballotready)
+-- covers 2026+ only, so pre-2026 Product DB campaigns silently produce zero
+-- stage rows here (~22k verified non-demo campaigns in 2024–2025). Those
+-- campaigns are NOT lost — they still appear in int__civics_candidacy_gp_api
+-- at campaign grain, and their historical stage-grain data is captured by
+-- int__civics_candidacy_stage_2025 (the HubSpot/DDHQ-based archive).
+--
 -- Schema aligned with int__civics_candidacy_stage_techspeed. Stage-level
 -- result fields (is_winner, election_result, votes_received) are null —
 -- Product DB's `did_win` flag is candidacy-grain, not stage-grain.
