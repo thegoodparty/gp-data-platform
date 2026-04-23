@@ -72,8 +72,6 @@ with
             cast(null as string) as central_phone,
             position_name,
             candidate_office,
-            -- Source-faithful: see note in int__civics_candidacy_gp_api.
-            -- Raw Product DB values passed through; mart-layer normalizes.
             nullif(election_level, '') as office_level,
             {{ map_office_type("candidate_office") }} as office_type,
             state,
