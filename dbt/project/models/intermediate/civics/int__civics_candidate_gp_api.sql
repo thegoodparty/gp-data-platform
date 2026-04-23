@@ -76,10 +76,9 @@ with
         select
             coalesce(
                 max(canonical_gp_candidate_id) over (
-                    partition by
-                        {{ generate_gp_api_gp_candidate_id(phone="phone_number") }}
+                    partition by {{ generate_gp_api_gp_candidate_id() }}
                 ),
-                {{ generate_gp_api_gp_candidate_id(phone="phone_number") }}
+                {{ generate_gp_api_gp_candidate_id() }}
             ) as gp_candidate_id,
 
             hubspot_contact_id,

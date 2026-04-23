@@ -15,7 +15,7 @@
     last_name="last_name",
     state="state",
     email="email",
-    phone="phone"
+    phone="phone_number"
 ) %}
     {{
         generate_salted_uuid(

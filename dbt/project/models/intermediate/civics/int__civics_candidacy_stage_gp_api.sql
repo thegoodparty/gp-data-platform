@@ -70,6 +70,9 @@ with
             c.created_at,
             c.updated_at,
             nullif(c.campaign_party, '') as party_affiliation,
+            -- Narrower keyword set than macros/extract_district_from_position.sql
+            -- on purpose — matches int__civics_candidacy_ballotready's inline
+            -- district parse so salted UUIDs converge across sources.
             coalesce(
                 regexp_extract(
                     c.normalized_position_name,

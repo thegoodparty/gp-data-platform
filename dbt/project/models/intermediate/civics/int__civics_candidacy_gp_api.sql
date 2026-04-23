@@ -96,6 +96,9 @@ with
             end as office_level,
             {{ map_office_type("c.campaign_office") }} as office_type,
             {{ extract_city_from_office_name("c.normalized_position_name") }} as city,
+            -- Narrower keyword set than macros/extract_district_from_position.sql
+            -- on purpose — matches int__civics_candidacy_ballotready's inline
+            -- district parse so salted UUIDs converge across sources.
             coalesce(
                 regexp_extract(
                     c.normalized_position_name,
@@ -176,8 +179,13 @@ with
             is_pledged,
             is_verified,
             cast(null as string) as verification_status_reason,
-            party_affiliation is not null
-            and lower(party_affiliation) != 'nonpartisan' as is_partisan,
+            case
+                when party_affiliation is null
+                then null
+                when lower(party_affiliation) = 'nonpartisan'
+                then false
+                else true
+            end as is_partisan,
             cast(null as date) as primary_election_date,
             cast(null as date) as primary_runoff_election_date,
             general_election_date,

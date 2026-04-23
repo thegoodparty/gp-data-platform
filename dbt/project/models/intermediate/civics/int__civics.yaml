@@ -1802,6 +1802,9 @@ models:
           - not_null:
               config:
                 severity: warn
+          - is_state_abbreviation:
+              config:
+                severity: warn
 
       - name: created_at
         data_tests:
@@ -1886,8 +1889,9 @@ models:
           - not_null
 
       - name: is_partisan
-        data_tests:
-          - not_null
+        description: >
+          True for party-affiliated candidacies, false for 'nonpartisan', null
+          when party_affiliation is unknown. Matches BR/TS semantics.
 
       - name: general_election_date
         data_tests:
