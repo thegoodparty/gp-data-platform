@@ -77,31 +77,9 @@ with
             coalesce(
                 max(canonical_gp_candidate_id) over (
                     partition by
-                        {{
-                            generate_salted_uuid(
-                                fields=[
-                                    "first_name",
-                                    "last_name",
-                                    "state",
-                                    "cast(null as string)",
-                                    "email",
-                                    "phone_number",
-                                ]
-                            )
-                        }}
+                        {{ generate_gp_api_gp_candidate_id(phone="phone_number") }}
                 ),
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "first_name",
-                            "last_name",
-                            "state",
-                            "cast(null as string)",
-                            "email",
-                            "phone_number",
-                        ]
-                    )
-                }}
+                {{ generate_gp_api_gp_candidate_id(phone="phone_number") }}
             ) as gp_candidate_id,
 
             hubspot_contact_id,

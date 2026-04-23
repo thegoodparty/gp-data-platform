@@ -96,18 +96,10 @@ with
             created_at,
             updated_at
         from joined
-    ),
-
-    deduplicated as (
-        select *
-        from final
-        qualify
-            row_number() over (
-                partition by gp_elected_official_id order by updated_at desc
-            )
-            = 1
     )
 
+-- No dedup: gp_elected_official_id is a salted UUID of elected_office.id,
+-- which is already unique in the source table.
 select
     gp_elected_official_id,
     gp_api_elected_office_id,
@@ -142,4 +134,4 @@ select
     candidate_id_source,
     created_at,
     updated_at
-from deduplicated
+from final

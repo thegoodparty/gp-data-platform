@@ -33,10 +33,6 @@ with
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
-    -- Per-user state for gp_candidacy_id consistency with candidacy_gp_api
-    -- (uses the per-campaign campaign_state, not user_state — keep that clear).
-    -- NOTE: gp_candidacy_id in candidacy_gp_api uses c.campaign_state (not
-    -- user_state), so we do the same here.
     -- ER lookup at stage grain: canonical IDs that apply only to the specific
     -- (campaign, stage_date) pair.
     er_canonical_stage as (
@@ -108,20 +104,12 @@ with
 
     with_ids as (
         select
-            -- gp_candidacy_id: must match int__civics_candidacy_gp_api's hash.
+            -- Must match int__civics_candidacy_gp_api's hash.
             coalesce(
                 canonical_gp_candidacy_id,
                 {{
-                    generate_salted_uuid(
-                        fields=[
-                            "user_first_name",
-                            "user_last_name",
-                            "state",
-                            "party_affiliation",
-                            "candidate_office",
-                            "cast(general_election_date as string)",
-                            "district",
-                        ]
+                    generate_gp_api_gp_candidacy_id(
+                        first_name="user_first_name", last_name="user_last_name"
                     )
                 }}
             ) as gp_candidacy_id,

@@ -117,56 +117,39 @@ with
 
     candidacies_with_ids as (
         select
-            -- gp_candidacy_id: prefer ER canonical; fall back to deterministic
-            -- salted UUID. Salt field order matches int__civics_candidacy_ballotready.
+            -- Salt field order matches int__civics_candidacy_ballotready.
             coalesce(
                 xw.canonical_gp_candidacy_id,
                 {{
-                    generate_salted_uuid(
-                        fields=[
-                            "user_first_name",
-                            "user_last_name",
-                            "state",
-                            "party_affiliation",
-                            "candidate_office",
-                            "cast(general_election_date as string)",
-                            "district",
-                        ]
+                    generate_gp_api_gp_candidacy_id(
+                        first_name="user_first_name", last_name="user_last_name"
                     )
                 }}
             ) as gp_candidacy_id,
 
-            -- gp_candidate_id: must match int__civics_candidate_gp_api.
-            -- Uses window propagation over the person hash (matches candidate
-            -- model's cross-user cascade), so campaigns under hash-collision
-            -- users adopt the same canonical_gp_candidate_id the candidate
-            -- row resolves to.
+            -- Window propagation over the person hash (matches candidate model's
+            -- cross-user cascade), so campaigns under hash-collision users adopt
+            -- the same canonical_gp_candidate_id the candidate row resolves to.
             coalesce(
                 max(user_canonical_gp_candidate_id) over (
                     partition by
                         {{
-                            generate_salted_uuid(
-                                fields=[
-                                    "user_first_name",
-                                    "user_last_name",
-                                    "user_state",
-                                    "cast(null as string)",
-                                    "user_email",
-                                    "user_phone",
-                                ]
+                            generate_gp_api_gp_candidate_id(
+                                first_name="user_first_name",
+                                last_name="user_last_name",
+                                state="user_state",
+                                email="user_email",
+                                phone="user_phone",
                             )
                         }}
                 ),
                 {{
-                    generate_salted_uuid(
-                        fields=[
-                            "user_first_name",
-                            "user_last_name",
-                            "user_state",
-                            "cast(null as string)",
-                            "user_email",
-                            "user_phone",
-                        ]
+                    generate_gp_api_gp_candidate_id(
+                        first_name="user_first_name",
+                        last_name="user_last_name",
+                        state="user_state",
+                        email="user_email",
+                        phone="user_phone",
                     )
                 }}
             ) as gp_candidate_id,

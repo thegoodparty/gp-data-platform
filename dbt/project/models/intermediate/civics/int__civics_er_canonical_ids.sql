@@ -48,6 +48,12 @@ with
             {{ ref("int__civics_election_stage_ballotready") }} as br_es
             on br_cs.gp_election_stage_id = br_es.gp_election_stage_id
         where br_cw.source_name = 'ballotready' and ts_cw.source_name = 'techspeed'
+        qualify
+            row_number() over (
+                partition by ts_source_candidate_id, ts_stage_election_date
+                order by br_updated_at desc
+            )
+            = 1
     ),
 
     gp_api_stage_matches as (
@@ -77,44 +83,6 @@ with
             {{ ref("int__civics_election_stage_ballotready") }} as br_es
             on br_cs.gp_election_stage_id = br_es.gp_election_stage_id
         where br_cw.source_name = 'ballotready' and gp_cw.source_name = 'gp_api'
-    ),
-
-    -- Dedup TS: keep the most recent BR match per (ts_source_candidate_id,
-    -- ts_stage_election_date)
-    ts_deduped as (
-        select
-            ts_source_candidate_id,
-            ts_stage_election_date,
-            gp_api_campaign_id,
-            gp_api_stage_election_date,
-            canonical_gp_candidacy_stage_id,
-            canonical_gp_election_stage_id,
-            canonical_gp_candidacy_id,
-            canonical_gp_candidate_id,
-            canonical_gp_election_id
-        from ts_stage_matches
-        qualify
-            row_number() over (
-                partition by ts_source_candidate_id, ts_stage_election_date
-                order by br_updated_at desc
-            )
-            = 1
-    ),
-
-    -- Dedup gp_api: keep the most recent BR match per (gp_api_campaign_id,
-    -- gp_api_stage_election_date)
-    gp_api_deduped as (
-        select
-            ts_source_candidate_id,
-            ts_stage_election_date,
-            gp_api_campaign_id,
-            gp_api_stage_election_date,
-            canonical_gp_candidacy_stage_id,
-            canonical_gp_election_stage_id,
-            canonical_gp_candidacy_id,
-            canonical_gp_candidate_id,
-            canonical_gp_election_id
-        from gp_api_stage_matches
         qualify
             row_number() over (
                 partition by gp_api_campaign_id, gp_api_stage_election_date
@@ -123,8 +91,28 @@ with
             = 1
     )
 
-select *
-from ts_deduped
+-- Each CTE keeps the most recent BR match per provider's (raw key, stage
+-- date); dropping br_updated_at in the final projection.
+select
+    ts_source_candidate_id,
+    ts_stage_election_date,
+    gp_api_campaign_id,
+    gp_api_stage_election_date,
+    canonical_gp_candidacy_stage_id,
+    canonical_gp_election_stage_id,
+    canonical_gp_candidacy_id,
+    canonical_gp_candidate_id,
+    canonical_gp_election_id
+from ts_stage_matches
 union all
-select *
-from gp_api_deduped
+select
+    ts_source_candidate_id,
+    ts_stage_election_date,
+    gp_api_campaign_id,
+    gp_api_stage_election_date,
+    canonical_gp_candidacy_stage_id,
+    canonical_gp_election_stage_id,
+    canonical_gp_candidacy_id,
+    canonical_gp_candidate_id,
+    canonical_gp_election_id
+from gp_api_stage_matches
