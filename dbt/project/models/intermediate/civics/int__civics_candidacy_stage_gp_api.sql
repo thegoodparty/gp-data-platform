@@ -76,7 +76,7 @@ with
             c.election_date as general_election_date,
             c.created_at,
             c.updated_at,
-            nullif(c.campaign_party, '') as party_affiliation,
+            {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation,
             {{ extract_district_geographic("c.normalized_position_name") }} as district,
             br.gp_election_stage_id as br_gp_election_stage_id,
             br.stage_election_date

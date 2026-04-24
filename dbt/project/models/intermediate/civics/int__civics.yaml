@@ -1921,6 +1921,20 @@ models:
         data_tests:
           - not_null
 
+      - name: party_affiliation
+        description: Normalized party affiliation via parse_party_affiliation macro
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
       - name: is_partisan
         description: >
           True for party-affiliated candidacies, false for 'nonpartisan', null
@@ -2058,6 +2072,20 @@ models:
                   - county
                   - federal
                   - state
+
+      - name: party_affiliation
+        description: Normalized party affiliation via parse_party_affiliation macro
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
 
       - name: created_at
         data_tests:

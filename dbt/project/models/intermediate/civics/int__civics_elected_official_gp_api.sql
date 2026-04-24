@@ -43,7 +43,7 @@ with
             c.campaign_office as candidate_office,
             c.election_level,
             c.campaign_state as state,
-            c.campaign_party as party_affiliation
+            {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation
         from elected_offices as eo
         inner join latest_campaigns as c on eo.campaign_id = c.campaign_id
         left join users as u on eo.user_id = u.user_id

@@ -97,7 +97,7 @@ with
             cast(null as int) as seats_available,
             c.election_date,
             c.election_date as general_election_date,
-            nullif(c.campaign_party, '') as party_affiliation,
+            {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation,
             uec.canonical_gp_candidate_id as user_canonical_gp_candidate_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
