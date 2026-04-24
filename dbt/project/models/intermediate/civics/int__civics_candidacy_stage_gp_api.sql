@@ -35,6 +35,7 @@ with
         select
             gp_election_stage_id,
             br_position_id,
+            stage_type,
             election_date as stage_election_date,
             year(election_date) as stage_election_year
         from {{ ref("int__civics_election_stage_ballotready") }}
@@ -56,9 +57,11 @@ with
     -- all stages of a matched campaign (so the sibling stage of a clustered
     -- stage aligns with candidacy_gp_api's gp_candidacy_id).
     er_canonical_candidacy as (
+        -- max() is deterministic (any_value() is explicitly non-deterministic
+        -- in Spark). Must match the collapse in int__civics_candidacy_gp_api.
         select
             gp_api_campaign_id,
-            any_value(canonical_gp_candidacy_id) as canonical_gp_candidacy_id
+            max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where gp_api_campaign_id is not null
         group by gp_api_campaign_id
@@ -86,6 +89,19 @@ with
             br_stages as br
             on c.ballotready_position_id = br.br_position_id
             and year(c.election_date) = br.stage_election_year
+        -- A position may carry multiple BR races of the same stage_type in
+        -- the same year (regular primary + special primary, etc.), each a
+        -- distinct gp_election_stage_id. Without this dedup a single Product
+        -- DB campaign fans out across all of them (observed ~509 phantom rows
+        -- before fix). Pick the race whose date is closest to the campaign's
+        -- election_date — mirrors the pattern in
+        -- int__er_prematch_candidacy_stages.
+        qualify
+            row_number() over (
+                partition by c.campaign_id, br.stage_type
+                order by abs(datediff(br.stage_election_date, c.election_date))
+            )
+            = 1
     ),
 
     with_er as (

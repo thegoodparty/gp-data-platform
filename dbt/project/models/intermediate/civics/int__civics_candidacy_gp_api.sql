@@ -42,11 +42,15 @@ with
     -- same canonical_gp_candidacy_id / canonical_gp_election_id (verified: the
     -- crosswalk's inner joins bottom out on br_cs.gp_candidacy_id).
     er_canonical as (
+        -- max() is deterministic across runs (any_value() is explicitly
+        -- non-deterministic in Spark). Keeps this collapse stable with the
+        -- sibling CTE in int__civics_candidacy_stage_gp_api if a campaign's
+        -- stages ever resolve to multiple canonical_gp_candidacy_ids.
         select
             gp_api_campaign_id,
-            any_value(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
-            any_value(canonical_gp_election_id) as canonical_gp_election_id,
-            any_value(canonical_gp_candidate_id) as canonical_gp_candidate_id
+            max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
+            max(canonical_gp_election_id) as canonical_gp_election_id,
+            max(canonical_gp_candidate_id) as canonical_gp_candidate_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where gp_api_campaign_id is not null
         group by gp_api_campaign_id
