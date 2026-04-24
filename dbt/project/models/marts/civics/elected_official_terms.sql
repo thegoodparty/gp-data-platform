@@ -1,6 +1,6 @@
 -- Civics mart elected_official_terms table
--- BR elected official terms enriched with TS contact data via deterministic join.
--- BR is the spine; TS enrichment is additive columns only (row count = BR).
+-- Consumes the BR+TS intermediate and adds: contact rollup, provider
+-- precedence, incumbent conflict resolution, ICP flags, source attribution.
 --
 -- Two categories of TS enrichment:
 -- 1. Person-level (phone, email): fanned out via br_candidate_id
@@ -8,42 +8,19 @@
 --
 -- Grain: One row per BR elected official term (person-position-term).
 with
-    br as (select * from {{ ref("int__civics_elected_official_ballotready") }}),
-
-    ts as (select * from {{ ref("int__civics_elected_official_techspeed") }}),
-
-    -- TS step 1: one row per ts_officeholder_id with bigint cast for join.
-    -- Known limitation: 86 IDs (0.3%) are reused across different people in TS.
-    -- The dedup picks one arbitrarily; does not affect the deterministic ID match.
-    ts_position_dedup as (
-        select
-            cast(ts_officeholder_id as bigint) as ts_officeholder_id_bigint,
-            ts_officeholder_id,
-            is_incumbent,
-            phone as ts_phone,
-            email as ts_email,
-            updated_at as ts_updated_at
-        from ts
-        qualify
-            row_number() over (partition by ts_officeholder_id order by updated_at desc)
-            = 1
+    enriched as (
+        select * from {{ ref("int__civics_elected_official_ballotready_techspeed") }}
     ),
 
-    -- TS step 2: match each TS record to BR to get br_candidate_id.
-    -- All 30,375 unique TS IDs match exactly one BR row.
+    -- TS records matched to BR, with br_candidate_id for person-level fan-out.
     ts_matched as (
-        select
-            td.ts_officeholder_id,
-            td.ts_phone,
-            td.ts_email,
-            td.ts_updated_at,
-            br.br_candidate_id
-        from ts_position_dedup td
-        inner join br on br.br_office_holder_id = td.ts_officeholder_id_bigint
+        select ts_officeholder_id, ts_phone, ts_email, ts_updated_at, br_candidate_id
+        from enriched
+        where has_direct_ts_term_match and br_candidate_id is not null
     ),
 
-    -- TS step 3: latest non-null phone/email per person (br_candidate_id).
-    -- Avoids losing valid contact data across 2,475 multi-TS-ID candidates.
+    -- Latest non-null phone/email per person (br_candidate_id).
+    -- Avoids losing valid contact data across multi-TS-ID candidates.
     -- Window function with IGNORE NULLS for deterministic per-field selection.
     -- Secondary sort on ts_officeholder_id breaks ties when timestamps match.
     ts_contact_rollup as (
@@ -60,40 +37,14 @@ with
                 rows between unbounded preceding and unbounded following
             ) as ts_email
         from ts_matched
-        where br_candidate_id is not null
     ),
 
-    -- Flag ts_officeholder_ids with conflicting is_incumbent values (26 of 86
-    -- reused IDs). is_incumbent will be NULLed for these in the final select.
-    ts_incumbent_conflicts as (
-        select ts_officeholder_id
-        from ts
-        group by ts_officeholder_id
-        having count(distinct is_incumbent) > 1
-    ),
-
-    -- Assemble term rows: BR spine with two TS LEFT JOINs.
+    -- Assemble term rows: enriched spine with person-level TS contact rollup.
     merged as (
-        select
-            br.*,
-            -- Person-level TS enrichment
-            tc.ts_phone,
-            tc.ts_email,
-            -- Term-scoped TS match
-            td.ts_officeholder_id,
-            case
-                when td.ts_officeholder_id is not null and ic.ts_officeholder_id is null
-                then td.is_incumbent
-            end as ts_is_incumbent,
-            -- Match flags
-            td.ts_officeholder_id is not null as has_direct_ts_term_match
-        from br
-        left join ts_contact_rollup tc on br.br_candidate_id = tc.br_candidate_id
+        select enriched.*, tc.ts_phone as tc_ts_phone, tc.ts_email as tc_ts_email
+        from enriched
         left join
-            ts_position_dedup td
-            on br.br_office_holder_id = td.ts_officeholder_id_bigint
-        left join
-            ts_incumbent_conflicts ic on td.ts_officeholder_id = ic.ts_officeholder_id
+            ts_contact_rollup as tc on enriched.br_candidate_id = tc.br_candidate_id
     )
 
 select
@@ -129,9 +80,9 @@ select
     merged.suffix,
     merged.full_name,
 
-    -- Contact (mixed precedence)
-    coalesce(merged.ts_phone, merged.phone) as phone,  -- TS wins
-    coalesce(merged.email, merged.ts_email) as email,  -- BR wins
+    -- Contact (mixed precedence: TS wins phone, BR wins email)
+    coalesce(merged.tc_ts_phone, merged.phone) as phone,
+    coalesce(merged.email, merged.tc_ts_email) as email,
     merged.office_phone,
     merged.central_phone,
 
@@ -156,7 +107,11 @@ select
     merged.is_judicial,
     merged.is_vacant,
     merged.is_off_cycle,
-    merged.ts_is_incumbent as is_incumbent,
+    -- is_incumbent: NULL when ts_incumbent_conflict is true (unreliable value)
+    case
+        when merged.has_direct_ts_term_match and not merged.ts_incumbent_conflict
+        then merged.ts_is_incumbent
+    end as is_incumbent,
 
     -- Party (BR)
     merged.party_affiliation,
@@ -186,10 +141,10 @@ select
             case
                 when
                     (
-                        merged.ts_phone is not null
-                        and (merged.phone is null or merged.ts_phone != merged.phone)
+                        merged.tc_ts_phone is not null
+                        and (merged.phone is null or merged.tc_ts_phone != merged.phone)
                     )
-                    or (merged.email is null and merged.ts_email is not null)
+                    or (merged.email is null and merged.tc_ts_email is not null)
                     or merged.ts_officeholder_id is not null
                 then 'techspeed'
             end
@@ -197,19 +152,18 @@ select
     ) as source_systems,
 
     -- has_ts_person_enrichment: output-based — true when at least one contact
-    -- field's final value came from TS (not just join presence).
-    -- Phone: TS wins coalesce, so TS enriched when ts_phone is non-null AND differs
-    -- from BR phone.
-    -- Email: BR wins coalesce, so TS only contributes when BR email is null.
+    -- field's final value came from TS
     (
-        merged.ts_phone is not null
-        and (merged.phone is null or merged.ts_phone != merged.phone)
+        merged.tc_ts_phone is not null
+        and (merged.phone is null or merged.tc_ts_phone != merged.phone)
     )
     or (
-        merged.email is null and merged.ts_email is not null
+        merged.email is null and merged.tc_ts_email is not null
     ) as has_ts_person_enrichment,
 
     merged.has_direct_ts_term_match,
+
+    -- ICP flags
     case
         when
             icp.icp_win_effective_date is not null
@@ -231,6 +185,7 @@ select
         then false
         else icp.icp_win_supersize
     end as is_win_supersize_icp,
+
     merged.created_at,
     merged.updated_at
 
