@@ -1214,6 +1214,26 @@ models:
                 values:
                   - ballotready
 
+      - name: is_win_icp
+        description: >
+          Whether this position meets Win ICP criteria (non-judicial,
+          non-appointed, 500-100K voters, recognized position type).
+          NULL when voter count data is unavailable. Forced false when
+          term_start_date predates icp_win_effective_date (or is null).
+
+      - name: is_serve_icp
+        description: >
+          Whether this position meets Serve ICP criteria (Win criteria
+          plus serve-eligible position type, 1K-100K voters). No
+          effective-date gate applied.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this is a large office (>100K voters) meeting all
+          other Win ICP criteria except the voter count cap. Forced
+          false when term_start_date predates icp_win_effective_date
+          (or is null).
+
       - name: created_at
         data_tests:
           - not_null
@@ -1501,6 +1521,20 @@ models:
         description: >
           Timestamp of the selected TS row. Used downstream for contact
           rollup ordering. NULL when no TS match.
+
+      - name: is_win_icp
+        description: >
+          Win ICP flag passed through from int__civics_elected_official_ballotready.
+          See that model for definition and effective-date gate semantics.
+
+      - name: is_serve_icp
+        description: >
+          Serve ICP flag passed through from int__civics_elected_official_ballotready.
+
+      - name: is_win_supersize_icp
+        description: >
+          Win Supersize ICP flag passed through from
+          int__civics_elected_official_ballotready.
 
     tests:
       # Row count equals BR intermediate — enrichment adds columns, not rows

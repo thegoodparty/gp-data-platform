@@ -163,33 +163,13 @@ select
 
     merged.has_direct_ts_term_match,
 
-    -- ICP flags
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and (
-                merged.term_start_date is null
-                or merged.term_start_date < icp.icp_win_effective_date
-            )
-        then false
-        else icp.icp_office_win
-    end as is_win_icp,
-    icp.icp_office_serve as is_serve_icp,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and (
-                merged.term_start_date is null
-                or merged.term_start_date < icp.icp_win_effective_date
-            )
-        then false
-        else icp.icp_win_supersize
-    end as is_win_supersize_icp,
+    -- ICP flags (computed upstream in int__civics_elected_official_ballotready;
+    -- effective-date gate already applied there)
+    merged.is_win_icp,
+    merged.is_serve_icp,
+    merged.is_win_supersize_icp,
 
     merged.created_at,
     merged.updated_at
 
 from merged
-left join
-    {{ ref("int__icp_offices") }} as icp
-    on merged.br_position_id = icp.br_database_position_id

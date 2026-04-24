@@ -84,6 +84,41 @@ with
             office_holder_created_at as created_at,
             office_holder_updated_at as updated_at
         from derived_fields
+    ),
+
+    -- ICP flags joined from int__icp_offices on br_position_id.
+    -- Effective-date gate forces is_win_icp / is_win_supersize_icp to false
+    -- for terms that started before the ICP effective date (historical terms
+    -- that predate the current ICP definition don't meet it). is_serve_icp
+    -- has no effective-date gate today.
+    with_icp_flags as (
+        select
+            eo.*,
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and (
+                        eo.term_start_date is null
+                        or eo.term_start_date < icp.icp_win_effective_date
+                    )
+                then false
+                else icp.icp_office_win
+            end as is_win_icp,
+            icp.icp_office_serve as is_serve_icp,
+            case
+                when
+                    icp.icp_win_effective_date is not null
+                    and (
+                        eo.term_start_date is null
+                        or eo.term_start_date < icp.icp_win_effective_date
+                    )
+                then false
+                else icp.icp_win_supersize
+            end as is_win_supersize_icp
+        from elected_officials as eo
+        left join
+            {{ ref("int__icp_offices") }} as icp
+            on eo.br_position_id = icp.br_database_position_id
     )
 
 select
@@ -128,6 +163,9 @@ select
     br_geo_id,
     br_position_tier,
     candidate_id_source,
+    is_win_icp,
+    is_serve_icp,
+    is_win_supersize_icp,
     created_at,
     updated_at
-from elected_officials
+from with_icp_flags
