@@ -102,6 +102,7 @@ with
             c.election_date,
             c.election_date as general_election_date,
             {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation,
+            c.partisan_type,
             uec.canonical_gp_candidate_id as user_canonical_gp_candidate_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
@@ -170,11 +171,15 @@ with
             is_pledged,
             is_verified,
             cast(null as string) as verification_status_reason,
+            -- Race-level, from Product DB's details:partisanType. Values in
+            -- source: 'nonpartisan', 'partisan', 'partisan for primary...'
+            -- plus null. Matches the race-level semantics of BR
+            -- (br_position.is_partisan) and TS (ts.partisan).
             case
-                when party_affiliation is null
-                then null
-                when lower(party_affiliation) = 'nonpartisan'
+                when lower(partisan_type) = 'nonpartisan'
                 then false
+                when nullif(trim(partisan_type), '') is null
+                then null
                 else true
             end as is_partisan,
             cast(null as date) as primary_election_date,

@@ -1937,13 +1937,11 @@ models:
 
       - name: is_partisan
         description: >
-          Candidate-level approximation: true when party_affiliation is any
-          party other than 'Nonpartisan', false when 'Nonpartisan', null when
-          unknown. Note this diverges from BR/TS, which set is_partisan at
-          the *race* level (via br_position.is_partisan / ts.partisan) — an
-          Independent candidate in a nonpartisan race yields true here and
-          false in BR/TS. Follow-up: expose details:partisanType from the
-          campaigns mart to switch to race-level semantics.
+          Race-level partisan flag, derived from Product DB's
+          details:partisanType (exposed as campaigns.partisan_type).
+          Matches BR (br_position.is_partisan) and TS (ts.partisan) semantics:
+          true when the race itself is partisan, false when nonpartisan,
+          null when unknown.
 
       - name: general_election_date
         data_tests:
