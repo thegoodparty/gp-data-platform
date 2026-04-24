@@ -130,7 +130,7 @@ select
     merged.mailing_zip,
 
     -- Metadata
-    merged.tier,
+    merged.br_position_tier as tier,
     merged.candidate_id_source,
 
     -- source_systems: output-based — TS included only when a TS value survived

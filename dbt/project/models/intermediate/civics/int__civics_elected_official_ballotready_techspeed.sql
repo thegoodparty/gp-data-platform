@@ -6,7 +6,8 @@
 --
 -- TS dedup: one row per ts_officeholder_id, ordered by updated_at desc with
 -- stable tie-breakers. 86 IDs (0.3%) are reused across different people in TS;
--- the dedup picks one arbitrarily (tracked as a known data quality follow-up).
+-- the dedup picks one deterministically (but potentially from the wrong person for 86
+-- reused IDs).
 --
 -- Grain: One row per BR elected official term (person-position-term).
 -- Row count equals int__civics_elected_official_ballotready.
@@ -15,38 +16,34 @@ with
 
     ts as (select * from {{ ref("int__civics_elected_official_techspeed") }}),
 
-    -- Flag ts_officeholder_ids with conflicting is_incumbent values BEFORE dedup.
-    -- 26 of 86 reused IDs have different is_incumbent across TS rows.
-    ts_incumbent_conflicts as (
-        select ts_officeholder_id as conflict_officeholder_id
-        from ts
-        group by ts_officeholder_id
-        having count(distinct is_incumbent) > 1
-    ),
-
     -- One row per ts_officeholder_id with stable ordering for deterministic selection.
+    -- ts_incumbent_conflict computed via window aggregate before dedup (26 of 86 reused
+    -- IDs have conflicting is_incumbent values across TS rows).
     ts_position_dedup as (
         select
-            try_cast(ts.ts_officeholder_id as bigint) as ts_officeholder_id_bigint,
-            ts.ts_officeholder_id,
-            ts.gp_elected_official_id as ts_gp_elected_official_id,
-            ts.ts_position_id,
-            ts.is_incumbent as ts_is_incumbent,
-            ts.phone as ts_phone,
-            ts.email as ts_email,
-            ts.updated_at as ts_updated_at,
-            ic.conflict_officeholder_id is not null as ts_incumbent_conflict
+            try_cast(ts_officeholder_id as bigint) as ts_officeholder_id_bigint,
+            ts_officeholder_id,
+            gp_elected_official_id as ts_gp_elected_official_id,
+            ts_position_id,
+            is_incumbent as ts_is_incumbent,
+            phone as ts_phone,
+            email as ts_email,
+            updated_at as ts_updated_at,
+            -- COUNT(DISTINCT ...) OVER (...) unsupported on Databricks;
+            -- use min/max: if they differ, there's a conflict.
+            coalesce(
+                min(is_incumbent) over (partition by ts_officeholder_id)
+                != max(is_incumbent) over (partition by ts_officeholder_id),
+                false
+            ) as ts_incumbent_conflict
         from ts
-        left join
-            ts_incumbent_conflicts as ic
-            on ts.ts_officeholder_id = ic.conflict_officeholder_id
         qualify
             row_number() over (
-                partition by ts.ts_officeholder_id
+                partition by ts_officeholder_id
                 order by
-                    ts.updated_at desc nulls last,
-                    ts.ts_position_id desc nulls last,
-                    ts.gp_elected_official_id desc
+                    updated_at desc nulls last,
+                    ts_position_id desc nulls last,
+                    gp_elected_official_id desc
             )
             = 1
     )

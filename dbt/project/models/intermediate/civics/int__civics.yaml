@@ -1471,6 +1471,10 @@ models:
         description: >
           TechSpeed officeholder ID from the direct match. NULL when
           no TS record matched this BR term.
+        data_tests:
+          - unique:
+              config:
+                where: "ts_officeholder_id is not null"
 
       - name: ts_gp_elected_official_id
         description: >
@@ -1521,6 +1525,11 @@ models:
               try_cast(ts_officeholder_id as bigint) is not null
           config:
             where: "ts_officeholder_id is not null"
+
+      # NOTE: TS coverage assertion test was attempted here but removed —
+      # expression_is_true doesn't support scalar subqueries reliably
+      # ({{ model }} resolves to a dict inside WHERE NOT(...)). Track TS
+      # coverage via ad-hoc queries or a future singular test instead.
 
   - name: int__er_prematch_candidacy_stages
     description: >

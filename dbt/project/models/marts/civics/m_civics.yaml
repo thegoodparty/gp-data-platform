@@ -1259,9 +1259,9 @@ models:
 
   - name: elected_official_terms
     description: >
-      Elected official terms enriched with TechSpeed contact data via
-      deterministic join (ts_officeholder_id = br_office_holder_id).
-      BR is the spine; TS enrichment is additive columns only.
+      Elected official terms from the BR+TS intermediate, with person-level
+      contact rollup, provider precedence, incumbent conflict resolution,
+      ICP flags, and source attribution.
 
       Two categories of TS enrichment:
       - Person-level (phone, email): fanned out to all terms via br_candidate_id
@@ -1361,7 +1361,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Local", "County", "Township", "State", "Regional", "Federal"]
+                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
               config:
                 severity: warn
 
@@ -1565,7 +1565,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Local", "County", "Township", "State", "Regional", "Federal"]
+                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
               config:
                 severity: warn
 
