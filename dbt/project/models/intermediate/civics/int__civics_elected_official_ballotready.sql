@@ -86,36 +86,55 @@ with
         from derived_fields
     ),
 
-    -- ICP flags joined from int__icp_offices on br_position_id.
-    -- Effective-date gate forces is_win_icp / is_win_supersize_icp to false
-    -- for terms that started before the ICP effective date (historical terms
-    -- that predate the current ICP definition don't meet it). is_serve_icp
-    -- has no effective-date gate today.
+    -- BR candidacies keyed on br_candidacy_id, providing the election_day for
+    -- the candidacy that produced each EO term. Used by the ICP effective-date
+    -- gate. br_candidacy_id is unique on the source staging (291,028 rows,
+    -- 291,028 distinct). Cast to int to match the EO type.
+    candidacy_election_dates as (
+        select cast(br_candidacy_id as int) as br_candidacy_id, election_day
+        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+    ),
+
+    -- ICP flags joined from int__icp_offices on br_position_id, with the Win
+    -- effective-date gate driven by the candidacy's election_day rather than
+    -- term_start_date. Election day is the canonical date for "when did this
+    -- person win" — term_start_date is a noisy proxy that lags by weeks-to-
+    -- months and can differ for appointed/special-election cases.
+    --
+    -- NULL handling:
+    -- * NULL election_day (no candidacy match in BR's S3 export) → NULL flag.
+    -- Only ~24% of EO rows have a matching candidacy, so most rows fall
+    -- here. "We don't know when they won" is more truthful than "false".
+    -- * NULL voter_count upstream → NULL flag (carried through from
+    -- int__icp_offices).
+    --
+    -- is_serve_icp has no effective-date gate (Serve targets currently-seated
+    -- officials regardless of when they were elected).
     with_icp_flags as (
         select
             eo.*,
             case
-                when
-                    icp.icp_win_effective_date is not null
-                    and (
-                        eo.term_start_date is null
-                        or eo.term_start_date < icp.icp_win_effective_date
-                    )
+                when icp.icp_win_effective_date is null
+                then icp.icp_office_win
+                when ced.election_day is null
+                then null
+                when ced.election_day < icp.icp_win_effective_date
                 then false
                 else icp.icp_office_win
             end as is_win_icp,
             icp.icp_office_serve as is_serve_icp,
             case
-                when
-                    icp.icp_win_effective_date is not null
-                    and (
-                        eo.term_start_date is null
-                        or eo.term_start_date < icp.icp_win_effective_date
-                    )
+                when icp.icp_win_effective_date is null
+                then icp.icp_win_supersize
+                when ced.election_day is null
+                then null
+                when ced.election_day < icp.icp_win_effective_date
                 then false
                 else icp.icp_win_supersize
             end as is_win_supersize_icp
         from elected_officials as eo
+        left join
+            candidacy_election_dates as ced on eo.br_candidacy_id = ced.br_candidacy_id
         left join
             {{ ref("int__icp_offices") }} as icp
             on eo.br_position_id = icp.br_database_position_id

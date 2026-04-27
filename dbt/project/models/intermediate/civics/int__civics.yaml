@@ -1218,8 +1218,10 @@ models:
         description: >
           Whether this position meets Win ICP criteria (non-judicial,
           non-appointed, 500-100K voters, recognized position type).
-          NULL when voter count data is unavailable. Forced false when
-          term_start_date predates icp_win_effective_date (or is null).
+          NULL when voter count data is unavailable, or when this term's
+          election_day is unknown (no matching BR candidacy in the S3
+          export). Forced false when election_day predates
+          icp_win_effective_date.
 
       - name: is_serve_icp
         description: >
@@ -1230,9 +1232,9 @@ models:
       - name: is_win_supersize_icp
         description: >
           Whether this is a large office (>100K voters) meeting all
-          other Win ICP criteria except the voter count cap. Forced
-          false when term_start_date predates icp_win_effective_date
-          (or is null).
+          other Win ICP criteria except the voter count cap. NULL when
+          this term's election_day is unknown. Forced false when
+          election_day predates icp_win_effective_date.
 
       - name: created_at
         data_tests:
