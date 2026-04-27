@@ -1,23 +1,14 @@
 {{ config(materialized="table", tags=["civics", "gp_api"]) }}
 
 -- Product DB campaigns × BR election stages -> Civics mart candidacy_stage schema.
+-- Grain: one row per (latest-version campaign × BR election_stage) for matching
+-- (br_position_id, election_year). PD doesn't track stage grain natively, so
+-- campaigns without a BR position are dropped and BR's stage inventory drives
+-- the cross-join.
 --
--- Grain: One row per (latest-version campaign × BR election_stage) for
--- matching (br_position_id, election_year) pairs. A single campaign may emit
--- multiple rows (one per BR stage for its position+year). Campaigns without a
--- ballotready_position_id are dropped — Product DB doesn't track stage grain
--- natively, so we rely on BR's stage inventory.
---
--- Temporal scope: BR's stage inventory (int__civics_election_stage_ballotready)
--- covers 2026+ only, so pre-2026 Product DB campaigns silently produce zero
--- stage rows here (~22k verified non-demo campaigns in 2024–2025). Those
--- campaigns are NOT lost — they still appear in int__civics_candidacy_gp_api
--- at campaign grain, and their historical stage-grain data is captured by
--- int__civics_candidacy_stage_2025 (the HubSpot/DDHQ-based archive).
---
--- Schema aligned with int__civics_candidacy_stage_techspeed. Stage-level
--- result fields (is_winner, election_result, votes_received) are null —
--- Product DB's `did_win` flag is candidacy-grain, not stage-grain.
+-- BR's stage inventory is 2026+ only, so pre-2026 PD campaigns produce zero
+-- rows here. They're still present in int__civics_candidacy_gp_api at campaign
+-- grain; historical stage-grain data lives in int__civics_candidacy_stage_2025.
 with
     latest_campaigns as (
         select *
@@ -25,10 +16,8 @@ with
         where is_latest_version and ballotready_position_id is not null
     ),
 
-    -- Source user fields from the users mart (same as int__civics_candidate_gp_api
-    -- and int__civics_candidacy_gp_api) to keep person hashes consistent across
-    -- the three models even when the campaigns mart's denormalized user_*
-    -- fields drift from the users mart's snapshot.
+    -- Source from the users mart (same as candidate/candidacy gp_api) to keep
+    -- person hashes aligned across the three models.
     users as (select user_id, first_name, last_name from {{ ref("users") }}),
 
     br_stages as (
@@ -42,12 +31,9 @@ with
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
-    -- ER lookup at stage grain. We carry the canonical BR stage's
-    -- election_date through so consumers can compare PD's view
-    -- (election_stage_date) against BR's view (br_election_stage_date)
-    -- without re-resolving the canonical stage downstream. Resolves the
-    -- ID/date inconsistency previously produced when canonical_gp_election_stage_id
-    -- pointed to a BR stage with a different date than PD's stage_election_date.
+    -- Carry the canonical BR stage's date through as br_election_stage_date
+    -- so consumers can compare against PD's stage_election_date without
+    -- re-resolving the canonical stage downstream.
     er_canonical_stage as (
         select
             xw.gp_api_campaign_id,
@@ -62,12 +48,10 @@ with
         where xw.gp_api_campaign_id is not null
     ),
 
-    -- ER lookup at candidacy grain: cascade canonical_gp_candidacy_id across
-    -- all stages of a matched campaign (so the sibling stage of a clustered
-    -- stage aligns with candidacy_gp_api's gp_candidacy_id).
+    -- Cascade canonical_gp_candidacy_id across all stages of a matched
+    -- campaign so sibling stages align with candidacy_gp_api's gp_candidacy_id.
+    -- max() not any_value(): deterministic, must match candidacy_gp_api.
     er_canonical_candidacy as (
-        -- max() is deterministic (any_value() is explicitly non-deterministic
-        -- in Spark). Must match the collapse in int__civics_candidacy_gp_api.
         select
             gp_api_campaign_id,
             max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id
@@ -98,15 +82,10 @@ with
             br_stages as br
             on c.ballotready_position_id = br.br_position_id
             and year(c.election_date) = br.stage_election_year
-        -- A position may carry multiple BR races of the same stage_type in
-        -- the same year (regular primary + special primary, etc.), each a
-        -- distinct gp_election_stage_id. Without this dedup a single Product
-        -- DB campaign fans out across all of them (observed ~509 phantom rows
-        -- before fix). Pick the race whose date is closest to the campaign's
-        -- election_date — mirrors the pattern in
-        -- int__er_prematch_candidacy_stages, including the br_race_id
-        -- secondary order for deterministic tiebreaking when two BR stages
-        -- are equidistant.
+        -- Dedup multiple BR races of the same stage_type in the same year
+        -- (regular + special primary, etc.) to the race closest in date —
+        -- br_race_id breaks ties deterministically. Mirrors the pattern in
+        -- int__er_prematch_candidacy_stages.
         qualify
             row_number() over (
                 partition by c.campaign_id, br.stage_type
@@ -145,9 +124,8 @@ with
                 }}
             ) as gp_candidacy_id,
 
-            -- gp_election_stage_id: adopt BR canonical from ER or fall back to
-            -- the BR stage we inner-joined on. Either way every row has a
-            -- valid gp_election_stage_id in int__civics_election_stage_ballotready.
+            -- Either branch resolves to a valid gp_election_stage_id in
+            -- int__civics_election_stage_ballotready.
             coalesce(
                 canonical_gp_election_stage_id, br_gp_election_stage_id
             ) as gp_election_stage_id,

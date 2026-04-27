@@ -1,35 +1,19 @@
 {{ config(materialized="table", tags=["civics", "gp_api"]) }}
 
 -- Product DB campaigns -> Civics mart candidacy schema.
---
--- Grain: One row per latest-version campaign with an election_date.
---
--- Schema aligned with int__civics_candidacy_ballotready so the downstream mart
--- union can stack this source directly. Fields not tracked in Product DB
--- (incumbency, open seat, verification reason, runoff dates, viability,
--- win number) are null.
---
--- gp_candidate_id is computed against the *user's* state (most recent non-demo
--- campaign's campaign_state), matching int__civics_candidate_gp_api's hash.
--- This keeps the referential integrity INNER JOIN to candidate_gp_api intact
--- even when a single user runs in multiple states.
+-- Grain: one row per latest-version campaign with an election_date.
+-- Schema aligns with int__civics_candidacy_ballotready for the union.
 with
     latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
 
-    -- User fields are sourced from the users mart to match
-    -- int__civics_candidate_gp_api's source exactly. The campaigns mart
-    -- denormalizes user_first_name/user_last_name/user_email/user_phone by
-    -- joining to staging at campaigns-mart build time, which can drift from
-    -- the users mart's snapshot and produce inconsistent person hashes
-    -- between candidate and candidacy (observed for users whose name changed
-    -- between mart builds).
+    -- Source user fields from the users mart, not campaigns' denormalized
+    -- user_* fields, to keep the person hash aligned with candidate_gp_api
+    -- (the two marts can be built at different times).
     users as (
         select user_id, first_name, last_name, email, phone from {{ ref("users") }}
     ),
 
-    -- Per-user state: most recent non-demo campaign's state (matches the
-    -- derivation in int__civics_candidate_gp_api, required for gp_candidate_id
-    -- consistency across models).
+    -- Must match user_state in int__civics_candidate_gp_api.
     user_state as (
         select user_id, campaign_state as state
         from latest_campaigns
@@ -37,15 +21,11 @@ with
         qualify row_number() over (partition by user_id order by created_at desc) = 1
     ),
 
-    -- ER canonical IDs at candidacy grain. A campaign may appear on multiple
-    -- stage rows in the crosswalk, but all stages of a campaign resolve to the
-    -- same canonical_gp_candidacy_id / canonical_gp_election_id (verified: the
-    -- crosswalk's inner joins bottom out on br_cs.gp_candidacy_id).
+    -- All stages of a campaign in the crosswalk resolve to the same
+    -- canonical_gp_candidacy_id / canonical_gp_election_id (the inner joins
+    -- bottom out on br_cs.gp_candidacy_id), so any non-null wins.
     er_canonical as (
-        -- max() is deterministic across runs (any_value() is explicitly
-        -- non-deterministic in Spark). Keeps this collapse stable with the
-        -- sibling CTE in int__civics_candidacy_stage_gp_api if a campaign's
-        -- stages ever resolve to multiple canonical_gp_candidacy_ids.
+        -- max() not any_value(): deterministic across runs.
         select
             gp_api_campaign_id,
             max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
@@ -56,14 +36,9 @@ with
         group by gp_api_campaign_id
     ),
 
-    -- BR's general-stage date keyed by gp_election_id. When ER coalesces a
-    -- candidacy to a canonical BR election, we expose the canonical's
-    -- general-stage date as br_general_election_date alongside the PD
-    -- general_election_date so consumers can see both views without
-    -- re-resolving the canonical election downstream. General stage is
-    -- derived from is_primary / is_runoff flags (mirrors the lookup in
-    -- int__civics_candidacy_ballotready). max() guards against the rare
-    -- multi-general-stage fanout per election.
+    -- General stage is identified by `not is_primary and not is_runoff`,
+    -- mirroring the lookup in int__civics_candidacy_ballotready. max()
+    -- guards multi-general-stage fanout per election.
     br_general_election_date_lookup as (
         select gp_election_id, max(election_date) as br_general_election_date
         from {{ ref("int__civics_election_stage_ballotready") }}
@@ -71,10 +46,8 @@ with
         group by gp_election_id
     ),
 
-    -- Per-user canonical_gp_candidate_id lookup: any ER match across any of
-    -- the user's campaigns. Must mirror int__civics_candidate_gp_api's
-    -- user_er_canonical CTE so candidacy.gp_candidate_id matches
-    -- candidate.gp_candidate_id.
+    -- Must mirror user_er_canonical in int__civics_candidate_gp_api so
+    -- candidacy.gp_candidate_id matches candidate.gp_candidate_id.
     user_er_canonical as (
         select c.user_id, max(xw.canonical_gp_candidate_id) as canonical_gp_candidate_id
         from latest_campaigns as c
@@ -85,10 +58,8 @@ with
     ),
 
     enriched as (
-        -- Expose columns with the names generate_gp_election_id() expects in
-        -- scope: official_office_name, candidate_office, office_level,
-        -- office_type, state, city, district, seat_name, election_date,
-        -- seats_available.
+        -- Aliases below match the unprefixed column names that
+        -- generate_gp_election_id() expects in scope.
         select
             c.campaign_id,
             c.user_id,
@@ -137,9 +108,8 @@ with
                 }}
             ) as gp_candidacy_id,
 
-            -- Window propagation over the person hash (matches candidate model's
-            -- cross-user cascade), so campaigns under hash-collision users adopt
-            -- the same canonical_gp_candidate_id the candidate row resolves to.
+            -- Window over the person hash matches the cross-user cascade in
+            -- candidate_gp_api, so hash-collision users share canonical IDs.
             coalesce(
                 max(user_canonical_gp_candidate_id) over (
                     partition by
@@ -164,9 +134,6 @@ with
                 }}
             ) as gp_candidate_id,
 
-            -- gp_election_id: salted UUID over (official_office_name, ..., state,
-            -- ..., election_date, seats_available).
-            -- Prefer ER canonical when available.
             coalesce(
                 xw.canonical_gp_election_id, {{ generate_gp_election_id() }}
             ) as gp_election_id,
@@ -186,10 +153,7 @@ with
             is_pledged,
             is_verified,
             cast(null as string) as verification_status_reason,
-            -- Race-level, from Product DB's details:partisanType. Values in
-            -- source: 'nonpartisan', 'partisan', 'partisan for primary...'
-            -- plus null. Matches the race-level semantics of BR
-            -- (br_position.is_partisan) and TS (ts.partisan).
+            -- Race-level, matching BR (br_position.is_partisan) and TS (ts.partisan).
             case
                 when lower(partisan_type) = 'nonpartisan'
                 then false

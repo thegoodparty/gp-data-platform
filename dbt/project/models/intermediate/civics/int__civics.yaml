@@ -1824,10 +1824,10 @@ models:
         description: >
           Most recent non-demo campaign's campaign_state. Null for users whose
           only campaigns are demo — these users are still surfaced as
-          candidates (no not_null test: by design, ~33% of rows are null and a
+          candidates (no not_null test: null is by design and a
           warning that always fires is noise).
           accepted_values mirrors int__civics_elected_official_ballotready and
-          includes 'US' as a known-bad value present in source (~15 rows), so
+          includes 'US' as a known-bad value present in source, so
           the test only fails when a genuinely new invalid code appears.
         data_tests:
           - accepted_values:
@@ -1855,12 +1855,9 @@ models:
       election_date.
 
       gp_candidate_id uses the user's derived state (most recent non-demo
-      campaign), NOT the per-campaign state — this keeps the referential
-      integrity join to int__civics_candidate_gp_api intact for users with
-      campaigns in multiple states. As of 2026-04-23, ~2,211 candidacy rows
-      (5% of the eligible pool) would be dropped silently if the hash used
-      per-campaign state instead: users who moved states between campaigns
-      and demo-only users whose user_state is null.
+      campaign), not the per-campaign state, so users with campaigns in
+      multiple states (or demo-only users with null user_state) keep
+      referential integrity to int__civics_candidate_gp_api.
 
     columns:
       - name: gp_candidacy_id
@@ -1910,7 +1907,7 @@ models:
                   - state
 
       - name: candidacy_result
-        description: 'Won if did_win, else null. Under-populated: only 165 / 61,548 campaigns have did_win set.'
+        description: 'Won if did_win, else null. Under-populated in source.'
         data_tests:
           - accepted_values:
               arguments:
@@ -2050,7 +2047,7 @@ models:
     description: >
       Product Database elected offices transformed into the civics mart
       elected_officials schema. Grain: one row per gp_api_db_elected_office
-      row whose campaign_id resolves in the campaigns mart (~9 orphans filtered).
+      row whose campaign_id resolves in the campaigns mart (orphans filtered).
 
       Sourced from gp_api_db_elected_office (authoritative) — campaigns.did_win
       is stale for most winning campaigns.

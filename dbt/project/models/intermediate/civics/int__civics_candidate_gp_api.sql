@@ -1,18 +1,8 @@
 {{ config(materialized="table", tags=["civics", "gp_api"]) }}
 
 -- Product DB users -> Civics mart candidate schema.
---
--- Grain: One row per Product DB user who has at least one campaign. Serve-only
--- users (campaign_count = 0) are excluded — they are not candidates.
---
--- Schema aligned with int__civics_candidate_ballotready / _techspeed so the
--- downstream mart union can stack this source directly. Fields not tracked in
--- Product DB (birth_date, street_address, social URLs) are null.
---
--- ER canonicalization: look up canonical_gp_candidate_id via the user's latest
--- campaigns on int__civics_er_canonical_ids, then propagate across all users
--- sharing the same person hash via a window (same pattern as
--- int__civics_candidate_techspeed's cross-row cascade).
+-- Grain: one row per user with campaign_count > 0. Schema aligns with
+-- int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
     users_filtered as (
         select user_id, first_name, last_name, email, phone, created_at, updated_at
@@ -22,7 +12,6 @@ with
 
     latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
 
-    -- State: most recent non-demo campaign's campaign_state per user.
     user_state as (
         select user_id, campaign_state as state
         from latest_campaigns
@@ -30,9 +19,8 @@ with
         qualify row_number() over (partition by user_id order by created_at desc) = 1
     ),
 
-    -- ER lookup at candidate grain: any canonical_gp_candidate_id from any of
-    -- the user's latest campaigns (a campaign_id can map to multiple stages in
-    -- the crosswalk; take max — they resolve to the same canonical candidate).
+    -- max() across a user's campaigns: all stages of a campaign resolve to
+    -- the same canonical candidate so any non-null wins.
     user_er_canonical as (
         select c.user_id, max(xw.canonical_gp_candidate_id) as canonical_gp_candidate_id
         from latest_campaigns as c
@@ -42,17 +30,14 @@ with
         group by c.user_id
     ),
 
-    -- hubspotid is stored in the user's meta_data JSON blob (not exposed on
-    -- the users mart). Databricks' `:` JSON path operator is case-insensitive.
+    -- hubspotid lives in the user's meta_data JSON, not on the users mart.
     user_hubspot as (
         select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
-    -- candidate_id_tier: Product DB's `campaign.tier` column is WIN/LOSE/TOSSUP
-    -- (populated on ~10 of 61k rows), not the HubSpot viability tier concept.
-    -- Emit null like int__civics_candidate_ballotready until a real tier source
-    -- is wired up for Product DB.
+    -- candidate_id_tier: PD's campaign.tier is WIN/LOSE/TOSSUP, not the
+    -- HubSpot viability tier — leave null until a real tier source lands.
     candidates_pre as (
         select
             u.user_id as prod_db_user_id,

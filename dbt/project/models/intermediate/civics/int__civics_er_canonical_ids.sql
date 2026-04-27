@@ -1,23 +1,12 @@
--- Entity resolution crosswalk: provider raw keys -> BallotReady canonical gp_* IDs.
+-- Entity resolution crosswalk: provider raw keys -> BR canonical gp_* IDs.
+-- One row per (provider, raw stage key); provider columns are null on rows
+-- from other providers. Provider intermediates left-join this and coalesce
+-- their own hashes against the canonical column, so clustered rows share
+-- BR's IDs. Keyed on raw provider fields (not provider-computed hashes) to
+-- avoid a cycle with the consuming provider models.
 --
--- For each provider candidacy_stage that is clustered with a BR candidacy_stage,
--- this model emits BR's gp_* IDs at every level (stage, candidacy, candidate,
--- election_stage, election). Provider intermediate models left-join this on the
--- raw keys relevant to their source and coalesce over their own hashes, so
--- clustered provider rows naturally share IDs with their BR counterparts.
---
--- Grain: one row per (provider, raw stage key). The wide schema unions all
--- providers; provider columns are null on rows from other providers.
---
--- Providers covered here:
--- - TechSpeed: keyed by ts_source_candidate_id + ts_stage_election_date.
--- - Product DB (gp_api): keyed by gp_api_campaign_id + gp_api_stage_election_date.
--- source_id format is '{campaign_id}__{stage}', where stage can include
--- compound variants (general_runoff, primary_special_runoff, etc.), so we
--- take the leading numeric prefix rather than trying to strip known suffixes.
---
--- Keyed on raw provider fields (not on provider-computed hashes) to avoid a
--- cycle with the provider intermediate models that consume this crosswalk.
+-- Providers: TechSpeed (ts_source_candidate_id + ts_stage_election_date) and
+-- Product DB / gp_api (gp_api_campaign_id + gp_api_stage_election_date).
 with
     ts_stage_matches as (
         select
@@ -60,6 +49,8 @@ with
         select
             cast(null as string) as ts_source_candidate_id,
             cast(null as date) as ts_stage_election_date,
+            -- source_id is '{campaign_id}__{stage}'; stage can be a compound
+            -- variant (general_runoff, primary_special_runoff, …), so split.
             cast(split(gp_cw.source_id, '__')[0] as bigint) as gp_api_campaign_id,
             cast(gp_cw.election_date as date) as gp_api_stage_election_date,
             br_cs.gp_candidacy_stage_id as canonical_gp_candidacy_stage_id,
@@ -91,8 +82,6 @@ with
             = 1
     )
 
--- Each CTE keeps the most recent BR match per provider's (raw key, stage
--- date); dropping br_updated_at in the final projection.
 select
     ts_source_candidate_id,
     ts_stage_election_date,

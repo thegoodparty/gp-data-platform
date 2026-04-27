@@ -1,18 +1,11 @@
 {{ config(materialized="table", tags=["civics", "gp_api"]) }}
 
 -- Product DB elected offices -> Civics mart elected_officials schema.
---
--- Grain: One row per gp_api_db_elected_office row, after filtering rows whose
--- campaign_id doesn't resolve in the campaigns mart (~9 orphans as of spec).
---
--- Source of truth for the "this Product DB user is a sitting elected official"
--- signal. `campaigns.did_win` is stale (only 165 of 1,811 elected_offices have
--- it set), so we use the presence of an elected_office row instead.
---
--- Schema narrower than int__civics_elected_official_ballotready — omits BR-
--- specific mailing/term-end/judicial/vacancy fields that Product DB doesn't
--- track. No gp_candidate_id column (elected_official is its own entity, same
--- as BR's schema).
+-- Grain: one row per gp_api_db_elected_office row whose campaign_id resolves
+-- in the campaigns mart. Source of truth for "is a sitting elected official"
+-- — campaigns.did_win is too stale to rely on. Schema is narrower than BR's
+-- elected_official (no mailing/term-end/judicial/vacancy fields). No
+-- gp_candidate_id (elected_official is its own entity, same as BR).
 with
     elected_offices as (
         select * from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }}
