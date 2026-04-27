@@ -1599,15 +1599,6 @@ models:
       - name: is_incumbent
         description: Whether the official is an incumbent (TS, from latest term)
 
-      - name: is_win_icp
-        description: Win ICP flag from latest term
-
-      - name: is_serve_icp
-        description: Serve ICP flag from latest term
-
-      - name: is_win_supersize_icp
-        description: Win supersize ICP flag from latest term
-
       - name: party_affiliation
         description: Political party affiliation
         data_tests:
