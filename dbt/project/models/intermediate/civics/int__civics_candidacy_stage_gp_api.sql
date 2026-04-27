@@ -34,6 +34,7 @@ with
     br_stages as (
         select
             gp_election_stage_id,
+            br_race_id,
             br_position_id,
             stage_type,
             election_date as stage_election_date,
@@ -41,16 +42,24 @@ with
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
-    -- ER lookup at stage grain: canonical IDs that apply only to the specific
-    -- (campaign, stage_date) pair.
+    -- ER lookup at stage grain. We carry the canonical BR stage's
+    -- election_date through so consumers can compare PD's view
+    -- (election_stage_date) against BR's view (br_election_stage_date)
+    -- without re-resolving the canonical stage downstream. Resolves the
+    -- ID/date inconsistency previously produced when canonical_gp_election_stage_id
+    -- pointed to a BR stage with a different date than PD's stage_election_date.
     er_canonical_stage as (
         select
-            gp_api_campaign_id,
-            gp_api_stage_election_date,
-            canonical_gp_candidacy_stage_id,
-            canonical_gp_election_stage_id
-        from {{ ref("int__civics_er_canonical_ids") }}
-        where gp_api_campaign_id is not null
+            xw.gp_api_campaign_id,
+            xw.gp_api_stage_election_date,
+            xw.canonical_gp_candidacy_stage_id,
+            xw.canonical_gp_election_stage_id,
+            br.stage_election_date as br_election_stage_date
+        from {{ ref("int__civics_er_canonical_ids") }} as xw
+        left join
+            br_stages as br
+            on xw.canonical_gp_election_stage_id = br.gp_election_stage_id
+        where xw.gp_api_campaign_id is not null
     ),
 
     -- ER lookup at candidacy grain: cascade canonical_gp_candidacy_id across
@@ -95,11 +104,15 @@ with
         -- DB campaign fans out across all of them (observed ~509 phantom rows
         -- before fix). Pick the race whose date is closest to the campaign's
         -- election_date — mirrors the pattern in
-        -- int__er_prematch_candidacy_stages.
+        -- int__er_prematch_candidacy_stages, including the br_race_id
+        -- secondary order for deterministic tiebreaking when two BR stages
+        -- are equidistant.
         qualify
             row_number() over (
                 partition by c.campaign_id, br.stage_type
-                order by abs(datediff(br.stage_election_date, c.election_date))
+                order by
+                    abs(datediff(br.stage_election_date, c.election_date)) asc,
+                    br.br_race_id desc nulls last
             )
             = 1
     ),
@@ -109,7 +122,8 @@ with
             cs.*,
             xw_c.canonical_gp_candidacy_id,
             xw_s.canonical_gp_candidacy_stage_id,
-            xw_s.canonical_gp_election_stage_id
+            xw_s.canonical_gp_election_stage_id,
+            xw_s.br_election_stage_date
         from campaign_stages as cs
         left join
             er_canonical_candidacy as xw_c on cs.campaign_id = xw_c.gp_api_campaign_id
@@ -144,6 +158,7 @@ with
             user_last_name,
             campaign_party,
             stage_election_date,
+            br_election_stage_date,
             created_at,
             updated_at
         from with_er
@@ -187,6 +202,7 @@ with
             false as has_match,
             cast(null as string) as votes_received,
             stage_election_date as election_stage_date,
+            br_election_stage_date,
             created_at,
             updated_at
         from filtered
@@ -219,6 +235,7 @@ select
     has_match,
     votes_received,
     election_stage_date,
+    br_election_stage_date,
     created_at,
     updated_at
 from deduplicated

@@ -56,6 +56,21 @@ with
         group by gp_api_campaign_id
     ),
 
+    -- BR's general-stage date keyed by gp_election_id. When ER coalesces a
+    -- candidacy to a canonical BR election, we expose the canonical's
+    -- general-stage date as br_general_election_date alongside the PD
+    -- general_election_date so consumers can see both views without
+    -- re-resolving the canonical election downstream. General stage is
+    -- derived from is_primary / is_runoff flags (mirrors the lookup in
+    -- int__civics_candidacy_ballotready). max() guards against the rare
+    -- multi-general-stage fanout per election.
+    br_general_election_date_lookup as (
+        select gp_election_id, max(election_date) as br_general_election_date
+        from {{ ref("int__civics_election_stage_ballotready") }}
+        where not is_primary and not is_runoff
+        group by gp_election_id
+    ),
+
     -- Per-user canonical_gp_candidate_id lookup: any ER match across any of
     -- the user's campaigns. Must mirror int__civics_candidate_gp_api's
     -- user_er_canonical CTE so candidacy.gp_candidate_id matches
@@ -185,6 +200,7 @@ with
             cast(null as date) as primary_election_date,
             cast(null as date) as primary_runoff_election_date,
             general_election_date,
+            bld.br_general_election_date,
             cast(null as date) as general_runoff_election_date,
             ballotready_position_id as br_position_database_id,
             cast(null as string) as br_candidacy_id,
@@ -197,6 +213,9 @@ with
             updated_at
         from enriched
         left join er_canonical as xw on enriched.campaign_id = xw.gp_api_campaign_id
+        left join
+            br_general_election_date_lookup as bld
+            on xw.canonical_gp_election_id = bld.gp_election_id
         where general_election_date is not null
     ),
 
@@ -245,6 +264,7 @@ select
     primary_election_date,
     primary_runoff_election_date,
     general_election_date,
+    br_general_election_date,
     general_runoff_election_date,
     br_position_database_id,
     br_candidacy_id,

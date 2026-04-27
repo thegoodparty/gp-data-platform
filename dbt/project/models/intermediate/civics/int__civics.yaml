@@ -1944,8 +1944,21 @@ models:
           null when unknown.
 
       - name: general_election_date
+        description: >
+          Product DB's view of the campaign's general election date — what
+          the campaign owner registered. Stays source-faithful even when ER
+          maps gp_election_id to a different BR canonical election.
         data_tests:
           - not_null
+
+      - name: br_general_election_date
+        description: >
+          BR's view of the canonical election's general-stage date when
+          gp_election_id was adopted from ER (via int__civics_election_stage_ballotready
+          filtered to `not is_primary and not is_runoff`). Null when ER
+          didn't match or when BR has no general stage for the election.
+          Pair with general_election_date to surface PD-vs-BR divergence
+          without re-resolving the canonical election downstream.
 
       - name: is_demo
         data_tests:
@@ -2005,8 +2018,19 @@ models:
                 values: [false]
 
       - name: election_stage_date
+        description: >
+          Product DB's view of the stage date — the campaign's election_date
+          carried through. Stays source-faithful even when ER maps
+          gp_election_stage_id to a BR canonical with a different date.
         data_tests:
           - not_null
+
+      - name: br_election_stage_date
+        description: >
+          BR's view of the canonical stage's election_date when
+          gp_election_stage_id was adopted from ER. Null when ER didn't
+          match. Pair with election_stage_date to surface PD-vs-BR
+          divergence without re-resolving the canonical stage downstream.
 
       - name: created_at
         data_tests:
