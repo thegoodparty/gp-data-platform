@@ -1101,24 +1101,43 @@ models:
 
   - name: int__civics_elected_official_ballotready
     description: >
-      BallotReady office holders transformed into the civics mart
-      elected_officials schema.
+      BallotReady office holders, term-grain. Carries both term-grain and
+      person-grain canonical UUIDs (gp_elected_official_term_id and
+      gp_elected_official_id) so downstream models can consume them without
+      regenerating salted UUIDs. ICP flags are joined upstream via
+      int__icp_offices on br_position_id (Win and Win-Supersize gated by
+      candidacy election_day).
 
       Grain: One row per office-holder term.
 
       Source: stg_airbyte_source__ballotready_s3_office_holders_v3.
-      Includes the contacts parser fix for Ruby nil values in staging.
 
+    tests:
+      # Asserts the gp_elected_official_id NULL pattern matches br_candidate_id.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(gp_elected_official_id is not null) = (br_candidate_id is not null)"
     columns:
-      - name: gp_elected_official_id
+      - name: gp_elected_official_term_id
         description: >
-          Primary key - internally generated UUID for elected officials.
-          Generated from the BallotReady office-holder natural key to preserve
-          uniqueness at the office-holder term grain.
+          Term-grain canonical UUID. Salted from BallotReady's br_office_holder_id
+          (unique per office-holder term). Replaces the previous
+          gp_elected_official_id column on this model — same values, renamed for
+          unambiguous grain semantics.
         data_tests:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_elected_official_id
+        description: >
+          Person-grain canonical UUID. Salted from BallotReady's br_candidate_id.
+          NULL for vacancy terms (br_candidate_id IS NULL). Used by the EO
+          crosswalk, the BR person rollup intermediate, and both EO marts.
+          Centralizing generation here prevents salt/source drift across the
+          downstream models that reference this UUID.
+        data_tests:
+          - is_uuid  # repo's is_uuid test ignores nulls, so vacancy NULLs are fine
 
       - name: br_office_holder_id
         description: BallotReady natural key for the office-holder term record

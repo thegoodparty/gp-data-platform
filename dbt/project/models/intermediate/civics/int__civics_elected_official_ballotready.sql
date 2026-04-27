@@ -31,8 +31,8 @@ with
 
     elected_officials as (
         select
-            -- BallotReady's office_holder_id is the natural key for the
-            -- office-holder term grain and avoids collisions across positions.
+            -- TERM-grain canonical UUID (renamed from gp_elected_official_id).
+            -- Salt + source unchanged so UUID values are bit-identical.
             {{
                 generate_salted_uuid(
                     fields=[
@@ -40,7 +40,24 @@ with
                         "cast(br_office_holder_id as string)",
                     ]
                 )
-            }} as gp_elected_official_id,
+            }} as gp_elected_official_term_id,
+
+            -- PERSON-grain canonical UUID. NULL for vacancy terms (no person).
+            -- Salt 'elected_official' matches the mart's existing convention so
+            -- UUIDs are stable as we move generation from mart to intermediate.
+            case
+                when br_candidate_id is not null
+                then
+                    {{
+                        generate_salted_uuid(
+                            fields=[
+                                "'elected_official'",
+                                "cast(br_candidate_id as string)",
+                            ]
+                        )
+                    }}
+            end as gp_elected_official_id,
+
             br_office_holder_id,
             br_candidate_id,
             br_position_id,
@@ -141,6 +158,7 @@ with
     )
 
 select
+    gp_elected_official_term_id,
     gp_elected_official_id,
     br_office_holder_id,
     br_candidate_id,
