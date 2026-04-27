@@ -1637,6 +1637,122 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_elected_official_techspeed_person
+    description: |
+      TS-side person-grain rollup. Adopts BR canonical IDs via
+      int__civics_elected_official_canonical_ids, suppresses reused-ID
+      contamination, rolls up phone/email per-field (FIRST_VALUE IGNORE
+      NULLS), and detects is_incumbent conflicts at canonical grain.
+      Consumed by the elected_officials person mart in a full-outer-join +
+      coalesce against int__civics_elected_official_ballotready_person.
+
+      Grain: one row per canonical_gp_elected_official_id. PR #333 data:
+      27,827 rows. Canonicals whose TS contributions are entirely from
+      reused ts_officeholder_ids (53 in PR #333 data) are EXCLUDED — no
+      clean TS rows means no TS contribution, and the person mart's
+      full-outer-join correctly yields BR-only.
+
+      Reused-ID suppression: 86 IDs flagged in the crosswalk;
+        - 53 reused-only canonicals dropped entirely
+        - For canonicals with both reused and clean rows, reused rows are
+          suppressed; clean rows still contribute via per-field rollup
+        - Per-field rollup preserves: 107 phones (across 908 multi-phone
+          canonicals) and 1,097 emails (across 210 multi-email canonicals)
+          vs single-row dedup
+
+      Conflict handling: when contributing TS rows disagree on is_incumbent
+      for a canonical (350 affected canonicals in PR #333 data), the value
+      is NULL'd and ts_incumbent_conflict is set true.
+
+      TS-only fallback is unsolved (zero rows today). The unmatched-TS
+      singular test on the crosswalk blocks the build if any appear.
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(not ts_incumbent_conflict) or (is_incumbent is null)"
+
+    columns:
+      - name: gp_elected_official_id
+        description: Primary key. Canonical person-grain UUID, adopted from int__civics_elected_official_canonical_ids.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('int__civics_elected_official_ballotready_person')
+                field: gp_elected_official_id
+
+      - name: br_candidate_id
+        description: BallotReady's natural person-level key (via crosswalk).
+        data_tests:
+          - unique
+          - not_null
+
+      - name: selected_ts_officeholder_id
+        description: Audit. The ts_officeholder_id of the TS row chosen as latest non-reused.
+        data_tests:
+          - not_null
+
+      - name: selected_ts_position_id
+        description: Audit. The ts_position_id of the chosen TS row.
+
+      - name: selected_gp_elected_official_term_id
+        description: Audit. BR term UUID that the selected TS row matched deterministically.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: selected_br_office_holder_id
+        description: Audit. BR's br_office_holder_id of the matched term.
+        data_tests:
+          - not_null
+
+      - name: phone
+        description: Per-field FIRST_VALUE IGNORE NULLS rollup of TS phone across all non-reused contributing rows.
+
+      - name: email
+        description: Per-field FIRST_VALUE IGNORE NULLS rollup of TS email across all non-reused contributing rows.
+
+      - name: is_incumbent
+        description: TS-derived incumbency. NULL when contributing rows for this canonical disagree (see ts_incumbent_conflict). NULL when no non-NULL value contributed.
+
+      - name: ts_incumbent_conflict
+        description: True when at least two non-reused contributing TS rows for this canonical disagreed on is_incumbent.
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state from latest non-reused TS row.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+
+      - name: party_affiliation
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: created_at
+        description: Latest non-reused TS row's created_at.
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Latest non-reused TS row's updated_at.
+        data_tests:
+          - not_null
+
   - name: int__civics_elected_official_ballotready_techspeed
     description: >
       BR↔TS deterministic join: BallotReady elected official terms with
