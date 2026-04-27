@@ -1,97 +1,105 @@
 -- Civics mart elected_officials table
--- Person-level rollup from elected_official_terms.
--- Excludes vacancy rows (br_candidate_id IS NULL, is_vacant=true).
--- Picks the latest term per person for position/geography fields.
+-- Person-grain merge of BR + TS elected officials, full-outer-joined on
+-- the canonical gp_elected_official_id with COALESCE per column.
+-- Mirrors the candidate.sql / candidacy.sql merge pattern.
 --
--- Grain: One row per elected official (person).
-with
-    terms as (
-        select *
-        from {{ ref("elected_official_terms") }}
-        where br_candidate_id is not null
-    ),
+-- Grain: One row per elected official (person, by br_candidate_id).
+-- Today's row count: ~375,321 (BR person count; TS-only is 0).
+--
+-- TS contributions are filtered upstream:
+-- * Reused-only canonicals (53) excluded from TS person rollup
+-- * Conflicting is_incumbent values NULL'd at canonical grain
+-- * Per-field FIRST_VALUE rollup preserves alternate contacts
+-- ...so this mart's COALESCE ingests clean TS data.
+--
+-- ICP flags are NOT exposed at person grain (per Hugh's commit 8c22079
+-- which removed them from elected_officials). Position-scoped semantics
+-- mean a person isn't ICP — an office is. Term-grain ICP remains on
+-- elected_official_terms for consumers who need it.
+{% set br_wins_cols = [
+    "first_name",
+    "last_name",
+    "full_name",
+    "email",
+    "candidate_office",
+    "office_level",
+    "office_type",
+    "state",
+    "city",
+    "district",
+    "party_affiliation",
+    "is_judicial",
+    "mailing_address_line_1",
+    "mailing_city",
+    "mailing_state",
+    "mailing_zip",
+    "tier",
+    "created_at",
+    "updated_at",
+] -%}
 
-    person_rollup as (
-        select *
-        from terms
-        qualify
-            row_number() over (
-                partition by br_candidate_id
-                order by
-                    term_start_date desc nulls last,
-                    term_end_date desc nulls last,
-                    updated_at desc,
-                    br_office_holder_id desc
-            )
-            = 1
+{# TS EO source doesn't have facebook_url, website_url, linkedin_url,
+   twitter_url, middle_name, or suffix — those stay BR-only. Only phone
+   has both sides, and TS wins per the candidacy precedent. #}
+{%- set ts_wins_cols = ["phone"] -%}
+
+with
+    br as (select * from {{ ref("int__civics_elected_official_ballotready_person") }}),
+
+    ts as (select * from {{ ref("int__civics_elected_official_techspeed_person") }}),
+
+    merged as (
+        select
+            -- PK + natural key (same value on both sides where both present)
+            coalesce(
+                br.gp_elected_official_id, ts.gp_elected_official_id
+            ) as gp_elected_official_id,
+            coalesce(br.br_candidate_id, ts.br_candidate_id) as br_candidate_id,
+
+            -- Shared BR-wins
+            {% for col in br_wins_cols %}
+                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+            {% endfor %}
+
+            -- Shared TS-wins
+            {% for col in ts_wins_cols %}
+                coalesce(ts.{{ col }}, br.{{ col }}) as {{ col }},
+            {% endfor %}
+
+            -- BR-only
+            br.middle_name,
+            br.suffix,
+            br.selected_gp_elected_official_term_id,
+            br.selected_br_office_holder_id,
+            br.office_phone,
+            br.central_phone,
+            br.term_start_date,
+            br.term_end_date,
+            br.website_url,
+            br.linkedin_url,
+            br.facebook_url,
+            br.twitter_url,
+            br.mailing_address_line_2,
+
+            -- TS-only
+            ts.selected_ts_officeholder_id,
+            ts.selected_ts_position_id,
+            ts.is_incumbent,
+            coalesce(ts.ts_incumbent_conflict, false) as ts_incumbent_conflict,
+
+            -- Source presence (join-based)
+            array_compact(
+                array(
+                    case
+                        when br.gp_elected_official_id is not null then 'ballotready'
+                    end,
+                    case when ts.gp_elected_official_id is not null then 'techspeed' end
+                )
+            ) as source_systems
+
+        from br
+        full outer join ts on br.gp_elected_official_id = ts.gp_elected_official_id
     )
 
-select
-    -- PK (person-level UUID from br_candidate_id)
-    {{
-        generate_salted_uuid(
-            fields=[
-                "'elected_official'",
-                "cast(person_rollup.br_candidate_id as string)",
-            ]
-        )
-    }} as gp_elected_official_id,
-
-    -- Source IDs
-    person_rollup.br_candidate_id,
-
-    -- Name
-    person_rollup.first_name,
-    person_rollup.last_name,
-    person_rollup.middle_name,
-    person_rollup.suffix,
-    person_rollup.full_name,
-
-    -- Contact
-    person_rollup.phone,
-    person_rollup.email,
-    person_rollup.office_phone,
-    person_rollup.central_phone,
-
-    -- Latest position/office
-    person_rollup.candidate_office,
-    person_rollup.office_level,
-    person_rollup.office_type,
-
-    -- Geography (from latest term)
-    person_rollup.state,
-    person_rollup.city,
-    person_rollup.district,
-
-    -- Latest term dates
-    person_rollup.term_start_date,
-    person_rollup.term_end_date,
-
-    -- Flags
-    person_rollup.is_judicial,
-    person_rollup.is_incumbent,
-
-    -- Party
-    person_rollup.party_affiliation,
-
-    -- Social
-    person_rollup.website_url,
-    person_rollup.linkedin_url,
-    person_rollup.facebook_url,
-    person_rollup.twitter_url,
-
-    -- Mailing address
-    person_rollup.mailing_address_line_1,
-    person_rollup.mailing_address_line_2,
-    person_rollup.mailing_city,
-    person_rollup.mailing_state,
-    person_rollup.mailing_zip,
-
-    -- Metadata
-    person_rollup.tier,
-    person_rollup.source_systems,
-    person_rollup.has_ts_person_enrichment,
-    person_rollup.created_at,
-    person_rollup.updated_at
-
-from person_rollup
+select *
+from merged
