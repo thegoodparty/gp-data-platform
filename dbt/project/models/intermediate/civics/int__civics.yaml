@@ -1223,9 +1223,9 @@ models:
 
       - name: is_serve_icp
         description: >
-          Whether this position meets Serve ICP criteria (Win criteria
-          plus serve-eligible position type, 1K-100K voters). No
-          effective-date gate applied.
+          Whether this position meets Serve ICP criteria (non-judicial,
+          non-appointed, serve-eligible position type, 1K-100K voters).
+          No effective-date gate applied.
 
       - name: is_win_supersize_icp
         description: >
