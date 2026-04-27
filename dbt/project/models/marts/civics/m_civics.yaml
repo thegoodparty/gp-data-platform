@@ -1258,30 +1258,35 @@ models:
         description: Timestamp when the record was last updated
 
   - name: elected_official_terms
-    description: >
-      Elected official terms from the BR+TS intermediate, with person-level
-      contact rollup, provider precedence, incumbent conflict resolution,
-      ICP flags, and source attribution.
+    description: |
+      Term-grain BR fact table for elected officials. One row per BR
+      office-holder term. Reads int__civics_elected_official_ballotready
+      directly (BR term grain with both term and person UUIDs, plus ICP
+      flags) and LEFT JOINs int__civics_elected_official_canonical_ids
+      for TS provenance markers (ts_officeholder_id,
+      has_direct_ts_term_match, ts_officeholder_id_is_reused).
 
-      Two categories of TS enrichment:
-      - Person-level (phone, email): fanned out to all terms via br_candidate_id
-      - Term-scoped (ts_officeholder_id, is_incumbent): 1:1 direct match only
+      Term-grain TS attributes (is_incumbent, TS-enriched contact) are NOT
+      exposed at this grain — those live on elected_officials. Consumers
+      needing TS-derived person-level data join
+      elected_official_terms.gp_elected_official_id →
+      elected_officials.gp_elected_official_id.
 
-      Grain: One row per BR elected official term (person-position-term).
-      Row count equals int__civics_elected_official_ballotready.
+      source_systems is join-based: 'ballotready' is always present;
+      'techspeed' is added when has_direct_ts_term_match = true.
 
     columns:
       - name: gp_elected_official_term_id
-        description: Primary key - term-level UUID from BR intermediate gp_elected_official_id
+        description: Primary key. Term-grain canonical UUID, sourced from int__civics_elected_official_ballotready.
         data_tests:
           - unique
           - not_null
           - is_uuid
 
       - name: gp_elected_official_id
-        description: >
-          Foreign key to elected_officials person table. NULL for vacancy rows
-          (is_vacant=true, br_candidate_id is null).
+        description: |
+          Foreign key to elected_officials.gp_elected_official_id. Person-grain
+          canonical UUID. NULL for vacancy terms (no person).
         data_tests:
           - is_uuid
           - relationships:
@@ -1310,9 +1315,27 @@ models:
         description: BallotReady geographic identifier
 
       - name: ts_officeholder_id
-        description: >
-          TechSpeed officeholder ID. Only populated on rows with a direct term
-          match (has_direct_ts_term_match = true). NULL otherwise.
+        description: |
+          TS officeholder ID deterministically associated with this BR term
+          (try_cast(ts_officeholder_id as bigint) = br_office_holder_id). NULL
+          when no TS match. For reused IDs, this single ID may correspond to
+          multiple TS source rows representing different people; use
+          ts_officeholder_id_is_reused to identify contaminated matches before
+          treating the ID as a clean TS-row pointer.
+
+      - name: has_direct_ts_term_match
+        description: True when this BR term has a deterministically matched ts_officeholder_id. Equivalent to 'techspeed' appearing in source_systems for this row.
+        data_tests:
+          - not_null
+
+      - name: ts_officeholder_id_is_reused
+        description: |
+          True when the matched ts_officeholder_id is flagged as reused in the
+          crosswalk (>=2 staging records after delivery dedup; ~86 IDs). False
+          when no TS match. Use this to filter out contaminated matches when
+          querying TS-matched terms.
+        data_tests:
+          - not_null
 
       - name: first_name
         description: Official's first name (BR)
@@ -1330,14 +1353,10 @@ models:
         description: Official's full name (BR)
 
       - name: phone
-        description: >
-          Phone number. TS wins (coalesce TS then BR). TS coverage 93.1% vs BR 34.7%
-          on matched records.
+        description: Phone number from BallotReady (BR-only at term grain). TS-enriched contact lives on elected_officials.
 
       - name: email
-        description: >
-          Email address. BR wins (coalesce BR then TS). TS emails may be
-          wrong-person (sourced from fastpeoplesearch).
+        description: Email address from BallotReady (BR-only at term grain). TS-enriched contact lives on elected_officials.
 
       - name: office_phone
         description: Office phone number (BR-only)
@@ -1401,12 +1420,6 @@ models:
       - name: is_off_cycle
         description: Whether the term is out of normal schedule (BR)
 
-      - name: is_incumbent
-        description: >
-          Whether the official is an incumbent (TS, term-scoped). Only populated
-          on direct-match rows. NULL when the matched ts_officeholder_id has
-          conflicting values across TS rows (26 of 86 reused IDs).
-
       - name: party_affiliation
         description: Political party affiliation
         data_tests:
@@ -1450,16 +1463,17 @@ models:
         description: Source identifier (always 'ballotready' in this model)
 
       - name: source_systems
-        description: >
-          Array of sources whose data survived into final output columns.
-          Output-based, not join-based.
-        data_tests:
-          - not_null
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          candidacy mart convention. Always contains 'ballotready'; contains
+          'techspeed' when has_direct_ts_term_match = true.
 
-      - name: has_direct_ts_term_match
-        description: >
-          True when this specific BR term row has a direct 1:1 match to a TS
-          record via br_office_holder_id = ts_officeholder_id.
+          Note: 'techspeed' membership means a TS ts_officeholder_id matched
+          this term — NOT that trusted TS enrichment was applied. For
+          contaminated matches (ts_officeholder_id_is_reused = true), TS data
+          is suppressed downstream at the person grain in elected_officials,
+          but the term-level join existed so 'techspeed' is still surfaced
+          here for auditability.
         data_tests:
           - not_null
 
@@ -1478,13 +1492,6 @@ models:
         description: >
           Whether this is a large office (>100K voters) meeting all
           other Win ICP criteria except the voter count cap.
-
-      - name: has_ts_person_enrichment
-        description: >
-          True when at least one output contact field (phone or email) received
-          its final value from TS. Derived from output values, not join presence.
-        data_tests:
-          - not_null
 
       - name: created_at
         description: Record creation timestamp (BR)

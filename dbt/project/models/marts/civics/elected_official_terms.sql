@@ -1,175 +1,124 @@
 -- Civics mart elected_official_terms table
--- Consumes the BR+TS intermediate and adds: contact rollup, provider
--- precedence, incumbent conflict resolution, ICP flags, source attribution.
+-- Term-grain BR fact table with minimal TS provenance markers.
 --
--- Two categories of TS enrichment:
--- 1. Person-level (phone, email): fanned out via br_candidate_id
--- 2. Term-scoped (ts_officeholder_id, is_incumbent): 1:1 on br_office_holder_id
+-- Grain: One row per BR elected-official term (br_office_holder_id).
+-- Same row count as int__civics_elected_official_ballotready (~530K).
 --
--- Grain: One row per BR elected official term (person-position-term).
+-- TS provenance: ts_officeholder_id, has_direct_ts_term_match, and
+-- ts_officeholder_id_is_reused are surfaced via LEFT JOIN to the EO
+-- crosswalk so consumers can identify TS-matched terms and audit
+-- contamination risk. NO TS-derived term-grain attributes (is_incumbent,
+-- contact rollup) are exposed here — those are person-grain by nature
+-- of TS data and live on elected_officials only.
+--
+-- ICP flags pass through from int__civics_elected_official_ballotready,
+-- where Win ICP / Win Supersize ICP are gated by the candidacy's
+-- election_day (joined via br_candidacy_id). NULL election_day yields
+-- NULL flag. is_serve_icp has no effective-date gate.
+--
+-- source_systems is join-based per the candidacy mart convention.
 with
-    enriched as (
-        select * from {{ ref("int__civics_elected_official_ballotready_techspeed") }}
-    ),
+    br_terms as (select * from {{ ref("int__civics_elected_official_ballotready") }}),
 
-    -- TS records matched to BR, with br_candidate_id for person-level fan-out.
-    ts_matched as (
-        select ts_officeholder_id, ts_phone, ts_email, ts_updated_at, br_candidate_id
-        from enriched
-        where has_direct_ts_term_match and br_candidate_id is not null
-    ),
-
-    -- Latest non-null phone/email per person (br_candidate_id).
-    -- Avoids losing valid contact data across multi-TS-ID candidates.
-    -- Window function with IGNORE NULLS for deterministic per-field selection.
-    -- Secondary sort on ts_officeholder_id breaks ties when timestamps match.
-    ts_contact_rollup as (
-        select distinct
-            br_candidate_id,
-            first_value(nullif(ts_phone, '')) ignore nulls over (
-                partition by br_candidate_id
-                order by ts_updated_at desc, ts_officeholder_id desc
-                rows between unbounded preceding and unbounded following
-            ) as ts_phone,
-            first_value(nullif(ts_email, '')) ignore nulls over (
-                partition by br_candidate_id
-                order by ts_updated_at desc, ts_officeholder_id desc
-                rows between unbounded preceding and unbounded following
-            ) as ts_email
-        from ts_matched
-    ),
-
-    -- Assemble term rows: enriched spine with person-level TS contact rollup.
-    merged as (
-        select enriched.*, tc.ts_phone as tc_ts_phone, tc.ts_email as tc_ts_email
-        from enriched
-        left join
-            ts_contact_rollup as tc on enriched.br_candidate_id = tc.br_candidate_id
+    -- TS provenance via crosswalk LEFT JOIN. Crosswalk grain (1 row per
+    -- ts_officeholder_id with deterministic 1:1 to br_office_holder_id)
+    -- means at most 1 TS row per BR term — no fan-out.
+    ts_provenance as (
+        select br_office_holder_id, ts_officeholder_id, ts_officeholder_id_is_reused
+        from {{ ref("int__civics_elected_official_canonical_ids") }}
     )
 
 select
-    -- PK
-    merged.gp_elected_official_id as gp_elected_official_term_id,
+    -- PK (term-grain canonical UUID, from BR intermediate)
+    br.gp_elected_official_term_id,
 
-    -- Person FK (NULL for vacancies; CASE guard because macro coalesces nulls)
-    case
-        when merged.br_candidate_id is not null
-        then
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "'elected_official'",
-                        "cast(merged.br_candidate_id as string)",
-                    ]
-                )
-            }}
-    end as gp_elected_official_id,
+    -- Person FK (from BR intermediate; NULL for vacancies)
+    br.gp_elected_official_id,
 
     -- Source IDs
-    merged.br_office_holder_id,
-    merged.br_candidate_id,
-    merged.br_position_id,
-    merged.br_candidacy_id,
-    merged.br_geo_id,
-    merged.ts_officeholder_id,
+    br.br_office_holder_id,
+    br.br_candidate_id,
+    br.br_position_id,
+    br.br_candidacy_id,
+    br.br_geo_id,
 
-    -- Name (BR)
-    merged.first_name,
-    merged.last_name,
-    merged.middle_name,
-    merged.suffix,
-    merged.full_name,
+    -- TS provenance (NULL when no direct TS match)
+    ts.ts_officeholder_id,
+    ts.ts_officeholder_id is not null as has_direct_ts_term_match,
+    coalesce(ts.ts_officeholder_id_is_reused, false) as ts_officeholder_id_is_reused,
 
-    -- Contact (mixed precedence: TS wins phone, BR wins email)
-    coalesce(merged.tc_ts_phone, merged.phone) as phone,
-    coalesce(merged.email, merged.tc_ts_email) as email,
-    merged.office_phone,
-    merged.central_phone,
+    -- Name (BR term)
+    br.first_name,
+    br.last_name,
+    br.middle_name,
+    br.suffix,
+    br.full_name,
 
-    -- Position/Office (BR)
-    merged.position_name,
-    merged.normalized_position_name,
-    merged.candidate_office,
-    merged.office_level,
-    merged.office_type,
+    -- Contact (BR-only at term grain; TS contact lives on elected_officials)
+    br.email,
+    br.phone,
+    br.office_phone,
+    br.central_phone,
 
-    -- Geography (BR)
-    merged.state,
-    merged.city,
-    merged.district,
+    -- Position/Office (BR term)
+    br.position_name,
+    br.normalized_position_name,
+    br.candidate_office,
+    br.office_level,
+    br.office_type,
 
-    -- Term (BR)
-    merged.term_start_date,
-    merged.term_end_date,
+    -- Geography (BR term)
+    br.state,
+    br.city,
+    br.district,
 
-    -- Flags
-    merged.is_appointed,
-    merged.is_judicial,
-    merged.is_vacant,
-    merged.is_off_cycle,
-    -- is_incumbent: NULL when ts_incumbent_conflict is true (unreliable value)
-    case
-        when merged.has_direct_ts_term_match and not merged.ts_incumbent_conflict
-        then merged.ts_is_incumbent
-    end as is_incumbent,
+    -- Term dates
+    br.term_start_date,
+    br.term_end_date,
 
-    -- Party (BR)
-    merged.party_affiliation,
+    -- Term-scoped flags (BR)
+    br.is_appointed,
+    br.is_judicial,
+    br.is_vacant,
+    br.is_off_cycle,
 
-    -- Social (BR)
-    merged.website_url,
-    merged.linkedin_url,
-    merged.facebook_url,
-    merged.twitter_url,
+    -- Party (BR term)
+    br.party_affiliation,
 
-    -- Mailing address (BR)
-    merged.mailing_address_line_1,
-    merged.mailing_address_line_2,
-    merged.mailing_city,
-    merged.mailing_state,
-    merged.mailing_zip,
+    -- Social (BR term)
+    br.website_url,
+    br.linkedin_url,
+    br.facebook_url,
+    br.twitter_url,
+
+    -- Mailing (BR term)
+    br.mailing_address_line_1,
+    br.mailing_address_line_2,
+    br.mailing_city,
+    br.mailing_state,
+    br.mailing_zip,
 
     -- Metadata
-    merged.br_position_tier as tier,
-    merged.candidate_id_source,
+    br.br_position_tier as tier,
+    br.candidate_id_source,
 
-    -- source_systems: output-based — TS included only when a TS value survived
-    -- into a final output column (contact or direct-match fields)
+    -- ICP (passed through from BR intermediate)
+    br.is_win_icp,
+    br.is_serve_icp,
+    br.is_win_supersize_icp,
+
+    -- source_systems: join-based per candidacy mart pattern. BR is always
+    -- present (this mart is BR-spine); TS is added when the term has a
+    -- direct ts_officeholder_id match.
     array_compact(
         array(
             'ballotready',
-            case
-                when
-                    (
-                        merged.tc_ts_phone is not null
-                        and (merged.phone is null or merged.tc_ts_phone != merged.phone)
-                    )
-                    or (merged.email is null and merged.tc_ts_email is not null)
-                    or merged.ts_officeholder_id is not null
-                then 'techspeed'
-            end
+            case when ts.ts_officeholder_id is not null then 'techspeed' end
         )
     ) as source_systems,
 
-    -- has_ts_person_enrichment: output-based — true when at least one contact
-    -- field's final value came from TS
-    (
-        merged.tc_ts_phone is not null
-        and (merged.phone is null or merged.tc_ts_phone != merged.phone)
-    )
-    or (
-        merged.email is null and merged.tc_ts_email is not null
-    ) as has_ts_person_enrichment,
+    br.created_at,
+    br.updated_at
 
-    merged.has_direct_ts_term_match,
-
-    -- ICP flags (computed upstream in int__civics_elected_official_ballotready;
-    -- effective-date gate already applied there)
-    merged.is_win_icp,
-    merged.is_serve_icp,
-    merged.is_win_supersize_icp,
-
-    merged.created_at,
-    merged.updated_at
-
-from merged
+from br_terms as br
+left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
