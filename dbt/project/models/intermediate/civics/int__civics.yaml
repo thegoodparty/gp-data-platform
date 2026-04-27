@@ -1263,6 +1263,68 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_elected_official_canonical_ids
+    description: |
+      Deterministic crosswalk: TechSpeed ts_officeholder_id ↔ BallotReady
+      canonical IDs (term-grain UUID, person-grain UUID, raw BR keys).
+
+      Grain: one row per distinct numeric ts_officeholder_id that
+      deterministically matches a BR br_office_holder_id. This is a
+      key-mapping model only — it does NOT assert that ts_officeholder_id
+      is a clean person identifier (see ts_officeholder_id_is_reused).
+
+      Reads TS staging directly to stay decoupled from the prematch-preserving
+      TS intermediate and to compute reuse against the same delivery-dedup
+      population.
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "try_cast(ts_officeholder_id as bigint) = br_office_holder_id"
+
+    columns:
+      - name: ts_officeholder_id
+        description: Primary key. Raw TS officeholder ID (numeric, as a string).
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_office_holder_id
+        description: BR's term-grain natural key. Inner join guarantees presence; deterministic 1:1 with ts_officeholder_id.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_candidate_id
+        description: |
+          BR's person-grain natural key. Asserted not_null — TS should never
+          match a BR vacancy term (no person to TS-track). Failure means we
+          need to either filter out vacancy matches or surface them as
+          term-only.
+        data_tests:
+          - not_null
+
+      - name: canonical_gp_elected_official_term_id
+        description: BR's term-grain canonical UUID. Salted from br_office_holder_id.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: canonical_gp_elected_official_id
+        description: BR's person-grain canonical UUID. Salted from br_candidate_id.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: ts_officeholder_id_is_reused
+        description: |
+          true when this ts_officeholder_id has >=2 records after delivery dedup.
+          Conservative: catches the known contaminated/reused-ID risk and also
+          suppresses legitimate same-person multi-position IDs. Downstream
+          (TS person intermediate) suppresses contact rollup for any flagged ID.
+        data_tests:
+          - not_null
+
   - name: int__civics_elected_official_techspeed
     description: >
       TechSpeed office holders transformed into the civics mart
