@@ -619,18 +619,18 @@ typecheck = ["mypy"]
 
 [[package]]
 name = "boto3"
-version = "1.42.91"
+version = "1.42.96"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "boto3-1.42.91-py3-none-any.whl", hash = "sha256:04e72071cde022951ce7f81bd9933c90095ab8923e8ced61c8dacfe9edac0f5c"},
-    {file = "boto3-1.42.91.tar.gz", hash = "sha256:03d70532b17f7f84df37ca7e8c21553280454dea53ae12b15d1cfef9b16fcb8a"},
+    {file = "boto3-1.42.96-py3-none-any.whl", hash = "sha256:2f4566da2c209a98bdbfc874d813ef231c84ad24e4f815e9bc91de5f63351a24"},
+    {file = "boto3-1.42.96.tar.gz", hash = "sha256:b38a9e4a3fbbee9017252576f1379780d0a5814768676c08df2f539d31fcdd68"},
 ]
 
 [package.dependencies]
-botocore = ">=1.42.91,<1.43.0"
+botocore = ">=1.42.96,<1.43.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.16.0,<0.17.0"
 
@@ -639,14 +639,14 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "botocore"
-version = "1.42.91"
+version = "1.42.96"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "botocore-1.42.91-py3-none-any.whl", hash = "sha256:7a28c3cc6bfab5724ad18899d52402b776a0de7d87fa20c3c5270bcaaf199ce8"},
-    {file = "botocore-1.42.91.tar.gz", hash = "sha256:d252e27bc454afdbf5ed3dc617aa423f2c855c081e98b7963093399483ecc698"},
+    {file = "botocore-1.42.96-py3-none-any.whl", hash = "sha256:db2c3e2006628be6fde81a24124a6563c363d6982fb92728837cf174bad9d98a"},
+    {file = "botocore-1.42.96.tar.gz", hash = "sha256:75b3b841ffacaa944f645196655a21ca777591dd8911e732bfb6614545af0250"},
 ]
 
 [package.dependencies]
@@ -1068,14 +1068,14 @@ openai = ["httpx", "langchain-openai ; python_version > \"3.7\"", "openai"]
 
 [[package]]
 name = "databricks-sql-connector"
-version = "4.2.5"
+version = "4.2.6"
 description = "Databricks SQL Connector for Python"
 optional = false
 python-versions = "<4.0.0,>=3.8.0"
 groups = ["main"]
 files = [
-    {file = "databricks_sql_connector-4.2.5-py3-none-any.whl", hash = "sha256:31cee10552ce77a830318ce9488fc5e67daca7abbcdf0d8d34f12a180bc55039"},
-    {file = "databricks_sql_connector-4.2.5.tar.gz", hash = "sha256:762df7568ef1998540f96b20cad6f1aaae87d1aad54e40e528f87e4524397291"},
+    {file = "databricks_sql_connector-4.2.6-py3-none-any.whl", hash = "sha256:61e0f425c990a0ec52c31165ea7dd0582cc0ad90c5fbd5fc9bea59bb38faeb00"},
+    {file = "databricks_sql_connector-4.2.6.tar.gz", hash = "sha256:65e59f08e55dcc563c05e02e2321d5171dd9482e5792328d99ac097377795d01"},
 ]
 
 [package.dependencies]
@@ -1087,7 +1087,7 @@ pybreaker = ">=1.0.0,<2.0.0"
 pyjwt = ">=2.0.0,<3.0.0"
 python-dateutil = ">=2.8.0,<3.0.0"
 requests = ">=2.18.1,<3.0.0"
-thrift = ">=0.16.0,<0.21.0"
+thrift = ">=0.22.0,<0.23.0"
 urllib3 = ">=1.26"
 
 [package.extras]
@@ -2857,14 +2857,14 @@ testing = ["coverage", "pytest", "pytest-benchmark"]
 
 [[package]]
 name = "pre-commit"
-version = "4.5.1"
+version = "4.6.0"
 description = "A framework for managing and maintaining multi-language pre-commit hooks."
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "pre_commit-4.5.1-py2.py3-none-any.whl", hash = "sha256:3b3afd891e97337708c1674210f8eba659b52a38ea5f822ff142d10786221f77"},
-    {file = "pre_commit-4.5.1.tar.gz", hash = "sha256:eb545fcff725875197837263e977ea257a402056661f09dae08e4b149b030a61"},
+    {file = "pre_commit-4.6.0-py2.py3-none-any.whl", hash = "sha256:e2cf246f7299edcabcf15f9b0571fdce06058527f0a06535068a86d38089f29b"},
+    {file = "pre_commit-4.6.0.tar.gz", hash = "sha256:718d2208cef53fdc38206e40524a6d4d9576d103eb16f0fec11c875e7716e9d9"},
 ]
 
 [package.dependencies]
@@ -2919,19 +2919,19 @@ test = ["pytest", "pytest-instafail", "pytest-subtests", "pytest-xdist", "pywin3
 
 [[package]]
 name = "psycopg2"
-version = "2.9.11"
+version = "2.9.12"
 description = "psycopg2 - Python-PostgreSQL Database Adapter"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "psycopg2-2.9.11-cp310-cp310-win_amd64.whl", hash = "sha256:103e857f46bb76908768ead4e2d0ba1d1a130e7b8ed77d3ae91e8b33481813e8"},
-    {file = "psycopg2-2.9.11-cp311-cp311-win_amd64.whl", hash = "sha256:210daed32e18f35e3140a1ebe059ac29209dd96468f2f7559aa59f75ee82a5cb"},
-    {file = "psycopg2-2.9.11-cp312-cp312-win_amd64.whl", hash = "sha256:e03e4a6dbe87ff81540b434f2e5dc2bddad10296db5eea7bdc995bf5f4162938"},
-    {file = "psycopg2-2.9.11-cp313-cp313-win_amd64.whl", hash = "sha256:8dc379166b5b7d5ea66dcebf433011dfc51a7bb8a5fc12367fa05668e5fc53c8"},
-    {file = "psycopg2-2.9.11-cp314-cp314-win_amd64.whl", hash = "sha256:f10a48acba5fe6e312b891f290b4d2ca595fc9a06850fe53320beac353575578"},
-    {file = "psycopg2-2.9.11-cp39-cp39-win_amd64.whl", hash = "sha256:6ecddcf573777536bddfefaea8079ce959287798c8f5804bee6933635d538924"},
-    {file = "psycopg2-2.9.11.tar.gz", hash = "sha256:964d31caf728e217c697ff77ea69c2ba0865fa41ec20bb00f0977e62fdcc52e3"},
+    {file = "psycopg2-2.9.12-cp310-cp310-win_amd64.whl", hash = "sha256:d5fbe092315fb007c03544704e6d1e678a6c0378139d01cea433dc59edf041b4"},
+    {file = "psycopg2-2.9.12-cp311-cp311-win_amd64.whl", hash = "sha256:2532c0cdc6ad18c9c35cd935cc3159712e14f05276a6d29a6435c52d24b840c1"},
+    {file = "psycopg2-2.9.12-cp312-cp312-win_amd64.whl", hash = "sha256:83d48e66e18c301d832e93c984a7bcbc0f4ac3bb79e2137e3bc335978c756dc0"},
+    {file = "psycopg2-2.9.12-cp313-cp313-win_amd64.whl", hash = "sha256:3d23e684927d37b95cee9a943f6927b04ae2fdcd056fd0e2a30929ee89fee5a9"},
+    {file = "psycopg2-2.9.12-cp314-cp314-win_amd64.whl", hash = "sha256:a73d5513bfe929c56555006c7a9cc7ae6e4276aa99dd2b1e2544eb8bb54f8b23"},
+    {file = "psycopg2-2.9.12-cp39-cp39-win_amd64.whl", hash = "sha256:09826a6b89714626a662275d03f21639f1c68d183e2dcc9ba134d463a3da753e"},
+    {file = "psycopg2-2.9.12.tar.gz", hash = "sha256:1dedb1c7a1d8552c4a6044c6b1c41a52e6a8e2d144af83eccac758076b1b7c15"},
 ]
 
 [[package]]
@@ -4262,17 +4262,14 @@ rapidfuzz = ">=3.0.0,<4.0.0"
 
 [[package]]
 name = "thrift"
-version = "0.20.0"
+version = "0.22.0"
 description = "Python bindings for the Apache Thrift RPC system"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "thrift-0.20.0.tar.gz", hash = "sha256:4dd662eadf6b8aebe8a41729527bd69adf6ceaa2a8681cbef64d1273b3e8feba"},
+    {file = "thrift-0.22.0.tar.gz", hash = "sha256:42e8276afbd5f54fe1d364858b6877bc5e5a4a5ed69f6a005b94ca4918fe1466"},
 ]
-
-[package.dependencies]
-six = ">=1.7.2"
 
 [package.extras]
 all = ["tornado (>=4.0)", "twisted"]
@@ -4856,4 +4853,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "c408a4b7775554c8945721855c5a66977d0356137e636926a60d3d647199f292"
+content-hash = "13746fec3cd45e7da77a7a19abec74c555f5e0692f568a0f85602d3d4b4afe2c"
