@@ -2420,16 +2420,18 @@ models:
 
       - name: office_level
         description: >
-          Source-faithful Product DB election_level. See
-          int__civics_candidacy_gp_api.office_level for normalization notes.
+          Normalized office level (Local/County/State/Federal). Derived from
+          campaigns.election_level with br_position.level fallback (mirrors
+          candidacy gp_api derivation at int__er_prematch_candidacy_stages.sql
+          lines 344-363).
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - city
-                  - county
-                  - federal
-                  - state
+                  - Local
+                  - County
+                  - State
+                  - Federal
 
       - name: party_affiliation
         description: Normalized party affiliation via parse_party_affiliation macro
@@ -2444,6 +2446,22 @@ models:
                   - Libertarian
                   - Green
                   - Other
+
+      - name: ballotready_position_id
+        description: BR position FK from upstream campaigns mart. Populated for ~84% of gp-api EO rows.
+
+      - name: normalized_position_name
+        description: Normalized BR position name from campaigns; feeds candidate_office derivation.
+
+      - name: br_position_level
+        description: BR position level (city/county/state/federal) from BR API position table; used as office_level fallback.
+
+      - name: campaign_office_raw
+        description: >
+          Raw campaign_office text preserved for downstream district extraction
+          and official_office_name. Not normalized. Nullable (some campaigns
+          lack a campaign_office; the prematch filters these at its own gp_api
+          source CTE, mirroring candidacy line 266).
 
       - name: created_at
         data_tests:

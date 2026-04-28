@@ -17,9 +17,17 @@ with
         select user_id, first_name, last_name, email, phone from {{ ref("users") }}
     ),
 
+    -- v2.2: BR API position table for br_position_level fallback (mirrors
+    -- candidacy gp_api_with_office at int__er_prematch_candidacy_stages.sql lines
+    -- 318-320).
+    br_position as (
+        select * from {{ ref("stg_airbyte_source__ballotready_api_position") }}
+    ),
+
     joined as (
         -- INNER JOIN to campaigns both enriches and filters orphans (rows
         -- whose campaign_id doesn't exist in the campaigns mart).
+        -- v2.2: demo filter mirrors candidacy gp_api_campaigns at line 262.
         select
             eo.id as gp_api_elected_office_id,
             eo.user_id as gp_api_user_id,
@@ -33,13 +41,40 @@ with
             u.email,
             u.phone,
             c.normalized_position_name as position_name,
-            c.campaign_office as candidate_office,
+            c.campaign_office as candidate_office_input,  -- raw input to office derivation
+            c.campaign_office as campaign_office_raw,  -- v2.2: preserved for prematch
+            c.normalized_position_name,  -- v2.2: exposed for prematch
             c.election_level,
             c.campaign_state as state,
+            -- v2.2: new from campaigns mart
+            c.ballotready_position_id,
+            -- v2.2: new from BR position lookup
+            brp.level as br_position_level,
             {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation
         from elected_offices as eo
         inner join latest_campaigns as c on eo.campaign_id = c.campaign_id
         left join users as u on eo.user_id = u.user_id
+        left join br_position as brp on c.ballotready_position_id = brp.database_id
+        where not coalesce(c.is_demo, false)
+    ),
+
+    -- v2.2: compute candidate_office once in its own CTE so map_office_type can
+    -- reference it as a real column, instead of nesting Jinja macros inside another
+    -- macro's string argument. Mirrors candidacy gp_api_with_office at
+    -- int__er_prematch_candidacy_stages.sql lines 295-312.
+    joined_with_office as (
+        select
+            j.*,
+            coalesce(
+                {{
+                    generate_candidate_office_from_position(
+                        "j.candidate_office_input",
+                        "j.normalized_position_name",
+                    )
+                }},
+                initcap(trim(j.candidate_office_input))
+            ) as candidate_office
+        from joined as j
     ),
 
     final as (
@@ -64,8 +99,29 @@ with
             cast(null as string) as office_phone,
             cast(null as string) as central_phone,
             position_name,
-            candidate_office,
-            nullif(election_level, '') as office_level,
+            candidate_office,  -- computed in joined_with_office
+            -- v2.2: office_level uses candidacy CASE mapping with br_position_level
+            -- fallback
+            -- (mirrors candidacy gp_api_stages at lines 344-363).
+            case
+                when lower(election_level) in ('city', 'local')
+                then 'Local'
+                when lower(election_level) = 'county'
+                then 'County'
+                when lower(election_level) = 'state'
+                then 'State'
+                when lower(election_level) = 'federal'
+                then 'Federal'
+                when lower(br_position_level) in ('city', 'local', 'township')
+                then 'Local'
+                when lower(br_position_level) in ('county', 'regional')
+                then 'County'
+                when lower(br_position_level) = 'state'
+                then 'State'
+                when lower(br_position_level) = 'federal'
+                then 'Federal'
+                else null
+            end as office_level,
             {{ map_office_type("candidate_office") }} as office_type,
             state,
             cast(null as string) as city,
@@ -82,9 +138,14 @@ with
             cast(null as string) as facebook_url,
             cast(null as string) as twitter_url,
             'gp_api' as candidate_id_source,
+            -- v2.2: new exposed columns (appended to preserve existing column order)
+            ballotready_position_id,
+            normalized_position_name,
+            br_position_level,
+            campaign_office_raw,
             created_at,
             updated_at
-        from joined
+        from joined_with_office
     )
 
 -- No dedup: gp_elected_official_id is a salted UUID of elected_office.id,
@@ -121,6 +182,11 @@ select
     facebook_url,
     twitter_url,
     candidate_id_source,
+    -- v2.2 new
+    ballotready_position_id,
+    normalized_position_name,
+    br_position_level,
+    campaign_office_raw,
     created_at,
     updated_at
 from final
