@@ -111,6 +111,7 @@ with
             details:state::string as campaign_state,
             details:party::string as campaign_party,
             details:level::string as election_level,
+            details:partisantype::string as partisan_type,
 
             -- For latest versions: prefer org->position, fall back to legacy
             -- For historical versions: use legacy snapshot to stay faithful
