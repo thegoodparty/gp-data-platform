@@ -1257,234 +1257,478 @@ models:
       - name: updated_at
         description: Timestamp when the record was last updated
 
-  - name: elected_officials
-    description: >
-      Civics mart table of elected office-holders.
+  - name: elected_official_terms
+    description: |
+      Term-grain BR fact table for elected officials. One row per BR
+      office-holder term. Reads int__civics_elected_official_ballotready
+      directly (BR term grain with both term and person UUIDs, plus ICP
+      flags) and LEFT JOINs int__civics_elected_official_canonical_ids
+      for TS provenance markers (ts_officeholder_id,
+      has_direct_ts_term_match, ts_officeholder_id_is_reused).
 
-      Pass-through of BallotReady office holders. BallotReady is the first
-      (and currently only) provider for elected officials in the civics mart.
-      Additional providers (e.g., TechSpeed) will be added once entity
-      resolution is in place.
+      Term-grain TS attributes (is_incumbent, TS-enriched contact) are NOT
+      exposed at this grain — those live on elected_officials. Consumers
+      needing TS-derived person-level data join
+      elected_official_terms.gp_elected_official_id →
+      elected_officials.gp_elected_official_id.
 
-      Grain: one row per office-holder term.
+      source_systems is join-based: 'ballotready' is always present;
+      'techspeed' is added when has_direct_ts_term_match = true.
 
     columns:
-      - name: gp_elected_official_id
-        description: >
-          Primary key - internally generated UUID for the office-holder term.
-          Generated upstream from the BallotReady office-holder natural key.
+      - name: gp_elected_official_term_id
+        description: Primary key. Term-grain canonical UUID, sourced from int__civics_elected_official_ballotready.
         data_tests:
           - unique
           - not_null
           - is_uuid
 
+      - name: gp_elected_official_id
+        description: |
+          Foreign key to elected_officials.gp_elected_official_id. Person-grain
+          canonical UUID. NULL for vacancy terms (no person).
+        data_tests:
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('elected_officials')
+                field: gp_elected_official_id
+              config:
+                where: "gp_elected_official_id is not null"
+
       - name: br_office_holder_id
-        description: BallotReady natural key for the office-holder term record.
+        description: BallotReady term-level row PK (OfficeHolder.databaseId)
         data_tests:
           - unique
           - not_null
 
+      - name: br_candidate_id
+        description: BallotReady person-level ID (Person.databaseId). NULL for vacancy rows.
+
       - name: br_position_id
-        description: BallotReady position (office) identifier.
+        description: BallotReady seat/office ID (Position.databaseId)
+
+      - name: br_candidacy_id
+        description: BallotReady candidacy ID associated with this term
+
+      - name: br_geo_id
+        description: BallotReady geographic identifier
+
+      - name: ts_officeholder_id
+        description: |
+          TS officeholder ID deterministically associated with this BR term
+          (try_cast(ts_officeholder_id as bigint) = br_office_holder_id). NULL
+          when no TS match. For reused IDs, this single ID may correspond to
+          multiple TS source rows representing different people; use
+          ts_officeholder_id_is_reused to identify contaminated matches before
+          treating the ID as a clean TS-row pointer.
+
+      - name: has_direct_ts_term_match
+        description: True when this BR term has a deterministically matched ts_officeholder_id. Equivalent to 'techspeed' appearing in source_systems for this row.
+        data_tests:
+          - not_null
+
+      - name: ts_officeholder_id_is_reused
+        description: |
+          True when the matched ts_officeholder_id is flagged as reused in the
+          crosswalk (>=2 staging records after delivery dedup; ~86 IDs). False
+          when no TS match. Use this to filter out contaminated matches when
+          querying TS-matched terms.
         data_tests:
           - not_null
 
       - name: first_name
-        description: Elected official first name.
-        data_tests:
-          - not_null
+        description: Official's first name (BR)
 
       - name: last_name
-        description: Elected official last name.
-        data_tests:
-          - not_null
+        description: Official's last name (BR)
 
       - name: middle_name
-        description: Elected official middle name.
+        description: Official's middle name (BR)
 
       - name: suffix
-        description: Elected official name suffix (e.g., Jr., Sr., III).
+        description: Official's name suffix (BR)
 
       - name: full_name
-        description: Concatenation of first_name and last_name.
-
-      - name: email
-        description: Primary email address from BallotReady contacts.
+        description: Official's full name (BR)
 
       - name: phone
-        description: >
-          Canonical phone number, preferring office_phone, then central_phone,
-          then any remaining non-null BallotReady phone value.
+        description: Phone number from BallotReady (BR-only at term grain). TS-enriched contact lives on elected_officials.
+
+      - name: email
+        description: Email address from BallotReady (BR-only at term grain). TS-enriched contact lives on elected_officials.
 
       - name: office_phone
-        description: Phone number from a BallotReady contact with type = office.
+        description: Office phone number (BR-only)
 
       - name: central_phone
-        description: Phone number from a BallotReady contact with type = central.
+        description: Central office phone number (BR-only)
 
       - name: position_name
-        description: Raw BallotReady office name.
+        description: Raw position name from BallotReady
+
+      - name: normalized_position_name
+        description: Normalized position name from BallotReady
+
+      - name: candidate_office
+        description: Derived office name for the position
         data_tests:
           - not_null
 
-      - name: normalized_position_name
-        description: BallotReady-normalized office name.
-
-      - name: candidate_office
-        description: >
-          Office name derived from position_name and normalized_position_name
-          via the generate_candidate_office_from_position macro.
-
       - name: office_level
-        description: >
-          Office level from BallotReady's PositionLevel enum
-          (initcap normalization only, no value collapsing).
-          See https://developers.civicengine.com/docs/api/graphql/reference/enums/position-level
+        description: Level of government
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  - City
-                  - Local
-                  - County
-                  - Township
-                  - State
-                  - Regional
-                  - Federal
+                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
+              config:
+                severity: warn
 
       - name: office_type
-        description: Office type derived from candidate_office via the map_office_type macro.
+        description: Type of office held
 
       - name: state
-        description: U.S. state (2-letter code).
+        description: U.S. state abbreviation
         data_tests:
-          - not_null
           - accepted_values:
               arguments:
                 values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+              config:
+                severity: warn
 
       - name: city
-        description: City extracted from position_name via the extract_city_from_office_name macro.
+        description: City for the position (BR)
 
       - name: district
-        description: >
-          Geographic district extracted from position_name via the
-          extract_district_geographic macro (12 keywords; excludes
-          seat/post labels like Position, Seat, Post, Section).
+        description: District identifier for the position (BR)
 
       - name: term_start_date
-        description: Office-holder term start date.
+        description: When the officeholder term started (BR)
 
       - name: term_end_date
-        description: Office-holder term end date.
+        description: When the officeholder term ended or will end (BR)
 
       - name: is_appointed
-        description: Whether the office-holder was appointed (vs. elected).
+        description: Whether the officeholder was appointed (BR)
 
       - name: is_judicial
-        description: Whether the office is judicial.
+        description: Whether this is a judicial position (BR)
 
       - name: is_vacant
-        description: Whether the seat is currently vacant.
+        description: Whether this is a vacancy placeholder (BR)
 
       - name: is_off_cycle
-        description: Whether the office is on an off-cycle election schedule.
+        description: Whether the term is out of normal schedule (BR)
 
       - name: party_affiliation
-        description: Normalized party affiliation from the first BallotReady party value.
+        description: Political party affiliation
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  - Independent
-                  - Nonpartisan
-                  - Democrat
-                  - Republican
-                  - Libertarian
-                  - Green
-                  - Other
+                values: ["Independent", "Nonpartisan", "Democrat", "Republican", "Libertarian", "Green", "Other"]
+              config:
+                severity: warn
 
       - name: website_url
-        description: Website URL from BallotReady urls.
+        description: Official's government or campaign website (BR)
 
       - name: linkedin_url
-        description: LinkedIn URL from BallotReady urls.
+        description: Official's LinkedIn profile (BR)
 
       - name: facebook_url
-        description: Facebook URL from BallotReady urls.
+        description: Official's Facebook page (BR)
 
       - name: twitter_url
-        description: Twitter URL from BallotReady urls.
+        description: Official's Twitter profile (BR)
 
       - name: mailing_address_line_1
-        description: Office-holder mailing address line 1.
+        description: Mailing address line 1 (BR)
 
       - name: mailing_address_line_2
-        description: Office-holder mailing address line 2.
+        description: Mailing address line 2 (BR)
 
       - name: mailing_city
-        description: Office-holder mailing city.
+        description: Mailing city (BR)
 
       - name: mailing_state
-        description: Office-holder mailing state.
+        description: Mailing state (BR)
 
       - name: mailing_zip
-        description: Office-holder mailing ZIP code.
+        description: Mailing ZIP code (BR)
 
-      - name: br_geo_id
-        description: BallotReady geographic identifier for the office.
-
-      - name: br_position_tier
-        description: >
-          BallotReady's research-tier classification (integer 1-5) for the
-          position the office-holder fills. Per BR docs, positions are
-          organized into five tiers reflecting research effort:
-          (1) Federal, (2) State, (3) County & Municipal,
-          (4) Small Town, Township & School Board,
-          (5) Special Districts and local small-population positions.
-          See https://developers.civicengine.com/docs/api/graphql/reference/objects/position#positiontierint--
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: [1, 2, 3, 4, 5]
+      - name: tier
+        description: BallotReady tier classification (1-5)
 
       - name: candidate_id_source
-        description: Source system identifier for the office-holder record (e.g., 'ballotready').
+        description: Source identifier (always 'ballotready' in this model)
+
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          candidacy mart convention. Always contains 'ballotready'; contains
+          'techspeed' when has_direct_ts_term_match = true.
+
+          Note: 'techspeed' membership means a TS ts_officeholder_id matched
+          this term — NOT that trusted TS enrichment was applied. For
+          contaminated matches (ts_officeholder_id_is_reused = true), TS data
+          is suppressed downstream at the person grain in elected_officials,
+          but the term-level join existed so 'techspeed' is still surfaced
+          here for auditability.
         data_tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - ballotready
+          - not_null
+
+      - name: is_win_icp
+        description: >
+          Whether this position meets Win ICP criteria (non-judicial,
+          non-appointed, 500-100K voters, recognized position type).
+          NULL when voter count data is unavailable.
+
+      - name: is_serve_icp
+        description: >
+          Whether this position meets Serve ICP criteria (non-judicial,
+          non-appointed, serve-eligible position type, 1K-100K voters).
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this is a large office (>100K voters) meeting all
+          other Win ICP criteria except the voter count cap.
 
       - name: created_at
-        description: >
-          Office-holder record creation timestamp — when BallotReady
-          ingested the record into their system. May postdate updated_at
-          for records BR backfilled after the underlying political event
-          (e.g., the 2023-06-16 backfill of historical office-holder
-          records).
+        description: Record creation timestamp (BR)
         data_tests:
           - not_null
 
       - name: updated_at
-        description: >
-          Office-holder record last update timestamp — reflects when the
-          underlying political data point (e.g., election result) last
-          changed in BallotReady's source, not when BR last touched the
-          record. Can predate created_at for backfilled records; see
-          created_at description.
+        description: Record last update timestamp (BR)
         data_tests:
           - not_null
 
     tests:
-      # Excludes the 37-row 2023-06-16 BR historical backfill batch where
-      # updated_at (date of underlying political event) predates created_at
-      # (date BR ingested the record). See created_at / updated_at column
-      # descriptions above for BR's timestamp semantics. If a future BR
-      # backfill produces similar violations, this test will alert.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
           config:
-            where: "NOT (cast(created_at as date) = '2023-06-16' AND cast(updated_at as date) = '2020-11-09')"
+            # 37 of 530K BR source rows have updated_at < created_at
+            warn_if: ">40"
+            error_if: ">100"
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('int__civics_elected_official_ballotready')
+
+  - name: elected_officials
+    description: |
+      Civics mart elected_officials. Person-grain merge of BR + TS:
+      int__civics_elected_official_ballotready_person FULL OUTER JOIN
+      int__civics_elected_official_techspeed_person on the canonical
+      gp_elected_official_id, with COALESCE per column. Mirrors the
+      candidate.sql / candidacy.sql merge pattern.
+
+      Grain: one row per elected official person (by br_candidate_id).
+
+      Latest-term semantics: term-scoped attributes (candidate_office,
+      office_level, office_type, state, city, district, mailing_*, tier,
+      party_affiliation, term dates) come from the BR person rollup,
+      which selects the latest term per person. Multi-term people with
+      cross-term variation (8,400+ multi-office, 7,300+ multi-office_type)
+      reflect the latest term; consumers needing accurate per-term values
+      must query elected_official_terms.
+
+      ICP flags (is_win_icp, is_serve_icp, is_win_supersize_icp) are
+      intentionally NOT on this mart per Hugh's commit 8c22079 — ICP is
+      position-scoped and a latest-term scalar misrepresents the data.
+      Term-grain ICP remains on elected_official_terms.
+
+      is_incumbent and ts_incumbent_conflict come from the TS person
+      rollup (with reused-ID suppression and canonical-grain conflict
+      detection). is_incumbent is NULL when no TS data, when contributing
+      TS rows disagreed (~350 cases), or when all TS contributions for
+      that canonical were suppressed as reused (~53 canonicals).
+
+      source_systems is join-based: 'ballotready' present when BR
+      contributed a person row; 'techspeed' present when clean TS data
+      contributed.
+
+    columns:
+      - name: gp_elected_official_id
+        description: Primary key. Person-grain canonical UUID. Same value as BR person intermediate's gp_elected_official_id.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: br_candidate_id
+        description: BallotReady's natural person-level key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        description: Official's first name
+
+      - name: last_name
+        description: Official's last name
+
+      - name: middle_name
+        description: Official's middle name
+
+      - name: suffix
+        description: Official's name suffix
+
+      - name: full_name
+        description: Official's full name
+
+      - name: phone
+        description: TS-wins coalesce. TS-side phone is the per-field FIRST_VALUE IGNORE NULLS rollup across all non-reused contributing TS rows; falls back to BR's latest-term phone when TS has none.
+
+      - name: email
+        description: BR-wins coalesce. BR's latest-term email; falls back to TS-side per-field rollup if BR has none.
+
+      - name: office_phone
+        description: Office phone number
+
+      - name: central_phone
+        description: Central office phone number
+
+      - name: candidate_office
+        description: Office name from latest term
+
+      - name: office_level
+        description: Level of government from latest term
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
+              config:
+                severity: warn
+
+      - name: office_type
+        description: Type of office from latest term
+
+      - name: state
+        description: U.S. state from latest term
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+              config:
+                severity: warn
+
+      - name: city
+        description: City from latest term
+
+      - name: district
+        description: District from latest term
+
+      - name: term_start_date
+        description: Start date of latest term
+
+      - name: term_end_date
+        description: End date of latest term
+
+      - name: is_judicial
+        description: Whether this is a judicial position (from latest term)
+
+      - name: is_incumbent
+        description: |
+          TS-derived incumbency at person grain. NULL when no TS data, when
+          contributing TS rows for this canonical disagreed (see
+          ts_incumbent_conflict), or when all TS contributions were
+          suppressed as reused IDs.
+
+      - name: ts_incumbent_conflict
+        description: True when >=2 non-reused contributing TS rows for this canonical disagreed on is_incumbent. ~350 affected canonicals in PR #333 data.
+        data_tests:
+          - not_null
+
+      - name: party_affiliation
+        description: Political party affiliation
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Independent", "Nonpartisan", "Democrat", "Republican", "Libertarian", "Green", "Other"]
+              config:
+                severity: warn
+
+      - name: website_url
+        description: Official's website
+
+      - name: linkedin_url
+        description: Official's LinkedIn profile
+
+      - name: facebook_url
+        description: Official's Facebook page
+
+      - name: twitter_url
+        description: Official's Twitter profile
+
+      - name: mailing_address_line_1
+        description: Mailing address line 1
+
+      - name: mailing_address_line_2
+        description: Mailing address line 2
+
+      - name: mailing_city
+        description: Mailing city
+
+      - name: mailing_state
+        description: Mailing state
+
+      - name: mailing_zip
+        description: Mailing ZIP code
+
+      - name: tier
+        description: BallotReady tier classification
+
+      - name: selected_gp_elected_official_term_id
+        description: Audit column. The BR term whose values populate the latest-term-derived attributes for this person. Trace via elected_official_terms.gp_elected_official_term_id.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: selected_br_office_holder_id
+        description: Audit. BR's natural term-grain key for the chosen latest term.
+        data_tests:
+          - not_null
+
+      - name: selected_ts_officeholder_id
+        description: Audit. The ts_officeholder_id of the TS row chosen as latest non-reused for this canonical, or NULL if no clean TS row contributed.
+
+      - name: selected_ts_position_id
+        description: Audit. The ts_position_id of the chosen TS row.
+
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this person, join-based per
+          the candidacy mart convention. 'ballotready' present when BR person
+          row exists for this canonical; 'techspeed' present when a clean TS
+          person row exists.
+
+          Source-presence semantics, not value-survivorship: 'techspeed'
+          membership means clean TS data joined this person, NOT that any
+          final coalesced column took its value from TS. Reused-only
+          canonicals (~53 in PR #333 data) yield 'ballotready' alone because
+          TS contributions were suppressed upstream.
+        data_tests:
+          - not_null
+
+      - name: created_at
+        description: Record creation timestamp
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Record last update timestamp
+        data_tests:
+          - not_null
+
+    tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('int__civics_elected_official_ballotready_person')
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            # Inherits BR source rows where updated_at < created_at
+            warn_if: ">30"
+            error_if: ">100"

@@ -1101,24 +1101,43 @@ models:
 
   - name: int__civics_elected_official_ballotready
     description: >
-      BallotReady office holders transformed into the civics mart
-      elected_officials schema.
+      BallotReady office holders, term-grain. Carries both term-grain and
+      person-grain canonical UUIDs (gp_elected_official_term_id and
+      gp_elected_official_id) so downstream models can consume them without
+      regenerating salted UUIDs. ICP flags are joined upstream via
+      int__icp_offices on br_position_id (Win and Win-Supersize gated by
+      candidacy election_day).
 
       Grain: One row per office-holder term.
 
       Source: stg_airbyte_source__ballotready_s3_office_holders_v3.
-      Includes the contacts parser fix for Ruby nil values in staging.
 
+    tests:
+      # Asserts the gp_elected_official_id NULL pattern matches br_candidate_id.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(gp_elected_official_id is not null) = (br_candidate_id is not null)"
     columns:
-      - name: gp_elected_official_id
+      - name: gp_elected_official_term_id
         description: >
-          Primary key - internally generated UUID for elected officials.
-          Generated from the BallotReady office-holder natural key to preserve
-          uniqueness at the office-holder term grain.
+          Term-grain canonical UUID. Salted from BallotReady's br_office_holder_id
+          (unique per office-holder term). Replaces the previous
+          gp_elected_official_id column on this model — same values, renamed for
+          unambiguous grain semantics.
         data_tests:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_elected_official_id
+        description: >
+          Person-grain canonical UUID. Salted from BallotReady's br_candidate_id.
+          NULL for vacancy terms (br_candidate_id IS NULL). Used by the EO
+          crosswalk, the BR person rollup intermediate, and both EO marts.
+          Centralizing generation here prevents salt/source drift across the
+          downstream models that reference this UUID.
+        data_tests:
+          - is_uuid  # repo's is_uuid test ignores nulls, so vacancy NULLs are fine
 
       - name: br_office_holder_id
         description: BallotReady natural key for the office-holder term record
@@ -1214,11 +1233,210 @@ models:
                 values:
                   - ballotready
 
+      - name: is_win_icp
+        description: >
+          Whether this position meets Win ICP criteria (non-judicial,
+          non-appointed, 500-100K voters, recognized position type).
+          NULL when voter count data is unavailable, or when this term's
+          election_day is unknown (no matching BR candidacy in the S3
+          export). Forced false when election_day predates
+          icp_win_effective_date.
+
+      - name: is_serve_icp
+        description: >
+          Whether this position meets Serve ICP criteria (non-judicial,
+          non-appointed, serve-eligible position type, 1K-100K voters).
+          No effective-date gate applied.
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this is a large office (>100K voters) meeting all
+          other Win ICP criteria except the voter count cap. NULL when
+          this term's election_day is unknown. Forced false when
+          election_day predates icp_win_effective_date.
+
       - name: created_at
         data_tests:
           - not_null
 
       - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_elected_official_canonical_ids
+    description: |
+      Deterministic crosswalk: TechSpeed ts_officeholder_id ↔ BallotReady
+      canonical IDs (term-grain UUID, person-grain UUID, raw BR keys).
+
+      Grain: one row per distinct numeric ts_officeholder_id that
+      deterministically matches a BR br_office_holder_id. This is a
+      key-mapping model only — it does NOT assert that ts_officeholder_id
+      is a clean person identifier (see ts_officeholder_id_is_reused).
+
+      Reads TS staging directly to stay decoupled from the prematch-preserving
+      TS intermediate and to compute reuse against the same delivery-dedup
+      population.
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "try_cast(ts_officeholder_id as bigint) = br_office_holder_id"
+
+    columns:
+      - name: ts_officeholder_id
+        description: Primary key. Raw TS officeholder ID (numeric, as a string).
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_office_holder_id
+        description: BR's term-grain natural key. Inner join guarantees presence; deterministic 1:1 with ts_officeholder_id.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_candidate_id
+        description: |
+          BR's person-grain natural key. Asserted not_null — TS should never
+          match a BR vacancy term (no person to TS-track). Failure means we
+          need to either filter out vacancy matches or surface them as
+          term-only.
+        data_tests:
+          - not_null
+
+      - name: canonical_gp_elected_official_term_id
+        description: BR's term-grain canonical UUID. Salted from br_office_holder_id.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: canonical_gp_elected_official_id
+        description: BR's person-grain canonical UUID. Salted from br_candidate_id.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: ts_officeholder_id_is_reused
+        description: |
+          true when this ts_officeholder_id has >=2 records after delivery dedup.
+          Conservative: catches the known contaminated/reused-ID risk and also
+          suppresses legitimate same-person multi-position IDs. Downstream
+          (TS person intermediate) suppresses contact rollup for any flagged ID.
+        data_tests:
+          - not_null
+
+  - name: int__civics_elected_official_ballotready_person
+    description: |
+      BR-only person-grain rollup of int__civics_elected_official_ballotready.
+      One row per br_candidate_id, populated with the person's latest term
+      snapshot. Plays the same role as int__civics_candidate_ballotready in
+      the merge (BR-side input to a person-grain mart), but the grain
+      mechanics differ: this is a latest-term window over term-grain BR
+      data, not a natural person grain.
+
+      Grain: one row per person (br_candidate_id).
+
+      Latest-term ordering: term_start_date desc nulls last,
+      term_end_date desc nulls last, updated_at desc, br_office_holder_id
+      desc. Term-scoped attributes (candidate_office, office_level,
+      office_type, state, city, district, mailing_*, tier,
+      party_affiliation) take the latest term's value. Multi-term people
+      with cross-term variation:
+        - 8,400+ multi-office people
+        - 7,300+ multi-office_type people
+      Consumers needing per-term accuracy must query elected_official_terms.
+
+      ICP flags (is_win_icp, is_serve_icp, is_win_supersize_icp) are
+      intentionally NOT included on this intermediate. Per Hugh's commit
+      8c22079, ICP is position-scoped and a latest-term scalar
+      misrepresents the data. ICP lives at term grain only
+      (int__civics_elected_official_ballotready, elected_official_terms).
+
+      Audit trail: selected_gp_elected_official_term_id and
+      selected_br_office_holder_id expose which term row was chosen as
+      "latest," so debugging "why this person got office X" doesn't require
+      re-running the window logic.
+
+      Vacancy terms (br_candidate_id IS NULL) are filtered out.
+
+    columns:
+      - name: gp_elected_official_id
+        description: Primary key. Person-grain canonical UUID, sourced from int__civics_elected_official_ballotready.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+
+      - name: br_candidate_id
+        description: BallotReady's natural person-level key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: selected_gp_elected_official_term_id
+        description: Audit. The gp_elected_official_term_id of the term row chosen by the latest-term window.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: selected_br_office_holder_id
+        description: Audit. BR's br_office_holder_id of the chosen latest term.
+        data_tests:
+          - not_null
+
+      - name: first_name
+        data_tests:
+          - not_null
+
+      - name: last_name
+        data_tests:
+          - not_null
+
+      - name: state
+        description: Latest term's U.S. state (2-letter code).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+
+      - name: office_level
+        description: Latest term's BallotReady PositionLevel.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - City
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
+      - name: party_affiliation
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: tier
+        description: BallotReady research tier (1-5) for the latest term's position.
+
+      - name: created_at
+        description: Latest term's created_at, not the person's first observed creation time.
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Latest term's updated_at — NOT the person's earliest appearance.
         data_tests:
           - not_null
 
@@ -1416,6 +1634,122 @@ models:
           - not_null
 
       - name: updated_at
+        data_tests:
+          - not_null
+
+  - name: int__civics_elected_official_techspeed_person
+    description: |
+      TS-side person-grain rollup. Adopts BR canonical IDs via
+      int__civics_elected_official_canonical_ids, suppresses reused-ID
+      contamination, rolls up phone/email per-field (FIRST_VALUE IGNORE
+      NULLS), and detects is_incumbent conflicts at canonical grain.
+      Consumed by the elected_officials person mart in a full-outer-join +
+      coalesce against int__civics_elected_official_ballotready_person.
+
+      Grain: one row per canonical_gp_elected_official_id. PR #333 data:
+      27,827 rows. Canonicals whose TS contributions are entirely from
+      reused ts_officeholder_ids (53 in PR #333 data) are EXCLUDED — no
+      clean TS rows means no TS contribution, and the person mart's
+      full-outer-join correctly yields BR-only.
+
+      Reused-ID suppression: 86 IDs flagged in the crosswalk;
+        - 53 reused-only canonicals dropped entirely
+        - For canonicals with both reused and clean rows, reused rows are
+          suppressed; clean rows still contribute via per-field rollup
+        - Per-field rollup preserves: 107 phones (across 908 multi-phone
+          canonicals) and 1,097 emails (across 210 multi-email canonicals)
+          vs single-row dedup
+
+      Conflict handling: when contributing TS rows disagree on is_incumbent
+      for a canonical (350 affected canonicals in PR #333 data), the value
+      is NULL'd and ts_incumbent_conflict is set true.
+
+      TS-only fallback is unsolved (zero rows today). The unmatched-TS
+      singular test on the crosswalk blocks the build if any appear.
+
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(not ts_incumbent_conflict) or (is_incumbent is null)"
+
+    columns:
+      - name: gp_elected_official_id
+        description: Primary key. Canonical person-grain UUID, adopted from int__civics_elected_official_canonical_ids.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('int__civics_elected_official_ballotready_person')
+                field: gp_elected_official_id
+
+      - name: br_candidate_id
+        description: BallotReady's natural person-level key (via crosswalk).
+        data_tests:
+          - unique
+          - not_null
+
+      - name: selected_ts_officeholder_id
+        description: Audit. The ts_officeholder_id of the TS row chosen as latest non-reused.
+        data_tests:
+          - not_null
+
+      - name: selected_ts_position_id
+        description: Audit. The ts_position_id of the chosen TS row.
+
+      - name: selected_gp_elected_official_term_id
+        description: Audit. BR term UUID that the selected TS row matched deterministically.
+        data_tests:
+          - not_null
+          - is_uuid
+
+      - name: selected_br_office_holder_id
+        description: Audit. BR's br_office_holder_id of the matched term.
+        data_tests:
+          - not_null
+
+      - name: phone
+        description: Per-field FIRST_VALUE IGNORE NULLS rollup of TS phone across all non-reused contributing rows.
+
+      - name: email
+        description: Per-field FIRST_VALUE IGNORE NULLS rollup of TS email across all non-reused contributing rows.
+
+      - name: is_incumbent
+        description: TS-derived incumbency. NULL when contributing rows for this canonical disagree (see ts_incumbent_conflict). NULL when no non-NULL value contributed.
+
+      - name: ts_incumbent_conflict
+        description: True when at least two non-reused contributing TS rows for this canonical disagreed on is_incumbent.
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state from latest non-reused TS row.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: "{{ get_us_states_list(include_DC=true, include_US=true, include_territories=true) }}"
+
+      - name: party_affiliation
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+
+      - name: created_at
+        description: Latest non-reused TS row's created_at.
+        data_tests:
+          - not_null
+
+      - name: updated_at
+        description: Latest non-reused TS row's updated_at.
         data_tests:
           - not_null
 
