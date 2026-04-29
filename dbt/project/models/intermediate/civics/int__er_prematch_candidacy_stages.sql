@@ -163,7 +163,11 @@ with
             ts.state_code as state,
             ts.party,
             ts.candidate_office,
-            ts.office_level,
+            -- TS staging emits mixed-case values (e.g. 'COUNTY', 'LOCAL', 'local')
+            -- alongside the dominant initcap form. Normalize here to mirror
+            -- initcap(br.level) on ballotready_stages above and keep the unioned
+            -- prematch column on a single canonical vocabulary.
+            initcap(ts.office_level) as office_level,
             ts.office_type,
             ts.district as district_raw,
             try_cast(
