@@ -1844,19 +1844,29 @@ models:
 
   - name: int__er_prematch_elected_officials
     description: >
-      Entity resolution prematch table: BallotReady x TechSpeed elected
-      officials unioned into a standardized schema for Splink probabilistic
-      matching.
+      Entity resolution prematch table at term grain. Two sources:
+      ballotready_techspeed (BR term LEFT JOIN canonical_ids LEFT JOIN raw TS
+      with reused-ID guard inside the TS join clause) and gp_api (with raw
+      campaign_office_raw for official_office_name and district extraction).
 
-      Grain: One row per office-holder term (BR) / officeholder-position (TS).
+      Grain: One row per BR office-holder term (BR+TS source) / one row per
+      gp-api elected_office row (gp_api source).
 
-      Sources: int__civics_elected_official_ballotready (BR),
-      int__civics_elected_official_techspeed (TS), with nicknames seed for
+      Sources: int__civics_elected_official_ballotready (BR term),
+      int__civics_elected_official_canonical_ids (crosswalk),
+      int__civics_elected_official_techspeed (raw TS),
+      int__civics_elected_official_gp_api (gp-api), with nicknames seed for
       first_name alias arrays.
 
       Unlike the candidacy prematch, elected officials have no election_date
       or br_race_id. Splink blocking anchors on state + office name + last
       name and contact info (phone, email).
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: er_prematch_eo_has_ballotready_techspeed_source
+          arguments:
+            expression: "(select count(*) from {{ ref('int__er_prematch_elected_officials') }} where source_name = 'ballotready_techspeed') > 0"
 
     columns:
       - name: unique_id
@@ -1868,7 +1878,10 @@ models:
           - not_null
 
       - name: source_name
-        description: Origin of the record ('ballotready' or 'techspeed')
+        description: >
+          Origin of the record. Phase 1 broadens to old + new values
+          ('ballotready', 'techspeed', 'ballotready_techspeed', 'gp_api');
+          Phase 2 follow-up tightens to the new values only.
         data_tests:
           - not_null
           - accepted_values:
@@ -1876,12 +1889,13 @@ models:
                 values:
                   - ballotready
                   - techspeed
+                  - ballotready_techspeed
+                  - gp_api
 
       - name: source_id
         description: >
-          Source-specific identifier. BR: br_office_holder_id (string);
-          TS: gp_elected_official_id (salted UUID from ts_officeholder_id +
-          position_id + office_name_clean).
+          Source-specific identifier. BR+TS: br_office_holder_id (string);
+          gp_api: gp_api_elected_office_id (string).
         data_tests:
           - not_null
 
@@ -1906,6 +1920,17 @@ models:
         data_tests:
           - not_null
           - is_state_abbreviation
+
+      - name: ballotready_position_id
+        description: >
+          BR position FK. Populated when the BR side has br_position_id or
+          gp-api side has the upstream campaigns FK (campaigns.ballotready_position_id).
+
+      - name: official_office_name
+        description: >
+          Lowered + trimmed + nullif of position_name for BR+TS;
+          lowered + trimmed + nullif of raw campaign_office_raw for gp-api
+          (preserves seat/district context).
 
   - name: int__civics_election_ballotready
     description: >
@@ -2420,16 +2445,24 @@ models:
 
       - name: office_level
         description: >
-          Source-faithful Product DB election_level. See
-          int__civics_candidacy_gp_api.office_level for normalization notes.
+          Normalized office level matching BallotReady's 7-bucket PositionLevel
+          taxonomy (City/Local/County/Township/State/Regional/Federal). For the
+          ~84% of gp-api EO rows with a BR position FK, this is initcap of
+          br_position.level (mirrors int__civics_elected_official_ballotready).
+          For the ~16% without a position FK, falls back to campaigns.election_level
+          which collapses to a 4-bucket subset (Local/County/State/Federal —
+          City/Town/Township are not distinguishable at gp-api granularity).
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - city
-                  - county
-                  - federal
-                  - state
+                  - City
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
 
       - name: party_affiliation
         description: Normalized party affiliation via parse_party_affiliation macro
@@ -2444,6 +2477,22 @@ models:
                   - Libertarian
                   - Green
                   - Other
+
+      - name: ballotready_position_id
+        description: BR position FK from upstream campaigns mart. Populated for ~84% of gp-api EO rows.
+
+      - name: normalized_position_name
+        description: Normalized BR position name from campaigns; feeds candidate_office derivation.
+
+      - name: br_position_level
+        description: BR position level (city/county/state/federal) from BR API position table; used as office_level fallback.
+
+      - name: campaign_office_raw
+        description: >
+          Raw campaign_office text preserved for downstream district extraction
+          and official_office_name. Not normalized. Nullable (some campaigns
+          lack a campaign_office; the prematch filters these at its own gp_api
+          source CTE, mirroring candidacy line 266).
 
       - name: created_at
         data_tests:
