@@ -22,7 +22,7 @@ with
     winner_counts as (
         select cs.gp_election_stage_id, count_if(cs.is_winner) as winners
         from {{ ref("candidacy_stage") }} as cs
-        where cs.gp_election_stage_id in (select gp_election_stage_id from stages)
+        inner join stages as s on cs.gp_election_stage_id = s.gp_election_stage_id
         group by cs.gp_election_stage_id
     )
 

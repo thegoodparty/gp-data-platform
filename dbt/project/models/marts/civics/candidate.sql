@@ -25,9 +25,12 @@
 ] -%}
 {# TS wins: birth_date (TS: 2885, BR: 0), phone_number (TS: 48k, BR: 8k), facebook_url (TS: 9279 real) #}
 {%- set ts_wins_cols = ["birth_date", "phone_number", "facebook_url"] %}
-{# DDHQ-fallback columns. state is sourced as state_postal_code (2-letter)
-   to match BR/TS convention; the DDHQ int model exposes state as the full
-   name. #}
+{# DDHQ-fallback columns. Must be a subset of br_wins_cols — the merge loop
+   below tests `col in ddhq_fallback_cols` to decide whether to coalesce
+   DDHQ in. Adding a BR-wins column that DDHQ also supplies requires
+   adding it here too. state is sourced as state_postal_code (2-letter)
+   to match BR/TS convention; the DDHQ int model exposes state as the
+   full name. #}
 {%- set ddhq_fallback_cols = [
     "first_name",
     "last_name",

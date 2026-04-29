@@ -26,10 +26,12 @@ with
 
     candidate_sums as (
         select
-            gp_election_stage_id, sum(try_cast(votes_received as bigint)) as votes_sum
-        from {{ ref("candidacy_stage") }}
-        where gp_election_stage_id in (select gp_election_stage_id from stage_totals)
-        group by gp_election_stage_id
+            cs.gp_election_stage_id,
+            sum(try_cast(cs.votes_received as bigint)) as votes_sum
+        from {{ ref("candidacy_stage") }} as cs
+        inner join
+            stage_totals as st on cs.gp_election_stage_id = st.gp_election_stage_id
+        group by cs.gp_election_stage_id
     )
 
 select

@@ -103,6 +103,8 @@ with
     with_ids as (
         select
             -- === Computed IDs (canonical from BR if Splink-matched, else hashed) ===
+            -- Lateral column refs let us derive gp_candidacy_stage_id from the
+            -- same-row gp_candidacy_id / gp_election_stage_id without a chained CTE.
             coalesce(
                 xw.canonical_gp_candidate_id,
                 {{
@@ -146,11 +148,14 @@ with
                 {{ generate_gp_election_id("elec_lookup") }}
             ) as gp_election_id,
 
-            -- Carry the canonical candidacy_stage id forward so the next CTE
-            -- can coalesce it against the (gp_candidacy_id, gp_election_stage_id)
-            -- hash. Necessary because BR's gp_candidacy_stage_id is generated
-            -- by BR's int model, not from the same hash inputs we use here.
-            xw.canonical_gp_candidacy_stage_id,
+            coalesce(
+                xw.canonical_gp_candidacy_stage_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["gp_candidacy_id", "gp_election_stage_id"]
+                    )
+                }}
+            ) as gp_candidacy_stage_id,
 
             -- === Staging passthrough ===
             s.candidate as candidate_full_name,
@@ -238,23 +243,9 @@ with
             and cast(s.ddhq_race_id as bigint) = xw.ddhq_race_id
     ),
 
-    candidacy_stages as (
-        select
-            coalesce(
-                canonical_gp_candidacy_stage_id,
-                {{
-                    generate_salted_uuid(
-                        fields=["gp_candidacy_id", "gp_election_stage_id"]
-                    )
-                }}
-            ) as gp_candidacy_stage_id,
-            * except (canonical_gp_candidacy_stage_id)
-        from with_ids
-    ),
-
     deduplicated as (
         select *
-        from candidacy_stages
+        from with_ids
         qualify
             row_number() over (
                 partition by gp_candidacy_stage_id order by _airbyte_extracted_at desc
