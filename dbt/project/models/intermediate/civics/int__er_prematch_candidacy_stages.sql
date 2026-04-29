@@ -341,8 +341,17 @@ with
             upper(trim(g.campaign_state)) as state,
             {{ parse_party_affiliation("g.campaign_party") }} as party,
             g.candidate_office,
-            -- Prefer campaign election_level; fall back to BR position level
+            -- Prefer BR's 7-bucket PositionLevel taxonomy when br_position_level
+            -- is available. Mirrors initcap(br.level) on ballotready_stages
+            -- above (and int__civics_elected_official_gp_api), so cross-source
+            -- ExactMatch("office_level") works against BR/TS records that emit
+            -- City/Township/Regional. For rows without a BR position FK, fall
+            -- back to gp-api's native election_level (4-bucket: City/Local
+            -- collapse to Local; cannot distinguish City/Town/Township at this
+            -- granularity).
             case
+                when g.br_position_level is not null
+                then initcap(g.br_position_level)
                 when lower(g.election_level) in ('city', 'local')
                 then 'Local'
                 when lower(g.election_level) = 'county'
@@ -350,14 +359,6 @@ with
                 when lower(g.election_level) = 'state'
                 then 'State'
                 when lower(g.election_level) = 'federal'
-                then 'Federal'
-                when lower(g.br_position_level) in ('city', 'local', 'township')
-                then 'Local'
-                when lower(g.br_position_level) in ('county', 'regional')
-                then 'County'
-                when lower(g.br_position_level) = 'state'
-                then 'State'
-                when lower(g.br_position_level) = 'federal'
                 then 'Federal'
                 else null
             end as office_level,
