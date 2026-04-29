@@ -79,7 +79,9 @@ with
             -- TS wins for is_incumbent (TS: 51k populated, BR: 0)
             coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
             br.office_type,
-            br.br_position_database_id,
+            coalesce(
+                br.br_position_database_id, ts.br_position_database_id
+            ) as br_position_database_id,
             array_compact(
                 array(
                     case when br.gp_candidacy_id is not null then 'ballotready' end,
