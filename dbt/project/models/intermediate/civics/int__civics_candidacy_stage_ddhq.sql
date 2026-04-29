@@ -83,41 +83,79 @@ with
             year(election_date)
     ),
 
+    -- ER crosswalk: when Splink clustered this DDHQ row with a BR row, adopt
+    -- BR's canonical gp_* IDs so the mart's full outer join collapses
+    -- matched DDHQ + BR/TS pairs onto the same key. Pre-restricted to DDHQ
+    -- rows so we keep this lookup small.
+    canonical_ids as (
+        select
+            ddhq_candidate_id,
+            ddhq_race_id,
+            canonical_gp_candidacy_stage_id,
+            canonical_gp_election_stage_id,
+            canonical_gp_candidacy_id,
+            canonical_gp_candidate_id,
+            canonical_gp_election_id
+        from {{ ref("int__civics_er_canonical_ids") }}
+        where ddhq_candidate_id is not null and ddhq_race_id is not null
+    ),
+
     with_ids as (
         select
-            -- === Computed IDs ===
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "s.candidate_first_name",
-                        "s.candidate_last_name",
-                        "s.state_postal_code",
-                        "cast(null as string)",
-                        "cast(null as string)",
-                        "cast(null as string)",
-                    ]
-                )
-            }} as gp_candidate_id,
+            -- === Computed IDs (canonical from BR if Splink-matched, else hashed) ===
+            -- Lateral column refs let us derive gp_candidacy_stage_id from the
+            -- same-row gp_candidacy_id / gp_election_stage_id without a chained CTE.
+            coalesce(
+                xw.canonical_gp_candidate_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "s.candidate_first_name",
+                            "s.candidate_last_name",
+                            "s.state_postal_code",
+                            "cast(null as string)",
+                            "cast(null as string)",
+                            "cast(null as string)",
+                        ]
+                    )
+                }}
+            ) as gp_candidate_id,
 
-            {{
-                generate_salted_uuid(
-                    fields=[
-                        "s.candidate_first_name",
-                        "s.candidate_last_name",
-                        "s.state_postal_code",
-                        "s.party_affiliation",
-                        "s.candidate_office",
-                        "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date) as string)",
-                        "s.district",
-                    ]
-                )
-            }}
-            as gp_candidacy_id,
+            coalesce(
+                xw.canonical_gp_candidacy_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "s.candidate_first_name",
+                            "s.candidate_last_name",
+                            "s.state_postal_code",
+                            "s.party_affiliation",
+                            "s.candidate_office",
+                            "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date) as string)",
+                            "s.district",
+                        ]
+                    )
+                }}
+            ) as gp_candidacy_id,
 
-            {{ generate_salted_uuid(fields=["cast(s.ddhq_race_id as string)"]) }}
-            as gp_election_stage_id,
+            coalesce(
+                xw.canonical_gp_election_stage_id,
+                {{ generate_salted_uuid(fields=["cast(s.ddhq_race_id as string)"]) }}
+            ) as gp_election_stage_id,
 
-            {{ generate_gp_election_id("elec_lookup") }} as gp_election_id,
+            coalesce(
+                xw.canonical_gp_election_id,
+                {{ generate_gp_election_id("elec_lookup") }}
+            ) as gp_election_id,
+
+            coalesce(
+                xw.canonical_gp_candidacy_stage_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["gp_candidacy_id", "gp_election_stage_id"]
+                    )
+                }}
+            ) as gp_candidacy_stage_id,
 
             -- === Staging passthrough ===
             s.candidate as candidate_full_name,
@@ -126,7 +164,7 @@ with
             cast(s.candidate_id as string) as source_candidate_id,
             cast(s.ddhq_race_id as string) as source_race_id,
             s.ddhq_race_id,
-            s.state_name,
+            s.state,
             s.state_postal_code,
             s.party_affiliation,
             s.candidate_office,
@@ -199,21 +237,15 @@ with
                         ged.general_seats, s.number_of_seats_in_election
                     ) as seats_available
             ) as elec_lookup
-    ),
-
-    candidacy_stages as (
-        select
-            {{
-                generate_salted_uuid(
-                    fields=["gp_candidacy_id", "gp_election_stage_id"]
-                )
-            }} as gp_candidacy_stage_id, *
-        from with_ids
+        left join
+            canonical_ids as xw
+            on cast(s.candidate_id as bigint) = xw.ddhq_candidate_id
+            and cast(s.ddhq_race_id as bigint) = xw.ddhq_race_id
     ),
 
     deduplicated as (
         select *
-        from candidacy_stages
+        from with_ids
         qualify
             row_number() over (
                 partition by gp_candidacy_stage_id order by _airbyte_extracted_at desc
@@ -238,7 +270,7 @@ select
     -- Race / election fields
     source_race_id,
     ddhq_race_id,
-    state_name,
+    state,
     state_postal_code,
     party_affiliation,
     candidate_office,

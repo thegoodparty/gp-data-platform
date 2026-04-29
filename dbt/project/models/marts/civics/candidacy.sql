@@ -1,5 +1,11 @@
 -- Civics mart candidacy table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
+--
+-- Provider precedence: BR > TS > DDHQ for every column. DDHQ contributes a
+-- subset of fields (party_affiliation, candidate_office, official_office_name,
+-- office_level, office_type, candidacy_result, *_election_date) and acts only
+-- as a fallback when neither BR nor TS has a value. DDHQ-only candidacies
+-- (no Splink match) appear as new rows with their own gp_candidacy_id.
 {%- set br_wins_cols = [
     "product_campaign_id",
     "hubspot_contact_id",
@@ -32,8 +38,9 @@ with
             gp_candidacy_id,
             gp_candidate_id,
             gp_election_id,
-            -- Column order must match merged_2026 (br_wins_cols loop order,
-            -- then TS-wins, then BR-only, then source_systems)
+            -- Column order must match merged_since_2026 (br_wins_cols loop
+            -- order, then TS-wins is_incumbent, BR-only office_type +
+            -- br_position_database_id, then source_systems)
             product_campaign_id,
             hubspot_contact_id,
             hubspot_company_ids,
@@ -66,32 +73,46 @@ with
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
-    -- TS int models remap clustered rows to BR's gp_* IDs (via
+    -- TS and DDHQ int models remap clustered rows to BR's gp_* IDs (via
     -- int__civics_er_canonical_ids), so a full outer join on gp_candidacy_id
-    -- merges matched pairs automatically. Unmatched rows on either side pass
-    -- through with NULLs on the opposite side.
-    merged_2026 as (
+    -- merges matched triples automatically. Unmatched rows on any side pass
+    -- through with NULLs on the absent providers (e.g. DDHQ-only candidacies
+    -- where Splink found no BR/TS match).
+    merged_since_2026 as (
         select
-            coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) as gp_candidacy_id,
-            coalesce(br.gp_candidate_id, ts.gp_candidate_id) as gp_candidate_id,
-            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
+            coalesce(
+                br.gp_candidacy_id, ts.gp_candidacy_id, ddhq.gp_candidacy_id
+            ) as gp_candidacy_id,
+            coalesce(
+                br.gp_candidate_id, ts.gp_candidate_id, ddhq.gp_candidate_id
+            ) as gp_candidate_id,
+            coalesce(
+                br.gp_election_id, ts.gp_election_id, ddhq.gp_election_id
+            ) as gp_election_id,
             {% for col in br_wins_cols %}
-                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+                coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
-            -- TS wins for is_incumbent (TS: 51k populated, BR: 0)
+            -- TS wins for is_incumbent (TS: 51k populated, BR: 0). DDHQ never
+            -- provides this so it stays out of the chain.
             coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
-            br.office_type,
+            -- office_type is BR-authoritative; DDHQ supplies as fallback (TS
+            -- doesn't carry office_type at this grain).
+            coalesce(br.office_type, ddhq.office_type) as office_type,
             br.br_position_database_id,
             array_compact(
                 array(
                     case when br.gp_candidacy_id is not null then 'ballotready' end,
-                    case when ts.gp_candidacy_id is not null then 'techspeed' end
+                    case when ts.gp_candidacy_id is not null then 'techspeed' end,
+                    case when ddhq.gp_candidacy_id is not null then 'ddhq' end
                 )
             ) as source_systems
         from {{ ref("int__civics_candidacy_ballotready") }} as br
         full outer join
             {{ ref("int__civics_candidacy_techspeed") }} as ts
             on br.gp_candidacy_id = ts.gp_candidacy_id
+        full outer join
+            {{ ref("int__civics_candidacy_ddhq") }} as ddhq
+            on coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) = ddhq.gp_candidacy_id
     ),
 
     combined as (
@@ -99,7 +120,7 @@ with
         from archive_2025
         union all
         select *
-        from merged_2026
+        from merged_since_2026
     ),
 
     deduplicated as (
