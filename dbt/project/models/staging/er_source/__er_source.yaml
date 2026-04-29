@@ -316,17 +316,10 @@ models:
           3=state+date+office_fuzzy+last_name_fuzzy, 4=phone exact, 5=email exact.
 
   - name: stg_er_source__clustered_elected_officials
-    description: >
-      Staged cluster assignments from the elected officials entity resolution
-      pipeline. Each row is an elected official record from BallotReady or
-      TechSpeed, annotated with a cluster_id grouping records that represent
-      the same person. Unlike candidacy stages, the cluster grain is person
-      — multi-term records for the same official cluster together.
-
-      The clustering uses a 0.95 match probability threshold on Splink's
-      connected-components algorithm, after post-prediction filters enforce
-      person identity agreement (last name + first name/email/phone) and
-      office compatibility (office_type match or contact-info bypass).
+    description: |
+      Match groups bridging gp-api elected-office records to BR+TS terms.
+      Term grain. Mart owns person rollup via br_candidate_id, and term selection
+      within a multi-term cluster via sworn_in_date proximity to term_start_date.
     columns:
       - name: cluster_id
         description: >
@@ -353,7 +346,8 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              # Phase 1: broadened to old + new. Phase 2 will tighten to ['ballotready_techspeed', 'gp_api'] after matcha rerun.
+              values: ["ballotready", "techspeed", "ballotready_techspeed", "gp_api"]
       - name: first_name
         description: Official's first name (lowercased, trimmed in prematch).
       - name: last_name
@@ -443,13 +437,15 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              # Phase 1: broadened to old + new. Phase 2 will tighten to ['ballotready_techspeed', 'gp_api'] after matcha rerun.
+              values: ["ballotready", "techspeed", "ballotready_techspeed", "gp_api"]
       - name: source_name_r
         description: Origin source for the right record.
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              # Phase 1: broadened to old + new. Phase 2 will tighten to ['ballotready_techspeed', 'gp_api'] after matcha rerun.
+              values: ["ballotready", "techspeed", "ballotready_techspeed", "gp_api"]
       - name: source_id_l
         description: Source-specific identifier for the left record.
       - name: source_id_r
