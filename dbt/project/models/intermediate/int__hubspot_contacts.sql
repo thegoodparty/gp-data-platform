@@ -64,7 +64,7 @@ with
     -- Resolve an effective BR position ID. Prefer the directly-stored
     -- br_position_id, then race ID (highest HubSpot-side coverage), candidacy
     -- ID, and finally a linked gp_api campaign via the HubSpot company array.
-    tbl_hs_contacts as (
+    hs_contacts as (
         select
             contacts.*,
             coalesce(
@@ -89,38 +89,38 @@ with
     -- win_effective_date only count for elections on/after that date.
     contacts_with_icp as (
         select
-            tbl_hs_contacts.*,
-            tbl_states.state_cleaned_postal_code,
-            tbl_icp_offices.icp_office_win,
-            tbl_icp_offices.icp_office_serve,
-            tbl_icp_offices.icp_win_supersize,
-            tbl_icp_offices.icp_win_effective_date is not null
+            hs_contacts.*,
+            states.state_cleaned_postal_code,
+            icp_offices.icp_office_win,
+            icp_offices.icp_office_serve,
+            icp_offices.icp_win_supersize,
+            icp_offices.icp_win_effective_date is not null
             and (
                 cast(
                     coalesce(
-                        tbl_hs_contacts.election_date,
-                        tbl_hs_contacts.general_election_date,
-                        tbl_hs_contacts.primary_election_date
+                        hs_contacts.election_date,
+                        hs_contacts.general_election_date,
+                        hs_contacts.primary_election_date
                     ) as date
                 )
                 is null
                 or cast(
                     coalesce(
-                        tbl_hs_contacts.election_date,
-                        tbl_hs_contacts.general_election_date,
-                        tbl_hs_contacts.primary_election_date
+                        hs_contacts.election_date,
+                        hs_contacts.general_election_date,
+                        hs_contacts.primary_election_date
                     ) as date
                 )
-                < tbl_icp_offices.icp_win_effective_date
+                < icp_offices.icp_win_effective_date
             ) as is_before_icp_win_effective_date
-        from tbl_hs_contacts
+        from hs_contacts
         left join
-            {{ ref("clean_states") }} as tbl_states
-            on trim(upper(tbl_hs_contacts.state)) = tbl_states.state_raw
+            {{ ref("clean_states") }} as states
+            on trim(upper(hs_contacts.state)) = states.state_raw
         left join
-            {{ ref("int__icp_offices") }} as tbl_icp_offices
-            on tbl_hs_contacts.effective_br_position_id
-            = tbl_icp_offices.br_database_position_id
+            {{ ref("int__icp_offices") }} as icp_offices
+            on hs_contacts.effective_br_position_id
+            = icp_offices.br_database_position_id
     )
 
 select
