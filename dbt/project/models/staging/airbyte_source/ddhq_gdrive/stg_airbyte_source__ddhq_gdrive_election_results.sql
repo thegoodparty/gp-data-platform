@@ -45,7 +45,7 @@ with
             r.*,
             split(r.race_name, ' ')[0] as state_prefix,
             cs.state_cleaned_postal_code as state_postal_code,
-            us.state_name
+            us.state_name as state
         from renamed as r
         left join
             clean_states as cs

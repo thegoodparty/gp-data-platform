@@ -1,10 +1,14 @@
 -- Civics mart election table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
 --
--- BallotReady is the authoritative spine for elections (positions). TS int
--- models remap clustered rows to BR's gp_election_id via
+-- BallotReady is the authoritative spine for elections (positions). TS and
+-- DDHQ int models remap clustered rows to BR's gp_election_id via
 -- int__civics_er_canonical_ids, so a full outer join on gp_election_id merges
--- matched pairs automatically. Unmatched TS elections pass through as net-new.
+-- matched triples. Unmatched DDHQ-only elections pass through as new rows
+-- (DDHQ's hashed gp_election_id) with source_systems = ['ddhq'].
+--
+-- has_ddhq_match: true when either the 2025 archive linked a DDHQ race or a
+-- 2026+ DDHQ row clustered into this election via Splink. NULL otherwise.
 {%- set br_wins_cols = [
     "official_office_name",
     "candidate_office",
@@ -49,15 +53,28 @@ with
         from {{ ref("int__civics_election_2025") }}
     ),
 
+    -- DDHQ projected into the mart-row schema. The mart's `state` column
+    -- holds 2-letter codes (BR/TS-staging convention) — pull DDHQ's
+    -- state_postal_code through, not its `state` column (which is the
+    -- human-readable name per int_model convention).
+    ddhq as (
+        select * except (state), state_postal_code as state
+        from {{ ref("int__civics_election_ddhq") }}
+    ),
+
     merged_since_2026 as (
         select
-            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
+            coalesce(
+                br.gp_election_id, ts.gp_election_id, ddhq.gp_election_id
+            ) as gp_election_id,
             {% for col in br_wins_cols %}
-                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+                coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
-            -- TS wins: BR always NULL, TS populated from techspeed source
+            -- TS wins for these (BR always NULL on 2026+ for population/
+            -- filing_deadline; TS populated from techspeed source). DDHQ
+            -- supplies is_uncontested as a fallback.
             {% for col in ts_wins_cols %}
-                coalesce(ts.{{ col }}, br.{{ col }}) as {{ col }},
+                coalesce(ts.{{ col }}, br.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
             br.br_position_database_id,
             br.is_judicial,
@@ -66,13 +83,16 @@ with
             array_compact(
                 array(
                     case when br.gp_election_id is not null then 'ballotready' end,
-                    case when ts.gp_election_id is not null then 'techspeed' end
+                    case when ts.gp_election_id is not null then 'techspeed' end,
+                    case when ddhq.gp_election_id is not null then 'ddhq' end
                 )
             ) as source_systems
         from {{ ref("int__civics_election_ballotready") }} as br
         full outer join
             {{ ref("int__civics_election_techspeed") }} as ts
             on br.gp_election_id = ts.gp_election_id
+        full outer join
+            ddhq on coalesce(br.gp_election_id, ts.gp_election_id) = ddhq.gp_election_id
     ),
 
     combined as (
