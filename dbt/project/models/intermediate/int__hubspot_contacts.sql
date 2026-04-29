@@ -25,7 +25,7 @@ with
     -- recovers a BR position for HubSpot contacts whose own br_*_id properties
     -- are unset — common for product users (e.g. PMF respondents).
     campaigns_by_company as (
-        select hubspot_id as company_id, ballotready_position_id
+        select hubspot_id as company_id, ballotready_position_id, election_date
         from {{ ref("campaigns") }}
         where
             is_latest_version
@@ -45,6 +45,8 @@ with
     ),
 
     -- Pick one resolved position per contact so downstream joins stay 1:1.
+    -- Prefer the campaign with the latest election_date (most relevant to the
+    -- contact's current cycle); ballotready_position_id breaks ties.
     contact_position_via_campaign as (
         select contact_id, ballotready_position_id
         from contact_company_pairs
@@ -52,7 +54,10 @@ with
             campaigns_by_company
             on contact_company_pairs.company_id = campaigns_by_company.company_id
         qualify
-            row_number() over (partition by contact_id order by ballotready_position_id)
+            row_number() over (
+                partition by contact_id
+                order by election_date desc nulls last, ballotready_position_id
+            )
             = 1
     ),
 
