@@ -42,7 +42,9 @@ with
             election_stage_date,
             created_at,
             updated_at,
-            array('hubspot') as source_systems
+            array_compact(
+                array('hubspot', case when has_match then 'ddhq' end)
+            ) as source_systems
         from {{ ref("int__civics_candidacy_stage_2025") }}
     ),
 

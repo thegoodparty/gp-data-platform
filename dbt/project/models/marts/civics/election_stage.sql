@@ -49,7 +49,9 @@ with
             cast(null as string) as filing_requirements,
             cast(null as string) as filing_address,
             cast(null as string) as filing_phone,
-            array('hubspot') as source_systems
+            array_compact(
+                array('hubspot', case when ddhq_race_id is not null then 'ddhq' end)
+            ) as source_systems
         from {{ ref("int__civics_election_stage_2025") }}
     ),
 

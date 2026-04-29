@@ -43,7 +43,9 @@ with
             is_judicial,
             is_appointed,
             br_normalized_position_type,
-            array('hubspot') as source_systems
+            array_compact(
+                array('hubspot', case when has_ddhq_match then 'ddhq' end)
+            ) as source_systems
         from {{ ref("int__civics_election_2025") }}
     ),
 
