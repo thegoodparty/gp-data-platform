@@ -411,14 +411,49 @@ models:
 
       - name: general_election_date
         description: >
-          General election date. May be NULL for records that only have a
-          primary election date (e.g. early 2026 primaries before general
-          dates are set). At least one of general/primary must be non-null.
+          General election date. Sourced from TS form data when present, with
+          a fallback to BallotReady's election_stage data via br_race_id when
+          TS only captured a primary. At least one of general/primary must be
+          non-null.
 
       - name: primary_election_date
         description: >
-          Primary election date. May be NULL when only a general election
-          date is available. At least one of general/primary must be non-null.
+          Primary election date. Sourced from TS form data when present, with
+          a fallback to BallotReady's election_stage data via br_race_id when
+          TS only captured a general. At least one of general/primary must be
+          non-null.
+
+      - name: primary_runoff_election_date
+        description: >
+          Primary runoff election date. NULL unless BallotReady's election_stage
+          surfaces one for the matched BR race (TS form data does not capture
+          runoffs).
+
+      - name: general_runoff_election_date
+        description: >
+          General runoff election date. NULL unless BallotReady's election_stage
+          surfaces one for the matched BR race (TS form data does not capture
+          runoffs).
+
+      - name: br_position_database_id
+        description: >
+          BallotReady position id, recovered from the BR election_stage row
+          matching the TS br_race_id. NULL when the TS br_race_id is not
+          present in BR (e.g. ts_found_race_net_new). Unlocks the ICP join
+          downstream for TS-only candidacies that have no BR candidacy row.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
+              config:
+                where: "br_position_database_id is not null"
+                severity: warn
+                # Some position IDs may not exist in the API position table
+                # yet (API loaded incrementally, S3/election_stage may be
+                # ahead). Threshold mirrors the candidacy mart's allowance.
+                warn_if: ">200"
+                error_if: ">300"
 
       - name: created_at
         data_tests:
