@@ -2454,17 +2454,23 @@ models:
 
       - name: office_level
         description: >
-          Normalized office level (Local/County/State/Federal). Derived from
-          campaigns.election_level with br_position.level fallback (mirrors
-          candidacy gp_api derivation at int__er_prematch_candidacy_stages.sql
-          lines 344-363).
+          Normalized office level matching BallotReady's 7-bucket PositionLevel
+          taxonomy (City/Local/County/Township/State/Regional/Federal). For the
+          ~84% of gp-api EO rows with a BR position FK, this is initcap of
+          br_position.level (mirrors int__civics_elected_official_ballotready).
+          For the ~16% without a position FK, falls back to campaigns.election_level
+          which collapses to a 4-bucket subset (Local/County/State/Federal —
+          City/Town/Township are not distinguishable at gp-api granularity).
         data_tests:
           - accepted_values:
               arguments:
                 values:
+                  - City
                   - Local
                   - County
+                  - Township
                   - State
+                  - Regional
                   - Federal
 
       - name: party_affiliation

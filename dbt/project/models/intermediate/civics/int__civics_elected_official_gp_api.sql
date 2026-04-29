@@ -100,10 +100,16 @@ with
             cast(null as string) as central_phone,
             position_name,
             candidate_office,  -- computed in joined_with_office
-            -- v2.2: office_level uses candidacy CASE mapping with br_position_level
-            -- fallback
-            -- (mirrors candidacy gp_api_stages at lines 344-363).
+            -- v2.3: prefer BR's 7-bucket taxonomy when br_position_level is
+            -- available (~84% of gp-api EO rows have a BR position FK). Mirrors
+            -- initcap(level) on int__civics_elected_official_ballotready, so
+            -- ExactMatch("office_level") works cross-source for those rows.
+            -- For the ~16% without a BR position FK, fall back to gp-api's
+            -- native election_level (4-bucket: City/Local collapse to Local;
+            -- can't distinguish City/Town/Township at this granularity).
             case
+                when br_position_level is not null
+                then initcap(br_position_level)
                 when lower(election_level) in ('city', 'local')
                 then 'Local'
                 when lower(election_level) = 'county'
@@ -111,14 +117,6 @@ with
                 when lower(election_level) = 'state'
                 then 'State'
                 when lower(election_level) = 'federal'
-                then 'Federal'
-                when lower(br_position_level) in ('city', 'local', 'township')
-                then 'Local'
-                when lower(br_position_level) in ('county', 'regional')
-                then 'County'
-                when lower(br_position_level) = 'state'
-                then 'State'
-                when lower(br_position_level) = 'federal'
                 then 'Federal'
                 else null
             end as office_level,
