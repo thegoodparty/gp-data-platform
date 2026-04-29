@@ -87,6 +87,12 @@ with
             cast(gamma_office_level as int) as gamma_office_level,
             cast(bf_office_level as double) as bf_office_level,
 
+            -- ballotready_position_id comparison (cross-source position FK)
+            cast(ballotready_position_id_l as bigint) as ballotready_position_id_l,
+            cast(ballotready_position_id_r as bigint) as ballotready_position_id_r,
+            cast(gamma_ballotready_position_id as int) as gamma_ballotready_position_id,
+            cast(bf_ballotready_position_id as double) as bf_ballotready_position_id,
+
             -- office / geography context
             candidate_office_l,
             candidate_office_r,
@@ -101,6 +107,14 @@ with
             cast(term_end_date_l as date) as term_end_date_l,
             cast(term_end_date_r as date) as term_end_date_r,
 
+            -- ICP signals (term grain; null on the gp_api side)
+            cast(is_win_icp_l as boolean) as is_win_icp_l,
+            cast(is_win_icp_r as boolean) as is_win_icp_r,
+            cast(is_serve_icp_l as boolean) as is_serve_icp_l,
+            cast(is_serve_icp_r as boolean) as is_serve_icp_r,
+            cast(is_win_supersize_icp_l as boolean) as is_win_supersize_icp_l,
+            cast(is_win_supersize_icp_r as boolean) as is_win_supersize_icp_r,
+
             -- source-specific IDs
             cast(br_office_holder_id_l as int) as br_office_holder_id_l,
             cast(br_office_holder_id_r as int) as br_office_holder_id_r,
@@ -110,6 +124,14 @@ with
             ts_officeholder_id_r,
             ts_position_id_l,
             ts_position_id_r,
+            cast(gp_api_user_id_l as bigint) as gp_api_user_id_l,
+            cast(gp_api_user_id_r as bigint) as gp_api_user_id_r,
+            cast(gp_api_campaign_id_l as bigint) as gp_api_campaign_id_l,
+            cast(gp_api_campaign_id_r as bigint) as gp_api_campaign_id_r,
+            gp_api_elected_office_id_l,
+            gp_api_elected_office_id_r,
+            gp_api_organization_slug_l,
+            gp_api_organization_slug_r,
 
             -- blocking rule that generated this pair
             cast(match_key as int) as match_key
