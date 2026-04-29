@@ -48,7 +48,9 @@ with
             ) as birth_date,
             phone_number,
             facebook_url,
-            array('hubspot') as source_systems
+            array_compact(
+                array('hubspot', case when has_ddhq_match then 'ddhq' end)
+            ) as source_systems
         from {{ ref("int__civics_candidate_2025") }}
     ),
 

@@ -60,7 +60,9 @@ with
             is_incumbent,
             office_type,
             br_position_database_id,
-            array('hubspot') as source_systems
+            array_compact(
+                array('hubspot', case when has_ddhq_match then 'ddhq' end)
+            ) as source_systems
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
