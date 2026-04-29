@@ -395,12 +395,6 @@ models:
           and a (state, ballotready_position_id) blocking rule. Sourced from BR's
           br_position_id on the ballotready_techspeed side and from the gp-api
           campaigns join on the gp_api side.
-      - name: is_win_icp
-        description: ICP win flag at BR term grain. Null for gp_api rows.
-      - name: is_serve_icp
-        description: ICP serve flag at BR term grain. Null for gp_api rows.
-      - name: is_win_supersize_icp
-        description: ICP win supersize flag at BR term grain. Null for gp_api rows.
       - name: gp_api_user_id
         description: gp-api product user ID. Only populated for gp_api rows.
       - name: gp_api_campaign_id
@@ -613,18 +607,6 @@ models:
         description: Left record's term end date, cast to date.
       - name: term_end_date_r
         description: Right record's term end date, cast to date.
-      - name: is_win_icp_l
-        description: Left record's ICP win flag (term grain). Null on the gp_api side.
-      - name: is_win_icp_r
-        description: Right record's ICP win flag (term grain). Null on the gp_api side.
-      - name: is_serve_icp_l
-        description: Left record's ICP serve flag (term grain). Null on the gp_api side.
-      - name: is_serve_icp_r
-        description: Right record's ICP serve flag (term grain). Null on the gp_api side.
-      - name: is_win_supersize_icp_l
-        description: Left record's ICP win supersize flag (term grain). Null on the gp_api side.
-      - name: is_win_supersize_icp_r
-        description: Right record's ICP win supersize flag (term grain). Null on the gp_api side.
       - name: br_office_holder_id_l
         description: Left record's BallotReady office holder ID.
       - name: br_office_holder_id_r

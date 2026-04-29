@@ -1926,15 +1926,6 @@ models:
           BR position FK. Populated when the BR side has br_position_id or
           gp-api side has the upstream campaigns FK (campaigns.ballotready_position_id).
 
-      - name: is_win_icp
-        description: Win ICP flag, BR+TS rows only (null for gp-api).
-
-      - name: is_serve_icp
-        description: Serve ICP flag, BR+TS rows only (null for gp-api).
-
-      - name: is_win_supersize_icp
-        description: Win supersize ICP flag, BR+TS rows only (null for gp-api).
-
       - name: official_office_name
         description: >
           Lowered + trimmed + nullif of position_name for BR+TS;

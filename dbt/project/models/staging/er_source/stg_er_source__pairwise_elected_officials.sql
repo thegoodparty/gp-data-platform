@@ -107,14 +107,6 @@ with
             cast(term_end_date_l as date) as term_end_date_l,
             cast(term_end_date_r as date) as term_end_date_r,
 
-            -- ICP signals (term grain; null on the gp_api side)
-            cast(is_win_icp_l as boolean) as is_win_icp_l,
-            cast(is_win_icp_r as boolean) as is_win_icp_r,
-            cast(is_serve_icp_l as boolean) as is_serve_icp_l,
-            cast(is_serve_icp_r as boolean) as is_serve_icp_r,
-            cast(is_win_supersize_icp_l as boolean) as is_win_supersize_icp_l,
-            cast(is_win_supersize_icp_r as boolean) as is_win_supersize_icp_r,
-
             -- source-specific IDs
             cast(br_office_holder_id_l as int) as br_office_holder_id_l,
             cast(br_office_holder_id_r as int) as br_office_holder_id_r,
