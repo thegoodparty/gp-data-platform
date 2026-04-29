@@ -18,6 +18,58 @@ models:
         description: "Last name of the contact"
         tests:
           - not_null
+      - name: br_position_id
+        description: >
+          BallotReady position database ID stored on the HubSpot contact.
+          Sourced from the HubSpot `br_position_id` property — a denormalized
+          snapshot that may lag the authoritative BallotReady data. Joins to
+          `int__icp_offices.br_database_position_id`.
+      - name: br_candidacy_id
+        description: >
+          BallotReady candidacy database ID stored on the HubSpot contact.
+          Sourced from the HubSpot `br_candidacy_id` property.
+      - name: br_race_id
+        description: >
+          BallotReady race database ID stored on the HubSpot contact. Sourced
+          from the HubSpot `br_race_id` property.
+      - name: effective_br_position_id
+        description: >
+          Resolved BallotReady position database ID for the contact, used to
+          join `int__icp_offices`. Coalesces (in order): the contact's
+          `br_position_id`, lookup via `br_race_id` against
+          `stg_airbyte_source__ballotready_api_race`, lookup via
+          `br_candidacy_id` against `int__ballotready_candidacy`, and finally
+          a lookup through the contact's HubSpot company associations to a
+          gp_api `campaigns` row carrying a `ballotready_position_id`.
+      - name: icp_win
+        description: >
+          Whether the contact's position qualifies for the Win ICP (Ideal
+          Customer Profile). Joined from `int__icp_offices` via
+          `br_position_id`. The Win effective-date guard is applied: positions
+          with a `win_effective_date` only return true when the contact's
+          general election date is on or after that date.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_serve
+        description: >
+          Whether the contact's position qualifies for the Serve ICP. Joined
+          from `int__icp_offices` via `br_position_id`. Pass-through of
+          `icp_office_serve` (no effective-date guard).
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_win_supersize
+        description: >
+          Whether the contact's position is a Win-Supersize office (>100K
+          voters meeting all other ICP criteria). Joined from `int__icp_offices`
+          via `br_position_id`. Same effective-date guard as `icp_win`.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: int__hubspot_contacts_w_companies
     description: >
