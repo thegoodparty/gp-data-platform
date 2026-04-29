@@ -43,6 +43,43 @@ with
             = 1
     ),
 
+    -- BR enrichment: when TS captures a br_race_id (100% populated in staging),
+    -- look up the BR-side stage to recover br_position_database_id and the
+    -- BR-side gp_election_id. This unlocks ICP join + sibling-stage date
+    -- lookup for TS-only candidacies that lack a BR candidacy row.
+    br_race_to_position as (
+        select
+            br_race_id,
+            cast(br_position_id as bigint) as br_position_database_id,
+            gp_election_id as br_gp_election_id
+        from {{ ref("int__civics_election_stage_ballotready") }}
+        where br_position_id is not null
+        qualify
+            row_number() over (partition by br_race_id order by election_date desc) = 1
+    ),
+
+    -- Pivot all stages of a BR-side election into per-stage_type dates so we
+    -- can fill in missing TS form dates (TS captures only primary or general,
+    -- never runoffs).
+    br_election_dates as (
+        select
+            gp_election_id as br_gp_election_id,
+            max(
+                case when stage_type = 'primary' then election_date end
+            ) as br_primary_election_date,
+            max(
+                case when stage_type = 'general' then election_date end
+            ) as br_general_election_date,
+            max(
+                case when stage_type = 'primary runoff' then election_date end
+            ) as br_primary_runoff_election_date,
+            max(
+                case when stage_type = 'general runoff' then election_date end
+            ) as br_general_runoff_election_date
+        from {{ ref("int__civics_election_stage_ballotready") }}
+        group by gp_election_id
+    ),
+
     candidacies as (
         -- gp_candidate_id and gp_election_id use WINDOW propagation so all raw
         -- rows of the same person/election adopt BR's canonical if ANY candidacy
@@ -93,10 +130,16 @@ with
             -- Election results are tracked at the candidacy_stage level, not here
             cast(null as string) as candidacy_result,
 
-            primary_election_date_parsed as primary_election_date,
-            general_election_date_parsed as general_election_date,
-            cast(null as date) as primary_runoff_election_date,
-            cast(null as date) as general_runoff_election_date,
+            coalesce(
+                primary_election_date_parsed, bed.br_primary_election_date
+            ) as primary_election_date,
+            coalesce(
+                general_election_date_parsed, bed.br_general_election_date
+            ) as general_election_date,
+            bed.br_primary_runoff_election_date as primary_runoff_election_date,
+            bed.br_general_runoff_election_date as general_runoff_election_date,
+
+            brp.br_position_database_id,
 
             cast(null as float) as viability_score,
             cast(null as int) as win_number,
@@ -109,6 +152,9 @@ with
         left join
             canonical_candidacy as xw
             on source.techspeed_candidate_code = xw.ts_source_candidate_id
+        left join br_race_to_position as brp on source.br_race_id = brp.br_race_id
+        left join
+            br_election_dates as bed on brp.br_gp_election_id = bed.br_gp_election_id
         where
             techspeed_candidate_code is not null
             and coalesce(general_election_date_parsed, primary_election_date_parsed)
