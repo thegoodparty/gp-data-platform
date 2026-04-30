@@ -23,7 +23,6 @@
     "seats_available",
     "term_start_date",
     "number_of_opponents",
-    "has_ddhq_match",
     "created_at",
     "updated_at",
 ] %}
@@ -40,8 +39,9 @@ with
         select
             gp_election_id,
             -- Column order must match merged_since_2026 (br_wins_cols loop order,
-            -- then ts_wins_cols, then BR-only, then source_systems)
+            -- has_ddhq_match, ts_wins_cols, BR-only, source_systems)
             {% for col in br_wins_cols %} {{ col }}, {% endfor %}
+            has_ddhq_match,
             {% for col in ts_wins_cols %} {{ col }}, {% endfor %}
             br_position_database_id,
             is_judicial,
@@ -70,6 +70,11 @@ with
             {% for col in br_wins_cols %}
                 coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
+            -- has_ddhq_match must be handled outside the coalesce loop: BR
+            -- and TS hardcode it to false (non-null), so a coalesce would
+            -- always pick BR's false on Splink-matched BR+DDHQ rows. Derive
+            -- directly from join presence instead.
+            ddhq.gp_election_id is not null as has_ddhq_match,
             -- TS wins for these (BR always NULL on 2026+ for population/
             -- filing_deadline; TS populated from techspeed source). DDHQ
             -- supplies is_uncontested as a fallback.

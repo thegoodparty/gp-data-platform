@@ -1023,9 +1023,15 @@ models:
 
       - name: has_ddhq_match
         description: >
-          Whether DDHQ election results data is available for this election.
-          Only applicable to 2025 elections, as DDHQ was the results source
-          for that cycle. Always NULL for 2026+ BallotReady-sourced elections.
+          True when DDHQ election results data is available for this
+          election: either the 2025 archive linked a DDHQ race or a 2026+
+          DDHQ row clustered into this election via Splink. False otherwise.
+          Should agree with `'ddhq' in source_systems`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: br_position_database_id
         description: >
@@ -1157,6 +1163,9 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "has_ddhq_match = array_contains(source_systems, 'ddhq')"
 
   - name: election_stage
     description: >
