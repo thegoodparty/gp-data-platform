@@ -277,6 +277,16 @@ models:
         description: >
           Bayes factor for the district_identifier comparison. Values >1 indicate
           evidence of match; <1 indicate evidence of non-match.
+      - name: office_level_l
+        description: Left record's office level classification.
+      - name: office_level_r
+        description: Right record's office level classification.
+      - name: gamma_office_level
+        description: "Comparison level for office_level: 1=exact match, -1=one or both null, 0=else."
+      - name: bf_office_level
+        description: >
+          Bayes factor for the office_level comparison. Values >1 indicate
+          evidence of match; <1 indicate evidence of non-match.
       - name: br_race_id_l
         description: Left record's BallotReady race ID.
       - name: br_race_id_r
@@ -285,10 +295,6 @@ models:
         description: Left record's candidate office name.
       - name: candidate_office_r
         description: Right record's candidate office name.
-      - name: office_level_l
-        description: Left record's office level classification.
-      - name: office_level_r
-        description: Right record's office level classification.
       - name: office_type_l
         description: Left record's office type classification.
       - name: office_type_r
@@ -420,7 +426,9 @@ models:
       bypass). No race ID filter (elected officials have no br_race_id).
 
       Compared to candidacy stages, this entity type adds office_type and
-      office_level as Splink comparisons and drops election_date.
+      ballotready_position_id as Splink comparisons and drops election_date
+      and br_race_id. (office_level is a Splink comparison in both entity
+      types.)
     columns:
       - name: match_weight
         description: >
