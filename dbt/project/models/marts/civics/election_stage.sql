@@ -1,11 +1,16 @@
 -- Civics mart election_stage table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
 --
--- BallotReady is the authoritative spine for election_stages (races). TS int
--- models remap clustered stages to BR's gp_election_stage_id via
+-- BallotReady is the authoritative spine for election_stages (races). TS and
+-- DDHQ int models remap clustered stages to BR's gp_election_stage_id via
 -- int__civics_er_canonical_ids, so a full outer join on gp_election_stage_id
--- merges matched pairs automatically. Unmatched TS stages pass through as
--- net-new.
+-- merges matched triples. Unmatched DDHQ stages (no BR/TS Splink counterpart)
+-- pass through as net-new rows with source_systems = ['ddhq'].
+--
+-- Precedence: BR > TS > DDHQ for descriptive columns. total_votes_cast is
+-- BR-first only when BR has a numeric count; BR's 'uncontested' literal
+-- yields to DDHQ's actual count when present. ddhq_race_id falls back to
+-- DDHQ when BR's null.
 {%- set br_wins_cols = [
     "gp_election_id",
     "br_race_id",
@@ -58,15 +63,25 @@ with
     merged_since_2026 as (
         select
             coalesce(
-                br.gp_election_stage_id, ts.gp_election_stage_id
+                br.gp_election_stage_id,
+                ts.gp_election_stage_id,
+                ddhq.gp_election_stage_id
             ) as gp_election_stage_id,
             {% for col in br_wins_cols %}
-                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+                coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
             br.br_election_id,
             br.br_position_id,
-            br.ddhq_race_id,
-            br.total_votes_cast,
+            -- ddhq_race_id: DDHQ's own ID is more reliable than BR's
+            -- (which is sometimes null for 2026+ rows even when DDHQ has data).
+            coalesce(br.ddhq_race_id, ddhq.ddhq_race_id) as ddhq_race_id,
+            -- total_votes_cast: BR can carry the literal 'uncontested' as a
+            -- sentinel; treat that as missing and prefer DDHQ's numeric count.
+            coalesce(
+                nullif(br.total_votes_cast, 'uncontested'),
+                ddhq.total_votes_cast,
+                br.total_votes_cast
+            ) as total_votes_cast,
             br.partisan_type,
             br.filing_period_start_on,
             br.filing_period_end_on,
@@ -78,13 +93,18 @@ with
                     case
                         when br.gp_election_stage_id is not null then 'ballotready'
                     end,
-                    case when ts.gp_election_stage_id is not null then 'techspeed' end
+                    case when ts.gp_election_stage_id is not null then 'techspeed' end,
+                    case when ddhq.gp_election_stage_id is not null then 'ddhq' end
                 )
             ) as source_systems
         from {{ ref("int__civics_election_stage_ballotready") }} as br
         full outer join
             {{ ref("int__civics_election_stage_techspeed") }} as ts
             on br.gp_election_stage_id = ts.gp_election_stage_id
+        full outer join
+            {{ ref("int__civics_election_stage_ddhq") }} as ddhq
+            on coalesce(br.gp_election_stage_id, ts.gp_election_stage_id)
+            = ddhq.gp_election_stage_id
     ),
 
     combined as (
