@@ -196,7 +196,9 @@ with
                 then 'Lost'
                 else null
             end as election_result,
-            'ddhq' as election_result_source
+            case
+                when s.is_winner is not null then 'ddhq' else null
+            end as election_result_source
 
         from source as s
         inner join
