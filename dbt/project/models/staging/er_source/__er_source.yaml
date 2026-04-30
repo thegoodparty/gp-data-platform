@@ -316,17 +316,10 @@ models:
           3=state+date+office_fuzzy+last_name_fuzzy, 4=phone exact, 5=email exact.
 
   - name: stg_er_source__clustered_elected_officials
-    description: >
-      Staged cluster assignments from the elected officials entity resolution
-      pipeline. Each row is an elected official record from BallotReady or
-      TechSpeed, annotated with a cluster_id grouping records that represent
-      the same person. Unlike candidacy stages, the cluster grain is person
-      — multi-term records for the same official cluster together.
-
-      The clustering uses a 0.95 match probability threshold on Splink's
-      connected-components algorithm, after post-prediction filters enforce
-      person identity agreement (last name + first name/email/phone) and
-      office compatibility (office_type match or contact-info bypass).
+    description: |
+      Match groups bridging gp-api elected-office records to BR+TS terms.
+      Term grain. Mart owns person rollup via br_candidate_id, and term selection
+      within a multi-term cluster via sworn_in_date proximity to term_start_date.
     columns:
       - name: cluster_id
         description: >
@@ -353,7 +346,7 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              values: ["ballotready_techspeed", "gp_api"]
       - name: first_name
         description: Official's first name (lowercased, trimmed in prematch).
       - name: last_name
@@ -396,6 +389,20 @@ models:
         description: TechSpeed officeholder ID. Only populated for TS records.
       - name: ts_position_id
         description: TechSpeed position ID. Only populated for TS records.
+      - name: ballotready_position_id
+        description: >
+          BallotReady position FK. Used as a Splink ExactMatch comparison feature
+          and a (state, ballotready_position_id) blocking rule. Sourced from BR's
+          br_position_id on the ballotready_techspeed side and from the gp-api
+          campaigns join on the gp_api side.
+      - name: gp_api_user_id
+        description: gp-api product user ID. Only populated for gp_api rows.
+      - name: gp_api_campaign_id
+        description: gp-api product campaign ID. Only populated for gp_api rows.
+      - name: gp_api_elected_office_id
+        description: gp-api elected office UUID. Only populated for gp_api rows.
+      - name: gp_api_organization_slug
+        description: gp-api organization slug. Only populated for gp_api rows.
 
   - name: stg_er_source__pairwise_elected_officials
     description: >
@@ -443,13 +450,13 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              values: ["ballotready_techspeed", "gp_api"]
       - name: source_name_r
         description: Origin source for the right record.
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed"]
+              values: ["ballotready_techspeed", "gp_api"]
       - name: source_id_l
         description: Source-specific identifier for the left record.
       - name: source_id_r
@@ -572,6 +579,14 @@ models:
         description: Right record's office level.
       - name: bf_office_level
         description: Bayes factor for the office_level comparison.
+      - name: ballotready_position_id_l
+        description: Left record's BallotReady position FK.
+      - name: ballotready_position_id_r
+        description: Right record's BallotReady position FK.
+      - name: gamma_ballotready_position_id
+        description: "Comparison level for ballotready_position_id: 1=exact match, -1=one or both null, 0=else."
+      - name: bf_ballotready_position_id
+        description: Bayes factor for the ballotready_position_id comparison.
       - name: candidate_office_l
         description: Left record's human-readable office name from the source.
       - name: candidate_office_r
@@ -608,6 +623,22 @@ models:
         description: Left record's TechSpeed position ID.
       - name: ts_position_id_r
         description: Right record's TechSpeed position ID.
+      - name: gp_api_user_id_l
+        description: Left record's gp-api product user ID. Only populated on the gp_api side.
+      - name: gp_api_user_id_r
+        description: Right record's gp-api product user ID. Only populated on the gp_api side.
+      - name: gp_api_campaign_id_l
+        description: Left record's gp-api product campaign ID. Only populated on the gp_api side.
+      - name: gp_api_campaign_id_r
+        description: Right record's gp-api product campaign ID. Only populated on the gp_api side.
+      - name: gp_api_elected_office_id_l
+        description: Left record's gp-api elected office UUID. Only populated on the gp_api side.
+      - name: gp_api_elected_office_id_r
+        description: Right record's gp-api elected office UUID. Only populated on the gp_api side.
+      - name: gp_api_organization_slug_l
+        description: Left record's gp-api organization slug. Only populated on the gp_api side.
+      - name: gp_api_organization_slug_r
+        description: Right record's gp-api organization slug. Only populated on the gp_api side.
       - name: match_key
         description: >
           Index of the blocking rule that generated this pair (0-4), corresponding
