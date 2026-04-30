@@ -138,47 +138,27 @@ select
     deduplicated.viability_score,
     deduplicated.win_number,
     deduplicated.win_number_model,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and coalesce(
-                deduplicated.primary_election_date < icp.icp_win_effective_date, true
-            )
-            and coalesce(
-                deduplicated.primary_runoff_election_date < icp.icp_win_effective_date,
-                true
-            )
-            and coalesce(
-                deduplicated.general_election_date < icp.icp_win_effective_date, true
-            )
-            and coalesce(
-                deduplicated.general_runoff_election_date < icp.icp_win_effective_date,
-                true
-            )
-        then false
-        else icp.icp_office_win
-    end as is_win_icp,
+    {{
+        win_icp_date_gate(
+            icp_attribute="icp.icp_office_win",
+            primary_date="deduplicated.primary_election_date",
+            primary_runoff_date="deduplicated.primary_runoff_election_date",
+            general_date="deduplicated.general_election_date",
+            general_runoff_date="deduplicated.general_runoff_election_date",
+            effective_date="icp.icp_win_effective_date",
+        )
+    }} as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and coalesce(
-                deduplicated.primary_election_date < icp.icp_win_effective_date, true
-            )
-            and coalesce(
-                deduplicated.primary_runoff_election_date < icp.icp_win_effective_date,
-                true
-            )
-            and coalesce(
-                deduplicated.general_election_date < icp.icp_win_effective_date, true
-            )
-            and coalesce(
-                deduplicated.general_runoff_election_date < icp.icp_win_effective_date,
-                true
-            )
-        then false
-        else icp.icp_win_supersize
-    end as is_win_supersize_icp,
+    {{
+        win_icp_date_gate(
+            icp_attribute="icp.icp_win_supersize",
+            primary_date="deduplicated.primary_election_date",
+            primary_runoff_date="deduplicated.primary_runoff_election_date",
+            general_date="deduplicated.general_election_date",
+            general_runoff_date="deduplicated.general_runoff_election_date",
+            effective_date="icp.icp_win_effective_date",
+        )
+    }} as is_win_supersize_icp,
     deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
