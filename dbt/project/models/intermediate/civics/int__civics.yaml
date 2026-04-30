@@ -1842,6 +1842,30 @@ models:
                   - Primary Special Runoff
                   - General Special Runoff
 
+      - name: office_level
+        description: >
+          Normalized office level matching BallotReady's 7-bucket PositionLevel
+          taxonomy (City/Local/County/Township/State/Regional/Federal). BR and
+          TS sources emit initcap(level) directly. The gp-api source prefers
+          initcap(br_position_level) when available (gp-api candidacy rows
+          inner-join to BR race via ballotready_position_id, so coverage is
+          near-100%); otherwise falls back to campaigns.election_level which
+          collapses to a 4-bucket subset (Local/County/State/Federal —
+          City/Town/Township are not distinguishable at gp-api granularity).
+          DDHQ emits a 3-value subset (Local/County/State) from race_name
+          parsing. Null is permitted for sources that cannot resolve a level.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - City
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
   - name: int__er_prematch_elected_officials
     description: >
       Entity resolution prematch table at term grain. Two sources:
