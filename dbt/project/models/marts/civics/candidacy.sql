@@ -1,33 +1,39 @@
 -- Civics mart candidacy table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
+-- DDHQ + gp_api (Product Database).
 --
--- Provider precedence: BR > TS > DDHQ for every column. DDHQ contributes a
--- subset of fields (party_affiliation, candidate_office, official_office_name,
--- office_level, office_type, candidacy_result, *_election_date) and acts only
--- as a fallback when neither BR nor TS has a value. DDHQ-only candidacies
--- (no Splink match) appear as new rows with their own gp_candidacy_id.
-{%- set br_wins_cols = [
-    "product_campaign_id",
+-- Provider precedence (2026+ branch):
+-- - gp_api > BR > TS > DDHQ for descriptive columns (candidate_office,
+-- official_office_name, office_level, office_type, party_affiliation,
+-- is_partisan, general_election_date, br_position_database_id,
+-- created_at, updated_at, hubspot_contact_id).
+-- - DDHQ > BR > TS > gp_api for candidacy_result (DDHQ remains authoritative
+-- for results; gp_api's did_win is candidate-self-reported).
+-- - gp_api wins (only source) for product_campaign_id, is_pledged,
+-- is_verified, verification_status_reason.
+-- - is_incumbent uses TS > BR (TS dominates: 51k vs 0); gp_api/DDHQ excluded.
+-- - office_type uses gp_api > BR > DDHQ (TS doesn't carry it at this grain).
+-- - hubspot_company_ids stays BR-only.
+{%- set gp_api_wins_cols = [
     "hubspot_contact_id",
-    "hubspot_company_ids",
     "candidate_id_source",
     "party_affiliation",
-    "is_open_seat",
     "candidate_office",
     "official_office_name",
     "office_level",
-    "candidacy_result",
-    "is_pledged",
-    "is_verified",
-    "verification_status_reason",
     "is_partisan",
-    "primary_election_date",
-    "primary_runoff_election_date",
     "general_election_date",
-    "general_runoff_election_date",
-    "viability_score",
-    "win_number",
-    "win_number_model",
+    "created_at",
+    "updated_at",
+] %}
+{# DDHQ supplies a subset of gp_api_wins_cols. Used to decide whether DDHQ
+   joins the coalesce chain. #}
+{%- set ddhq_fallback_cols = [
+    "party_affiliation",
+    "candidate_office",
+    "official_office_name",
+    "office_level",
+    "general_election_date",
     "created_at",
     "updated_at",
 ] %}
@@ -38,9 +44,7 @@ with
             gp_candidacy_id,
             gp_candidate_id,
             gp_election_id,
-            -- Column order must match merged_since_2026 (br_wins_cols loop
-            -- order, then TS-wins is_incumbent, BR-only office_type +
-            -- br_position_database_id, then source_systems)
+            -- Column order must match merged_since_2026
             product_campaign_id,
             hubspot_contact_id,
             hubspot_company_ids,
@@ -73,43 +77,92 @@ with
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
-    -- TS and DDHQ int models remap clustered rows to BR's gp_* IDs (via
-    -- int__civics_er_canonical_ids), so a full outer join on gp_candidacy_id
-    -- merges matched triples automatically. Unmatched rows on any side pass
-    -- through with NULLs on the absent providers (e.g. DDHQ-only candidacies
-    -- where Splink found no BR/TS match).
+    -- Four-way FOJ. TS / DDHQ / gp_api int models all remap clustered rows
+    -- to BR's gp_candidacy_id via int__civics_er_canonical_ids, so a FOJ on
+    -- gp_candidacy_id auto-merges matched quadruples. Unmatched rows on any
+    -- side pass through with NULLs on absent providers.
     merged_since_2026 as (
         select
             coalesce(
-                br.gp_candidacy_id, ts.gp_candidacy_id, ddhq.gp_candidacy_id
+                gp_api.gp_candidacy_id,
+                br.gp_candidacy_id,
+                ts.gp_candidacy_id,
+                ddhq.gp_candidacy_id
             ) as gp_candidacy_id,
             coalesce(
-                br.gp_candidate_id, ts.gp_candidate_id, ddhq.gp_candidate_id
+                gp_api.gp_candidate_id,
+                br.gp_candidate_id,
+                ts.gp_candidate_id,
+                ddhq.gp_candidate_id
             ) as gp_candidate_id,
             coalesce(
-                br.gp_election_id, ts.gp_election_id, ddhq.gp_election_id
+                gp_api.gp_election_id,
+                br.gp_election_id,
+                ts.gp_election_id,
+                ddhq.gp_election_id
             ) as gp_election_id,
-            {% for col in br_wins_cols %}
-                coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
+            -- gp_api-only columns
+            gp_api.product_campaign_id,
+            -- gp_api wins, then BR > TS > DDHQ (where applicable)
+            {% for col in gp_api_wins_cols %}
+                {% if col in ddhq_fallback_cols %}
+                    coalesce(
+                        gp_api.{{ col }}, br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}
+                    ) as {{ col }},
+                {% else %}
+                    coalesce(gp_api.{{ col }}, br.{{ col }}, ts.{{ col }}) as {{ col }},
+                {% endif %}
             {% endfor %}
-            -- TS wins for is_incumbent (TS: 51k populated, BR: 0). DDHQ never
-            -- provides this so it stays out of the chain.
-            coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
-            -- office_type is BR-authoritative; DDHQ supplies as fallback (TS
-            -- doesn't carry office_type at this grain).
-            coalesce(br.office_type, ddhq.office_type) as office_type,
-            -- br_position_database_id: BR is authoritative when present.
-            -- TS surfaces it via the br_race_id lookup in
-            -- int__civics_candidacy_techspeed for TS-only candidacies that
-            -- lack a BR candidacy row. DDHQ does not carry this field.
+            -- hubspot_company_ids: BR-only (gp_api / TS / DDHQ never set it).
+            br.hubspot_company_ids,
+            -- candidacy_result: DDHQ remains authoritative for results.
             coalesce(
-                br.br_position_database_id, ts.br_position_database_id
+                ddhq.candidacy_result,
+                br.candidacy_result,
+                ts.candidacy_result,
+                gp_api.candidacy_result
+            ) as candidacy_result,
+            -- is_open_seat: BR > TS > DDHQ; gp_api carries no value.
+            coalesce(
+                br.is_open_seat, ts.is_open_seat, ddhq.is_open_seat
+            ) as is_open_seat,
+            -- gp_api wins (only source) for these PD-native flags.
+            gp_api.is_pledged,
+            gp_api.is_verified,
+            gp_api.verification_status_reason,
+            -- TS wins for is_incumbent (TS: 51k populated, BR: 0); gp_api/DDHQ
+            -- excluded.
+            coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
+            -- office_type: gp_api > BR > DDHQ (TS doesn't carry it at this grain).
+            coalesce(
+                gp_api.office_type, br.office_type, ddhq.office_type
+            ) as office_type,
+            -- br_position_database_id: gp_api > BR > TS. DDHQ doesn't carry it.
+            coalesce(
+                gp_api.br_position_database_id,
+                br.br_position_database_id,
+                ts.br_position_database_id
             ) as br_position_database_id,
+            -- BR-only stage dates (gp_api only carries general_election_date)
+            coalesce(
+                br.primary_election_date, ts.primary_election_date
+            ) as primary_election_date,
+            coalesce(
+                br.primary_runoff_election_date, ts.primary_runoff_election_date
+            ) as primary_runoff_election_date,
+            coalesce(
+                br.general_runoff_election_date, ts.general_runoff_election_date
+            ) as general_runoff_election_date,
+            -- BR-only viability fields
+            br.viability_score,
+            br.win_number,
+            br.win_number_model,
             array_compact(
                 array(
                     case when br.gp_candidacy_id is not null then 'ballotready' end,
                     case when ts.gp_candidacy_id is not null then 'techspeed' end,
-                    case when ddhq.gp_candidacy_id is not null then 'ddhq' end
+                    case when ddhq.gp_candidacy_id is not null then 'ddhq' end,
+                    case when gp_api.gp_candidacy_id is not null then 'gp_api' end
                 )
             ) as source_systems
         from {{ ref("int__civics_candidacy_ballotready") }} as br
@@ -119,13 +172,77 @@ with
         full outer join
             {{ ref("int__civics_candidacy_ddhq") }} as ddhq
             on coalesce(br.gp_candidacy_id, ts.gp_candidacy_id) = ddhq.gp_candidacy_id
+        full outer join
+            {{ ref("int__civics_candidacy_gp_api") }} as gp_api
+            on coalesce(br.gp_candidacy_id, ts.gp_candidacy_id, ddhq.gp_candidacy_id)
+            = gp_api.gp_candidacy_id
     ),
 
     combined as (
-        select *
+        select
+            gp_candidacy_id,
+            gp_candidate_id,
+            gp_election_id,
+            product_campaign_id,
+            hubspot_contact_id,
+            hubspot_company_ids,
+            candidate_id_source,
+            party_affiliation,
+            is_open_seat,
+            candidate_office,
+            official_office_name,
+            office_level,
+            candidacy_result,
+            is_pledged,
+            is_verified,
+            verification_status_reason,
+            is_partisan,
+            primary_election_date,
+            primary_runoff_election_date,
+            general_election_date,
+            general_runoff_election_date,
+            viability_score,
+            win_number,
+            win_number_model,
+            created_at,
+            updated_at,
+            is_incumbent,
+            office_type,
+            br_position_database_id,
+            source_systems
         from archive_2025
         union all
-        select *
+        select
+            gp_candidacy_id,
+            gp_candidate_id,
+            gp_election_id,
+            product_campaign_id,
+            hubspot_contact_id,
+            hubspot_company_ids,
+            candidate_id_source,
+            party_affiliation,
+            is_open_seat,
+            candidate_office,
+            official_office_name,
+            office_level,
+            candidacy_result,
+            is_pledged,
+            is_verified,
+            verification_status_reason,
+            is_partisan,
+            primary_election_date,
+            primary_runoff_election_date,
+            general_election_date,
+            general_runoff_election_date,
+            viability_score,
+            win_number,
+            win_number_model,
+            created_at,
+            updated_at,
+            is_incumbent,
+            office_type,
+            br_position_database_id,
+            source_systems
         from merged_since_2026
     ),
 
