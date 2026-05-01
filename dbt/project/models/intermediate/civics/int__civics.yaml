@@ -2723,6 +2723,95 @@ models:
       - name: hubspot_company_id
         description: HubSpot company ID for the matched campaign (alias of campaigns.hubspot_id).
 
+  - name: int__civics_elected_official_gp_api_person
+    description: |
+      Person-grain rollup of gp-api elected officials. One row per
+      gp_api_user_id. Adopts BR's gp_elected_official_id via the bridge
+      for matched users (so the mart's 3-way FOJ on gp_elected_official_id
+      collapses correctly). Unmatched users get a salted UUID specific to
+      gp_api ('elected_official_gp_api_user' salt) so they don't collide
+      with BR/TS canonical IDs.
+
+      HubSpot contact ID is sourced from raw `gp_api_db_user.meta_data:hubspotid`
+      because the `users` mart does not expose it.
+
+      Spec: .tickets/data-1885/design-spec-v2.md
+
+    tests:
+      # Canonical uniqueness on adopted BR canonicals (catches the
+      # multi-gp_api-adopting-same-BR-person failure mode that bridge
+      # term uniqueness alone does not catch — see spec edge cases).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(distinct gp_elected_official_id) from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) = (select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null)"
+          name: gp_api_person_no_two_users_share_adopted_canonical
+          config:
+            severity: error
+      # Test #4: bridge match coverage. Pre-rerun simulation: 62.58%.
+      # TBD post-rerun (Task 10 calibrates).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }}), 0) between 0.55 and 0.85"
+          name: gp_api_person_bridge_match_coverage_pre_rerun
+          config:
+            severity: warn
+
+    columns:
+      - name: gp_elected_official_id
+        description: |
+          Canonical person UUID. For bridge-matched users, equals BR's
+          gp_elected_official_id (adopted via the bridge). For unmatched
+          users, a salted UUID with 'elected_official_gp_api_user' prefix
+          to prevent accidental collision with BR/TS canonicals.
+        data_tests:
+          - not_null
+      - name: gp_api_user_id
+        description: gp-api product user ID; primary key.
+        data_tests:
+          - not_null
+          - unique
+      - name: selected_gp_api_elected_office_id
+        description: Audit. Which gp_api elected_office record won the latest-per-user rollup.
+      - name: selected_gp_api_campaign_id
+        description: Audit. gp-api campaign ID for the selected elected_office.
+      - name: selected_gp_api_organization_slug
+        description: Audit. gp-api organization slug for the selected elected_office.
+      - name: first_name
+        description: User's first name from gp-api (used for gp_api-only mart rows).
+      - name: last_name
+        description: User's last name from gp-api.
+      - name: full_name
+        description: User's full name from gp-api.
+      - name: email
+        description: User's email from gp-api (exposed on mart as gp_api_email).
+      - name: phone
+        description: User's phone from gp-api (exposed on mart as gp_api_phone).
+      - name: gp_api_party_affiliation
+        description: |
+          Raw user-input party affiliation from gp-api. Available for ~52%
+          of gp_api-only rows. Falls into the canonical party_affiliation
+          chain on the mart but also exposed separately as audit.
+      - name: candidate_office
+        description: Office name from gp-api (~84% populated).
+      - name: office_level
+        description: Office level from gp-api (~85% populated).
+      - name: office_type
+        description: Office type from gp-api (100% populated via map_office_type).
+      - name: state
+        description: State from gp-api (100% populated).
+      - name: term_start_date
+        description: gp_api sworn_in_date.
+      - name: hubspot_contact_id
+        description: HubSpot contact ID for the user (from raw gp_api_db_user metadata).
+      - name: created_at
+      - name: updated_at
+      - name: er_cluster_id
+        description: Splink cluster_id from the bridge match (NULL when unmatched).
+      - name: bridge_br_office_holder_id
+        description: BR office holder ID adopted via the bridge (NULL when unmatched).
+      - name: bridge_br_candidate_id
+        description: BR candidate ID adopted via the bridge (NULL when unmatched).
+
   - name: int__civics_er_canonical_ids
     description: >
       Entity resolution crosswalk: provider raw keys → BallotReady canonical
