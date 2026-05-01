@@ -1401,6 +1401,13 @@ models:
       source_systems is join-based: 'ballotready' is always present;
       'techspeed' is added when has_direct_ts_term_match = true.
 
+      gp-api attachment (DATA-1885): each BR term that the EO Splink bridge
+      attached to a gp-api elected_office record exposes
+      `gp_api_elected_office_id`, `gp_api_user_id`, `gp_api_campaign_id`,
+      `gp_api_organization_slug`, `hubspot_company_id`, and `days_to_sworn_in`.
+      Bridge is unique on `br_office_holder_id` so the LEFT JOIN does not
+      multiply rows. `source_systems` includes 'gp_api' when bridge matched.
+
     columns:
       - name: gp_elected_official_term_id
         description: Primary key. Term-grain canonical UUID, sourced from int__civics_elected_official_ballotready.
@@ -1603,6 +1610,32 @@ models:
         data_tests:
           - not_null
 
+      - name: gp_api_elected_office_id
+        description: |
+          gp-api elected_office UUID. Populated when the EO Splink bridge
+          attached this BR term to a gp-api product elected_office record.
+      - name: gp_api_user_id
+        description: gp-api product user ID. Populated when bridge matched.
+      - name: gp_api_campaign_id
+        description: gp-api campaign ID. Populated when bridge matched.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('campaigns')
+                field: campaign_id
+              config:
+                where: "gp_api_campaign_id is not null"
+      - name: gp_api_organization_slug
+        description: gp-api organization slug. Populated when bridge matched.
+      - name: hubspot_company_id
+        description: |
+          HubSpot company ID for the matched gp-api campaign. Alias of
+          `campaigns.hubspot_id` exposed at the term/campaign grain.
+      - name: days_to_sworn_in
+        description: |
+          Audit: |bridge.br_term_start_date − bridge.sworn_in_date| in days.
+          Lower is a closer date match. NULL when either date is NULL.
+
       - name: is_win_icp
         description: >
           Whether this position meets Win ICP criteria (non-judicial,
@@ -1640,6 +1673,42 @@ models:
       - dbt_utils.equal_rowcount:
           arguments:
             compare_model: ref('int__civics_elected_official_ballotready')
+      # Test #12: term mart bridge attach rate. Pre-rerun simulation: 1,137.
+      # TBD post-rerun (Task 10 calibrates).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null) between 1000 and 1500"
+          name: term_mart_bridge_attach_rate_pre_rerun
+          config:
+            severity: warn
+      # Test #13b: term mart BR+gp_api shape (no TS). Pre-rerun sim: 592.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 500 and 700"
+          name: term_mart_br_gp_api_shape_pre_rerun
+          config:
+            severity: warn
+      # Test #14b: term mart BR+TS+gp_api shape. Pre-rerun sim: 542.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 480 and 620"
+          name: term_mart_br_ts_gp_api_shape_pre_rerun
+          config:
+            severity: warn
+      # Test #17: hubspot_company_id coverage on bridge-attached rows
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) * 1.0 from {{ ref('elected_official_terms') }} where hubspot_company_id is not null) / nullif((select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null), 0) >= 0.95"
+          name: term_mart_hubspot_company_coverage
+          config:
+            severity: warn
+      # source_systems values are limited to known sources (array-aware row-level test)
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(array_except(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 0"
+          name: term_mart_source_systems_known_values
+          config:
+            severity: error
 
   - name: elected_officials
     description: |
