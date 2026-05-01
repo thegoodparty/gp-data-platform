@@ -7,7 +7,9 @@
 -- state, email, hubspot_contact_id, created_at, updated_at).
 -- - gp_api > TS > BR > DDHQ for phone_number (preserves TS coverage advantage
 -- in the tail; TS has 48k populated vs BR's 8k).
--- - gp_api is the only source for prod_db_user_id.
+-- - gp_api > BR > TS for prod_db_user_id (DDHQ doesn't carry it). gp_api is
+-- the canonical source when present; BR/TS contribute crosswalk-derived
+-- values for users not yet in PD.
 -- - gp_api excluded from: birth_date, street_address, social URLs,
 -- candidate_id_tier (gp_api carries no values for these).
 -- - DDHQ contributes only first_name / last_name / full_name / state at this
@@ -55,7 +57,7 @@ with
             -- Column order must match merged_since_2026 (prod_db_user_id,
             -- gp_api_wins_cols loop order, br_only_cols loop order,
             -- ts_wins_cols, phone_number, source_systems)
-            cast(null as bigint) as prod_db_user_id,
+            prod_db_user_id,
             hubspot_contact_id,
             first_name,
             last_name,
@@ -108,7 +110,9 @@ with
                 ts.gp_candidate_id,
                 ddhq.gp_candidate_id
             ) as gp_candidate_id,
-            gp_api.prod_db_user_id,
+            coalesce(
+                gp_api.prod_db_user_id, br.prod_db_user_id, ts.prod_db_user_id
+            ) as prod_db_user_id,
             {% for col in gp_api_wins_cols %}
                 {% if col in ddhq_fallback_cols %}
                     coalesce(
