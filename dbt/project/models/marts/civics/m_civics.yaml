@@ -1673,26 +1673,25 @@ models:
       - dbt_utils.equal_rowcount:
           arguments:
             compare_model: ref('int__civics_elected_official_ballotready')
-      # Test #12: term mart bridge attach rate. Pre-rerun simulation: 1,137.
-      # TBD post-rerun (Task 10 calibrates).
+      # Test #12: term mart bridge attach rate. CI measured: 1,137.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null) between 1000 and 1500"
-          name: term_mart_bridge_attach_rate_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null) between 1080 and 1190"
+          name: term_mart_bridge_attach_rate
           config:
             severity: warn
-      # Test #13b: term mart BR+gp_api shape (no TS). Pre-rerun sim: 592.
+      # Test #13b: term mart BR+gp_api shape (no TS). CI measured: 594.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 500 and 700"
-          name: term_mart_br_gp_api_shape_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 560 and 630"
+          name: term_mart_br_gp_api_shape
           config:
             severity: warn
-      # Test #14b: term mart BR+TS+gp_api shape. Pre-rerun sim: 542.
+      # Test #14b: term mart BR+TS+gp_api shape. CI measured: 543.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 480 and 620"
-          name: term_mart_br_ts_gp_api_shape_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 515 and 575"
+          name: term_mart_br_ts_gp_api_shape
           config:
             severity: warn
       # Test #17: hubspot_company_id coverage on bridge-attached rows
@@ -1990,11 +1989,11 @@ models:
           name: elected_officials_br_backed_rowcount_matches_br_person
           config:
             severity: error
-      # Total mart rowcount = BR + gp_api-only additions (between bounds)
+      # Total mart rowcount = BR + gp_api-only additions. CI measured: 375,996.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }}) between 374000 and 380000"
-          name: elected_officials_total_rowcount_within_bounds_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_officials') }}) between 374500 and 377500"
+          name: elected_officials_total_rowcount_within_bounds
           config:
             severity: warn
       - dbt_utils.expression_is_true:
@@ -2004,11 +2003,11 @@ models:
             # Inherits BR source rows where updated_at < created_at
             warn_if: ">30"
             error_if: ">100"
-      # Test #1: gp_api+BR cross-source coverage. Pre-rerun simulation: 1,134. TBD post-rerun.
+      # Test #1: gp_api+BR cross-source coverage. CI measured: 1,137.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null and array_contains(source_systems, 'ballotready')) > 1000"
-          name: person_mart_gp_api_br_cross_source_coverage_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null and array_contains(source_systems, 'ballotready')) between 1080 and 1190"
+          name: person_mart_gp_api_br_cross_source_coverage
           config:
             severity: warn
       # Test #2: gp_api total presence on person mart
@@ -2018,25 +2017,25 @@ models:
           name: person_mart_gp_api_total_presence
           config:
             severity: warn
-      # Test #3: gp_api-only rows. Pre-rerun simulation: ~675. TBD post-rerun.
+      # Test #3: gp_api-only rows. CI measured: 675.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')) between 350 and 800"
-          name: person_mart_gp_api_only_count_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')) between 640 and 710"
+          name: person_mart_gp_api_only_count
           config:
             severity: warn
-      # Test #13a: person mart BR+gp_api shape
+      # Test #13a: person mart BR+gp_api shape. CI measured: 575.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 500 and 700"
-          name: person_mart_br_gp_api_shape_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_officials') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 540 and 615"
+          name: person_mart_br_gp_api_shape
           config:
             severity: warn
-      # Test #14a: person mart BR+TS+gp_api shape
+      # Test #14a: person mart BR+TS+gp_api shape. CI measured: 562.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 480 and 620"
-          name: person_mart_br_ts_gp_api_shape_pre_rerun
+            expression: "(select count(*) from {{ ref('elected_officials') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 530 and 595"
+          name: person_mart_br_ts_gp_api_shape
           config:
             severity: warn
       # Test #15a: gp_api-only rows have first/last/state

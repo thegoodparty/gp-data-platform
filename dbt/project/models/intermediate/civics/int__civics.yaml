@@ -2747,12 +2747,12 @@ models:
           name: gp_api_person_no_two_users_share_adopted_canonical
           config:
             severity: error
-      # Test #4: bridge match coverage. Pre-rerun simulation: 62.58%.
-      # TBD post-rerun (Task 10 calibrates).
+      # Test #4: bridge match coverage. Calibrated post-matcha-rerun:
+      # CI measured 1,137/1,812 = 62.75%. Bound is ±3pp around that.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }}), 0) between 0.55 and 0.85"
-          name: gp_api_person_bridge_match_coverage_pre_rerun
+            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }}), 0) between 0.60 and 0.66"
+          name: gp_api_person_bridge_match_coverage
           config:
             severity: warn
 
