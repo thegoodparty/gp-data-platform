@@ -1,9 +1,11 @@
 {% macro office_name_tokens(col) %}
     -- Normalized token array for Splink ArrayIntersectLevel office-overlap.
     --
-    -- Punctuation is intentionally preserved so e.g. "(juneau" stays distinct
-    -- from "juneau" — a WI town-of-X (county) row must not overlap with an
-    -- X-county-supervisor row even though both contain a "juneau"-ish token.
+    -- Trailing punctuation is stripped so "county," matches the "county" stop
+    -- word and "r-iv," normalizes to "r-4". Leading punctuation is preserved:
+    -- "(juneau" (parenthetical-county marker on a WI town-of-X row) must stay
+    -- distinct from "juneau" (substantive locality on a county-supervisor row)
+    -- to avoid a false-positive office overlap.
     --
     -- Roman-numeral and "No. N" → "r-N" rewrites let DDHQ "Lincoln County
     -- R-IV School District" intersect with BR "Winfield R-4 School Board".
@@ -12,13 +14,16 @@
     -- scripts/constants.py — keep both in sync when editing.
     filter(
         transform(
-            split(
-                regexp_replace(
-                    regexp_replace(lower({{ col }}), 'r-\\s+', 'r-'),
-                    'no\\.\\s+(\\d+)',
-                    'no. $1 r-$1'
+            transform(
+                split(
+                    regexp_replace(
+                        regexp_replace(lower({{ col }}), 'r-\\s+', 'r-'),
+                        'no\\.\\s+(\\d+)',
+                        'no. $1 r-$1'
+                    ),
+                    ' '
                 ),
-                ' '
+                t -> regexp_replace(t, '\\p{Punct}+$', '')
             ),
             t -> case
                 when t = 'r-i'
@@ -105,7 +110,7 @@
             'metro',
             'and',
             'for',
-            'no.',
+            'no',
             'odd',
             'unexpired'
         )

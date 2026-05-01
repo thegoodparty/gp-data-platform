@@ -61,8 +61,15 @@ with
             cast(null as string) as er_cluster_id,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as ts_source_candidate_id,
-            cast(null as string) as ddhq_candidate_id,
-            cast(null as string) as ddhq_race_id
+            -- Archive's source_candidate_id / source_race_id ARE the DDHQ
+            -- keys when has_match=true (see int__civics_candidacy_stage_2025
+            -- aliasing ddhq_candidate_id/ddhq_race_id). Forward them so the
+            -- "ddhq keys populated when 'ddhq' in source_systems" invariant
+            -- holds for the 2025 archive path too.
+            case
+                when has_match then cast(source_candidate_id as string)
+            end as ddhq_candidate_id,
+            case when has_match then cast(source_race_id as string) end as ddhq_race_id
         from {{ ref("int__civics_candidacy_stage_2025") }}
     ),
 
