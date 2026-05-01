@@ -2641,6 +2641,88 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_elected_official_gp_api_bridge
+    description: |
+      Term-grain bridge from gp-api elected_office records to BR+TS terms,
+      derived from the EO Splink cluster output. One row per gp_api
+      elected_office record (deduped); also unique on br_office_holder_id
+      after pass-2 collision suppression.
+
+      The bridge resolves two ambiguities:
+      1. Multi-term: a gp_api record matches multiple BR terms (~38% of
+         matched records). Pass 1 picks the BR term whose term_start_date
+         is closest to gp_api sworn_in_date.
+      2. Bridge collision: two gp_api records in the same Splink cluster
+         pick the same BR term (7 cases on current data). Pass 2 keeps the
+         closer of the two; the loser falls back to a self-key in the
+         person rollup and appears as a gp_api-only mart row.
+
+      `hubspot_company_id` is sourced from `campaigns.hubspot_id` via
+      `gp_api_campaign_id` join; deliberate alias of `hubspot_id` to make
+      CRM linkage clearer at the term/campaign grain.
+
+      Spec: .tickets/data-1885/design-spec-v2.md
+
+    tests:
+      # Test #5: term selection within 365 days (non-null subset)
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in <= 365) * 1.0 / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in is not null), 0) >= 0.50"
+          name: bridge_term_selection_within_365_days
+          config:
+            severity: warn
+      # Test #6: median days_to_sworn_in (non-null) between 30 and 90
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select percentile(days_to_sworn_in, 0.5) from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in is not null) between 30 and 90"
+          name: bridge_median_days_to_sworn_in
+          config:
+            severity: warn
+      # Test #7: NULL days_to_sworn_in rate <= 0.40
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in is null) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_bridge') }}), 0) <= 0.40"
+          name: bridge_null_days_to_sworn_in_rate
+          config:
+            severity: warn
+
+    columns:
+      - name: gp_api_elected_office_id
+        description: gp-api elected_office UUID; primary key of the bridge.
+        data_tests:
+          - not_null
+          - unique
+      - name: br_office_holder_id
+        description: BR office holder ID of the chosen BR term.
+        data_tests:
+          - not_null
+          - unique
+      - name: cluster_id
+        description: Splink cluster_id from the EO ER pipeline output.
+        data_tests:
+          - not_null
+      - name: gp_api_user_id
+        description: gp-api product user ID.
+      - name: gp_api_campaign_id
+        description: gp-api product campaign ID.
+      - name: gp_api_organization_slug
+        description: gp-api product organization slug.
+      - name: br_candidate_id
+        description: BR candidate ID (person-grain) of the chosen BR term.
+      - name: ts_officeholder_id
+        description: TS officeholder ID if the chosen BR term has a TS match.
+      - name: br_term_start_date
+        description: term_start_date of the chosen BR term.
+      - name: sworn_in_date
+        description: sworn_in_date from gp-api (term_start_date in cluster output).
+      - name: days_to_sworn_in
+        description: |
+          abs(datediff(br_term_start_date, sworn_in_date)) — the metric that
+          drove pass-1 selection. Audit column for monitoring tiebreaker
+          quality. NULL when either date is NULL.
+      - name: hubspot_company_id
+        description: HubSpot company ID for the matched campaign (alias of campaigns.hubspot_id).
+
   - name: int__civics_er_canonical_ids
     description: >
       Entity resolution crosswalk: provider raw keys → BallotReady canonical
