@@ -132,6 +132,14 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_engagements
         description: raw data load from HubSpot data model
+      - name: hubspot_api_engagements_calls
+        description: >
+          HubSpot Call engagements ingested via the Airbyte HubSpot
+          source's "Engagements Calls" stream. One row per call activity
+          logged in HubSpot. Call properties (e.g. hs_call_disposition,
+          hs_call_duration) are flat columns prefixed `properties_` —
+          the staging model `stg_airbyte_source__hubspot_api_engagements_calls`
+          strips the prefix.
       - name: hubspot_api_owners_archived
         description: raw data load from HubSpot data model
       - name: hubspot_api_owners
