@@ -9,6 +9,8 @@ with
     -- a bool_or window once gp_candidate_id is known. We don't reuse
     -- int__civics_candidacy_2025 here to avoid a circular dependency
     -- (candidacy_2025 already imports candidate_2025).
+    -- Output column has_ddhq_match drives the 'ddhq' tag emitted into the
+    -- archive_2025 source_systems array in the candidate mart.
     ddhq_match_by_candidacy as (
         select gp_candidacy_id, bool_or(coalesce(has_match, false)) as has_ddhq_match
         from {{ ref("int__gp_ai_election_match") }}

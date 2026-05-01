@@ -197,6 +197,19 @@ models:
           - is_uuid
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+      - name: has_ddhq_match
+        description: >
+          Whether DDHQ contributed any stage-level data to any candidacy held
+          by this 2025 candidate (true if at least one of the candidate's
+          companies' candidacies had has_match = true in
+          int__gp_ai_election_match, propagated to candidate grain via a
+          bool_or window). Drives the 'ddhq' tag emitted into the
+          archive_2025 source_systems array in the candidate mart.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
