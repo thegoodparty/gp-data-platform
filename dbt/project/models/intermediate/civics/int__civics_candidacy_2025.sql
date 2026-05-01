@@ -28,6 +28,8 @@ with
     -- Per-candidacy DDHQ match flag from the legacy LLM matcher. A candidacy
     -- can have multiple match rows (one per stage); collapse to a single
     -- boolean before joining so we don't fan out the candidacies grain.
+    -- Output column has_ddhq_match drives the 'ddhq' tag emitted into the
+    -- archive_2025 source_systems array in the candidacy mart.
     ddhq_match_by_candidacy as (
         select gp_candidacy_id, bool_or(coalesce(has_match, false)) as has_ddhq_match
         from {{ ref("int__gp_ai_election_match") }}

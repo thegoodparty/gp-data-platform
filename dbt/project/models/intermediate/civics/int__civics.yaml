@@ -160,6 +160,17 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
+      - name: has_ddhq_match
+        description: >
+          Whether DDHQ contributed any stage-level data to this 2025 candidacy
+          (true if at least one candidacy_stage row had has_match = true in
+          int__gp_ai_election_match). Drives the 'ddhq' tag emitted into the
+          archive_2025 source_systems array in the candidacy mart.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -186,6 +197,19 @@ models:
           - is_uuid
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+      - name: has_ddhq_match
+        description: >
+          Whether DDHQ contributed any stage-level data to any candidacy held
+          by this 2025 candidate (true if at least one of the candidate's
+          companies' candidacies had has_match = true in
+          int__gp_ai_election_match, propagated to candidate grain via a
+          bool_or window). Drives the 'ddhq' tag emitted into the
+          archive_2025 source_systems array in the candidate mart.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -411,14 +435,49 @@ models:
 
       - name: general_election_date
         description: >
-          General election date. May be NULL for records that only have a
-          primary election date (e.g. early 2026 primaries before general
-          dates are set). At least one of general/primary must be non-null.
+          General election date. Sourced from TS form data when present, with
+          a fallback to BallotReady's election_stage data via br_race_id when
+          TS only captured a primary. At least one of general/primary must be
+          non-null.
 
       - name: primary_election_date
         description: >
-          Primary election date. May be NULL when only a general election
-          date is available. At least one of general/primary must be non-null.
+          Primary election date. Sourced from TS form data when present, with
+          a fallback to BallotReady's election_stage data via br_race_id when
+          TS only captured a general. At least one of general/primary must be
+          non-null.
+
+      - name: primary_runoff_election_date
+        description: >
+          Primary runoff election date. NULL unless BallotReady's election_stage
+          surfaces one for the matched BR race (TS form data does not capture
+          runoffs).
+
+      - name: general_runoff_election_date
+        description: >
+          General runoff election date. NULL unless BallotReady's election_stage
+          surfaces one for the matched BR race (TS form data does not capture
+          runoffs).
+
+      - name: br_position_database_id
+        description: >
+          BallotReady position id, recovered from the BR election_stage row
+          matching the TS br_race_id. NULL when the TS br_race_id is not
+          present in BR (e.g. ts_found_race_net_new). Unlocks the ICP join
+          downstream for TS-only candidacies that have no BR candidacy row.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
+              config:
+                where: "br_position_database_id is not null"
+                severity: warn
+                # Some position IDs may not exist in the API position table
+                # yet (API loaded incrementally, S3/election_stage may be
+                # ahead). Threshold mirrors the candidacy mart's allowance.
+                warn_if: ">200"
+                error_if: ">300"
 
       - name: created_at
         data_tests:
