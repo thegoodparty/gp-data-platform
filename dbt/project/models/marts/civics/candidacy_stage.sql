@@ -1,8 +1,12 @@
 -- Civics mart candidacy_stage table
 -- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
--- TS and DDHQ int models remap clustered IDs to BR canonicals via
--- int__civics_er_canonical_ids, so merging collapses to a full outer join on
--- shared gp_candidacy_stage_id.
+-- The 2026+ merge wraps each provider with its Splink cluster_id and joins
+-- on coalesce(cluster_id, 'self_' || gp_candidacy_stage_id), so any provider
+-- combination (BR+TS+DDHQ, BR+DDHQ, TS+DDHQ-only, DDHQ-only, singletons)
+-- collapses to one row with the full source_systems array. Pre-cluster
+-- canonical adoption via int__civics_er_canonical_ids is no longer load-
+-- bearing for this mart — it's still used by the higher-grain civics marts
+-- (see DATA-1888 for tracking the full canonical_ids removal).
 --
 -- Provider precedence:
 -- DDHQ wins for election outcome columns (is_winner, election_result,
@@ -53,7 +57,19 @@ with
             cast(null as boolean) as is_uncontested,
             array_compact(
                 array('hubspot', case when has_match then 'ddhq' end)
-            ) as source_systems
+            ) as source_systems,
+            cast(null as string) as er_cluster_id,
+            cast(null as string) as br_candidacy_id,
+            cast(null as string) as ts_source_candidate_id,
+            -- Archive's source_candidate_id / source_race_id ARE the DDHQ
+            -- keys when has_match=true (see int__civics_candidacy_stage_2025
+            -- aliasing ddhq_candidate_id/ddhq_race_id). Forward them so the
+            -- "ddhq keys populated when 'ddhq' in source_systems" invariant
+            -- holds for the 2025 archive path too.
+            case
+                when has_match then cast(source_candidate_id as string)
+            end as ddhq_candidate_id,
+            case when has_match then cast(source_race_id as string) end as ddhq_race_id
         from {{ ref("int__civics_candidacy_stage_2025") }}
     ),
 
@@ -79,12 +95,52 @@ with
         from {{ ref("int__civics_candidacy_stage_ddhq") }}
     ),
 
-    -- Three-way merge for 2026+ data. BR, TS, and DDHQ int models all expose
-    -- shared canonical gp_* IDs via int__civics_er_canonical_ids when Splink
-    -- clustered the row, so a full outer join on gp_candidacy_stage_id
-    -- merges matched triples; unmatched rows pass through as new rows with
-    -- NULLs on the absent providers (e.g. DDHQ-only races where Splink
-    -- found no BR/TS counterpart).
+    -- Each provider is wrapped with its Splink cluster_id (looked up from
+    -- stg_er_source__clustered_candidacy_stages on the provider's raw key).
+    -- The FOJ below joins on cluster_id with a self-prefixed
+    -- gp_candidacy_stage_id fallback, which means cluster members merge into
+    -- one mart row regardless of which providers are present — including
+    -- TS+DDHQ-only and DDHQ-only clusters where canonical_ids' BR-anchored
+    -- crosswalk doesn't fire. Records that didn't go through Splink fall
+    -- back to a self-key that's unique per provider record.
+    br_with_cluster as (
+        select
+            br.*,
+            cw.cluster_id,
+            coalesce(cw.cluster_id, 'self_' || br.gp_candidacy_stage_id) as merge_key
+        from {{ ref("int__civics_candidacy_stage_ballotready") }} as br
+        left join
+            {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
+            on cw.source_name = 'ballotready'
+            and cw.br_candidacy_id = br.br_candidacy_id
+    ),
+
+    ts_with_cluster as (
+        select
+            ts.*,
+            cw.cluster_id,
+            coalesce(cw.cluster_id, 'self_' || ts.gp_candidacy_stage_id) as merge_key
+        from {{ ref("int__civics_candidacy_stage_techspeed") }} as ts
+        left join
+            {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
+            on cw.source_name = 'techspeed'
+            and regexp_replace(cw.source_id, '__(primary|general|runoff)$', '')
+            = ts.source_candidate_id
+            and cw.election_date = ts.election_stage_date
+    ),
+
+    ddhq_with_cluster as (
+        select
+            ddhq.*,
+            cw.cluster_id,
+            coalesce(cw.cluster_id, 'self_' || ddhq.gp_candidacy_stage_id) as merge_key
+        from ddhq
+        left join
+            {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
+            on cw.source_name = 'ddhq'
+            and cw.source_id = ddhq.source_candidate_id || '_' || ddhq.source_race_id
+    ),
+
     merged_since_2026 as (
         select
             coalesce(
@@ -117,21 +173,23 @@ with
             ddhq.is_uncontested,
             array_compact(
                 array(
-                    case
-                        when br.gp_candidacy_stage_id is not null then 'ballotready'
-                    end,
-                    case when ts.gp_candidacy_stage_id is not null then 'techspeed' end,
-                    case when ddhq.gp_candidacy_stage_id is not null then 'ddhq' end
+                    case when br.merge_key is not null then 'ballotready' end,
+                    case when ts.merge_key is not null then 'techspeed' end,
+                    case when ddhq.merge_key is not null then 'ddhq' end
                 )
-            ) as source_systems
-        from {{ ref("int__civics_candidacy_stage_ballotready") }} as br
+            ) as source_systems,
+            coalesce(br.cluster_id, ts.cluster_id, ddhq.cluster_id) as er_cluster_id,
+            -- Per-provider natural keys, NULL when that provider isn't in
+            -- the cluster.
+            br.br_candidacy_id,
+            ts.source_candidate_id as ts_source_candidate_id,
+            ddhq.source_candidate_id as ddhq_candidate_id,
+            ddhq.source_race_id as ddhq_race_id
+        from br_with_cluster as br
+        full outer join ts_with_cluster as ts on br.merge_key = ts.merge_key
         full outer join
-            {{ ref("int__civics_candidacy_stage_techspeed") }} as ts
-            on br.gp_candidacy_stage_id = ts.gp_candidacy_stage_id
-        full outer join
-            ddhq
-            on coalesce(br.gp_candidacy_stage_id, ts.gp_candidacy_stage_id)
-            = ddhq.gp_candidacy_stage_id
+            ddhq_with_cluster as ddhq
+            on coalesce(br.merge_key, ts.merge_key) = ddhq.merge_key
     ),
 
     combined as (
@@ -174,6 +232,11 @@ select
     es.is_serve_icp,
     es.is_win_supersize_icp,
     deduplicated.source_systems,
+    deduplicated.er_cluster_id,
+    deduplicated.br_candidacy_id,
+    deduplicated.ts_source_candidate_id,
+    deduplicated.ddhq_candidate_id,
+    deduplicated.ddhq_race_id,
     deduplicated.created_at,
     deduplicated.updated_at
 

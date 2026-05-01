@@ -909,6 +909,32 @@ models:
         data_tests:
           - not_null
 
+      - name: er_cluster_id
+        description: >
+          Splink cluster_id when this row went through entity resolution,
+          else NULL. NOT stable across reruns; do not use as a foreign key.
+
+      - name: br_candidacy_id
+        description: >
+          BallotReady's native candidacy ID. Populated only when 'ballotready'
+          is in source_systems.
+
+      - name: ts_source_candidate_id
+        description: >
+          TechSpeed's native candidate code. Populated only when 'techspeed'
+          is in source_systems.
+
+      - name: ddhq_candidate_id
+        description: >
+          DDHQ's native candidate_id (string-cast). Populated only when
+          'ddhq' is in source_systems. Pairs with ddhq_race_id as DDHQ's
+          compound natural key.
+
+      - name: ddhq_race_id
+        description: >
+          DDHQ's native ddhq_race_id (string-cast). Populated only when
+          'ddhq' is in source_systems. Pairs with ddhq_candidate_id.
+
     tests:
       - dbt_utils.expression_is_true:
           arguments:
