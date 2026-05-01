@@ -1512,6 +1512,10 @@ sources:
 
     tables:
       - name: clustered_candidacy_stages
+        # Date-suffixed snapshot from the 2026-04-30 matcha run (er-audit/
+        # prematch-candidacy-stages-2026-04-30 branch). Update the identifier
+        # when promoting a new run; staging models stay unchanged.
+        identifier: clustered_candidacy_stages20260430
         description: >
           Cluster assignments produced by Splink's connected-components clustering
           (threshold: 0.95 match probability). Each row is a single candidacy-stage record
@@ -1521,6 +1525,7 @@ sources:
           unmatched records.
 
       - name: pairwise_candidacy_stages
+        identifier: pairwise_candidacy_stages20260430
         description: >
           Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),
           after post-prediction filters for person identity, race-level agreement, and

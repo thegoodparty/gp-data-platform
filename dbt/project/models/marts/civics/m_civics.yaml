@@ -909,6 +909,38 @@ models:
         data_tests:
           - not_null
 
+      - name: er_cluster_id
+        description: >
+          Splink cluster_id when this row went through entity resolution,
+          else NULL. Internal — used as the merge key in the mart's FOJ and
+          for diagnostic joins. Note that Splink cluster_ids are NOT
+          guaranteed stable across reruns; do not use as a foreign key.
+
+      - name: br_candidacy_id
+        description: >
+          BallotReady's native candidacy ID. Populated only when 'ballotready'
+          is in source_systems. Drives the relationships test on
+          int__civics_candidacy_stage_ballotready.br_candidacy_id, which
+          asserts every raw BR record reaches the mart.
+
+      - name: ts_source_candidate_id
+        description: >
+          TechSpeed's native candidate code. Populated only when 'techspeed'
+          is in source_systems. Drives the relationships test on
+          int__civics_candidacy_stage_techspeed.source_candidate_id.
+
+      - name: ddhq_candidate_id
+        description: >
+          DDHQ's native candidate_id (string-cast). Populated only when
+          'ddhq' is in source_systems. Half of DDHQ's compound natural key
+          (paired with ddhq_race_id) and drives the relationships test on
+          int__civics_candidacy_stage_ddhq.source_candidate_id.
+
+      - name: ddhq_race_id
+        description: >
+          DDHQ's native ddhq_race_id (string-cast). Populated only when
+          'ddhq' is in source_systems. Pairs with ddhq_candidate_id.
+
     tests:
       - dbt_utils.expression_is_true:
           arguments:

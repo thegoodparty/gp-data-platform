@@ -419,6 +419,11 @@ select
     nullif(phone, '') as phone,
     try_cast(br_race_id as int) as br_race_id,
     nullif(lower(trim(official_office_name)), '') as official_office_name,
+    -- Normalized token array for Splink ArrayIntersectLevel office-overlap
+    -- match. Captures locality + r-N school-district codes (e.g. DDHQ
+    -- "lincoln county r-iv" → ["lincoln","r-4"], BR "winfield r-4 school
+    -- board" → ["winfield","r-4"]) so cross-source naming variants intersect.
+    {{ office_name_tokens("official_office_name") }} as official_office_name_tokens,
     nullif(br_candidacy_id, '') as br_candidacy_id,
     nullif(seat_name, '') as seat_name,
     partisan_type
