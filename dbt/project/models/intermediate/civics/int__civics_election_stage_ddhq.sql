@@ -20,7 +20,7 @@ with
             any_value(election_stage) as stage_type,
             any_value(election_date) as election_date,
 
-            any_value(state_name) as state,
+            any_value(state) as state,
             any_value(state_postal_code) as state_postal_code,
 
             any_value(state_postal_code)

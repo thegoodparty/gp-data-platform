@@ -25,6 +25,16 @@ with
             = 1
     ),
 
+    -- Per-candidacy DDHQ match flag from the legacy LLM matcher. A candidacy
+    -- can have multiple match rows (one per stage); collapse to a single
+    -- boolean before joining so we don't fan out the candidacies grain.
+    ddhq_match_by_candidacy as (
+        select gp_candidacy_id, bool_or(coalesce(has_match, false)) as has_ddhq_match
+        from {{ ref("int__gp_ai_election_match") }}
+        where gp_candidacy_id is not null
+        group by gp_candidacy_id
+    ),
+
     candidacies as (
         select
             -- Identifiers
@@ -78,6 +88,11 @@ with
             cast(cast(tbl_companies.win_number as float) as int) as win_number,
             tbl_companies.win_number_model,
 
+            -- DDHQ provenance: true when the legacy LLM matcher linked this
+            -- candidacy to a DDHQ race. Drives 'ddhq' membership in the
+            -- mart's source_systems array for archive_2025 rows.
+            coalesce(tbl_ddhq_match.has_ddhq_match, false) as has_ddhq_match,
+
             -- loading data
             tbl_companies.created_at,
             tbl_companies.updated_at
@@ -95,6 +110,9 @@ with
         left join
             {{ ref("stg_model_predictions__viability_scores") }} as viability_scores
             on tbl_companies.company_id = viability_scores.id
+        left join
+            ddhq_match_by_candidacy as tbl_ddhq_match
+            on tbl_companies.gp_candidacy_id = tbl_ddhq_match.gp_candidacy_id
     ),
 
     -- Filter to elections on or before 2025-12-31
@@ -162,6 +180,7 @@ select
     viability_score,
     win_number,
     win_number_model,
+    has_ddhq_match,
     created_at,
     updated_at
 

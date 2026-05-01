@@ -372,3 +372,129 @@ models:
           Raw PMF survey option value. Populated for PMF surveys (e.g. survey_id 8, 12).
           Values: Option 1 (Very Disappointed), Option 2 (Somewhat Disappointed),
           Not disappointed, N/A - I no longer use GoodParty.
+  - name: stg_airbyte_source__hubspot_api_engagements_calls
+    description: >
+      Staged HubSpot Call engagements. One row per call activity logged
+      in HubSpot. Sourced from the Airbyte HubSpot connector's
+      "Engagements Calls" stream. Airbyte stores HubSpot properties as
+      flat `properties_*`-prefixed columns; this staging model strips
+      that prefix so downstream queries use the names from the HubSpot
+      calls API docs. Use this for connect-rate analysis on the
+      win/serve funnel — calls associate to contacts via the `contacts`
+      JSON array column (lateral-flatten and join to
+      `stg_airbyte_source__hubspot_api_contacts.id`); the
+      `hs_call_callee_object_*` fields are sparsely populated and
+      cover only ~2.6% of calls.
+    columns:
+      - name: id
+        description: HubSpot call engagement ID. Primary key.
+        data_tests:
+          - not_null
+          - unique
+      - name: archived
+        description: Whether the call has been archived in HubSpot.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: created_at
+        description: When the call engagement was created in HubSpot.
+      - name: updated_at
+        description: When the call engagement was last modified in HubSpot.
+      - name: contacts
+        description: >
+          JSON array of HubSpot contact IDs associated with this call.
+          Use this (rather than `hs_call_callee_object_id`) to join
+          calls to contacts — the engagement->contact association
+          covers all calls, while `hs_call_callee_object_id` is
+          populated for only ~2.6% of rows.
+      - name: companies
+        description: JSON array of HubSpot company IDs associated with this call.
+      - name: deals
+        description: JSON array of HubSpot deal IDs associated with this call.
+      - name: tickets
+        description: JSON array of HubSpot ticket IDs associated with this call.
+      - name: hs_timestamp
+        description: >
+          When the call happened. Anchors the call on the contact's
+          HubSpot record timeline.
+      - name: hs_call_direction
+        description: Call direction from the user's perspective.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [INBOUND, OUTBOUND]
+      - name: hs_call_status
+        description: Current call state.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - BUSY
+                  - CALLING_CRM_USER
+                  - CANCELED
+                  - COMPLETED
+                  - CONNECTING
+                  - FAILED
+                  - IN_PROGRESS
+                  - NO_ANSWER
+                  - QUEUED
+                  - RINGING
+                  - MISSED
+      - name: hs_call_disposition
+        description: >
+          Call outcome. **Stored as an internal HubSpot GUID, not a
+          human-readable label.** The GUID -> label mapping (e.g.
+          "Connected", "No answer", "Left voicemail") lives in HubSpot
+          Settings (Objects -> Activities -> Calls -> "Call and meeting
+          outcomes") and is not synced via Airbyte. To compute connect
+          rate, you must first map the GUIDs to labels by hand. A
+          follow-up may add this mapping as a dbt seed.
+      - name: hs_call_duration
+        description: Call length in milliseconds (DECIMAL).
+      - name: hs_call_callee_object_id
+        description: >
+          ID of the HubSpot record the call is explicitly associated
+          with via the callee field. Sparse (~2.6% populated) — for
+          general call-to-contact joins, prefer the top-level
+          `contacts` JSON array column.
+      - name: hs_call_callee_object_type
+        description: >
+          Type of the explicitly-associated callee record. Sparse
+          (~2.6% populated). Observed values: `CONTACT`, `COMPANY`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [CONTACT, COMPANY]
+      - name: hs_call_from_number
+        description: Originating phone number. E.164 or standard format.
+      - name: hs_call_to_number
+        description: Receiving phone number. E.164 or standard format.
+      - name: hs_call_has_voicemail
+        description: >
+          Whether voicemail was left. **Stored as string `"true"` /
+          `"false"` (not boolean) by Airbyte.** Mostly null — only
+          ~0.5% of calls have a voicemail value recorded.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["true", "false"]
+      - name: hs_call_recording_url
+        description: HTTPS URL to the call recording (.mp3 or .wav).
+      - name: hs_call_body
+        description: Free-text call notes/description.
+      - name: hs_call_title
+        description: Call title/subject.
+      - name: hs_call_source
+        description: Origin system that logged the call (e.g. `VOIP`).
+      - name: hs_activity_type
+        description: >
+          Account-defined call category (free text). Sparse (~5.6%
+          populated).
+      - name: hubspot_owner_id
+        description: >
+          HubSpot user/owner the call is assigned to. Joins to
+          `stg_airbyte_source__hubspot_api_owners.id`. Stored as
+          string by Airbyte.
+      - name: _airbyte_extracted_at
+        description: Timestamp Airbyte extracted this row from HubSpot.

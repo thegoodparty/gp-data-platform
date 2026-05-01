@@ -369,9 +369,25 @@ models:
 
   - name: candidacy
     description: >
-      Candidacies combining 2025 HubSpot archive and 2026+ BallotReady data.
+      Candidacies combining 2025 HubSpot archive and 2026+ BallotReady,
+      TechSpeed, and DDHQ data.
 
       Grain: One row per candidacy.
+
+      Provider precedence: BR > TS > DDHQ for every column. DDHQ contributes
+      only as a fallback (and only for fields it carries: party_affiliation,
+      candidate_office, official_office_name, office_level, office_type,
+      candidacy_result, *_election_date). DDHQ supplies Won/Lost as
+      candidacy_result — it never carries Runoff/Withdrew/Not on Ballot/
+      Cannot Determine.
+
+      DDHQ-only candidacies (DDHQ races with no Splink match to BR/TS/gp_api)
+      appear as new rows with source_systems = ['ddhq'] and BR/TS-only fields
+      (product_campaign_id, hubspot_*, viability_score, win_number,
+      verification status, br_position_database_id) all NULL. Pre-2026
+      DDHQ-derived candidacies still flow through the 2025 HubSpot archive
+      path (limited to GP-product candidates the LLM matcher linked to a
+      DDHQ race); the new live path covers 2026+.
 
     columns:
       - name: gp_candidacy_id
@@ -391,7 +407,15 @@ models:
                 field: gp_candidate_id
 
       - name: gp_election_id
-        description: Foreign key to election table (no relationship test - matches m_general behavior)
+        description: Foreign key to election table.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('election')
+                field: gp_election_id
+              config:
+                where: "gp_election_id is not null"
+                severity: warn
 
       - name: product_campaign_id
         description: >
@@ -597,9 +621,18 @@ models:
 
   - name: candidate
     description: >
-      Candidates combining 2025 HubSpot archive and 2026+ BallotReady data.
+      Candidates combining 2025 HubSpot archive and 2026+ BallotReady,
+      TechSpeed, and DDHQ data.
 
       Grain: One row per candidate.
+
+      Provider precedence: BR > TS > DDHQ. DDHQ contributes only first_name,
+      last_name, full_name, and state at this grain — every other column
+      (HubSpot, contact, social, prod_db_user_id) is BR/TS-only.
+      DDHQ-only candidates (DDHQ candidacies with no Splink match) appear
+      as new rows with source_systems = ['ddhq']; the mart's `state` column
+      receives DDHQ's state_postal_code (2-letter code) to match BR/TS
+      convention at this layer.
 
     columns:
       - name: gp_candidate_id
@@ -692,10 +725,25 @@ models:
 
   - name: candidacy_stage
     description: >
-      Candidacy stages (primary, general, primary runoff, general runoff results) combining 2025 HubSpot/DDHQ archive
-      and 2026+ BallotReady data.
+      Candidacy stages (primary, general, primary runoff, general runoff
+      results) combining 2025 HubSpot/DDHQ archive and 2026+ BallotReady,
+      TechSpeed, and DDHQ data.
 
       Grain: One row per candidacy stage (candidacy + election stage combination).
+
+      Provider precedence: DDHQ wins for election outcome columns
+      (is_winner, election_result, election_result_source, votes_received,
+      is_uncontested) — DDHQ is the authoritative source for past-race
+      results where it has coverage. BR > TS > DDHQ for descriptive columns
+      (candidate_name, source_*, candidate_party, election_stage_date,
+      timestamps). LLM-match metadata (match_confidence, match_reasoning,
+      match_top_candidates, has_match) only exists on the BR/TS legacy
+      paths; DDHQ has no equivalent.
+
+      DDHQ-only candidacy_stages (no Splink match to BR/TS) appear as new
+      rows with source_systems = ['ddhq']. election_result_source identifies
+      which provider supplied the result for each row (ddhq, ballotready,
+      techspeed, or hubspot for legacy archive rows).
 
     columns:
       - name: gp_candidacy_stage_id
@@ -767,8 +815,16 @@ models:
 
       - name: election_result_source
         description: >
-          Source of the election_result value.
-          Values: 'hubspot', 'ddhq', 'ballotready', or null if no result available.
+          Source of the election_result / is_winner / votes_received values.
+          Values: 'ddhq' (preferred when DDHQ covers the race), 'ballotready'
+          (BR-supplied results), 'techspeed' (TS-supplied results),
+          'hubspot' (2025-archive HubSpot stage results), or null if no
+          result is available. DDHQ wins precedence for past-race outcomes
+          where it has coverage.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ddhq", "ballotready", "techspeed", "hubspot"]
 
       - name: match_confidence
         description: >
@@ -797,7 +853,21 @@ models:
           available. When true, vote counts and election results are populated.
 
       - name: votes_received
-        description: Number of votes received in this election stage
+        description: >
+          Number of votes received in this election stage. Stored as a
+          string because BallotReady occasionally carries the literal
+          "uncontested" alongside numeric counts. DDHQ wins for this column
+          when DDHQ has data; BR/TS otherwise.
+
+      - name: is_uncontested
+        description: >
+          Whether the race for this candidacy stage was uncontested,
+          sourced from DDHQ. NULL for BR/TS-only rows (those providers
+          don't carry uncontested status at the candidacy_stage grain).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: election_stage_date
         description: Date of the election stage
@@ -846,9 +916,18 @@ models:
 
   - name: election
     description: >
-      Elections combining 2025 HubSpot archive and 2026+ BallotReady data.
+      Elections combining 2025 HubSpot archive and 2026+ BallotReady,
+      TechSpeed, and DDHQ data.
 
       Grain: One row per election.
+
+      Provider precedence: BR > TS > DDHQ for descriptive columns; TS wins
+      for filing_deadline / population / is_uncontested / is_open_seat (BR
+      doesn't carry those at this grain), with DDHQ supplying is_uncontested
+      as a fallback. has_ddhq_match is true when either the 2025 archive
+      linked a DDHQ race to this election OR a 2026+ DDHQ row clustered
+      into this election via Splink. The mart's `state` column receives
+      DDHQ's state_postal_code (2-letter code) to match BR/TS convention.
 
     columns:
       - name: gp_election_id
@@ -944,9 +1023,15 @@ models:
 
       - name: has_ddhq_match
         description: >
-          Whether DDHQ election results data is available for this election.
-          Only applicable to 2025 elections, as DDHQ was the results source
-          for that cycle. Always NULL for 2026+ BallotReady-sourced elections.
+          True when DDHQ election results data is available for this
+          election: either the 2025 archive linked a DDHQ race or a 2026+
+          DDHQ row clustered into this election via Splink. False otherwise.
+          Should agree with `'ddhq' in source_systems`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
       - name: br_position_database_id
         description: >
@@ -1078,13 +1163,28 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "has_ddhq_match = array_contains(source_systems, 'ddhq')"
 
   - name: election_stage
     description: >
-      Election stages (primary, general, primary runoff, general runoff) combining 2025 DDHQ archive
-      and 2026+ BallotReady data.
+      Election stages (primary, general, primary runoff, general runoff)
+      combining 2025 DDHQ archive and 2026+ BallotReady, TechSpeed, and
+      DDHQ data.
 
       Grain: One row per election stage.
+
+      Provider precedence: BR > TS > DDHQ for descriptive columns
+      (stage_type, election_date, race_name, is_primary, is_runoff,
+      is_retention, number_of_seats). total_votes_cast carries the literal
+      'uncontested' from BR as a sentinel — when present, DDHQ's numeric
+      count overrides. ddhq_race_id falls back to DDHQ's own ID when BR
+      has no value.
+
+      DDHQ-only stages (no Splink match) appear as new rows with
+      source_systems = ['ddhq']; BR-only fields (br_election_id,
+      br_position_id, partisan_type, filing_*) are NULL.
 
     columns:
       - name: gp_election_stage_id

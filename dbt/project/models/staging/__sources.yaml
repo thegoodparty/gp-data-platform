@@ -132,6 +132,14 @@ sources:
         description: raw data load from HubSpot data model
       - name: hubspot_api_engagements
         description: raw data load from HubSpot data model
+      - name: hubspot_api_engagements_calls
+        description: >
+          HubSpot Call engagements ingested via the Airbyte HubSpot
+          source's "Engagements Calls" stream. One row per call activity
+          logged in HubSpot. Call properties (e.g. hs_call_disposition,
+          hs_call_duration) are flat columns prefixed `properties_` —
+          the staging model `stg_airbyte_source__hubspot_api_engagements_calls`
+          strips the prefix.
       - name: hubspot_api_owners_archived
         description: raw data load from HubSpot data model
       - name: hubspot_api_owners
@@ -1532,17 +1540,18 @@ sources:
       - name: clustered_elected_officials
         description: >
           Cluster assignments from the elected officials entity resolution pipeline.
-          Each row is an elected official record from BallotReady or TechSpeed, annotated
-          with a cluster_id grouping records believed to represent the same person.
-          Unlike candidacy stages, the cluster grain is person (multi-term records cluster
-          together). Uses 0.95 match probability threshold with post-prediction filters
-          for person identity and office compatibility.
+          Match groups bridging gp-api elected-office records to BR+TS terms. Cluster grain
+          is term (one row per BR+TS term or gp-api elected-office record). Mart owns person
+          rollup via br_candidate_id, and term selection within a multi-term cluster via
+          sworn_in_date proximity to term_start_date. Uses 0.95 match probability threshold
+          with post-prediction filters for office compatibility.
 
       - name: pairwise_elected_officials
         description: >
           Scored elected official pairs from Splink prediction (threshold: 0.01 match
-          probability), after post-prediction filters for person identity and office
-          compatibility. Each row is a pair of elected official records with Splink match
-          weights, match probabilities, per-comparison gamma levels (including office_type
-          and office_level), and Bayes factors. Includes 10 comparisons vs 9 for candidacy
-          stages (adds office_type and office_level, drops election_date).
+          probability), after post-prediction filters for office compatibility. Each row is a
+          pair of elected official records with Splink match weights, match probabilities,
+          per-comparison gamma levels (including office_type, office_level, and
+          ballotready_position_id), and Bayes factors. Includes 11 comparisons vs 9 for
+          candidacy stages (adds office_type, office_level, and ballotready_position_id;
+          drops election_date).

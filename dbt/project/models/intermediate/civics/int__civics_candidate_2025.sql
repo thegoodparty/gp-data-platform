@@ -4,6 +4,18 @@
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)
 with
+    -- Per-candidacy DDHQ match flag from the legacy LLM matcher. Joined on
+    -- the company-row's gp_candidacy_id; propagated to candidate grain via
+    -- a bool_or window once gp_candidate_id is known. We don't reuse
+    -- int__civics_candidacy_2025 here to avoid a circular dependency
+    -- (candidacy_2025 already imports candidate_2025).
+    ddhq_match_by_candidacy as (
+        select gp_candidacy_id, bool_or(coalesce(has_match, false)) as has_ddhq_match
+        from {{ ref("int__gp_ai_election_match") }}
+        where gp_candidacy_id is not null
+        group by gp_candidacy_id
+    ),
+
     ranked_candidates as (
         select
             tbl_hs_companies.contact_id as hubspot_contact_id,
@@ -33,6 +45,9 @@ with
             tbl_hs_companies.created_at,
             tbl_hs_companies.updated_at,
 
+            -- Per-row DDHQ flag; rolled up to candidate grain in candidates_with_id.
+            coalesce(tbl_ddhq_match.has_ddhq_match, false) as company_has_ddhq_match,
+
             -- Rank records by updated_at when prod_db_user_id is not null
             case
                 when tbl_gp_user.id is not null
@@ -51,6 +66,9 @@ with
         left join
             {{ ref("stg_airbyte_source__gp_api_db_user") }} as tbl_gp_user
             on tbl_hs_companies.contact_id = tbl_gp_user.meta_data:hubspotid::string
+        left join
+            ddhq_match_by_candidacy as tbl_ddhq_match
+            on tbl_hs_companies.gp_candidacy_id = tbl_ddhq_match.gp_candidacy_id
         qualify
             row_number() over (
                 partition by tbl_hs_companies.gp_candidacy_id
@@ -89,6 +107,24 @@ with
             twitter_handle,
             facebook_url,
             instagram_handle,
+            -- Candidate-grain DDHQ flag: true if any of the candidate's
+            -- candidacies had a DDHQ match. Computed before the final
+            -- gp_candidate_id dedup so all surviving rows agree.
+            bool_or(company_has_ddhq_match) over (
+                partition by
+                    {{
+                        generate_salted_uuid(
+                            fields=[
+                                "first_name",
+                                "last_name",
+                                "state",
+                                "birth_date",
+                                "email",
+                                "phone_number",
+                            ]
+                        )
+                    }}
+            ) as has_ddhq_match,
             created_at,
             updated_at
         from ranked_candidates
@@ -121,6 +157,7 @@ select
     archived_candidates.twitter_handle,
     archived_candidates.facebook_url,
     archived_candidates.instagram_handle,
+    archived_candidates.has_ddhq_match,
     archived_candidates.created_at,
     archived_candidates.updated_at
 
