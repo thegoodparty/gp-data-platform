@@ -134,10 +134,6 @@ with
             and cw.source_id = ddhq.source_candidate_id || '_' || ddhq.source_race_id
     ),
 
-    -- Three-way merge for 2026+ data, joined on Splink cluster_id (with a
-    -- self-key fallback for un-clustered records). All cluster members —
-    -- regardless of provider mix — share a merge_key and collapse into one
-    -- row with the full source_systems array.
     merged_since_2026 as (
         select
             coalesce(
@@ -176,10 +172,8 @@ with
                 )
             ) as source_systems,
             coalesce(br.cluster_id, ts.cluster_id, ddhq.cluster_id) as er_cluster_id,
-            -- Per-provider native primary keys, NULL when that provider isn't
-            -- in the cluster. Drives `relationships` tests on each int model
-            -- to confirm every raw record reaches a mart row tagged with its
-            -- provider in source_systems.
+            -- Per-provider natural keys, NULL when that provider isn't in
+            -- the cluster.
             br.br_candidacy_id,
             ts.source_candidate_id as ts_source_candidate_id,
             ddhq.source_candidate_id as ddhq_candidate_id,

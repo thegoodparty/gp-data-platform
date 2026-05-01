@@ -1,25 +1,15 @@
 {% macro office_name_tokens(col) %}
-    -- Build a normalized array of meaningful tokens from an office-name string,
-    -- for use with Splink's ArrayIntersectLevel as a fallback office-overlap
-    -- match level (mirrors how first_name_aliases drives nickname matching).
+    -- Normalized token array for Splink ArrayIntersectLevel office-overlap.
     --
-    -- Punctuation is preserved on tokens (matches the existing locality-token
-    -- check in scripts/constants.py): "(juneau" stays distinct from "juneau"
-    -- so a WI town-of-X (county) ↔ X-county-supervisor pair correctly fails
-    -- to overlap, even though both contain a "juneau"-ish substring.
+    -- Punctuation is intentionally preserved so e.g. "(juneau" stays distinct
+    -- from "juneau" — a WI town-of-X (county) row must not overlap with an
+    -- X-county-supervisor row even though both contain a "juneau"-ish token.
     --
-    -- Steps:
-    -- 1. Lowercase
-    -- 2. Collapse "r- iii" (DDHQ form with internal space) → "r-iii"
-    -- 3. Inject "r-N" after "no. N" so DDHQ's MO "Reorganized School
-    -- District No. 4" emits an "r-4" token that overlaps with BR's
-    -- "Blue Springs R-4 School Board"
-    -- 4. Split on whitespace
-    -- 5. Per-token CASE: normalize roman-numeral school district codes
-    -- (r-i ↔ r-1, r-ii ↔ r-2, …) so DDHQ's "<county> County R-IV" shares
-    -- an "r-4" token with BR's "<city> R-4 School Board"
-    -- 6. Drop length≤1, pure-digit, and stop-word tokens (stop-word list
-    -- mirrors OFFICE_STOP_WORDS in scripts/constants.py)
+    -- Roman-numeral and "No. N" → "r-N" rewrites let DDHQ "Lincoln County
+    -- R-IV School District" intersect with BR "Winfield R-4 School Board".
+    --
+    -- Stop-word list mirrors OFFICE_STOP_WORDS in the matcha repo's
+    -- scripts/constants.py — keep both in sync when editing.
     filter(
         transform(
             split(
