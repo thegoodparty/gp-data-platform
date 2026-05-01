@@ -2,18 +2,33 @@
 -- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
 -- DDHQ + gp_api (Product Database).
 --
--- Provider precedence (2026+ branch):
--- - gp_api > BR > TS > DDHQ for descriptive columns (candidate_office,
--- official_office_name, office_level, office_type, party_affiliation,
--- is_partisan, general_election_date, br_position_database_id,
--- created_at, updated_at, hubspot_contact_id).
--- - DDHQ > BR > TS > gp_api for candidacy_result (DDHQ remains authoritative
--- for results; gp_api's did_win is candidate-self-reported).
--- - gp_api wins (only source) for product_campaign_id, is_pledged,
--- is_verified, verification_status_reason.
--- - is_incumbent uses TS > BR (TS dominates: 51k vs 0); gp_api/DDHQ excluded.
--- - office_type uses gp_api > BR > DDHQ (TS doesn't carry it at this grain).
--- - hubspot_company_ids stays BR-only.
+-- Provider precedence (2026+ branch), grouped by chain:
+-- gp_api > BR > TS > DDHQ:
+-- party_affiliation, candidate_office, official_office_name, office_level,
+-- general_election_date, created_at, updated_at
+-- (these are the descriptive cols that DDHQ also supplies — Jinja-rendered
+-- via gp_api_wins_cols ∩ ddhq_fallback_cols)
+-- gp_api > BR > TS:
+-- hubspot_contact_id, candidate_id_source, is_partisan,
+-- br_position_database_id
+-- (Jinja-rendered for the first three; explicit for br_position_database_id
+-- since DDHQ doesn't carry it)
+-- gp_api > BR > DDHQ:
+-- office_type (TS doesn't carry this at this grain)
+-- DDHQ > BR > TS > gp_api:
+-- candidacy_result (DDHQ remains authoritative for results;
+-- gp_api's did_win is candidate-self-reported)
+-- gp_api only (PD-native, no other provider supplies):
+-- product_campaign_id, is_pledged, is_verified, verification_status_reason
+-- TS > BR (gp_api/DDHQ excluded):
+-- is_incumbent (TS:51k populated vs BR:0)
+-- BR > TS > DDHQ (gp_api carries no value):
+-- is_open_seat
+-- BR > TS (gp_api only carries general_election_date):
+-- primary_election_date, primary_runoff_election_date,
+-- general_runoff_election_date
+-- BR-only:
+-- hubspot_company_ids, viability_score, win_number, win_number_model
 {%- set gp_api_wins_cols = [
     "hubspot_contact_id",
     "candidate_id_source",
