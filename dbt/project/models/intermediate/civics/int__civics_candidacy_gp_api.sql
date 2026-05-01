@@ -4,7 +4,14 @@
 -- Grain: one row per latest-version campaign with an election_date.
 -- Schema aligns with int__civics_candidacy_ballotready for the union.
 with
-    latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
+    latest_campaigns as (
+        select *
+        from {{ ref("campaigns") }}
+        where
+            is_latest_version
+            and not coalesce(is_demo, false)
+            and ballotready_position_id is not null
+    ),
 
     -- Source user fields from the users mart, not campaigns' denormalized
     -- user_* fields, to keep the person hash aligned with candidate_gp_api
