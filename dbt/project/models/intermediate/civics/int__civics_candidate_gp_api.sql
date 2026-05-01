@@ -4,13 +4,27 @@
 -- Grain: one row per user with campaign_count > 0. Schema aligns with
 -- int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
-    users_filtered as (
-        select user_id, first_name, last_name, email, phone, created_at, updated_at
-        from {{ ref("users") }}
-        where campaign_count > 0
+    latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
+
+    users_with_real_campaign as (
+        select distinct user_id
+        from latest_campaigns
+        where not coalesce(is_demo, false) and ballotready_position_id is not null
     ),
 
-    latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
+    users_filtered as (
+        select
+            u.user_id,
+            u.first_name,
+            u.last_name,
+            u.email,
+            u.phone,
+            u.created_at,
+            u.updated_at
+        from {{ ref("users") }} as u
+        inner join users_with_real_campaign as uw on u.user_id = uw.user_id
+        where u.campaign_count > 0
+    ),
 
     user_state as (
         select user_id, campaign_state as state
