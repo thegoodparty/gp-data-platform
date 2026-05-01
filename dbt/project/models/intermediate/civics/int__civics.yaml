@@ -160,6 +160,17 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
+      - name: has_ddhq_match
+        description: >
+          Whether DDHQ contributed any stage-level data to this 2025 candidacy
+          (true if at least one candidacy_stage row had has_match = true in
+          int__gp_ai_election_match). Drives the 'ddhq' tag emitted into the
+          archive_2025 source_systems array in the candidacy mart.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
