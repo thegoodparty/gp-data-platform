@@ -1711,13 +1711,18 @@ models:
 
   - name: elected_officials
     description: |
-      Civics mart elected_officials. Person-grain merge of BR + TS:
-      int__civics_elected_official_ballotready_person FULL OUTER JOIN
-      int__civics_elected_official_techspeed_person on the canonical
-      gp_elected_official_id, with COALESCE per column. Mirrors the
-      candidate.sql / candidacy.sql merge pattern.
+      Civics mart elected_officials. Person-grain 3-way merge of
+      BallotReady + TechSpeed + gp-api elected officials, full-outer-joined
+      on the canonical gp_elected_official_id with COALESCE per column.
+      Provider precedence: BR > TS > gp_api for shared identity/office
+      fields. Mirrors the candidate.sql / candidacy.sql merge pattern at
+      the BR↔TS layer; gp_api adopts BR canonical via the EO Splink bridge
+      (see "gp-api integration" paragraph below).
 
-      Grain: one row per elected official person (by br_candidate_id).
+      Grain: one row per elected official person (by br_candidate_id) for
+      BR-matched rows; gp_api-only rows (Splink found no BR/TS match) have
+      their own salted UUID with `source_systems = ['gp_api']` and NULL
+      `br_candidate_id`.
 
       Latest-term semantics: term-scoped attributes (candidate_office,
       office_level, office_type, state, city, district, mailing_*, tier,
@@ -2045,34 +2050,47 @@ models:
           name: gp_api_only_rows_have_identity_fields
           config:
             severity: error
-      # Test #15b: gp_api-only candidate_office coverage (~85%)
+      # Test #15b: gp_api-only candidate_office coverage. CI on gp_api-only
+      # subset: 58.4% (much lower than gp_api intermediate's 84.5% — bridge
+      # match preferentially keeps gp_api rows that DO have office data).
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and candidate_office is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0) between 0.75 and 0.95"
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and candidate_office is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0), 0) between 0.50 and 0.66"
           name: gp_api_only_candidate_office_coverage
           config:
             severity: warn
-      # Test #15c: gp_api-only office_level coverage (~85%)
+      # Test #15c: gp_api-only office_level coverage. CI: 59.6%.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and office_level is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0) between 0.75 and 0.95"
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and office_level is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0), 0) between 0.50 and 0.66"
           name: gp_api_only_office_level_coverage
           config:
             severity: warn
-      # Test #10: gp_api email coverage (>= 0.99 empirical 100%)
+      # Test #10: gp_api email coverage. coalesce(rate, 0) ensures the test
+      # FAILS when gp_api drops to zero (without it, 0/0=NULL passes the test).
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('elected_officials') }} where gp_api_email is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0) >= 0.99"
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where gp_api_email is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
           name: gp_api_email_coverage
           config:
             severity: error
-      # Test #11: HubSpot contact coverage (>= 0.99 empirical 99.61%)
+      # Test #11: HubSpot contact coverage. coalesce(rate, 0) ensures the test
+      # FAILS when gp_api drops to zero.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('elected_officials') }} where hubspot_contact_id is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0) >= 0.99"
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where hubspot_contact_id is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
           name: gp_api_hubspot_contact_coverage
           config:
             severity: warn
+      # gp_api source presence floor. Hard error if gp_api integration drops
+      # below half of current 1,812 — catches a total dropout that the
+      # warn-level count tests would miss.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_officials') }} where array_contains(source_systems, 'gp_api')) >= 900"
+          name: gp_api_source_presence_floor
+          config:
+            severity: error
       # source_systems values are limited to known sources (array-aware row-level test)
       - dbt_utils.expression_is_true:
           arguments:

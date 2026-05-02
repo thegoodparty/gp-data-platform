@@ -3,6 +3,8 @@
 --
 -- Last name agreement should be >= 0.95 (empirical 97.9%).
 -- First name agreement should be >= 0.92 (empirical 94.5%).
+-- Test ALSO fails if total_pairs is zero — catches bridge dropout that would
+-- silently pass a NULL ratio comparison.
 with
     bridge_pairs as (
         select
@@ -25,15 +27,21 @@ with
     agreement_rates as (
         select
             count(*) as total_pairs,
-            count(*) filter (where lower(trim(gp_last)) = lower(trim(br_last)))
-            * 1.0
-            / count(*) as last_name_agreement,
-            count(*) filter (where lower(trim(gp_first)) = lower(trim(br_first)))
-            * 1.0
-            / count(*) as first_name_agreement
+            coalesce(
+                count(*) filter (where lower(trim(gp_last)) = lower(trim(br_last)))
+                * 1.0
+                / nullif(count(*), 0),
+                0
+            ) as last_name_agreement,
+            coalesce(
+                count(*) filter (where lower(trim(gp_first)) = lower(trim(br_first)))
+                * 1.0
+                / nullif(count(*), 0),
+                0
+            ) as first_name_agreement
         from bridge_pairs
     )
 
 select *
 from agreement_rates
-where last_name_agreement < 0.95 or first_name_agreement < 0.92
+where last_name_agreement < 0.95 or first_name_agreement < 0.92 or total_pairs = 0

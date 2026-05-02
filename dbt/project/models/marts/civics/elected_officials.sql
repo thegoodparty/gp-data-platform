@@ -5,8 +5,7 @@
 --
 -- Grain: One row per elected official (person, by br_candidate_id) for
 -- BR-matched rows; gp_api-only rows have their own salted UUID.
--- Today's row count: ~376,000 (~375,321 BR persons + ~675 gp_api-only).
--- Post-matcha-rerun: TBD.
+-- CI row count: 375,996 (375,321 BR persons + 675 gp_api-only).
 --
 -- gp_api adoption mechanism: gp_api person rollup adopts BR's
 -- gp_elected_official_id via the bridge for matched users; falls back to
