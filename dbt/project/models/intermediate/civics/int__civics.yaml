@@ -2305,6 +2305,14 @@ models:
         data_tests:
           - unique
           - not_null
+          - relationships:
+              arguments:
+                to: ref('candidate')
+                field: prod_db_user_id
+              config:
+                severity: warn
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: first_name
         data_tests:
@@ -2383,6 +2391,14 @@ models:
         data_tests:
           - unique
           - not_null
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: product_campaign_id
+              config:
+                severity: warn
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: candidate_id_source
         data_tests:
