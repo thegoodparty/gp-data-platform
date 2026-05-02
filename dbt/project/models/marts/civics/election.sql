@@ -1,11 +1,18 @@
 -- Civics mart election table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
+-- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
+-- DDHQ + gp_api.
 --
--- BallotReady is the authoritative spine for elections (positions). TS and
--- DDHQ int models remap clustered rows to BR's gp_election_id via
--- int__civics_er_canonical_ids, so a full outer join on gp_election_id merges
--- matched triples. Unmatched DDHQ-only elections pass through as new rows
--- (DDHQ's hashed gp_election_id) with source_systems = ['ddhq'].
+-- BallotReady is the authoritative spine for elections (positions). TS,
+-- DDHQ, and gp_api int models remap clustered rows to BR's gp_election_id
+-- via int__civics_er_canonical_ids, so a 4-way full outer join on
+-- gp_election_id merges matched rows. Unmatched DDHQ-only elections and
+-- gp_api-only / cluster-derived elections pass through as new rows.
+--
+-- gp_api carries only IDs + FK pointers to BR for descriptive fields; its
+-- descriptive columns are NULL by design and the FOJ coalesce always picks
+-- BR's values when present. gp_api's contribution is to source_systems
+-- membership and to surfacing election rows that gp_api participates in
+-- but BR/TS/DDHQ don't.
 --
 -- has_ddhq_match: true when either the 2025 archive linked a DDHQ race or a
 -- 2026+ DDHQ row clustered into this election via Splink. NULL otherwise.
@@ -65,24 +72,34 @@ with
     merged_since_2026 as (
         select
             coalesce(
-                br.gp_election_id, ts.gp_election_id, ddhq.gp_election_id
+                br.gp_election_id,
+                ts.gp_election_id,
+                ddhq.gp_election_id,
+                gp_api.gp_election_id
             ) as gp_election_id,
             {% for col in br_wins_cols %}
-                coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
+                coalesce(
+                    br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}, gp_api.{{ col }}
+                ) as {{ col }},
             {% endfor %}
-            -- has_ddhq_match must be handled outside the coalesce loop: BR
-            -- and TS hardcode it to false (non-null), so a coalesce would
-            -- always pick BR's false on Splink-matched BR+DDHQ rows. Derive
-            -- directly from join presence instead.
+            -- has_ddhq_match must be handled outside the coalesce loop: BR,
+            -- TS, and gp_api hardcode it to false (non-null), so a coalesce
+            -- would always pick BR's false on Splink-matched BR+DDHQ rows.
+            -- Derive directly from join presence instead.
             ddhq.gp_election_id is not null as has_ddhq_match,
             -- TS wins for these (BR always NULL on 2026+ for population/
             -- filing_deadline; TS populated from techspeed source). DDHQ
-            -- supplies is_uncontested as a fallback.
+            -- supplies is_uncontested as a fallback. gp_api is NULL by
+            -- design at the descriptive layer and contributes nothing here.
             {% for col in ts_wins_cols %}
-                coalesce(ts.{{ col }}, br.{{ col }}, ddhq.{{ col }}) as {{ col }},
+                coalesce(
+                    ts.{{ col }}, br.{{ col }}, ddhq.{{ col }}, gp_api.{{ col }}
+                ) as {{ col }},
             {% endfor %}
             coalesce(
-                br.br_position_database_id, ts.br_position_database_id
+                br.br_position_database_id,
+                ts.br_position_database_id,
+                gp_api.br_position_database_id
             ) as br_position_database_id,
             br.is_judicial,
             br.is_appointed,
@@ -91,7 +108,8 @@ with
                 array(
                     case when br.gp_election_id is not null then 'ballotready' end,
                     case when ts.gp_election_id is not null then 'techspeed' end,
-                    case when ddhq.gp_election_id is not null then 'ddhq' end
+                    case when ddhq.gp_election_id is not null then 'ddhq' end,
+                    case when gp_api.gp_election_id is not null then 'gp_api' end
                 )
             ) as source_systems
         from {{ ref("int__civics_election_ballotready") }} as br
@@ -100,6 +118,10 @@ with
             on br.gp_election_id = ts.gp_election_id
         full outer join
             ddhq on coalesce(br.gp_election_id, ts.gp_election_id) = ddhq.gp_election_id
+        full outer join
+            {{ ref("int__civics_election_gp_api") }} as gp_api
+            on coalesce(br.gp_election_id, ts.gp_election_id, ddhq.gp_election_id)
+            = gp_api.gp_election_id
     ),
 
     combined as (
@@ -138,17 +160,6 @@ with
             ) as general_runoff_election_date
         from {{ ref("election_stage") }}
         group by gp_election_id
-    ),
-
-    gp_api_membership as (
-        -- gp_api participation marker. No new int model at election grain
-        -- (per design: gp_api contributes no field values BR/TS/DDHQ don't
-        -- already author better here); only the source_systems array gets
-        -- 'gp_api' appended when any clustered or unclustered PD campaign
-        -- maps to this election.
-        select distinct gp_election_id
-        from {{ ref("int__civics_candidacy_gp_api") }}
-        where gp_election_id is not null
     )
 
 select
@@ -204,12 +215,7 @@ select
         )
     }}
     as is_win_supersize_icp,
-    array_compact(
-        array_append(
-            deduplicated.source_systems,
-            case when gp.gp_election_id is not null then 'gp_api' end
-        )
-    ) as source_systems,
+    deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 
@@ -218,4 +224,3 @@ left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
 left join stage_dates on deduplicated.gp_election_id = stage_dates.gp_election_id
-left join gp_api_membership as gp on deduplicated.gp_election_id = gp.gp_election_id

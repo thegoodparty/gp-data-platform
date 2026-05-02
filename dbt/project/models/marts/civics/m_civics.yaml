@@ -992,25 +992,27 @@ models:
   - name: election
     description: >
       Elections combining 2025 HubSpot archive and 2026+ BallotReady,
-      TechSpeed, and DDHQ data.
+      TechSpeed, DDHQ, and gp_api data.
 
       Grain: One row per election.
 
-      Provider precedence: BR > TS > DDHQ for descriptive columns; TS wins
-      for filing_deadline / population / is_uncontested / is_open_seat (BR
-      doesn't carry those at this grain), with DDHQ supplying is_uncontested
-      as a fallback. has_ddhq_match is true when either the 2025 archive
-      linked a DDHQ race to this election OR a 2026+ DDHQ row clustered
-      into this election via Splink. The mart's `state` column receives
-      DDHQ's state_postal_code (2-letter code) to match BR/TS convention.
+      Provider precedence: BR > TS > DDHQ > gp_api for descriptive columns;
+      TS wins for filing_deadline / population / is_uncontested /
+      is_open_seat (BR doesn't carry those at this grain), with DDHQ
+      supplying is_uncontested as a fallback. has_ddhq_match is true when
+      either the 2025 archive linked a DDHQ race to this election OR a
+      2026+ DDHQ row clustered into this election via Splink. The mart's
+      `state` column receives DDHQ's state_postal_code (2-letter code) to
+      match BR/TS convention.
 
-      gp_api participation: 'gp_api' is appended to source_systems whenever
-      any clustered or unclustered PD candidacy maps to this gp_election_id
-      (via int__civics_candidacy_gp_api). gp_api contributes no field values
-      at this grain — BR remains the authoritative spine. Coverage is limited
-      by BR's election spine being filtered to >= 2026; historical (2024/2025)
-      gp_api campaigns whose elections aren't in BR's spine fall back to a
-      hashed gp_election_id and may not match any election mart row.
+      gp_api participation: 4-way FOJ on gp_election_id; gp_api carries
+      only IDs + FK pointers to BR for descriptive fields. gp_api-only rows
+      surface as net-new mart rows when no BR/TS/DDHQ row exists for the
+      same gp_election_id (descriptive columns are NULL on those rows by
+      design — BR remains the authoritative source for election metadata,
+      reachable via br_position_database_id). When BR/TS/DDHQ are present,
+      coalesce picks their descriptive values and gp_api contributes only
+      to source_systems membership.
 
     columns:
       - name: gp_election_id
@@ -1054,8 +1056,13 @@ models:
           The earliest or primary election date from the source data for this
           election cycle. For stage-specific dates, use primary_election_date,
           general_election_date, or the corresponding runoff date columns.
+          NULL for gp_api-only rows where no BR/TS/DDHQ provider contributed
+          descriptive data; gp_api int model holds only ID and FK columns
+          by design.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "not array_contains(source_systems, 'gp_api') or array_size(source_systems) > 1"
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
@@ -1246,9 +1253,10 @@ models:
         description: >
           Array of source systems contributing to this row. Possible
           members: 'hubspot' (2025 archive), 'ballotready', 'techspeed',
-          'ddhq', 'gp_api' (Product Database). gp_api membership is
-          join-based: appended whenever any PD candidacy maps to this
-          gp_election_id; gp_api contributes no field values at this grain.
+          'ddhq', 'gp_api' (Product Database). gp_api participates via
+          a 4-way FOJ on gp_election_id; gp_api carries only IDs +
+          FK pointers to BR for descriptive fields, so gp_api-only rows
+          have NULL descriptive columns.
         data_tests:
           - not_null
 
@@ -1263,12 +1271,12 @@ models:
   - name: election_stage
     description: >
       Election stages (primary, general, primary runoff, general runoff)
-      combining 2025 DDHQ archive and 2026+ BallotReady, TechSpeed, and
-      DDHQ data.
+      combining 2025 DDHQ archive and 2026+ BallotReady, TechSpeed, DDHQ,
+      and gp_api data.
 
       Grain: One row per election stage.
 
-      Provider precedence: BR > TS > DDHQ for descriptive columns
+      Provider precedence: BR > TS > DDHQ > gp_api for descriptive columns
       (stage_type, election_date, race_name, is_primary, is_runoff,
       is_retention, number_of_seats). total_votes_cast carries the literal
       'uncontested' from BR as a sentinel — when present, DDHQ's numeric
@@ -1279,12 +1287,15 @@ models:
       source_systems = ['ddhq']; BR-only fields (br_election_id,
       br_position_id, partisan_type, filing_*) are NULL.
 
-      gp_api participation: 'gp_api' is appended to source_systems whenever
-      any PD candidacy_stage maps to this gp_election_stage_id (via
-      int__civics_candidacy_stage_gp_api). gp_api contributes no field values
-      at this grain. Coverage at this grain is partial: gp_api stages in
-      non-BR Splink clusters where no TS/DDHQ stage records exist will not
-      have a corresponding election_stage mart row.
+      gp_api participation: 4-way FOJ on gp_election_stage_id; gp_api
+      carries only IDs + FK pointers to BR for descriptive fields
+      (gp_election_stage_id, gp_election_id, br_race_id, br_position_id).
+      gp_api-only rows surface as net-new mart rows when no BR/TS/DDHQ row
+      exists for the same gp_election_stage_id (descriptive columns are
+      NULL on those rows by design — BR remains the authoritative source
+      for stage metadata, reachable via br_race_id / br_position_id).
+      When BR/TS/DDHQ are present, coalesce picks their descriptive values
+      and gp_api contributes only to source_systems membership.
 
     columns:
       - name: gp_election_stage_id
@@ -1326,9 +1337,15 @@ models:
           NULL for 2026+ BallotReady records.
 
       - name: stage_type
-        description: Type of election stage (primary, general, primary runoff, general runoff)
+        description: >
+          Type of election stage (primary, general, primary runoff, general
+          runoff). NULL for gp_api-only rows where no BR/TS/DDHQ provider
+          contributed descriptive data; gp_api int model holds only ID and
+          FK columns by design.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "not array_contains(source_systems, 'gp_api') or array_size(source_systems) > 1"
           - accepted_values:
               arguments:
                 values:
@@ -1461,10 +1478,10 @@ models:
         description: >
           Array of source systems contributing to this row. Possible
           members: 'hubspot' (2025 archive), 'ballotready', 'techspeed',
-          'ddhq', 'gp_api' (Product Database). gp_api membership is
-          join-based: appended whenever any PD candidacy_stage maps to
-          this gp_election_stage_id; gp_api contributes no field values
-          at this grain.
+          'ddhq', 'gp_api' (Product Database). gp_api participates via
+          a 4-way FOJ on gp_election_stage_id; gp_api carries only IDs +
+          FK pointers to BR for descriptive fields, so gp_api-only rows
+          have NULL descriptive columns.
         data_tests:
           - not_null
 
