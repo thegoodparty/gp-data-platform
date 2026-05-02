@@ -53,6 +53,22 @@ with
         group by gp_election_id
     ),
 
+    -- BR election spine lookup: maps (br_position_id, election_year) →
+    -- BR's gp_election_id. Used to align gp_api's gp_election_id with BR's
+    -- when the gp_api campaign isn't in a Splink cluster (no canonical_id).
+    -- Every surviving gp_api campaign has ballotready_position_id (Task 1
+    -- filter), so this lookup resolves for all non-clustered campaigns.
+    -- max() collapses the multiple election_stage rows that share a
+    -- gp_election_id (primary, general, runoff stages of one election).
+    br_election_id_lookup as (
+        select
+            br_position_id,
+            year(election_date) as election_year,
+            max(gp_election_id) as gp_election_id
+        from {{ ref("int__civics_election_stage_ballotready") }}
+        group by br_position_id, year(election_date)
+    ),
+
     -- Must mirror user_er_canonical in int__civics_candidate_gp_api so
     -- candidacy.gp_candidate_id matches candidate.gp_candidate_id.
     user_er_canonical as (
@@ -142,7 +158,9 @@ with
             ) as gp_candidate_id,
 
             coalesce(
-                xw.canonical_gp_election_id, {{ generate_gp_election_id() }}
+                xw.canonical_gp_election_id,
+                bel.gp_election_id,
+                {{ generate_gp_election_id() }}
             ) as gp_election_id,
 
             campaign_id as product_campaign_id,
@@ -187,6 +205,10 @@ with
         left join
             br_general_election_date_lookup as bld
             on xw.canonical_gp_election_id = bld.gp_election_id
+        left join
+            br_election_id_lookup as bel
+            on enriched.ballotready_position_id = bel.br_position_id
+            and year(enriched.general_election_date) = bel.election_year
         where general_election_date is not null
     ),
 
