@@ -123,6 +123,17 @@ with
                 partition by gp_election_stage_id order by updated_at desc nulls last
             )
             = 1
+    ),
+
+    gp_api_membership as (
+        -- gp_api participation marker. No new int model at election_stage grain
+        -- (per design: gp_api contributes no field values BR/TS/DDHQ don't
+        -- already author better here); only the source_systems array gets
+        -- 'gp_api' appended when any clustered or unclustered PD candidacy_stage
+        -- maps to this election_stage.
+        select distinct gp_election_stage_id
+        from {{ ref("int__civics_candidacy_stage_gp_api") }}
+        where gp_election_stage_id is not null
     )
 
 select
@@ -168,7 +179,12 @@ select
         then false
         else icp.icp_win_supersize
     end as is_win_supersize_icp,
-    deduplicated.source_systems,
+    array_compact(
+        array_append(
+            deduplicated.source_systems,
+            case when gp.gp_election_stage_id is not null then 'gp_api' end
+        )
+    ) as source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 
@@ -176,3 +192,6 @@ from deduplicated
 left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_id = icp.br_database_position_id
+left join
+    gp_api_membership as gp
+    on deduplicated.gp_election_stage_id = gp.gp_election_stage_id
