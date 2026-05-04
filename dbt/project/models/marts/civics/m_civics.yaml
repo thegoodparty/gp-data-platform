@@ -2027,7 +2027,7 @@ models:
             severity: error
       # gp_api email coverage. coalesce(rate, 0) ensures the test FAILS when
       # gp_api drops to zero (without it, 0/0=NULL passes the test). Email is
-      # collected at signup, so coverage on linked gp_api users should be ≈100%.
+      # collected at signup, so coverage on linked gp_api users should be high.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where gp_api_email is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"

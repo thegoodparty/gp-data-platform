@@ -1,8 +1,8 @@
 -- Test #8/#9: cross-source name agreement on bridge-matched rows.
 -- Returns rows where the failure threshold is breached (test fails if any returned).
 --
--- Last name agreement should be >= 0.95 (empirical 97.9%).
--- First name agreement should be >= 0.92 (empirical 94.5%).
+-- Last name agreement should be >= 0.95.
+-- First name agreement should be >= 0.92.
 -- Test ALSO fails if total_pairs is zero — catches bridge dropout that would
 -- silently pass a NULL ratio comparison.
 with

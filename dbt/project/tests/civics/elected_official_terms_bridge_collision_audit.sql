@@ -1,9 +1,9 @@
 {{ config(severity="warn") }}
 
--- Test #16: bridge collision audit. Reports the count of pass-1 rows that
--- were dropped in pass-2 due to br_office_holder_id collisions. Expected:
--- ~7 pre-rerun, possibly different post-rerun. Warns (not errors) so that
--- typical drift doesn't block the build; investigate growth patterns.
+-- Bridge collision audit. Reports the count of pass-1 rows that were
+-- dropped in pass-2 due to br_office_holder_id collisions. Warns (not
+-- errors) so that typical drift doesn't block the build; investigate
+-- when collision count grows materially.
 with
     pass1_simulation as (
         select g.source_id as gp_api_elected_office_id, b.br_office_holder_id
