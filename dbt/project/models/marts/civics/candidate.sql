@@ -1,23 +1,8 @@
--- Civics mart candidate table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
--- DDHQ + gp_api (Product Database).
---
--- Provider precedence (2026+ branch):
--- - gp_api > BR > TS > DDHQ for descriptive columns (first/last/full name,
--- state, email, hubspot_contact_id, created_at, updated_at).
--- - gp_api > TS > BR > DDHQ for phone_number (preserves TS coverage advantage
--- in the tail; TS has 48k populated vs BR's 8k).
--- - gp_api > BR > TS for prod_db_user_id (DDHQ doesn't carry it). gp_api is
--- the canonical source when present; BR/TS contribute crosswalk-derived
--- values for users not yet in PD.
--- - gp_api excluded from: birth_date, street_address, social URLs,
--- candidate_id_tier (gp_api carries no values for these).
--- - DDHQ contributes only first_name / last_name / full_name / state at this
--- grain (subset of the BR/TS/gp_api descriptive cols). DDHQ-only candidates
--- pass through with source_systems = ['ddhq'] and BR/TS/gp_api-only columns null.
--- - gp_api int model adopts BR's canonical gp_candidate_id via
--- int__civics_er_canonical_ids, so a 4-way FOJ on gp_candidate_id auto-merges
--- matched quadruples.
+-- Civics mart candidate table.
+-- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
+-- joined on gp_candidate_id (matched providers adopt BR's canonical via
+-- int__civics_er_canonical_ids). Per-column precedence rules: see the
+-- candidate model description in m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "hubspot_contact_id",
     "first_name",
@@ -28,7 +13,7 @@
     "created_at",
     "updated_at",
 ] -%}
-{%- set br_only_cols = [
+{%- set br_then_ts_cols = [
     "candidate_id_tier",
     "street_address",
     "website_url",
@@ -36,9 +21,11 @@
     "twitter_handle",
     "instagram_handle",
 ] -%}
-{# DDHQ supplies a subset of gp_api_wins_cols. Used to decide whether DDHQ
-   joins the coalesce chain. state is sourced as state_postal_code (2-letter)
-   to match BR/TS convention; the DDHQ int model exposes state as the full name. #}
+{# Subset of gp_api_wins_cols that DDHQ also supplies. The loop adds DDHQ
+   to the coalesce chain only for cols listed here; cols in gp_api_wins_cols
+   but NOT here render a 3-way coalesce(gp_api, br, ts) instead. state is
+   sourced as state_postal_code (2-letter) to match BR/TS convention; the
+   DDHQ int model exposes state as the full name. #}
 {%- set ddhq_fallback_cols = [
     "first_name",
     "last_name",
@@ -55,7 +42,7 @@ with
         select
             gp_candidate_id,
             -- Column order must match merged_since_2026 (prod_db_user_id,
-            -- gp_api_wins_cols loop order, br_only_cols loop order,
+            -- gp_api_wins_cols loop order, br_then_ts_cols loop order,
             -- ts_wins_cols, phone_number, source_systems)
             prod_db_user_id,
             hubspot_contact_id,
@@ -122,7 +109,7 @@ with
                     coalesce(gp_api.{{ col }}, br.{{ col }}, ts.{{ col }}) as {{ col }},
                 {% endif %}
             {% endfor %}
-            {% for col in br_only_cols %}
+            {% for col in br_then_ts_cols %}
                 coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
             {% endfor %}
             {% for col in ts_wins_cols %}

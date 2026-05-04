@@ -13,14 +13,13 @@
 with
     -- Roll up gp_api candidacy_stages to election_stage grain. gp_election_id
     -- isn't carried on the candidacy_stage int model, so we recover it via
-    -- the candidacy int model (gp_candidacy_id is the join key).
-    -- created_at / updated_at use min/max of contributing candidacy_stage
-    -- timestamps so gp_api-only rows have a non-null value at the mart layer
-    -- (the mart's coalesce will still prefer BR/TS/DDHQ when present).
+    -- the candidacy int model. Joining via gp_candidacy_id covers BR-anchored
+    -- and non-BR cluster cases uniformly (BR-spine join can't see non-BR
+    -- cluster canonical ids).
     gp_api_stages as (
         select
             cs.gp_election_stage_id,
-            max(c.gp_election_id) as gp_election_id,
+            any_value(c.gp_election_id) as gp_election_id,
             min(cs.created_at) as created_at,
             max(cs.updated_at) as updated_at
         from {{ ref("int__civics_candidacy_stage_gp_api") }} as cs
@@ -33,9 +32,8 @@ with
 
     -- BR FK lookup. gp_api stages anchored to BR's spine adopt BR's
     -- gp_election_stage_id, so this join recovers br_race_id and
-    -- br_position_id when the stage is BR-anchored. Non-BR-cluster
-    -- canonical_gp_election_stage_ids won't match BR (returning null
-    -- on these FK columns — acceptable, since those stages exist
+    -- br_position_id. Non-BR-cluster canonical_gp_election_stage_ids
+    -- won't match (returning null FKs — acceptable, those stages exist
     -- purely from gp_api participation).
     br_fk_lookup as (
         select gp_election_stage_id, br_race_id, br_position_id

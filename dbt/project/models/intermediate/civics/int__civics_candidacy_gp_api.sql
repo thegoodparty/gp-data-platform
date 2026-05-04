@@ -61,10 +61,12 @@ with
     -- max() collapses the multiple election_stage rows that share a
     -- gp_election_id (primary, general, runoff stages of one election).
     br_election_id_lookup as (
+        -- All stages of one election share gp_election_id by construction,
+        -- so any_value collapses the group without ambiguity.
         select
             br_position_id,
             year(election_date) as election_year,
-            max(gp_election_id) as gp_election_id
+            any_value(gp_election_id) as gp_election_id
         from {{ ref("int__civics_election_stage_ballotready") }}
         group by br_position_id, year(election_date)
     ),

@@ -1062,7 +1062,7 @@ models:
         data_tests:
           - not_null:
               config:
-                where: "not array_contains(source_systems, 'gp_api') or array_size(source_systems) > 1"
+                where: "not (source_systems = array('gp_api'))"
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: "'1900-01-01'"
@@ -1345,7 +1345,7 @@ models:
         data_tests:
           - not_null:
               config:
-                where: "not array_contains(source_systems, 'gp_api') or array_size(source_systems) > 1"
+                where: "not (source_systems = array('gp_api'))"
           - accepted_values:
               arguments:
                 values:

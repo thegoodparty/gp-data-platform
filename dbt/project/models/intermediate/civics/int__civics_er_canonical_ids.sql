@@ -159,28 +159,7 @@ with
             cast(null as date) as gp_api_stage_election_date,
             cast(null as bigint) as ddhq_candidate_id,
             cast(null as bigint) as ddhq_race_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidacy_stage"
-                )
-            }} as canonical_gp_candidacy_stage_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_election_stage"
-                )
-            }} as canonical_gp_election_stage_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidacy"
-                )
-            }} as canonical_gp_candidacy_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidate"
-                )
-            }} as canonical_gp_candidate_id,
-            {{ generate_salted_uuid(fields=["cw.cluster_id"], salt="non_br_election") }}
-            as canonical_gp_election_id
+            {{ non_br_cluster_canonicals("cw.cluster_id") }}
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
         where cw.source_name = 'techspeed'
@@ -200,28 +179,7 @@ with
             cast(cw.election_date as date) as gp_api_stage_election_date,
             cast(null as bigint) as ddhq_candidate_id,
             cast(null as bigint) as ddhq_race_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidacy_stage"
-                )
-            }} as canonical_gp_candidacy_stage_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_election_stage"
-                )
-            }} as canonical_gp_election_stage_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidacy"
-                )
-            }} as canonical_gp_candidacy_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidate"
-                )
-            }} as canonical_gp_candidate_id,
-            {{ generate_salted_uuid(fields=["cw.cluster_id"], salt="non_br_election") }}
-            as canonical_gp_election_id
+            {{ non_br_cluster_canonicals("cw.cluster_id") }}
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
         where cw.source_name = 'gp_api'
@@ -241,28 +199,7 @@ with
             cast(null as date) as gp_api_stage_election_date,
             cast(split(cw.source_id, '_')[0] as bigint) as ddhq_candidate_id,
             cast(split(cw.source_id, '_')[1] as bigint) as ddhq_race_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidacy_stage"
-                )
-            }} as canonical_gp_candidacy_stage_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_election_stage"
-                )
-            }} as canonical_gp_election_stage_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidacy"
-                )
-            }} as canonical_gp_candidacy_id,
-            {{
-                generate_salted_uuid(
-                    fields=["cw.cluster_id"], salt="non_br_candidate"
-                )
-            }} as canonical_gp_candidate_id,
-            {{ generate_salted_uuid(fields=["cw.cluster_id"], salt="non_br_election") }}
-            as canonical_gp_election_id
+            {{ non_br_cluster_canonicals("cw.cluster_id") }}
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
         where cw.source_name = 'ddhq'

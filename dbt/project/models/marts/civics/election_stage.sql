@@ -1,24 +1,13 @@
--- Civics mart election_stage table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
--- DDHQ + gp_api.
---
--- BallotReady is the authoritative spine for election_stages (races). TS,
--- DDHQ, and gp_api int models remap clustered stages to BR's
--- gp_election_stage_id via int__civics_er_canonical_ids, so a 4-way full
--- outer join on gp_election_stage_id merges matched rows. Unmatched DDHQ
--- stages and gp_api-only / cluster-derived stages pass through as net-new
--- rows.
---
--- gp_api carries only IDs + FK pointers to BR for descriptive fields; its
--- descriptive columns are NULL by design and the FOJ coalesce always picks
--- BR's values when present. gp_api's contribution is to source_systems
--- membership and to surfacing election_stage rows that gp_api participates
--- in but BR/TS/DDHQ don't.
---
--- Precedence: BR > TS > DDHQ > gp_api for descriptive columns. total_votes_cast
--- is BR-first only when BR has a numeric count; BR's 'uncontested' literal
--- yields to DDHQ's actual count when present. ddhq_race_id falls back to
--- DDHQ when BR's null.
+-- Civics mart election_stage table.
+-- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
+-- joined on gp_election_stage_id. BR is the authoritative spine; gp_api
+-- carries only IDs + FK pointers (br_race_id, br_position_id) and
+-- contributes to source_systems membership only — its descriptive columns
+-- are NULL by design and FOJ coalesce always picks BR's values when present.
+-- Per-column precedence rules: see the election_stage model description in
+-- m_civics.yaml. Notable exceptions: total_votes_cast is BR-first only when
+-- BR has a numeric count (BR's 'uncontested' literal yields to DDHQ's
+-- actual count); ddhq_race_id falls back to DDHQ when BR's null.
 {%- set br_wins_cols = [
     "gp_election_id",
     "br_race_id",
