@@ -2483,20 +2483,21 @@ models:
 
       - name: general_election_date
         description: >
-          Product DB's view of the campaign's general election date — what
-          the campaign owner registered. Stays source-faithful even when ER
-          maps gp_election_id to a different BR canonical election.
+          Sourced from BR's stage spine via br_stage_spine_lookup keyed on
+          (ballotready_position_id, election_year). Replaces the prior
+          campaign.election_date carry-through; deterministically equals
+          BR's general-stage date for the campaign's race.
         data_tests:
           - not_null
 
-      - name: br_general_election_date
-        description: >
-          BR's view of the canonical election's general-stage date when
-          gp_election_id was adopted from ER (via int__civics_election_stage_ballotready
-          filtered to `not is_primary and not is_runoff`). Null when ER
-          didn't match or when BR has no general stage for the election.
-          Pair with general_election_date to surface PD-vs-BR divergence
-          without re-resolving the canonical election downstream.
+      - name: primary_election_date
+        description: BR's primary-stage date for the campaign's race.
+
+      - name: primary_runoff_election_date
+        description: BR's primary-runoff-stage date for the campaign's race.
+
+      - name: general_runoff_election_date
+        description: BR's general-runoff-stage date for the campaign's race.
 
       - name: is_demo
         data_tests:
