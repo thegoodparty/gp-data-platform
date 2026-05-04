@@ -5,12 +5,18 @@
 -- Schema aligns with int__civics_candidacy_ballotready for the union.
 with
     latest_campaigns as (
+        -- 2026+ scope: pre-2026 campaigns belong to the archive_2025 path
+        -- (from int__civics_candidacy_2025) and would duplicate at
+        -- (product_campaign_id, general_election_date) grain in the candidacy
+        -- mart since the two sources hash gp_candidacy_id differently
+        -- (HubSpot identity vs gp_api person+race hash).
         select *
         from {{ ref("campaigns") }}
         where
             is_latest_version
             and not coalesce(is_demo, false)
             and ballotready_position_id is not null
+            and election_date >= '2026-01-01'
     ),
 
     -- Source user fields from the users mart, not campaigns' denormalized
