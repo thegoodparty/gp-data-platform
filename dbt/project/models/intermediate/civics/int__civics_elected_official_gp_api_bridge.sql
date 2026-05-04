@@ -11,7 +11,6 @@
 -- has one BR term).
 -- Pass 2: deterministic suppression of br_office_holder_id collisions when
 -- multiple gp_api rows in the same Splink cluster pick the same BR term.
--- The bridge_collision_audit custom SQL test reports the dropped count.
 --
 -- The campaigns LEFT JOIN attaches `hubspot_company_id` (alias of
 -- `campaigns.hubspot_id`) at the term/campaign grain.
