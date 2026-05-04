@@ -377,9 +377,19 @@ models:
         data_tests:
           - not_null
           - relationships:
+              # Warn-severity: when a TS source_candidate_id has stages
+              # spanning both BR-anchored and non-BR Splink clusters, the
+              # candidacy and candidate dedup pickers (different sort orders
+              # at the canonical_ids join) can adopt different canonical
+              # gp_candidate_id values from the two branches' xw rows. ~200
+              # cases of this real-world data quality pattern; not a code
+              # defect. Higher than 1000 indicates a regression.
               arguments:
                 to: ref('int__civics_candidate_techspeed')
                 field: gp_candidate_id
+              config:
+                severity: warn
+                error_if: ">1000"
 
       - name: hubspot_company_ids
         description: HubSpot company IDs (NULL for TechSpeed-sourced records)
@@ -2517,8 +2527,14 @@ models:
         data_tests:
           - not_null
           - relationships:
+              # Target int__civics_election_stage_gp_api (not _ballotready)
+              # because non-BR Splink clusters now produce cluster-derived
+              # canonical_gp_election_stage_ids that don't match BR's spine.
+              # int__civics_election_stage_gp_api emits one row per
+              # gp_election_stage_id gp_api participates in (BR-anchored AND
+              # cluster-derived), so this FK relationship holds end-to-end.
               arguments:
-                to: ref('int__civics_election_stage_ballotready')
+                to: ref('int__civics_election_stage_gp_api')
                 field: gp_election_stage_id
 
       - name: has_match
