@@ -2544,14 +2544,11 @@ models:
         data_tests:
           - not_null
           - relationships:
-              # Target int__civics_election_stage_gp_api (not _ballotready)
-              # because non-BR Splink clusters now produce cluster-derived
-              # canonical_gp_election_stage_ids that don't match BR's spine.
-              # int__civics_election_stage_gp_api emits one row per
-              # gp_election_stage_id gp_api participates in (BR-anchored AND
-              # cluster-derived), so this FK relationship holds end-to-end.
+              # gp_api candidacy_stages adopt BR's natural gp_election_stage_id
+              # (Task 1 filter ensures ballotready_position_id), so this FK
+              # always holds against BR's spine.
               arguments:
-                to: ref('int__civics_election_stage_gp_api')
+                to: ref('int__civics_election_stage_ballotready')
                 field: gp_election_stage_id
 
       - name: has_match
@@ -2589,114 +2586,6 @@ models:
           name: gp_api_candidacy_stage_updated_ge_created
           arguments:
             expression: "updated_at >= created_at"
-
-  - name: int__civics_election_stage_gp_api
-    description: >
-      gp_api participation indicator at election_stage grain. Grain: one row
-      per gp_election_stage_id that gp_api participates in (rolled up from
-      int__civics_candidacy_stage_gp_api).
-
-      Sparse by design: holds only ID and FK columns
-      (gp_election_stage_id, gp_election_id, br_race_id, br_position_id).
-      gp_api campaigns carry ballotready_position_id which links directly
-      to BR's authoritative election_stage data, so no descriptive race
-      fields are duplicated here. The mart's FOJ coalesce uses BR's values
-      for descriptive columns; this model exists solely to surface gp_api
-      participation as new mart rows (for stages that BR/TS/DDHQ don't
-      cover) and to feed source_systems membership.
-
-      Schema mirrors int__civics_election_stage_techspeed for FOJ alignment
-      in the election_stage mart.
-
-    columns:
-      - name: gp_election_stage_id
-        description: Primary key. Rolled up from int__civics_candidacy_stage_gp_api.
-        data_tests:
-          - unique
-          - not_null
-          - is_uuid
-
-      - name: gp_election_id
-        description: >
-          Foreign key to election grain. Recovered by joining
-          int__civics_candidacy_stage_gp_api → int__civics_candidacy_gp_api.
-        data_tests:
-          - not_null
-
-      - name: br_race_id
-        description: >
-          BallotReady race ID (FK to BR's authoritative race row). Populated
-          when gp_election_stage_id is BR-anchored; null when the stage's
-          canonical comes from a non-BR cluster.
-
-      - name: br_position_id
-        description: >
-          BallotReady position database ID (FK to BR's authoritative position
-          row). Populated when gp_election_stage_id is BR-anchored.
-
-      - name: created_at
-        description: Earliest contributing candidacy_stage created_at.
-        data_tests:
-          - not_null
-
-      - name: updated_at
-        description: Latest contributing candidacy_stage updated_at.
-        data_tests:
-          - not_null
-
-  - name: int__civics_election_gp_api
-    description: >
-      gp_api participation indicator at election grain. Grain: one row per
-      gp_election_id that gp_api participates in (rolled up from
-      int__civics_candidacy_gp_api).
-
-      Sparse by design: holds only ID and FK columns
-      (gp_election_id, br_position_database_id). gp_api campaigns carry
-      ballotready_position_id (= br_position_database_id) which links
-      directly to BR's authoritative position/election data, so no
-      descriptive election fields are duplicated here. The mart's FOJ
-      coalesce uses BR's values for descriptive columns; this model exists
-      solely to surface gp_api participation as new mart rows and to feed
-      source_systems membership.
-
-      Schema mirrors int__civics_election_techspeed for FOJ alignment in
-      the election mart.
-
-    columns:
-      - name: gp_election_id
-        description: Primary key. Rolled up from int__civics_candidacy_gp_api.
-        data_tests:
-          - unique
-          - not_null
-          - is_uuid
-
-      - name: br_position_database_id
-        description: >
-          BallotReady position database ID (FK to BR's authoritative
-          position row). Sourced from candidacy.ballotready_position_id;
-          every row has this populated since gp_api candidacies are
-          required to have a ballotready_position_id (Task 1 filter) and
-          gp_election_id is BR-natural (preferring br_election_id_lookup
-          over canonical_ids cluster-derived values).
-        data_tests:
-          - not_null
-
-      - name: has_ddhq_match
-        description: Always false for gp_api (no DDHQ matching at this layer).
-        data_tests:
-          - accepted_values:
-              arguments:
-                values: [false]
-
-      - name: created_at
-        description: Earliest contributing candidacy created_at.
-        data_tests:
-          - not_null
-
-      - name: updated_at
-        description: Latest contributing candidacy updated_at.
-        data_tests:
-          - not_null
 
   - name: int__civics_elected_official_gp_api
     description: >
@@ -2816,16 +2705,22 @@ models:
           - not_null
 
       - name: canonical_gp_candidacy_stage_id
-        data_tests:
-          - not_null
+        description: >
+          BR-anchored canonical for stage grain. NULL for non-BR cluster
+          rows (those rely on the cluster_id-based FOJ in candidacy_stage
+          mart, not canonical-id merging).
 
       - name: canonical_gp_election_stage_id
-        data_tests:
-          - not_null
+        description: >
+          BR-anchored canonical for election_stage grain. NULL for non-BR
+          cluster rows — TS/DDHQ election_stage int models fall back to
+          their natural hashes there, which align with BR's natural id
+          when BR has the race independently.
 
       - name: canonical_gp_election_id
-        data_tests:
-          - not_null
+        description: >
+          BR-anchored canonical for election grain. NULL for non-BR cluster
+          rows — same rationale as canonical_gp_election_stage_id above.
 
     tests:
       - dbt_utils.unique_combination_of_columns:

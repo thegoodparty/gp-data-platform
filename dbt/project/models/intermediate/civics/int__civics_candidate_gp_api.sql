@@ -4,19 +4,25 @@
 -- Grain: one row per user with campaign_count > 0. Schema aligns with
 -- int__civics_candidate_ballotready / _techspeed for the downstream union.
 with
-    latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
-
-    users_with_real_campaign as (
-        -- 2026+ scope: matches int__civics_candidacy_gp_api's filter so the
-        -- two int models cover the same universe of campaigns/users. Pre-2026
-        -- users belong to int__civics_candidate_2025 (HubSpot archive).
-        select distinct user_id
-        from latest_campaigns
+    latest_campaigns as (
+        -- 2026+ / non-demo / BR-anchored scope: matches
+        -- int__civics_candidacy_gp_api so user_state and user_er_canonical
+        -- below derive `state` and the canonical lookup from the same
+        -- campaign universe the candidacy model uses. Without this match,
+        -- a user with a more-recent pre-2026 campaign in state A and a
+        -- qualifying 2026+ campaign in state B would hash to two different
+        -- gp_candidate_ids across the two int models, and the candidacy
+        -- would be silently dropped by the valid_candidates inner join.
+        select *
+        from {{ ref("campaigns") }}
         where
-            not coalesce(is_demo, false)
+            is_latest_version
+            and not coalesce(is_demo, false)
             and ballotready_position_id is not null
             and election_date >= '2026-01-01'
     ),
+
+    users_with_real_campaign as (select distinct user_id from latest_campaigns),
 
     users_filtered as (
         select
@@ -35,7 +41,6 @@ with
     user_state as (
         select user_id, campaign_state as state
         from latest_campaigns
-        where not is_demo
         qualify row_number() over (partition by user_id order by created_at desc) = 1
     ),
 

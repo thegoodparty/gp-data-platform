@@ -28,9 +28,11 @@ with
 
     -- Must match user_state in int__civics_candidate_gp_api.
     user_state as (
+        -- latest_campaigns is already filtered to non-demo / 2026+ / BR-anchored;
+        -- mirror is in int__civics_candidate_gp_api so both models hash
+        -- gp_candidate_id over the same campaign universe.
         select user_id, campaign_state as state
         from latest_campaigns
-        where not is_demo
         qualify row_number() over (partition by user_id order by created_at desc) = 1
     ),
 
