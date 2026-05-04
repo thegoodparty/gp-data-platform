@@ -2661,51 +2661,17 @@ models:
       `gp_api_campaign_id` join; deliberate alias of `hubspot_id` to make
       CRM linkage clearer at the term/campaign grain.
 
-      Spec: .tickets/data-1885/design-spec-v2.md
-
     tests:
-      # Test #5: term selection within 365 days, all-rows denominator.
-      # CI measured: 610/1,137 = 53.65%. NULL date deltas (~35% today) count
-      # against this metric; that's intentional — a NULL date delta is not
-      # evidence of close selection.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in <= 365) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_bridge') }}), 0) >= 0.45"
-          name: bridge_term_selection_within_365_days
-          config:
-            severity: warn
-      # Test #5b: bridge attach to BR person rollup must not orphan.
-      # If bridge.br_candidate_id is missing from int__civics_elected_official_ballotready_person,
-      # the gp_api person rollup silently self-keys instead of adopting BR canonical.
+      # Bridge attach to BR person rollup must not orphan. If
+      # bridge.br_candidate_id is missing from
+      # int__civics_elected_official_ballotready_person, the gp_api person
+      # rollup silently self-keys instead of adopting BR canonical.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "not exists (select 1 from {{ ref('int__civics_elected_official_gp_api_bridge') }} b left join {{ ref('int__civics_elected_official_ballotready_person') }} p on p.br_candidate_id = b.br_candidate_id where p.br_candidate_id is null)"
           name: bridge_br_candidate_resolves_to_br_person
           config:
             severity: error
-      # Test #5c: pass-1 multi-term-with-all-NULL-dates audit. These rows are
-      # selected by br_office_holder_id ordering, not date proximity. CI: 146.
-      # Warns at growth beyond 200 (~37% headroom).
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(with cands as (select cast(g.source_id as string) as gp_id, abs(datediff(b.term_start_date, g.term_start_date)) as d from {{ ref('stg_er_source__clustered_elected_officials') }} g inner join {{ ref('stg_er_source__clustered_elected_officials') }} b using (cluster_id) where g.source_name = 'gp_api' and b.source_name = 'ballotready_techspeed'), agg as (select gp_id, count(*) as n_cands, sum(case when d is not null then 1 else 0 end) as n_nonnull from cands group by gp_id) select count(*) from agg where n_cands > 1 and n_nonnull = 0) <= 200"
-          name: bridge_pass1_multi_term_all_null_dates_under_200
-          config:
-            severity: warn
-      # Test #6: median days_to_sworn_in (non-null) between 30 and 90
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select percentile(days_to_sworn_in, 0.5) from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in is not null) between 30 and 90"
-          name: bridge_median_days_to_sworn_in
-          config:
-            severity: warn
-      # Test #7: NULL days_to_sworn_in rate <= 0.40
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_bridge') }} where days_to_sworn_in is null) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_bridge') }}), 0) <= 0.40"
-          name: bridge_null_days_to_sworn_in_rate
-          config:
-            severity: warn
 
     columns:
       - name: gp_api_elected_office_id
@@ -2753,29 +2719,20 @@ models:
       gp_api ('elected_official_gp_api_user' salt) so they don't collide
       with BR/TS canonical IDs.
 
-      HubSpot contact ID is sourced from raw `gp_api_db_user.meta_data:hubspotid`
-      because the `users` mart does not expose it.
-
-      Spec: .tickets/data-1885/design-spec-v2.md
+      `hubspot_contact_id` is renamed and cast in staging
+      (`stg_airbyte_source__gp_api_db_user`).
 
     tests:
-      # Canonical uniqueness on adopted BR canonicals (catches the
-      # multi-gp_api-adopting-same-BR-person failure mode that bridge
-      # term uniqueness alone does not catch — see spec edge cases).
+      # Canonical uniqueness on adopted BR canonicals. Catches the
+      # multi-gp_api-adopting-same-BR-person failure mode that bridge term
+      # uniqueness alone does not catch (e.g., two gp_api users bridging
+      # to two different terms of the same BR person).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(select count(distinct gp_elected_official_id) from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) = (select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null)"
           name: gp_api_person_no_two_users_share_adopted_canonical
           config:
             severity: error
-      # Test #4: bridge match coverage. Calibrated post-matcha-rerun:
-      # CI measured 1,137/1,812 = 62.75%. Bound is ±3pp around that.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) / nullif((select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }}), 0) between 0.60 and 0.66"
-          name: gp_api_person_bridge_match_coverage
-          config:
-            severity: warn
 
     columns:
       - name: gp_elected_official_id

@@ -4,22 +4,21 @@
 -- per column.
 --
 -- Grain: One row per elected official (person, by br_candidate_id) for
--- BR-matched rows; gp_api-only rows have their own salted UUID.
--- CI row count: 375,996 (375,321 BR persons + 675 gp_api-only).
+-- BR-matched rows; gp_api-only rows (Splink found no BR/TS match) have
+-- their own salted UUID with NULL br_candidate_id.
 --
 -- gp_api adoption mechanism: gp_api person rollup adopts BR's
 -- gp_elected_official_id via the bridge for matched users; falls back to
 -- self-key for unmatched. The cluster-based merge_key approach used in
--- candidacy_stage.sql does NOT apply here — EO cluster grain is term, mart
--- grain is person, and 34 clusters today contain multiple BR persons (ER
--- false positives). Canonical adoption via bridge attaches gp_api to ONE
--- specific BR person (the bridge-resolved one), avoiding gp_api duplication
--- across BR people in the same cluster.
+-- candidacy_stage.sql does NOT apply here — EO cluster grain is term and
+-- the mart grain is person, and a Splink cluster can contain multiple BR
+-- persons (ER false positives via gp_api triangulation). Canonical
+-- adoption via bridge attaches gp_api to ONE specific BR person (the
+-- bridge-resolved one), avoiding gp_api duplication across BR people in
+-- the same cluster.
 --
 -- ICP flags are NOT exposed at person grain (per Hugh's commit 8c22079).
 -- Term-grain ICP remains on elected_official_terms.
---
--- Spec: .tickets/data-1885/design-spec-v2.md
 {# Shared columns where all three providers contribute; precedence BR > TS > gp_api.
    party_affiliation is in the chain too but written explicitly below because
    the gp_api person intermediate exposes it as `gp_api_party_affiliation`

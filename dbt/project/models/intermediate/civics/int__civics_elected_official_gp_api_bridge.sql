@@ -5,16 +5,16 @@
 -- row per BR term (both sides 1:1 after pass 2).
 --
 -- Pass 1: pick best BR term per gp_api elected_office (multi-term ambiguity
--- resolution by sworn_in_date proximity to BR term_start_date).
--- Pass 2: deterministic suppression of br_office_holder_id collisions.
--- Pre-rerun: 7 collisions. NOT clean adjudication — 5 of 7 current losers
--- have NULL sworn_in_date and are suppressed by virtue of NULL sort order.
--- Audit test #16 reports collision count for monitoring.
+-- resolution by sworn_in_date proximity to BR term_start_date — gp_api
+-- sworn_in_date is user-entered and often NULL or noisy, so this is a
+-- tiebreaker, not a filter; the bridge always emits a row when the cluster
+-- has one BR term).
+-- Pass 2: deterministic suppression of br_office_holder_id collisions when
+-- multiple gp_api rows in the same Splink cluster pick the same BR term.
+-- The bridge_collision_audit custom SQL test reports the dropped count.
 --
--- The campaigns LEFT JOIN attaches `hubspot_company_id` (alias of campaigns.hubspot_id)
--- at the term/campaign grain.
---
--- Spec: .tickets/data-1885/design-spec-v2.md
+-- The campaigns LEFT JOIN attaches `hubspot_company_id` (alias of
+-- `campaigns.hubspot_id`) at the term/campaign grain.
 with
     clustered as (
         select * from {{ ref("stg_er_source__clustered_elected_officials") }}

@@ -6,10 +6,8 @@
 -- Unmatched users get a salted UUID specific to gp_api so they don't
 -- accidentally collide with BR/TS canonical IDs.
 --
--- HubSpot contact ID is sourced from raw gp_api_db_user metadata since the
--- users mart does not expose it (verified 2026-05-01).
---
--- Spec: .tickets/data-1885/design-spec-v2.md
+-- hubspot_contact_id is renamed/cast in staging
+-- (stg_airbyte_source__gp_api_db_user) per project convention.
 with
     gp_api as (select * from {{ ref("int__civics_elected_official_gp_api") }}),
 
@@ -35,9 +33,9 @@ with
         from {{ ref("int__civics_elected_official_ballotready_person") }}
     ),
 
-    -- HubSpot contact ID via raw user metadata (users mart doesn't expose it)
+    -- HubSpot contact ID — column renamed/cast in staging per project convention
     raw_users as (
-        select id as user_id, meta_data:hubspotid::string as hubspot_contact_id
+        select id as user_id, hubspot_contact_id
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     )
 

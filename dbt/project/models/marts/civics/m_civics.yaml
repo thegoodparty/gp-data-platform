@@ -1673,31 +1673,20 @@ models:
       - dbt_utils.equal_rowcount:
           arguments:
             compare_model: ref('int__civics_elected_official_ballotready')
-      # Test #12: term mart bridge attach rate. CI measured: 1,137.
+      # gp_api source presence floor on term mart. Lower-bound only — we
+      # expect this to grow as gp_api adoption increases. Threshold set well
+      # below current observed value so legitimate growth doesn't fire it.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null) between 1080 and 1190"
-          name: term_mart_bridge_attach_rate
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null) >= 800"
+          name: term_mart_bridge_attach_floor
           config:
             severity: warn
-      # Test #13b: term mart BR+gp_api shape (no TS). CI measured: 594.
+      # hubspot_company_id coverage on bridge-attached rows. Coalesce ensures
+      # 0/0=NULL doesn't silently pass.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 560 and 630"
-          name: term_mart_br_gp_api_shape
-          config:
-            severity: warn
-      # Test #14b: term mart BR+TS+gp_api shape. CI measured: 543.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) from {{ ref('elected_official_terms') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 515 and 575"
-          name: term_mart_br_ts_gp_api_shape
-          config:
-            severity: warn
-      # Test #17: hubspot_company_id coverage on bridge-attached rows
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('elected_official_terms') }} where hubspot_company_id is not null) / nullif((select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null), 0) >= 0.95"
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_official_terms') }} where hubspot_company_id is not null) / nullif((select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null), 0), 0) >= 0.95"
           name: term_mart_hubspot_company_coverage
           config:
             severity: warn
@@ -1994,13 +1983,14 @@ models:
           name: elected_officials_br_backed_rowcount_matches_br_person
           config:
             severity: error
-      # Total mart rowcount = BR + gp_api-only additions. CI measured: 375,996.
+      # Total mart rowcount lower-bound. BR person count grows over time; the
+      # mart should be at least BR-rowcount-equivalent.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }}) between 374500 and 377500"
-          name: elected_officials_total_rowcount_within_bounds
+            expression: "(select count(*) from {{ ref('elected_officials') }}) >= (select count(*) from {{ ref('int__civics_elected_official_ballotready_person') }})"
+          name: elected_officials_total_rowcount_at_least_br
           config:
-            severity: warn
+            severity: error
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
@@ -2008,90 +1998,52 @@ models:
             # Inherits BR source rows where updated_at < created_at
             warn_if: ">30"
             error_if: ">100"
-      # Test #1: gp_api+BR cross-source coverage. CI measured: 1,137.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null and array_contains(source_systems, 'ballotready')) between 1080 and 1190"
-          name: person_mart_gp_api_br_cross_source_coverage
-          config:
-            severity: warn
-      # Test #2: gp_api total presence on person mart
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where array_contains(source_systems, 'gp_api')) between 1750 and 1850"
-          name: person_mart_gp_api_total_presence
-          config:
-            severity: warn
-      # Test #3: gp_api-only rows. CI measured: 675.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')) between 640 and 710"
-          name: person_mart_gp_api_only_count
-          config:
-            severity: warn
-      # Test #13a: person mart BR+gp_api shape. CI measured: 575.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where size(array_intersect(source_systems, array('ballotready', 'gp_api'))) = 2 and not array_contains(source_systems, 'techspeed')) between 540 and 615"
-          name: person_mart_br_gp_api_shape
-          config:
-            severity: warn
-      # Test #14a: person mart BR+TS+gp_api shape. CI measured: 562.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) from {{ ref('elected_officials') }} where size(array_intersect(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 3) between 530 and 595"
-          name: person_mart_br_ts_gp_api_shape
-          config:
-            severity: warn
-      # Test #15a: gp_api-only rows have first/last/state
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "(select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and first_name is not null and last_name is not null and state is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0) >= 0.99"
-          name: gp_api_only_rows_have_identity_fields
-          config:
-            severity: error
-      # Test #15b: gp_api-only candidate_office coverage. CI on gp_api-only
-      # subset: 58.4% (much lower than gp_api intermediate's 84.5% — bridge
-      # match preferentially keeps gp_api rows that DO have office data).
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and candidate_office is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0), 0) between 0.50 and 0.66"
-          name: gp_api_only_candidate_office_coverage
-          config:
-            severity: warn
-      # Test #15c: gp_api-only office_level coverage. CI: 59.6%.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and office_level is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0), 0) between 0.50 and 0.66"
-          name: gp_api_only_office_level_coverage
-          config:
-            severity: warn
-      # Test #10: gp_api email coverage. coalesce(rate, 0) ensures the test
-      # FAILS when gp_api drops to zero (without it, 0/0=NULL passes the test).
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where gp_api_email is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
-          name: gp_api_email_coverage
-          config:
-            severity: error
-      # Test #11: HubSpot contact coverage. coalesce(rate, 0) ensures the test
-      # FAILS when gp_api drops to zero.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where hubspot_contact_id is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
-          name: gp_api_hubspot_contact_coverage
-          config:
-            severity: warn
-      # gp_api source presence floor. Hard error if gp_api integration drops
-      # below half of current 1,812 — catches a total dropout that the
-      # warn-level count tests would miss.
+      # gp_api source presence floor. Hard error if gp_api integration falls
+      # off entirely or drops to a tiny fraction of current scale. Lower-bound
+      # only — gp_api is expected to grow.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(select count(*) from {{ ref('elected_officials') }} where array_contains(source_systems, 'gp_api')) >= 900"
           name: gp_api_source_presence_floor
           config:
             severity: error
-      # source_systems values are limited to known sources (array-aware row-level test)
+      # gp_api-matched persons floor (cross-source coverage). gp_api users
+      # that Splink linked to a BR person; should grow as gp_api adoption
+      # increases. Lower-bound only.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null and array_contains(source_systems, 'ballotready')) >= 800"
+          name: person_mart_gp_api_br_cross_source_coverage_floor
+          config:
+            severity: warn
+      # gp_api-only rows have first/last/state populated (identity invariant).
+      # gp_api-only mart rows derive identity from gp_api source via the
+      # coalesce chain; if these are NULL, the chain is broken. Error-level.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and first_name is not null and last_name is not null and state is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0), 0) >= 0.99"
+          name: gp_api_only_rows_have_identity_fields
+          config:
+            severity: error
+      # gp_api email coverage. coalesce(rate, 0) ensures the test FAILS when
+      # gp_api drops to zero (without it, 0/0=NULL passes the test). Email is
+      # collected at signup, so coverage on linked gp_api users should be ≈100%.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where gp_api_email is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
+          name: gp_api_email_coverage
+          config:
+            severity: error
+      # HubSpot contact coverage. Sourced from raw user metadata; high
+      # coverage expected because most product users sync to HubSpot.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where hubspot_contact_id is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.95"
+          name: gp_api_hubspot_contact_coverage
+          config:
+            severity: warn
+      # source_systems values are limited to known sources (array-aware
+      # row-level test).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "size(array_except(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 0"

@@ -686,6 +686,10 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: hubspot_contact_id
+        description: |
+          HubSpot contact ID extracted from `meta_data:hubspotid`. Renamed in
+          staging so downstream models can use it without re-parsing the JSON.
   - name: stg_airbyte_source__gp_api_db_website
     description: raw data load from gp_api_db postgres db from table `website`
     columns:
