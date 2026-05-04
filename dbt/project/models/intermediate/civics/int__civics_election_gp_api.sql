@@ -7,12 +7,10 @@
 -- gp_election_id that gp_api participates in. Descriptive columns are
 -- NULL by design; the mart's FOJ coalesce picks BR's values.
 --
--- br_position_database_id is populated only when the gp_election_id
--- matches BR's election spine (BR-anchored row). For non-BR cluster
--- canonical_gp_election_ids, it stays NULL — otherwise downstream joins
--- on br_position_database_id (e.g., m_election_api__zip_to_position) would
--- fan out across the BR-natural row + the cluster-derived row that share
--- the same underlying campaign's ballotready_position_id.
+-- gp_api candidacies prefer BR's natural gp_election_id over canonical_ids
+-- cluster-derived values (see int__civics_candidacy_gp_api), so every row
+-- here has a BR-natural gp_election_id and the FOJ in election.sql merges
+-- it cleanly into the corresponding BR row.
 --
 -- Schema mirrors int__civics_election_techspeed for FOJ alignment in
 -- the election mart.
@@ -23,22 +21,17 @@ with
         -- at the mart layer (the mart's coalesce still prefers BR/TS/DDHQ
         -- when present).
         select
-            gp_election_id, min(created_at) as created_at, max(updated_at) as updated_at
+            gp_election_id,
+            max(br_position_database_id) as br_position_database_id,
+            min(created_at) as created_at,
+            max(updated_at) as updated_at
         from {{ ref("int__civics_candidacy_gp_api") }}
         where gp_election_id is not null
-        group by gp_election_id
-    ),
-
-    -- BR FK lookup. Only populates br_position_database_id when the
-    -- gp_election_id is in BR's spine; cluster-derived ids return NULL FKs.
-    br_lookup as (
-        select gp_election_id, any_value(br_position_id) as br_position_database_id
-        from {{ ref("int__civics_election_stage_ballotready") }}
         group by gp_election_id
     )
 
 select
-    g.gp_election_id,
+    gp_election_id,
     cast(null as string) as official_office_name,
     cast(null as string) as candidate_office,
     cast(null as string) as office_level,
@@ -57,11 +50,10 @@ select
     cast(null as string) as number_of_opponents,
     cast(null as boolean) as is_open_seat,
     false as has_ddhq_match,
-    br.br_position_database_id,
+    br_position_database_id,
     cast(null as boolean) as is_judicial,
     cast(null as boolean) as is_appointed,
     cast(null as string) as br_normalized_position_type,
-    g.created_at,
-    g.updated_at
-from gp_api_elections as g
-left join br_lookup as br on g.gp_election_id = br.gp_election_id
+    created_at,
+    updated_at
+from gp_api_elections

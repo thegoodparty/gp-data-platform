@@ -124,10 +124,16 @@ with
                 }}
             ) as gp_candidacy_id,
 
-            -- Either branch resolves to a valid gp_election_stage_id in
-            -- int__civics_election_stage_ballotready.
+            -- Prefer BR's natural gp_election_stage_id over the canonical_ids
+            -- non-BR-cluster derivation: every gp_api campaign has
+            -- ballotready_position_id (Task 1 filter) so br_gp_election_stage_id
+            -- is always populated and aligns with BR's election_stage mart row.
+            -- The non-BR cluster canonical (cluster-derived UUID) would create
+            -- a separate election_stage row that BR doesn't have, fanning out
+            -- downstream joins on br_position_database_id (e.g.,
+            -- m_election_api__zip_to_position).
             coalesce(
-                canonical_gp_election_stage_id, br_gp_election_stage_id
+                br_gp_election_stage_id, canonical_gp_election_stage_id
             ) as gp_election_stage_id,
 
             canonical_gp_candidacy_stage_id,

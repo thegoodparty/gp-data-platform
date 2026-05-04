@@ -2656,12 +2656,13 @@ models:
       - name: br_position_database_id
         description: >
           BallotReady position database ID (FK to BR's authoritative
-          position row). Populated only when gp_election_id matches BR's
-          election spine; NULL for cluster-derived gp_election_ids (those
-          come from non-BR Splink clusters where cluster members share a
-          synthetic gp_election_id that BR doesn't know — populating the
-          BR FK there would fan out downstream joins on
-          br_position_database_id, e.g., m_election_api__zip_to_position).
+          position row). Sourced from candidacy.ballotready_position_id;
+          every row has this populated since gp_api candidacies are
+          required to have a ballotready_position_id (Task 1 filter) and
+          gp_election_id is BR-natural (preferring br_election_id_lookup
+          over canonical_ids cluster-derived values).
+        data_tests:
+          - not_null
 
       - name: has_ddhq_match
         description: Always false for gp_api (no DDHQ matching at this layer).

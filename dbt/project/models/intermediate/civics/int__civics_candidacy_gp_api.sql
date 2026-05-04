@@ -159,9 +159,17 @@ with
                 }}
             ) as gp_candidate_id,
 
+            -- Prefer BR's natural gp_election_id (via br_election_id_lookup)
+            -- over the canonical_ids non-BR-cluster derivation: every gp_api
+            -- campaign has ballotready_position_id (Task 1 filter), so
+            -- bel.gp_election_id is always populated and aligns with BR's
+            -- election mart row. The non-BR cluster canonical would create a
+            -- separate election row that shares br_position_database_id with
+            -- BR's natural row, fanning out downstream joins (e.g.,
+            -- m_election_api__zip_to_position).
             coalesce(
-                xw.canonical_gp_election_id,
                 bel.gp_election_id,
+                xw.canonical_gp_election_id,
                 {{ generate_gp_election_id() }}
             ) as gp_election_id,
 
