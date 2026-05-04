@@ -119,9 +119,6 @@ with
             gp.gp_api_party_affiliation,
             gp.hubspot_contact_id,
 
-            -- Audit: cluster_id when bridge matched (else NULL)
-            gp.er_cluster_id,
-
             -- source_systems: join-based per Dan's preference + candidacy convention
             array_compact(
                 array(

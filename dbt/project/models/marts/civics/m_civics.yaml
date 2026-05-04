@@ -1946,10 +1946,6 @@ models:
         description: |
           HubSpot contact ID for the gp-api user, sourced from raw
           `gp_api_db_user.meta_data:hubspotid`.
-      - name: er_cluster_id
-        description: |
-          Splink cluster_id from the EO ER pipeline (audit). Populated for
-          gp_api person rows whose bridge resolved a match.
       - name: source_systems
         description: |
           Array of source systems contributing to this person, join-based per
