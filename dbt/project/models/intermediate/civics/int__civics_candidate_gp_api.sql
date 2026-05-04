@@ -7,9 +7,15 @@ with
     latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
 
     users_with_real_campaign as (
+        -- 2026+ scope: matches int__civics_candidacy_gp_api's filter so the
+        -- two int models cover the same universe of campaigns/users. Pre-2026
+        -- users belong to int__civics_candidate_2025 (HubSpot archive).
         select distinct user_id
         from latest_campaigns
-        where not coalesce(is_demo, false) and ballotready_position_id is not null
+        where
+            not coalesce(is_demo, false)
+            and ballotready_position_id is not null
+            and election_date >= '2026-01-01'
     ),
 
     users_filtered as (
