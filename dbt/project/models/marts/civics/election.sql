@@ -1,18 +1,11 @@
--- Civics mart election table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
--- DDHQ + gp_api.
---
--- BallotReady is the authoritative spine for elections (positions). TS,
--- DDHQ, and gp_api int models remap clustered rows to BR's gp_election_id
--- via int__civics_er_canonical_ids, so a 4-way full outer join on
--- gp_election_id merges matched rows. Unmatched DDHQ-only elections and
--- gp_api-only / cluster-derived elections pass through as new rows.
---
--- gp_api carries only IDs + FK pointers to BR for descriptive fields; its
--- descriptive columns are NULL by design and the FOJ coalesce always picks
--- BR's values when present. gp_api's contribution is to source_systems
--- membership and to surfacing election rows that gp_api participates in
--- but BR/TS/DDHQ don't.
+-- Civics mart election table.
+-- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
+-- joined on gp_election_id. BR is the authoritative spine; gp_api carries
+-- only IDs + FK pointers (br_position_database_id) and contributes to
+-- source_systems membership only — its descriptive columns are NULL by
+-- design and FOJ coalesce always picks BR's values when present.
+-- Per-column precedence rules: see the election model description in
+-- m_civics.yaml.
 --
 -- has_ddhq_match: true when either the 2025 archive linked a DDHQ race or a
 -- 2026+ DDHQ row clustered into this election via Splink. NULL otherwise.

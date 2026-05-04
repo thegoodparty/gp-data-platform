@@ -1,34 +1,8 @@
--- Civics mart candidacy table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
--- DDHQ + gp_api (Product Database).
---
--- Provider precedence (2026+ branch), grouped by chain:
--- gp_api > BR > TS > DDHQ:
--- party_affiliation, candidate_office, official_office_name, office_level,
--- general_election_date, created_at, updated_at
--- (these are the descriptive cols that DDHQ also supplies — Jinja-rendered
--- via gp_api_wins_cols ∩ ddhq_fallback_cols)
--- gp_api > BR > TS:
--- hubspot_contact_id, candidate_id_source, is_partisan,
--- br_position_database_id
--- (Jinja-rendered for the first three; explicit for br_position_database_id
--- since DDHQ doesn't carry it)
--- gp_api > BR > DDHQ:
--- office_type (TS doesn't carry this at this grain)
--- DDHQ > BR > TS > gp_api:
--- candidacy_result (DDHQ remains authoritative for results;
--- gp_api's did_win is candidate-self-reported)
--- gp_api only (PD-native, no other provider supplies):
--- product_campaign_id, is_pledged, is_verified, verification_status_reason
--- TS > BR (gp_api/DDHQ excluded):
--- is_incumbent (TS:51k populated vs BR:0)
--- BR > TS > DDHQ (gp_api carries no value):
--- is_open_seat
--- BR > TS (gp_api only carries general_election_date):
--- primary_election_date, primary_runoff_election_date,
--- general_runoff_election_date
--- BR-only:
--- hubspot_company_ids, viability_score, win_number, win_number_model
+-- Civics mart candidacy table.
+-- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
+-- joined on gp_candidacy_id (matched providers adopt BR's canonical via
+-- int__civics_er_canonical_ids). Per-column precedence rules: see the
+-- candidacy model description in m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "hubspot_contact_id",
     "candidate_id_source",
@@ -41,8 +15,9 @@
     "created_at",
     "updated_at",
 ] %}
-{# DDHQ supplies a subset of gp_api_wins_cols. Used to decide whether DDHQ
-   joins the coalesce chain. #}
+{# Subset of gp_api_wins_cols that DDHQ also supplies. The loop adds DDHQ
+   to the coalesce chain only for cols listed here; cols in gp_api_wins_cols
+   but NOT here render a 3-way coalesce(gp_api, br, ts) instead. #}
 {%- set ddhq_fallback_cols = [
     "party_affiliation",
     "candidate_office",

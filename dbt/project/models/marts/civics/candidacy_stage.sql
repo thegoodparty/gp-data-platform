@@ -1,22 +1,11 @@
--- Civics mart candidacy_stage table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed +
--- DDHQ + gp_api (Product Database). Each provider is wrapped with its
--- Splink cluster_id (looked up from stg_er_source__clustered_candidacy_stages
--- on the provider's raw key); the FOJ joins on
+-- Civics mart candidacy_stage table.
+-- 2025 HubSpot archive UNION 2026+ 4-way cluster-based FOJ over BR + TS +
+-- DDHQ + gp_api. Each provider is wrapped with its Splink cluster_id from
+-- stg_er_source__clustered_candidacy_stages; the FOJ joins on
 -- coalesce(cluster_id, 'self_' || gp_candidacy_stage_id), so any provider
--- combination collapses to one mart row regardless of which providers are
--- present (or which combination is in the cluster).
---
--- Provider precedence:
--- - gp_api > BR > TS > DDHQ for descriptive cols (candidate_name,
--- source_candidate_id, candidate_party, election_stage_date, created_at,
--- updated_at).
--- - DDHQ wins for results columns (is_winner, election_result,
--- election_result_source, votes_received, is_uncontested) — DDHQ is the
--- authoritative source for past-race results.
--- - match_* and has_match come from BR/TS only (DDHQ/gp_api have no
--- LLM-match metadata).
--- - source_race_id: BR > TS > DDHQ; gp_api always null at this column.
+-- combination collapses to one mart row.
+-- Per-column precedence rules: see the candidacy_stage model description
+-- in m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "candidate_name",
     "source_candidate_id",
