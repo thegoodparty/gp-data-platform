@@ -19,6 +19,7 @@
    to the coalesce chain only for cols listed here; cols in gp_api_wins_cols
    but NOT here render a 3-way coalesce(gp_api, br, ts) instead. #}
 {%- set ddhq_fallback_cols = [
+    "candidate_id_source",
     "party_affiliation",
     "candidate_office",
     "official_office_name",
