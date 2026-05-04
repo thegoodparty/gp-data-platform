@@ -716,9 +716,16 @@ models:
           populates ts_source_candidate_id only when TS is in the cluster.
         data_tests:
           - relationships:
+              # Warn-severity: same cluster-collapse pattern as
+              # int__civics_candidacy_stage_ballotready.br_candidacy_id —
+              # multi-TS-record Splink clusters keep one ts_source_candidate_id
+              # in the mart row by design. error_if=">100" guards regressions.
               arguments:
                 to: ref('candidacy_stage')
                 field: ts_source_candidate_id
+              config:
+                severity: warn
+                error_if: ">100"
 
       - name: election_result
         description: Result of the election stage (Won or null, general stages only)
@@ -2251,9 +2258,19 @@ models:
           the cluster, so a value's presence implies the source tag).
         data_tests:
           - relationships:
+              # Warn-severity: when a Splink cluster contains multiple BR
+              # records (rare but real — e.g., two BR ingestions for the
+              # same candidacy_stage), the cluster-merge in candidacy_stage
+              # collapses them to one mart row and only one br_candidacy_id
+              # carries through. The others are dropped from the mart by
+              # design. ~7-40 such rows depending on BR ingestion state;
+              # error_if=">100" guards against true regressions.
               arguments:
                 to: ref('candidacy_stage')
                 field: br_candidacy_id
+              config:
+                severity: warn
+                error_if: ">100"
 
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)
