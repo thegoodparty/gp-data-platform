@@ -12,6 +12,14 @@
 -- Pass 2: deterministic suppression of br_office_holder_id collisions when
 -- multiple gp_api rows in the same Splink cluster pick the same BR term.
 --
+-- BR-side rows are filtered to only those whose br_candidate_id resolves to
+-- int__civics_elected_official_ballotready_person. This handles transient
+-- data drift between the matcha cluster output (a snapshot) and the latest
+-- BR person rollup — without it, an unresolvable br_candidate_id would
+-- silently self-key the gp_api user instead of producing a clean bridge
+-- match. The bridge_br_candidate_resolves_to_br_person YAML test asserts
+-- this contract.
+--
 -- The campaigns LEFT JOIN attaches `hubspot_company_id` (alias of
 -- `campaigns.hubspot_id`) at the term/campaign grain.
 with
@@ -31,15 +39,21 @@ with
         where source_name = 'gp_api'
     ),
 
+    br_resolvable as (
+        select br_candidate_id
+        from {{ ref("int__civics_elected_official_ballotready_person") }}
+    ),
+
     br_side as (
         select
-            cluster_id,
-            br_office_holder_id,
-            br_candidate_id,
-            ts_officeholder_id,
-            term_start_date as br_term_start_date
-        from clustered
-        where source_name = 'ballotready_techspeed'
+            c.cluster_id,
+            c.br_office_holder_id,
+            c.br_candidate_id,
+            c.ts_officeholder_id,
+            c.term_start_date as br_term_start_date
+        from clustered as c
+        inner join br_resolvable as r on r.br_candidate_id = c.br_candidate_id
+        where c.source_name = 'ballotready_techspeed'
     ),
 
     -- Pass 1: 1 BR term per gp_api elected_office (closest by sworn_in_date)
