@@ -11,7 +11,10 @@
     "official_office_name",
     "office_level",
     "is_partisan",
+    "primary_election_date",
+    "primary_runoff_election_date",
     "general_election_date",
+    "general_runoff_election_date",
     "created_at",
     "updated_at",
 ] %}
@@ -134,16 +137,6 @@ with
                 br.br_position_database_id,
                 ts.br_position_database_id
             ) as br_position_database_id,
-            -- BR-only stage dates (gp_api only carries general_election_date)
-            coalesce(
-                br.primary_election_date, ts.primary_election_date
-            ) as primary_election_date,
-            coalesce(
-                br.primary_runoff_election_date, ts.primary_runoff_election_date
-            ) as primary_runoff_election_date,
-            coalesce(
-                br.general_runoff_election_date, ts.general_runoff_election_date
-            ) as general_runoff_election_date,
             -- BR-only viability fields
             br.viability_score,
             br.win_number,

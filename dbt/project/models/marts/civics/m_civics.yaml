@@ -375,7 +375,14 @@ models:
       Provider precedence (2026+ branch), grouped by chain:
         gp_api > BR > TS > DDHQ:
           party_affiliation, candidate_office, official_office_name,
-          office_level, general_election_date, created_at, updated_at
+          office_level, primary_election_date, primary_runoff_election_date,
+          general_election_date, general_runoff_election_date,
+          created_at, updated_at
+          (Stage dates are deterministically pulled from BR's stage spine
+          via int__civics_candidacy_gp_api's br_stage_spine_lookup, keyed
+          on (ballotready_position_id, election_year). gp_api campaigns
+          always have a BR position by Task 1's filter, so gp_api's stage
+          dates equal BR's by construction.)
         gp_api > BR > TS:
           hubspot_contact_id, candidate_id_source, is_partisan,
           br_position_database_id
@@ -390,9 +397,6 @@ models:
           is_incumbent
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
-        BR > TS (gp_api only carries general_election_date):
-          primary_election_date, primary_runoff_election_date,
-          general_runoff_election_date
         BR-only:
           hubspot_company_ids, viability_score, win_number, win_number_model
 
