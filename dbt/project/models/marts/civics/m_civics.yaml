@@ -604,6 +604,16 @@ models:
           int__icp_offices. Derived via br_position_database_id.
           NULL for records without BallotReady position match.
 
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          mart convention. Membership is presence-based, not value-survivorship —
+          'techspeed' in source_systems means TS contributed a row that joined
+          into this canonical record, NOT that any column took its value from TS.
+          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -700,6 +710,16 @@ models:
 
       - name: instagram_handle
         description: Candidate's Instagram handle
+
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          mart convention. Membership is presence-based, not value-survivorship —
+          'techspeed' in source_systems means TS contributed a row that joined
+          into this canonical record, NOT that any column took its value from TS.
+          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+        data_tests:
+          - not_null
 
       - name: created_at
         description: Timestamp when the record was created
@@ -934,6 +954,16 @@ models:
         description: >
           DDHQ's native ddhq_race_id (string-cast). Populated only when
           'ddhq' is in source_systems. Pairs with ddhq_candidate_id.
+
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          mart convention. Membership is presence-based, not value-survivorship —
+          'techspeed' in source_systems means TS contributed a row that joined
+          into this canonical record, NOT that any column took its value from TS.
+          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+        data_tests:
+          - not_null
 
     tests:
       - dbt_utils.expression_is_true:
@@ -1175,6 +1205,16 @@ models:
                 min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
 
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          mart convention. Membership is presence-based, not value-survivorship —
+          'techspeed' in source_systems means TS contributed a row that joined
+          into this canonical record, NOT that any column took its value from TS.
+          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -1375,6 +1415,16 @@ models:
           Thresholds defined in int__icp_offices. Derived via br_position_id.
           NULL for 2025 archive records without BallotReady position match.
 
+      - name: source_systems
+        description: |
+          Array of source systems contributing to this row, join-based per the
+          mart convention. Membership is presence-based, not value-survivorship —
+          'techspeed' in source_systems means TS contributed a row that joined
+          into this canonical record, NOT that any column took its value from TS.
+          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+        data_tests:
+          - not_null
+
       - name: created_at
         description: Timestamp when the record was created (from Airbyte extraction)
         data_tests:
@@ -1442,10 +1492,19 @@ models:
         description: BallotReady seat/office ID (Position.databaseId)
 
       - name: br_candidacy_id
-        description: BallotReady candidacy ID associated with this term
+        description: >
+          BallotReady candidacy ID (Candidacy.databaseId) linking this
+          office-holder term to the BallotReady candidacy record for the
+          election that placed this official in office. NULL for vacancy
+          rows and terms where BR did not provide a candidacy association.
 
       - name: br_geo_id
-        description: BallotReady geographic identifier
+        description: >
+          BallotReady geographic region identifier (Geo.databaseId) for the
+          jurisdiction this position represents (e.g. a city, county, or
+          district polygon). Can be used to join with BallotReady geography
+          data for spatial filtering or population lookups. NULL when BR has
+          no geo record for this position.
 
       - name: ts_officeholder_id
         description: |
@@ -1551,7 +1610,12 @@ models:
         description: Whether this is a vacancy placeholder (BR)
 
       - name: is_off_cycle
-        description: Whether the term is out of normal schedule (BR)
+        description: >
+          Whether this term's election fell outside the jurisdiction's
+          normal election cycle, as flagged by BallotReady. Off-cycle
+          elections (special elections, odd-year primaries, etc.) typically
+          have lower turnout and different filing timelines. NULL when BR
+          does not provide this flag for the position.
 
       - name: party_affiliation
         description: Political party affiliation
@@ -1697,6 +1761,13 @@ models:
           name: term_mart_source_systems_known_values
           config:
             severity: error
+      # Vacancy invariant: is_vacant = true iff gp_elected_official_id is null
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(is_vacant and gp_elected_official_id is null) or (not is_vacant and gp_elected_official_id is not null)"
+          name: elected_official_terms_vacancy_implies_null_person
+          config:
+            severity: error
 
   - name: elected_officials
     description: |
@@ -1787,10 +1858,17 @@ models:
         description: BR-wins coalesce. BR's latest-term email; falls back to TS-side per-field rollup if BR has none.
 
       - name: office_phone
-        description: Office phone number
+        description: >
+          Direct phone number for the official's office. Sourced from
+          BallotReady; NULL when BR has no office phone on record. Distinct
+          from `phone` (personal/mobile, TS-wins coalesce) and `central_phone`
+          (switchboard number).
 
       - name: central_phone
-        description: Central office phone number
+        description: >
+          Switchboard or main government phone number for the office, as
+          opposed to the official's direct line. Sourced from BallotReady;
+          NULL when BR has no central phone on record.
 
       - name: candidate_office
         description: Office name from latest term
@@ -1865,22 +1943,41 @@ models:
         description: Official's Twitter profile
 
       - name: mailing_address_line_1
-        description: Mailing address line 1
+        description: >
+          Street address line 1 of the official's government mailing address,
+          as provided by BallotReady. NULL when BR has no mailing address on
+          record.
 
       - name: mailing_address_line_2
-        description: Mailing address line 2
+        description: >
+          Street address line 2 (suite, unit, etc.) of the official's
+          government mailing address. NULL when not provided by BallotReady.
 
       - name: mailing_city
-        description: Mailing city
+        description: >
+          City component of the official's government mailing address.
+          NULL when BR has no mailing address on record.
 
       - name: mailing_state
-        description: Mailing state
+        description: >
+          State abbreviation component of the official's government mailing
+          address. NULL when BR has no mailing address on record. May differ
+          from `state` (the official's office state) for federal officials
+          whose mailing address is in DC.
 
       - name: mailing_zip
-        description: Mailing ZIP code
+        description: >
+          ZIP code component of the official's government mailing address.
+          NULL when BR has no mailing address on record.
 
       - name: tier
-        description: BallotReady tier classification
+        description: >
+          BallotReady's 1–5 priority tier for this official's position.
+          Lower numbers indicate higher-priority offices (larger, more
+          prominent, or higher public interest). Tier 1 = top-tier offices
+          (federal, statewide); Tier 5 = smallest local offices. Derived
+          from the latest term via the BR person rollup; NULL for gp_api-only
+          rows.
 
       - name: selected_gp_elected_official_term_id
         description: |
