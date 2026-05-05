@@ -54,10 +54,10 @@ with
     -- BR stage spine lookup: maps (br_position_id, election_year) →
     -- BR's gp_election_id and all 4 stage dates. Every surviving gp_api
     -- campaign has ballotready_position_id (Task 1 filter), so this lookup
-    -- resolves for all gp_api campaigns. We pivot stages into per-stage
-    -- date columns so gp_api can carry deterministic primary / general /
-    -- runoff dates from BR's authoritative race spine, not from the
-    -- user-entered campaign.election_date alone.
+    -- resolves for all gp_api campaigns. The candidacy row reflects the
+    -- full election cycle (all calendar stages BR knows about); per-stage
+    -- match to a specific PD pledge happens in
+    -- int__civics_candidacy_stage_gp_api via exact-date join.
     br_stage_spine_lookup as (
         select
             br_position_id,
