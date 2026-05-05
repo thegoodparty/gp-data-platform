@@ -35,8 +35,10 @@ PR description for the follow-up generalization plan.
 - `databricks_conn_id` — selects Databricks connection
   (e.g., `databricks_dev` in dev, `databricks` in prod).
 - `databricks_catalog` — Databricks catalog name (e.g., `goodparty_data_catalog`).
-- `databricks_dbt_schema` — Databricks schema where dbt models live
-  (e.g., `dbt` in prod, `dbt_staging` in dev).
+
+The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
+points at `dbt_staging` for in-flight dbt build artifacts). The election-api
+sync reads the production-quality version of the mart in both dev and prod.
 """
 
 import logging
@@ -122,13 +124,15 @@ def sync_election_api():
     def load_staging_from_databricks() -> int:
         """Stream the mart from Databricks into staging.ZipToPosition_new."""
         catalog = Variable.get("databricks_catalog")
-        schema = Variable.get("databricks_dbt_schema")
+        # Read from `dbt`, not the `databricks_dbt_schema` variable (which
+        # points at `dbt_staging` for in-flight dbt build artifacts).
+        databricks_schema = "dbt"
         batch_size = 5000
 
         col_list = ", ".join(SOURCE_COLUMNS)
         query = (
             f"SELECT {col_list} "
-            f"FROM `{catalog}`.`{schema}`.`m_election_api__zip_to_position`"
+            f"FROM `{catalog}`.`{databricks_schema}`.`m_election_api__zip_to_position`"
         )
         t_log.info("Reading from Databricks: %s", query)
         _col_names, batches = read_databricks_table(query, batch_size=batch_size)
