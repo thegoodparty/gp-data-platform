@@ -1401,6 +1401,13 @@ models:
       source_systems is join-based: 'ballotready' is always present;
       'techspeed' is added when has_direct_ts_term_match = true.
 
+      gp-api attachment (DATA-1885): each BR term that the EO Splink bridge
+      attached to a gp-api elected_office record exposes
+      `gp_api_elected_office_id`, `gp_api_user_id`, `gp_api_campaign_id`,
+      `gp_api_organization_slug`, `hubspot_company_id`, and `days_to_sworn_in`.
+      Bridge is unique on `br_office_holder_id` so the LEFT JOIN does not
+      multiply rows. `source_systems` includes 'gp_api' when bridge matched.
+
     columns:
       - name: gp_elected_official_term_id
         description: Primary key. Term-grain canonical UUID, sourced from int__civics_elected_official_ballotready.
@@ -1603,6 +1610,32 @@ models:
         data_tests:
           - not_null
 
+      - name: gp_api_elected_office_id
+        description: |
+          gp-api elected_office UUID. Populated when the EO Splink bridge
+          attached this BR term to a gp-api product elected_office record.
+      - name: gp_api_user_id
+        description: gp-api product user ID. Populated when bridge matched.
+      - name: gp_api_campaign_id
+        description: gp-api campaign ID. Populated when bridge matched.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('campaigns')
+                field: campaign_id
+              config:
+                where: "gp_api_campaign_id is not null"
+      - name: gp_api_organization_slug
+        description: gp-api organization slug. Populated when bridge matched.
+      - name: hubspot_company_id
+        description: |
+          HubSpot company ID for the matched gp-api campaign. Alias of
+          `campaigns.hubspot_id` exposed at the term/campaign grain.
+      - name: days_to_sworn_in
+        description: |
+          Audit: |bridge.br_term_start_date − bridge.sworn_in_date| in days.
+          Lower is a closer date match. NULL when either date is NULL.
+
       - name: is_win_icp
         description: >
           Whether this position meets Win ICP criteria (non-judicial,
@@ -1640,16 +1673,45 @@ models:
       - dbt_utils.equal_rowcount:
           arguments:
             compare_model: ref('int__civics_elected_official_ballotready')
+      # gp_api source presence floor on term mart. Lower-bound only — we
+      # expect this to grow as gp_api adoption increases. Threshold set well
+      # below current observed value so legitimate growth doesn't fire it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null) >= 800"
+          name: term_mart_bridge_attach_floor
+          config:
+            severity: warn
+      # hubspot_company_id coverage on bridge-attached rows. Coalesce ensures
+      # 0/0=NULL doesn't silently pass.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_official_terms') }} where hubspot_company_id is not null) / nullif((select count(*) from {{ ref('elected_official_terms') }} where gp_api_elected_office_id is not null), 0), 0) >= 0.95"
+          name: term_mart_hubspot_company_coverage
+          config:
+            severity: warn
+      # source_systems values are limited to known sources (array-aware row-level test)
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(array_except(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 0"
+          name: term_mart_source_systems_known_values
+          config:
+            severity: error
 
   - name: elected_officials
     description: |
-      Civics mart elected_officials. Person-grain merge of BR + TS:
-      int__civics_elected_official_ballotready_person FULL OUTER JOIN
-      int__civics_elected_official_techspeed_person on the canonical
-      gp_elected_official_id, with COALESCE per column. Mirrors the
-      candidate.sql / candidacy.sql merge pattern.
+      Civics mart elected_officials. Person-grain 3-way merge of
+      BallotReady + TechSpeed + gp-api elected officials, full-outer-joined
+      on the canonical gp_elected_official_id with COALESCE per column.
+      Provider precedence: BR > TS > gp_api for shared identity/office
+      fields. Mirrors the candidate.sql / candidacy.sql merge pattern at
+      the BR↔TS layer; gp_api adopts BR canonical via the EO Splink bridge
+      (see "gp-api integration" paragraph below).
 
-      Grain: one row per elected official person (by br_candidate_id).
+      Grain: one row per elected official person (by br_candidate_id) for
+      BR-matched rows; gp_api-only rows (Splink found no BR/TS match) have
+      their own salted UUID with `source_systems = ['gp_api']` and NULL
+      `br_candidate_id`.
 
       Latest-term semantics: term-scoped attributes (candidate_office,
       office_level, office_type, state, city, district, mailing_*, tier,
@@ -1674,6 +1736,15 @@ models:
       contributed a person row; 'techspeed' present when clean TS data
       contributed.
 
+      gp-api integration (DATA-1885): the mart now full-outer-joins a third
+      provider (`int__civics_elected_official_gp_api_person`) on
+      `gp_elected_official_id`, with gp_api adopting BR's canonical via the
+      bridge for matched users. gp_api-only rows (Splink found no BR/TS
+      match) appear with `source_systems = ['gp_api']`, NULL `br_candidate_id`,
+      and identity/office fields populated from gp_api via the precedence
+      chain. The cluster-based merge_key pattern from candidacy_stage.sql
+      does NOT apply here — see design spec for details.
+
     columns:
       - name: gp_elected_official_id
         description: Primary key. Person-grain canonical UUID. Same value as BR person intermediate's gp_elected_official_id.
@@ -1683,10 +1754,16 @@ models:
           - is_uuid
 
       - name: br_candidate_id
-        description: BallotReady's natural person-level key.
+        description: |
+          BallotReady's natural person-level key. NULL on gp_api-only mart
+          rows (where Splink found no BR/TS match).
         data_tests:
-          - unique
-          - not_null
+          - unique:
+              config:
+                where: "br_candidate_id is not null"
+          - not_null:
+              config:
+                where: "array_contains(source_systems, 'ballotready')"
 
       - name: first_name
         description: Official's first name
@@ -1806,15 +1883,26 @@ models:
         description: BallotReady tier classification
 
       - name: selected_gp_elected_official_term_id
-        description: Audit column. The BR term whose values populate the latest-term-derived attributes for this person. Trace via elected_official_terms.gp_elected_official_term_id.
+        description: |
+          Audit column. The BR term whose values populate the latest-term-
+          derived attributes for this person. NULL on gp_api-only rows.
+          Trace via elected_official_terms.gp_elected_official_term_id.
         data_tests:
-          - not_null
-          - is_uuid
+          - not_null:
+              config:
+                where: "array_contains(source_systems, 'ballotready')"
+          - is_uuid:
+              config:
+                where: "selected_gp_elected_official_term_id is not null"
 
       - name: selected_br_office_holder_id
-        description: Audit. BR's natural term-grain key for the chosen latest term.
+        description: |
+          Audit. BR's natural term-grain key for the chosen latest term.
+          NULL on gp_api-only rows.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "array_contains(source_systems, 'ballotready')"
 
       - name: selected_ts_officeholder_id
         description: Audit. The ts_officeholder_id of the TS row chosen as latest non-reused for this canonical, or NULL if no clean TS row contributed.
@@ -1822,18 +1910,54 @@ models:
       - name: selected_ts_position_id
         description: Audit. The ts_position_id of the chosen TS row.
 
+      - name: gp_api_user_id
+        description: |
+          gp-api product user ID for this person. Populated when the EO
+          Splink bridge resolved a match (or for gp_api-only mart rows).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('users')
+                field: user_id
+              config:
+                where: "gp_api_user_id is not null"
+      - name: selected_gp_api_elected_office_id
+        description: |
+          Audit: which gp_api elected_office record won the latest-per-user
+          rollup that fed this mart row.
+      - name: selected_gp_api_campaign_id
+        description: "Audit: gp_api campaign ID for the selected elected_office."
+      - name: selected_gp_api_organization_slug
+        description: "Audit: gp_api organization slug for the selected elected_office."
+      - name: gp_api_email
+        description: |
+          User's email from gp-api product signup. Exposed separately from
+          the canonical `email` column (which is BR-wins) because product
+          signup contact is uniquely valuable.
+      - name: gp_api_phone
+        description: |
+          User's phone from gp-api product signup. Exposed separately from
+          the canonical `phone` column (which is TS-wins).
+      - name: gp_api_party_affiliation
+        description: |
+          Raw user-input party affiliation from gp-api. Audit copy of the
+          value that feeds the canonical party_affiliation chain.
+      - name: hubspot_contact_id
+        description: |
+          HubSpot contact ID for the gp-api user, sourced from raw
+          `gp_api_db_user.meta_data:hubspotid`.
       - name: source_systems
         description: |
           Array of source systems contributing to this person, join-based per
           the candidacy mart convention. 'ballotready' present when BR person
           row exists for this canonical; 'techspeed' present when a clean TS
-          person row exists.
+          person row exists; 'gp_api' present when the gp_api person rollup
+          contributed (either via bridge match or as a gp_api-only row).
 
           Source-presence semantics, not value-survivorship: 'techspeed'
           membership means clean TS data joined this person, NOT that any
           final coalesced column took its value from TS. Reused-only
-          canonicals (~53 in PR #333 data) yield 'ballotready' alone because
-          TS contributions were suppressed upstream.
+          canonicals (~53 in PR #333 data) yield 'ballotready' alone.
         data_tests:
           - not_null
 
@@ -1848,9 +1972,21 @@ models:
           - not_null
 
     tests:
-      - dbt_utils.equal_rowcount:
+      # BR-backed rowcount must match BR person intermediate (no BR rows lost in merge)
+      - dbt_utils.expression_is_true:
           arguments:
-            compare_model: ref('int__civics_elected_official_ballotready_person')
+            expression: "(select count(*) from {{ ref('elected_officials') }} where array_contains(source_systems, 'ballotready')) = (select count(*) from {{ ref('int__civics_elected_official_ballotready_person') }})"
+          name: elected_officials_br_backed_rowcount_matches_br_person
+          config:
+            severity: error
+      # Total mart rowcount lower-bound. BR person count grows over time; the
+      # mart should be at least BR-rowcount-equivalent.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_officials') }}) >= (select count(*) from {{ ref('int__civics_elected_official_ballotready_person') }})"
+          name: elected_officials_total_rowcount_at_least_br
+          config:
+            severity: error
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
@@ -1858,3 +1994,55 @@ models:
             # Inherits BR source rows where updated_at < created_at
             warn_if: ">30"
             error_if: ">100"
+      # gp_api source presence floor. Hard error if gp_api integration falls
+      # off entirely or drops to a tiny fraction of current scale. Lower-bound
+      # only — gp_api is expected to grow.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_officials') }} where array_contains(source_systems, 'gp_api')) >= 900"
+          name: gp_api_source_presence_floor
+          config:
+            severity: error
+      # gp_api-matched persons floor (cross-source coverage). gp_api users
+      # that Splink linked to a BR person; should grow as gp_api adoption
+      # increases. Lower-bound only.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null and array_contains(source_systems, 'ballotready')) >= 800"
+          name: person_mart_gp_api_br_cross_source_coverage_floor
+          config:
+            severity: warn
+      # gp_api-only rows have first/last/state populated (identity invariant).
+      # gp_api-only mart rows derive identity from gp_api source via the
+      # coalesce chain; if these are NULL, the chain is broken. Error-level.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where source_systems = array('gp_api') and first_name is not null and last_name is not null and state is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where source_systems = array('gp_api')), 0), 0) >= 0.99"
+          name: gp_api_only_rows_have_identity_fields
+          config:
+            severity: error
+      # gp_api email coverage. coalesce(rate, 0) ensures the test FAILS when
+      # gp_api drops to zero (without it, 0/0=NULL passes the test). Email is
+      # collected at signup, so coverage on linked gp_api users should be high.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where gp_api_email is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.99"
+          name: gp_api_email_coverage
+          config:
+            severity: error
+      # HubSpot contact coverage. Sourced from raw user metadata; high
+      # coverage expected because most product users sync to HubSpot.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "coalesce((select count(*) * 1.0 from {{ ref('elected_officials') }} where hubspot_contact_id is not null) / nullif((select count(*) from {{ ref('elected_officials') }} where gp_api_user_id is not null), 0), 0) >= 0.95"
+          name: gp_api_hubspot_contact_coverage
+          config:
+            severity: warn
+      # source_systems values are limited to known sources (array-aware
+      # row-level test).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "size(array_except(source_systems, array('ballotready', 'techspeed', 'gp_api'))) = 0"
+          name: person_mart_source_systems_known_values
+          config:
+            severity: error
