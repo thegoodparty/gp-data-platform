@@ -293,9 +293,13 @@ with
             and election.election_day >= '2026-01-01'
     ),
 
-    -- Compute candidate_office once so map_office_type can reference it
-    -- without re-evaluating the full CASE expression (same pattern as
-    -- ddhq_with_office above).
+    -- Match each PD campaign to the specific BR race at the user's pledged
+    -- election_date (single stage per campaign, not the full year-based
+    -- fan-out). PD's campaign.election_date identifies one stage; emit one
+    -- prematch row per campaign at the BR race closest to that date so
+    -- Splink doesn't waste cycles trying to cluster gp_api rows at stages
+    -- the user didn't pledge to. Closest-date fallback handles slightly
+    -- stale PD dates.
     gp_api_with_office as (
         select
             c.*,
@@ -322,11 +326,14 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
             on c.ballotready_position_id = brp.database_id
-        -- Dedup: a position may have multiple races of the same stage type
-        -- in the same year; pick the race closest to the campaign's date
+        -- One row per campaign at the BR race matching c.election_date most
+        -- closely. Exact-date hits get datediff = 0; if PD's date is slightly
+        -- off, we still land on the nearest BR stage rather than fanning out
+        -- across primary/general/runoff. br_race_id desc breaks ties when a
+        -- position has both a regular and a special race on the same day.
         qualify
             row_number() over (
-                partition by c.campaign_id, r.election_stage
+                partition by c.campaign_id
                 order by
                     abs(datediff(r.election_day, c.election_date)) asc,
                     r.br_race_id desc nulls last
