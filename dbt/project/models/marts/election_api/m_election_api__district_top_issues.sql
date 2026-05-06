@@ -6,11 +6,14 @@
 }}
 
 {#-
-    Top 5 Haystaq issue scores per L2 district, scoped to districts that have
-    a 2026 BallotReady election (via the LLM-derived BR-position to L2-district
-    match). One row per (district x issue) for the top 5 issues by average score.
+    Top 5 Haystaq issue scores per L2 district, covering every L2 district with
+    an `is_matched = true` row in the LLM L2-to-BallotReady-district match
+    (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to a single
+    election cycle — districts with off-cycle offices are included as well.
 
-    The (column, label) pairs below are the single source of truth for the 24
+    One row per (district x issue) for the top 5 issues by average voter score.
+
+    The (column, label) pairs below are the single source of truth for the
     Haystaq issue scores used by this model. The Jinja loops below expand them
     into the AVG aggregation, the UNPIVOT, and the issue-label CASE.
 -#}
@@ -52,12 +55,8 @@
 with
     target_districts as (
         select distinct m.state as l2_state, m.l2_district_type, m.l2_district_name
-        from {{ ref("election") }} as e
-        inner join
-            {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
-            on m.br_database_id = e.br_position_database_id
-            and m.is_matched
-        where e.election_year = 2026
+        from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as m
+        where m.is_matched
     ),
 
     l2_voter_data as (
