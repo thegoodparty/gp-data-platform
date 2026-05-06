@@ -1,5 +1,5 @@
--- Touched to force a state:modified+ rebuild in CI (prod's campaigns table
--- predates is_latest_version; will be reverted post-merge).
+{{ config(materialized="table") }}
+
 with
     campaigns as (
         select * from {{ ref("stg_airbyte_internal__raw_gp_api_db_campaign") }}
