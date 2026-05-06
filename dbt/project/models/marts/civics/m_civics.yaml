@@ -606,11 +606,9 @@ models:
 
       - name: source_systems
         description: |
-          Array of source systems contributing to this row, join-based per the
-          mart convention. Membership is presence-based, not value-survivorship —
-          'techspeed' in source_systems means TS contributed a row that joined
-          into this canonical record, NOT that any column took its value from TS.
-          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          Array of source systems contributing to this row. Possible values:
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          See the model-level description for merge mechanics.
         data_tests:
           - not_null
 
@@ -713,11 +711,9 @@ models:
 
       - name: source_systems
         description: |
-          Array of source systems contributing to this row, join-based per the
-          mart convention. Membership is presence-based, not value-survivorship —
-          'techspeed' in source_systems means TS contributed a row that joined
-          into this canonical record, NOT that any column took its value from TS.
-          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          Array of source systems contributing to this row. Possible values:
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          See the model-level description for merge mechanics.
         data_tests:
           - not_null
 
@@ -957,11 +953,9 @@ models:
 
       - name: source_systems
         description: |
-          Array of source systems contributing to this row, join-based per the
-          mart convention. Membership is presence-based, not value-survivorship —
-          'techspeed' in source_systems means TS contributed a row that joined
-          into this canonical record, NOT that any column took its value from TS.
-          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          Array of source systems contributing to this row. Possible values:
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          See the model-level description for merge mechanics.
         data_tests:
           - not_null
 
@@ -1207,11 +1201,9 @@ models:
 
       - name: source_systems
         description: |
-          Array of source systems contributing to this row, join-based per the
-          mart convention. Membership is presence-based, not value-survivorship —
-          'techspeed' in source_systems means TS contributed a row that joined
-          into this canonical record, NOT that any column took its value from TS.
-          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          Array of source systems contributing to this row. Possible values:
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          See the model-level description for merge mechanics.
         data_tests:
           - not_null
 
@@ -1417,11 +1409,9 @@ models:
 
       - name: source_systems
         description: |
-          Array of source systems contributing to this row, join-based per the
-          mart convention. Membership is presence-based, not value-survivorship —
-          'techspeed' in source_systems means TS contributed a row that joined
-          into this canonical record, NOT that any column took its value from TS.
-          Possible values: 'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          Array of source systems contributing to this row. Possible values:
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          See the model-level description for merge mechanics.
         data_tests:
           - not_null
 
@@ -1858,17 +1848,10 @@ models:
         description: BR-wins coalesce. BR's latest-term email; falls back to TS-side per-field rollup if BR has none.
 
       - name: office_phone
-        description: >
-          Direct phone number for the official's office. Sourced from
-          BallotReady; NULL when BR has no office phone on record. Distinct
-          from `phone` (personal/mobile, TS-wins coalesce) and `central_phone`
-          (switchboard number).
+        description: Office phone number
 
       - name: central_phone
-        description: >
-          Switchboard or main government phone number for the office, as
-          opposed to the official's direct line. Sourced from BallotReady;
-          NULL when BR has no central phone on record.
+        description: Central office phone number
 
       - name: candidate_office
         description: Office name from latest term
@@ -1943,32 +1926,19 @@ models:
         description: Official's Twitter profile
 
       - name: mailing_address_line_1
-        description: >
-          Street address line 1 of the official's government mailing address,
-          as provided by BallotReady. NULL when BR has no mailing address on
-          record.
+        description: Mailing address line 1
 
       - name: mailing_address_line_2
-        description: >
-          Street address line 2 (suite, unit, etc.) of the official's
-          government mailing address. NULL when not provided by BallotReady.
+        description: Mailing address line 2
 
       - name: mailing_city
-        description: >
-          City component of the official's government mailing address.
-          NULL when BR has no mailing address on record.
+        description: Mailing city
 
       - name: mailing_state
-        description: >
-          State abbreviation component of the official's government mailing
-          address. NULL when BR has no mailing address on record. May differ
-          from `state` (the official's office state) for federal officials
-          whose mailing address is in DC.
+        description: Mailing state
 
       - name: mailing_zip
-        description: >
-          ZIP code component of the official's government mailing address.
-          NULL when BR has no mailing address on record.
+        description: Mailing ZIP code
 
       - name: tier
         description: >
