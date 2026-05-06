@@ -607,7 +607,7 @@ models:
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
-          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
           See the model-level description for merge mechanics.
         data_tests:
           - not_null
@@ -712,7 +712,7 @@ models:
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
-          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
           See the model-level description for merge mechanics.
         data_tests:
           - not_null
@@ -954,7 +954,7 @@ models:
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
-          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
           See the model-level description for merge mechanics.
         data_tests:
           - not_null
