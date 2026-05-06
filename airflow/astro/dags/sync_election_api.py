@@ -70,9 +70,7 @@ def _open_pg():
     The bastion connection id comes from the `election_api_bastion_conn_id`
     Airflow Variable; an empty value (or unset) bypasses the tunnel.
     """
-    bastion = Variable.get(
-        "election_api_bastion_conn_id", default_var="gp_bastion_host"
-    )
+    bastion = Variable.get("election_api_bastion_conn_id", default="gp_bastion_host")
     return get_postgres_via_ssh(
         bastion_conn_id=bastion or None,
         pg_conn_id=PG_CONN_ID,
