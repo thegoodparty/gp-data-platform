@@ -1,5 +1,3 @@
-{{ config(materialized="table") }}
-
 -- Civics mart candidate table
 -- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
 -- Deduplicates on gp_candidate_id (a person may appear in multiple sources)
