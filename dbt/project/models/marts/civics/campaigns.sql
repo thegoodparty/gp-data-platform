@@ -1,5 +1,3 @@
-{{ config(materialized="table") }}
-
 with
     campaigns as (
         select * from {{ ref("stg_airbyte_internal__raw_gp_api_db_campaign") }}
