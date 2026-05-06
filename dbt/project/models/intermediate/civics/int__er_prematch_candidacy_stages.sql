@@ -12,8 +12,11 @@
 -- - TechSpeed staging: dates/state pre-parsed, unpivoted into primary/general
 -- stage rows, deduped per candidate-stage
 -- - DDHQ election results: one row per candidate per race
--- - GP API: campaigns mart fanned out by BR API race into one row per stage,
--- enriched with normalized position names and stage-specific dates
+-- - GP API: one row per latest-version pledged campaign, with PD's
+-- election_date and (null) election_stage / br_race_id. PD has no stage
+-- signal, so cluster-stage assignment is left to Splink to resolve via
+-- comparisons against BR/TS/DDHQ rows that carry real br_race_id /
+-- election_stage values.
 --
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
@@ -255,8 +258,8 @@ with
 
     -- GP API: campaign data from the GP platform (joins already resolved
     -- in the campaigns mart: campaign + user + organization + position).
-    -- Fanned out by election stage via BR API race table so each campaign
-    -- produces one row per stage (Primary, General, Runoff, Special variants).
+    -- One row per latest-version campaign with a populated state, office,
+    -- and user name.
     gp_api_campaigns as (
         select *
         from {{ ref("campaigns") }}
@@ -270,42 +273,18 @@ with
             and nullif(trim(campaign_office), '') is not null
     ),
 
-    -- BR API race: position x stage with stage-specific election dates.
-    -- Joined to BR election for the actual date per stage. Excludes
-    -- disabled races and pre-2026 elections. Detects special elections
-    -- via election name (see ballotready_stages comment for rationale).
-    br_race as (
-        select
-            race.position.databaseid as br_position_id,
-            race.database_id as br_race_id,
-            {{
-                derive_election_stage(
-                    "race.is_primary", "race.is_runoff", "election.name"
-                )
-            }} as election_stage,
-            election.election_day
-        from {{ ref("stg_airbyte_source__ballotready_api_race") }} as race
-        inner join
-            {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
-            on race.election.databaseid = election.database_id
-        where
-            not coalesce(race.is_disabled, false)
-            and election.election_day >= '2026-01-01'
-    ),
-
-    -- Match each PD campaign to the specific BR race at the user's pledged
-    -- election_date (single stage per campaign, not the full year-based
-    -- fan-out). PD's campaign.election_date identifies one stage; emit one
-    -- prematch row per campaign at the BR race closest to that date so
-    -- Splink doesn't waste cycles trying to cluster gp_api rows at stages
-    -- the user didn't pledge to. Closest-date fallback handles slightly
-    -- stale PD dates.
+    -- Pull office_level from BR's position table (deterministic by
+    -- ballotready_position_id, no race-stage guessing) so cross-source
+    -- ExactMatch on office_level aligns with BR/TS's 7-bucket taxonomy.
+    -- Stage-grain BR fields (br_race_id, election_stage, election_day) are
+    -- intentionally not joined — those would be derived guesses from BR's
+    -- calendar and would feed BR signal back into a BR comparison. PD's
+    -- own election_date carries the stage-related signal Splink needs;
+    -- election_stage / br_race_id are emitted as null so Splink's blocking
+    -- and comparison rules use natural keys (position_id, name, dates).
     gp_api_with_office as (
         select
             c.*,
-            r.br_race_id,
-            r.election_stage,
-            r.election_day,
             brp.level as br_position_level,
             -- Use the same normalization as BallotReady when we have the
             -- normalized_position_name; fall back to raw campaign_office
@@ -319,34 +298,19 @@ with
                 initcap(trim(c.campaign_office))
             ) as candidate_office
         from gp_api_campaigns as c
-        inner join
-            br_race as r
-            on c.ballotready_position_id = r.br_position_id
-            and year(r.election_day) = year(c.election_date)
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
             on c.ballotready_position_id = brp.database_id
-        -- One row per campaign at the BR race matching c.election_date most
-        -- closely. Exact-date hits get datediff = 0; if PD's date is slightly
-        -- off, we still land on the nearest BR stage rather than fanning out
-        -- across primary/general/runoff. br_race_id desc breaks ties when a
-        -- position has both a regular and a special race on the same day.
-        qualify
-            row_number() over (
-                partition by c.campaign_id
-                order by
-                    abs(datediff(r.election_day, c.election_date)) asc,
-                    r.br_race_id desc nulls last
-            )
-            = 1
     ),
 
     gp_api_stages as (
         select
             'gp_api' as source_name,
-            cast(g.campaign_id as string)
-            || '__'
-            || replace(lower(g.election_stage), ' ', '_') as source_id,
+            -- One prematch row per campaign; campaign_id is unique among
+            -- gp_api rows so it's the natural source_id. (Previously the
+            -- source_id was suffixed by election_stage when each campaign
+            -- emitted multiple stage rows; that fan-out has been removed.)
+            cast(g.campaign_id as string) as source_id,
             lower(trim(g.user_first_name)) as first_name,
             lower(trim(g.user_last_name)) as last_name,
             upper(trim(g.campaign_state)) as state,
@@ -377,11 +341,18 @@ with
             {{ extract_district_raw("g.campaign_office") }} as district_raw,
             {{ extract_district_identifier("g.campaign_office") }}
             as district_identifier,
-            g.election_day as election_date,
-            g.election_stage,
+            -- PD's pledged election_date. We deliberately do not derive
+            -- election_stage or br_race_id from BR's calendar — those would
+            -- be guesses (PD has no stage signal) and would feed BR-derived
+            -- values back into a BR comparison. Splink should resolve the
+            -- stage by clustering against BR rows that carry the real
+            -- (br_race_id, election_stage), using PD's election_date as the
+            -- comparison feature.
+            g.election_date,
+            cast(null as string) as election_stage,
             g.user_email as email,
             g.user_phone as phone,
-            cast(g.br_race_id as string) as br_race_id,
+            cast(null as string) as br_race_id,
             trim(g.campaign_office) as official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
