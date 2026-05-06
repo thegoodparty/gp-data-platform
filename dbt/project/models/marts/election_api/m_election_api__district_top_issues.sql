@@ -152,4 +152,4 @@ select
         partition by l2_state, l2_district_type, l2_district_name order by score desc
     ) as issue_rank
 from district_issue_long
-qualify issue_rank <= 5
+qualify issue_rank <= 10
