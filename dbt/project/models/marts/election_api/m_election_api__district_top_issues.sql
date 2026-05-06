@@ -37,14 +37,14 @@
     ("hs_death_penalty_support", "Support the Death Penalty"),
     ("hs_police_trust_yes", "Trust the Police"),
     ("hs_violent_crime_very_worried", "Worried About Violent Crime"),
-    (
-        "hs_felon_voting_support",
-        "Support Voting Rights for People with Felony Convictions",
-    ),
-    ("hs_rank_choice_voting_support", "Support Ranked-Choice Voting"),
     ("hs_pipeline_fracking_support", "Support Pipelines and Fracking"),
     ("hs_casino_support", "Support Legal Casinos"),
     ("hs_immigration_undesirable", "View Immigration Negatively"),
+    ("hs_econ_anxiety_very_worried", "Worried About the Economy"),
+    ("hs_income_inequality_serious", "Concerned About Income Inequality"),
+    ("hs_unions_beneficial", "Support Labor Unions"),
+    ("hs_regulations_too_harsh", "Reduce Business Regulations"),
+    ("hs_trump_tariffs_support", "Support Tariffs on Imports"),
 ] -%}
 
 {%- set issue_columns = issues | map(attribute=0) | list -%}

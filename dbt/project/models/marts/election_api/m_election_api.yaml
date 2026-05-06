@@ -348,11 +348,14 @@ models:
                   - hs_death_penalty_support
                   - hs_police_trust_yes
                   - hs_violent_crime_very_worried
-                  - hs_felon_voting_support
-                  - hs_rank_choice_voting_support
                   - hs_pipeline_fracking_support
                   - hs_casino_support
                   - hs_immigration_undesirable
+                  - hs_econ_anxiety_very_worried
+                  - hs_income_inequality_serious
+                  - hs_unions_beneficial
+                  - hs_regulations_too_harsh
+                  - hs_trump_tariffs_support
       - name: issue_label
         description: "Human-readable issue label for product display"
         tests:
