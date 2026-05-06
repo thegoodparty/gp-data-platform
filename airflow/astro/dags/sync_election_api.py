@@ -252,10 +252,9 @@ def sync_election_api():
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(ZTP_SOURCE_COLUMNS)
             # TEMP (DATA-1867): prod mart has 9 dupe (zip_code, position_id,
-            # election_date) triples and stale row counts pending a
-            # full-refresh rebuild. Dedupe + LIMIT for fast end-to-end
-            # iteration. Revert to the plain SELECT after prod is rebuilt
-            # and the dbt unique test passes.
+            # election_date) triples pending a full-refresh rebuild. Dedupe
+            # here so the unique index doesn't block the load. Drop the
+            # QUALIFY once the dbt unique test passes on prod.
             query = (
                 f"SELECT {col_list} "
                 f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
@@ -263,8 +262,7 @@ def sync_election_api():
                 f"QUALIFY row_number() OVER ("
                 f"  PARTITION BY zip_code, position_id, election_date "
                 f"  ORDER BY display_office_level"
-                f") = 1 "
-                f"LIMIT 5000"
+                f") = 1"
             )
             with _open_pg() as conn:
                 return bulk_insert_from_databricks(
@@ -282,11 +280,9 @@ def sync_election_api():
 
         @task
         def quality_checks(loaded_count: int) -> None:
-            # TEMP (DATA-1867): floors lowered for the LIMIT 5000 dev sample.
-            # Restore to >= 1_000 / >= 30 once we're loading the full mart.
-            if loaded_count < 100:
+            if loaded_count < 1_000:
                 raise ValueError(
-                    f"Only {loaded_count} rows loaded (<100) — refusing to swap"
+                    f"Only {loaded_count} rows loaded (<1000) — refusing to swap"
                 )
             with _open_pg() as conn:
                 cur = conn.cursor()
@@ -296,7 +292,7 @@ def sync_election_api():
                         f'FROM "{ZTP.staging_schema}"."{ZTP.new_table}"'
                     )
                     distinct_states = cur.fetchone()[0]
-                    if distinct_states < 1:
+                    if distinct_states < 30:
                         raise ValueError(
                             f"Only {distinct_states} distinct states "
                             f"— refusing to swap"
