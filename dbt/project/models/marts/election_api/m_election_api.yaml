@@ -270,6 +270,123 @@ models:
               - position_id
               - election_date
 
+  - name: m_election_api__district_top_issues
+    description: >
+      Top 5 Haystaq issue scores per L2 district, covering every L2 district
+      with an `is_matched = true` row in the LLM L2-to-BallotReady-district
+      match (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to
+      a single election cycle — districts with off-cycle offices are included
+      as well.
+
+      Grain: One row per (l2_state, l2_district_type, l2_district_name, issue)
+      for the top 5 issues by average voter score in that district.
+    columns:
+      - name: id
+        description: "UUID of the district-issue row"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: district_id
+        description: "UUID of the district. Foreign key to m_election_api__district."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: id
+      - name: l2_state
+        description: "State postal code"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US"
+                ]
+      - name: l2_district_type
+        description: "L2 district type (e.g. State_House_District, City, County, or 'State' for statewide)"
+        tests:
+          - not_null
+      - name: l2_district_name
+        description: "L2 district name within the district type"
+        tests:
+          - not_null
+      - name: l2_voter_count
+        description: "Number of L2 voters used to compute the average issue scores for this district"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: issue
+        description: "Haystaq issue score column name (e.g. hs_charter_schools_support)"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - hs_charter_schools_support
+                  - hs_school_choice_support
+                  - hs_school_funding_more
+                  - hs_dei_support
+                  - hs_civil_liberties_support
+                  - hs_affordable_housing_gov_has_role
+                  - hs_public_transit_support
+                  - hs_min_wage_15_increase_support
+                  - hs_tax_cuts_support
+                  - hs_medicaid_expansion_support
+                  - hs_medicare_for_all_support
+                  - hs_abortion_pro_choice
+                  - hs_same_sex_marriage_support
+                  - hs_climate_change_believer
+                  - hs_marijuana_legal_support
+                  - hs_gun_control_support
+                  - hs_death_penalty_support
+                  - hs_police_trust_yes
+                  - hs_violent_crime_very_worried
+                  - hs_pipeline_fracking_support
+                  - hs_casino_support
+                  - hs_immigration_undesirable
+                  - hs_econ_anxiety_very_worried
+                  - hs_income_inequality_serious
+                  - hs_unions_beneficial
+                  - hs_regulations_too_harsh
+                  - hs_trump_tariffs_support
+      - name: issue_label
+        description: "Human-readable issue label for product display"
+        tests:
+          - not_null
+      - name: score
+        description: "Average Haystaq score for the issue across voters in the district (0-100)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+      - name: issue_rank
+        description: "Rank of the issue within the district (1 = highest score)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 5
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - l2_state
+              - l2_district_type
+              - l2_district_name
+              - issue
+
   - name: m_election_api__stance
     description: "Mart model that serves the Election API"
     columns:
