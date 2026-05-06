@@ -13,9 +13,9 @@
 -- stage rows, deduped per candidate-stage
 -- - DDHQ election results: one row per candidate per race
 -- - GP API: one row per latest-version pledged campaign. election_stage
--- and br_race_id are looked up deterministically from BR's race spine
--- by PD's own ballotready_race_id (asserted in details:raceId, ~94%
--- coverage). Null for the ~6% of campaigns where PD didn't set raceId.
+-- and br_race_id are resolved by joining BR's race spine on PD's
+-- ballotready_race_id; null for ~6% of campaigns where PD didn't set
+-- raceId.
 --
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
@@ -272,9 +272,8 @@ with
             and nullif(trim(campaign_office), '') is not null
     ),
 
-    -- BR API race spine for deterministic stage lookup by br_race_id.
-    -- Excludes disabled races and pre-2026 elections. The election_stage
-    -- derivation mirrors ballotready_stages above.
+    -- BR race spine for resolving election_stage by br_race_id. Excludes
+    -- disabled races and pre-2026 elections.
     br_race as (
         select
             race.database_id as br_race_id,
@@ -293,19 +292,12 @@ with
             and election.election_day >= '2026-01-01'
     ),
 
-    -- Pull office_level from BR's position table (deterministic by
-    -- ballotready_position_id) and election_stage / br_race_id from BR's
-    -- race spine (deterministic by ballotready_race_id). PD asserts these
-    -- IDs natively in details:positionid and details:raceId, so the joins
-    -- are direct ID lookups — no closest-date guessing. For campaigns
-    -- where PD didn't set raceId (~6%), election_stage and br_race_id
-    -- emit null; Splink's blocking falls back to other natural keys.
     gp_api_with_office as (
         select
             c.*,
             brp.level as br_position_level,
-            br.br_race_id as br_race_id_from_pd,
-            br.election_stage as election_stage_from_pd,
+            br.br_race_id,
+            br.election_stage,
             -- Use the same normalization as BallotReady when we have the
             -- normalized_position_name; fall back to raw campaign_office
             coalesce(
@@ -327,10 +319,6 @@ with
     gp_api_stages as (
         select
             'gp_api' as source_name,
-            -- One prematch row per campaign; campaign_id is unique among
-            -- gp_api rows so it's the natural source_id. (Previously the
-            -- source_id was suffixed by election_stage when each campaign
-            -- emitted multiple stage rows; that fan-out has been removed.)
             cast(g.campaign_id as string) as source_id,
             lower(trim(g.user_first_name)) as first_name,
             lower(trim(g.user_last_name)) as last_name,
@@ -362,17 +350,11 @@ with
             {{ extract_district_raw("g.campaign_office") }} as district_raw,
             {{ extract_district_identifier("g.campaign_office") }}
             as district_identifier,
-            -- PD's pledged election_date. election_stage / br_race_id are
-            -- looked up by id from BR's race spine via PD's own
-            -- ballotready_race_id (PD asserts which race the user pledged
-            -- to in details:raceId; ~94% coverage on in-scope campaigns).
-            -- Null when PD didn't set raceId (or when raceId points at a
-            -- race not in BR's spine, e.g. aged-out historical race).
             g.election_date,
-            g.election_stage_from_pd as election_stage,
+            g.election_stage,
             g.user_email as email,
             g.user_phone as phone,
-            cast(g.br_race_id_from_pd as string) as br_race_id,
+            cast(g.br_race_id as string) as br_race_id,
             trim(g.campaign_office) as official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,

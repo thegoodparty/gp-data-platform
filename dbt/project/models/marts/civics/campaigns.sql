@@ -45,11 +45,9 @@ with
                     1
                 ) as bigint
             ) as _legacy_br_position_id,
-            -- PD's pledged BR race id, base64-encoded gid://ballotready/Race/<id>.
-            -- Decoded numeric id matches BR's race database_id, so this is the
-            -- deterministic stage signal for gp_api: PD asserts which race the
-            -- user pledged to, and downstream models look up election_stage /
-            -- gp_election_stage_id by id (no closest-date guessing).
+            -- PD's pledged BR race id. details:raceId is base64-encoded
+            -- gid://ballotready/Race/<id>; the decoded numeric matches BR's
+            -- race database_id, so downstream models can resolve stage by id.
             cast(
                 regexp_extract(
                     cast(unbase64(c.details:raceid::string) as string), '/([0-9]+)$', 1

@@ -1,15 +1,10 @@
 {{ config(materialized="table", tags=["civics", "gp_api"]) }}
 
 -- Product DB campaigns -> Civics mart candidacy_stage rows.
--- Grain: one row per latest-version pledged gp_api campaign with a
--- ballotready_race_id that resolves in BR's election_stage spine. PD
--- asserts the specific race in details:raceId (~94% coverage on in-scope
--- campaigns); we look up gp_election_stage_id by race id deterministically
--- — no closest-date guessing. Campaigns without a raceId are dropped.
---
--- gp_candidacy_stage_id prefers the ER-resolved canonical when available
--- (gp_api clustered with BR/TS/DDHQ on this stage); otherwise self-derives
--- from (gp_candidacy_id, gp_election_stage_id).
+-- Grain: one row per latest-version pledged gp_api campaign whose
+-- ballotready_race_id resolves in BR's election_stage spine.
+-- gp_candidacy_stage_id prefers the ER-resolved canonical when available;
+-- otherwise self-derives from (gp_candidacy_id, gp_election_stage_id).
 with
     latest_campaigns as (
         select *
@@ -20,44 +15,28 @@ with
             and ballotready_race_id is not null
     ),
 
-    -- Source from the users mart (same as candidate/candidacy gp_api) to keep
-    -- person hashes aligned across the three models.
+    -- Source from the users mart so person hashes align with candidacy_gp_api.
     users as (select user_id, first_name, last_name from {{ ref("users") }}),
 
-    -- BR's election stage spine, keyed by br_race_id. Provides the
-    -- gp_election_stage_id and stage_election_date we attach to gp_api rows.
     br_stages as (
         select br_race_id, gp_election_stage_id, election_date as stage_election_date
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
-    -- ER canonical lookup at candidacy + candidacy_stage grain. Populated
-    -- only when gp_api clustered with BR (the BR-anchored cluster branch
-    -- of int__civics_er_canonical_ids); non-BR clusters and unclustered
-    -- gp_api rows fall through to self-derived ids.
-    er_canonical_candidacy as (
+    -- max() not any_value(): deterministic across runs, must align with
+    -- int__civics_candidacy_gp_api.
+    er_canonical as (
         select
             gp_api_campaign_id,
-            max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id
+            max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
+            max(canonical_gp_candidacy_stage_id) as canonical_gp_candidacy_stage_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where gp_api_campaign_id is not null
         group by gp_api_campaign_id
     ),
 
-    er_canonical_stage as (
-        select
-            gp_api_campaign_id,
-            max(canonical_gp_candidacy_stage_id) as canonical_gp_candidacy_stage_id
-        from {{ ref("int__civics_er_canonical_ids") }}
-        where
-            gp_api_campaign_id is not null
-            and canonical_gp_candidacy_stage_id is not null
-        group by gp_api_campaign_id
-    ),
-
-    -- Columns named to match what generate_gp_api_gp_candidacy_id expects in
-    -- scope (state, candidate_office, general_election_date, party_affiliation,
-    -- district), so the unclustered fallback hash matches the corresponding
+    -- Columns aliased to match what generate_gp_api_gp_candidacy_id expects
+    -- in scope, so the unclustered fallback hash matches the corresponding
     -- hash in int__civics_candidacy_gp_api.
     enriched as (
         select
@@ -74,14 +53,12 @@ with
             u.last_name as user_last_name,
             br.gp_election_stage_id,
             br.stage_election_date,
-            xw_c.canonical_gp_candidacy_id,
-            xw_s.canonical_gp_candidacy_stage_id
+            xw.canonical_gp_candidacy_id,
+            xw.canonical_gp_candidacy_stage_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
         inner join br_stages as br on c.ballotready_race_id = br.br_race_id
-        left join
-            er_canonical_candidacy as xw_c on c.campaign_id = xw_c.gp_api_campaign_id
-        left join er_canonical_stage as xw_s on c.campaign_id = xw_s.gp_api_campaign_id
+        left join er_canonical as xw on c.campaign_id = xw.gp_api_campaign_id
     ),
 
     with_ids as (

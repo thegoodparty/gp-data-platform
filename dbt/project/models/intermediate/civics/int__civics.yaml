@@ -1885,12 +1885,10 @@ models:
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
       stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ),
-      campaigns mart (GP API). The gp_api side carries PD-native signal
-      only (election_date, ballotready_position_id, name/state/office) plus
-      a deterministic position-level lookup; election_stage and br_race_id
-      are emitted as null because PD has no native stage signal. Splink is
-      expected to resolve gp_api stage assignment by clustering against
-      BR/TS/DDHQ rows that carry real values.
+      campaigns mart (GP API). The gp_api side resolves election_stage and
+      br_race_id deterministically from PD's pledged ballotready_race_id
+      against BR's race spine (~94% coverage); both fields are null for the
+      ~6% of campaigns where PD didn't set raceId.
 
     columns:
       - name: unique_id
@@ -1948,10 +1946,9 @@ models:
         description: >
           Type of election stage. Values: Primary, General,
           Primary Runoff, General Runoff, Primary Special, General Special,
-          Primary Special Runoff, General Special Runoff. GP API rows have
-          this field null because PD has no native stage signal — Splink is
-          expected to resolve gp_api records' stage by clustering against
-          BR/TS/DDHQ rows that carry real values.
+          Primary Special Runoff, General Special Runoff. GP API resolves
+          this from PD's ballotready_race_id against BR's race spine; null
+          when PD didn't set raceId (~6% of in-scope campaigns).
         data_tests:
           - not_null:
               config:
