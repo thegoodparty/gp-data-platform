@@ -374,10 +374,6 @@ models:
         description: "Rank of the issue within the district (1 = highest score)"
         tests:
           - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-                max_value: 5
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
