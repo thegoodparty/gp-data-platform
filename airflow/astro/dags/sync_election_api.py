@@ -13,10 +13,10 @@ in Databricks. Each table is its own task group following the same lifecycle:
    indexes and constraints renamed to canonical Prisma names.
 6. **drop_old** — drop the renamed-aside `_old` table.
 
-The shared lifecycle lives in
-`include/custom_functions/election_api_utils.py`. Each task group below is
-just a thin per-table wrapper that supplies the source query, transform, and
-constraint DDL.
+The shared lifecycle lives in `election_api_utils.py` (co-located in this
+`dags/` folder so it ships with `astro deploy --dags` — `include/` is only
+shipped on full image deploys). Each task group below is a thin per-table
+wrapper that supplies the source query, transform, and constraint DDL.
 
 This is the prototype for migrating the legacy
 `dbt/project/models/write/write__election_api_db.py` (which writes 8 election
@@ -41,7 +41,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from include.custom_functions.election_api_utils import (
+from election_api_utils import (
     TableSyncSpec,
     apply_ddl,
     bulk_insert_from_databricks,
