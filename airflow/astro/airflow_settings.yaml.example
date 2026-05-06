@@ -1,0 +1,42 @@
+# Local-dev connections, pools, and variables for `astro dev start`.
+#
+# Copy this file to `airflow_settings.yaml` (gitignored) and fill in the
+# secrets. The Astro CLI auto-loads it on `astro dev start`.
+#
+# All three connections + four variables below are needed by sync_election_api.
+# When connected to the corp VPN, you do NOT need a bastion locally — set
+# election_api_bastion_conn_id to an empty string to bypass the SSH tunnel.
+
+airflow:
+  connections:
+    # Databricks OAuth M2M (service principal). Get the client_id and
+    # client_secret from the team password manager.
+    - conn_id: databricks_dev
+      conn_type: generic
+      conn_host: <databricks workspace host, e.g. dbc-xxxx.cloud.databricks.com>
+      conn_login: <databricks SP client_id>
+      conn_password: <databricks SP client_secret>
+      conn_extra:
+        http_path: <SQL warehouse http_path>
+
+    # Election-API Postgres (direct, no tunnel — works on VPN). Pulled from
+    # the `electiondb-dev` entry of your ~/.pgpass.
+    - conn_id: election_api_db
+      conn_type: postgres
+      conn_host: election-api-db-develop.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com
+      conn_login: gpuser
+      conn_password: <electiondb-dev password from ~/.pgpass>
+      conn_schema: gpdb
+      conn_port: 5432
+
+  pools: []
+
+  variables:
+    - variable_name: databricks_conn_id
+      variable_value: databricks_dev
+    - variable_name: databricks_catalog
+      variable_value: goodparty_data_catalog
+    # Empty value = direct connection (used when on VPN locally). In cloud,
+    # this Variable defaults to "gp_bastion_host".
+    - variable_name: election_api_bastion_conn_id
+      variable_value: ""

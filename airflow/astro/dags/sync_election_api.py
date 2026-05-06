@@ -31,6 +31,9 @@ tables to Postgres via JDBC from a Databricks cluster) onto Airflow.
 - `databricks_conn_id` — selects Databricks connection
   (e.g., `databricks_dev` in dev, `databricks` in prod).
 - `databricks_catalog` — Databricks catalog name (e.g., `goodparty_data_catalog`).
+- `election_api_bastion_conn_id` (optional) — SSH bastion to tunnel through.
+  Defaults to `gp_bastion_host`. Set to an empty string for local dev on VPN
+  where the Postgres host is reachable directly.
 
 The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
 points at `dbt_staging` for in-flight dbt build artifacts). The election-api
@@ -59,6 +62,21 @@ t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
 DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
+
+
+def _open_pg():
+    """Open a Postgres connection — tunneled in cloud, direct on VPN locally.
+
+    The bastion connection id comes from the `election_api_bastion_conn_id`
+    Airflow Variable; an empty value (or unset) bypasses the tunnel.
+    """
+    bastion = Variable.get(
+        "election_api_bastion_conn_id", default_var="gp_bastion_host"
+    )
+    return get_postgres_via_ssh(
+        bastion_conn_id=bastion or None,
+        pg_conn_id=PG_CONN_ID,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +244,7 @@ def sync_election_api():
 
         @task
         def build_staging() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 create_staging_table(conn, ZTP)
 
         @task
@@ -248,7 +266,7 @@ def sync_election_api():
                 f") = 1 "
                 f"LIMIT 5000"
             )
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 return bulk_insert_from_databricks(
                     conn,
                     ZTP,
@@ -259,7 +277,7 @@ def sync_election_api():
 
         @task
         def build_indexes_and_fk() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 apply_ddl(conn, _ztp_constraint_ddl())
 
         @task
@@ -270,7 +288,7 @@ def sync_election_api():
                 raise ValueError(
                     f"Only {loaded_count} rows loaded (<100) — refusing to swap"
                 )
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
                     cur.execute(
@@ -300,12 +318,12 @@ def sync_election_api():
 
         @task
         def swap() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 swap_staging_into_target(conn, ZTP)
 
         @task
         def drop_old() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 drop_old_table(conn, ZTP)
 
         s = build_staging()
@@ -321,7 +339,7 @@ def sync_election_api():
 
         @task
         def build_staging() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 create_staging_table(conn, DTI)
 
         @task
@@ -333,7 +351,7 @@ def sync_election_api():
                 f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
                 f"`m_election_api__district_top_issues`"
             )
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 return bulk_insert_from_databricks(
                     conn,
                     DTI,
@@ -343,7 +361,7 @@ def sync_election_api():
 
         @task
         def build_indexes_and_fk() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 apply_ddl(conn, _dti_constraint_ddl())
 
         @task
@@ -352,7 +370,7 @@ def sync_election_api():
                 raise ValueError(
                     f"Only {loaded_count} rows loaded (<1000) — refusing to swap"
                 )
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
                     cur.execute(
@@ -383,12 +401,12 @@ def sync_election_api():
 
         @task
         def swap() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 swap_staging_into_target(conn, DTI)
 
         @task
         def drop_old() -> None:
-            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+            with _open_pg() as conn:
                 drop_old_table(conn, DTI)
 
         s = build_staging()
