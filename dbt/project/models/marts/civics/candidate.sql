@@ -1,3 +1,5 @@
+{{ config(materialized="table") }}
+
 -- Civics mart candidate table.
 -- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
 -- joined on gp_candidate_id (matched providers adopt BR's canonical via
