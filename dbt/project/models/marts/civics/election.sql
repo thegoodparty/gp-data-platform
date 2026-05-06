@@ -1,11 +1,12 @@
--- Civics mart election table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
---
--- BallotReady is the authoritative spine for elections (positions). TS and
--- DDHQ int models remap clustered rows to BR's gp_election_id via
--- int__civics_er_canonical_ids, so a full outer join on gp_election_id merges
--- matched triples. Unmatched DDHQ-only elections pass through as new rows
--- (DDHQ's hashed gp_election_id) with source_systems = ['ddhq'].
+-- Civics mart election table.
+-- 2025 HubSpot archive UNION 2026+ 3-way FOJ over BR + TS + DDHQ joined on
+-- gp_election_id, with a left-join membership lookup that appends 'gp_api'
+-- to source_systems for elections any PD candidacy maps to. gp_api int
+-- models adopt BR's natural gp_election_id whenever Task 1's filter passes
+-- (every gp_api campaign has ballotready_position_id), so the membership
+-- lookup hits BR's spine row directly.
+-- Per-column precedence rules: see the election model description in
+-- m_civics.yaml.
 --
 -- has_ddhq_match: true when either the 2025 archive linked a DDHQ race or a
 -- 2026+ DDHQ row clustered into this election via Splink. NULL otherwise.
@@ -120,6 +121,17 @@ with
             = 1
     ),
 
+    gp_api_membership as (
+        -- gp_api participation marker. No new int model at election grain
+        -- (per design: gp_api contributes no field values BR/TS/DDHQ don't
+        -- already author better here). gp_api's gp_election_id adopts BR's
+        -- natural id when present (Task 1 filter ensures ballotready_position_id),
+        -- so this lookup hits BR's spine row directly.
+        select distinct gp_election_id
+        from {{ ref("int__civics_candidacy_gp_api") }}
+        where gp_election_id is not null
+    ),
+
     -- Pivot election stage dates by type
     stage_dates as (
         select
@@ -193,7 +205,12 @@ select
         )
     }}
     as is_win_supersize_icp,
-    deduplicated.source_systems,
+    array_compact(
+        array_append(
+            deduplicated.source_systems,
+            case when gp.gp_election_id is not null then 'gp_api' end
+        )
+    ) as source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 
@@ -202,3 +219,4 @@ left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
 left join stage_dates on deduplicated.gp_election_id = stage_dates.gp_election_id
+left join gp_api_membership as gp on deduplicated.gp_election_id = gp.gp_election_id

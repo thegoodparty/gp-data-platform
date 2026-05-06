@@ -60,7 +60,12 @@ with
         group by gp_api_campaign_id
     ),
 
-    -- Cross-join campaigns × BR stages for same position+year.
+    -- Match each PD campaign to the specific BR race at the user's pledged
+    -- election_date. PD's campaign.election_date identifies a single stage
+    -- (the user pledged to one date), so we land on one BR race per campaign
+    -- — no fan-out across stages, no orphan rows for stages PD didn't pledge
+    -- to. Falls back to the BR stage closest in date when no exact match
+    -- exists for the position+year (handles slightly stale PD dates).
     campaign_stages as (
         select
             c.campaign_id,
@@ -82,13 +87,14 @@ with
             br_stages as br
             on c.ballotready_position_id = br.br_position_id
             and year(c.election_date) = br.stage_election_year
-        -- Dedup multiple BR races of the same stage_type in the same year
-        -- (regular + special primary, etc.) to the race closest in date —
-        -- br_race_id breaks ties deterministically. Mirrors the pattern in
-        -- int__er_prematch_candidacy_stages.
+        -- One row per campaign at the BR race matching c.election_date most
+        -- closely. Exact-date hits get datediff = 0; if PD's date is slightly
+        -- off, we still land on the nearest BR stage rather than fanning out.
+        -- br_race_id desc breaks ties deterministically when a position has
+        -- both a regular and a special race on the same day.
         qualify
             row_number() over (
-                partition by c.campaign_id, br.stage_type
+                partition by c.campaign_id
                 order by
                     abs(datediff(br.stage_election_date, c.election_date)) asc,
                     br.br_race_id desc nulls last
@@ -124,10 +130,16 @@ with
                 }}
             ) as gp_candidacy_id,
 
-            -- Either branch resolves to a valid gp_election_stage_id in
-            -- int__civics_election_stage_ballotready.
+            -- Prefer BR's natural gp_election_stage_id over the canonical_ids
+            -- non-BR-cluster derivation: every gp_api campaign has
+            -- ballotready_position_id (Task 1 filter) so br_gp_election_stage_id
+            -- is always populated and aligns with BR's election_stage mart row.
+            -- The non-BR cluster canonical (cluster-derived UUID) would create
+            -- a separate election_stage row that BR doesn't have, fanning out
+            -- downstream joins on br_position_database_id (e.g.,
+            -- m_election_api__zip_to_position).
             coalesce(
-                canonical_gp_election_stage_id, br_gp_election_stage_id
+                br_gp_election_stage_id, canonical_gp_election_stage_id
             ) as gp_election_stage_id,
 
             canonical_gp_candidacy_stage_id,

@@ -4,7 +4,20 @@
 -- Grain: one row per latest-version campaign with an election_date.
 -- Schema aligns with int__civics_candidacy_ballotready for the union.
 with
-    latest_campaigns as (select * from {{ ref("campaigns") }} where is_latest_version),
+    latest_campaigns as (
+        -- 2026+ scope: pre-2026 campaigns belong to the archive_2025 path
+        -- (from int__civics_candidacy_2025) and would duplicate at
+        -- (product_campaign_id, general_election_date) grain in the candidacy
+        -- mart since the two sources hash gp_candidacy_id differently
+        -- (HubSpot identity vs gp_api person+race hash).
+        select *
+        from {{ ref("campaigns") }}
+        where
+            is_latest_version
+            and not coalesce(is_demo, false)
+            and ballotready_position_id is not null
+            and election_date >= '2026-01-01'
+    ),
 
     -- Source user fields from the users mart, not campaigns' denormalized
     -- user_* fields, to keep the person hash aligned with candidate_gp_api
@@ -15,9 +28,11 @@ with
 
     -- Must match user_state in int__civics_candidate_gp_api.
     user_state as (
+        -- latest_campaigns is already filtered to non-demo / 2026+ / BR-anchored;
+        -- mirror is in int__civics_candidate_gp_api so both models hash
+        -- gp_candidate_id over the same campaign universe.
         select user_id, campaign_state as state
         from latest_campaigns
-        where not is_demo
         qualify row_number() over (partition by user_id order by created_at desc) = 1
     ),
 
@@ -36,14 +51,32 @@ with
         group by gp_api_campaign_id
     ),
 
-    -- General stage is identified by `not is_primary and not is_runoff`,
-    -- mirroring the lookup in int__civics_candidacy_ballotready. max()
-    -- guards multi-general-stage fanout per election.
-    br_general_election_date_lookup as (
-        select gp_election_id, max(election_date) as br_general_election_date
+    -- BR stage spine lookup: maps (br_position_id, election_year) →
+    -- BR's gp_election_id and all 4 stage dates. Every surviving gp_api
+    -- campaign has ballotready_position_id (Task 1 filter), so this lookup
+    -- resolves for all gp_api campaigns. The candidacy row reflects the
+    -- full election cycle (all calendar stages BR knows about); per-stage
+    -- match to a specific PD pledge happens in
+    -- int__civics_candidacy_stage_gp_api via exact-date join.
+    br_stage_spine_lookup as (
+        select
+            br_position_id,
+            year(election_date) as election_year,
+            any_value(gp_election_id) as gp_election_id,
+            max(
+                case when stage_type = 'primary' then election_date end
+            ) as primary_election_date,
+            max(
+                case when stage_type = 'general' then election_date end
+            ) as general_election_date,
+            max(
+                case when stage_type = 'primary runoff' then election_date end
+            ) as primary_runoff_election_date,
+            max(
+                case when stage_type = 'general runoff' then election_date end
+            ) as general_runoff_election_date
         from {{ ref("int__civics_election_stage_ballotready") }}
-        where not is_primary and not is_runoff
-        group by gp_election_id
+        group by br_position_id, year(election_date)
     ),
 
     -- Must mirror user_er_canonical in int__civics_candidate_gp_api so
@@ -103,7 +136,9 @@ with
                 xw.canonical_gp_candidacy_id,
                 {{
                     generate_gp_api_gp_candidacy_id(
-                        first_name="user_first_name", last_name="user_last_name"
+                        first_name="user_first_name",
+                        last_name="user_last_name",
+                        general_election_date="enriched.general_election_date",
                     )
                 }}
             ) as gp_candidacy_id,
@@ -134,8 +169,18 @@ with
                 }}
             ) as gp_candidate_id,
 
+            -- Prefer BR's natural gp_election_id (via br_stage_spine_lookup)
+            -- over the canonical_ids non-BR-cluster derivation: every gp_api
+            -- campaign has ballotready_position_id (Task 1 filter), so
+            -- bss.gp_election_id is always populated and aligns with BR's
+            -- election mart row. The non-BR cluster canonical would create a
+            -- separate election row that shares br_position_database_id with
+            -- BR's natural row, fanning out downstream joins (e.g.,
+            -- m_election_api__zip_to_position).
             coalesce(
-                xw.canonical_gp_election_id, {{ generate_gp_election_id() }}
+                bss.gp_election_id,
+                xw.canonical_gp_election_id,
+                {{ generate_gp_election_id() }}
             ) as gp_election_id,
 
             campaign_id as product_campaign_id,
@@ -161,11 +206,19 @@ with
                 then null
                 else true
             end as is_partisan,
-            cast(null as date) as primary_election_date,
-            cast(null as date) as primary_runoff_election_date,
-            general_election_date,
-            bld.br_general_election_date,
-            cast(null as date) as general_runoff_election_date,
+            -- All 4 stage dates are sourced from BR's spine via the
+            -- (br_position_id, election_year) join. Replaces the prior
+            -- pattern of carrying campaign.election_date as general only
+            -- and leaving primary / runoff dates NULL. general_election_date
+            -- falls back to the campaign's own date when BR's spine has
+            -- no general stage for the race (rare — e.g., judicial-only
+            -- races) so the not_null guarantee holds.
+            bss.primary_election_date,
+            bss.primary_runoff_election_date,
+            coalesce(
+                bss.general_election_date, enriched.general_election_date
+            ) as general_election_date,
+            bss.general_runoff_election_date,
             ballotready_position_id as br_position_database_id,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as br_race_id,
@@ -178,9 +231,10 @@ with
         from enriched
         left join er_canonical as xw on enriched.campaign_id = xw.gp_api_campaign_id
         left join
-            br_general_election_date_lookup as bld
-            on xw.canonical_gp_election_id = bld.gp_election_id
-        where general_election_date is not null
+            br_stage_spine_lookup as bss
+            on enriched.ballotready_position_id = bss.br_position_id
+            and year(enriched.general_election_date) = bss.election_year
+        where enriched.general_election_date is not null
     ),
 
     -- Referential integrity: drop candidacies whose gp_candidate_id doesn't
@@ -228,7 +282,6 @@ select
     primary_election_date,
     primary_runoff_election_date,
     general_election_date,
-    br_general_election_date,
     general_runoff_election_date,
     br_position_database_id,
     br_candidacy_id,

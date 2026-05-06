@@ -1,16 +1,13 @@
--- Civics mart election_stage table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed + DDHQ.
---
--- BallotReady is the authoritative spine for election_stages (races). TS and
--- DDHQ int models remap clustered stages to BR's gp_election_stage_id via
--- int__civics_er_canonical_ids, so a full outer join on gp_election_stage_id
--- merges matched triples. Unmatched DDHQ stages (no BR/TS Splink counterpart)
--- pass through as net-new rows with source_systems = ['ddhq'].
---
--- Precedence: BR > TS > DDHQ for descriptive columns. total_votes_cast is
--- BR-first only when BR has a numeric count; BR's 'uncontested' literal
--- yields to DDHQ's actual count when present. ddhq_race_id falls back to
--- DDHQ when BR's null.
+-- Civics mart election_stage table.
+-- 2025 HubSpot archive UNION 2026+ 3-way FOJ over BR + TS + DDHQ joined on
+-- gp_election_stage_id, with a left-join membership lookup that appends
+-- 'gp_api' to source_systems for stages any PD candidacy_stage maps to.
+-- gp_api int models adopt BR's natural gp_election_stage_id whenever Task 1's
+-- filter passes, so the membership lookup hits BR's spine row directly.
+-- Per-column precedence rules: see the election_stage model description in
+-- m_civics.yaml. Notable exceptions: total_votes_cast is BR-first only when
+-- BR has a numeric count (BR's 'uncontested' literal yields to DDHQ's
+-- actual count); ddhq_race_id falls back to DDHQ when BR's null.
 {%- set br_wins_cols = [
     "gp_election_id",
     "br_race_id",
@@ -123,6 +120,17 @@ with
                 partition by gp_election_stage_id order by updated_at desc nulls last
             )
             = 1
+    ),
+
+    gp_api_membership as (
+        -- gp_api participation marker. No new int model at election_stage grain
+        -- (per design: gp_api contributes no field values BR/TS/DDHQ don't
+        -- already author better here). gp_api stages adopt BR's natural
+        -- gp_election_stage_id (Task 1 filter ensures ballotready_position_id),
+        -- so this lookup hits BR's spine row directly.
+        select distinct gp_election_stage_id
+        from {{ ref("int__civics_candidacy_stage_gp_api") }}
+        where gp_election_stage_id is not null
     )
 
 select
@@ -168,7 +176,12 @@ select
         then false
         else icp.icp_win_supersize
     end as is_win_supersize_icp,
-    deduplicated.source_systems,
+    array_compact(
+        array_append(
+            deduplicated.source_systems,
+            case when gp.gp_election_stage_id is not null then 'gp_api' end
+        )
+    ) as source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 
@@ -176,3 +189,6 @@ from deduplicated
 left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_id = icp.br_database_position_id
+left join
+    gp_api_membership as gp
+    on deduplicated.gp_election_stage_id = gp.gp_election_stage_id
