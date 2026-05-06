@@ -271,7 +271,29 @@ def read_databricks_table(
 
     try:
         cursor = connection.cursor()
-        cursor.execute(query)
+        # Retry transient 5xx errors (e.g. 503 during SQL warehouse cold start
+        # where the connect handshake succeeds but the first statement POST
+        # races the warehouse coming online).
+        max_retries = 6
+        retry_delay = 30
+        for attempt in range(max_retries):
+            try:
+                cursor.execute(query)
+                break
+            except Exception as e:
+                msg = str(e)
+                transient = "status code 5" in msg or "Service Unavailable" in msg
+                if not transient or attempt == max_retries - 1:
+                    raise
+                logger.warning(
+                    "Databricks execute attempt %d/%d hit transient error: %s. "
+                    "Retrying in %ds...",
+                    attempt + 1,
+                    max_retries,
+                    msg,
+                    retry_delay,
+                )
+                time.sleep(retry_delay)
         column_names = [desc[0] for desc in cursor.description]
     except Exception:
         connection.close()
