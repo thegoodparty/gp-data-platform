@@ -126,6 +126,52 @@ def _ztp_transform_row(row: tuple) -> tuple:
     )
 
 
+# ---------------------------------------------------------------------------
+# DistrictTopIssue
+# ---------------------------------------------------------------------------
+
+DTI = TableSyncSpec(
+    target_table="DistrictTopIssue",
+    indexes=("DistrictTopIssue_district_id_issue_key",),
+    fkeys=("DistrictTopIssue_district_id_fkey",),
+)
+
+# Postgres dropped the denormalized l2_* columns; we read only the seven
+# columns that map 1:1 onto the live shape.
+DTI_COLUMNS = [
+    "id",
+    "updated_at",
+    "district_id",
+    "issue",
+    "issue_label",
+    "score",
+    "issue_rank",
+]
+
+
+def _dti_constraint_ddl() -> list[str]:
+    sn, nt = DTI.staging_schema, DTI.new_table
+    target_schema = DTI.target_schema
+    return [
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{DTI.stage_name(DTI.pk_name)}" PRIMARY KEY (id)'
+        ),
+        (
+            f"CREATE UNIQUE INDEX "
+            f'"{DTI.stage_name("DistrictTopIssue_district_id_issue_key")}" '
+            f'ON "{sn}"."{nt}" (district_id, issue)'
+        ),
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{DTI.stage_name("DistrictTopIssue_district_id_fkey")}" '
+            f"FOREIGN KEY (district_id) "
+            f'REFERENCES "{target_schema}"."District"(id) '
+            f"ON UPDATE CASCADE ON DELETE RESTRICT"
+        ),
+    ]
+
+
 def _ztp_constraint_ddl() -> list[str]:
     sn, nt = ZTP.staging_schema, ZTP.new_table
     target_schema = ZTP.target_schema
@@ -270,7 +316,91 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
+    @task_group(group_id="district_top_issues")
+    def district_top_issues():
+
+        @task
+        def build_staging() -> None:
+            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+                create_staging_table(conn, DTI)
+
+        @task
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            col_list = ", ".join(DTI_COLUMNS)
+            query = (
+                f"SELECT {col_list} "
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"`m_election_api__district_top_issues`"
+            )
+            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+                return bulk_insert_from_databricks(
+                    conn,
+                    DTI,
+                    source_query=query,
+                    target_columns=DTI_COLUMNS,
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+                apply_ddl(conn, _dti_constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            if loaded_count < 1_000:
+                raise ValueError(
+                    f"Only {loaded_count} rows loaded (<1000) — refusing to swap"
+                )
+            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        f"SELECT COUNT(DISTINCT issue) "
+                        f'FROM "{DTI.staging_schema}"."{DTI.new_table}"'
+                    )
+                    distinct_issues = cur.fetchone()[0]
+                    if distinct_issues < 10:
+                        raise ValueError(
+                            f"Only {distinct_issues} distinct issues "
+                            f"(<10) — refusing to swap"
+                        )
+                    cur.execute(
+                        f"SELECT MIN(issue_rank), MAX(issue_rank) "
+                        f'FROM "{DTI.staging_schema}"."{DTI.new_table}"'
+                    )
+                    min_rank, max_rank = cur.fetchone()
+                    t_log.info(
+                        "Quality checks passed: %d rows, %d distinct issues, "
+                        "issue_rank range %s..%s",
+                        loaded_count,
+                        distinct_issues,
+                        min_rank,
+                        max_rank,
+                    )
+                finally:
+                    cur.close()
+
+        @task
+        def swap() -> None:
+            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+                swap_staging_into_target(conn, DTI)
+
+        @task
+        def drop_old() -> None:
+            with get_postgres_via_ssh(pg_conn_id=PG_CONN_ID) as conn:
+                drop_old_table(conn, DTI)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        sw = swap()
+        do = drop_old()
+        s >> loaded >> idx >> qc >> sw >> do
+
     zip_to_position()
+    district_top_issues()
 
 
 sync_election_api()
