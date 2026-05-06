@@ -1,3 +1,5 @@
+{{ config(materialized="table") }}
+
 with
     users as (select * from {{ ref("stg_airbyte_source__gp_api_db_user") }}),
 
