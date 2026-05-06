@@ -1,5 +1,3 @@
-{{ config(materialized="table") }}
-
 -- Civics mart elected_officials table
 -- Person-grain merge of BR + TS elected officials, full-outer-joined on
 -- the canonical gp_elected_official_id with COALESCE per column.
