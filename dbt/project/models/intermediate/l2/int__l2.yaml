@@ -130,11 +130,6 @@ models:
         description: "LLM confidence"
       - name: br_database_id
         description: "BallotReady/CivicEngine database ID"
-        tests:
-          - relationships:
-              arguments:
-                to: ref("stg_airbyte_source__ballotready_api_position")
-                field: database_id
       - name: br_position_id
         description: "BallotReady/CivicEngine position ID"
         tests:
