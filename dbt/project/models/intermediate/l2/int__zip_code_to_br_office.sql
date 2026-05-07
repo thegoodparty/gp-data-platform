@@ -109,3 +109,9 @@ select
     embeddings,
     top_embedding_score
 from zip_code_to_br_office
+-- Drop orphan rows where the LLM match referenced a br_database_id that no
+-- longer exists in stg_airbyte_source__ballotready_api_position (deleted /
+-- stale matches). These rows have no usable BR data anyway (br_position_id,
+-- br_race_id, br_race_database_id are all null), and the downstream mart's
+-- inner join to m_election_api__position would filter them out either way.
+where br_database_id is null or br_position_id is not null
