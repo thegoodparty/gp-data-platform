@@ -48,7 +48,9 @@ with
             -- PD's pledged BR race id. details:raceId is base64-encoded
             -- gid://ballotready/Race/<id>; the decoded numeric matches BR's
             -- race database_id, so downstream models can resolve stage by id.
-            cast(
+            -- try_cast handles empty-string raceIds (regex on '' returns '',
+            -- which would error on cast to bigint).
+            try_cast(
                 regexp_extract(
                     cast(unbase64(c.details:raceid::string) as string), '/([0-9]+)$', 1
                 ) as bigint
