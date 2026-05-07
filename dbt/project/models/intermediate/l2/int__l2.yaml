@@ -166,10 +166,14 @@ models:
               - br_database_id
 
   - name: int__zip_code_to_l2_district
-    description: "Zip code to L2 district mapping"
+    description: >
+      Zip code to L2 district mapping. One row per
+      (zip_code, state_postal_code, district_type, district_name) with the
+      L2 voter count in that intersection and the total L2 voter count for
+      the zip. No threshold is applied; downstream consumers decide cutoffs.
     columns:
       - name: zip_code
-        description: "Zip code"
+        description: "5-digit zip code"
         tests:
           - not_null
       - name: state_postal_code
@@ -178,6 +182,35 @@ models:
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: district_type
+        description: "L2 district column name (e.g. City, US_Congressional_District)"
+        tests:
+          - not_null
+      - name: district_name
+        description: "L2 district value within district_type for this zip"
+        tests:
+          - not_null
+      - name: voters_in_zip_district
+        description: >
+          Count of L2 voters whose residence is in this zip AND in this
+          (district_type, district_name).
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: voters_in_zip
+        description: >
+          Count of L2 voters whose residence is in this zip (across all
+          district_names of this district_type). Invariant per
+          (zip_code, state_postal_code, district_type).
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -185,3 +218,7 @@ models:
               - zip_code
               - state_postal_code
               - district_type
+              - district_name
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "voters_in_zip_district <= voters_in_zip"
