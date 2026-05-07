@@ -18,9 +18,11 @@ select
     properties_address as address,
 
     -- candidate information
-    properties_br_race_id as br_race_id,
-    get_json_object(properties, '$.br_candidacy_id') as br_candidacy_id,
-    get_json_object(properties, '$.br_position_id') as br_position_id,
+    try_cast(properties_br_race_id as int) as br_race_id,
+    try_cast(
+        get_json_object(properties, '$.br_candidacy_id') as int
+    ) as br_candidacy_id,
+    try_cast(get_json_object(properties, '$.br_position_id') as int) as br_position_id,
     properties_candidate_id_source as candidate_id_source,
     properties_candidate_id_tier as candidate_id_tier,
     get_json_object(properties, '$.candidate_id_result') as candidate_id_result,
