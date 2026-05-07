@@ -264,9 +264,11 @@ models:
           - not_null
       - name: voters_in_zip
         description: >
-          L2 voters in this zip (sum across district names that map to this
-          BR position via the LLM L2-to-BR match). Null when this position
-          has no zip coverage.
+          L2 voters in this zip with a non-null value for the district_type
+          column matched by this BR position. Invariant across district names
+          within a district type, so the upstream rows for (zip, br_database_id)
+          all carry the same value; the mart uses max() to carry it forward.
+          Null when this position has no zip coverage.
       - name: voters_in_zip_district
         description: >
           L2 voters in this (zip, BR position). Aggregated from upstream
