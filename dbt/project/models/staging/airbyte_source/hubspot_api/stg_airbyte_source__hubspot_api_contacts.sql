@@ -56,9 +56,12 @@ select
     -- source is the users staging model from the gp_api database, not HubSpot.
     -- The HubSpot property is named after the goodparty.org domain (not an
     -- "org user" concept); it is the only user-ID key on the contact.
-    cast(
+    -- try_cast tolerates free-text values manually entered into the HubSpot
+    -- property; *_raw preserves the original string for data-quality forensics.
+    try_cast(
         get_json_object(properties, '$.goodparty_org_user_id') as int
     ) as goodparty_user_id,
+    get_json_object(properties, '$.goodparty_org_user_id') as goodparty_user_id_raw,
 
     -- office information
     properties_official_office_name as official_office_name,
@@ -74,7 +77,8 @@ select
     properties_city as city,
     properties_candidate_district as candidate_district,
     {{ cast_to_boolean("properties_open_seat") }} as is_open_seat,
-    cast(properties_population as int) as population,
+    try_cast(properties_population as int) as population,
+    properties_population as population_raw,
 
     -- election dates
     properties_filing_deadline as filing_deadline,
@@ -88,9 +92,10 @@ select
     {{ cast_to_boolean("properties_uncontested", ["uncontested"], ["contested"]) }}
     as is_uncontested,
     properties_number_opponents as number_opponents,
-    cast(
-        cast(properties_number_of_seats_available as float) as int
+    try_cast(
+        try_cast(properties_number_of_seats_available as float) as int
     ) as number_of_seats_available,
+    properties_number_of_seats_available as number_of_seats_available_raw,
 
     -- hubspot ownership & marketing status
     get_json_object(properties, '$.hubspot_owner_id') as hubspot_owner_id,
