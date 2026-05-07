@@ -23,16 +23,33 @@ with
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
-    -- max() not any_value(): deterministic across runs, must align with
+    -- canonical_gp_candidacy_id is candidacy-grain (same across all stages of
+    -- a campaign), so max() across the campaign's er_canonical_ids rows is
+    -- safe. max() not any_value(): deterministic across runs, must align with
     -- int__civics_candidacy_gp_api.
-    er_canonical as (
+    er_canonical_candidacy as (
         select
             gp_api_campaign_id,
-            max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
-            max(canonical_gp_candidacy_stage_id) as canonical_gp_candidacy_stage_id
+            max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where gp_api_campaign_id is not null
         group by gp_api_campaign_id
+    ),
+
+    -- canonical_gp_candidacy_stage_id is stage-grain — different per stage row
+    -- in er_canonical_ids. Carry canonical_gp_election_stage_id alongside it
+    -- so the join below can match canonicals to the specific stage we
+    -- resolved from PD's raceId; mismatches fall through to the self-derived
+    -- salted UUID.
+    er_canonical_stage as (
+        select
+            gp_api_campaign_id,
+            canonical_gp_election_stage_id,
+            canonical_gp_candidacy_stage_id
+        from {{ ref("int__civics_er_canonical_ids") }}
+        where
+            gp_api_campaign_id is not null
+            and canonical_gp_election_stage_id is not null
     ),
 
     -- Columns aliased to match what generate_gp_api_gp_candidacy_id expects
@@ -53,12 +70,17 @@ with
             u.last_name as user_last_name,
             br.gp_election_stage_id,
             br.stage_election_date,
-            xw.canonical_gp_candidacy_id,
-            xw.canonical_gp_candidacy_stage_id
+            xw_c.canonical_gp_candidacy_id,
+            xw_s.canonical_gp_candidacy_stage_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
         inner join br_stages as br on c.ballotready_race_id = br.br_race_id
-        left join er_canonical as xw on c.campaign_id = xw.gp_api_campaign_id
+        left join
+            er_canonical_candidacy as xw_c on c.campaign_id = xw_c.gp_api_campaign_id
+        left join
+            er_canonical_stage as xw_s
+            on c.campaign_id = xw_s.gp_api_campaign_id
+            and br.gp_election_stage_id = xw_s.canonical_gp_election_stage_id
     ),
 
     with_ids as (
