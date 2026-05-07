@@ -713,6 +713,10 @@ models:
           # would let these thresholds tighten back to default).
           # https://goodparty.clickup.com/t/90132012119/DATA-1894
           - relationships:
+              # Warn-severity: multi-TS-record Splink clusters keep one
+              # ts_source_candidate_id in the mart row by design (cluster
+              # dedup drops the other natural keys). error_if=">100" guards
+              # regressions while tolerating the expected handful.
               arguments:
                 to: ref('candidacy_stage')
                 field: ts_source_candidate_id
