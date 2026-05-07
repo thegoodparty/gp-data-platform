@@ -202,8 +202,10 @@ models:
                 inclusive: true
       - name: voters_in_zip
         description: >
-          Count of L2 voters whose residence is in this zip (across all
-          district_names of this district_type). Invariant per
+          Count of L2 voters whose residence is in this zip with a non-null
+          value for this district_type column (summed across all district_names
+          of this district_type). Voters whose value for the district_type
+          column is null are excluded from the denominator. Invariant per
           (zip_code, state_postal_code, district_type).
         tests:
           - not_null
