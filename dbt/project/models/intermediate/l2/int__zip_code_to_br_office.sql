@@ -3,6 +3,7 @@
         materialized="incremental",
         incremental_strategy="merge",
         auto_liquid_cluster=true,
+        on_schema_change="fail",
         unique_key=[
             "zip_code",
             "district_type",
