@@ -45,6 +45,16 @@ with
                     1
                 ) as bigint
             ) as _legacy_br_position_id,
+            -- PD's pledged BR race id. details:raceId is base64-encoded
+            -- gid://ballotready/Race/<id>; the decoded numeric matches BR's
+            -- race database_id, so downstream models can resolve stage by id.
+            -- try_cast handles empty-string raceIds (regex on '' returns '',
+            -- which would error on cast to bigint).
+            try_cast(
+                regexp_extract(
+                    cast(unbase64(c.details:raceid::string) as string), '/([0-9]+)$', 1
+                ) as bigint
+            ) as ballotready_race_id,
             row_number() over (
                 partition by c.id
                 order by c.updated_at desc nulls last, c._airbyte_extracted_at desc
@@ -125,6 +135,7 @@ with
                 then coalesce(_position_br_database_id, _legacy_br_position_id)
                 else _legacy_br_position_id
             end as ballotready_position_id,
+            ballotready_race_id,
             cast(_normalized_position_name as string) as normalized_position_name,
 
             is_latest_version
