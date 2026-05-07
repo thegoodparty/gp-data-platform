@@ -303,14 +303,14 @@ models:
 
   - name: m_election_api__district_top_issues
     description: >
-      Top 5 Haystaq issue scores per L2 district, covering every L2 district
+      Top 10 Haystaq issue scores per L2 district, covering every L2 district
       with an `is_matched = true` row in the LLM L2-to-BallotReady-district
       match (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to
       a single election cycle — districts with off-cycle offices are included
       as well.
 
       Grain: One row per (l2_state, l2_district_type, l2_district_name, issue)
-      for the top 5 issues by average voter score in that district.
+      for the top 10 issues by average voter score in that district.
     columns:
       - name: id
         description: "UUID of the district-issue row"
@@ -408,7 +408,7 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
-                max_value: 5
+                max_value: 10
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
