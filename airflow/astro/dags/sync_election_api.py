@@ -61,7 +61,10 @@ from airflow.sdk import Variable, dag, task, task_group
 t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
-DATABRICKS_SCHEMA = Variable.get("dbt_schema", default_var="dbt")
+# TEMP (DATA-1896): point at PR-#370 dbt Cloud CI schema so dev Astronomer can
+# read the new mart columns without rebuilding prod. REVERT TO "dbt" BEFORE
+# MERGE. (Variable-driven schema selection deferred to a separate ticket.)
+DATABRICKS_SCHEMA = "dbt_cloud_pr_70471823431465_370"
 
 
 def _open_pg():
