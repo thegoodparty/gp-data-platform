@@ -16,6 +16,8 @@ All models materialize as tables in the `mart_civics` schema.
 | `candidacy_stage` | gp_candidacy_stage_id | Per-stage election results (primary, general, runoff) |
 | `election` | gp_election_id | Full election cycles with pivoted stage dates |
 | `election_stage` | gp_election_stage_id | Individual election stages with vendor IDs |
+| `elected_officials` | gp_elected_official_id | Person-grain merge of BR + TS + gp-api elected officials |
+| `elected_official_terms` | gp_elected_official_term_id | Term-grain BR fact table with TS provenance and gp-api bridge |
 
 ## Key Concepts
 
@@ -23,6 +25,8 @@ All models materialize as tables in the `mart_civics` schema.
 - A candidate can have many candidacies. A candidacy belongs to exactly one election.
 - **Candidacy Stage** = results for one candidacy in one election phase (primary, general, etc.)
 - **Election** vs **Election Stage**: an election encompasses all stages; election_stage is one phase.
+- **Elected Official** vs **Candidate**: an EO holds office (sourced from BR's OfficeHolder feed); a Candidate ran for office (sourced from BR + HubSpot). They have different IDs and may not 1:1 correspond.
+- **Elected Official** = a person; **Elected Official Term** = one term they served. A person can have many terms.
 
 ## Which Table Do I Need?
 
@@ -32,9 +36,11 @@ What are you looking for?
 +-- What office they ran for, election dates     --> candidacy
 +-- Did they win or lose? Vote counts?           --> candidacy_stage
 +-- Election details (office, district, dates)   --> election / election_stage
++-- Officeholder (current/past)                  --> elected_officials
++-- A specific term served                       --> elected_official_terms
 +-- GP app user data (signup, Win/Serve status)  --> users
 +-- GP campaign data (verified, pledged, pro)    --> campaigns
-+-- Is the office in our target market (ICP)?    --> candidacy.is_win_icp
++-- Is the office in our target market (ICP)?    --> candidacy.is_win_icp / elected_official_terms.is_win_icp
 +-- Win/Serve product linkage                    --> organizations
 ```
 
@@ -74,4 +80,20 @@ from mart_civics.candidacy cy
 inner join mart_civics.campaigns cam
     on cy.product_campaign_id = cam.campaign_id
     and cam.is_latest_version
+```
+
+### Officeholder with terms (current and past)
+
+```sql
+select
+    eo.full_name,
+    eo.gp_api_user_id,
+    t.candidate_office,
+    t.term_start_date,
+    t.term_end_date
+from mart_civics.elected_officials eo
+inner join mart_civics.elected_official_terms t
+    on eo.gp_elected_official_id = t.gp_elected_official_id
+where (t.term_start_date is null or t.term_start_date <= current_date)
+  and (t.term_end_date is null or t.term_end_date >= current_date)
 ```

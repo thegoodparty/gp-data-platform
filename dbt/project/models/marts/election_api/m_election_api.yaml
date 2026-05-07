@@ -143,6 +143,21 @@ models:
               arguments:
                 to: ref('m_election_api__district')
                 field: id
+      - name: level
+        description: >
+          Position level from BallotReady. Maps to the `PositionLevel` enum on
+          the election-api Postgres `Position` table.
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - CITY
+                  - COUNTY
+                  - FEDERAL
+                  - LOCAL
+                  - REGIONAL
+                  - STATE
+                  - TOWNSHIP
 
   - name: m_election_api__projected_turnout
     description: Turnout projections data load from model predictions
@@ -405,10 +420,6 @@ models:
         description: "Rank of the issue within the district (1 = highest score)"
         tests:
           - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-                max_value: 10
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

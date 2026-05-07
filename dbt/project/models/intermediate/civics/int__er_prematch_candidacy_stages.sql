@@ -12,8 +12,10 @@
 -- - TechSpeed staging: dates/state pre-parsed, unpivoted into primary/general
 -- stage rows, deduped per candidate-stage
 -- - DDHQ election results: one row per candidate per race
--- - GP API: campaigns mart fanned out by BR API race into one row per stage,
--- enriched with normalized position names and stage-specific dates
+-- - GP API: one row per latest-version pledged campaign. election_stage
+-- and br_race_id are resolved by joining BR's race spine on PD's
+-- ballotready_race_id; null for ~6% of campaigns where PD didn't set
+-- raceId.
 --
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
@@ -255,8 +257,8 @@ with
 
     -- GP API: campaign data from the GP platform (joins already resolved
     -- in the campaigns mart: campaign + user + organization + position).
-    -- Fanned out by election stage via BR API race table so each campaign
-    -- produces one row per stage (Primary, General, Runoff, Special variants).
+    -- One row per latest-version campaign with a populated state, office,
+    -- and user name.
     gp_api_campaigns as (
         select *
         from {{ ref("campaigns") }}
@@ -270,20 +272,17 @@ with
             and nullif(trim(campaign_office), '') is not null
     ),
 
-    -- BR API race: position x stage with stage-specific election dates.
-    -- Joined to BR election for the actual date per stage. Excludes
-    -- disabled races and pre-2026 elections. Detects special elections
-    -- via election name (see ballotready_stages comment for rationale).
+    -- BR race spine for resolving election_stage by br_race_id. Excludes
+    -- disabled races and pre-2026 elections.
     br_race as (
         select
-            race.position.databaseid as br_position_id,
             race.database_id as br_race_id,
+            race.position.databaseid as br_position_id,
             {{
                 derive_election_stage(
                     "race.is_primary", "race.is_runoff", "election.name"
                 )
-            }} as election_stage,
-            election.election_day
+            }} as election_stage
         from {{ ref("stg_airbyte_source__ballotready_api_race") }} as race
         inner join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
@@ -293,16 +292,12 @@ with
             and election.election_day >= '2026-01-01'
     ),
 
-    -- Compute candidate_office once so map_office_type can reference it
-    -- without re-evaluating the full CASE expression (same pattern as
-    -- ddhq_with_office above).
     gp_api_with_office as (
         select
             c.*,
-            r.br_race_id,
-            r.election_stage,
-            r.election_day,
             brp.level as br_position_level,
+            br.br_race_id,
+            br.election_stage,
             -- Use the same normalization as BallotReady when we have the
             -- normalized_position_name; fall back to raw campaign_office
             coalesce(
@@ -315,31 +310,16 @@ with
                 initcap(trim(c.campaign_office))
             ) as candidate_office
         from gp_api_campaigns as c
-        inner join
-            br_race as r
-            on c.ballotready_position_id = r.br_position_id
-            and year(r.election_day) = year(c.election_date)
         left join
             {{ ref("stg_airbyte_source__ballotready_api_position") }} as brp
             on c.ballotready_position_id = brp.database_id
-        -- Dedup: a position may have multiple races of the same stage type
-        -- in the same year; pick the race closest to the campaign's date
-        qualify
-            row_number() over (
-                partition by c.campaign_id, r.election_stage
-                order by
-                    abs(datediff(r.election_day, c.election_date)) asc,
-                    r.br_race_id desc nulls last
-            )
-            = 1
+        left join br_race as br on c.ballotready_race_id = br.br_race_id
     ),
 
     gp_api_stages as (
         select
             'gp_api' as source_name,
-            cast(g.campaign_id as string)
-            || '__'
-            || replace(lower(g.election_stage), ' ', '_') as source_id,
+            cast(g.campaign_id as string) as source_id,
             lower(trim(g.user_first_name)) as first_name,
             lower(trim(g.user_last_name)) as last_name,
             upper(trim(g.campaign_state)) as state,
@@ -370,7 +350,7 @@ with
             {{ extract_district_raw("g.campaign_office") }} as district_raw,
             {{ extract_district_identifier("g.campaign_office") }}
             as district_identifier,
-            g.election_day as election_date,
+            g.election_date,
             g.election_stage,
             g.user_email as email,
             g.user_phone as phone,
