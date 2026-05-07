@@ -19,27 +19,25 @@ with
             zip_code,
             state_postal_code,
             district_type,
-            district_names,  -- keep for reference if needed
-            explode(district_names) as exploded_district_name,
+            district_name,
+            voters_in_zip_district,
+            voters_in_zip,
             loaded_at
         from {{ ref("int__zip_code_to_l2_district") }}
         {% if is_incremental() %}
             where loaded_at > (select max(loaded_at) from {{ this }})
         {% endif %}
     ),
-    -- ensure the zip code matches with the correct state. In L2 voter data, some
-    -- voters have
-    -- an out of state zip code and those need to be filtered out.
+    -- Some L2 voters have an out-of-state zip in the L2 file; filter those.
     zip_code_within_state_range as (
         select
             tbl_zip.zip_code,
             tbl_zip.state_postal_code,
             tbl_zip.district_type,
-            tbl_zip.district_names,
-            tbl_zip.exploded_district_name,
-            tbl_zip.loaded_at,
-            zip_range.zip_code_range[0] as zip_code_range_lower_bound,
-            zip_range.zip_code_range[1] as zip_code_range_upper_bound
+            tbl_zip.district_name,
+            tbl_zip.voters_in_zip_district,
+            tbl_zip.voters_in_zip,
+            tbl_zip.loaded_at
         from zip_code_to_l2_district as tbl_zip
         inner join
             {{ ref("int__general_states_zip_code_range") }} as zip_range
@@ -52,7 +50,9 @@ with
             tbl_zip.zip_code,
             tbl_zip.state_postal_code,
             tbl_zip.district_type,
-            tbl_zip.exploded_district_name as district_name,
+            tbl_zip.district_name,
+            tbl_zip.voters_in_zip_district,
+            tbl_zip.voters_in_zip,
             tbl_zip.loaded_at,
             tbl_match.name,
             tbl_match.br_database_id,
@@ -69,7 +69,7 @@ with
         from zip_code_within_state_range as tbl_zip
         left join
             {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }} as tbl_match
-            on lower(tbl_zip.exploded_district_name) = lower(tbl_match.l2_district_name)
+            on lower(tbl_zip.district_name) = lower(tbl_match.l2_district_name)
             and lower(tbl_zip.district_type) = lower(tbl_match.l2_district_type)
             and lower(tbl_zip.state_postal_code) = lower(tbl_match.state)
         left join
@@ -87,30 +87,13 @@ with
             )
             = 1
     )
-/*
-the results an be aggregated into a list in multiple ways:
-1. Each row can have a zip code and a list of related br_office_ids/race by state and district_type. The code would be like:
-```sql
--- ,
--- collected_zip_code_to_br_office as (
--- select
--- zip_code,
--- state_postal_code,
--- district_type,
--- collect_list(br_database_id) as br_database_ids,
--- collect_list(name) as br_office_names,
--- max(loaded_at) as loaded_at
--- from zip_code_to_br_office
--- group by zip_code, state_postal_code, district_type
--- )
-```
-2. Each row can have a br_office_ids/race with a list of zip codes by state and district_type
-*/
 select
     zip_code,
     state_postal_code,
     district_type,
     district_name,
+    voters_in_zip_district,
+    voters_in_zip,
     loaded_at,
     name,
     br_database_id,

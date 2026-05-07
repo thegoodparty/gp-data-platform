@@ -126,6 +126,28 @@ models:
         description: "District name"
         tests:
           - not_null
+      - name: voters_in_zip_district
+        description: >
+          L2 voters in this (zip, district_type, district_name). Passes
+          through unchanged from int__zip_code_to_l2_district at L2 grain.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: voters_in_zip
+        description: >
+          L2 voters in this zip across all district_names of this
+          district_type. Invariant per (zip, state, district_type).
+          Voters whose value for this district_type column is null are
+          excluded from the denominator (matches int__zip_code_to_l2_district).
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
       - name: confidence
         description: "LLM confidence"
       - name: br_database_id
@@ -164,6 +186,9 @@ models:
               - district_type
               - district_name
               - br_database_id
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "voters_in_zip_district <= voters_in_zip"
 
   - name: int__zip_code_to_l2_district
     description: >
