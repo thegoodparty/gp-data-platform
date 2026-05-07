@@ -7,6 +7,9 @@
 
 with
     future_elections as (
+        -- Some (br_position_database_id, election_date) pairs have multiple
+        -- gp_election_ids when Splink misses clustering BR/TS rows for the
+        -- same position+date; pick one canonical row to prevent fan-out below.
         select
             election_date,
             election_year,
@@ -21,6 +24,22 @@ with
         where
             election_date > current_date()
             and election_date <= current_date() + interval 2 years
+        qualify
+            row_number() over (
+                partition by br_position_database_id, election_date
+                order by
+                    case
+                        when array_contains(source_systems, 'ballotready')
+                        then 1
+                        when array_contains(source_systems, 'techspeed')
+                        then 2
+                        when array_contains(source_systems, 'ddhq')
+                        then 3
+                        else 4
+                    end,
+                    gp_election_id
+            )
+            = 1
     ),
 
     zip_to_position as (
