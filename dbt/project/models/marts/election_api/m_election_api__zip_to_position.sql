@@ -29,8 +29,9 @@ with
             br_database_id,
             max(voters_in_zip) as voters_in_zip,
             sum(voters_in_zip_district) as voters_in_zip_district,
-            sum(voters_in_zip_district) * 1.0 / max(voters_in_zip)
-                as pct_districtzip_to_zip
+            sum(voters_in_zip_district)
+            * 1.0
+            / max(voters_in_zip) as pct_districtzip_to_zip
         from {{ ref("int__zip_code_to_br_office") }}
         where br_database_id is not null
         group by zip_code, br_database_id

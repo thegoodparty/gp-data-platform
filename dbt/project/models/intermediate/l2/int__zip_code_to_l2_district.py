@@ -28,9 +28,7 @@ THIS_TABLE_SCHEMA = StructType(
         StructField(name="state_postal_code", dataType=StringType(), nullable=False),
         StructField(name="district_type", dataType=StringType(), nullable=False),
         StructField(name="district_name", dataType=StringType(), nullable=False),
-        StructField(
-            name="voters_in_zip_district", dataType=LongType(), nullable=False
-        ),
+        StructField(name="voters_in_zip_district", dataType=LongType(), nullable=False),
         StructField(name="voters_in_zip", dataType=LongType(), nullable=False),
         StructField(name="loaded_at", dataType=TimestampType(), nullable=False),
     ]
@@ -133,9 +131,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
 
         district_df = (
-            district_df.groupBy(
-                "state_postal_code", "zip_code", "district_name"
-            )
+            district_df.groupBy("state_postal_code", "zip_code", "district_name")
             .agg(count("*").alias("voters_in_zip_district"))
             .withColumn(
                 "voters_in_zip",
