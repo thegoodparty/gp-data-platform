@@ -61,7 +61,7 @@ from airflow.sdk import Variable, dag, task, task_group
 t_log = logging.getLogger("airflow.task")
 
 PG_CONN_ID = "election_api_db"
-DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
+DATABRICKS_SCHEMA = Variable.get("dbt_schema", default_var="dbt")
 
 
 def _open_pg():
