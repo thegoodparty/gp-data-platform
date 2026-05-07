@@ -704,11 +704,21 @@ models:
           office_type + city). Asserts every raw TS record surfaces in the
           candidacy_stage mart with 'techspeed' in source_systems. The mart
           populates ts_source_candidate_id only when TS is in the cluster.
+          Configured to warn on small failure counts: if Splink over-clusters
+          two TS rows with different source_candidate_ids into the same
+          cluster, the mart's dedup keeps one and drops the other's natural
+          keys. Investigate when count grows.
         data_tests:
+          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
+          # would let these thresholds tighten back to default).
+          # https://goodparty.clickup.com/t/90132012119/DATA-1894
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
                 field: ts_source_candidate_id
+              config:
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: election_result
         description: Result of the election stage (Won or null, general stages only)
@@ -1016,6 +1026,9 @@ models:
           candidate_ids into the same cluster, the mart's dedup keeps one
           and drops the other's natural keys. Investigate when count grows.
         data_tests:
+          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
+          # would let these thresholds tighten back to default).
+          # https://goodparty.clickup.com/t/90132012119/DATA-1894
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
@@ -1030,6 +1043,9 @@ models:
           as source_candidate_id, paired with it as DDHQ's compound natural
           key. Same warn-vs-error thresholds for the same reason.
         data_tests:
+          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
+          # would let these thresholds tighten back to default).
+          # https://goodparty.clickup.com/t/90132012119/DATA-1894
           - relationships:
               arguments:
                 to: ref('candidacy_stage')
