@@ -1,8 +1,11 @@
 {{ config(materialized="table", tags=["civics", "gp_api"]) }}
 
 -- Product DB campaigns -> Civics mart candidacy_stage rows.
--- Grain: one row per latest-version pledged gp_api campaign whose
--- ballotready_race_id resolves in BR's election_stage spine.
+-- Grain: one row per latest-version gp_api campaign whose pledge resolves
+-- to a BR election stage. BR-stage resolution prefers PD's pledged race
+-- id (details:raceid → ballotready_race_id), falling back to the closest
+-- BR stage at the same (ballotready_position_id, year(election_date)) for
+-- the residual without a race id.
 -- gp_candidacy_stage_id prefers the ER-resolved canonical when available;
 -- otherwise self-derives from (gp_candidacy_id, gp_election_stage_id).
 with
@@ -11,16 +14,47 @@ with
         from {{ ref("campaigns") }}
         where
             is_latest_version
-            and ballotready_position_id is not null
-            and ballotready_race_id is not null
+            and (ballotready_race_id is not null or ballotready_position_id is not null)
     ),
 
     -- Source from the users mart so person hashes align with candidacy_gp_api.
     users as (select user_id, first_name, last_name from {{ ref("users") }}),
 
     br_stages as (
-        select br_race_id, gp_election_stage_id, election_date as stage_election_date
+        select
+            br_race_id,
+            br_position_id,
+            gp_election_stage_id,
+            election_date as stage_election_date
         from {{ ref("int__civics_election_stage_ballotready") }}
+    ),
+
+    campaign_br_stage as (
+        select
+            c.*,
+            coalesce(
+                br_by_race.gp_election_stage_id, br_by_pos.gp_election_stage_id
+            ) as gp_election_stage_id,
+            coalesce(
+                br_by_race.stage_election_date, br_by_pos.stage_election_date
+            ) as stage_election_date
+        from latest_campaigns as c
+        left join
+            br_stages as br_by_race on c.ballotready_race_id = br_by_race.br_race_id
+        left join
+            br_stages as br_by_pos
+            on br_by_race.br_race_id is null
+            and c.ballotready_position_id = br_by_pos.br_position_id
+            and year(br_by_pos.stage_election_date) = year(c.election_date)
+        qualify
+            row_number() over (
+                partition by c.campaign_id
+                order by
+                    case when br_by_race.br_race_id is not null then 0 else 1 end,
+                    abs(datediff(br_by_pos.stage_election_date, c.election_date)) asc,
+                    br_by_pos.br_race_id desc nulls last
+            )
+            = 1
     ),
 
     -- canonical_gp_candidacy_id is candidacy-grain (same across all stages of
@@ -68,19 +102,19 @@ with
             c.updated_at,
             u.first_name as user_first_name,
             u.last_name as user_last_name,
-            br.gp_election_stage_id,
-            br.stage_election_date,
+            c.gp_election_stage_id,
+            c.stage_election_date,
             xw_c.canonical_gp_candidacy_id,
             xw_s.canonical_gp_candidacy_stage_id
-        from latest_campaigns as c
+        from campaign_br_stage as c
         inner join users as u on c.user_id = u.user_id
-        inner join br_stages as br on c.ballotready_race_id = br.br_race_id
         left join
             er_canonical_candidacy as xw_c on c.campaign_id = xw_c.gp_api_campaign_id
         left join
             er_canonical_stage as xw_s
             on c.campaign_id = xw_s.gp_api_campaign_id
-            and br.gp_election_stage_id = xw_s.canonical_gp_election_stage_id
+            and c.gp_election_stage_id = xw_s.canonical_gp_election_stage_id
+        where c.gp_election_stage_id is not null
     ),
 
     with_ids as (
