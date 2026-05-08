@@ -97,7 +97,9 @@ def test_ztp_transform_row_id_is_deterministic():
         for c in ZTP_SOURCE_COLUMNS
     )
 
-    assert _ztp_transform_row(row)[0] == _ztp_transform_row(row)[0]
+    id_first = _ztp_transform_row(row)[0]
+    id_second = _ztp_transform_row(row)[0]
+    assert id_first == id_second
 
 
 def test_ztp_source_columns_match_transform_arity():
