@@ -23,6 +23,17 @@ The project structure will be added here as it evolves
 
 ## Development Practices
 
+### System tools (Mac)
+
+Apple's Xcode CLI Tools ship an outdated `git`. Upgrade to current upstream git via [Homebrew](https://brew.sh):
+
+```bash
+brew install git
+git --version    # confirm 2.4x or newer
+```
+
+Pre-commit hooks and `poetry run git` both invoke whichever `git` is first on your `PATH` — there's only one git installation; `poetry run` just makes the poetry env available to hook subprocesses (so the pytest hook can find `pyspark`/`airflow`).
+
 ### Using Python locally
 
 To manage Python versions locally, we use [`pyenv`](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation). This ensures consistent Python versions across development environments.

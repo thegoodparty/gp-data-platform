@@ -22,6 +22,12 @@ When building multiple models, use quotes around the models in the `--select` ar
     - Bad: `dbt build --select my_model1 my_model2`
     - Good: `dbt build --select "my_model1 my_model2"`
 
+## Branch and PR Conventions
+
+- **Branch names:** `data-XXXX/short-slug` (lowercase `data`, slash separator, kebab-case slug). `XXXX` is the ClickUp ticket number.
+- **PR titles:** `[DATA-XXXX] Short title` (uppercase prefix, square brackets).
+- **Commits:** Always run `git` via `poetry run git` from the `dbt/` directory so pre-commit hooks find their dependencies.
+
 **IMPORTANT** - When working on dbt models, inspect existing sources/models in
 Databricks, as well as models that you have added and modified after creating
 them. Do so by running `dbt show` for custom queries or the `inspect_data`
