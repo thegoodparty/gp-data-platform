@@ -1,6 +1,3 @@
--- Staging for the gp_api_db.user table. Renames raw airbyte columns to
--- snake_case and surfaces meta_data fields (e.g. hubspot_contact_id) used
--- by downstream civics intermediates.
 with
     source as (select * from {{ source("airbyte_source", "gp_api_db_user") }}),
     renamed as (
