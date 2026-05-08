@@ -515,9 +515,16 @@ models:
 
       - name: candidacy_result
         description: >
-          Result of the candidacy. Values:
-          - Won: Candidate won the election
-          - Lost: Candidate lost the election
+          Overall outcome of the candidacy, rolled up across stages with a
+          general-runoff > general > primary-runoff > primary fallback (DDHQ
+          rollup logic). When the general stage has no result yet, this column
+          falls back to the primary outcome, so a value of 'Won' or 'Lost' here
+          does NOT necessarily mean the candidate won or lost their general
+          election. For general-election-specific analysis, use
+          `general_election_result`.
+          Values:
+          - Won: Candidate won at the latest reached stage
+          - Lost: Candidate lost at the latest reached stage
           - Runoff: Election resulted in a runoff
           - Withdrew: Candidate withdrew from the race
           - Not on Ballot: Candidate was not on the ballot
@@ -536,6 +543,24 @@ models:
                   ]
               config:
                 where: "candidacy_result is not null"
+
+      - name: general_election_result
+        description: >
+          Result of the general-stage election only, sourced from the matching
+          `candidacy_stage.election_result` row where `election_stage.stage_type`
+          is 'general'. No fallback to primary or runoff stages. Null when no
+          general-stage record exists or the result has not been captured.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                  ]
 
       - name: is_pledged
         description: >

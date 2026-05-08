@@ -254,6 +254,7 @@ select
     deduplicated.office_level,
     deduplicated.office_type,
     deduplicated.candidacy_result,
+    gen_stage.general_election_result,
     deduplicated.is_pledged,
     deduplicated.is_verified,
     deduplicated.verification_status_reason,
@@ -295,3 +296,24 @@ from deduplicated
 left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
+left join
+    (
+        -- ~8400 candidacies have >1 general-stage row in candidacy_stage
+        -- (data-quality issue tracked separately). Prefer rows with a
+        -- populated result, then the most recently updated.
+        select cs.gp_candidacy_id, cs.election_result as general_election_result
+        from {{ ref("candidacy_stage") }} as cs
+        join
+            {{ ref("election_stage") }} as es
+            on cs.gp_election_stage_id = es.gp_election_stage_id
+        where lower(es.stage_type) = 'general'
+        qualify
+            row_number() over (
+                partition by cs.gp_candidacy_id
+                order by
+                    case when cs.election_result is not null then 0 else 1 end,
+                    cs.updated_at desc nulls last
+            )
+            = 1
+    ) as gen_stage
+    on deduplicated.gp_candidacy_id = gen_stage.gp_candidacy_id
