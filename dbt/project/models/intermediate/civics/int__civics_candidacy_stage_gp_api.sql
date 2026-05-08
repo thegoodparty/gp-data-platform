@@ -2,12 +2,10 @@
 
 -- Product DB campaigns -> Civics mart candidacy_stage rows.
 -- Grain: one row per latest-version gp_api campaign whose pledge resolves
--- to a BR election stage. Resolution is two-tier (per DATA-1899):
--- 1. Primary: deterministic join on ballotready_race_id (PD's
--- details:raceid). ~94% of in-scope campaigns.
--- 2. Fallback: closest BR stage at the same (ballotready_position_id,
--- year(election_date)). Recovers the small residual that has
--- ballotready_position_id but no ballotready_race_id.
+-- to a BR election stage. BR-stage resolution prefers PD's pledged race
+-- id (details:raceid → ballotready_race_id), falling back to the closest
+-- BR stage at the same (ballotready_position_id, year(election_date)) for
+-- the residual without a race id.
 -- gp_candidacy_stage_id prefers the ER-resolved canonical when available;
 -- otherwise self-derives from (gp_candidacy_id, gp_election_stage_id).
 with
@@ -31,11 +29,6 @@ with
         from {{ ref("int__civics_election_stage_ballotready") }}
     ),
 
-    -- Resolve each campaign to one BR stage. br_by_race is the deterministic
-    -- path; br_by_pos is the closest-date fallback for campaigns missing
-    -- ballotready_race_id. The qualify prefers a race-id hit when both are
-    -- available and otherwise picks the BR stage closest to the user's
-    -- pledged election_date within the same position+year.
     campaign_br_stage as (
         select
             c.*,
