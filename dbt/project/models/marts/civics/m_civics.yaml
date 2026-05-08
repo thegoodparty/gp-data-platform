@@ -650,14 +650,6 @@ models:
         data_tests:
           - not_null
 
-      - name: source_systems
-        description: >
-          Array of source systems contributing to this row. Possible
-          members: 'hubspot' (2025 archive), 'ballotready', 'techspeed',
-          'ddhq', 'gp_api' (Product Database).
-        data_tests:
-          - not_null
-
     tests:
       - dbt_utils.expression_is_true:
           arguments:
@@ -765,14 +757,6 @@ models:
 
       - name: updated_at
         description: Timestamp when the record was last updated
-        data_tests:
-          - not_null
-
-      - name: source_systems
-        description: >
-          Array of source systems contributing to this row. Possible
-          members: 'hubspot' (2025 archive), 'ballotready', 'techspeed',
-          'ddhq', 'gp_api' (Product Database).
         data_tests:
           - not_null
 
@@ -1269,8 +1253,10 @@ models:
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
-          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
-          See the model-level description for merge mechanics.
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
+          gp_api participation is indicated via membership lookup — 'gp_api' is
+          appended to source_systems for any election that any clustered or
+          unclustered PD candidacy maps to.
         data_tests:
           - not_null
 
@@ -1281,17 +1267,6 @@ models:
 
       - name: updated_at
         description: Timestamp when the record was last updated
-        data_tests:
-          - not_null
-
-      - name: source_systems
-        description: >
-          Array of source systems contributing to this row. Possible
-          members: 'hubspot' (2025 archive), 'ballotready', 'techspeed',
-          'ddhq', 'gp_api' (Product Database). gp_api participation is
-          indicated via membership lookup — 'gp_api' is appended to
-          source_systems for any election that any clustered or
-          unclustered PD candidacy maps to.
         data_tests:
           - not_null
 
@@ -1502,8 +1477,10 @@ models:
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
-          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq'.
-          See the model-level description for merge mechanics.
+          'hubspot' (2025 archive only), 'ballotready', 'techspeed', 'ddhq', 'gp_api'.
+          gp_api participation is indicated via membership lookup — 'gp_api' is
+          appended to source_systems for any election_stage that any clustered or
+          unclustered PD candidacy_stage maps to.
         data_tests:
           - not_null
 
@@ -1514,17 +1491,6 @@ models:
 
       - name: updated_at
         description: Timestamp when the record was last updated
-
-      - name: source_systems
-        description: >
-          Array of source systems contributing to this row. Possible
-          members: 'hubspot' (2025 archive), 'ballotready', 'techspeed',
-          'ddhq', 'gp_api' (Product Database). gp_api participation is
-          indicated via membership lookup — 'gp_api' is appended to
-          source_systems for any election_stage that any clustered or
-          unclustered PD candidacy_stage maps to.
-        data_tests:
-          - not_null
 
   - name: elected_official_terms
     description: |
