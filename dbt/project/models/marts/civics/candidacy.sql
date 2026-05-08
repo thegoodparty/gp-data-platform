@@ -254,7 +254,8 @@ select
     deduplicated.office_level,
     deduplicated.office_type,
     deduplicated.candidacy_result,
-    gen_stage.general_election_result,
+    latest.latest_stage_reached,
+    latest.latest_stage_result,
     deduplicated.is_pledged,
     deduplicated.is_verified,
     deduplicated.verification_status_reason,
@@ -298,22 +299,37 @@ left join
     on deduplicated.br_position_database_id = icp.br_database_position_id
 left join
     (
-        -- ~8400 candidacies have >1 general-stage row in candidacy_stage
-        -- (data-quality issue tracked separately). Prefer rows with a
-        -- populated result, then the most recently updated.
-        select cs.gp_candidacy_id, cs.election_result as general_election_result
+        -- Pick the deepest stage with a captured result for each candidacy.
+        -- ~8400 candidacies have multiple stage rows for the same stage_type
+        -- in candidacy_stage (data-quality issue tracked separately); the
+        -- updated_at tiebreaker keeps grain at one row per candidacy.
+        select
+            cs.gp_candidacy_id,
+            es.stage_type as latest_stage_reached,
+            cs.election_result as latest_stage_result
         from {{ ref("candidacy_stage") }} as cs
         join
             {{ ref("election_stage") }} as es
             on cs.gp_election_stage_id = es.gp_election_stage_id
-        where lower(es.stage_type) = 'general'
+        where cs.election_result is not null
         qualify
             row_number() over (
                 partition by cs.gp_candidacy_id
                 order by
-                    case when cs.election_result is not null then 0 else 1 end,
+                    case
+                        lower(es.stage_type)
+                        when 'general runoff'
+                        then 4
+                        when 'general'
+                        then 3
+                        when 'primary runoff'
+                        then 2
+                        when 'primary'
+                        then 1
+                        else 0
+                    end desc,
                     cs.updated_at desc nulls last
             )
             = 1
-    ) as gen_stage
-    on deduplicated.gp_candidacy_id = gen_stage.gp_candidacy_id
+    ) as latest
+    on deduplicated.gp_candidacy_id = latest.gp_candidacy_id

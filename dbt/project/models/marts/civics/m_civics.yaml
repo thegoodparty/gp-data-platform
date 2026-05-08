@@ -515,13 +515,13 @@ models:
 
       - name: candidacy_result
         description: >
-          Overall outcome of the candidacy, rolled up across stages with a
-          general-runoff > general > primary-runoff > primary fallback (DDHQ
-          rollup logic). When the general stage has no result yet, this column
-          falls back to the primary outcome, so a value of 'Won' or 'Lost' here
-          does NOT necessarily mean the candidate won or lost their general
-          election. For general-election-specific analysis, use
-          `general_election_result`.
+          Overall outcome of the candidacy, rolled up across stages via
+          per-provider precedence (DDHQ uses general-runoff > general >
+          primary-runoff > primary fallback). When the general stage has no
+          result yet, this column may fall back to the primary outcome, so a
+          value of 'Won' or 'Lost' here does NOT necessarily mean the candidate
+          won or lost their general election. For stage-aware analysis, use
+          `latest_stage_reached` and `latest_stage_result` instead.
           Values:
           - Won: Candidate won at the latest reached stage
           - Lost: Candidate lost at the latest reached stage
@@ -544,12 +544,30 @@ models:
               config:
                 where: "candidacy_result is not null"
 
-      - name: general_election_result
+      - name: latest_stage_reached
         description: >
-          Result of the general-stage election only, sourced from the matching
-          `candidacy_stage.election_result` row where `election_stage.stage_type`
-          is 'general'. No fallback to primary or runoff stages. Null when no
-          general-stage record exists or the result has not been captured.
+          The deepest election stage for which a result has been captured in
+          `candidacy_stage`. Funnel order: primary < primary runoff < general <
+          general runoff. Paired with `latest_stage_result` (both columns are
+          sourced from the same `candidacy_stage` row). Null when no stage has
+          a captured result yet. Use together with `latest_stage_result` for
+          questions like "did the candidate win their general?": filter
+          `latest_stage_reached in ('general', 'general runoff')`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "primary",
+                    "primary runoff",
+                    "general",
+                    "general runoff",
+                  ]
+
+      - name: latest_stage_result
+        description: >
+          The captured result at `latest_stage_reached`, sourced from the same
+          `candidacy_stage` row. Null when no stage has a captured result.
         data_tests:
           - accepted_values:
               arguments:
