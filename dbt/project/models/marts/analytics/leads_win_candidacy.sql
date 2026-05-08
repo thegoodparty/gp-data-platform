@@ -43,28 +43,13 @@ with
             cand.viability_score,
             cand.win_number,
 
-            -- ICP fields
-            case
-                when
-                    icp.icp_win_effective_date is not null
-                    and (
-                        cand.general_election_date is null
-                        or cand.general_election_date < icp.icp_win_effective_date
-                    )
-                then false
-                else icp.icp_office_win
-            end as icp_office_win,
+            -- ICP fields. is_win_icp / is_win_supersize_icp are sourced from
+            -- the candidacy mart, which already applies the WIN-ICP date gate
+            -- (see macro win_icp_date_gate). Other ICP attributes still come
+            -- from int__icp_offices via the join below.
+            cand.is_win_icp as icp_office_win,
             icp.icp_office_serve,
-            case
-                when
-                    icp.icp_win_effective_date is not null
-                    and (
-                        cand.general_election_date is null
-                        or cand.general_election_date < icp.icp_win_effective_date
-                    )
-                then false
-                else icp.icp_win_supersize
-            end as icp_win_supersize,
+            cand.is_win_supersize_icp as icp_win_supersize,
             icp.is_judicial,
             icp.is_appointed,
             initcap(icp.br_position_name) as ballotready_position_name,

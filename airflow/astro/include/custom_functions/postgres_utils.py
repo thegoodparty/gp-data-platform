@@ -33,22 +33,48 @@ logger = logging.getLogger("airflow.task")
 
 @contextmanager
 def get_postgres_via_ssh(
-    bastion_conn_id: str = "gp_bastion_host",
+    bastion_conn_id: Optional[str] = "gp_bastion_host",
     pg_conn_id: str = "people_api_db",
 ):
-    """Open a psycopg2 connection to PostgreSQL through an SSH bastion tunnel.
+    """Open a psycopg2 connection to PostgreSQL, optionally via SSH bastion.
+
+    Pass ``bastion_conn_id=None`` (or empty string) to skip the tunnel and
+    connect directly to ``pg.host:pg.port``. Useful for local dev on VPN where
+    the destination Postgres is reachable directly.
 
     Usage::
 
-        with get_postgres_via_ssh() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
+        with get_postgres_via_ssh() as conn:                       # tunneled
+            ...
+        with get_postgres_via_ssh(bastion_conn_id=None) as conn:   # direct
+            ...
 
     Yields:
-        psycopg2 connection routed through the SSH tunnel.
+        psycopg2 connection (routed through the SSH tunnel when configured).
     """
-    bastion = BaseHook.get_connection(bastion_conn_id)
     pg = BaseHook.get_connection(pg_conn_id)
+
+    if not bastion_conn_id:
+        logger.info(
+            "Connecting directly to %s:%s (no bastion tunnel)",
+            pg.host,
+            pg.port or 5432,
+        )
+        conn = psycopg2.connect(
+            dbname=pg.schema or pg.extra_dejson.get("dbname", pg.login),
+            user=pg.login,
+            password=pg.password,
+            host=pg.host,
+            port=pg.port or 5432,
+        )
+        try:
+            yield conn
+        finally:
+            conn.close()
+            logger.info("PostgreSQL connection closed")
+        return
+
+    bastion = BaseHook.get_connection(bastion_conn_id)
 
     # Build SSH auth kwargs — prefer key-based auth, fall back to password.
     ssh_kwargs: dict = {}
@@ -86,7 +112,7 @@ def get_postgres_via_ssh(
         remote_bind_address=(pg.host, pg.port or 5432),
         set_keepalive=30,
     )
-    conn = None
+    tunneled_conn: Optional[psycopg2.extensions.connection] = None
     try:
         tunnel.start()
         logger.info(
@@ -95,17 +121,17 @@ def get_postgres_via_ssh(
             pg.host,
             pg.port or 5432,
         )
-        conn = psycopg2.connect(
+        tunneled_conn = psycopg2.connect(
             dbname=pg.schema or pg.extra_dejson.get("dbname", pg.login),
             user=pg.login,
             password=pg.password,
             host="127.0.0.1",
             port=tunnel.local_bind_port,
         )
-        yield conn
+        yield tunneled_conn
     finally:
-        if conn is not None:
-            conn.close()
+        if tunneled_conn is not None:
+            tunneled_conn.close()
             logger.info("PostgreSQL connection closed")
         tunnel.stop()
         logger.info("SSH tunnel closed")

@@ -1,10 +1,15 @@
--- Civics mart election table
--- Union of 2025 HubSpot archive and 2026+ merged BallotReady + TechSpeed data
+-- Civics mart election table.
+-- 2025 HubSpot archive UNION 2026+ 3-way FOJ over BR + TS + DDHQ joined on
+-- gp_election_id, with a left-join membership lookup that appends 'gp_api'
+-- to source_systems for elections any PD candidacy maps to. gp_api int
+-- models adopt BR's natural gp_election_id whenever Task 1's filter passes
+-- (every gp_api campaign has ballotready_position_id), so the membership
+-- lookup hits BR's spine row directly.
+-- Per-column precedence rules: see the election model description in
+-- m_civics.yaml.
 --
--- BallotReady is the authoritative spine for elections (positions). TS int
--- models remap clustered rows to BR's gp_election_id via
--- int__civics_er_canonical_ids, so a full outer join on gp_election_id merges
--- matched pairs automatically. Unmatched TS elections pass through as net-new.
+-- has_ddhq_match: true when either the 2025 archive linked a DDHQ race or a
+-- 2026+ DDHQ row clustered into this election via Splink. NULL otherwise.
 {%- set br_wins_cols = [
     "official_office_name",
     "candidate_office",
@@ -19,7 +24,6 @@
     "seats_available",
     "term_start_date",
     "number_of_opponents",
-    "has_ddhq_match",
     "created_at",
     "updated_at",
 ] %}
@@ -36,41 +40,67 @@ with
         select
             gp_election_id,
             -- Column order must match merged_since_2026 (br_wins_cols loop order,
-            -- then ts_wins_cols, then BR-only, then source_systems)
+            -- has_ddhq_match, ts_wins_cols, BR-only, source_systems)
             {% for col in br_wins_cols %} {{ col }}, {% endfor %}
+            has_ddhq_match,
             {% for col in ts_wins_cols %} {{ col }}, {% endfor %}
             br_position_database_id,
             is_judicial,
             is_appointed,
             br_normalized_position_type,
-            array('hubspot') as source_systems
+            array_compact(
+                array('hubspot', case when has_ddhq_match then 'ddhq' end)
+            ) as source_systems
         from {{ ref("int__civics_election_2025") }}
+    ),
+
+    -- DDHQ projected into the mart-row schema. The mart's `state` column
+    -- holds 2-letter codes (BR/TS-staging convention) — pull DDHQ's
+    -- state_postal_code through, not its `state` column (which is the
+    -- human-readable name per int_model convention).
+    ddhq as (
+        select * except (state), state_postal_code as state
+        from {{ ref("int__civics_election_ddhq") }}
     ),
 
     merged_since_2026 as (
         select
-            coalesce(br.gp_election_id, ts.gp_election_id) as gp_election_id,
+            coalesce(
+                br.gp_election_id, ts.gp_election_id, ddhq.gp_election_id
+            ) as gp_election_id,
             {% for col in br_wins_cols %}
-                coalesce(br.{{ col }}, ts.{{ col }}) as {{ col }},
+                coalesce(br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
-            -- TS wins: BR always NULL, TS populated from techspeed source
+            -- has_ddhq_match must be handled outside the coalesce loop: BR
+            -- and TS hardcode it to false (non-null), so a coalesce would
+            -- always pick BR's false on Splink-matched BR+DDHQ rows. Derive
+            -- directly from join presence instead.
+            ddhq.gp_election_id is not null as has_ddhq_match,
+            -- TS wins for these (BR always NULL on 2026+ for population/
+            -- filing_deadline; TS populated from techspeed source). DDHQ
+            -- supplies is_uncontested as a fallback.
             {% for col in ts_wins_cols %}
-                coalesce(ts.{{ col }}, br.{{ col }}) as {{ col }},
+                coalesce(ts.{{ col }}, br.{{ col }}, ddhq.{{ col }}) as {{ col }},
             {% endfor %}
-            br.br_position_database_id,
+            coalesce(
+                br.br_position_database_id, ts.br_position_database_id
+            ) as br_position_database_id,
             br.is_judicial,
             br.is_appointed,
             br.br_normalized_position_type,
             array_compact(
                 array(
                     case when br.gp_election_id is not null then 'ballotready' end,
-                    case when ts.gp_election_id is not null then 'techspeed' end
+                    case when ts.gp_election_id is not null then 'techspeed' end,
+                    case when ddhq.gp_election_id is not null then 'ddhq' end
                 )
             ) as source_systems
         from {{ ref("int__civics_election_ballotready") }} as br
         full outer join
             {{ ref("int__civics_election_techspeed") }} as ts
             on br.gp_election_id = ts.gp_election_id
+        full outer join
+            ddhq on coalesce(br.gp_election_id, ts.gp_election_id) = ddhq.gp_election_id
     ),
 
     combined as (
@@ -89,6 +119,17 @@ with
                 partition by gp_election_id order by updated_at desc nulls last
             )
             = 1
+    ),
+
+    gp_api_membership as (
+        -- gp_api participation marker. No new int model at election grain
+        -- (per design: gp_api contributes no field values BR/TS/DDHQ don't
+        -- already author better here). gp_api's gp_election_id adopts BR's
+        -- natural id when present (Task 1 filter ensures ballotready_position_id),
+        -- so this lookup hits BR's spine row directly.
+        select distinct gp_election_id
+        from {{ ref("int__civics_candidacy_gp_api") }}
+        where gp_election_id is not null
     ),
 
     -- Pivot election stage dates by type
@@ -141,36 +182,35 @@ select
     stage_dates.general_runoff_election_date,
     icp.voter_count as icp_voter_count,
     icp.normalized_position_type as icp_normalized_position_name,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and (
-                coalesce(stage_dates.general_election_date, deduplicated.election_date)
-                is null
-                or coalesce(
-                    stage_dates.general_election_date, deduplicated.election_date
-                )
-                < icp.icp_win_effective_date
-            )
-        then false
-        else icp.icp_office_win
-    end as is_win_icp,
+    {{
+        win_icp_date_gate(
+            icp_attribute="icp.icp_office_win",
+            primary_date="stage_dates.primary_election_date",
+            primary_runoff_date="stage_dates.primary_runoff_election_date",
+            general_date="coalesce(stage_dates.general_election_date, deduplicated.election_date)",
+            general_runoff_date="stage_dates.general_runoff_election_date",
+            effective_date="icp.icp_win_effective_date",
+        )
+    }}
+    as is_win_icp,
     icp.icp_office_serve as is_serve_icp,
-    case
-        when
-            icp.icp_win_effective_date is not null
-            and (
-                coalesce(stage_dates.general_election_date, deduplicated.election_date)
-                is null
-                or coalesce(
-                    stage_dates.general_election_date, deduplicated.election_date
-                )
-                < icp.icp_win_effective_date
-            )
-        then false
-        else icp.icp_win_supersize
-    end as is_win_supersize_icp,
-    deduplicated.source_systems,
+    {{
+        win_icp_date_gate(
+            icp_attribute="icp.icp_win_supersize",
+            primary_date="stage_dates.primary_election_date",
+            primary_runoff_date="stage_dates.primary_runoff_election_date",
+            general_date="coalesce(stage_dates.general_election_date, deduplicated.election_date)",
+            general_runoff_date="stage_dates.general_runoff_election_date",
+            effective_date="icp.icp_win_effective_date",
+        )
+    }}
+    as is_win_supersize_icp,
+    array_compact(
+        array_append(
+            deduplicated.source_systems,
+            case when gp.gp_election_id is not null then 'gp_api' end
+        )
+    ) as source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
 
@@ -179,3 +219,4 @@ left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
 left join stage_dates on deduplicated.gp_election_id = stage_dates.gp_election_id
+left join gp_api_membership as gp on deduplicated.gp_election_id = gp.gp_election_id

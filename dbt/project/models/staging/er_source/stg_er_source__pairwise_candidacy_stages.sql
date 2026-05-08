@@ -81,13 +81,17 @@ with
             cast(gamma_district_identifier as int) as gamma_district_identifier,
             cast(bf_district_identifier as double) as bf_district_identifier,
 
+            -- office_level comparison
+            office_level_l,
+            office_level_r,
+            cast(gamma_office_level as int) as gamma_office_level,
+            cast(bf_office_level as double) as bf_office_level,
+
             -- race-level context
             cast(br_race_id_l as int) as br_race_id_l,
             cast(br_race_id_r as int) as br_race_id_r,
             candidate_office_l,
             candidate_office_r,
-            office_level_l,
-            office_level_r,
             office_type_l,
             office_type_r,
             district_raw_l,

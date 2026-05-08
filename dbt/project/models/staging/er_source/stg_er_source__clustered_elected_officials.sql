@@ -25,10 +25,15 @@ with
             city,
             cast(term_start_date as date) as term_start_date,
             cast(term_end_date as date) as term_end_date,
+            cast(ballotready_position_id as bigint) as ballotready_position_id,
             cast(br_office_holder_id as int) as br_office_holder_id,
             cast(br_candidate_id as int) as br_candidate_id,
             ts_officeholder_id,
-            ts_position_id
+            ts_position_id,
+            cast(gp_api_user_id as bigint) as gp_api_user_id,
+            cast(gp_api_campaign_id as bigint) as gp_api_campaign_id,
+            gp_api_elected_office_id,
+            gp_api_organization_slug
 
         from source
 

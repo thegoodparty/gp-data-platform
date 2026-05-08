@@ -26,6 +26,10 @@ with
     ts_provenance as (
         select br_office_holder_id, ts_officeholder_id, ts_officeholder_id_is_reused
         from {{ ref("int__civics_elected_official_canonical_ids") }}
+    ),
+
+    gp_api_bridge as (
+        select * from {{ ref("int__civics_elected_official_gp_api_bridge") }}
     )
 
 select
@@ -107,13 +111,22 @@ select
     br.is_serve_icp,
     br.is_win_supersize_icp,
 
-    -- source_systems: join-based per candidacy mart pattern. BR is always
+    -- gp_api term attachment (bridge LEFT JOIN; 1:1 by br_office_holder_id)
+    gp.gp_api_elected_office_id,
+    gp.gp_api_user_id,
+    gp.gp_api_campaign_id,
+    gp.gp_api_organization_slug,
+    gp.hubspot_company_id,
+    gp.days_to_sworn_in,
+
+    -- source_systems: join-based per the candidacy mart convention. BR is always
     -- present (this mart is BR-spine); TS is added when the term has a
-    -- direct ts_officeholder_id match.
+    -- direct ts_officeholder_id match; gp_api when the bridge attached a record.
     array_compact(
         array(
             'ballotready',
-            case when ts.ts_officeholder_id is not null then 'techspeed' end
+            case when ts.ts_officeholder_id is not null then 'techspeed' end,
+            case when gp.gp_api_elected_office_id is not null then 'gp_api' end
         )
     ) as source_systems,
 
@@ -122,3 +135,4 @@ select
 
 from br_terms as br
 left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
+left join gp_api_bridge as gp on br.br_office_holder_id = gp.br_office_holder_id

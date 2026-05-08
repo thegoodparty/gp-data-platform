@@ -23,7 +23,7 @@ select
     candidate_last_name as last_name,
     candidate_full_name as full_name,
     cast(null as date) as birth_date,
-    state_name as state,
+    state,
     state_postal_code,
     cast(null as string) as email,
     cast(null as string) as phone_number,

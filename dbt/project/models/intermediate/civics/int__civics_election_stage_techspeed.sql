@@ -11,7 +11,27 @@
 --
 -- gp_election_stage_id is generated from a composite key (NOT br_race_id) because
 -- a single br_race_id would collide across the two stage types.
+--
+-- BR enrichment via br_race_id mirrors int__civics_candidacy_techspeed and
+-- int__civics_election_techspeed: same date-coalesce in source so the stage
+-- date drives a consistent gp_election_stage_id, and brp.br_gp_election_id
+-- as a fallback so TS-only stages adopt BR's gp_election_id.
 with
+    br_race_to_position as ({{ br_race_to_position_lookup() }}),
+
+    br_election_dates as (
+        select
+            gp_election_id as br_gp_election_id,
+            max(
+                case when stage_type = 'primary' then election_date end
+            ) as br_primary_election_date,
+            max(
+                case when stage_type = 'general' then election_date end
+            ) as br_general_election_date
+        from {{ ref("int__civics_election_stage_ballotready") }}
+        group by gp_election_id
+    ),
+
     -- ER crosswalk — joined twice below:
     -- (1) stage grain: canonical_gp_election_stage_id only applies to the
     -- specific clustered stage.
@@ -38,10 +58,34 @@ with
 
     source as (
         select
-            ts.* except (state, is_primary),
+            ts.* except (
+                state,
+                is_primary,
+                primary_election_date_parsed,
+                general_election_date_parsed
+            ),
             -- Aliases for generate_gp_election_id macro compatibility
-            state_postal_code as state,
+            ts.state_postal_code as state,
             cast(null as string) as seat_name,
+            -- Mirror the conditional BR-fallback substitution used in
+            -- int__civics_candidacy_techspeed and int__civics_election_techspeed:
+            -- only fill in dates when TS has neither, so the stage_type
+            -- determination for rows with at least one TS date stays unchanged.
+            case
+                when
+                    ts.primary_election_date_parsed is not null
+                    or ts.general_election_date_parsed is not null
+                then ts.primary_election_date_parsed
+                else bed.br_primary_election_date
+            end as primary_election_date_parsed,
+            case
+                when
+                    ts.primary_election_date_parsed is not null
+                    or ts.general_election_date_parsed is not null
+                then ts.general_election_date_parsed
+                else bed.br_general_election_date
+            end as general_election_date_parsed,
+            brp.br_gp_election_id,
             {{
                 generate_candidate_code(
                     "ts.first_name",
@@ -52,10 +96,14 @@ with
                 )
             }} as techspeed_candidate_code
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
+        left join br_race_to_position as brp on ts.br_race_id = brp.br_race_id
+        left join
+            br_election_dates as bed on brp.br_gp_election_id = bed.br_gp_election_id
     ),
 
     -- Determine stage type: primary takes priority over general. If TechSpeed
-    -- populates both dates, the candidate is at the primary stage.
+    -- populates both dates (or BR enrichment fills in the missing one), the
+    -- candidate is at the primary stage.
     with_stage as (
         select
             *,
@@ -128,6 +176,9 @@ with
             -- this race matched to BR, the race adopts BR's IDs.
             max(canonical_gp_election_stage_id) as canonical_gp_election_stage_id,
             max(canonical_gp_election_id) as canonical_gp_election_id,
+            -- BR-derived gp_election_id (from br_race_id lookup) — used as
+            -- fallback when ER didn't cluster. Per-race so safe to max over.
+            max(br_gp_election_id) as br_gp_election_id,
             min(_airbyte_extracted_at) as created_at,
             max(_airbyte_extracted_at) as updated_at
         from with_stage_and_canonical
@@ -152,7 +203,9 @@ with
             ) as gp_election_stage_id,
 
             coalesce(
-                canonical_gp_election_id, {{ generate_gp_election_id() }}
+                canonical_gp_election_id,
+                br_gp_election_id,
+                {{ generate_gp_election_id() }}
             ) as gp_election_id,
 
             cast(br_race_id as string) as br_race_id,

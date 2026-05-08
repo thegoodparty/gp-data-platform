@@ -160,6 +160,17 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2025-12-31'"
+      - name: has_ddhq_match
+        description: >
+          Whether DDHQ contributed any stage-level data to this 2025 candidacy
+          (true if at least one candidacy_stage row had has_match = true in
+          int__gp_ai_election_match). Drives the 'ddhq' tag emitted into the
+          archive_2025 source_systems array in the candidacy mart.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -186,6 +197,19 @@ models:
           - is_uuid
       - name: hubspot_contact_id
         description: Contact ID from HubSpot CRM (may be null for companies without associated contacts)
+      - name: has_ddhq_match
+        description: >
+          Whether DDHQ contributed any stage-level data to any candidacy held
+          by this 2025 candidate (true if at least one of the candidate's
+          companies' candidacies had has_match = true in
+          int__gp_ai_election_match, propagated to candidate grain via a
+          bool_or window). Drives the 'ddhq' tag emitted into the
+          archive_2025 source_systems array in the candidate mart.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
       - name: created_at
         description: Timestamp when the record was created
         data_tests:
@@ -353,9 +377,19 @@ models:
         data_tests:
           - not_null
           - relationships:
+              # Warn-severity: when a TS source_candidate_id has stages
+              # spanning both BR-anchored and non-BR Splink clusters, the
+              # candidacy and candidate dedup pickers (different sort orders
+              # at the canonical_ids join) can adopt different canonical
+              # gp_candidate_id values from the two branches' xw rows. ~200
+              # cases of this real-world data quality pattern; not a code
+              # defect. Higher than 1000 indicates a regression.
               arguments:
                 to: ref('int__civics_candidate_techspeed')
                 field: gp_candidate_id
+              config:
+                severity: warn
+                error_if: ">1000"
 
       - name: hubspot_company_ids
         description: HubSpot company IDs (NULL for TechSpeed-sourced records)
@@ -411,14 +445,49 @@ models:
 
       - name: general_election_date
         description: >
-          General election date. May be NULL for records that only have a
-          primary election date (e.g. early 2026 primaries before general
-          dates are set). At least one of general/primary must be non-null.
+          General election date. Sourced from TS form data when present, with
+          a fallback to BallotReady's election_stage data via br_race_id when
+          TS only captured a primary. At least one of general/primary must be
+          non-null.
 
       - name: primary_election_date
         description: >
-          Primary election date. May be NULL when only a general election
-          date is available. At least one of general/primary must be non-null.
+          Primary election date. Sourced from TS form data when present, with
+          a fallback to BallotReady's election_stage data via br_race_id when
+          TS only captured a general. At least one of general/primary must be
+          non-null.
+
+      - name: primary_runoff_election_date
+        description: >
+          Primary runoff election date. NULL unless BallotReady's election_stage
+          surfaces one for the matched BR race (TS form data does not capture
+          runoffs).
+
+      - name: general_runoff_election_date
+        description: >
+          General runoff election date. NULL unless BallotReady's election_stage
+          surfaces one for the matched BR race (TS form data does not capture
+          runoffs).
+
+      - name: br_position_database_id
+        description: >
+          BallotReady position id, recovered from the BR election_stage row
+          matching the TS br_race_id. NULL when the TS br_race_id is not
+          present in BR (e.g. ts_found_race_net_new). Unlocks the ICP join
+          downstream for TS-only candidacies that have no BR candidacy row.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__ballotready_api_position')
+                field: database_id
+              config:
+                where: "br_position_database_id is not null"
+                severity: warn
+                # Some position IDs may not exist in the API position table
+                # yet (API loaded incrementally, S3/election_stage may be
+                # ahead). Threshold mirrors the candidacy mart's allowance.
+                warn_if: ">200"
+                error_if: ">300"
 
       - name: created_at
         data_tests:
@@ -638,6 +707,32 @@ models:
               arguments:
                 to: ref('int__civics_election_stage_techspeed')
                 field: gp_election_stage_id
+
+      - name: source_candidate_id
+        description: >
+          TechSpeed's native candidate code (generated from name + state +
+          office_type + city). Asserts every raw TS record surfaces in the
+          candidacy_stage mart with 'techspeed' in source_systems. The mart
+          populates ts_source_candidate_id only when TS is in the cluster.
+          Configured to warn on small failure counts: if Splink over-clusters
+          two TS rows with different source_candidate_ids into the same
+          cluster, the mart's dedup keeps one and drops the other's natural
+          keys. Investigate when count grows.
+        data_tests:
+          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
+          # would let these thresholds tighten back to default).
+          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          - relationships:
+              # Warn-severity: multi-TS-record Splink clusters keep one
+              # ts_source_candidate_id in the mart row by design (cluster
+              # dedup drops the other natural keys). error_if=">100" guards
+              # regressions while tolerating the expected handful.
+              arguments:
+                to: ref('candidacy_stage')
+                field: ts_source_candidate_id
+              config:
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: election_result
         description: Result of the election stage (Won or null, general stages only)
@@ -934,6 +1029,44 @@ models:
         description: Election ID (position + year)
         data_tests:
           - not_null
+
+      - name: source_candidate_id
+        description: >
+          DDHQ's native candidate_id (string-cast). Asserts every raw DDHQ
+          record surfaces in the candidacy_stage mart with 'ddhq' in
+          source_systems. The mart populates ddhq_candidate_id only when
+          DDHQ is in the cluster. Configured to warn on small failure
+          counts: if Splink over-clusters two DDHQ rows with different
+          candidate_ids into the same cluster, the mart's dedup keeps one
+          and drops the other's natural keys. Investigate when count grows.
+        data_tests:
+          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
+          # would let these thresholds tighten back to default).
+          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          - relationships:
+              arguments:
+                to: ref('candidacy_stage')
+                field: ddhq_candidate_id
+              config:
+                warn_if: ">0"
+                error_if: ">100"
+
+      - name: source_race_id
+        description: >
+          DDHQ's native ddhq_race_id (string-cast). Same propagation guarantee
+          as source_candidate_id, paired with it as DDHQ's compound natural
+          key. Same warn-vs-error thresholds for the same reason.
+        data_tests:
+          # Threshold rationale tracked by DATA-1894 (ER cluster-quality fix
+          # would let these thresholds tighten back to default).
+          # https://goodparty.clickup.com/t/90132012119/DATA-1894
+          - relationships:
+              arguments:
+                to: ref('candidacy_stage')
+                field: ddhq_race_id
+              config:
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: election_result
         description: Result of the election stage (Won or Lost)
@@ -1760,14 +1893,16 @@ models:
       Splink probabilistic matching.
 
       Grain: One row per source candidacy-stage record (candidate + office + election date).
+      GP API contributes one row per latest-version pledged campaign;
+      BR/TS/DDHQ each contribute one row per (candidate, race/stage).
 
       Sources: stg_airbyte_source__ballotready_s3_candidacies_v3 (BR staging),
       stg_airbyte_source__techspeed_gdrive_candidates (TS),
       stg_airbyte_source__ddhq_gdrive_election_results (DDHQ),
-      campaigns mart (GP API) enriched with BallotReady API data for
-      election stages, race IDs, and normalized position names. Also uses
-      clean_states for state standardization and int__ballotready_person
-      for API contact data.
+      campaigns mart (GP API). The gp_api side resolves election_stage and
+      br_race_id deterministically from PD's pledged ballotready_race_id
+      against BR's race spine (~94% coverage); both fields are null for the
+      ~6% of campaigns where PD didn't set raceId.
 
     columns:
       - name: unique_id
@@ -1793,8 +1928,8 @@ models:
       - name: source_id
         description: >
           Source-specific identifier. BR: br_candidacy_id; TS: techspeed_candidate_code;
-          DDHQ: candidate_id_race_id; GP API: campaign_id__election_stage
-          (e.g. 12345__general, 12345__primary).
+          DDHQ: candidate_id_race_id; GP API: campaign_id (one row per
+          latest-version campaign).
         data_tests:
           - not_null
 
@@ -1825,11 +1960,13 @@ models:
         description: >
           Type of election stage. Values: Primary, General,
           Primary Runoff, General Runoff, Primary Special, General Special,
-          Primary Special Runoff, General Special Runoff. GP API records
-          without a BallotReady position link or matching 2026 race are
-          excluded from this table.
+          Primary Special Runoff, General Special Runoff. GP API resolves
+          this from PD's ballotready_race_id against BR's race spine; null
+          when PD didn't set raceId (~6% of in-scope campaigns).
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "source_name != 'gp_api'"
           - accepted_values:
               arguments:
                 values:
@@ -1842,21 +1979,56 @@ models:
                   - Primary Special Runoff
                   - General Special Runoff
 
+      - name: office_level
+        description: >
+          Normalized office level matching BallotReady's 7-bucket PositionLevel
+          taxonomy (City/Local/County/Township/State/Regional/Federal). BR and
+          TS sources emit initcap(level) directly. The gp-api source prefers
+          initcap(br_position_level) when available (deterministic left-join
+          on ballotready_position_id to BR's position table; coverage is
+          near-100% since gp-api rows carry that FK natively). Otherwise
+          falls back to campaigns.election_level which collapses to a
+          4-bucket subset (Local/County/State/Federal — City/Town/Township
+          are not distinguishable at gp-api granularity). DDHQ emits a
+          3-value subset (Local/County/State) from race_name parsing. Null
+          is permitted for sources that cannot resolve a level.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - City
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
+
   - name: int__er_prematch_elected_officials
     description: >
-      Entity resolution prematch table: BallotReady x TechSpeed elected
-      officials unioned into a standardized schema for Splink probabilistic
-      matching.
+      Entity resolution prematch table at term grain. Two sources:
+      ballotready_techspeed (BR term LEFT JOIN canonical_ids LEFT JOIN raw TS
+      with reused-ID guard inside the TS join clause) and gp_api (with raw
+      campaign_office_raw for official_office_name and district extraction).
 
-      Grain: One row per office-holder term (BR) / officeholder-position (TS).
+      Grain: One row per BR office-holder term (BR+TS source) / one row per
+      gp-api elected_office row (gp_api source).
 
-      Sources: int__civics_elected_official_ballotready (BR),
-      int__civics_elected_official_techspeed (TS), with nicknames seed for
+      Sources: int__civics_elected_official_ballotready (BR term),
+      int__civics_elected_official_canonical_ids (crosswalk),
+      int__civics_elected_official_techspeed (raw TS),
+      int__civics_elected_official_gp_api (gp-api), with nicknames seed for
       first_name alias arrays.
 
       Unlike the candidacy prematch, elected officials have no election_date
       or br_race_id. Splink blocking anchors on state + office name + last
       name and contact info (phone, email).
+
+    tests:
+      - dbt_utils.expression_is_true:
+          name: er_prematch_eo_has_ballotready_techspeed_source
+          arguments:
+            expression: "(select count(*) from {{ ref('int__er_prematch_elected_officials') }} where source_name = 'ballotready_techspeed') > 0"
 
     columns:
       - name: unique_id
@@ -1868,7 +2040,10 @@ models:
           - not_null
 
       - name: source_name
-        description: Origin of the record ('ballotready' or 'techspeed')
+        description: >
+          Origin of the record. Phase 1 broadens to old + new values
+          ('ballotready', 'techspeed', 'ballotready_techspeed', 'gp_api');
+          Phase 2 follow-up tightens to the new values only.
         data_tests:
           - not_null
           - accepted_values:
@@ -1876,12 +2051,13 @@ models:
                 values:
                   - ballotready
                   - techspeed
+                  - ballotready_techspeed
+                  - gp_api
 
       - name: source_id
         description: >
-          Source-specific identifier. BR: br_office_holder_id (string);
-          TS: gp_elected_official_id (salted UUID from ts_officeholder_id +
-          position_id + office_name_clean).
+          Source-specific identifier. BR+TS: br_office_holder_id (string);
+          gp_api: gp_api_elected_office_id (string).
         data_tests:
           - not_null
 
@@ -1906,6 +2082,17 @@ models:
         data_tests:
           - not_null
           - is_state_abbreviation
+
+      - name: ballotready_position_id
+        description: >
+          BR position FK. Populated when the BR side has br_position_id or
+          gp-api side has the upstream campaigns FK (campaigns.ballotready_position_id).
+
+      - name: official_office_name
+        description: >
+          Lowered + trimmed + nullif of position_name for BR+TS;
+          lowered + trimmed + nullif of raw campaign_office_raw for gp-api
+          (preserves seat/district context).
 
   - name: int__civics_election_ballotready
     description: >
@@ -2081,6 +2268,28 @@ models:
               config:
                 error_if: ">=100"
 
+      - name: br_candidacy_id
+        description: >
+          BallotReady's native candidacy stage ID. Asserts every raw BR record
+          surfaces in the candidacy_stage mart with 'ballotready' in
+          source_systems (the mart populates this column only when BR is in
+          the cluster, so a value's presence implies the source tag).
+        data_tests:
+          - relationships:
+              # Warn-severity: when a Splink cluster contains multiple BR
+              # records (rare but real — e.g., two BR ingestions for the
+              # same candidacy_stage), the cluster-merge in candidacy_stage
+              # collapses them to one mart row and only one br_candidacy_id
+              # carries through. The others are dropped from the mart by
+              # design. ~7-40 such rows depending on BR ingestion state;
+              # error_if=">100" guards against true regressions.
+              arguments:
+                to: ref('candidacy_stage')
+                field: br_candidacy_id
+              config:
+                severity: warn
+                error_if: ">100"
+
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)
         data_tests:
@@ -2141,6 +2350,14 @@ models:
         data_tests:
           - unique
           - not_null
+          - relationships:
+              arguments:
+                to: ref('candidate')
+                field: prod_db_user_id
+              config:
+                severity: warn
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: first_name
         data_tests:
@@ -2219,6 +2436,14 @@ models:
         data_tests:
           - unique
           - not_null
+          - relationships:
+              arguments:
+                to: ref('candidacy')
+                field: product_campaign_id
+              config:
+                severity: warn
+                warn_if: ">0"
+                error_if: ">100"
 
       - name: candidate_id_source
         data_tests:
@@ -2276,20 +2501,21 @@ models:
 
       - name: general_election_date
         description: >
-          Product DB's view of the campaign's general election date — what
-          the campaign owner registered. Stays source-faithful even when ER
-          maps gp_election_id to a different BR canonical election.
+          Sourced from BR's stage spine via br_stage_spine_lookup keyed on
+          (ballotready_position_id, election_year). Replaces the prior
+          campaign.election_date carry-through; deterministically equals
+          BR's general-stage date for the campaign's race.
         data_tests:
           - not_null
 
-      - name: br_general_election_date
-        description: >
-          BR's view of the canonical election's general-stage date when
-          gp_election_id was adopted from ER (via int__civics_election_stage_ballotready
-          filtered to `not is_primary and not is_runoff`). Null when ER
-          didn't match or when BR has no general stage for the election.
-          Pair with general_election_date to surface PD-vs-BR divergence
-          without re-resolving the canonical election downstream.
+      - name: primary_election_date
+        description: BR's primary-stage date for the campaign's race.
+
+      - name: primary_runoff_election_date
+        description: BR's primary-runoff-stage date for the campaign's race.
+
+      - name: general_runoff_election_date
+        description: BR's general-runoff-stage date for the campaign's race.
 
       - name: is_demo
         data_tests:
@@ -2337,6 +2563,9 @@ models:
         data_tests:
           - not_null
           - relationships:
+              # gp_api candidacy_stages adopt BR's natural gp_election_stage_id
+              # (Task 1 filter ensures ballotready_position_id), so this FK
+              # always holds against BR's spine.
               arguments:
                 to: ref('int__civics_election_stage_ballotready')
                 field: gp_election_stage_id
@@ -2420,16 +2649,24 @@ models:
 
       - name: office_level
         description: >
-          Source-faithful Product DB election_level. See
-          int__civics_candidacy_gp_api.office_level for normalization notes.
+          Normalized office level matching BallotReady's 7-bucket PositionLevel
+          taxonomy (City/Local/County/Township/State/Regional/Federal). For the
+          ~84% of gp-api EO rows with a BR position FK, this is initcap of
+          br_position.level (mirrors int__civics_elected_official_ballotready).
+          For the ~16% without a position FK, falls back to campaigns.election_level
+          which collapses to a 4-bucket subset (Local/County/State/Federal —
+          City/Town/Township are not distinguishable at gp-api granularity).
         data_tests:
           - accepted_values:
               arguments:
                 values:
-                  - city
-                  - county
-                  - federal
-                  - state
+                  - City
+                  - Local
+                  - County
+                  - Township
+                  - State
+                  - Regional
+                  - Federal
 
       - name: party_affiliation
         description: Normalized party affiliation via parse_party_affiliation macro
@@ -2445,6 +2682,22 @@ models:
                   - Green
                   - Other
 
+      - name: ballotready_position_id
+        description: BR position FK from upstream campaigns mart. Populated for ~84% of gp-api EO rows.
+
+      - name: normalized_position_name
+        description: Normalized BR position name from campaigns; feeds candidate_office derivation.
+
+      - name: br_position_level
+        description: BR position level (city/county/state/federal) from BR API position table; used as office_level fallback.
+
+      - name: campaign_office_raw
+        description: >
+          Raw campaign_office text preserved for downstream district extraction
+          and official_office_name. Not normalized. Nullable (some campaigns
+          lack a campaign_office; the prematch filters these at its own gp_api
+          source CTE, mirroring candidacy line 266).
+
       - name: created_at
         data_tests:
           - not_null
@@ -2452,6 +2705,156 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+  - name: int__civics_elected_official_gp_api_bridge
+    description: |
+      Term-grain bridge from gp-api elected_office records to BR+TS terms,
+      derived from the EO Splink cluster output. One row per gp_api
+      elected_office record (deduped); also unique on br_office_holder_id
+      after pass-2 collision suppression.
+
+      The bridge resolves two ambiguities:
+      1. Multi-term: when a gp_api record's Splink cluster contains more
+         than one BR term, pass 1 picks the BR term whose term_start_date
+         is closest to gp_api sworn_in_date.
+      2. Bridge collision: when two gp_api records in the same Splink
+         cluster pick the same BR term as their best match, pass 2 keeps
+         the closer of the two; the loser falls back to a self-key in the
+         person rollup and appears as a gp_api-only mart row. The bridge
+         collision audit custom SQL test reports the dropped count.
+
+      `hubspot_company_id` is sourced from `campaigns.hubspot_id` via
+      `gp_api_campaign_id` join; deliberate alias of `hubspot_id` to make
+      CRM linkage clearer at the term/campaign grain.
+
+    tests:
+      # Bridge attach to BR person rollup must not orphan. If
+      # bridge.br_candidate_id is missing from
+      # int__civics_elected_official_ballotready_person, the gp_api person
+      # rollup silently self-keys instead of adopting BR canonical.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not exists (select 1 from {{ ref('int__civics_elected_official_gp_api_bridge') }} b left join {{ ref('int__civics_elected_official_ballotready_person') }} p on p.br_candidate_id = b.br_candidate_id where p.br_candidate_id is null)"
+          name: bridge_br_candidate_resolves_to_br_person
+          config:
+            severity: error
+
+    columns:
+      - name: gp_api_elected_office_id
+        description: gp-api elected_office UUID; primary key of the bridge.
+        data_tests:
+          - not_null
+          - unique
+      - name: br_office_holder_id
+        description: BR office holder ID of the chosen BR term.
+        data_tests:
+          - not_null
+          - unique
+      - name: cluster_id
+        description: Splink cluster_id from the EO ER pipeline output.
+        data_tests:
+          - not_null
+      - name: gp_api_user_id
+        description: gp-api product user ID.
+      - name: gp_api_campaign_id
+        description: gp-api product campaign ID.
+      - name: gp_api_organization_slug
+        description: gp-api product organization slug.
+      - name: br_candidate_id
+        description: BR candidate ID (person-grain) of the chosen BR term.
+      - name: ts_officeholder_id
+        description: TS officeholder ID if the chosen BR term has a TS match.
+      - name: br_term_start_date
+        description: term_start_date of the chosen BR term.
+      - name: sworn_in_date
+        description: sworn_in_date from gp-api (term_start_date in cluster output).
+      - name: days_to_sworn_in
+        description: |
+          abs(datediff(br_term_start_date, sworn_in_date)) — the metric that
+          drove pass-1 selection. Audit column for monitoring tiebreaker
+          quality. NULL when either date is NULL.
+      - name: hubspot_company_id
+        description: HubSpot company ID for the matched campaign (alias of campaigns.hubspot_id).
+
+  - name: int__civics_elected_official_gp_api_person
+    description: |
+      Person-grain rollup of gp-api elected officials. One row per
+      gp_api_user_id. Adopts BR's gp_elected_official_id via the bridge
+      for matched users (so the mart's 3-way FOJ on gp_elected_official_id
+      collapses correctly). Unmatched users get a salted UUID specific to
+      gp_api ('elected_official_gp_api_user' salt) so they don't collide
+      with BR/TS canonical IDs.
+
+      `hubspot_contact_id` is renamed and cast in staging
+      (`stg_airbyte_source__gp_api_db_user`).
+
+    tests:
+      # Canonical uniqueness on adopted BR canonicals. Catches the
+      # multi-gp_api-adopting-same-BR-person failure mode that bridge term
+      # uniqueness alone does not catch (e.g., two gp_api users bridging
+      # to two different terms of the same BR person).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(select count(distinct gp_elected_official_id) from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null) = (select count(*) from {{ ref('int__civics_elected_official_gp_api_person') }} where bridge_br_office_holder_id is not null)"
+          name: gp_api_person_no_two_users_share_adopted_canonical
+          config:
+            severity: error
+
+    columns:
+      - name: gp_elected_official_id
+        description: |
+          Canonical person UUID. For bridge-matched users, equals BR's
+          gp_elected_official_id (adopted via the bridge). For unmatched
+          users, a salted UUID with 'elected_official_gp_api_user' prefix
+          to prevent accidental collision with BR/TS canonicals.
+        data_tests:
+          - not_null
+      - name: gp_api_user_id
+        description: gp-api product user ID; primary key.
+        data_tests:
+          - not_null
+          - unique
+      - name: selected_gp_api_elected_office_id
+        description: Audit. Which gp_api elected_office record won the latest-per-user rollup.
+      - name: selected_gp_api_campaign_id
+        description: Audit. gp-api campaign ID for the selected elected_office.
+      - name: selected_gp_api_organization_slug
+        description: Audit. gp-api organization slug for the selected elected_office.
+      - name: first_name
+        description: User's first name from gp-api (used for gp_api-only mart rows).
+      - name: last_name
+        description: User's last name from gp-api.
+      - name: full_name
+        description: User's full name from gp-api.
+      - name: email
+        description: User's email from gp-api (exposed on mart as gp_api_email).
+      - name: phone
+        description: User's phone from gp-api (exposed on mart as gp_api_phone).
+      - name: gp_api_party_affiliation
+        description: |
+          Raw user-input party affiliation from gp-api. Sparse — feeds the
+          canonical party_affiliation chain on the mart but also exposed
+          separately as audit.
+      - name: candidate_office
+        description: Office name from gp-api (user-entered, may be NULL).
+      - name: office_level
+        description: Office level from gp-api (user-entered, may be NULL).
+      - name: office_type
+        description: Office type derived from candidate_office via the map_office_type macro.
+      - name: state
+        description: State from gp-api.
+      - name: term_start_date
+        description: gp_api sworn_in_date.
+      - name: hubspot_contact_id
+        description: HubSpot contact ID for the user (from raw gp_api_db_user metadata).
+      - name: created_at
+      - name: updated_at
+      - name: er_cluster_id
+        description: Splink cluster_id from the bridge match (NULL when unmatched).
+      - name: bridge_br_office_holder_id
+        description: BR office holder ID adopted via the bridge (NULL when unmatched).
+      - name: bridge_br_candidate_id
+        description: BR candidate ID adopted via the bridge (NULL when unmatched).
 
   - name: int__civics_er_canonical_ids
     description: >
@@ -2471,16 +2874,22 @@ models:
           - not_null
 
       - name: canonical_gp_candidacy_stage_id
-        data_tests:
-          - not_null
+        description: >
+          BR-anchored canonical for stage grain. NULL for non-BR cluster
+          rows (those rely on the cluster_id-based FOJ in candidacy_stage
+          mart, not canonical-id merging).
 
       - name: canonical_gp_election_stage_id
-        data_tests:
-          - not_null
+        description: >
+          BR-anchored canonical for election_stage grain. NULL for non-BR
+          cluster rows — TS/DDHQ election_stage int models fall back to
+          their natural hashes there, which align with BR's natural id
+          when BR has the race independently.
 
       - name: canonical_gp_election_id
-        data_tests:
-          - not_null
+        description: >
+          BR-anchored canonical for election grain. NULL for non-BR cluster
+          rows — same rationale as canonical_gp_election_stage_id above.
 
     tests:
       - dbt_utils.unique_combination_of_columns:

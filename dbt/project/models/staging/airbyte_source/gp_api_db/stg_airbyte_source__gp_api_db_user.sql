@@ -16,6 +16,7 @@ with
             {{ adapter.quote("password") }},
             {{ adapter.quote("last_name") }},
             {{ adapter.quote("meta_data") }},
+            {{ adapter.quote("meta_data") }}:hubspotid::string as hubspot_contact_id,
             {{ adapter.quote("created_at") }},
             {{ adapter.quote("first_name") }},
             {{ adapter.quote("updated_at") }},

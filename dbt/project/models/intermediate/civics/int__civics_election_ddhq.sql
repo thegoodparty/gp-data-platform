@@ -28,7 +28,7 @@ select
     candidate_office,
     office_level,
     office_type,
-    state_name as state,
+    state,
     state_postal_code,
     cast(null as string) as city,
     district,

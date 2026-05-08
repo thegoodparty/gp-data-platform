@@ -34,6 +34,11 @@ with
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
     ),
 
+    contact_icp as (
+        select id as hs_contact_id, icp_win, icp_serve, icp_win_supersize
+        from {{ ref("int__hubspot_contacts") }}
+    ),
+
     final as (
         select
             -- identifiers
@@ -82,6 +87,10 @@ with
             c.verified_candidate_status,
             c.office_level,
 
+            icp.icp_win,
+            icp.icp_serve,
+            icp.icp_win_supersize,
+
             -- submission context
             s.submission_url,
             s.submitted_at,
@@ -90,6 +99,7 @@ with
 
         from submissions s
         left join contacts c on s.hs_contact_id = c.hs_contact_id
+        left join contact_icp icp on s.hs_contact_id = icp.hs_contact_id
     )
 
 select *

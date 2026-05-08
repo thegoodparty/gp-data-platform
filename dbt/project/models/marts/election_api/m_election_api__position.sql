@@ -15,6 +15,7 @@ with
             tbl_position.br_position_id as br_position_id,
             tbl_position.name,
             coalesce(tbl_override.state, tbl_match.state) as state,
+            tbl_position.level,
             tbl_district.id as district_id,
             tbl_position.created_at,
             tbl_position.updated_at
@@ -66,6 +67,7 @@ with
             tbl_position.br_position_id as br_position_id,
             tbl_position.name,
             tbl_position.state,
+            tbl_position.level,
             cast(null as string) as district_id,
             tbl_position.created_at,
             tbl_position.updated_at
@@ -82,9 +84,25 @@ with
     )
 
 select
-    id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
+    id,
+    br_database_id,
+    br_position_id,
+    name,
+    state,
+    level,
+    district_id,
+    created_at,
+    updated_at
 from matched_positions
 union all
 select
-    id, br_database_id, br_position_id, name, state, district_id, created_at, updated_at
+    id,
+    br_database_id,
+    br_position_id,
+    name,
+    state,
+    level,
+    district_id,
+    created_at,
+    updated_at
 from unmatched_br_positions

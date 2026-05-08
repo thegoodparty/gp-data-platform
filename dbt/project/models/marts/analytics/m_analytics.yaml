@@ -1255,6 +1255,33 @@ models:
         description: Email address of the respondent
         data_tests:
           - not_null
+      - name: icp_win
+        description: >
+          Whether the respondent's office qualifies for the Win ICP. Sourced
+          from int__hubspot_contacts which resolves a BR position via
+          br_position_id (preferred), br_race_id, or br_candidacy_id. The Win
+          effective-date guard is applied. Null when no BR position resolves.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_serve
+        description: >
+          Whether the respondent's office qualifies for the Serve ICP. Sourced
+          from int__hubspot_contacts. Null when no BR position resolves.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_win_supersize
+        description: >
+          Whether the respondent's office is a Win-Supersize office (>100K
+          voters meeting all other ICP criteria). Sourced from
+          int__hubspot_contacts. Null when no BR position resolves.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: win_user_satisfaction_responses
     description: >
