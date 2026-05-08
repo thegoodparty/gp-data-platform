@@ -42,6 +42,12 @@ with
             = 1
     ),
 
+    -- voters_in_zip is documented as invariant per (zip, state, district_type)
+    -- upstream, but here we group by (zip, br_database_id). any_value() is
+    -- safe only if voters_in_zip is also constant within each (zip,
+    -- br_database_id) group — confirmed empirically (0 divergent groups out
+    -- of ~2.25M) and guarded going forward by
+    -- tests/assert_zip_to_br_office_voters_in_zip_invariant.sql.
     zip_to_position as (
         select
             zip_code,
