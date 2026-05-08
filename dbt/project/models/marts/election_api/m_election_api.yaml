@@ -277,6 +277,32 @@ models:
         description: "Database ID of the `position` from BallotReady"
         tests:
           - not_null
+      - name: voters_in_zip
+        description: >
+          L2 voters in this zip with a non-null value for the district_type
+          column matched by this BR position. Invariant across district names
+          within a district type, so the upstream rows for (zip, br_database_id)
+          all carry the same value; the mart uses max() to carry it forward.
+          Null when this position has no zip coverage.
+      - name: voters_in_zip_district
+        description: >
+          L2 voters in this (zip, BR position). Aggregated from upstream
+          int__zip_code_to_br_office by sum() across L2 district names that
+          map to the same BR position. Null when no zip coverage.
+      - name: pct_districtzip_to_zip
+        description: >
+          voters_in_zip_district / voters_in_zip — fraction of zip's L2
+          voters who live in any L2 district that maps to this BR position.
+          Used by election-api to filter spurious overlaps. Null when no
+          zip coverage.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+              config:
+                where: "zip_code is not null"
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -284,17 +310,22 @@ models:
               - zip_code
               - position_id
               - election_date
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "voters_in_zip_district <= voters_in_zip"
+          config:
+            where: "zip_code is not null"
 
   - name: m_election_api__district_top_issues
     description: >
-      Top 5 Haystaq issue scores per L2 district, covering every L2 district
+      Top 10 Haystaq issue scores per L2 district, covering every L2 district
       with an `is_matched = true` row in the LLM L2-to-BallotReady-district
       match (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to
       a single election cycle — districts with off-cycle offices are included
       as well.
 
       Grain: One row per (l2_state, l2_district_type, l2_district_name, issue)
-      for the top 5 issues by average voter score in that district.
+      for the top 10 issues by average voter score in that district.
     columns:
       - name: id
         description: "UUID of the district-issue row"

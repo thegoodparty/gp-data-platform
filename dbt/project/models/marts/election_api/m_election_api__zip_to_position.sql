@@ -42,8 +42,25 @@ with
             = 1
     ),
 
+    zip_to_position_aggregated as (
+        select
+            zip_code,
+            br_database_id,
+            any_value(voters_in_zip) as voters_in_zip,
+            sum(voters_in_zip_district) as voters_in_zip_district
+        from {{ ref("int__zip_code_to_br_office") }}
+        where br_database_id is not null
+        group by zip_code, br_database_id
+    ),
+
     zip_to_position as (
-        select zip_code, br_database_id from {{ ref("int__zip_code_to_br_office") }}
+        select
+            zip_code,
+            br_database_id,
+            voters_in_zip,
+            voters_in_zip_district,
+            voters_in_zip_district * 1.0 / voters_in_zip as pct_districtzip_to_zip
+        from zip_to_position_aggregated
     ),
 
     positions as (
@@ -66,7 +83,10 @@ with
             elec.city,
             elec.district,
             elec.election_date,
-            elec.br_position_database_id as br_database_id
+            elec.br_position_database_id as br_database_id,
+            zips.voters_in_zip,
+            zips.voters_in_zip_district,
+            zips.pct_districtzip_to_zip
         from future_elections as elec
         left join
             zip_to_position as zips

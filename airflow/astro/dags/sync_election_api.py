@@ -86,6 +86,7 @@ ZTP = TableSyncSpec(
     indexes=(
         "ZipToPosition_zip_code_idx",
         "ZipToPosition_position_id_idx",
+        "ZipToPosition_zip_code_pct_districtzip_to_zip_idx",
         "ZipToPosition_zip_code_position_id_election_date_key",
     ),
     fkeys=("ZipToPosition_position_id_fkey",),
@@ -102,6 +103,9 @@ ZTP_SOURCE_COLUMNS = [
     "office_type",
     "state",
     "district",
+    "voters_in_zip",
+    "voters_in_zip_district",
+    "pct_districtzip_to_zip",
 ]
 ZTP_TARGET_COLUMNS = ["id", "updated_at", *ZTP_SOURCE_COLUMNS]
 
@@ -121,6 +125,9 @@ def _ztp_transform_row(row: tuple) -> tuple:
         office_type,
         state,
         district,
+        voters_in_zip,
+        voters_in_zip_district,
+        pct_districtzip_to_zip,
     ) = row
     row_id = uuid.uuid5(
         _UUID_NAMESPACE,
@@ -139,6 +146,9 @@ def _ztp_transform_row(row: tuple) -> tuple:
         office_type,
         state,
         district,
+        voters_in_zip,
+        voters_in_zip_district,
+        pct_districtzip_to_zip,
     )
 
 
@@ -205,6 +215,11 @@ def _ztp_constraint_ddl() -> list[str]:
             f'ON "{sn}"."{nt}" (position_id)'
         ),
         (
+            f"CREATE INDEX "
+            f'"{ZTP.stage_name("ZipToPosition_zip_code_pct_districtzip_to_zip_idx")}" '
+            f'ON "{sn}"."{nt}" (zip_code, pct_districtzip_to_zip)'
+        ),
+        (
             f"CREATE UNIQUE INDEX "
             f'"{ZTP.stage_name("ZipToPosition_zip_code_position_id_election_date_key")}" '
             f'ON "{sn}"."{nt}" '
@@ -249,18 +264,10 @@ def sync_election_api():
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(ZTP_SOURCE_COLUMNS)
-            # TEMP (DATA-1867): prod mart has 9 dupe (zip_code, position_id,
-            # election_date) triples pending a full-refresh rebuild. Dedupe
-            # here so the unique index doesn't block the load. Drop the
-            # QUALIFY once the dbt unique test passes on prod.
             query = (
                 f"SELECT {col_list} "
                 f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
-                f"`m_election_api__zip_to_position` "
-                f"QUALIFY row_number() OVER ("
-                f"  PARTITION BY zip_code, position_id, election_date "
-                f"  ORDER BY display_office_level"
-                f") = 1"
+                f"`m_election_api__zip_to_position`"
             )
             with _open_pg() as conn:
                 return bulk_insert_from_databricks(

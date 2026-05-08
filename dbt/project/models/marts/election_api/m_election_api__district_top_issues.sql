@@ -6,12 +6,12 @@
 }}
 
 {#-
-    Top 5 Haystaq issue scores per L2 district, covering every L2 district with
+    Top 10 Haystaq issue scores per L2 district, covering every L2 district with
     an `is_matched = true` row in the LLM L2-to-BallotReady-district match
     (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to a single
     election cycle — districts with off-cycle offices are included as well.
 
-    One row per (district x issue) for the top 5 issues by average voter score.
+    One row per (district x issue) for the top 10 issues by average voter score.
 
     The (column, label) pairs below are the single source of truth for the
     Haystaq issue scores used by this model. The Jinja loops below expand them
