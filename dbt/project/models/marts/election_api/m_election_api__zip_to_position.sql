@@ -54,9 +54,16 @@ with
             br_database_id,
             any_value(voters_in_zip) as voters_in_zip,
             sum(voters_in_zip_district) as voters_in_zip_district,
-            sum(voters_in_zip_district)
-            * 1.0
-            / any_value(voters_in_zip) as pct_districtzip_to_zip
+            -- Guard the division: an unexpected zero/null denominator emits
+            -- null rather than a divide-by-zero or silently wrong value.
+            -- voters_in_zip is upstream-tested as not_null and >= 1, so the
+            -- else branch should never fire today; the guard exists so a
+            -- regression in those guarantees fails loudly downstream.
+            case
+                when any_value(voters_in_zip) > 0
+                then sum(voters_in_zip_district) * 1.0 / any_value(voters_in_zip)
+                else null
+            end as pct_districtzip_to_zip
         from {{ ref("int__zip_code_to_br_office") }}
         where br_database_id is not null
         group by zip_code, br_database_id
