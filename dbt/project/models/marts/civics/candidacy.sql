@@ -301,8 +301,12 @@ left join
     (
         -- Pick the deepest stage with a captured result for each candidacy.
         -- ~8400 candidacies have multiple stage rows for the same stage_type
-        -- in candidacy_stage (data-quality issue tracked separately); the
-        -- updated_at tiebreaker keeps grain at one row per candidacy.
+        -- in candidacy_stage, mostly (~96%) because the same logical stage
+        -- appears in both the 2025 HubSpot archive path and the 2026+ merged
+        -- path with different gp_candidacy_stage_ids; candidacy_stage's final
+        -- dedup partitions by gp_candidacy_stage_id and so doesn't catch the
+        -- cross-boundary duplicates. Tracked separately. The updated_at
+        -- tiebreaker keeps grain at one row per candidacy here.
         select
             cs.gp_candidacy_id,
             es.stage_type as latest_stage_reached,
