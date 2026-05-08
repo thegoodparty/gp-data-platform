@@ -34,6 +34,9 @@ THIS_TABLE_SCHEMA = StructType(
     ]
 )
 
+# Country/State are too coarse to be useful for office picking.
+EXCLUDED_DISTRICT_TYPES = frozenset({"Country", "State"})
+
 
 def model(dbt, session: SparkSession) -> DataFrame:
     """
@@ -101,11 +104,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
         district_type.district_type for district_type in district_type_from_columns
     ]
 
-    # Country/State are too coarse to be useful for office picking
     district_type_from_columns = [
         district_type
         for district_type in district_type_from_columns
-        if district_type not in ["Country", "State"]
+        if district_type not in EXCLUDED_DISTRICT_TYPES
     ]
 
     zip_window = Window.partitionBy("zip_code", "state_postal_code")
@@ -154,8 +156,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         col("state_postal_code"),
         col("district_type"),
         col("district_name"),
-        col("voters_in_zip_district").cast(LongType()).alias("voters_in_zip_district"),
-        col("voters_in_zip").cast(LongType()).alias("voters_in_zip"),
+        col("voters_in_zip_district"),
+        col("voters_in_zip"),
     ).withColumn("loaded_at", lit(datetime.now()))
 
     return final_result
