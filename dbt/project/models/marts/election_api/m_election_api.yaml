@@ -282,7 +282,8 @@ models:
           L2 voters in this zip with a non-null value for the district_type
           column matched by this BR position. Invariant across district names
           within a district type, so the upstream rows for (zip, br_database_id)
-          all carry the same value; the mart uses max() to carry it forward.
+          all carry the same value; the mart uses any_value() to carry it
+          forward, guarded by tests/assert_zip_to_br_office_voters_in_zip_invariant.sql.
           Null when this position has no zip coverage.
       - name: voters_in_zip_district
         description: >

@@ -46,6 +46,15 @@ def model(dbt, session: SparkSession) -> DataFrame:
     No threshold is applied — downstream consumers (election-api) decide
     the cutoff. Output is flat (one row per intersection); upstream callers
     that want an array of names should aggregate themselves.
+
+    Incremental-merge stale-row trade-off: the flat grain combined with
+    dbt's default upsert-only merge means a (zip, district_name) tuple
+    that drops to zero voters between runs (e.g. its last voter changes
+    address or district) leaves a stale row in the target — the recompute
+    emits no row for that key, so the merge can't update or delete it.
+    Accepted as bounded drift. The downstream invariance test
+    (assert_zip_to_br_office_voters_in_zip_invariant.sql) is the canary;
+    schedule a periodic --full-refresh to flush accumulated orphans.
     """
     dbt.config(
         submission_method="all_purpose_cluster",
