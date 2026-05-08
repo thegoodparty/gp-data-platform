@@ -315,7 +315,7 @@ left join
         join
             {{ ref("election_stage") }} as es
             on cs.gp_election_stage_id = es.gp_election_stage_id
-        where cs.election_result is not null
+        where cs.election_result is not null and es.stage_type is not null
         qualify
             row_number() over (
                 partition by cs.gp_candidacy_id
@@ -330,7 +330,6 @@ left join
                         then 2
                         when 'primary'
                         then 1
-                        else 0
                     end desc,
                     cs.updated_at desc nulls last
             )
