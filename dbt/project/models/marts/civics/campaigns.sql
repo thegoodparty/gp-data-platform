@@ -1,3 +1,7 @@
+-- Mart of gp_api_db_campaign denormalized with user, organization, and BR
+-- position context. Each campaign's pledged BR race is decoded directly
+-- from PD's `details:raceId` (see ballotready_race_id below) and used by
+-- downstream gp_api intermediates for deterministic BR stage assignment.
 with
     campaigns as (
         select * from {{ ref("stg_airbyte_internal__raw_gp_api_db_campaign") }}
