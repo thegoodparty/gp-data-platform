@@ -544,15 +544,36 @@ models:
               config:
                 where: "candidacy_result is not null"
 
+      - name: general_election_result
+        description: >
+          Result of the general-cycle election (general or general runoff) with
+          no fallback to the primary cycle. Derived from
+          `latest_stage_result` when `latest_stage_reached` is 'general' or
+          'general runoff', else null. Use this column to answer "did the
+          candidate win their general?" — primary-only outcomes do not
+          contaminate the value. Null when no general-cycle result has been
+          captured (regardless of whether the candidate ran a primary).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                  ]
+
       - name: latest_stage_reached
         description: >
           The deepest election stage for which a result has been captured in
           `candidacy_stage`. Funnel order: primary < primary runoff < general <
           general runoff. Paired with `latest_stage_result` (both columns are
           sourced from the same `candidacy_stage` row). Null when no stage has
-          a captured result yet. Use together with `latest_stage_result` for
-          questions like "did the candidate win their general?": filter
-          `latest_stage_reached in ('general', 'general runoff')`.
+          a captured result yet. Use `general_election_result` for the common
+          "did they win the general?" question; use this pair when funnel
+          position itself matters.
         data_tests:
           - accepted_values:
               arguments:

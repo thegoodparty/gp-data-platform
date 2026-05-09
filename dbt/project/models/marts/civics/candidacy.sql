@@ -292,6 +292,10 @@ select
     deduplicated.office_level,
     deduplicated.office_type,
     deduplicated.candidacy_result,
+    case
+        when latest.latest_stage_reached in ('general', 'general runoff')
+        then latest.latest_stage_result
+    end as general_election_result,
     latest.latest_stage_reached,
     latest.latest_stage_result,
     deduplicated.is_pledged,
