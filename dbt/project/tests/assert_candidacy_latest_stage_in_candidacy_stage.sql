@@ -15,6 +15,7 @@ with
         from {{ ref("candidacy") }} as c
         where
             c.latest_stage_reached is not null
+            and c.latest_stage_result is not null
             and not exists (
                 select 1
                 from {{ ref("candidacy_stage") }} as cs
