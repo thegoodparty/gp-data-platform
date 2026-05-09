@@ -270,7 +270,8 @@ with
                         then 2
                         when 'primary'
                         then 1
-                    end desc,
+                        else 0
+                    end desc nulls last,
                     cs.updated_at desc nulls last
             )
             = 1
