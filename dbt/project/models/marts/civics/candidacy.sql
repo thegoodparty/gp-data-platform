@@ -249,19 +249,16 @@ with
     latest_stage_per_candidacy as (
         select
             cs.gp_candidacy_id,
-            es.stage_type as latest_stage_reached,
+            cs.stage_type as latest_stage_reached,
             cs.election_result as latest_stage_result
         from {{ ref("candidacy_stage") }} as cs
-        join
-            {{ ref("election_stage") }} as es
-            on cs.gp_election_stage_id = es.gp_election_stage_id
-        where cs.election_result is not null and es.stage_type is not null
+        where cs.election_result is not null and cs.stage_type is not null
         qualify
             row_number() over (
                 partition by cs.gp_candidacy_id
                 order by
                     case
-                        lower(es.stage_type)
+                        lower(cs.stage_type)
                         when 'general runoff'
                         then 4
                         when 'general'

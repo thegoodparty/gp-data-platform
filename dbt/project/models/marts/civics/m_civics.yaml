@@ -989,6 +989,25 @@ models:
                 min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
 
+      - name: stage_type
+        description: >
+          The election stage represented by this row. Same domain as
+          `election_stage.stage_type`. Sourced directly from the 2025 archive
+          int model (where it is intrinsic) and from the `election_stage` mart
+          via `gp_election_stage_id` on the 2026+ merged path. Available
+          directly on this mart so analysts asking stage-typed questions don't
+          have to join `election_stage`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "primary",
+                    "primary runoff",
+                    "general",
+                    "general runoff",
+                  ]
+
       - name: is_win_icp
         description: >
           Whether this candidacy stage's position meets the Win ICP criteria,

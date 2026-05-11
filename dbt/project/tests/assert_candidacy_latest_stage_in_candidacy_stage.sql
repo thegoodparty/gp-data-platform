@@ -19,12 +19,9 @@ with
             and not exists (
                 select 1
                 from {{ ref("candidacy_stage") }} as cs
-                join
-                    {{ ref("election_stage") }} as es
-                    on cs.gp_election_stage_id = es.gp_election_stage_id
                 where
                     cs.gp_candidacy_id = c.gp_candidacy_id
-                    and lower(es.stage_type) = lower(c.latest_stage_reached)
+                    and lower(cs.stage_type) = lower(c.latest_stage_reached)
                     and cs.election_result = c.latest_stage_result
             )
     )
