@@ -238,22 +238,49 @@ with
             = 1
     ),
 
+    -- Restricts candidacy_stage rows to those whose election/position context
+    -- matches the deduped candidacy. Upstream gp_candidacy_id collisions can
+    -- attach stage rows from a different race to a candidacy, which would
+    -- otherwise let us pick a stage outcome that doesn't belong to this
+    -- mart row. The equality predicates are NULL-tolerant: when either side
+    -- lacks context (common for 2025 archive rows), the stage row is kept.
+    candidacy_stages_in_context as (
+        select cs.gp_candidacy_id, cs.election_stage, cs.election_result, cs.updated_at
+        from {{ ref("candidacy_stage") }} as cs
+        left join
+            {{ ref("election_stage") }} as es
+            on cs.gp_election_stage_id = es.gp_election_stage_id
+        inner join
+            deduplicated as d
+            on cs.gp_candidacy_id = d.gp_candidacy_id
+            and (
+                es.gp_election_id is null
+                or d.gp_election_id is null
+                or es.gp_election_id = d.gp_election_id
+            )
+            and (
+                es.br_position_id is null
+                or d.br_position_database_id is null
+                or es.br_position_id = d.br_position_database_id
+            )
+        where cs.election_result is not null and cs.election_stage is not null
+    ),
+
     -- Picks the deepest captured stage per candidacy; updated_at breaks ties
     -- when a candidacy has multiple rows for the same stage (a known
     -- candidacy_stage data-quality issue tracked separately).
     latest_stage_per_candidacy as (
         select
-            cs.gp_candidacy_id,
-            cs.election_stage as latest_stage_reached,
-            cs.election_result as latest_stage_result
-        from {{ ref("candidacy_stage") }} as cs
-        where cs.election_result is not null and cs.election_stage is not null
+            gp_candidacy_id,
+            election_stage as latest_stage_reached,
+            election_result as latest_stage_result
+        from candidacy_stages_in_context
         qualify
             row_number() over (
-                partition by cs.gp_candidacy_id
+                partition by gp_candidacy_id
                 order by
                     case
-                        cs.election_stage
+                        election_stage
                         when 'general runoff'
                         then 4
                         when 'general'
@@ -264,7 +291,7 @@ with
                         then 1
                         else 0
                     end desc,
-                    cs.updated_at desc nulls last
+                    updated_at desc nulls last
             )
             = 1
     )
