@@ -1,9 +1,4 @@
--- Regression guard for candidacy.latest_stage_reached / latest_stage_result.
--- Two invariants:
--- 1. Pair-null: both columns are null or both are populated.
--- 2. Membership: every populated pair traces to a real candidacy_stage row
--- with a matching stage_type and election_result.
--- Zero rows expected.
+-- Pair-null + membership invariants on candidacy.latest_stage_*. Zero rows expected.
 with
     paired_null_violations as (
         select gp_candidacy_id, latest_stage_reached, latest_stage_result
@@ -21,7 +16,7 @@ with
                 from {{ ref("candidacy_stage") }} as cs
                 where
                     cs.gp_candidacy_id = c.gp_candidacy_id
-                    and lower(cs.election_stage) = lower(c.latest_stage_reached)
+                    and cs.election_stage = c.latest_stage_reached
                     and cs.election_result = c.latest_stage_result
             )
     )

@@ -238,14 +238,9 @@ with
             = 1
     ),
 
-    -- Pick the deepest stage with a captured result for each candidacy.
-    -- ~8400 candidacies have multiple stage rows for the same stage_type
-    -- in candidacy_stage, mostly (~96%) because the same logical stage
-    -- appears in both the 2025 HubSpot archive path and the 2026+ merged
-    -- path with different gp_candidacy_stage_ids; candidacy_stage's final
-    -- dedup partitions by gp_candidacy_stage_id and so doesn't catch the
-    -- cross-boundary duplicates. Tracked separately. The updated_at
-    -- tiebreaker keeps grain at one row per candidacy here.
+    -- Picks the deepest captured stage per candidacy; updated_at breaks ties
+    -- when a candidacy has multiple rows for the same stage (a known
+    -- candidacy_stage data-quality issue tracked separately).
     latest_stage_per_candidacy as (
         select
             cs.gp_candidacy_id,
@@ -258,7 +253,7 @@ with
                 partition by cs.gp_candidacy_id
                 order by
                     case
-                        lower(cs.election_stage)
+                        cs.election_stage
                         when 'general runoff'
                         then 4
                         when 'general'
@@ -268,7 +263,7 @@ with
                         when 'primary'
                         then 1
                         else 0
-                    end desc nulls last,
+                    end desc,
                     cs.updated_at desc nulls last
             )
             = 1
