@@ -36,7 +36,7 @@ with
             election_stage_date,
             created_at,
             updated_at,
-            stage_type,
+            stage_type as election_stage,
             cast(source_race_id as string) as source_race_id,
             is_winner,
             election_result,
@@ -168,12 +168,13 @@ with
                     gp_api.{{ col }}, br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}
                 ) as {{ col }},
             {% endfor %}
-            -- stage_type comes from the upstream int model on the 2025
+            -- election_stage comes from the upstream int model on the 2025
             -- archive path. On the merged path, the providers don't carry
             -- it explicitly, so it's filled in via the final-select join to
-            -- election_stage (gp_election_stage_id is always populated for
-            -- merged rows). Null here is a placeholder for column-shape parity.
-            cast(null as string) as stage_type,
+            -- the election_stage mart's stage_type (gp_election_stage_id is
+            -- always populated for merged rows). Null here is a placeholder
+            -- for column-shape parity.
+            cast(null as string) as election_stage,
             -- source_race_id: BR > TS > DDHQ; gp_api carries no value here.
             coalesce(
                 br.source_race_id, ts.source_race_id, ddhq.source_race_id
@@ -253,7 +254,7 @@ select
     deduplicated.votes_received,
     deduplicated.is_uncontested,
     deduplicated.election_stage_date,
-    coalesce(deduplicated.stage_type, es.stage_type) as stage_type,
+    coalesce(deduplicated.election_stage, es.stage_type) as election_stage,
     es.is_win_icp,
     es.is_serve_icp,
     es.is_win_supersize_icp,

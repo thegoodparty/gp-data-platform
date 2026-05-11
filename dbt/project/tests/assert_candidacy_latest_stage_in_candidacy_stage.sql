@@ -21,7 +21,7 @@ with
                 from {{ ref("candidacy_stage") }} as cs
                 where
                     cs.gp_candidacy_id = c.gp_candidacy_id
-                    and lower(cs.stage_type) = lower(c.latest_stage_reached)
+                    and lower(cs.election_stage) = lower(c.latest_stage_reached)
                     and cs.election_result = c.latest_stage_result
             )
     )
