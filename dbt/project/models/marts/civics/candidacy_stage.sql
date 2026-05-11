@@ -36,6 +36,7 @@ with
             election_stage_date,
             created_at,
             updated_at,
+            stage_type as election_stage,
             cast(source_race_id as string) as source_race_id,
             is_winner,
             election_result,
@@ -167,6 +168,8 @@ with
                     gp_api.{{ col }}, br.{{ col }}, ts.{{ col }}, ddhq.{{ col }}
                 ) as {{ col }},
             {% endfor %}
+            -- Filled via the gp_election_stage_id join in the final select.
+            cast(null as string) as election_stage,
             -- source_race_id: BR > TS > DDHQ; gp_api carries no value here.
             coalesce(
                 br.source_race_id, ts.source_race_id, ddhq.source_race_id
@@ -246,6 +249,7 @@ select
     deduplicated.votes_received,
     deduplicated.is_uncontested,
     deduplicated.election_stage_date,
+    coalesce(deduplicated.election_stage, es.stage_type) as election_stage,
     es.is_win_icp,
     es.is_serve_icp,
     es.is_win_supersize_icp,

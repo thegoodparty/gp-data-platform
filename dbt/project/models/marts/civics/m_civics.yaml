@@ -515,9 +515,16 @@ models:
 
       - name: candidacy_result
         description: >
-          Result of the candidacy. Values:
-          - Won: Candidate won the election
-          - Lost: Candidate lost the election
+          Overall outcome of the candidacy, rolled up across stages via
+          per-provider precedence (DDHQ uses general-runoff > general >
+          primary-runoff > primary fallback). When the general stage has no
+          result yet, this column may fall back to the primary outcome, so a
+          value of 'Won' or 'Lost' here does NOT necessarily mean the candidate
+          won or lost their general election. For stage-aware analysis, use
+          `latest_stage_reached` and `latest_stage_result` instead.
+          Values:
+          - Won: Candidate won at the latest reached stage
+          - Lost: Candidate lost at the latest reached stage
           - Runoff: Election resulted in a runoff
           - Withdrew: Candidate withdrew from the race
           - Not on Ballot: Candidate was not on the ballot
@@ -536,6 +543,63 @@ models:
                   ]
               config:
                 where: "candidacy_result is not null"
+
+      - name: general_election_result
+        description: >
+          Result of the general-cycle election (general or general runoff) with
+          no fallback to the primary cycle. Derived from
+          `latest_stage_result` when `latest_stage_reached` is 'general' or
+          'general runoff', else null. Use this column to answer "did the
+          candidate win their general?" — primary-only outcomes do not
+          contaminate the value. Null when no general-cycle result has been
+          captured (regardless of whether the candidate ran a primary).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                  ]
+
+      - name: latest_stage_reached
+        description: >
+          The deepest election stage for which a result has been captured in
+          `candidacy_stage`. Funnel order: primary < primary runoff < general <
+          general runoff. Paired with `latest_stage_result` (both columns are
+          sourced from the same `candidacy_stage` row). Null when no stage has
+          a captured result yet. Use `general_election_result` for the common
+          "did they win the general?" question; use this pair when funnel
+          position itself matters.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "primary",
+                    "primary runoff",
+                    "general",
+                    "general runoff",
+                  ]
+
+      - name: latest_stage_result
+        description: >
+          The captured result at `latest_stage_reached`, sourced from the same
+          `candidacy_stage` row. Null when no stage has a captured result.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "Won",
+                    "Lost",
+                    "Runoff",
+                    "Withdrew",
+                    "Not on Ballot",
+                  ]
 
       - name: is_pledged
         description: >
@@ -924,6 +988,27 @@ models:
               arguments:
                 min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
+
+      - name: election_stage
+        description: >
+          The election stage represented by this row. Same domain and values
+          as `election_stage.stage_type` on the election_stage mart (the
+          column is renamed there only because the column name would shadow
+          the mart name). Sourced directly from the 2025 archive int model
+          (where it is intrinsic) and from the `election_stage` mart via
+          `gp_election_stage_id` on the 2026+ merged path. Available directly
+          on this mart so analysts asking stage-typed questions don't have to
+          join `election_stage`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    "primary",
+                    "primary runoff",
+                    "general",
+                    "general runoff",
+                  ]
 
       - name: is_win_icp
         description: >
