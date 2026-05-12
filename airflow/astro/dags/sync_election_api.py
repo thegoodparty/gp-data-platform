@@ -174,6 +174,46 @@ DTI_COLUMNS = [
     "issue_rank",
 ]
 
+# DATA-1903 phase (a) only: the v3 mart now scores 68 issues per district
+# (up from 27), so taking the mart's top-10 by overall issue_rank would
+# surface the 41 newly-introduced issues (Aliens, Border Wall, federal-only
+# noise) ahead of the locally-actionable issues the API serves today. To
+# preserve pre-DATA-1903 API behavior while the election-api team's Prisma
+# migration is in flight, the load_staging query filters the mart to this
+# legacy 27-issue universe, recomputes issue_rank within the filtered set,
+# and takes top-10. Drop V2_LEGACY_ISSUES and the legacy_top_10 CTE in
+# phase (c) once the four jurisdictional flag columns are live in Postgres
+# and the API can do its own filter-then-rerank by flag.
+V2_LEGACY_ISSUES = (
+    "hs_abortion_pro_choice",
+    "hs_affordable_housing_gov_has_role",
+    "hs_casino_support",
+    "hs_charter_schools_support",
+    "hs_civil_liberties_support",
+    "hs_climate_change_believer",
+    "hs_death_penalty_support",
+    "hs_dei_support",
+    "hs_econ_anxiety_very_worried",
+    "hs_gun_control_support",
+    "hs_immigration_undesirable",
+    "hs_income_inequality_serious",
+    "hs_marijuana_legal_support",
+    "hs_medicaid_expansion_support",
+    "hs_medicare_for_all_support",
+    "hs_min_wage_15_increase_support",
+    "hs_pipeline_fracking_support",
+    "hs_police_trust_yes",
+    "hs_public_transit_support",
+    "hs_regulations_too_harsh",
+    "hs_same_sex_marriage_support",
+    "hs_school_choice_support",
+    "hs_school_funding_more",
+    "hs_tax_cuts_support",
+    "hs_trump_tariffs_support",
+    "hs_unions_beneficial",
+    "hs_violent_crime_very_worried",
+)
+
 
 def _dti_constraint_ddl() -> list[str]:
     sn, nt = DTI.staging_schema, DTI.new_table
@@ -346,19 +386,40 @@ def sync_election_api():
         @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
-            col_list = ", ".join(DTI_COLUMNS)
-            # TEMP (DATA-1903 phase a): cap Postgres at top-10-by-overall-score
-            # per district while the v3 mart change rolls out. The mart now
-            # emits all issues per district with no QUALIFY cap; the four
-            # jurisdictional flag columns don't exist in Postgres yet. Drop
-            # this WHERE clause in DATA-1903 phase (c) once Patrick's Prisma
-            # migration has added the is_local/is_regional/is_state/is_federal
-            # columns and DTI_COLUMNS has been extended to sync them.
+            # TEMP (DATA-1903 phase a): the v3 mart ranks all 68 issues per
+            # district. Postgres still has the pre-DATA-1903 7-column shape
+            # and the API has no jurisdictional-flag filter yet. To preserve
+            # current API behavior, filter the mart to the 27 legacy issues,
+            # recompute issue_rank within that subset, and take top-10. The
+            # entire legacy_top_10 CTE and V2_LEGACY_ISSUES are removed in
+            # phase (c) once Patrick's Prisma migration adds the four
+            # jurisdictional flag columns to DistrictTopIssue and DTI_COLUMNS
+            # is extended to sync them.
+            legacy_in_clause = ", ".join(f"'{i}'" for i in V2_LEGACY_ISSUES)
+            # `new_rank` (not `issue_rank`) inside the CTE — the source mart
+            # has its own `issue_rank` column, and Databricks resolves a
+            # QUALIFY clause against the source column instead of the SELECT
+            # alias when they share a name, which would silently filter to
+            # the mart's 1..68 ranks (~3 legacy issues per district), not
+            # the recomputed 1..N within the filtered subset. Outer SELECT
+            # renames `new_rank` back to `issue_rank` to match DTI_COLUMNS.
             query = (
-                f"SELECT {col_list} "
-                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
-                f"`m_election_api__district_top_issues` "
-                f"WHERE issue_rank <= 10"
+                f"WITH legacy_top_10 AS ("
+                f"  SELECT"
+                f"    id, updated_at, district_id, issue, issue_label, score,"
+                f"    row_number() OVER ("
+                f"      PARTITION BY district_id "
+                f"      ORDER BY score DESC, issue ASC"
+                f"    ) AS new_rank"
+                f"  FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"`m_election_api__district_top_issues`"
+                f"  WHERE issue IN ({legacy_in_clause})"
+                f"  QUALIFY new_rank <= 10"
+                f") "
+                f"SELECT"
+                f"  id, updated_at, district_id, issue, issue_label, score,"
+                f"  new_rank AS issue_rank "
+                f"FROM legacy_top_10"
             )
             with _open_pg() as conn:
                 return bulk_insert_from_databricks(

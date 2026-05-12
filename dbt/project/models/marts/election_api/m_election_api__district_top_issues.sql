@@ -175,6 +175,12 @@ with
         -- Join seed metadata in a dedicated CTE so the final SELECT has only one
         -- source in scope, avoiding ambiguity when `generate_salted_uuid` passes
         -- unqualified column names into the SQL.
+        --
+        -- LEFT JOIN (not INNER) so issues in the inline `issue_columns` list
+        -- above that are missing from the seed produce rows with NULL labels
+        -- and flags, which the `not_null` and `relationships` tests on those
+        -- columns surface as loud test failures. With an INNER JOIN the same
+        -- drift would silently drop the issue's rows from the mart.
         select
             d.l2_state,
             d.l2_district_type,
@@ -188,7 +194,7 @@ with
             t.is_state,
             t.is_federal
         from district_issue_long as d
-        inner join {{ ref("haystaq_issue_tags") }} as t on t.issue = d.issue
+        left join {{ ref("haystaq_issue_tags") }} as t on t.issue = d.issue
     )
 
 select
