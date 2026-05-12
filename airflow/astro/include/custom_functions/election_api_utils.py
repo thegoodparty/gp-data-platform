@@ -169,6 +169,33 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
 
         statements: List[str] = []
         if target_exists:
+            # Filter spec.indexes to those that actually exist on the target.
+            # The spec is the post-swap source of truth, but the target may
+            # legitimately lag — e.g. a new index was just declared in the
+            # spec and the corresponding Prisma migration hasn't reached this
+            # DB yet, or a prior swap with a narrower spec carried the index
+            # into _old and drop_old removed it. Renaming a non-existent
+            # index is a hard error that rolls back the whole swap; skipping
+            # it is safe because anything still on the target gets dropped
+            # with _old regardless of whether it's archive-renamed first.
+            cur.execute(
+                "SELECT indexname FROM pg_indexes "
+                "WHERE schemaname = %s AND tablename = %s",
+                (spec.target_schema, spec.target_table),
+            )
+            target_indexes = {row[0] for row in cur.fetchall()}
+            indexes_to_archive = [idx for idx in spec.indexes if idx in target_indexes]
+            missing_indexes = [idx for idx in spec.indexes if idx not in target_indexes]
+            if missing_indexes:
+                logger.warning(
+                    "Swap skipping archive-rename of %d index(es) absent from "
+                    "%s.%s: %s",
+                    len(missing_indexes),
+                    spec.target_schema,
+                    spec.target_table,
+                    missing_indexes,
+                )
+
             statements.append(
                 f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" '
                 f'RENAME TO "{spec.old_table}"'
@@ -177,7 +204,7 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
                 f'ALTER INDEX "{spec.target_schema}"."{spec.pk_name}" '
                 f'RENAME TO "{spec.archive_name(spec.pk_name)}"'
             )
-            for idx in spec.indexes:
+            for idx in indexes_to_archive:
                 statements.append(
                     f'ALTER INDEX "{spec.target_schema}"."{idx}" '
                     f'RENAME TO "{spec.archive_name(idx)}"'
