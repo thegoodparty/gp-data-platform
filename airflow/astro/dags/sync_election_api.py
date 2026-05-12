@@ -347,10 +347,18 @@ def sync_election_api():
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(DTI_COLUMNS)
+            # TEMP (DATA-1903 phase a): cap Postgres at top-10-by-overall-score
+            # per district while the v3 mart change rolls out. The mart now
+            # emits all issues per district with no QUALIFY cap; the four
+            # jurisdictional flag columns don't exist in Postgres yet. Drop
+            # this WHERE clause in DATA-1903 phase (c) once Patrick's Prisma
+            # migration has added the is_local/is_regional/is_state/is_federal
+            # columns and DTI_COLUMNS has been extended to sync them.
             query = (
                 f"SELECT {col_list} "
                 f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
-                f"`m_election_api__district_top_issues`"
+                f"`m_election_api__district_top_issues` "
+                f"WHERE issue_rank <= 10"
             )
             with _open_pg() as conn:
                 return bulk_insert_from_databricks(

@@ -6,51 +6,29 @@
 }}
 
 {#-
-    Top 10 Haystaq issue scores per L2 district, covering every L2 district with
-    an `is_matched = true` row in the LLM L2-to-BallotReady-district match
-    (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to a single
-    election cycle — districts with off-cycle offices are included as well.
+    District-level Haystaq issue scores per L2 district. Covers every L2
+    district with an `is_matched = true` row in the LLM L2-to-BallotReady
+    district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
+    scoped to a single election cycle — districts with off-cycle offices are
+    included as well.
 
-    One row per (district x issue) for the top 10 issues by average voter score.
+    Grain: up to one row per (district, issue) where the district has at
+    least one voter with a non-null score for that issue. Spark UNPIVOT
+    defaults to EXCLUDE NULLS, so districts with NULL average scores for an
+    issue emit no row for that issue.
 
-    The (column, label) pairs below are the single source of truth for the
-    Haystaq issue scores used by this model. The Jinja loops below expand them
-    into the AVG aggregation, the UNPIVOT, and the issue-label CASE.
+    Issue universe, labels, and jurisdictional flags come from the
+    `haystaq_issue_tags` seed — the seed is the source of truth. Edit the
+    seed to add, remove, or re-tag issues; rebuild the seed before rebuilding
+    this model so `dbt_utils.get_column_values` reads the new column list.
+
+    Downstream consumers (election-api) filter by jurisdictional flag and
+    re-rank within the filtered set. The mart emits the overall `issue_rank`
+    only.
 -#}
-{%- set issues = [
-    ("hs_charter_schools_support", "Support Charter Schools"),
-    ("hs_school_choice_support", "Support School Choice"),
-    ("hs_school_funding_more", "Increase School Funding"),
-    ("hs_dei_support", "Support Diversity & Inclusion"),
-    ("hs_civil_liberties_support", "Support Civil Liberties"),
-    (
-        "hs_affordable_housing_gov_has_role",
-        "Government Should Address Affordable Housing",
-    ),
-    ("hs_public_transit_support", "Support Public Transit"),
-    ("hs_min_wage_15_increase_support", "Support a $15 Minimum Wage"),
-    ("hs_tax_cuts_support", "Support Tax Cuts"),
-    ("hs_medicaid_expansion_support", "Support Medicaid Expansion"),
-    ("hs_medicare_for_all_support", "Support Medicare For All"),
-    ("hs_abortion_pro_choice", "Pro-Choice on Abortion"),
-    ("hs_same_sex_marriage_support", "Support Same-Sex Marriage"),
-    ("hs_climate_change_believer", "Believe in Climate Change"),
-    ("hs_marijuana_legal_support", "Support Legalizing Marijuana"),
-    ("hs_gun_control_support", "Support Gun Control"),
-    ("hs_death_penalty_support", "Support the Death Penalty"),
-    ("hs_police_trust_yes", "Trust the Police"),
-    ("hs_violent_crime_very_worried", "Worried About Violent Crime"),
-    ("hs_pipeline_fracking_support", "Support Pipelines and Fracking"),
-    ("hs_casino_support", "Support Legal Casinos"),
-    ("hs_immigration_undesirable", "View Immigration Negatively"),
-    ("hs_econ_anxiety_very_worried", "Worried About the Economy"),
-    ("hs_income_inequality_serious", "Concerned About Income Inequality"),
-    ("hs_unions_beneficial", "Support Labor Unions"),
-    ("hs_regulations_too_harsh", "Reduce Business Regulations"),
-    ("hs_trump_tariffs_support", "Support Tariffs on Imports"),
-] -%}
-
-{%- set issue_columns = issues | map(attribute=0) | list -%}
+{%- set issue_columns = dbt_utils.get_column_values(
+    ref("haystaq_issue_tags"), "issue", order_by="issue"
+) -%}
 
 with
     target_districts as (
@@ -112,6 +90,26 @@ with
         from
             district_avg_scores
             unpivot (score for issue in ({{ issue_columns | join(", ") }}))
+    ),
+
+    district_issue_tagged as (
+        -- Join seed metadata in a dedicated CTE so the final SELECT has only one
+        -- source in scope, avoiding ambiguity when `generate_salted_uuid` passes
+        -- unqualified column names into the SQL.
+        select
+            d.l2_state,
+            d.l2_district_type,
+            d.l2_district_name,
+            d.l2_voter_count,
+            d.issue,
+            d.score,
+            t.issue_label,
+            t.is_local,
+            t.is_regional,
+            t.is_state,
+            t.is_federal
+        from district_issue_long as d
+        inner join {{ ref("haystaq_issue_tags") }} as t on t.issue = d.issue
     )
 
 select
@@ -141,15 +139,14 @@ select
     l2_district_name,
     l2_voter_count,
     issue,
-    case
-        issue
-        {%- for column, label in issues %}
-            when '{{ column }}' then '{{ label }}'
-        {%- endfor %}
-    end as issue_label,
+    issue_label,
     score,
+    is_local,
+    is_regional,
+    is_state,
+    is_federal,
     row_number() over (
-        partition by l2_state, l2_district_type, l2_district_name order by score desc
+        partition by l2_state, l2_district_type, l2_district_name
+        order by score desc, issue asc
     ) as issue_rank
-from district_issue_long
-qualify issue_rank <= 10
+from district_issue_tagged

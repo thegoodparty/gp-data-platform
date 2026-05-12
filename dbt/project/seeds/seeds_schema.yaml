@@ -183,3 +183,55 @@ seeds:
           - dbt_expectations.expect_column_values_to_match_regex:
               arguments:
                 regex: ^\\[([0-9]{5},[0-9]{5})\\]$
+
+  - name: haystaq_issue_tags
+    description: >
+      Per-issue metadata used by m_election_api__district_top_issues. One row
+      per Haystaq issue column with the user-facing label and four
+      jurisdictional flags (is_local, is_regional, is_state, is_federal)
+      indicating where the issue is actionable. Flags are not mutually
+      exclusive. Regional is tagged conservatively (only where a regional
+      body has meaningful authority). Sort rows alphabetically by `issue`
+      when editing.
+    config:
+      column_types:
+        issue: STRING
+        issue_label: STRING
+        is_local: BOOLEAN
+        is_regional: BOOLEAN
+        is_state: BOOLEAN
+        is_federal: BOOLEAN
+    columns:
+      - name: issue
+        description: >
+          Haystaq score column name on int__l2_nationwide_uniform_w_haystaq.
+        data_tests:
+          - not_null
+          - unique
+      - name: issue_label
+        description: Human-readable label for product display.
+        data_tests:
+          - not_null
+      - name: is_local
+        description: Issue is actionable at the local level (city, township, county).
+        data_tests:
+          - not_null
+      - name: is_regional
+        description: >
+          Issue is actionable at the regional level (MPO, transit authority,
+          regional planning council, air quality district, regional health
+          district).
+        data_tests:
+          - not_null
+      - name: is_state
+        description: Issue is actionable at the state level.
+        data_tests:
+          - not_null
+      - name: is_federal
+        description: Issue is actionable at the federal level.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_local or is_regional or is_state or is_federal"

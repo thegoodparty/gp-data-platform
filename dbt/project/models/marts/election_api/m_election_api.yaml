@@ -319,14 +319,24 @@ models:
 
   - name: m_election_api__district_top_issues
     description: >
-      Top 10 Haystaq issue scores per L2 district, covering every L2 district
-      with an `is_matched = true` row in the LLM L2-to-BallotReady-district
-      match (`stg_model_predictions__llm_l2_br_match_20260126`). Not scoped to
-      a single election cycle — districts with off-cycle offices are included
-      as well.
+      District-level Haystaq issue scores per L2 district, covering every L2
+      district with an `is_matched = true` row in the LLM L2-to-BallotReady
+      district match (`stg_model_predictions__llm_l2_br_match_20260126`). Not
+      scoped to a single election cycle — districts with off-cycle offices
+      are included as well.
 
-      Grain: One row per (l2_state, l2_district_type, l2_district_name, issue)
-      for the top 10 issues by average voter score in that district.
+      Each row carries four jurisdictional flags (is_local, is_regional,
+      is_state, is_federal) indicating where the issue is actionable.
+      Downstream consumers filter by flag and re-rank within the filtered
+      set. The mart emits the overall `issue_rank` only.
+
+      Grain: up to one row per (l2_state, l2_district_type, l2_district_name,
+      issue) where the district has at least one voter with a non-null score
+      for that issue. Spark UNPIVOT defaults to EXCLUDE NULLS, so districts
+      with NULL average scores for an issue emit no row for that issue.
+
+      Issue universe, labels, and flags are sourced from the
+      `haystaq_issue_tags` seed.
     columns:
       - name: id
         description: "UUID of the district-issue row"
@@ -365,7 +375,11 @@ models:
         tests:
           - not_null
       - name: l2_voter_count
-        description: "Number of L2 voters used to compute the average issue scores for this district"
+        description: >
+          Voters in this district (the count(*) denominator behind the issue
+          averages). Voters with a NULL upstream score for a specific issue
+          are still counted here but do not contribute to that issue's avg —
+          per-issue contributing-voter counts are not pre-computed.
         tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -375,38 +389,12 @@ models:
         description: "Haystaq issue score column name (e.g. hs_charter_schools_support)"
         tests:
           - not_null
-          - accepted_values:
+          - relationships:
               arguments:
-                values:
-                  - hs_charter_schools_support
-                  - hs_school_choice_support
-                  - hs_school_funding_more
-                  - hs_dei_support
-                  - hs_civil_liberties_support
-                  - hs_affordable_housing_gov_has_role
-                  - hs_public_transit_support
-                  - hs_min_wage_15_increase_support
-                  - hs_tax_cuts_support
-                  - hs_medicaid_expansion_support
-                  - hs_medicare_for_all_support
-                  - hs_abortion_pro_choice
-                  - hs_same_sex_marriage_support
-                  - hs_climate_change_believer
-                  - hs_marijuana_legal_support
-                  - hs_gun_control_support
-                  - hs_death_penalty_support
-                  - hs_police_trust_yes
-                  - hs_violent_crime_very_worried
-                  - hs_pipeline_fracking_support
-                  - hs_casino_support
-                  - hs_immigration_undesirable
-                  - hs_econ_anxiety_very_worried
-                  - hs_income_inequality_serious
-                  - hs_unions_beneficial
-                  - hs_regulations_too_harsh
-                  - hs_trump_tariffs_support
+                to: ref('haystaq_issue_tags')
+                field: issue
       - name: issue_label
-        description: "Human-readable issue label for product display"
+        description: "Human-readable issue label for product display, sourced from haystaq_issue_tags seed"
         tests:
           - not_null
       - name: score
@@ -417,10 +405,33 @@ models:
               arguments:
                 min_value: 0
                 max_value: 100
-      - name: issue_rank
-        description: "Rank of the issue within the district (1 = highest score)"
+      - name: is_local
+        description: "Issue is actionable at the local level (city, township, county). Sourced from haystaq_issue_tags seed."
         tests:
           - not_null
+      - name: is_regional
+        description: "Issue is actionable at the regional level (MPO, transit authority, etc.). Sourced from haystaq_issue_tags seed."
+        tests:
+          - not_null
+      - name: is_state
+        description: "Issue is actionable at the state level. Sourced from haystaq_issue_tags seed."
+        tests:
+          - not_null
+      - name: is_federal
+        description: "Issue is actionable at the federal level. Sourced from haystaq_issue_tags seed."
+        tests:
+          - not_null
+      - name: issue_rank
+        description: >
+          Overall rank of the issue within the district (1 = highest score),
+          with a deterministic tie-breaker on `issue asc`. Not capped — the
+          API filters by jurisdictional flag and re-ranks within the
+          filtered set.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
