@@ -26,6 +26,8 @@ git submodule update --init --recursive
 
 Don't edit files under `ai-rules/` directly — changes belong in the submodule's upstream repo.
 
+When reviewing changed code in this repo (e.g. during `/simplify`, `/review`, or any code-review pass), consult the rule files under `ai-rules/` in addition to this file and the per-subproject `CLAUDE.md` files.
+
 ## Never
 
 - Don't add a root-level command that assumes one venv. State which subproject to `cd` into.
