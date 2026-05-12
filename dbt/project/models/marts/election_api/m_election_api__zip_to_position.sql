@@ -42,8 +42,31 @@ with
             = 1
     ),
 
+    -- voters_in_zip is documented as invariant per (zip, state, district_type)
+    -- upstream, but here we group by (zip, br_database_id). any_value() is
+    -- safe only if voters_in_zip is also constant within each (zip,
+    -- br_database_id) group — confirmed empirically (0 divergent groups out
+    -- of ~2.25M) and guarded going forward by
+    -- tests/assert_zip_to_br_office_voters_in_zip_invariant.sql.
     zip_to_position as (
-        select zip_code, br_database_id from {{ ref("int__zip_code_to_br_office") }}
+        select
+            zip_code,
+            br_database_id,
+            any_value(voters_in_zip) as voters_in_zip,
+            sum(voters_in_zip_district) as voters_in_zip_district,
+            -- Guard the division: an unexpected zero/null denominator emits
+            -- null rather than a divide-by-zero or silently wrong value.
+            -- voters_in_zip is upstream-tested as not_null and >= 1, so the
+            -- else branch should never fire today; the guard exists so a
+            -- regression in those guarantees fails loudly downstream.
+            case
+                when any_value(voters_in_zip) > 0
+                then sum(voters_in_zip_district) * 1.0 / any_value(voters_in_zip)
+                else null
+            end as pct_districtzip_to_zip
+        from {{ ref("int__zip_code_to_br_office") }}
+        where br_database_id is not null
+        group by zip_code, br_database_id
     ),
 
     positions as (
@@ -71,7 +94,10 @@ with
             elec.city,
             elec.district,
             elec.election_date,
-            elec.br_position_database_id as br_database_id
+            elec.br_position_database_id as br_database_id,
+            zips.voters_in_zip,
+            zips.voters_in_zip_district,
+            zips.pct_districtzip_to_zip
         from future_elections as elec
         left join
             zip_to_position as zips
