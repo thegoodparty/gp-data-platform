@@ -109,9 +109,11 @@ select
     embeddings,
     top_embedding_score
 from zip_code_to_br_office
--- Drop orphan rows where the LLM match referenced a br_database_id that no
--- longer exists in stg_airbyte_source__ballotready_api_position (deleted /
--- stale matches). These rows have no usable BR data anyway (br_position_id,
--- br_race_id, br_race_database_id are all null), and the downstream mart's
--- inner join to m_election_api__position would filter them out either way.
-where br_database_id is null or br_position_id is not null
+-- Keep only rows with a live BR position. This drops both LLM-unmatched rows
+-- (br_database_id null) and orphan rows whose br_database_id no longer exists
+-- in stg_airbyte_source__ballotready_api_position. Unmatched rows would
+-- otherwise produce duplicates on incremental merge (the unique_key includes
+-- br_database_id, and ANSI null semantics prevent NULL merge keys from
+-- matching existing target rows), and the sole downstream consumer
+-- (m_election_api__zip_to_position) filters br_database_id is not null anyway.
+where br_position_id is not null
