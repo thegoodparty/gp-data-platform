@@ -17,18 +17,97 @@
     defaults to EXCLUDE NULLS, so districts with NULL average scores for an
     issue emit no row for that issue.
 
-    Issue universe, labels, and jurisdictional flags come from the
-    `haystaq_issue_tags` seed — the seed is the source of truth. Edit the
-    seed to add, remove, or re-tag issues; rebuild the seed before rebuilding
-    this model so `dbt_utils.get_column_values` reads the new column list.
+    Issue universe is the `issue_columns` list below. Issue labels and the
+    four jurisdictional flags come from the `haystaq_issue_tags` seed, joined
+    at runtime.
+
+    Why two places: dbt cloud CI compiles the mart against a fresh PR schema
+    where the seed isn't materialized yet, so a `dbt_utils.get_column_values`
+    lookup against `ref('haystaq_issue_tags')` fails at compile time. The
+    inline list is the compile-time source of truth for the column set; the
+    seed is the runtime source of truth for labels and flags. The singular
+    test `tests/assert_district_top_issues_seed_coverage.sql` asserts every
+    seed issue appears in the mart, catching drift between the two if a new
+    issue is added to one place but not the other.
+
+    To add or remove an issue: edit both this list (keep it alphabetical) and
+    `seeds/haystaq_issue_tags.csv`. The singular test will fail loudly if
+    they drift apart.
 
     Downstream consumers (election-api) filter by jurisdictional flag and
     re-rank within the filtered set. The mart emits the overall `issue_rank`
     only.
 -#}
-{%- set issue_columns = dbt_utils.get_column_values(
-    ref("haystaq_issue_tags"), "issue", order_by="issue"
-) -%}
+{%- set issue_columns = [
+    "hs_abortion_pro_choice",
+    "hs_affordable_housing_gov_has_role",
+    "hs_age_limit_support",
+    "hs_aliens_governenment_hiding_much",
+    "hs_amazon_exploitative",
+    "hs_artificial_intelligence_excited",
+    "hs_autonomous_vehicles_allow",
+    "hs_casino_support",
+    "hs_charter_schools_support",
+    "hs_china_foreign_policy_advesarial",
+    "hs_civil_liberties_support",
+    "hs_climate_change_believer",
+    "hs_college_admissions_consider_race",
+    "hs_community_college_free_support",
+    "hs_critical_race_theory_books_ban",
+    "hs_crypto_increase_restrictions",
+    "hs_death_penalty_support",
+    "hs_defense_spending_increase",
+    "hs_dei_support",
+    "hs_doge_support",
+    "hs_econ_anxiety_very_worried",
+    "hs_family_medical_leave_support",
+    "hs_felon_voting_support",
+    "hs_gas_tax_support",
+    "hs_general_anti_vax_pro_vax",
+    "hs_gentrification_oppose",
+    "hs_gig_work_make_employees",
+    "hs_green_new_deal_support",
+    "hs_gun_control_support",
+    "hs_immigration_undesirable",
+    "hs_income_inequality_serious",
+    "hs_infrastructure_funding_fund_more",
+    "hs_insurance_of_last_resort_government_should_provide",
+    "hs_israel_military_actions_support",
+    "hs_jan_6th_pardons_support",
+    "hs_jobs_guarantee_support",
+    "hs_marijuana_legal_support",
+    "hs_mass_deporations_support",
+    "hs_medicaid_expansion_support",
+    "hs_medicare_for_all_support",
+    "hs_mexican_wall_support",
+    "hs_min_wage_15_increase_support",
+    "hs_obamacare_aca_protect",
+    "hs_online_gambling_more_legal",
+    "hs_opioid_crisis_treat",
+    "hs_pipeline_fracking_support",
+    "hs_police_trust_yes",
+    "hs_public_transit_support",
+    "hs_rank_choice_voting_support",
+    "hs_redistricting_indep_com",
+    "hs_regulations_too_harsh",
+    "hs_same_sex_marriage_support",
+    "hs_school_choice_support",
+    "hs_school_funding_more",
+    "hs_sell_federal_lands_support",
+    "hs_social_media_truth_vs_speech_truth",
+    "hs_social_security_tax_increase_support",
+    "hs_stadium_public_financing_approve",
+    "hs_state_level_fema_support",
+    "hs_tax_cuts_support",
+    "hs_teachers_union_positive",
+    "hs_trans_athlete_yes",
+    "hs_trump_tariffs_support",
+    "hs_trump_ukraine_policy_support",
+    "hs_unions_beneficial",
+    "hs_united_healthcare_at_fault",
+    "hs_violent_crime_very_worried",
+    "hs_voting_fraud_concern_fraud",
+] -%}
 
 with
     target_districts as (
