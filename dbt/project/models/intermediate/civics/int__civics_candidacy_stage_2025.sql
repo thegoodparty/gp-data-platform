@@ -204,6 +204,7 @@ select
     w.has_match,
     w.votes_received,
     w.election_stage_date,
+    w.stage_type,
     w.created_at,
     w.updated_at
 from with_candidate_stage_id as w

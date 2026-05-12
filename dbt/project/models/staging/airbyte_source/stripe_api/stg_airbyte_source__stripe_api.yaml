@@ -138,7 +138,7 @@ models:
         tests:
           - accepted_values:
               arguments:
-                values: ['succeeded', 'pending', 'failed']
+                values: ['succeeded', 'pending', 'failed', 'canceled']
               config:
                 where: "status is not null"
       - name: livemode
