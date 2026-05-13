@@ -58,6 +58,5 @@ test_data/
 entity_resolution/data/
 entity_resolution/results/*.csv
 
-# Claude runbook
+# Claude runbook (CLAUDE.md is intentionally tracked; this ignores legacy paths only)
 .claude/RUNBOOK.md
-claude.md
