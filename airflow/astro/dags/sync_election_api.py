@@ -410,7 +410,13 @@ def sync_election_api():
                         prior_count, prior_issues = 0, 0
 
                     # Row count: refuse on a >50% drop vs prior live;
-                    # absolute floor only used on cold start.
+                    # absolute floor only used on cold start. High-ratio
+                    # syncs (>3x prior) log a warning but do not refuse —
+                    # the DATA-1903 phase-c cutover is intentionally ~6.8x
+                    # (970K legacy top-10 rows -> 6.6M full-mart rows), so
+                    # blocking on growth would self-DOS the cutover. After
+                    # cutover the ratio stabilizes near 1.0; future >3x
+                    # excursions are worth on-call attention.
                     if prior_count > 0:
                         ratio = loaded_count / prior_count
                         if ratio < 0.5:
@@ -418,6 +424,17 @@ def sync_election_api():
                                 f"Loaded {loaded_count} rows, prior live had "
                                 f"{prior_count} (ratio {ratio:.2f}) "
                                 f"— refusing to swap"
+                            )
+                        if ratio > 3:
+                            t_log.warning(
+                                "High-ratio sync: loaded %d rows, prior live "
+                                "had %d (ratio %.2f). Sometimes intentional "
+                                "(e.g., DATA-1903 phase-c cutover) — sometimes "
+                                "a JOIN fan-out or duplication bug. Verify "
+                                "the source mart's grain before trusting.",
+                                loaded_count,
+                                prior_count,
+                                ratio,
                             )
                     elif loaded_count < 100_000:
                         raise ValueError(
