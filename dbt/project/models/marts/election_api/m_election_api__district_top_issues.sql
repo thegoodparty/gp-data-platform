@@ -34,6 +34,14 @@
     `seeds/haystaq_issue_tags.csv`. The singular test will fail loudly if
     they drift apart.
 
+    Column-name constraint: every value in this list must be a live column on
+    int__l2_nationwide_uniform_w_haystaq; the Jinja loops below render
+    `AVG(<issue>)` against those identifiers directly. Two known L2 typos are
+    preserved verbatim (`hs_aliens_governenment_hiding_much`,
+    `hs_mass_deporations_support`) — do not "fix" the spelling here without a
+    matching upstream rename. See the haystaq_issue_tags seed description in
+    seeds_schema.yaml for the full rule.
+
     Downstream consumers (election-api) filter by jurisdictional flag and
     re-rank within the filtered set. The mart emits the overall `issue_rank`
     only.

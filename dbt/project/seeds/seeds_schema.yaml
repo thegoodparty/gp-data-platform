@@ -193,6 +193,20 @@ seeds:
       exclusive. Regional is tagged conservatively (only where a regional
       body has meaningful authority). Sort rows alphabetically by `issue`
       when editing.
+
+
+      Column-name constraint: the `issue` values here must match the upstream
+      `hs_*` column names on int__l2_nationwide_uniform_w_haystaq verbatim,
+      including pre-existing L2 typos. The mart references each value as a
+      live SQL identifier in an AVG aggregation, so renaming an `issue` in
+      this seed without renaming the upstream column would break the mart
+      compile (column-not-found) and the `relationships` test on
+      m_election_api__district_top_issues.issue (mart values would no longer
+      be a subset of seed values). Two known typos currently present:
+      `hs_aliens_governenment_hiding_much` (should be `government`) and
+      `hs_mass_deporations_support` (should be `deportations`). Keep both
+      as-is; if L2 ever fixes them upstream, update the seed, the inline
+      `issue_columns` list in the mart SQL, and rebuild.
     config:
       column_types:
         issue: STRING
