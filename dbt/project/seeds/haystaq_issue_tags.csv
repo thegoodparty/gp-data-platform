@@ -1,0 +1,69 @@
+issue,issue_label,is_local,is_regional,is_state,is_federal
+hs_abortion_pro_choice,Pro-Choice on Abortion,True,False,True,True
+hs_affordable_housing_gov_has_role,Government Should Address Affordable Housing,True,True,True,True
+hs_age_limit_support,Support Federal Office Age Limits,False,False,False,True
+hs_aliens_governenment_hiding_much,Government Hiding Information About Aliens,False,False,False,True
+hs_amazon_exploitative,View Amazon as Exploitative,False,False,True,True
+hs_artificial_intelligence_excited,Excited About AI,False,False,True,True
+hs_autonomous_vehicles_allow,Allow Autonomous Vehicles,True,False,True,True
+hs_casino_support,Support Legal Casinos,True,False,True,False
+hs_charter_schools_support,Support Charter Schools,True,False,True,False
+hs_china_foreign_policy_advesarial,Adversarial China Policy,False,False,False,True
+hs_civil_liberties_support,Support Civil Liberties,False,False,True,True
+hs_climate_change_believer,Believe in Climate Change,True,True,True,True
+hs_college_admissions_consider_race,Consider Race in College Admissions,False,False,False,True
+hs_community_college_free_support,Support Free Community College,False,False,True,True
+hs_critical_race_theory_books_ban,Ban CRT-Related Books,True,False,True,False
+hs_crypto_increase_restrictions,Increase Crypto Restrictions,False,False,True,True
+hs_death_penalty_support,Support the Death Penalty,False,False,True,True
+hs_defense_spending_increase,Increase Defense Spending,False,False,False,True
+hs_dei_support,Support Diversity & Inclusion,True,False,True,True
+hs_doge_support,Support DOGE,False,False,False,True
+hs_econ_anxiety_very_worried,Worried About the Economy,True,False,True,True
+hs_family_medical_leave_support,Support Family Medical Leave,True,False,True,True
+hs_felon_voting_support,Support Felon Voting Rights,False,False,True,False
+hs_gas_tax_support,Support Gas Tax,False,False,True,True
+hs_general_anti_vax_pro_vax,Pro-Vaccine,True,False,True,True
+hs_gentrification_oppose,Oppose Gentrification,True,True,False,False
+hs_gig_work_make_employees,Classify Gig Workers as Employees,True,False,True,True
+hs_green_new_deal_support,Support the Green New Deal,False,False,False,True
+hs_gun_control_support,Support Gun Control,True,False,True,True
+hs_immigration_undesirable,View Immigration Negatively,True,False,True,True
+hs_income_inequality_serious,Concerned About Income Inequality,True,False,True,True
+hs_infrastructure_funding_fund_more,Fund More Infrastructure,True,True,True,True
+hs_insurance_of_last_resort_government_should_provide,Government Insurance of Last Resort,False,False,True,True
+hs_israel_military_actions_support,Support Israeli Military Actions,False,False,False,True
+hs_jan_6th_pardons_support,Support January 6th Pardons,False,False,False,True
+hs_jobs_guarantee_support,Support a Federal Jobs Guarantee,False,False,False,True
+hs_marijuana_legal_support,Support Legalizing Marijuana,True,False,True,True
+hs_mass_deporations_support,Support Mass Deportations,True,False,True,True
+hs_medicaid_expansion_support,Support Medicaid Expansion,False,False,True,True
+hs_medicare_for_all_support,Support Medicare For All,False,False,False,True
+hs_mexican_wall_support,Support the Border Wall,False,False,False,True
+hs_min_wage_15_increase_support,Support a $15 Minimum Wage,True,False,True,True
+hs_obamacare_aca_protect,Protect the Affordable Care Act,False,False,False,True
+hs_online_gambling_more_legal,Support More Legal Online Gambling,False,False,True,False
+hs_opioid_crisis_treat,Treat Opioid Crisis as Public Health,True,True,True,True
+hs_pipeline_fracking_support,Support Pipelines and Fracking,True,False,True,True
+hs_police_trust_yes,Trust the Police,True,False,True,False
+hs_public_transit_support,Support Public Transit,True,True,True,False
+hs_rank_choice_voting_support,Support Ranked Choice Voting,True,False,True,False
+hs_redistricting_indep_com,Independent Redistricting Commissions,True,False,True,False
+hs_regulations_too_harsh,Reduce Business Regulations,True,False,True,True
+hs_same_sex_marriage_support,Support Same-Sex Marriage,False,False,True,True
+hs_school_choice_support,Support School Choice,True,False,True,False
+hs_school_funding_more,Increase School Funding,True,False,True,False
+hs_sell_federal_lands_support,Sell Federal Lands,False,False,False,True
+hs_social_media_truth_vs_speech_truth,Prioritize Truth over Free Speech Online,False,False,False,True
+hs_social_security_tax_increase_support,Raise the Social Security Tax Cap,False,False,False,True
+hs_stadium_public_financing_approve,Approve of Public Stadium Financing,True,False,True,False
+hs_state_level_fema_support,Move FEMA to the States,False,False,True,True
+hs_tax_cuts_support,Support Tax Cuts,True,False,True,True
+hs_teachers_union_positive,Positive View of Teachers Unions,True,False,True,False
+hs_trans_athlete_yes,Support Trans Athlete Participation,True,False,True,True
+hs_trump_tariffs_support,Support Tariffs on Imports,False,False,False,True
+hs_trump_ukraine_policy_support,Support Trump Ukraine Policy,False,False,False,True
+hs_unions_beneficial,Support Labor Unions,True,False,True,True
+hs_united_healthcare_at_fault,View Health Insurers as At Fault,False,False,False,True
+hs_violent_crime_very_worried,Worried About Violent Crime,True,True,True,True
+hs_voting_fraud_concern_fraud,Concerned About Voting Fraud,False,False,True,True
