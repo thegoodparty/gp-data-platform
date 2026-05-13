@@ -1,6 +1,40 @@
 version: 2
 
 models:
+  - name: int__hubspot_calls
+    description: >
+      HubSpot call engagements with their disposition GUID resolved to a
+      human-readable label via the `hubspot_call_dispositions` seed. Thin
+      pass-through of the staging model; adds two columns and no row-level
+      transformations.
+    columns:
+      - name: id
+        description: "HubSpot engagement ID for the call"
+        data_tests:
+          - unique
+          - not_null
+      - name: hs_call_disposition
+        description: "HubSpot internal GUID for the call outcome"
+      - name: disposition_label
+        description: >
+          Human-readable outcome label resolved from
+          `hubspot_call_dispositions` (e.g. "Connected", "No answer",
+          "Verbal Pledge - EO"). Null when the GUID has no seed entry or
+          when the source row has no disposition set.
+      - name: disposition_label_source
+        description: >
+          Provenance of the label: `hubspot_docs` (documented default),
+          `inferred_from_title` (custom outcome derived from Nooks Call
+          title pattern), or `unknown` (GUID present but label not yet
+          mapped). Null when the call has no disposition.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - hubspot_docs
+                  - inferred_from_title
+                  - unknown
+
   - name: int__hubspot_contacts
     description: >
         "Intermediate model that pulls selected properties from HubSpot contacts. To be used to build a general mart of Candidacies."
