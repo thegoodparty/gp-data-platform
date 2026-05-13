@@ -34,6 +34,10 @@ models:
                   - hubspot_docs
                   - inferred_from_title
                   - unknown
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "hs_call_disposition is null or disposition_label_source is not null"
 
   - name: int__hubspot_contacts
     description: >
