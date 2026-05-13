@@ -162,8 +162,8 @@ DTI = TableSyncSpec(
     fkeys=("DistrictTopIssue_district_id_fkey",),
 )
 
-# Postgres dropped the denormalized l2_* columns; we read only the seven
-# columns that map 1:1 onto the live shape.
+# Eleven columns: seven from the pre-DATA-1903 shape plus the four
+# jurisdictional flags added by election-api PR #164.
 DTI_COLUMNS = [
     "id",
     "updated_at",
@@ -171,48 +171,12 @@ DTI_COLUMNS = [
     "issue",
     "issue_label",
     "score",
+    "is_local",
+    "is_regional",
+    "is_state",
+    "is_federal",
     "issue_rank",
 ]
-
-# DATA-1903 phase (a) only: the v3 mart now scores 68 issues per district
-# (up from 27), so taking the mart's top-10 by overall issue_rank would
-# surface the 41 newly-introduced issues (Aliens, Border Wall, federal-only
-# noise) ahead of the locally-actionable issues the API serves today. To
-# preserve pre-DATA-1903 API behavior while the election-api team's Prisma
-# migration is in flight, the load_staging query filters the mart to this
-# legacy 27-issue universe, recomputes issue_rank within the filtered set,
-# and takes top-10. Drop V2_LEGACY_ISSUES and the legacy_top_10 CTE in
-# phase (c) once the four jurisdictional flag columns are live in Postgres
-# and the API can do its own filter-then-rerank by flag.
-V2_LEGACY_ISSUES = (
-    "hs_abortion_pro_choice",
-    "hs_affordable_housing_gov_has_role",
-    "hs_casino_support",
-    "hs_charter_schools_support",
-    "hs_civil_liberties_support",
-    "hs_climate_change_believer",
-    "hs_death_penalty_support",
-    "hs_dei_support",
-    "hs_econ_anxiety_very_worried",
-    "hs_gun_control_support",
-    "hs_immigration_undesirable",
-    "hs_income_inequality_serious",
-    "hs_marijuana_legal_support",
-    "hs_medicaid_expansion_support",
-    "hs_medicare_for_all_support",
-    "hs_min_wage_15_increase_support",
-    "hs_pipeline_fracking_support",
-    "hs_police_trust_yes",
-    "hs_public_transit_support",
-    "hs_regulations_too_harsh",
-    "hs_same_sex_marriage_support",
-    "hs_school_choice_support",
-    "hs_school_funding_more",
-    "hs_tax_cuts_support",
-    "hs_trump_tariffs_support",
-    "hs_unions_beneficial",
-    "hs_violent_crime_very_worried",
-)
 
 
 def _dti_constraint_ddl() -> list[str]:
@@ -386,40 +350,11 @@ def sync_election_api():
         @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
-            # TEMP (DATA-1903 phase a): the v3 mart ranks all 68 issues per
-            # district. Postgres still has the pre-DATA-1903 7-column shape
-            # and the API has no jurisdictional-flag filter yet. To preserve
-            # current API behavior, filter the mart to the 27 legacy issues,
-            # recompute issue_rank within that subset, and take top-10. The
-            # entire legacy_top_10 CTE and V2_LEGACY_ISSUES are removed in
-            # phase (c) once Patrick's Prisma migration adds the four
-            # jurisdictional flag columns to DistrictTopIssue and DTI_COLUMNS
-            # is extended to sync them.
-            legacy_in_clause = ", ".join(f"'{i}'" for i in V2_LEGACY_ISSUES)
-            # `new_rank` (not `issue_rank`) inside the CTE — the source mart
-            # has its own `issue_rank` column, and Databricks resolves a
-            # QUALIFY clause against the source column instead of the SELECT
-            # alias when they share a name, which would silently filter to
-            # the mart's 1..68 ranks (~3 legacy issues per district), not
-            # the recomputed 1..N within the filtered subset. Outer SELECT
-            # renames `new_rank` back to `issue_rank` to match DTI_COLUMNS.
+            col_list = ", ".join(DTI_COLUMNS)
             query = (
-                f"WITH legacy_top_10 AS ("
-                f"  SELECT"
-                f"    id, updated_at, district_id, issue, issue_label, score,"
-                f"    row_number() OVER ("
-                f"      PARTITION BY district_id "
-                f"      ORDER BY score DESC, issue ASC"
-                f"    ) AS new_rank"
-                f"  FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"SELECT {col_list} "
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
                 f"`m_election_api__district_top_issues`"
-                f"  WHERE issue IN ({legacy_in_clause})"
-                f"  QUALIFY new_rank <= 10"
-                f") "
-                f"SELECT"
-                f"  id, updated_at, district_id, issue, issue_label, score,"
-                f"  new_rank AS issue_rank "
-                f"FROM legacy_top_10"
             )
             with _open_pg() as conn:
                 return bulk_insert_from_databricks(
@@ -436,33 +371,82 @@ def sync_election_api():
 
         @task
         def quality_checks(loaded_count: int) -> None:
-            if loaded_count < 1_000:
-                raise ValueError(
-                    f"Only {loaded_count} rows loaded (<1000) — refusing to swap"
-                )
+            # Shape-aware: compare staging to the prior live table so the
+            # thresholds auto-track the table's natural size as it grows.
+            # Catches catastrophic regressions (e.g., a partial Databricks
+            # load that drops most rows) without hardcoding numbers that
+            # will drift as the seed grows or shrinks.
             with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
                     cur.execute(
-                        f"SELECT COUNT(DISTINCT issue) "
+                        f"SELECT "
+                        f"COUNT(DISTINCT issue), "
+                        f"MIN(issue_rank), MAX(issue_rank), "
+                        f"COUNT(*) FILTER ("
+                        f"  WHERE is_local IS NULL OR is_regional IS NULL"
+                        f"  OR is_state IS NULL OR is_federal IS NULL) "
                         f'FROM "{DTI.staging_schema}"."{DTI.new_table}"'
                     )
-                    distinct_issues = cur.fetchone()[0]
-                    if distinct_issues < 10:
-                        raise ValueError(
-                            f"Only {distinct_issues} distinct issues "
-                            f"(<10) — refusing to swap"
-                        )
+                    distinct_issues, min_rank, max_rank, null_flag_rows = cur.fetchone()
+
+                    # Prior live state (may be absent on a true cold start)
                     cur.execute(
-                        f"SELECT MIN(issue_rank), MAX(issue_rank) "
-                        f'FROM "{DTI.staging_schema}"."{DTI.new_table}"'
+                        "SELECT to_regclass(%s)",
+                        (f"{DTI.target_schema}.{DTI.target_table}",),
                     )
-                    min_rank, max_rank = cur.fetchone()
+                    prior_exists = cur.fetchone()[0] is not None
+                    if prior_exists:
+                        cur.execute(
+                            f"SELECT COUNT(*), COUNT(DISTINCT issue) "
+                            f'FROM "{DTI.target_schema}"."{DTI.target_table}"'
+                        )
+                        prior_count, prior_issues = cur.fetchone()
+                    else:
+                        prior_count, prior_issues = 0, 0
+
+                    # Row count: refuse on a >50% drop vs prior live;
+                    # absolute floor only used on cold start.
+                    if prior_count > 0:
+                        ratio = loaded_count / prior_count
+                        if ratio < 0.5:
+                            raise ValueError(
+                                f"Loaded {loaded_count} rows, prior live had "
+                                f"{prior_count} (ratio {ratio:.2f}) "
+                                f"— refusing to swap"
+                            )
+                    elif loaded_count < 100_000:
+                        raise ValueError(
+                            f"Cold-start load of {loaded_count} rows is "
+                            f"implausibly small — refusing to swap"
+                        )
+
+                    # Distinct issues: stay at-or-above prior. Allows growth
+                    # (e.g., seed adds new issues) and catches regression.
+                    if distinct_issues < prior_issues:
+                        raise ValueError(
+                            f"Staging has {distinct_issues} distinct issues, "
+                            f"prior live had {prior_issues} — refusing to swap"
+                        )
+
+                    # Flag integrity: every row should have all four flags
+                    # populated. The mart's LEFT JOIN to haystaq_issue_tags
+                    # only emits NULLs on drift, which the dbt-side tests
+                    # catch — this check is a belt-and-suspenders gate.
+                    if null_flag_rows > 0:
+                        raise ValueError(
+                            f"{null_flag_rows} staging rows have a NULL "
+                            f"jurisdictional flag — refusing to swap"
+                        )
+
                     t_log.info(
-                        "Quality checks passed: %d rows, %d distinct issues, "
-                        "issue_rank range %s..%s",
+                        "Quality checks passed: %d rows (prior %d), "
+                        "%d distinct issues (prior %d), "
+                        "issue_rank %s..%s, all flags populated",
                         loaded_count,
+                        prior_count,
                         distinct_issues,
+                        prior_issues,
                         min_rank,
                         max_rank,
                     )
