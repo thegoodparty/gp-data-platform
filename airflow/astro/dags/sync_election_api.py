@@ -390,10 +390,14 @@ def sync_election_api():
                     )
                     distinct_issues, min_rank, max_rank, null_flag_rows = cur.fetchone()
 
-                    # Prior live state (may be absent on a true cold start)
+                    # Prior live state (may be absent on a true cold start).
+                    # Both identifiers must be double-quoted in the regclass
+                    # argument — Postgres folds unquoted mixed-case to lowercase,
+                    # so `public.DistrictTopIssue` would resolve to
+                    # `public.districttopissue` and always return NULL.
                     cur.execute(
                         "SELECT to_regclass(%s)",
-                        (f"{DTI.target_schema}.{DTI.target_table}",),
+                        (f'"{DTI.target_schema}"."{DTI.target_table}"',),
                     )
                     prior_exists = cur.fetchone()[0] is not None
                     if prior_exists:

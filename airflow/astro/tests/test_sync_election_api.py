@@ -35,6 +35,7 @@ for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
 from dags.sync_election_api import (  # noqa: E402
+    DTI_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
     _ztp_transform_row,
@@ -107,3 +108,27 @@ def test_ztp_source_columns_match_transform_arity():
     row = tuple(range(len(ZTP_SOURCE_COLUMNS)))
     out = _ztp_transform_row(row)
     assert len(out) == len(ZTP_TARGET_COLUMNS)
+
+
+def test_dti_columns_pinned():
+    """Pin DTI_COLUMNS to catch silent column reorderings.
+
+    The DistrictTopIssue bulk-insert path passes values to
+    psycopg2.extras.execute_values positionally, so swapping or dropping a
+    DTI_COLUMNS entry would land the wrong value into Postgres without any
+    error at insert time. Pin the list so reorderings show up as a failing
+    test instead of a corrupted DistrictTopIssue table.
+    """
+    assert DTI_COLUMNS == [
+        "id",
+        "updated_at",
+        "district_id",
+        "issue",
+        "issue_label",
+        "score",
+        "is_local",
+        "is_regional",
+        "is_state",
+        "is_federal",
+        "issue_rank",
+    ]
