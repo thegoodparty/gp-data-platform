@@ -27,6 +27,7 @@ When building multiple models, use quotes around the models in the `--select` ar
 - **Branch names:** `data-XXXX/short-slug` (lowercase `data`, slash separator, kebab-case slug). `XXXX` is the ClickUp ticket number.
 - **PR titles:** `[DATA-XXXX] Short title` (uppercase prefix, square brackets).
 - **Commits:** Always run `git` via `poetry run git` from the `dbt/` directory so pre-commit hooks find their dependencies.
+- **Do not use real people's names** in PR descriptions, commit messages, code comments, model descriptions, or any other written artifact in this repo. Refer to roles or teams instead (e.g. "the analytics owner", "the data team", "an analyst"). If a generic illustrative example genuinely needs named actors, use Alice, Bob, Charlie, etc.
 
 **IMPORTANT** - When working on dbt models, inspect existing sources/models in
 Databricks, as well as models that you have added and modified after creating

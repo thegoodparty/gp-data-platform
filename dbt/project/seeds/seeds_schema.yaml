@@ -170,6 +170,43 @@ seeds:
               config:
                 where: "category = 'school_board'"
 
+  - name: hubspot_call_dispositions
+    description: >
+      Maps HubSpot `hs_call_disposition` GUIDs to human-readable outcome labels.
+      The Airbyte HubSpot connector ingests the raw GUID but not the label
+      mapping, which lives in HubSpot Settings (Objects > Activities > Calls >
+      "Call and meeting outcomes"). This seed exists so downstream models
+      can join the GUID to a readable label.
+
+      `source` records how each row was populated:
+        - `hubspot_docs`: documented default outcome (stable across HubSpot
+          accounts), from
+          https://developers.hubspot.com/docs/api-reference/legacy/crm/activities/calls/guide
+        - `inferred_from_title`: custom outcome whose label was extracted from
+          the Nooks Call title pattern `[Nooks Call] - <label> - <name> - by <rep>`.
+        - `unknown`: GUID is present in the data but its label could not be
+          inferred. Fill manually from HubSpot Settings.
+    columns:
+      - name: guid
+        description: "HubSpot internal GUID for the call disposition (hs_call_disposition)"
+        data_tests:
+          - unique
+          - not_null
+      - name: disposition_label
+        description: "Human-readable outcome label as shown in the HubSpot UI"
+      - name: source
+        description: "How this row was populated (see seed description)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - hubspot_docs
+                  - inferred_from_title
+                  - unknown
+      - name: notes
+        description: "Free-text notes, e.g. derivation method or TODO markers"
+
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"
     columns:
