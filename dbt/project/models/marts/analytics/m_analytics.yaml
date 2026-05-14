@@ -1321,6 +1321,12 @@ models:
       transformations. Columns documented at the upstream staging model.
 
       Source: stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: uuid
+        description: Unique identifier for the event (primary key).
+        data_tests:
+          - not_null
+          - unique
 
   - name: hubspot_contacts
     description: >
@@ -1329,3 +1335,9 @@ models:
       transformations. Columns documented at the upstream staging model.
 
       Source: stg_airbyte_source__hubspot_api_contacts.
+    columns:
+      - name: id
+        description: HubSpot contact ID (primary key).
+        data_tests:
+          - not_null
+          - unique
