@@ -38,6 +38,17 @@ tables to Postgres via JDBC from a Databricks cluster) onto Airflow.
 The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
 points at `dbt_staging` for in-flight dbt build artifacts). The election-api
 sync reads the production-quality version of the marts in both dev and prod.
+
+### Deploy model:
+- `main` → `astro-prod`. `astro-dev`'s branch mapping is set manually in the
+  Astro Cloud UI's Git Deploys settings. Astro's webhook fires on push events
+  to the mapped branch, so a branch-mapping change alone does not redeploy —
+  a subsequent push to the new branch (or a manual redeploy via the Astro UI)
+  is what triggers the sync.
+- The election-api Postgres schema is owned by the election-api repo. Prisma
+  migrations apply when election-api is deployed to the corresponding env,
+  not on PR merge alone. Check status via the `_prisma_migrations` table on
+  the target Postgres before kicking a sync that depends on new columns.
 """
 
 import logging
