@@ -211,8 +211,10 @@ with
             on f.techspeed_candidate_code = v.techspeed_candidate_code
         left join br_race r on try_cast(f.br_race_id as int) = r.database_id
         left join icp_offices icp on r.position.databaseid = icp.br_database_position_id
-        left join br_sent_codes s
-            on f.fuzzy_matched_hubspot_candidate_code = s.fuzzy_matched_hubspot_candidate_code
+        left join
+            br_sent_codes s
+            on f.fuzzy_matched_hubspot_candidate_code
+            = s.fuzzy_matched_hubspot_candidate_code
         -- anti-join: keep candidates whose fuzzy match isn't in the BR-sent
         -- list. NULL fuzzy matches (no HubSpot match found) are kept because
         -- the LEFT JOIN preserves them, avoiding the NULL NOT IN pitfall.
