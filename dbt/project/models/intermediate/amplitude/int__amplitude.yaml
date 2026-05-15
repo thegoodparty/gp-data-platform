@@ -315,3 +315,146 @@ models:
             expression: "recipient_count >= 0"
           config:
             where: "recipient_count is not null"
+
+  - name: int__amplitude_win_activity_weekly
+    description: >
+      User x week intermediate aggregating Win product engagement from Amplitude.
+      Weekly analog of int__amplitude_win_activity (monthly). Substrate for
+      retention modeling, cohort analysis, and point-in-time churn features
+      where the ~12-week typical Win-account engagement window argues for a
+      finer cadence than monthly.
+
+      Grain: One row per user_id x week_start_date.
+
+      Week boundaries follow date_trunc('week', ...): Monday-start, Sunday-end.
+      week_end_date is exposed directly so downstream point-in-time features
+      can use it as asof_date without further computation.
+
+      Source: stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: user_id
+        description: User identifier (BIGINT, cast from Amplitude string user_id).
+        data_tests:
+          - not_null
+
+      - name: week_start_date
+        description: First day of the ISO week containing the activity (Monday).
+        data_tests:
+          - not_null
+
+      - name: week_end_date
+        description: Last day of the ISO week (Sunday); week_start_date + 6 days.
+        data_tests:
+          - not_null
+
+      - name: campaigns_sent
+        description: >
+          Count of 'Voter Outreach - Campaign Completed' events in this week.
+          Zero if user had only dashboard views this week.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: recipient_count
+        description: >
+          Sum of outreach recipients in this week. Uses
+          COALESCE(recipientCount, voterContacts) with 100k cap.
+          NULL if no valid campaign sends this week.
+
+      - name: first_campaign_sent_at
+        description: Earliest campaign send event in this week.
+
+      - name: last_campaign_sent_at
+        description: Latest campaign send event in this week.
+
+      - name: first_dashboard_viewed_at
+        description: Earliest dashboard view event in this week.
+
+      - name: last_dashboard_viewed_at
+        description: Latest dashboard view event in this week.
+
+      - name: dashboard_views
+        description: >
+          Count of 'Dashboard - Candidate Dashboard Viewed' events in this week.
+          Zero if user had only campaign events this week.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: dashboard_view_days
+        description: Distinct days with dashboard views in this week.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: total_events
+        description: Total Win engagement events (campaigns + dashboard views) in this week.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: activity_days
+        description: Distinct days with any Win engagement in this week.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 7
+
+      - name: first_activity_at
+        description: Earliest Win engagement event in this week.
+        data_tests:
+          - not_null
+
+      - name: last_activity_at
+        description: Latest Win engagement event in this week.
+        data_tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - user_id
+              - week_start_date
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "week_end_date = date_add(week_start_date, 6)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "activity_days <= 7"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "total_events >= activity_days"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_activity_at >= first_activity_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_campaign_sent_at >= first_campaign_sent_at"
+          config:
+            where: "first_campaign_sent_at is not null and last_campaign_sent_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_dashboard_viewed_at >= first_dashboard_viewed_at"
+          config:
+            where: "first_dashboard_viewed_at is not null and last_dashboard_viewed_at is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "campaigns_sent + dashboard_views = total_events"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dashboard_view_days <= activity_days"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "recipient_count >= 0"
+          config:
+            where: "recipient_count is not null"
