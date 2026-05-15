@@ -220,3 +220,59 @@ models:
         data_tests:
           - not_null
           - unique
+
+  - name: int__hubspot_contact_calls
+    description: |
+      One row per HubSpot contact_id with at least one logged call.
+      Disjoint per-outcome_family subtotals sum to total_calls. The
+      connected_calls column is a convenience aggregate (pledge + reject
+      + other) and is excluded from the disjoint-sum invariant test.
+    columns:
+      - name: contact_id
+        description: HubSpot contact ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: total_calls
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: connected_pledge_calls
+        data_tests:
+          - not_null
+      - name: connected_reject_calls
+        data_tests:
+          - not_null
+      - name: connected_other_calls
+        data_tests:
+          - not_null
+      - name: not_connected_calls
+        data_tests:
+          - not_null
+      - name: unmapped_calls
+        data_tests:
+          - not_null
+      - name: null_disposition_calls
+        data_tests:
+          - not_null
+      - name: ever_connected
+        data_tests:
+          - not_null
+      - name: first_call_at
+        data_tests:
+          - not_null
+      - name: last_call_at
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: |
+              total_calls =
+                connected_pledge_calls + connected_reject_calls + connected_other_calls
+                + not_connected_calls + unmapped_calls + null_disposition_calls
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_call_at >= first_call_at"
