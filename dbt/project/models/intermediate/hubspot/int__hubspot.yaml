@@ -207,3 +207,16 @@ models:
         data_tests:
           - unique
           - not_null
+
+  - name: int__hubspot_prospect_contacts
+    description: |
+      One row per HubSpot contact, with lifecycle/stage/activation/pledge
+      fields and resolved position-based ICP from int__hubspot_contacts.
+      Does NOT filter by name — unlike int__hubspot_contacts — so prospects
+      with missing names are included.
+    columns:
+      - name: id
+        description: HubSpot contact ID.
+        data_tests:
+          - not_null
+          - unique
