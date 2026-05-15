@@ -38,31 +38,32 @@ with
             = 1
     ),
 
-    -- Canonical Win/Serve user classification. mart_civics.users aggregates
-    -- organization_type counts into is_win_user and is_serve_user at user
-    -- grain. We alias to has_win_org / has_serve_org to make the
-    -- organization-basis explicit throughout the prospects mart.
+    -- Canonical Win/Serve user classification. organizations.user_id is
+    -- what the civics mart names the product-DB user_id — we alias it to
+    -- gp_user_id for consistency throughout the prospects mart.
     user_org_types as (
         select
             user_id as gp_user_id,
-            is_win_user as has_win_org,
-            is_serve_user as has_serve_org
-        from {{ ref("goodparty_data_catalog", "users") }}
+            max(
+                case when organization_type = 'win' then true else false end
+            ) as has_win_org,
+            max(
+                case when organization_type = 'serve' then true else false end
+            ) as has_serve_org
+        from goodparty_data_catalog.mart_civics.organizations
         where user_id is not null
+        group by user_id
     ),
 
     -- General-election winners (fallback signal if "winner" needs to mean
-    -- literal election winners rather than Win-org users). Uses
-    -- candidacy_result (overall result) as a proxy because
-    -- general_election_result is not yet in the production candidacy
-    -- snapshot.
+    -- literal election winners rather than Win-org users).
     user_won_general as (
         select
             cd.prod_db_user_id as gp_user_id,
-            max(cy.candidacy_result = 'Won') as has_won_general_election
+            max(cy.general_election_result = 'Won') as has_won_general_election
         from {{ ref("goodparty_data_catalog", "candidate") }} cd
         join
-            {{ ref("goodparty_data_catalog", "candidacy") }} cy
+            goodparty_data_catalog.mart_civics.candidacy cy
             on cd.gp_candidate_id = cy.gp_candidate_id
         where cd.prod_db_user_id is not null
         group by cd.prod_db_user_id
