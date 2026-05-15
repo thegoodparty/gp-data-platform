@@ -63,7 +63,11 @@ with
     last_owner as (
         select contact_id, hubspot_owner_id as last_owner_id
         from exploded_calls
-        qualify row_number() over (partition by contact_id order by call_at desc) = 1
+        qualify
+            row_number() over (
+                partition by contact_id order by call_at desc, call_id desc
+            )
+            = 1
     ),
 
     final as (
