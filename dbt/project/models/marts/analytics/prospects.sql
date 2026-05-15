@@ -26,7 +26,7 @@ with
     -- the mart depends on this).
     candidate_picked as (
         select hubspot_contact_id, gp_candidate_id, prod_db_user_id
-        from {{ ref("goodparty_data_catalog", "candidate") }}
+        from {{ ref("candidate") }}
         where hubspot_contact_id is not null
         qualify
             row_number() over (
@@ -50,7 +50,7 @@ with
             max(
                 case when organization_type = 'serve' then true else false end
             ) as has_serve_org
-        from goodparty_data_catalog.mart_civics.organizations
+        from {{ ref("organizations") }}
         where user_id is not null
         group by user_id
     ),
@@ -61,10 +61,8 @@ with
         select
             cd.prod_db_user_id as gp_user_id,
             max(cy.general_election_result = 'Won') as has_won_general_election
-        from {{ ref("goodparty_data_catalog", "candidate") }} cd
-        join
-            goodparty_data_catalog.mart_civics.candidacy cy
-            on cd.gp_candidate_id = cy.gp_candidate_id
+        from {{ ref("candidate") }} cd
+        join {{ ref("candidacy") }} cy on cd.gp_candidate_id = cy.gp_candidate_id
         where cd.prod_db_user_id is not null
         group by cd.prod_db_user_id
     ),
