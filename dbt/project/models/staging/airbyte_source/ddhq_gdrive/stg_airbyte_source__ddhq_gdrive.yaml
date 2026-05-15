@@ -16,6 +16,21 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: election_stage
+        description: Normalized stage derived from election_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - primary
+                  - general
+                  - "primary runoff"
+                  - "general runoff"
+                  - "primary special"
+                  - "general special"
+                  - "primary special runoff"
+                  - "general special runoff"
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -23,6 +38,78 @@ models:
               - ddhq_race_id
               - candidate_id
               - candidate
+
+  - name: stg_airbyte_source__ddhq_elections_gsheet_reported_races
+    description: >
+      Race-level rows from the DDHQ Elections gsheet for races whose results
+      have been reported. One row per ddhq_race_id.
+    columns:
+      - name: ddhq_race_id
+        description: DDHQ race ID
+        data_tests:
+          - not_null
+          - unique
+      - name: state_postal_code
+        description: 2-letter US state postal code
+        data_tests:
+          - not_null
+      - name: race_name
+        data_tests:
+          - not_null
+      - name: election_date
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Normalized stage derived from election_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - primary
+                  - general
+                  - "primary runoff"
+                  - "general runoff"
+                  - "primary special"
+                  - "general special"
+                  - "primary special runoff"
+                  - "general special runoff"
+
+  - name: stg_airbyte_source__ddhq_elections_gsheet_upcoming_races
+    description: >
+      Race-level rows from the DDHQ Elections gsheet for races whose results
+      have not yet been reported. One row per ddhq_race_id.
+    columns:
+      - name: ddhq_race_id
+        description: DDHQ race ID
+        data_tests:
+          - not_null
+          - unique
+      - name: state_postal_code
+        description: 2-letter US state postal code
+        data_tests:
+          - not_null
+      - name: race_name
+        data_tests:
+          - not_null
+      - name: election_date
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Normalized stage derived from election_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - primary
+                  - general
+                  - "primary runoff"
+                  - "general runoff"
+                  - "primary special"
+                  - "general special"
+                  - "primary special runoff"
+                  - "general special runoff"
 
   - name: stg_airbyte_source__ddhq_gdrive_election_results_invalid
     description: >

@@ -283,11 +283,19 @@ with
                         election_stage
                         when 'general runoff'
                         then 4
+                        when 'general special runoff'
+                        then 4
                         when 'general'
+                        then 3
+                        when 'general special'
                         then 3
                         when 'primary runoff'
                         then 2
+                        when 'primary special runoff'
+                        then 2
                         when 'primary'
+                        then 1
+                        when 'primary special'
                         then 1
                         else 0
                     end desc,

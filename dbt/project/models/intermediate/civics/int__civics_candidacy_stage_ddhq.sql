@@ -22,6 +22,10 @@ with
 
     -- General election date lookup: find the general-stage election date per
     -- position+year so primary/runoff stages get the same gp_election_id.
+    -- Includes 'general special' so special elections roll up to the same
+    -- date bucket as regular generals for a given office+year. Note: this
+    -- preserves the pre-existing behavior where gp_election_id does not
+    -- distinguish a special from a regular election in the same year+office.
     general_election_dates as (
         select
             official_office_name,
@@ -34,7 +38,7 @@ with
             max(election_date) as general_election_date,
             any_value(number_of_seats_in_election) as general_seats
         from source
-        where election_stage = 'general'
+        where election_stage in ('general', 'general special')
         group by
             official_office_name,
             candidate_office,
@@ -69,7 +73,23 @@ with
             ) as general_runoff_date,
             max(
                 case when election_stage = 'primary runoff' then election_date end
-            ) as primary_runoff_date
+            ) as primary_runoff_date,
+            max(
+                case when election_stage = 'general special' then election_date end
+            ) as general_special_date,
+            max(
+                case when election_stage = 'primary special' then election_date end
+            ) as primary_special_date,
+            max(
+                case
+                    when election_stage = 'general special runoff' then election_date
+                end
+            ) as general_special_runoff_date,
+            max(
+                case
+                    when election_stage = 'primary special runoff' then election_date
+                end
+            ) as primary_special_runoff_date
         from source
         group by
             candidate_first_name,
@@ -131,7 +151,7 @@ with
                             "s.state_postal_code",
                             "s.party_affiliation",
                             "s.candidate_office",
-                            "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date) as string)",
+                            "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date, cd.general_special_date, cd.primary_special_date, cd.general_special_runoff_date, cd.primary_special_runoff_date) as string)",
                             "s.district",
                         ]
                     )

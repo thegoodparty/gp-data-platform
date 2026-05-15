@@ -24,7 +24,18 @@ models:
               # whose name coincidentally contains "special".
               expression: "<= 10"
               config:
-                where: "lower(name) like '%special%' and election_day >= '2026-01-01'"
+                where: "is_special and election_day >= '2026-01-01'"
+      - name: is_special
+        description: >
+          True when the election is a special election. Derived from
+          `lower(name) like '%special%'`; BallotReady's editorial team
+          consistently embeds "Special" in the election name for special
+          elections.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
   - name: stg_airbyte_source__ballotready_api_issue
     description: Issue data scan from [`issues` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/issues)
     columns:

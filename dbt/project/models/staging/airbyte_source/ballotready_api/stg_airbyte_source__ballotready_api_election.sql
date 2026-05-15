@@ -27,6 +27,11 @@ with
                 'ARRAY<STRUCT<category:STRING, channel:STRING, date:DATE, datetime:TIMESTAMP, features:ARRAY<STRUCT<type:STRING>>, type:STRING>>'
             ) as milestones,
             cast(electionday as date) as election_day,
+            -- BallotReady consistently embeds "Special" in election names for
+            -- special elections (set by BR's editorial team). The race_count
+            -- <= 10 expectation on this model guards against false positives
+            -- (regular elections whose names happen to contain "special").
+            lower(name) like '%special%' as is_special,
             from_json(
                 vipelections, 'ARRAY<STRUCT<party:STRING, vipId:INT>>'
             ) as vipelections,
