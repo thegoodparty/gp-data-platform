@@ -61,8 +61,9 @@ with
             c.serve_lifecycle_churned_entered_at,
             c.serve_lifecycle_not_qualified_entered_at,
 
-            -- Win stage transition timestamps (currently 0% populated;
-            -- surfaced for futureproofing once the HubSpot workflow is enabled)
+            -- Win stage transition timestamps. Surfaced for futureproofing
+            -- once the HubSpot Win lifecycle workflow is enabled (today the
+            -- win_stage string snapshot is the primary signal).
             c.win_stage_0_intake_entered_at,
             c.win_stage_1_new_assigned_entered_at,
             c.win_stage_2_discovery_complete_entered_at,
