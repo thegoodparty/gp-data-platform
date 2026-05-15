@@ -33,7 +33,8 @@ with
                 partition by hubspot_contact_id
                 order by
                     (prod_db_user_id is not null) desc nulls last,
-                    updated_at desc nulls last
+                    updated_at desc nulls last,
+                    gp_candidate_id asc
             )
             = 1
     ),
@@ -86,7 +87,25 @@ with
             cc.last_connected_call_at,
             cc.distinct_owners,
             cc.last_owner_id,
-            (cc.contact_id is not null) as was_called
+            (cc.contact_id is not null) as was_called,
+            (
+                c.serve_lifecycle_lead_entered_at is not null
+                or c.serve_lifecycle_sal_entered_at is not null
+                or c.serve_lifecycle_scheduled_sql_entered_at is not null
+                or c.serve_lifecycle_sql_entered_at is not null
+                or c.serve_lifecycle_opportunity_entered_at is not null
+                or c.serve_lifecycle_converted_entered_at is not null
+                or c.serve_lifecycle_activated_entered_at is not null
+                or c.serve_lifecycle_retained_entered_at is not null
+                or c.serve_lifecycle_churned_entered_at is not null
+                or c.serve_lifecycle_not_qualified_entered_at is not null
+                or c.serve_stage is not null
+                or c.serve_activated_at is not null
+            ) as in_serve_funnel,
+            (
+                nullif(trim(c.win_stage), '') is not null
+                or coalesce(c.win_activated_user ilike 'true', false)
+            ) as in_win_funnel
         from contacts c
         left join contact_calls cc on c.id = cc.contact_id
         left join candidate_picked cp on c.id = cp.hubspot_contact_id
@@ -129,60 +148,92 @@ with
             st.gp_candidate_id,
             st.gp_user_id,
 
-            -- Sales attribution — person-based. in_serve_funnel is broad:
-            -- ANY Serve signal (lifecycle, stage, or activated_at). Matches
-            -- the sales-touched gate exactly so the YAML test stays in sync
-            -- with the WHERE clause.
-            (
-                st.serve_lifecycle_lead_entered_at is not null
-                or st.serve_lifecycle_sal_entered_at is not null
-                or st.serve_lifecycle_scheduled_sql_entered_at is not null
-                or st.serve_lifecycle_sql_entered_at is not null
-                or st.serve_lifecycle_opportunity_entered_at is not null
-                or st.serve_lifecycle_converted_entered_at is not null
-                or st.serve_lifecycle_activated_entered_at is not null
-                or st.serve_lifecycle_retained_entered_at is not null
-                or st.serve_lifecycle_churned_entered_at is not null
-                or st.serve_lifecycle_not_qualified_entered_at is not null
-                or st.serve_stage is not null
-                or st.serve_activated_at is not null
-            ) as in_serve_funnel,
-            (
-                nullif(trim(st.win_stage), '') is not null
-                or coalesce(st.win_activated_user ilike 'true', false)
-            ) as in_win_funnel,
-            (
-                (
-                    st.serve_lifecycle_lead_entered_at is not null
-                    or st.serve_lifecycle_sal_entered_at is not null
-                    or st.serve_lifecycle_scheduled_sql_entered_at is not null
-                    or st.serve_lifecycle_sql_entered_at is not null
-                    or st.serve_lifecycle_opportunity_entered_at is not null
-                    or st.serve_lifecycle_converted_entered_at is not null
-                    or st.serve_lifecycle_activated_entered_at is not null
-                    or st.serve_lifecycle_retained_entered_at is not null
-                    or st.serve_lifecycle_churned_entered_at is not null
-                    or st.serve_lifecycle_not_qualified_entered_at is not null
-                    or st.serve_stage is not null
-                    or st.serve_activated_at is not null
-                )
-                and (
-                    nullif(trim(st.win_stage), '') is not null
-                    or coalesce(st.win_activated_user ilike 'true', false)
-                )
-            ) as in_both_funnels,
+            -- Sales attribution — person-based. in_serve_funnel and
+            -- in_win_funnel are computed once in sales_touched and
+            -- referenced here directly.
+            st.in_serve_funnel,
+            st.in_win_funnel,
+            (st.in_serve_funnel and st.in_win_funnel) as in_both_funnels,
             st.was_called,
-            least(
-                st.serve_lifecycle_lead_entered_at,
-                st.serve_lifecycle_activated_entered_at,
-                st.first_call_at
+            nullif(
+                least(
+                    coalesce(
+                        st.serve_lifecycle_lead_entered_at, timestamp '9999-01-01'
+                    ),
+                    coalesce(st.serve_lifecycle_sal_entered_at, timestamp '9999-01-01'),
+                    coalesce(
+                        st.serve_lifecycle_scheduled_sql_entered_at,
+                        timestamp '9999-01-01'
+                    ),
+                    coalesce(st.serve_lifecycle_sql_entered_at, timestamp '9999-01-01'),
+                    coalesce(
+                        st.serve_lifecycle_opportunity_entered_at,
+                        timestamp '9999-01-01'
+                    ),
+                    coalesce(
+                        st.serve_lifecycle_converted_entered_at, timestamp '9999-01-01'
+                    ),
+                    coalesce(
+                        st.serve_lifecycle_activated_entered_at, timestamp '9999-01-01'
+                    ),
+                    coalesce(
+                        st.serve_lifecycle_retained_entered_at, timestamp '9999-01-01'
+                    ),
+                    coalesce(
+                        st.serve_lifecycle_churned_entered_at, timestamp '9999-01-01'
+                    ),
+                    coalesce(
+                        st.serve_lifecycle_not_qualified_entered_at,
+                        timestamp '9999-01-01'
+                    ),
+                    coalesce(st.first_call_at, timestamp '9999-01-01')
+                ),
+                timestamp '9999-01-01'
             ) as first_sales_touch_at,
             date_trunc(
                 'month',
-                least(
-                    st.serve_lifecycle_lead_entered_at,
-                    st.serve_lifecycle_activated_entered_at,
-                    st.first_call_at
+                nullif(
+                    least(
+                        coalesce(
+                            st.serve_lifecycle_lead_entered_at, timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_sal_entered_at, timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_scheduled_sql_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_sql_entered_at, timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_opportunity_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_converted_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_activated_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_retained_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_churned_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(
+                            st.serve_lifecycle_not_qualified_entered_at,
+                            timestamp '9999-01-01'
+                        ),
+                        coalesce(st.first_call_at, timestamp '9999-01-01')
+                    ),
+                    timestamp '9999-01-01'
                 )
             ) as first_sales_touch_month,
 
@@ -214,17 +265,20 @@ with
             -- running for re-election). Dual-pursuit contacts legitimately
             -- appear in both Win and Serve metric denominators because
             -- Sales is pursuing them for both products.
-            (st.contact_type_raw like '%Self-Filer Lead%') as is_self_filer_lead,
-            (
-                st.contact_type_raw like '%Historical Incumbent%'
+            coalesce(
+                st.contact_type_raw like '%Self-Filer Lead%', false
+            ) as is_self_filer_lead,
+            coalesce(
+                st.contact_type_raw like '%Historical Incumbent%', false
             ) as is_historical_incumbent,
-            (st.contact_type_raw like '%Campaign%') as is_campaign_type,
-            (
+            coalesce(st.contact_type_raw like '%Campaign%', false) as is_campaign_type,
+            coalesce(
                 st.contact_type_raw like '%Historical Incumbent%'
                 and (
                     st.contact_type_raw like '%Self-Filer Lead%'
                     or st.contact_type_raw like '%Campaign%'
-                )
+                ),
+                false
             ) as is_dual_pursuit,
             st.contact_type_raw,
             st.candidate_type,

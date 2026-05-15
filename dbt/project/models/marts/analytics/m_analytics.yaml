@@ -1303,6 +1303,10 @@ models:
         data_tests: [not_null]
       - name: in_win_funnel
         data_tests: [not_null]
+      - name: in_both_funnels
+        data_tests: [not_null]
+      - name: ever_connected
+        data_tests: [not_null]
       - name: was_called
         data_tests: [not_null]
       - name: has_win_org
@@ -1314,6 +1318,28 @@ models:
       - name: is_serve_activated_prospect
         data_tests: [not_null]
       - name: is_win_activated_prospect
+        data_tests: [not_null]
+      - name: is_self_filer_lead
+        data_tests: [not_null]
+      - name: is_historical_incumbent
+        data_tests: [not_null]
+      - name: is_campaign_type
+        data_tests: [not_null]
+      - name: is_dual_pursuit
+        data_tests: [not_null]
+      - name: is_eo_sales_attributed
+        data_tests: [not_null]
+      - name: is_winner_pursuit
+        data_tests: [not_null]
+      - name: is_win_intake_prospect
+        data_tests: [not_null]
+      - name: is_win_pro_presented_prospect
+        data_tests: [not_null]
+      - name: is_win_pro_won_prospect
+        data_tests: [not_null]
+      - name: win_activated_user_hs_flag
+        data_tests: [not_null]
+      - name: has_won_general_election
         data_tests: [not_null]
       - name: gp_user_id
         description: Resolved product-DB user_id via candidate.prod_db_user_id.
