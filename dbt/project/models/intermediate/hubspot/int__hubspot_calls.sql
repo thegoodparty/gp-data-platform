@@ -5,8 +5,8 @@
     )
 }}
 
--- Dedupes staging row inflation (~2.6x) and surfaces outcome_family from the
--- hubspot_call_dispositions seed.
+-- Dedupes staging row inflation (multiple Airbyte syncs per call) and
+-- surfaces outcome_family from the hubspot_call_dispositions seed.
 with
 
     deduped_calls as (
