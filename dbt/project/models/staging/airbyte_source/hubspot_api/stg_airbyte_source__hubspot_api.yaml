@@ -398,7 +398,9 @@ models:
         description: HubSpot call engagement ID. Primary key.
         data_tests:
           - not_null
-          - unique
+          - unique:
+              config:
+                severity: warn
       - name: archived
         description: Whether the call has been archived in HubSpot.
         data_tests:

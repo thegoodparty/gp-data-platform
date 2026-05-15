@@ -2,17 +2,16 @@ version: 2
 
 models:
   - name: int__hubspot_calls
-    description: >
-      HubSpot call engagements with their disposition GUID resolved to a
-      human-readable label via the `hubspot_call_dispositions` seed. Thin
-      pass-through of the staging model; adds two columns and no row-level
-      transformations.
+    description: |
+      HubSpot engagement calls, deduped to one row per call_id and enriched
+      with the disposition label and outcome_family classification from
+      the hubspot_call_dispositions seed.
     columns:
       - name: id
-        description: "HubSpot engagement ID for the call"
+        description: HubSpot call engagement ID. Unique per call after dedupe.
         data_tests:
-          - unique
           - not_null
+          - unique
       - name: hs_call_disposition
         description: "HubSpot internal GUID for the call outcome"
       - name: disposition_label
@@ -24,7 +23,7 @@ models:
       - name: disposition_label_source
         description: >
           Provenance of the label: `hubspot_docs` (documented default),
-          `inferred_from_title` (custom outcome derived from Nooks Call
+          `inferred_from_title` (custom outcome derived from a call
           title pattern), or `unknown` (GUID present but label not yet
           mapped). Null when the call has no disposition.
         data_tests:
@@ -34,6 +33,24 @@ models:
                   - hubspot_docs
                   - inferred_from_title
                   - unknown
+      - name: outcome_family
+        description: |
+          Disjoint outcome classification: connected_pledge, connected_reject,
+          connected_other, not_connected, unmapped (for GUIDs not yet labeled),
+          or null_disposition (call has no disposition GUID set).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - connected_pledge
+                  - connected_reject
+                  - connected_other
+                  - not_connected
+                  - unmapped
+                  - null_disposition
+              config:
+                severity: warn
     data_tests:
       - dbt_utils.expression_is_true:
           arguments:
