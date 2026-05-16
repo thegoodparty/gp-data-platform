@@ -341,9 +341,10 @@ with
 -- One row per HubSpot contact, BUT collapsed to one row per gp_user_id
 -- where gp_user_id is resolved. Two HubSpot contacts pointing at the
 -- same product user (a known dup-data-entry pattern in HubSpot) are
--- deduplicated by picking the most-recently-active contact. Rows where
--- gp_user_id is NULL are kept as-is (contact grain preserved for
--- unconverted prospects).
+-- deduplicated by picking the contact carrying the strongest funnel
+-- signal first, so activation/conversion counts don't lose information
+-- to dedup. Rows where gp_user_id is NULL are kept as-is (contact grain
+-- preserved for unconverted prospects).
 select *
 from final
 qualify
@@ -354,6 +355,38 @@ qualify
             row_number() over (
                 partition by gp_user_id
                 order by
+                    -- Prefer the contact carrying the strongest funnel signal
+                    -- so activation/conversion counts don't lose information
+                    -- to dedup. A user with one activated contact and one
+                    -- in-pipeline contact is still an activated user.
+                    case
+                        when win_stage = 'Stage 6 - Activated Pro User'
+                        then 6
+                        when is_serve_activated_prospect
+                        then 6
+                        when win_stage = 'Stage 5 – Closed Won (Pro)'
+                        then 5
+                        when win_stage = 'Stage 4 – Pro Consideration'
+                        then 4
+                        when win_stage = 'Stage 3 – Pro Presented'
+                        then 3
+                        when win_stage = 'Stage 2 – Discovery Complete'
+                        then 2
+                        when win_stage = 'Stage 1 – New / Assigned'
+                        then 1
+                        when win_stage = 'Stage 0 – Intake'
+                        then 0
+                        when in_win_funnel
+                        then -1
+                        when is_eo_sales_attributed
+                        then -1
+                        when in_serve_funnel
+                        then -2
+                        else -3
+                    end desc,
+                    -- Tiebreak within same funnel rank: prefer the contact with
+                    -- the most activity (recency-weighted) and a deterministic
+                    -- final tiebreak.
                     was_called desc,
                     last_call_at desc nulls last,
                     updated_at desc nulls last,
