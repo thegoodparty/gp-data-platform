@@ -9,7 +9,14 @@
 -- without re-reading the staging table.
 with
     source as (
-        select *
+        select
+            *,
+            election_stage in (
+                'general special',
+                'primary special',
+                'general special runoff',
+                'primary special runoff'
+            ) as is_special
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
         where
             election_date >= '2026-01-01'
@@ -21,11 +28,10 @@ with
     ),
 
     -- General election date lookup: find the general-stage election date per
-    -- position+year so primary/runoff stages get the same gp_election_id.
-    -- Includes 'general special' so special elections roll up to the same
-    -- date bucket as regular generals for a given office+year. Note: this
-    -- preserves the pre-existing behavior where gp_election_id does not
-    -- distinguish a special from a regular election in the same year+office.
+    -- (position, year, is_special) so primary/runoff stages get the same
+    -- gp_election_id as their general. Partitioning by is_special ensures a
+    -- special election and a regular election in the same office+year
+    -- resolve to distinct gp_election_ids.
     general_election_dates as (
         select
             official_office_name,
@@ -35,6 +41,7 @@ with
             state_postal_code as state,
             district,
             year(election_date) as election_year,
+            is_special,
             max(election_date) as general_election_date,
             any_value(number_of_seats_in_election) as general_seats
         from source
@@ -46,11 +53,15 @@ with
             office_type,
             state_postal_code,
             district,
-            year(election_date)
+            year(election_date),
+            is_special
     ),
 
-    -- Candidacy-level date lookup: coalesce general > primary > runoff dates
-    -- per candidate+position+year for stable gp_candidacy_id generation.
+    -- Candidacy-level date lookup per (candidate, position, year, is_special)
+    -- so a candidate running in both a regular and a special cycle for the
+    -- same office+year gets two distinct gp_candidacy_ids. The 4 stage-date
+    -- columns hold the regular dates within the is_special=false partition
+    -- and the special dates within is_special=true.
     candidacy_dates as (
         select
             candidate_first_name,
@@ -62,34 +73,31 @@ with
             office_level,
             district,
             year(election_date) as election_year,
+            is_special,
             max(
-                case when election_stage = 'general' then election_date end
+                case
+                    when election_stage in ('general', 'general special')
+                    then election_date
+                end
             ) as general_date,
             max(
-                case when election_stage = 'primary' then election_date end
+                case
+                    when election_stage in ('primary', 'primary special')
+                    then election_date
+                end
             ) as primary_date,
             max(
-                case when election_stage = 'general runoff' then election_date end
+                case
+                    when election_stage in ('general runoff', 'general special runoff')
+                    then election_date
+                end
             ) as general_runoff_date,
             max(
-                case when election_stage = 'primary runoff' then election_date end
-            ) as primary_runoff_date,
-            max(
-                case when election_stage = 'general special' then election_date end
-            ) as general_special_date,
-            max(
-                case when election_stage = 'primary special' then election_date end
-            ) as primary_special_date,
-            max(
                 case
-                    when election_stage = 'general special runoff' then election_date
+                    when election_stage in ('primary runoff', 'primary special runoff')
+                    then election_date
                 end
-            ) as general_special_runoff_date,
-            max(
-                case
-                    when election_stage = 'primary special runoff' then election_date
-                end
-            ) as primary_special_runoff_date
+            ) as primary_runoff_date
         from source
         group by
             candidate_first_name,
@@ -100,7 +108,8 @@ with
             official_office_name,
             office_level,
             district,
-            year(election_date)
+            year(election_date),
+            is_special
     ),
 
     -- ER crosswalk: when Splink clustered this DDHQ row with a BR row, adopt
@@ -151,7 +160,8 @@ with
                             "s.state_postal_code",
                             "s.party_affiliation",
                             "s.candidate_office",
-                            "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date, cd.general_special_date, cd.primary_special_date, cd.general_special_runoff_date, cd.primary_special_runoff_date) as string)",
+                            "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date) as string)",
+                            "cast(cd.is_special as string)",
                             "s.district",
                         ]
                     )
@@ -165,7 +175,11 @@ with
 
             coalesce(
                 xw.canonical_gp_election_id,
-                {{ generate_gp_election_id("elec_lookup") }}
+                {{
+                    generate_gp_election_id(
+                        "elec_lookup", is_special_expr="elec_lookup.is_special"
+                    )
+                }}
             ) as gp_election_id,
 
             coalesce(
@@ -203,22 +217,13 @@ with
             s._airbyte_extracted_at,
 
             -- === Candidacy-level dates (for candidacy rollup) ===
-            -- Special-variant dates fall through into the same column as their
-            -- non-special counterpart so special-only candidacies still expose
-            -- a date for the downstream candidacy mart. Regular wins when
-            -- a candidate appears in both (rare).
-            coalesce(
-                cd.general_date, cd.general_special_date
-            ) as candidacy_general_date,
-            coalesce(
-                cd.primary_date, cd.primary_special_date
-            ) as candidacy_primary_date,
-            coalesce(
-                cd.general_runoff_date, cd.general_special_runoff_date
-            ) as candidacy_general_runoff_date,
-            coalesce(
-                cd.primary_runoff_date, cd.primary_special_runoff_date
-            ) as candidacy_primary_runoff_date,
+            -- candidacy_dates is partitioned by is_special, so cd.*_date
+            -- holds the dates for whichever cycle this row belongs to
+            -- (regular or special).
+            cd.general_date as candidacy_general_date,
+            cd.primary_date as candidacy_primary_date,
+            cd.general_runoff_date as candidacy_general_runoff_date,
+            cd.primary_runoff_date as candidacy_primary_runoff_date,
 
             -- === Candidacy-stage-specific derived columns ===
             case
@@ -244,6 +249,7 @@ with
             and s.office_level <=> cd.office_level
             and s.district <=> cd.district
             and year(s.election_date) = cd.election_year
+            and s.is_special = cd.is_special
         left join
             general_election_dates as ged
             on s.official_office_name <=> ged.official_office_name
@@ -253,6 +259,7 @@ with
             and s.state_postal_code <=> ged.state
             and s.district <=> ged.district
             and year(s.election_date) = ged.election_year
+            and s.is_special = ged.is_special
         cross join
             lateral(
                 select
@@ -269,7 +276,8 @@ with
                     ) as election_date,
                     coalesce(
                         ged.general_seats, s.number_of_seats_in_election
-                    ) as seats_available
+                    ) as seats_available,
+                    s.is_special
             ) as elec_lookup
         left join
             canonical_ids as xw

@@ -41,6 +41,7 @@ with
             race.*,
             br_election.election_day,
             br_election.name as election_name,
+            br_election.is_special,
             br_election.database_id as br_election_database_id,
             br_position.name as position_name,
             br_position.state,
@@ -102,11 +103,12 @@ with
         select
             br_position_database_id,
             year(election_day) as election_year,
+            is_special,
             max(election_day) as general_election_date,
             any_value(seats) as general_seats
         from races_with_fields
         where not is_primary and not is_runoff
-        group by br_position_database_id, year(election_day)
+        group by br_position_database_id, year(election_day), is_special
     ),
 
     election_stages as (
@@ -115,8 +117,15 @@ with
             {{ generate_salted_uuid(fields=["races_with_fields.database_id"]) }}
             as gp_election_stage_id,
 
-            -- gp_election_id needs the general election date, not the stage date
-            {{ generate_gp_election_id("elec_date_lookup") }} as gp_election_id,
+            -- gp_election_id needs the general election date, not the stage
+            -- date. is_special differentiates special from regular elections
+            -- in the same office+year.
+            {{
+                generate_gp_election_id(
+                    "elec_date_lookup",
+                    is_special_expr="elec_date_lookup.is_special",
+                )
+            }} as gp_election_id,
 
             -- BallotReady source identifiers
             cast(races_with_fields.database_id as string) as br_race_id,
@@ -176,6 +185,7 @@ with
             general_election_dates as ged
             on races_with_fields.br_position_database_id = ged.br_position_database_id
             and year(races_with_fields.election_day) = ged.election_year
+            and races_with_fields.is_special = ged.is_special
         -- Build a virtual row with the general election date for the macro
         cross join
             lateral(
@@ -193,7 +203,8 @@ with
                     ) as election_date,
                     coalesce(
                         ged.general_seats, races_with_fields.seats
-                    ) as seats_available
+                    ) as seats_available,
+                    races_with_fields.is_special
             ) as elec_date_lookup
     ),
 
