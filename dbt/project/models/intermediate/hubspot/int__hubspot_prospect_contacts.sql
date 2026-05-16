@@ -29,6 +29,11 @@ with
         select
             -- Identity (no name filter)
             c.id,
+            -- HubSpot contact's direct link to the product DB user. Distinct
+            -- from the candidate-mediated path: a contact may have this set
+            -- even when no candidate row exists for the user. Used by the
+            -- prospects mart as the preferred gp_user_id source.
+            c.goodparty_user_id,
             c.email,
             c.first_name,
             c.last_name,

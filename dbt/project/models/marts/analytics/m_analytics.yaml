@@ -1317,7 +1317,11 @@ models:
         data_tests: [not_null]
       - name: is_serve_activated_prospect
         data_tests: [not_null]
+      - name: is_serve_activated_any
+        data_tests: [not_null]
       - name: is_win_activated_prospect
+        data_tests: [not_null]
+      - name: is_win_activated_any
         data_tests: [not_null]
       - name: is_self_filer_lead
         data_tests: [not_null]

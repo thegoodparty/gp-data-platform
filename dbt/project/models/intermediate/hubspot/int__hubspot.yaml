@@ -220,6 +220,13 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: goodparty_user_id
+        description: >
+          Direct HubSpot contact-to-product-DB user link (from
+          stg_airbyte_source__hubspot_api_contacts.goodparty_user_id).
+          Nullable — most contacts without a product account have this as
+          NULL. Used as the preferred gp_user_id source in the prospects
+          mart, ahead of the candidate-mediated prod_db_user_id path.
 
   - name: int__hubspot_contact_calls
     description: |
