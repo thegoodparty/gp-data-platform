@@ -815,6 +815,10 @@ models:
                   - general
                   - primary runoff
                   - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
 
       - name: election_date
         description: Date of the election stage

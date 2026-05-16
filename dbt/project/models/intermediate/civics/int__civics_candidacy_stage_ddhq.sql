@@ -203,10 +203,22 @@ with
             s._airbyte_extracted_at,
 
             -- === Candidacy-level dates (for candidacy rollup) ===
-            cd.general_date as candidacy_general_date,
-            cd.primary_date as candidacy_primary_date,
-            cd.general_runoff_date as candidacy_general_runoff_date,
-            cd.primary_runoff_date as candidacy_primary_runoff_date,
+            -- Special-variant dates fall through into the same column as their
+            -- non-special counterpart so special-only candidacies still expose
+            -- a date for the downstream candidacy mart. Regular wins when
+            -- a candidate appears in both (rare).
+            coalesce(
+                cd.general_date, cd.general_special_date
+            ) as candidacy_general_date,
+            coalesce(
+                cd.primary_date, cd.primary_special_date
+            ) as candidacy_primary_date,
+            coalesce(
+                cd.general_runoff_date, cd.general_special_runoff_date
+            ) as candidacy_general_runoff_date,
+            coalesce(
+                cd.primary_runoff_date, cd.primary_special_runoff_date
+            ) as candidacy_primary_runoff_date,
 
             -- === Candidacy-stage-specific derived columns ===
             case

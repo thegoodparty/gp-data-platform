@@ -583,6 +583,10 @@ models:
                     "primary runoff",
                     "general",
                     "general runoff",
+                    "primary special",
+                    "general special",
+                    "primary special runoff",
+                    "general special runoff",
                   ]
 
       - name: latest_stage_result
@@ -1008,6 +1012,10 @@ models:
                     "primary runoff",
                     "general",
                     "general runoff",
+                    "primary special",
+                    "general special",
+                    "primary special runoff",
+                    "general special runoff",
                   ]
 
       - name: is_win_icp
@@ -1431,10 +1439,12 @@ models:
 
       - name: stage_type
         description: >
-          Type of election stage (primary, general, primary runoff, general
-          runoff). NULL for gp_api-only rows where no BR/TS/DDHQ provider
-          contributed descriptive data; gp_api int model holds only ID and
-          FK columns by design.
+          Type of election stage. Eight values cover regular and special
+          variants: primary, general, primary runoff, general runoff, plus
+          their `*_special` and `*_special_runoff` counterparts. NULL for
+          gp_api-only rows where no BR/TS/DDHQ provider contributed
+          descriptive data; gp_api int model holds only ID and FK columns by
+          design.
         data_tests:
           - not_null:
               config:
@@ -1446,6 +1456,10 @@ models:
                   - primary
                   - primary runoff
                   - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
 
       - name: election_date
         description: Date of the election stage
