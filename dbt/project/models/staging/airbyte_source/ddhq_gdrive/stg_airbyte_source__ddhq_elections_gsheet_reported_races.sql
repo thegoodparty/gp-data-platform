@@ -14,9 +14,6 @@ select
     race_name,
     cast(election_date as date) as election_date,
     election_type,
-    -- election_type carries both stage and special indicators
-    -- (e.g. "Special Election Primary", "Special General Election").
-    -- Map them onto boolean-like expressions for the shared macro.
     lower(
         {{
             derive_election_stage(
@@ -25,5 +22,6 @@ select
                 "election_type",
             )
         }}
-    ) as election_stage
+    ) as election_stage,
+    election_stage like '%special%' as is_special
 from source

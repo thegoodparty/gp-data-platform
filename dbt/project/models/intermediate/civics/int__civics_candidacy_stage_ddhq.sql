@@ -9,14 +9,7 @@
 -- without re-reading the staging table.
 with
     source as (
-        select
-            *,
-            election_stage in (
-                'general special',
-                'primary special',
-                'general special runoff',
-                'primary special runoff'
-            ) as is_special
+        select *
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
         where
             election_date >= '2026-01-01'
@@ -27,11 +20,9 @@ with
             and state_postal_code is not null
     ),
 
-    -- General election date lookup: find the general-stage election date per
-    -- (position, year, is_special) so primary/runoff stages get the same
-    -- gp_election_id as their general. Partitioning by is_special ensures a
-    -- special election and a regular election in the same office+year
-    -- resolve to distinct gp_election_ids.
+    -- Anchor primary/runoff stages on their general-stage date so they
+    -- resolve to the same gp_election_id. Partitioned by is_special so a
+    -- special and a regular election for the same office+year stay distinct.
     general_election_dates as (
         select
             official_office_name,
@@ -57,11 +48,8 @@ with
             is_special
     ),
 
-    -- Candidacy-level date lookup per (candidate, position, year, is_special)
-    -- so a candidate running in both a regular and a special cycle for the
-    -- same office+year gets two distinct gp_candidacy_ids. The 4 stage-date
-    -- columns hold the regular dates within the is_special=false partition
-    -- and the special dates within is_special=true.
+    -- Partitioned by is_special so a candidate in both cycles for the same
+    -- office+year gets two distinct gp_candidacy_ids.
     candidacy_dates as (
         select
             candidate_first_name,
@@ -161,7 +149,6 @@ with
                             "s.party_affiliation",
                             "s.candidate_office",
                             "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date) as string)",
-                            "cast(cd.is_special as string)",
                             "s.district",
                         ]
                     )
@@ -217,9 +204,6 @@ with
             s._airbyte_extracted_at,
 
             -- === Candidacy-level dates (for candidacy rollup) ===
-            -- candidacy_dates is partitioned by is_special, so cd.*_date
-            -- holds the dates for whichever cycle this row belongs to
-            -- (regular or special).
             cd.general_date as candidacy_general_date,
             cd.primary_date as candidacy_primary_date,
             cd.general_runoff_date as candidacy_general_runoff_date,

@@ -31,6 +31,10 @@ models:
                   - "general special"
                   - "primary special runoff"
                   - "general special runoff"
+      - name: is_special
+        description: True for any 'X special' or 'X special runoff' election_stage.
+        data_tests:
+          - not_null
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -74,6 +78,10 @@ models:
                   - "general special"
                   - "primary special runoff"
                   - "general special runoff"
+      - name: is_special
+        description: True for any 'X special' or 'X special runoff' election_stage.
+        data_tests:
+          - not_null
 
   - name: stg_airbyte_source__ddhq_elections_gsheet_upcoming_races
     description: >
@@ -110,6 +118,10 @@ models:
                   - "general special"
                   - "primary special runoff"
                   - "general special runoff"
+      - name: is_special
+        description: True for any 'X special' or 'X special runoff' election_stage.
+        data_tests:
+          - not_null
 
   - name: stg_airbyte_source__ddhq_gdrive_election_results_invalid
     description: >

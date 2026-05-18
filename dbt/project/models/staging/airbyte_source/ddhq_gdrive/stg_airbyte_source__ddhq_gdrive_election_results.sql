@@ -73,9 +73,6 @@ with
                 nullif(regexp_extract(race_name, ' ([0-9]+)$'), ''),
                 ''
             ) as district,
-            -- election_type carries both stage and special indicators
-            -- (e.g. "Special Election Primary", "Special General Election").
-            -- Map them onto boolean-like expressions for the shared macro.
             lower(
                 {{
                     derive_election_stage(
@@ -85,6 +82,7 @@ with
                     )
                 }}
             ) as election_stage,
+            election_stage like '%special%' as is_special,
             {{ parse_party_affiliation("candidate_party") }} as party_affiliation
         from with_state
     ),
