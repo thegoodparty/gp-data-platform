@@ -30,6 +30,20 @@ with
             case when size(parties) > 0 then parties[0].name else null end as party
         from {{ ref("int__ballotready_party") }}
     ),
+    -- Pre-dedupe int__civics_candidate_ballotready to one row per
+    -- br_candidate_id. That model dedupes by gp_candidate_id, not
+    -- br_candidate_id, so a single BR person whose S3 candidacy rows had
+    -- inconsistent email/phone can produce multiple gp_candidate_ids and
+    -- thus multiple rows with the same br_candidate_id. Without this dedup
+    -- the join below fans out and the downstream slug-level QUALIFY picks a
+    -- non-deterministic gp_candidate_id. max() on the UUID string is
+    -- deterministic.
+    civics_candidate_by_br as (
+        select br_candidate_id, max(gp_candidate_id) as gp_candidate_id
+        from {{ ref("int__civics_candidate_ballotready") }}
+        where br_candidate_id is not null
+        group by br_candidate_id
+    ),
     -- (gp_candidate_id, br_position_database_id) -> is_incumbent. Aggregates
     -- civics.candidacy to handle persons who run for the same position across
     -- cycles; takes any non-null is_incumbent (TS supplies it, ~51k populated;
@@ -92,7 +106,7 @@ with
             on tbl_mart_race.place_id = tbl_place.id
         -- BR candidate.database_id (= S3 br_candidate_id) -> canonical gp_candidate_id
         left join
-            {{ ref("int__civics_candidate_ballotready") }} as tbl_civics_candidate
+            civics_candidate_by_br as tbl_civics_candidate
             on tbl_candidacy.candidate_database_id
             = tbl_civics_candidate.br_candidate_id
         left join
