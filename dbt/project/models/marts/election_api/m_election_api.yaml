@@ -19,12 +19,6 @@ models:
           - not_null
           - unique
           - is_uuid
-      - name: gp_candidate_id
-        description: >
-          Canonical civics candidate UUID. Resolved via
-          int__civics_candidate_ballotready (BR person.database_id ->
-          gp_candidate_id). May be null when a BR candidacy's person does not
-          appear in civics (e.g. ingestion lag, unmatched IDs).
       - name: is_incumbent
         description: >
           Whether the candidate is the incumbent for this position. Sourced

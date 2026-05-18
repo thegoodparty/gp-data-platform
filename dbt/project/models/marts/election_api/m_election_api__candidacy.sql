@@ -80,7 +80,6 @@ with
             tbl_mart_race.salary,
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
-            tbl_civics_candidate.gp_candidate_id,
             tbl_civics_attrs.is_incumbent,
             concat(
                 coalesce(tbl_person.first_name, ''),
@@ -139,7 +138,6 @@ with
             normalized_position_name,
             position_name,
             position_description,
-            gp_candidate_id,
             is_incumbent,
             first_last_name_slug,
             case
@@ -189,7 +187,6 @@ select
     normalized_position_name,
     position_name,
     position_description,
-    gp_candidate_id,
     is_incumbent,
     slug,
     race_id

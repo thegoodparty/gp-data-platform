@@ -34,7 +34,6 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
-        gp_candidate_id,
         is_incumbent,
         race_id
     )
@@ -57,7 +56,6 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
-        gp_candidate_id,
         is_incumbent,
         race_id::uuid
     FROM {staging_schema}."Candidacy"
@@ -79,7 +77,6 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name = EXCLUDED.normalized_position_name,
         position_name = EXCLUDED.position_name,
         position_description = EXCLUDED.position_description,
-        gp_candidate_id = EXCLUDED.gp_candidate_id,
         is_incumbent = EXCLUDED.is_incumbent,
         race_id = EXCLUDED.race_id
 """
