@@ -30,6 +30,20 @@ with
             case when size(parties) > 0 then parties[0].name else null end as party
         from {{ ref("int__ballotready_party") }}
     ),
+    -- (gp_candidate_id, br_position_database_id) -> is_incumbent. Aggregates
+    -- civics.candidacy to handle persons who run for the same position across
+    -- cycles; takes any non-null is_incumbent (TS supplies it, ~51k populated;
+    -- BR/DDHQ/gp_api don't carry it). Within a (candidate, position) pair,
+    -- incumbency rarely flips, so any-value is safe.
+    civics_candidacy_attrs as (
+        select
+            gp_candidate_id,
+            br_position_database_id,
+            bool_or(is_incumbent) as is_incumbent
+        from {{ ref("candidacy") }}
+        where gp_candidate_id is not null and br_position_database_id is not null
+        group by gp_candidate_id, br_position_database_id
+    ),
     enhanced_candidacy as (
         select
             tbl_candidacy.id,
@@ -52,6 +66,8 @@ with
             tbl_mart_race.salary,
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
+            tbl_civics_candidate.gp_candidate_id,
+            tbl_civics_attrs.is_incumbent,
             concat(
                 coalesce(tbl_person.first_name, ''),
                 '-',
@@ -74,8 +90,21 @@ with
         left join
             {{ ref("m_election_api__place") }} as tbl_place
             on tbl_mart_race.place_id = tbl_place.id
+        -- BR candidate.database_id (= S3 br_candidate_id) -> canonical gp_candidate_id
+        left join
+            {{ ref("int__civics_candidate_ballotready") }} as tbl_civics_candidate
+            on tbl_candidacy.candidate_database_id = tbl_civics_candidate.br_candidate_id
+        left join
+            civics_candidacy_attrs as tbl_civics_attrs
+            on tbl_civics_candidate.gp_candidate_id = tbl_civics_attrs.gp_candidate_id
+            and tbl_int_race.br_position_database_id
+            = tbl_civics_attrs.br_position_database_id
     ),
-    non2party_with_person_and_slug as (
+    -- Downstream consumer (LLM-driven onboarding campaign planner) needs every
+    -- candidate in the race regardless of party; the prior major-party filter
+    -- excluded Democrat / Republican / Conservative Party / Progressive / DCP
+    -- and has been dropped per DATA-1922.
+    person_with_slug as (
         select
             id,
             br_database_id,
@@ -95,6 +124,8 @@ with
             normalized_position_name,
             position_name,
             position_description,
+            gp_candidate_id,
+            is_incumbent,
             first_last_name_slug,
             case
                 when position_name is not null
@@ -108,21 +139,20 @@ with
             end as slug,
             race_id
         from enhanced_candidacy
-        where
-            1 = 1
-            and race_id is not null
-            and first_name is not null
-            and last_name is not null
-            and not (
-                party in ('Conservative Party', 'Progressive', 'DCP')
-                or party ilike '%democrat%'
-                or party ilike '%republican%'
-            )
+        where race_id is not null and first_name is not null and last_name is not null
     ),
+    -- Deterministic dedup: with the major-party filter dropped, two unrelated
+    -- candidates can share the same first-last/position slug. Order by
+    -- updated_at first, then break ties on br_database_id so the survivor
+    -- is stable across runs.
     deduped_candidacy as (
         select *
-        from non2party_with_person_and_slug
-        qualify row_number() over (partition by slug order by updated_at desc) = 1
+        from person_with_slug
+        qualify
+            row_number() over (
+                partition by slug order by updated_at desc, br_database_id desc
+            )
+            = 1
     )
 
 select
@@ -144,6 +174,8 @@ select
     normalized_position_name,
     position_name,
     position_description,
+    gp_candidate_id,
+    is_incumbent,
     slug,
     race_id
 from deduped_candidacy

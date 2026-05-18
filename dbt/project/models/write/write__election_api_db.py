@@ -34,6 +34,8 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
+        gp_candidate_id,
+        is_incumbent,
         race_id
     )
     SELECT
@@ -55,6 +57,8 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
+        gp_candidate_id,
+        is_incumbent,
         race_id::uuid
     FROM {staging_schema}."Candidacy"
     ON CONFLICT (id) DO UPDATE SET
@@ -75,6 +79,8 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name = EXCLUDED.normalized_position_name,
         position_name = EXCLUDED.position_name,
         position_description = EXCLUDED.position_description,
+        gp_candidate_id = EXCLUDED.gp_candidate_id,
+        is_incumbent = EXCLUDED.is_incumbent,
         race_id = EXCLUDED.race_id
 """
 
@@ -283,7 +289,13 @@ RACE_UPSERT_QUERY = """
         frequency,
         place_id,
         slug,
-        position_names
+        position_names,
+        position_id,
+        number_of_seats,
+        win_number,
+        is_partisan,
+        office_type,
+        official_office_name
     )
     SELECT
         id::uuid,
@@ -314,7 +326,13 @@ RACE_UPSERT_QUERY = """
         frequency,
         place_id::uuid,
         slug,
-        position_names
+        position_names,
+        position_id::uuid,
+        number_of_seats,
+        win_number,
+        is_partisan,
+        office_type,
+        official_office_name
     FROM {staging_schema}."Race"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
@@ -344,7 +362,13 @@ RACE_UPSERT_QUERY = """
         frequency = EXCLUDED.frequency,
         place_id = EXCLUDED.place_id,
         slug = EXCLUDED.slug,
-        position_names = EXCLUDED.position_names
+        position_names = EXCLUDED.position_names,
+        position_id = EXCLUDED.position_id,
+        number_of_seats = EXCLUDED.number_of_seats,
+        win_number = EXCLUDED.win_number,
+        is_partisan = EXCLUDED.is_partisan,
+        office_type = EXCLUDED.office_type,
+        official_office_name = EXCLUDED.official_office_name
 """
 
 STANCE_UPSERT_QUERY = """
