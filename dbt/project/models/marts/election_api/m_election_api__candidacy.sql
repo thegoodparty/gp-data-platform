@@ -39,7 +39,10 @@ with
     -- non-deterministic gp_candidate_id. max() on the UUID string is
     -- deterministic.
     civics_candidate_by_br as (
-        select br_candidate_id, max(gp_candidate_id) as gp_candidate_id
+        select
+            br_candidate_id,
+            max(gp_candidate_id) as gp_candidate_id,
+            max(email) as email
         from {{ ref("int__civics_candidate_ballotready") }}
         where br_candidate_id is not null
         group by br_candidate_id
@@ -80,6 +83,8 @@ with
             tbl_mart_race.salary,
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
+            tbl_civics_candidate.gp_candidate_id,
+            tbl_civics_candidate.email,
             tbl_civics_attrs.is_incumbent,
             concat(
                 coalesce(tbl_person.first_name, ''),
@@ -138,6 +143,8 @@ with
             normalized_position_name,
             position_name,
             position_description,
+            gp_candidate_id,
+            email,
             is_incumbent,
             first_last_name_slug,
             case
@@ -187,6 +194,8 @@ select
     normalized_position_name,
     position_name,
     position_description,
+    gp_candidate_id,
+    email,
     is_incumbent,
     slug,
     race_id

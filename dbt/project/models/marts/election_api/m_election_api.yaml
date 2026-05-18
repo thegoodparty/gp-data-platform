@@ -26,6 +26,20 @@ models:
           and aggregated to (gp_candidate_id, br_position_database_id) with
           bool_or. Null when no civics row carries an is_incumbent value for
           this person + position.
+      - name: gp_candidate_id
+        description: >
+          Canonical civics candidate UUID. Resolved via
+          int__civics_candidate_ballotready (BR person.database_id ->
+          gp_candidate_id). Pre-aggregated by br_candidate_id with
+          max(gp_candidate_id) for deterministic selection when a single BR
+          person produced multiple gp_candidate_ids upstream. Null when the
+          BR candidate is not present in civics.
+      - name: email
+        description: >
+          Candidate email, sourced from int__civics_candidate_ballotready
+          (which itself coalesces S3 candidacy email with the BR API
+          person.contacts email). Used by the campaign-plan-context endpoint
+          to flag is_user on the candidate that matches the requesting user.
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
@@ -271,6 +285,13 @@ models:
           the BR position name(s) for the race; official_office_name is the
           civics-standardized single string. Null when civics has no
           matching candidacy rows.
+      - name: office_level
+        description: >
+          Civics (HubSpot-sourced) office level. Distinct from the BR
+          positionLevel column (CITY / COUNTY / FEDERAL / LOCAL / REGIONAL /
+          STATE / TOWNSHIP); office_level uses the civics taxonomy and can
+          be null even when positionLevel is populated. Aggregated from
+          mart_civics.candidacy by gp_election_id.
 
   - name: m_election_api__zip_to_position
     description: >

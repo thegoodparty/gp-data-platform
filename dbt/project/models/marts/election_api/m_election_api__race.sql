@@ -50,7 +50,8 @@ with
             max(win_number) as win_number,
             bool_or(is_partisan) as is_partisan,
             max(office_type) as office_type,
-            max(official_office_name) as official_office_name
+            max(official_office_name) as official_office_name,
+            max(office_level) as office_level
         from {{ ref("candidacy") }}
         where gp_election_id is not null
         group by gp_election_id
@@ -101,7 +102,8 @@ select
     tbl_civics.win_number,
     tbl_civics.is_partisan,
     tbl_civics.office_type,
-    tbl_civics.official_office_name
+    tbl_civics.official_office_name,
+    tbl_civics.office_level
 from {{ ref("int__enhanced_race") }} as tbl_race
 left join
     stage_per_br_race as tbl_stage
