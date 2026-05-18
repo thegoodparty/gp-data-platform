@@ -93,7 +93,8 @@ with
         -- BR candidate.database_id (= S3 br_candidate_id) -> canonical gp_candidate_id
         left join
             {{ ref("int__civics_candidate_ballotready") }} as tbl_civics_candidate
-            on tbl_candidacy.candidate_database_id = tbl_civics_candidate.br_candidate_id
+            on tbl_candidacy.candidate_database_id
+            = tbl_civics_candidate.br_candidate_id
         left join
             civics_candidacy_attrs as tbl_civics_attrs
             on tbl_civics_candidate.gp_candidate_id = tbl_civics_attrs.gp_candidate_id

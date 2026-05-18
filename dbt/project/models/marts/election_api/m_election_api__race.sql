@@ -52,8 +52,9 @@ select
     tbl_race.state,
     tbl_race.position_level,
     tbl_race.position_geo_id as position_geoid,
-    regexp_replace(tbl_race.normalized_position_name, '//', '-')
-        as normalized_position_name,
+    regexp_replace(
+        tbl_race.normalized_position_name, '//', '-'
+    ) as normalized_position_name,
     tbl_race.position_description,
     tbl_race.filing_office_address,
     tbl_race.filing_phone_number,
@@ -72,7 +73,11 @@ select
     tbl_race.frequency,
     tbl_race.place_id,
     replace(
-        concat(tbl_race.place_name_slug, '/', {{ slugify("tbl_race.normalized_position_name") }}),
+        concat(
+            tbl_race.place_name_slug,
+            '/',
+            {{ slugify("tbl_race.normalized_position_name") }}
+        ),
         '-ccd',
         ''
     ) as slug,
@@ -88,7 +93,8 @@ left join
     stage_per_br_race as tbl_stage
     on cast(tbl_race.br_database_id as string) = tbl_stage.br_race_id
 left join
-    civics_race_attrs as tbl_civics on tbl_stage.gp_election_id = tbl_civics.gp_election_id
+    civics_race_attrs as tbl_civics
+    on tbl_stage.gp_election_id = tbl_civics.gp_election_id
 left join
     {{ ref("m_election_api__position") }} as tbl_position
     on tbl_race.br_position_database_id = tbl_position.br_database_id
