@@ -330,6 +330,12 @@ models:
       week_end_date is exposed directly so downstream point-in-time features
       can use it as asof_date without further computation.
 
+      Timezone semantics: event_time is in UTC; date_trunc('week', ...) is
+      ISO-Monday-anchored. Activity at Sunday 23:30 UTC (Monday morning in
+      many non-UTC locales) is bucketed into the week containing that Sunday,
+      not the user's local Monday. Fine for retention modeling at weekly
+      cadence; flagged so reviewers don't second-guess edge-of-week boundaries.
+
       Source: stg_airbyte_source__amplitude_api_events.
     columns:
       - name: user_id

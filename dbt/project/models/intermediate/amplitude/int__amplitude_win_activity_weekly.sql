@@ -21,6 +21,14 @@
         This lets downstream point-in-time features use week_end_date
         directly as asof_date.
 
+    Timezone semantics:
+        event_time is in UTC; date_trunc('week', ...) is ISO-Monday-anchored.
+        Activity at Sunday 23:30 UTC (which is Monday morning in many
+        non-UTC locales) is bucketed into the week containing that Sunday,
+        not the user's local Monday. Fine for retention modeling at weekly
+        cadence; flagged here so reviewers don't second-guess edge-of-week
+        boundaries.
+
     Event -> column mapping:
         - Voter Outreach - Campaign Completed
             -> campaigns_sent (count)
