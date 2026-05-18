@@ -54,6 +54,9 @@ logs/
 test_data/
 .databricks/
 
+# Local-only project journals (per-contributor context for AI-assisted work)
+analytics/*/SESSION_NOTES.md
+
 # Entity resolution local data and results
 entity_resolution/data/
 entity_resolution/results/*.csv

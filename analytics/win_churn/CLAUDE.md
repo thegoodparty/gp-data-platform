@@ -4,13 +4,13 @@ This folder hosts the first churn/retention modeling project for GoodParty's Win
 
 ## Where to look first
 
-- `SESSION_NOTES.md` — running journal of decisions, findings, and dead ends. **Read this before making changes** — it is the canonical context source for this project.
+- `SESSION_NOTES.md` (local-only, gitignored) — per-contributor running journal of decisions, findings, and dead ends. Intentionally not committed; serves as personal context for AI-assisted work on this project. If present in your working tree, read it before making changes.
 - `TRAINING.md` (Phase 2 deliverable, not yet written) — pointer to the Databricks training notebook, MLflow experiment URL, current model version, and retraining cadence.
 
 ## Where the code lives
 
 - Phase 1 marts: built initially in the developer's dev schema; promoted to `dbt/project/models/marts/analytics/users_win_state_weekly` etc. after notebook validation.
-- Phase 1 weekly-activity rollup: `dbt/project/models/intermediate/int__amplitude_win_activity_weekly.sql`.
+- Phase 1 weekly-activity rollup: `dbt/project/models/intermediate/amplitude/int__amplitude_win_activity_weekly.sql`.
 - Phase 2 feature mart + Phase 3 scoring model: `dbt/project/models/intermediate/win_churn/`.
 - Phase 3 published scores view: `dbt/project/models/marts/analytics/users_win_churn_scores.sql`.
 - Training notebooks live in Databricks Workspace, not committed.
