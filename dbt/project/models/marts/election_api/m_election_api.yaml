@@ -38,8 +38,12 @@ models:
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
           (which itself coalesces S3 candidacy email with the BR API
-          person.contacts email). Used by the campaign-plan-context endpoint
-          to flag is_user on the candidate that matches the requesting user.
+          person.contacts email). Surfaced by the campaign-plan-context
+          endpoint so the caller can match the requesting user.
+      - name: website_url
+        description: >
+          Candidate website URL, sourced from int__civics_candidate_ballotready
+          (extracted from BR person.urls where type='website').
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
