@@ -4,10 +4,8 @@
       When is_special_expr is provided and evaluates true at the row level,
       the year field is suffixed with '_special' so a special election and
       a regular election in the same office+year produce distinct IDs.
-      Default 'false' is detected at parse time and emits the original hash
-      unchanged, so callsites that have no special signal (HubSpot archive,
-      m_general__*, techspeed fallback) produce byte-identical SQL to before
-      the is_special_expr parameter was added.
+      The literal 'false' default short-circuits at parse time, so the
+      generated SQL stays unchanged at callsites without a special signal.
     -#}
     {% set prefix = table_alias ~ "." if table_alias else "" %}
     {% set year_field %}
