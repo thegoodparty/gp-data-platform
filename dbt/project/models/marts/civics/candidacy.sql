@@ -65,7 +65,7 @@ with
             is_incumbent,
             office_type,
             br_position_database_id,
-            cast(null as string) as score_viability_automated,
+            score_viability_automated,
             array_compact(
                 array('hubspot', case when has_ddhq_match then 'ddhq' end)
             ) as source_systems

@@ -398,7 +398,9 @@ models:
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
         BR-only:
-          hubspot_company_ids, viability_score, win_number, win_number_model
+          hubspot_company_ids, win_number, win_number_model
+        TS-derived (BR/DDHQ/gp_api don't compute viability):
+          viability_score, score_viability_automated
 
       created_at semantics: gp_api's created_at reflects "campaign registered
       in PD," which may post-date BR's data acquisition timestamp. Downstream
