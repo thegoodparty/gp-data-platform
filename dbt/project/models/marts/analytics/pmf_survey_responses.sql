@@ -58,12 +58,7 @@ with
                 then 'Win'
             end as pmf_variant,
 
-            -- PMF response (decoded from internal option names).
-            -- Both the legacy and ".org" variants of the N/A label are
-            -- mapped to 'N/A' so future HubSpot copy edits to that
-            -- option don't break downstream filters. Unknown values
-            -- fall through to the raw label so accepted_values fires
-            -- loudly — add a new WHEN clause when that happens.
+            -- Both legacy and ".org" variants of the N/A label map to 'N/A'.
             s.pmf_response as pmf_response_raw,
             case
                 s.pmf_response
