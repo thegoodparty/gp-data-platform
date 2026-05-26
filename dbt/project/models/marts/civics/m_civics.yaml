@@ -1241,8 +1241,12 @@ models:
                 where: "br_position_database_id is not null"
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                warn_if: ">20"
-                error_if: ">50"
+                # Splitting specials from regulars by is_special increases the
+                # election row count and proportionally surfaces more
+                # missing-position rows from the same drift; thresholds bumped
+                # accordingly.
+                warn_if: ">150"
+                error_if: ">350"
 
       - name: is_judicial
         description: Whether the office is a judicial position (from BallotReady)

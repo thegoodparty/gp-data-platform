@@ -27,7 +27,7 @@ with
                 'ARRAY<STRUCT<category:STRING, channel:STRING, date:DATE, datetime:TIMESTAMP, features:ARRAY<STRUCT<type:STRING>>, type:STRING>>'
             ) as milestones,
             cast(electionday as date) as election_day,
-            lower(name) like '%special%' as is_special,
+            coalesce(lower(name) like '%special%', false) as is_special,
             from_json(
                 vipelections, 'ARRAY<STRUCT<party:STRING, vipId:INT>>'
             ) as vipelections,

@@ -133,15 +133,31 @@ with
             races_with_fields.br_position_database_id as br_position_id,
             cast(null as string) as ddhq_race_id,
 
-            -- Map stage type
+            -- Map stage type. ' special' is inserted between the base
+            -- (primary/general) and any ' runoff' suffix to match the eight
+            -- accepted_values declared on m_civics.election_stage.stage_type.
             case
                 when races_with_fields.is_runoff and races_with_fields.is_primary
-                then 'primary runoff'
+                then
+                    'primary' || case
+                        when races_with_fields.is_special then ' special' else ''
+                    end
+                    || ' runoff'
                 when races_with_fields.is_runoff and not races_with_fields.is_primary
-                then 'general runoff'
+                then
+                    'general' || case
+                        when races_with_fields.is_special then ' special' else ''
+                    end
+                    || ' runoff'
                 when races_with_fields.is_primary
-                then 'primary'
-                else 'general'
+                then
+                    'primary' || case
+                        when races_with_fields.is_special then ' special' else ''
+                    end
+                else
+                    'general' || case
+                        when races_with_fields.is_special then ' special' else ''
+                    end
             end as stage_type,
 
             races_with_fields.election_day as election_date,
@@ -167,6 +183,7 @@ with
 
             races_with_fields.is_primary,
             races_with_fields.is_runoff,
+            races_with_fields.is_special,
             races_with_fields.is_retention,
             races_with_fields.seats as number_of_seats,
             cast(null as string) as total_votes_cast,
@@ -231,6 +248,7 @@ select
     race_name,
     is_primary,
     is_runoff,
+    is_special,
     is_retention,
     number_of_seats,
     total_votes_cast,
