@@ -58,17 +58,19 @@ with
                 then 'Win'
             end as pmf_variant,
 
-            -- PMF response (decoded from internal option names)
+            -- PMF response (decoded from internal option names).
+            -- The "N/A" option label has shifted in HubSpot
+            -- ("N/A - I no longer use GoodParty" -> ".org" suffix); match on
+            -- prefix so future copy edits don't break the accepted-values test.
             s.pmf_response as pmf_response_raw,
             case
-                s.pmf_response
-                when 'Option 1'
+                when s.pmf_response = 'Option 1'
                 then 'Very Disappointed'
-                when 'Option 2'
+                when s.pmf_response = 'Option 2'
                 then 'Somewhat Disappointed'
-                when 'Not disappointed'
+                when s.pmf_response = 'Not disappointed'
                 then 'Not Disappointed'
-                when 'N/A - I no longer use GoodParty'
+                when s.pmf_response ilike 'N/A%'
                 then 'N/A'
                 else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,
