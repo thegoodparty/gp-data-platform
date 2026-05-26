@@ -59,18 +59,22 @@ with
             end as pmf_variant,
 
             -- PMF response (decoded from internal option names).
-            -- The "N/A" option label has shifted in HubSpot
-            -- ("N/A - I no longer use GoodParty" -> ".org" suffix); match on
-            -- prefix so future copy edits don't break the accepted-values test.
+            -- Unknown values fall through to the raw label so the
+            -- accepted_values test fires loudly. The fix when that
+            -- happens is to (a) add a new when clause here if the new
+            -- label maps onto an existing friendly bucket, OR (b) add
+            -- the raw label to the accepted_values list in
+            -- m_analytics.yaml if it should be exposed as-is.
             s.pmf_response as pmf_response_raw,
             case
-                when s.pmf_response = 'Option 1'
+                s.pmf_response
+                when 'Option 1'
                 then 'Very Disappointed'
-                when s.pmf_response = 'Option 2'
+                when 'Option 2'
                 then 'Somewhat Disappointed'
-                when s.pmf_response = 'Not disappointed'
+                when 'Not disappointed'
                 then 'Not Disappointed'
-                when s.pmf_response ilike 'N/A%'
+                when 'N/A - I no longer use GoodParty'
                 then 'N/A'
                 else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,

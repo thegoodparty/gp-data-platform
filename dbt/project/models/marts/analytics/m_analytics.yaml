@@ -1227,7 +1227,10 @@ models:
       - name: pmf_response
         description: >
           Decoded PMF answer: Very Disappointed, Somewhat Disappointed,
-          Not Disappointed, or N/A.
+          Not Disappointed, or N/A. Raw HubSpot labels that haven't been
+          mapped to a friendly bucket pass through unchanged; add them
+          here when they appear (and add a mapping in
+          `pmf_survey_responses.sql` if a friendly label exists).
         data_tests:
           - not_null
           - accepted_values:
@@ -1237,6 +1240,7 @@ models:
                   - "Somewhat Disappointed"
                   - "Not Disappointed"
                   - "N/A"
+                  - "N/A - I no longer use GoodParty.org"
       - name: is_very_disappointed
         description: >
           Boolean flag for PMF score calculation.
