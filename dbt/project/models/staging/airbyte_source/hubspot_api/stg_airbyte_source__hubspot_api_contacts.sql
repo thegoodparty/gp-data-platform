@@ -272,11 +272,17 @@ select
     try_cast(
         get_json_object(properties, '$.hs_email_click') as int
     ) as email_click_count,
+    -- nullif handles HubSpot's empty-string quirk on unpopulated date
+    -- properties; bare cast on '' would raise instead of returning null.
     cast(
-        get_json_object(properties, '$.hs_email_last_open_date') as timestamp
+        nullif(
+            get_json_object(properties, '$.hs_email_last_open_date'), ''
+        ) as timestamp
     ) as email_last_open_at,
     cast(
-        get_json_object(properties, '$.hs_email_last_click_date') as timestamp
+        nullif(
+            get_json_object(properties, '$.hs_email_last_click_date'), ''
+        ) as timestamp
     ) as email_last_click_at,
 
     -- call and contact activity

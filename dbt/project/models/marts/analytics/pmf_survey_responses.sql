@@ -58,6 +58,7 @@ with
                 then 'Win'
             end as pmf_variant,
 
+            -- PMF response (decoded from internal option names).
             -- Both legacy and ".org" variants of the N/A label map to 'N/A'.
             s.pmf_response as pmf_response_raw,
             case
