@@ -267,6 +267,24 @@ select
     ) as serve_lifecycle_retained_entered_at,
     -- NOTE: "Serve Lifecycle Stages - Became an MQL date" has no matching
     -- HubSpot property key in current source data; column omitted.
+    -- email engagement
+    try_cast(get_json_object(properties, '$.hs_email_open') as int) as email_open_count,
+    try_cast(
+        get_json_object(properties, '$.hs_email_click') as int
+    ) as email_click_count,
+    -- nullif handles HubSpot's empty-string quirk on unpopulated date
+    -- properties; bare cast on '' would raise instead of returning null.
+    cast(
+        nullif(
+            get_json_object(properties, '$.hs_email_last_open_date'), ''
+        ) as timestamp
+    ) as email_last_open_at,
+    cast(
+        nullif(
+            get_json_object(properties, '$.hs_email_last_click_date'), ''
+        ) as timestamp
+    ) as email_last_click_at,
+
     -- call and contact activity
     cast(get_json_object(properties, '$.last_call_date') as date) as last_call_at,
     get_json_object(properties, '$.last_call_outcome') as last_call_outcome,
