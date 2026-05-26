@@ -74,8 +74,6 @@ with
                 then 'Somewhat Disappointed'
                 when 'Not disappointed'
                 then 'Not Disappointed'
-                when 'N/A - I no longer use GoodParty'
-                then 'N/A'
                 else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,
             coalesce(s.pmf_response = 'Option 1', false) as is_very_disappointed,

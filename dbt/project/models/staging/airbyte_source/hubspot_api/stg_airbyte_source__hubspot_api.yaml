@@ -294,10 +294,18 @@ models:
         description: >
           HubSpot `hs_email_open` — lifetime count of marketing/sales emails
           opened by this contact.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: email_click_count
         description: >
           HubSpot `hs_email_click` — lifetime count of links clicked in
           marketing/sales emails sent to this contact.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
       - name: email_last_open_at
         description: HubSpot `hs_email_last_open_date` — timestamp of the most recent email open.
       - name: email_last_click_at
