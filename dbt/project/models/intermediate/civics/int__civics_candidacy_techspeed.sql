@@ -108,6 +108,11 @@ with
             = 1
     ),
 
+    viability_scoring as (
+        select techspeed_candidate_code, viability_rating_2_0, score_viability_automated
+        from {{ ref("int__techspeed_viability_scoring") }}
+    ),
+
     candidacies as (
         -- gp_candidate_id and gp_election_id use WINDOW propagation so all raw
         -- rows of the same person/election adopt BR's canonical if ANY candidacy
@@ -148,7 +153,7 @@ with
             cast(null as string) as hubspot_company_ids,
 
             'techspeed' as candidate_id_source,
-            techspeed_candidate_code as candidate_code,
+            source.techspeed_candidate_code as candidate_code,
 
             party as party_affiliation,
             is_incumbent,
@@ -178,7 +183,8 @@ with
 
             source.br_position_database_id,
 
-            cast(null as float) as viability_score,
+            vs.viability_rating_2_0 as viability_score,
+            vs.score_viability_automated,
             cast(null as int) as win_number,
             cast(null as string) as win_number_model,
 
@@ -189,8 +195,11 @@ with
         left join
             canonical_candidacy as xw
             on source.techspeed_candidate_code = xw.ts_source_candidate_id
+        left join
+            viability_scoring as vs
+            on source.techspeed_candidate_code = vs.techspeed_candidate_code
         where
-            techspeed_candidate_code is not null
+            source.techspeed_candidate_code is not null
             -- After the source CTE's BR fallback substitution, this passes
             -- rows that had EITHER a TS date OR a BR-resolved date.
             and coalesce(general_election_date_parsed, primary_election_date_parsed)

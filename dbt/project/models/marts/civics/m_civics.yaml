@@ -663,7 +663,34 @@ models:
                 error_if: ">300"
 
       - name: viability_score
-        description: Model-generated viability rating
+        description: >
+          Numeric viability rating (0..5) from the TechSpeed-trained
+          MLflow model (int__techspeed_viability_scoring.viability_rating_2_0).
+          Populated for TS-sourced candidacies via join in
+          int__civics_candidacy_techspeed. NULL for non-TS rows that have
+          no upstream score and for the small fraction of TS rows the
+          MLflow model skips due to incomplete features.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+
+      - name: score_viability_automated
+        description: >
+          String category derived from viability_score by the MLflow model.
+          Values: "No Chance" (score < 1), "Unlikely to Win" (1..2),
+          "Has a Chance" (2..3), "Likely to Win" (3..4), "Frontrunner"
+          (4..5). NULL where viability_score is NULL.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "No Chance"
+                  - "Unlikely to Win"
+                  - "Has a Chance"
+                  - "Likely to Win"
+                  - "Frontrunner"
 
       - name: win_number
         description: Estimated votes needed to win
