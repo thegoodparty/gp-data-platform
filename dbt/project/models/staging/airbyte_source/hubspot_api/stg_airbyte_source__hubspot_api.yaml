@@ -290,6 +290,18 @@ models:
         description: Timestamp the contact became a Serve lifecycle Scheduled SQL.
       - name: serve_lifecycle_retained_entered_at
         description: Timestamp the contact became Serve lifecycle Retained.
+      - name: email_open_count
+        description: >
+          HubSpot `hs_email_open` — lifetime count of marketing/sales emails
+          opened by this contact.
+      - name: email_click_count
+        description: >
+          HubSpot `hs_email_click` — lifetime count of links clicked in
+          marketing/sales emails sent to this contact.
+      - name: email_last_open_at
+        description: HubSpot `hs_email_last_open_date` — timestamp of the most recent email open.
+      - name: email_last_click_at
+        description: HubSpot `hs_email_last_click_date` — timestamp of the most recent email click.
       - name: last_call_at
         description: Date of the last recorded sales call.
       - name: last_call_outcome
