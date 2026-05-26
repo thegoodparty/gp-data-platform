@@ -65,6 +65,7 @@ with
             is_incumbent,
             office_type,
             br_position_database_id,
+            score_viability_automated,
             array_compact(
                 array('hubspot', case when has_ddhq_match then 'ddhq' end)
             ) as source_systems
@@ -137,10 +138,13 @@ with
                 br.br_position_database_id,
                 ts.br_position_database_id
             ) as br_position_database_id,
-            -- BR-only viability fields
-            br.viability_score,
+            -- BR doesn't compute viability_score (always NULL upstream); TS's
+            -- MLflow score fills it in via int__civics_candidacy_techspeed.
+            -- win_number / win_number_model remain BR-only.
+            coalesce(br.viability_score, ts.viability_score) as viability_score,
             br.win_number,
             br.win_number_model,
+            ts.score_viability_automated,
             array_compact(
                 array(
                     case when br.gp_candidacy_id is not null then 'ballotready' end,
@@ -193,6 +197,7 @@ with
             is_incumbent,
             office_type,
             br_position_database_id,
+            score_viability_automated,
             source_systems
         from archive_2025
         union all
@@ -226,6 +231,7 @@ with
             is_incumbent,
             office_type,
             br_position_database_id,
+            score_viability_automated,
             source_systems
         from merged_since_2026
     ),
@@ -351,6 +357,7 @@ select
             effective_date="icp.icp_win_effective_date",
         )
     }} as is_win_supersize_icp,
+    deduplicated.score_viability_automated,
     deduplicated.source_systems,
     deduplicated.created_at,
     deduplicated.updated_at
