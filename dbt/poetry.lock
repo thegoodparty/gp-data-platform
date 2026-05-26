@@ -340,18 +340,19 @@ statsd = ["statsd (>=3.3.0)"]
 
 [[package]]
 name = "apache-airflow-providers-common-compat"
-version = "1.7.4"
+version = "1.15.0"
 description = "Provider package apache-airflow-providers-common-compat for Apache Airflow"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "apache_airflow_providers_common_compat-1.7.4-py3-none-any.whl", hash = "sha256:54b7be46724c5f0fdc6f96f9f177c1a7c80336394ba33ef9e2c946e7d708574c"},
-    {file = "apache_airflow_providers_common_compat-1.7.4.tar.gz", hash = "sha256:557b395995823a96ef62e8bff307f1d584abf85fae929b8d687983a3df7f5f83"},
+    {file = "apache_airflow_providers_common_compat-1.15.0-py3-none-any.whl", hash = "sha256:86cbc6363baef2cd02962af0877cec71cc99ff7c298cb2d19cac0b788c40e1d2"},
+    {file = "apache_airflow_providers_common_compat-1.15.0.tar.gz", hash = "sha256:1d3e05cddc66615307683309e2443c8c92de74817c1e08d6b26d278b8c20eb00"},
 ]
 
 [package.dependencies]
-apache-airflow = ">=2.10.0"
+apache-airflow = ">=2.11.0"
+asgiref = {version = ">=2.3.0", markers = "python_version < \"3.14\""}
 
 [package.extras]
 openlineage = ["apache-airflow-providers-openlineage"]
@@ -401,20 +402,20 @@ polars = ["polars (>=1.26.0)"]
 
 [[package]]
 name = "apache-airflow-providers-smtp"
-version = "2.3.1"
+version = "3.0.1"
 description = "Provider package apache-airflow-providers-smtp for Apache Airflow"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "apache_airflow_providers_smtp-2.3.1-py3-none-any.whl", hash = "sha256:d1302e83f4444be73e70fe4deacb3ccbac3f0da17bef53baa04f095f56e7d3a3"},
-    {file = "apache_airflow_providers_smtp-2.3.1.tar.gz", hash = "sha256:45c9b0d4fd8f086568b0b8d263d48335c9ca2bd1cf72b566f1e68deee70007f9"},
+    {file = "apache_airflow_providers_smtp-3.0.1-py3-none-any.whl", hash = "sha256:f4519b99fbd636059dd69283704fe9cd38f8510d26d897ea4e340c33c3d12563"},
+    {file = "apache_airflow_providers_smtp-3.0.1.tar.gz", hash = "sha256:f34feaf9a988e21e0eec65ee594af02cbb0130386692b01cc0d3330d5c193002"},
 ]
 
 [package.dependencies]
 aiosmtplib = ">=0.1.6"
-apache-airflow = ">=2.10.0"
-apache-airflow-providers-common-compat = ">=1.6.1"
+apache-airflow = ">=2.11.0"
+apache-airflow-providers-common-compat = ">=1.10.1"
 
 [[package]]
 name = "apache-airflow-providers-standard"
