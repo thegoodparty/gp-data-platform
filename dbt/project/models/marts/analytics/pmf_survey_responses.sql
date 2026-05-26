@@ -59,12 +59,11 @@ with
             end as pmf_variant,
 
             -- PMF response (decoded from internal option names).
-            -- Unknown values fall through to the raw label so the
-            -- accepted_values test fires loudly. The fix when that
-            -- happens is to (a) add a new when clause here if the new
-            -- label maps onto an existing friendly bucket, OR (b) add
-            -- the raw label to the accepted_values list in
-            -- m_analytics.yaml if it should be exposed as-is.
+            -- Both the legacy and ".org" variants of the N/A label are
+            -- mapped to 'N/A' so future HubSpot copy edits to that
+            -- option don't break downstream filters. Unknown values
+            -- fall through to the raw label so accepted_values fires
+            -- loudly — add a new WHEN clause when that happens.
             s.pmf_response as pmf_response_raw,
             case
                 s.pmf_response
@@ -74,6 +73,10 @@ with
                 then 'Somewhat Disappointed'
                 when 'Not disappointed'
                 then 'Not Disappointed'
+                when 'N/A - I no longer use GoodParty'
+                then 'N/A'
+                when 'N/A - I no longer use GoodParty.org'
+                then 'N/A'
                 else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,
             coalesce(s.pmf_response = 'Option 1', false) as is_very_disappointed,
