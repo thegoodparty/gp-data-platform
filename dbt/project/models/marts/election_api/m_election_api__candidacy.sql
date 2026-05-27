@@ -34,30 +34,37 @@ with
     -- br_candidate_id. That model dedupes by gp_candidate_id, not
     -- br_candidate_id, so a single BR person whose S3 candidacy rows had
     -- inconsistent email/phone can produce multiple gp_candidate_ids and
-    -- thus multiple rows with the same br_candidate_id. Without this dedup
-    -- the join below fans out and the downstream slug-level QUALIFY picks a
-    -- non-deterministic gp_candidate_id. max() on the UUID string is
-    -- deterministic.
+    -- thus multiple rows with the same br_candidate_id.
+    --
+    -- Use ROW_NUMBER + QUALIFY (not independent max() per column) so the
+    -- output row is internally consistent — gp_candidate_id, email, and
+    -- website_url all come from the same source row. Independent max()
+    -- per column would mix one identity's UUID with another row's email
+    -- because gp_candidate_id is a salted hash with no ordering
+    -- relationship to the email it was seeded from. Tiebreak order
+    -- mirrors the one in int__civics_candidate_ballotready.
     civics_candidate_by_br as (
-        select
-            br_candidate_id,
-            max(gp_candidate_id) as gp_candidate_id,
-            max(email) as email,
-            max(website_url) as website_url
+        select br_candidate_id, gp_candidate_id, email, website_url
         from {{ ref("int__civics_candidate_ballotready") }}
         where br_candidate_id is not null
-        group by br_candidate_id
+        qualify
+            row_number() over (
+                partition by br_candidate_id
+                order by updated_at desc, email asc nulls last
+            )
+            = 1
     ),
-    -- (gp_candidate_id, br_position_database_id) -> is_incumbent. Aggregates
-    -- civics.candidacy to handle persons who run for the same position across
-    -- cycles; takes any non-null is_incumbent (TS supplies it, ~51k populated;
-    -- BR/DDHQ/gp_api don't carry it). Within a (candidate, position) pair,
-    -- incumbency rarely flips, so any-value is safe.
+    -- (gp_candidate_id, br_position_database_id) -> is_incumbent for the
+    -- most recent election cycle. The civics candidacy source is a
+    -- multi-year union (2025 archive + 2026+); a candidate who was the
+    -- incumbent in a prior cycle but is a challenger now would otherwise
+    -- show is_incumbent=TRUE under bool_or. max_by on general_election_date
+    -- scopes to the current cycle's value.
     civics_candidacy_attrs as (
         select
             gp_candidate_id,
             br_position_database_id,
-            bool_or(is_incumbent) as is_incumbent
+            max_by(is_incumbent, general_election_date) as is_incumbent
         from {{ ref("candidacy") }}
         where gp_candidate_id is not null and br_position_database_id is not null
         group by gp_candidate_id, br_position_database_id
