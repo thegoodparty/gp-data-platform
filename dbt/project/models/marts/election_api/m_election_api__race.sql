@@ -118,3 +118,9 @@ where
     tbl_race.place_id in (select id from {{ ref("m_election_api__place") }})
     and tbl_race.election_date
     between current_date() - interval '1 day' and current_date() + interval '2 years'
+    -- Race -> Position -> District -> ProjectedTurnout is the chain the API
+    -- depends on; a Race with no matching Position can't serve the
+    -- campaign-strategy-context endpoint (no projected_turnout, no district
+    -- traversal). ~36/270k upstream races land with no Position FK match;
+    -- drop them rather than ship rows that fail downstream.
+    and tbl_position.id is not null

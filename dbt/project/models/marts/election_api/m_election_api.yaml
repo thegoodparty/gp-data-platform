@@ -38,7 +38,7 @@ models:
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
           (which itself coalesces S3 candidacy email with the BR API
-          person.contacts email). Surfaced by the campaign-plan-context
+          person.contacts email). Surfaced by the campaign-strategy-context
           endpoint so the caller can match the requesting user.
       - name: website_url
         description: >
@@ -245,8 +245,11 @@ models:
         description: >
           UUID of the BallotReady position the race is for. Foreign key to
           m_election_api__position. Lets API consumers traverse
-          Race -> Position -> District -> ProjectedTurnout.
+          Race -> Position -> District -> ProjectedTurnout. The race
+          mart explicitly filters out rows without a matching Position
+          so this is always populated.
         tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('m_election_api__position')
