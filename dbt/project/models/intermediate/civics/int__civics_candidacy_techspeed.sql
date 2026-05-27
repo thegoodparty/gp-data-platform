@@ -95,6 +95,14 @@ with
     -- Deduped to one row per source_candidate_id — all stages of a matched
     -- candidacy share the same BR candidacy/candidate/election IDs.
     canonical_candidacy as (
+        -- DATA-1523: when a ts_source_candidate_id has both a BR-anchored
+        -- row (from ts_stage_matches) and a non-BR row (from
+        -- non_br_cluster_matches) in the crosswalk, prefer BR. Without the
+        -- explicit BR-priority order, the UUID tiebreak picks arbitrarily
+        -- and ~64 TS candidates were adopting non-BR canonicals despite
+        -- having a BR match. canonical_gp_election_id is NULL for non-BR
+        -- cluster rows and populated for BR-anchored rows, so it works as
+        -- the priority signal across all 5 TS provider intermediates.
         select
             ts_source_candidate_id,
             canonical_gp_candidacy_id,
@@ -103,7 +111,8 @@ with
         from {{ ref("int__civics_er_canonical_ids") }}
         qualify
             row_number() over (
-                partition by ts_source_candidate_id order by canonical_gp_candidacy_id
+                partition by ts_source_candidate_id
+                order by canonical_gp_election_id is null, canonical_gp_candidacy_id
             )
             = 1
     ),
