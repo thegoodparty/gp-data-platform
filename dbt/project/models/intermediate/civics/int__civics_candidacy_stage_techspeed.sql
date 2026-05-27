@@ -70,11 +70,18 @@ with
     ),
 
     canonical_candidacy as (
+        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- for full rationale. Mirrors the dedupe used by sibling TS intermediates
+        -- so candidate / candidacy / candidacy_stage / election / election_stage
+        -- all pick the same canonical for the same ts_source_candidate_id (else
+        -- the valid_candidacies join below can drop stages where one grain
+        -- picked BR canonical and another picked non-BR).
         select ts_source_candidate_id, canonical_gp_candidacy_id
         from {{ ref("int__civics_er_canonical_ids") }}
         qualify
             row_number() over (
-                partition by ts_source_candidate_id order by canonical_gp_candidacy_id
+                partition by ts_source_candidate_id
+                order by canonical_gp_election_id is null, canonical_gp_candidacy_id
             )
             = 1
     ),

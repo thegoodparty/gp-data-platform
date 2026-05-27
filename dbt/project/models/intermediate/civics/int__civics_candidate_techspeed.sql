@@ -10,11 +10,16 @@ with
     -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical candidate_id.
     -- Deduped per source_candidate_id (one person may have multiple candidacies).
     canonical_candidate as (
+        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- for full rationale. canonical_gp_election_id is referenced in the
+        -- ORDER BY only (NULL for non-BR cluster rows, populated for BR-anchored
+        -- rows) without adding it to the SELECT list.
         select ts_source_candidate_id, canonical_gp_candidate_id
         from {{ ref("int__civics_er_canonical_ids") }}
         qualify
             row_number() over (
-                partition by ts_source_candidate_id order by canonical_gp_candidate_id
+                partition by ts_source_candidate_id
+                order by canonical_gp_election_id is null, canonical_gp_candidate_id
             )
             = 1
     ),
