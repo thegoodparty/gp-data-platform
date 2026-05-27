@@ -15,7 +15,24 @@ with
 
             -- Candidate identity
             trim(first_name) as first_name,
-            trim(last_name) as last_name,
+            -- Strip middle-initial pollution from last_name (DATA-1523).
+            -- Two regex_replace passes: (1) strip one-or-more leading
+            -- initial tokens ("A.", "A. ", "A ", "M.J. ", "E L ") that
+            -- look like middle initials but were merged with the surname
+            -- in TS source data; (2) strip a trailing " X" pattern.
+            -- Lookarounds prevent over-stripping legitimate compound
+            -- surnames ("De La Cruz", "Da Silva", "St. John", "AB Smith"),
+            -- which have no period or space between the leading cap(s)
+            -- and the next character.
+            regexp_replace(
+                regexp_replace(
+                    {{ remove_name_suffixes("trim(last_name)") }},
+                    '^([A-Z][.] ?|[A-Z] )+(?=[A-Za-z])',
+                    ''
+                ),
+                '(?<=[A-Za-z]) [A-Z]$',
+                ''
+            ) as last_name,
             trim(regexp_replace(src.state, '[^A-Za-z ]', '')) as state,
             coalesce(
                 cs.state_cleaned_postal_code,

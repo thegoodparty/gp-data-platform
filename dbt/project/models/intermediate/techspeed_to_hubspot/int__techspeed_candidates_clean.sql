@@ -98,68 +98,7 @@ with
                 else 'future_election'
             end as uploaded,
             _ab_source_file_url,
-            _airbyte_extracted_at,
-            -- Remove name suffixes (Jr, Sr, II, III, etc.)
-            {{ remove_name_suffixes("last_name") }} as last_name_no_suffix,
-            -- Remove trailing commas
-            regexp_replace(last_name_no_suffix, ',$', '') as last_name_no_comma,
-            -- Remove trailing single character after space
-            case
-                when
-                    length(last_name_no_comma) >= 2
-                    and substring(last_name_no_comma, length(last_name_no_comma) - 1, 1)
-                    = ' '
-                then substring(last_name_no_comma, 1, length(last_name_no_comma) - 2)
-                else last_name_no_comma
-            end as last_name_trimmed,
-            -- Handle middle initial with period but no space
-            case
-                when
-                    length(last_name_trimmed) >= 3
-                    and substring(last_name_trimmed, 2, 1) = '.'
-                    and substring(last_name_trimmed, 3, 1) != ' '
-                then substring(last_name_trimmed, 3)
-                else last_name_trimmed
-            end as last_name_clean,
-            -- Extract suggested last name (everything after last space)
-            case
-                when last_name_clean like '% %'
-                then
-                    case
-                        -- Handle special prefixes that should be kept
-                        when last_name_clean like '%De La %'
-                        then
-                            'De La ' || substring(
-                                last_name_clean,
-                                position('De La ' in last_name_clean) + 7
-                            )
-                        when last_name_clean like '%Van %'
-                        then
-                            'Van ' || substring(
-                                last_name_clean, position('Van ' in last_name_clean) + 4
-                            )
-                        when last_name_clean like '% van %'
-                        then
-                            ' van ' || substring(
-                                last_name_clean,
-                                position(' van ' in last_name_clean) + 5
-                            )
-                        when last_name_clean like '%Le %'
-                        then
-                            'Le ' || substring(
-                                last_name_clean, position('Le ' in last_name_clean) + 3
-                            )
-                        else
-                            -- Default: take everything after the last space
-                            substring(
-                                last_name_clean,
-                                length(last_name_clean)
-                                - position(' ' in reverse(last_name_clean))
-                                + 2
-                            )
-                    end
-                else last_name_clean
-            end as suggested_last
+            _airbyte_extracted_at
         from {{ ref("int__techspeed_candidates") }}
         {% if is_incremental() %}
             where
@@ -175,7 +114,7 @@ with
                 then null
                 when last_name is null
                 then null
-                when nullif(trim(suggested_last), '') is null
+                when nullif(trim(last_name), '') is null
                 then null
                 when state is null
                 then null
@@ -185,7 +124,7 @@ with
                     {{
                         generate_candidate_code(
                             "first_name",
-                            "suggested_last",
+                            "last_name",
                             "state",
                             "office_type",
                             "city",
@@ -199,7 +138,7 @@ with
             and trim(first_name) <> ''
             and trim(last_name) is not null
             and trim(last_name) <> ''
-            and nullif(trim(suggested_last), '') is not null
+            and nullif(trim(last_name), '') is not null
             and trim(state) is not null
             and trim(state) <> ''
             and trim(city) is not null
@@ -236,7 +175,7 @@ with
 select
     candidate_id_source,
     first_name,
-    suggested_last as last_name,
+    last_name,
     candidate_type,
     email,
     techspeed_candidate_code,
