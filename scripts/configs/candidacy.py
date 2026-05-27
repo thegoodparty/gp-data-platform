@@ -79,6 +79,12 @@ CANDIDACY_CONFIG = EntityConfig(
         "br_race_id",
         "br_candidacy_id",
         "election_stage",
+        # partisan_type forwarded so gp-data-platform's
+        # stg_er_source__clustered_candidacy_stages can project it
+        # (downstream consumers — e.g. mart_civics — require it). The
+        # 2026-04-30 production snapshot included it via a one-off
+        # un-committed local edit; this commit formalizes the retention.
+        "partisan_type",
     ],
     em_training_blocks=[
         ("last_name", "state", "election_date"),
