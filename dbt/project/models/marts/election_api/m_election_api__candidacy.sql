@@ -41,8 +41,15 @@ with
     -- website_url all come from the same source row. Independent max()
     -- per column would mix one identity's UUID with another row's email
     -- because gp_candidate_id is a salted hash with no ordering
-    -- relationship to the email it was seeded from. Tiebreak order
-    -- mirrors the one in int__civics_candidate_ballotready.
+    -- relationship to the email it was seeded from.
+    --
+    -- Sort contact-data presence first (email/website_url asc nulls
+    -- last) so that a row with real email/website beats a personless
+    -- candidacy-only row. int__civics_candidate_ballotready.updated_at
+    -- is coalesce(person_updated_at, _airbyte_extracted_at), so a
+    -- candidacy row with no matching person can get a fresh Airbyte
+    -- extraction timestamp that would otherwise outrank a genuine
+    -- person row by `updated_at desc` alone.
     civics_candidate_by_br as (
         select br_candidate_id, gp_candidate_id, email, website_url
         from {{ ref("int__civics_candidate_ballotready") }}
@@ -50,7 +57,8 @@ with
         qualify
             row_number() over (
                 partition by br_candidate_id
-                order by updated_at desc, email asc nulls last
+                order by
+                    email asc nulls last, website_url asc nulls last, updated_at desc
             )
             = 1
     ),
@@ -60,11 +68,21 @@ with
     -- incumbent in a prior cycle but is a challenger now would otherwise
     -- show is_incumbent=TRUE under bool_or. max_by on general_election_date
     -- scopes to the current cycle's value.
+    --
+    -- Databricks max_by(value, order) returns NULL for the whole group
+    -- when every `order` value is NULL, even if `value` is populated.
+    -- Some civics rows have no general_election_date (special-election
+    -- candidates, certain 2025 archive rows); fall back to max() so
+    -- those candidates keep their is_incumbent flag. The fallback only
+    -- fires when no date signal exists in the group, so the stale-
+    -- incumbent fix above still applies to the cases that matter.
     civics_candidacy_attrs as (
         select
             gp_candidate_id,
             br_position_database_id,
-            max_by(is_incumbent, general_election_date) as is_incumbent
+            coalesce(
+                max_by(is_incumbent, general_election_date), max(is_incumbent)
+            ) as is_incumbent
         from {{ ref("candidacy") }}
         where gp_candidate_id is not null and br_position_database_id is not null
         group by gp_candidate_id, br_position_database_id
