@@ -1,22 +1,42 @@
 {{
     config(
-        warn_if=">15524",
-        error_if=">25874",
+        severity="error",
+        warn_if=">= 1",
+        error_if=">= 2",
     )
 }}
 
--- B3: PR-1 baseline guard on absolute counts of TS candidacies missing
--- viability_score. Thresholds pegged at the PR-1 TS row count of ~51,748:
--- warn_if=15524  (~30% of baseline)
--- error_if=25874 (~50% of baseline)
--- PR 2 (Task 12) recomputes both integers against the then-current row
--- count and tightens to ~1%/~2% after the parser fix lifts coverage to
--- the MLflow ceiling. Absolute counts are intentional here: a percentage-
--- based denominator would silently absorb a regression as TS volume grows.
---
--- Default severity is 'error' (not 'warn'). Per dbt's severity reference,
--- default 'error' evaluates error_if first, then warn_if; setting
--- severity='warn' would cap max severity at warn and skip the error gate.
-select gp_candidacy_id
-from {{ ref("candidacy") }}
-where array_contains(source_systems, 'techspeed') and viability_score is null
+-- B3: emit one indicator row per breached threshold.
+-- 0 rows = TS viability coverage healthy
+-- 1 row  = WARN: >1% of TS candidacies missing viability_score
+-- 2 rows = ERROR: >2% (both indicator rows fire)
+-- Empirical MLflow floor is ~0.3%; 1% absorbs legitimate skips plus
+-- small ingestion drift. Computed dynamically against the current
+-- denominator so the contract holds regardless of TS volume drift
+-- (prior fixed-integer thresholds went stale with population shifts).
+with
+    stats as (
+        select
+            count(*) as total_ts,
+            sum(case when viability_score is null then 1 else 0 end) as missing_count
+        from {{ ref("candidacy") }}
+        where array_contains(source_systems, 'techspeed')
+    )
+
+select
+    'warn_gt_1pct' as breach,
+    total_ts,
+    missing_count,
+    cast(missing_count * 1.0 / total_ts as decimal(5, 4)) as pct_missing
+from stats
+where missing_count * 1.0 / total_ts > 0.01
+
+union all
+
+select
+    'error_gt_2pct' as breach,
+    total_ts,
+    missing_count,
+    cast(missing_count * 1.0 / total_ts as decimal(5, 4)) as pct_missing
+from stats
+where missing_count * 1.0 / total_ts > 0.02

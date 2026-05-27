@@ -65,7 +65,7 @@ models:
           - not_null
 
   - name: int__techspeed_candidates_clean
-    description: "Further cleaned techspeed candidate data with name standardization and district cleaning"
+    description: "Filtered and deduped techspeed candidates with district/office_type/city normalization and primary-key (techspeed_candidate_code) generation. Last-name standardization happens upstream in staging."
     columns:
       - name: candidate_id_source
         description: "Unique identifier for the candidate from source system"
@@ -74,12 +74,12 @@ models:
         tests:
           - not_null
       - name: last_name
-        description: "Cleaned last name without suffixes"
+        description: "Last name passed through from staging (cleaning happens in stg_airbyte_source__techspeed_gdrive_candidates)."
         tests:
           - not_null
           - last_name_cleaning_quality
       - name: techspeed_candidate_code
-        description: "Generated unique code for the candidate"
+        description: "Unique candidate code from first_name + last_name + state + office_type + city. Value depends on the staging last_name parser and shifts when the parser changes."
         tests:
           - not_null
           - unique
