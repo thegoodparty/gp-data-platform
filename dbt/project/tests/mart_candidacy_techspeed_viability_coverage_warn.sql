@@ -31,9 +31,9 @@ select
     'warn_gt_2_5pct' as breach,
     total_ts,
     missing_count,
-    cast(missing_count * 1.0 / total_ts as decimal(5, 4)) as pct_missing
+    cast(missing_count * 1.0 / nullif(total_ts, 0) as decimal(5, 4)) as pct_missing
 from stats
-where missing_count * 1.0 / total_ts > 0.025
+where missing_count * 1.0 / nullif(total_ts, 0) > 0.025
 
 union all
 
@@ -41,6 +41,6 @@ select
     'error_gt_4pct' as breach,
     total_ts,
     missing_count,
-    cast(missing_count * 1.0 / total_ts as decimal(5, 4)) as pct_missing
+    cast(missing_count * 1.0 / nullif(total_ts, 0) as decimal(5, 4)) as pct_missing
 from stats
-where missing_count * 1.0 / total_ts > 0.04
+where missing_count * 1.0 / nullif(total_ts, 0) > 0.04
