@@ -24,8 +24,10 @@ with
             ('Mac Donald', 'Mac Donald'),
             ('O''Brien', 'O''Brien'),
             ('AB Smith', 'AB Smith'),
-            -- Suffix-bearing (suffix stripped)
-            ('Smith Jr.', 'Smith')
+            -- Suffix-bearing (suffix stripped; trailing comma cleanup)
+            ('Smith Jr.', 'Smith'),
+            ('Smith, Jr.', 'Smith'),
+            ('Smith,', 'Smith')
     ),
 
     parser as (
@@ -34,7 +36,7 @@ with
             expected,
             regexp_replace(
                 regexp_replace(
-                    {{ remove_name_suffixes("input") }},
+                    regexp_replace({{ remove_name_suffixes("input") }}, ',$', ''),
                     '^([A-Z][.] ?|[A-Z] )+(?=[A-Za-z])',
                     ''
                 ),
@@ -51,7 +53,7 @@ with
             parsed_once,
             regexp_replace(
                 regexp_replace(
-                    {{ remove_name_suffixes("parsed_once") }},
+                    regexp_replace({{ remove_name_suffixes("parsed_once") }}, ',$', ''),
                     '^([A-Z][.] ?|[A-Z] )+(?=[A-Za-z])',
                     ''
                 ),

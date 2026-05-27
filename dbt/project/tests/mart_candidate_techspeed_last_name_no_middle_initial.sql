@@ -1,6 +1,7 @@
 -- A2: end-to-end assertion on mart_civics.candidate for TS-source-systems
 -- rows. Filtered to exclude rows that ALSO carry the 'hubspot' source
--- (legacy 2025 archive, addressed by a separate ticket).
+-- (legacy 2025 archive, addressed by a separate ticket). Matches the
+-- staging-layer A1 bug-pattern set plus a trailing-comma guard.
 select gp_candidate_id, last_name, source_systems
 from {{ ref("candidate") }}
 where
@@ -11,4 +12,5 @@ where
         last_name rlike '^[A-Z][.] ?[A-Za-z]'
         or last_name rlike '^[A-Z] [A-Za-z]'
         or last_name rlike '[A-Za-z] [A-Z]$'
+        or last_name rlike ',$'
     )
