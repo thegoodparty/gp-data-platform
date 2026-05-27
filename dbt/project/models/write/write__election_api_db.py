@@ -626,38 +626,47 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_name,
     )
 
-    # Load tables to postgres. The ordering of the tables is important to satisfy
-    # foreign key constraints.
+    # Load tables to postgres. The ordering of the tables is important to
+    # satisfy foreign key constraints. The Prisma graph is:
+    #   Place (self-ref)
+    #   District -> (none)
+    #   Position -> District, Place
+    #   Race -> Place, Position
+    #   Candidacy -> Race
+    #   Issue (self-ref)
+    #   Stance -> Issue, Candidacy
+    #   ProjectedTurnout -> District
+    # so referenced parents must load before their children.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [
             "Place",
+            "District",
+            "Position",
             "Race",
             "Candidacy",
             "Issue",
             "Stance",
-            "District",
-            "Position",
             "Projected_Turnout",
         ],
         [
             place_df,
+            district_df,
+            position_df,
             race_df,
             candidacy_df,
             issue_df,
             stance_df,
-            district_df,
-            position_df,
             projected_turnout_df,
         ],
         [
             PLACE_UPSERT_QUERY,
+            DISTRICT_UPSERT_QUERY,
+            POSITION_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
-            DISTRICT_UPSERT_QUERY,
-            POSITION_UPSERT_QUERY,
             PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
     ):
