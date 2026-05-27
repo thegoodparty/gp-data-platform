@@ -87,6 +87,7 @@ with
 
             -- assessments
             viability_scores.viability_rating_2_0 as viability_score,
+            viability_scores.viability_rating_automated as score_viability_automated,
             cast(cast(tbl_companies.win_number as float) as int) as win_number,
             tbl_companies.win_number_model,
 
@@ -180,6 +181,7 @@ select
     general_runoff_election_date,
     br_position_database_id,
     viability_score,
+    score_viability_automated,
     win_number,
     win_number_model,
     has_ddhq_match,

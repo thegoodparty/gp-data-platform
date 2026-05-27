@@ -58,7 +58,8 @@ with
                 then 'Win'
             end as pmf_variant,
 
-            -- PMF response (decoded from internal option names)
+            -- PMF response (decoded from internal option names).
+            -- Both legacy and ".org" variants of the N/A label map to 'N/A'.
             s.pmf_response as pmf_response_raw,
             case
                 s.pmf_response
@@ -69,6 +70,8 @@ with
                 when 'Not disappointed'
                 then 'Not Disappointed'
                 when 'N/A - I no longer use GoodParty'
+                then 'N/A'
+                when 'N/A - I no longer use GoodParty.org'
                 then 'N/A'
                 else coalesce(s.pmf_response, 'N/A')
             end as pmf_response,
