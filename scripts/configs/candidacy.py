@@ -35,9 +35,24 @@ CANDIDACY_CONFIG = EntityConfig(
         cl.ExactMatch("phone"),
         cl.ExactMatch("state"),
         cl.ExactMatch("election_date"),
-        cl.JaroWinklerAtThresholds(
-            "official_office_name",
-            score_threshold_or_thresholds=[0.95, 0.88, 0.75],
+        CustomComparison(
+            output_column_name="official_office_name",
+            comparison_levels=[
+                cll.NullLevel("official_office_name"),
+                cll.JaroWinklerLevel("official_office_name", distance_threshold=0.95),
+                cll.JaroWinklerLevel("official_office_name", distance_threshold=0.88),
+                cll.JaroWinklerLevel("official_office_name", distance_threshold=0.75),
+                # Token-overlap fallback — picks up cross-source naming
+                # variants where JW is too low but a meaningful locality or
+                # school-district code is shared (e.g. DDHQ
+                # "Lincoln County R-IV School District" ↔ BR "Winfield R-4
+                # School Board" both yield "r-4"). Tokens are pre-normalized
+                # in dbt via the office_name_tokens macro.
+                cll.ArrayIntersectLevel(
+                    "official_office_name_tokens", min_intersection=1
+                ),
+                cll.ElseLevel(),
+            ],
         ),
         cl.ExactMatch("district_identifier"),
         cl.ExactMatch("office_level"),
@@ -58,6 +73,26 @@ CANDIDACY_CONFIG = EntityConfig(
             " AND l.election_date = r.election_date"
             " AND jaro_winkler_similarity(l.official_office_name,"
             " r.official_office_name) >= 0.88"
+            " AND jaro_winkler_similarity(l.last_name,"
+            " r.last_name) >= 0.88",
+            sql_dialect="duckdb",
+        ),
+        # Token-overlap fuzzy-lastname rule: catches DDHQ typos like
+        # "hasler" ↔ "hassler", "klingler" ↔ "klinger" where the office-name JW
+        # falls below 0.88 ("mehlville school district r-9 director" vs
+        # "mehlville r-9 school board" → JW=0.85) but the locality+code tokens
+        # overlap. Required because DDHQ has 0% br_race_id, phone, email
+        # coverage, so blocking depends entirely on name + office signals.
+        # Same-date only: candidacy_stage grain treats primary / runoff /
+        # general as distinct entities, so cross-date matching would merge
+        # different stages of the same race (e.g. AR Prosecuting Attorney
+        # D11 West has separate br_race_ids for the 3/3 primary, 5/19 runoff,
+        # and 11/3 general — Evelyn Moorehead must end up in three clusters).
+        CustomRule(
+            "l.state = r.state"
+            " AND l.election_date = r.election_date"
+            " AND list_has_any(l.official_office_name_tokens,"
+            " r.official_office_name_tokens)"
             " AND jaro_winkler_similarity(l.last_name,"
             " r.last_name) >= 0.88",
             sql_dialect="duckdb",
@@ -99,14 +134,27 @@ CANDIDACY_CONFIG = EntityConfig(
     clustered_output_name="clustered_candidacies.csv",
     post_prediction_filters=[
         BASE_POST_PREDICTION_FILTER,
+        # Race ID guard: drop pairs whose br_race_ids differ unless the office
+        # names are reasonably similar (JW >= 0.88, gamma 3 with the levels
+        # below). Threshold tracks the JW>=0.88 level — keep this in sync if
+        # the official_office_name comparison's level order changes.
+        # Levels: 0=Else, 1=ArrayIntersect, 2=JW>=0.75, 3=JW>=0.88, 4=JW>=0.95.
         """
           NOT (
             br_race_id_l IS NOT NULL
             AND br_race_id_r IS NOT NULL
             AND br_race_id_l != br_race_id_r
-            AND gamma_official_office_name < 2
+            AND gamma_official_office_name < 3
           )
         """,
+        # Same-stage guard: candidacy_stage entities are stage-grained, so
+        # records on different election_dates are different candidacies even
+        # when name + phone + email + office all match. Without this, the
+        # phone / email / br_race_id blocking rules transitively merge a
+        # candidate's primary, runoff, and general candidacies (same person
+        # has the same phone across all three stages, but the BR records have
+        # distinct br_race_ids and dates per stage).
+        "gamma_election_date > 0",
     ],
     audit_display_columns=[
         "source_name",

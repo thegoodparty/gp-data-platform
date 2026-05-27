@@ -27,10 +27,15 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
             df[col] = pd.to_datetime(df[col], errors="coerce").dt.date.astype(str)
             df[col] = df[col].replace("NaT", None)
 
-    # Parse first_name_aliases from JSON array string built by the dbt prematch model
-    df["first_name_aliases"] = df["first_name_aliases"].apply(
-        lambda v: json.loads(v) if isinstance(v, str) else None
-    )
+    # Parse JSON-array columns built by the dbt prematch model back to lists
+    # so Splink's ArrayIntersectLevel can operate on them. Databricks emits
+    # arrays as native lists, but cli._normalize_to_strings re-serializes them
+    # to JSON to keep the DataFrame all-string.
+    for col in ("first_name_aliases", "official_office_name_tokens"):
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda v: json.loads(v) if isinstance(v, str) else None
+            )
 
     # Normalize nulls so Splink treats missing data correctly
     df = df.where(df.notna(), None)
@@ -187,25 +192,43 @@ def save_results(
 ) -> None:
     """Write CSVs and diagnostic charts."""
 
+    import numpy as np
+
     def to_json(v):
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return "[]"
+        # Strings pass through unchanged (already JSON-serialized in a prior run)
         if isinstance(v, str):
             return v
-        if hasattr(v, "tolist"):
+        if isinstance(v, list):
+            return json.dumps(v)
+        if isinstance(v, np.ndarray):
             return json.dumps(v.tolist())
-        return json.dumps(list(v))
+        # Anything else (None, NaN, numpy scalar in a list cell) → empty array sentinel.
+        # Strict ndarray check above (vs hasattr "tolist") is required so np.float64(nan)
+        # cells inside a list column don't json.dumps() to the non-standard "NaN" token.
+        return "[]"
 
-    if len(pairwise_df) > 0:
-        for col in pairwise_df.columns:
-            if col.endswith("_aliases_l") or col.endswith("_aliases_r"):
-                pairwise_df[col] = pairwise_df[col].apply(to_json)
+    def _is_list_col(series: pd.Series) -> bool:
+        # Probe the first non-null value — JSON-serialize only true list/array
+        # columns. Required because Delta CREATE TABLE maps object→STRING but
+        # pyarrow infers list<...> from list values, mismatching the schema.
+        # Strict isinstance check (no hasattr 'tolist') avoids matching numpy
+        # scalars like np.float64, which also expose tolist() but must stay
+        # numeric in the output.
+        idx = series.first_valid_index()
+        if idx is None:
+            return False
+        sample = series.loc[idx]
+        return isinstance(sample, (list, np.ndarray))
+
+    for df in (pairwise_df, clustered_df):
+        if len(df) == 0:
+            continue
+        for col in df.columns:
+            if _is_list_col(df[col]):
+                df[col] = df[col].apply(to_json)
 
     pairwise_df.to_csv(output_dir / "pairwise_predictions.csv", index=False)
     if len(clustered_df) > 0:
-        for col in clustered_df.columns:
-            if "aliases" in col:
-                clustered_df[col] = clustered_df[col].apply(to_json)
         clustered_df.to_csv(output_dir / config.clustered_output_name, index=False)
 
     for name, method in [

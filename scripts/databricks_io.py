@@ -19,29 +19,19 @@ For CLI auth (local dev):
     DATABRICKS_HOST is optional — will be read from CLI profile if not set.
 """
 
+import json
 import os
 import tempfile
 import time
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 from databricks import sql as databricks_sql
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sql.client import Connection
-
-# Pandas dtype -> Databricks SQL type mapping, since these don't get correctly
-# mapped all the time
-_DTYPE_MAP = {
-    "int64": "BIGINT",
-    "int32": "INT",
-    "float64": "DOUBLE",
-    "float32": "FLOAT",
-    "bool": "BOOLEAN",
-    "datetime64[ns]": "TIMESTAMP",
-    "object": "STRING",
-}
 
 
 @dataclass(frozen=True)
@@ -146,13 +136,47 @@ def read_table(fqn: str) -> pd.DataFrame:
         conn.close()
 
 
+def _coerce_to_string_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy of `df` with every cell converted to string (or None).
+
+    Matcha persists outputs as all-string Delta tables and lets dbt cast back
+    to native types downstream. This mirrors the input-side normalization in
+    `cli._normalize_to_strings` and removes the long tail of type-mismatch
+    bugs (null-typed parquet fields, list/array columns inferred as
+    list<string> by pyarrow, numpy scalars vs floats, bool casing, etc.).
+
+    Rules:
+      - None / NaN → None (preserved as SQL NULL)
+      - list / np.ndarray → JSON-serialized string
+      - everything else → str(...) with `.0` stripped from float-as-int values
+        so that BIGINT-shaped data round-trips cleanly
+    """
+
+    def _to_str(v):
+        if v is None:
+            return None
+        if isinstance(v, float) and pd.isna(v):
+            return None
+        if isinstance(v, list):
+            return json.dumps(v)
+        if isinstance(v, np.ndarray):
+            return json.dumps(v.tolist())
+        s = str(v)
+        # Drop trailing ".0" for whole-number floats so 5.0 -> "5"; mirrors
+        # cli._normalize_to_strings on the read side.
+        if s.endswith(".0"):
+            s = s[:-2]
+        return s
+
+    out = df.copy()
+    for col in out.columns:
+        out[col] = out[col].apply(_to_str)
+    return out
+
+
 def _df_to_databricks_schema(df: pd.DataFrame) -> str:
-    """Convert DataFrame dtypes to a Databricks CREATE TABLE column spec."""
-    cols = []
-    for col_name, dtype in df.dtypes.items():
-        db_type = _DTYPE_MAP.get(str(dtype), "STRING")
-        cols.append(f"`{col_name}` {db_type}")
-    return ", ".join(cols)
+    """All columns are STRING — matcha standardizes on string-typed outputs."""
+    return ", ".join(f"`{c}` STRING" for c in df.columns)
 
 
 def write_table(
@@ -163,10 +187,12 @@ def write_table(
 ) -> None:
     """Write a pandas DataFrame to a Databricks table via parquet staging.
 
-    Uploads a parquet file to a Unity Catalog Volume, then uses COPY INTO
-    to load it into the target table.
+    All columns are uploaded as STRING. Downstream dbt staging models cast
+    back to native types where useful; this keeps the upload pipeline simple
+    and avoids the type-merge bugs that plagued mixed-type writes.
     """
     t = TableFQN.parse(fqn)
+    df = _coerce_to_string_df(df)
     schema_spec = _df_to_databricks_schema(df)
     w = WorkspaceClient()
 
@@ -195,19 +221,11 @@ def write_table(
         volume_path = (
             f"/Volumes/{t.catalog}/{t.schema}/{staging_volume}/{t.table}.parquet"
         )
-        # Build an explicit pyarrow schema so all-null columns are written as
-        # string type instead of null type. Delta's COPY INTO cannot merge
-        # null-typed parquet fields into STRING columns defined by CREATE TABLE.
-        # Using an explicit schema preserves null values (no fillna needed) and
-        # avoids mutating the caller's DataFrame.
-        inferred = pa.Schema.from_pandas(df, preserve_index=False)
-        fields = []
-        for field in inferred:
-            if field.type == pa.null():
-                fields.append(pa.field(field.name, pa.string(), nullable=True))
-            else:
-                fields.append(field)
-        schema = pa.schema(fields)
+        # Force every parquet column to string so the COPY INTO never has to
+        # merge a list / null / numeric field into the STRING table schema.
+        schema = pa.schema(
+            [pa.field(name, pa.string(), nullable=True) for name in df.columns]
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".parquet") as tmp:
             df.to_parquet(tmp.name, index=False, schema=schema)
