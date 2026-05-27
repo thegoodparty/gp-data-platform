@@ -54,6 +54,12 @@ logs/
 test_data/
 .databricks/
 
+# Local-only project journals (per-contributor context for AI-assisted work)
+analytics/*/SESSION_NOTES.md
+
+# Per-contributor review sub-agents (kept local; project framing supplied at invocation)
+.claude/agents/product-*.md
+
 # Entity resolution local data and results
 entity_resolution/data/
 entity_resolution/results/*.csv

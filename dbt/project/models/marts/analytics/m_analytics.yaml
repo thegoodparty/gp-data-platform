@@ -1283,6 +1283,121 @@ models:
               arguments:
                 values: [true, false]
 
+  - name: prospects
+    description: |
+      Wide base table at HubSpot-contact grain for prospect-funnel metrics
+      (Prospect Connect Rate, Prospect Activation Rate). One row per
+      sales-touched HubSpot contact: called OR in any Serve/Win funnel
+      signal OR pledged OR serve-opted-in.
+
+      Win activation rates derived from this mart are current-snapshot
+      ratios (not transition rates) until the HubSpot Win lifecycle
+      workflow is enabled.
+    columns:
+      - name: contact_id
+        description: HubSpot contact ID. Primary key.
+        data_tests:
+          - not_null
+          - unique
+      - name: in_serve_funnel
+        data_tests: [not_null]
+      - name: in_win_funnel
+        data_tests: [not_null]
+      - name: in_both_funnels
+        data_tests: [not_null]
+      - name: ever_connected
+        data_tests: [not_null]
+      - name: was_called
+        data_tests: [not_null]
+      - name: has_win_org
+        data_tests: [not_null]
+      - name: has_serve_org
+        data_tests: [not_null]
+      - name: is_winner_or_eo
+        data_tests: [not_null]
+      - name: is_serve_activated_prospect
+        data_tests: [not_null]
+      - name: is_serve_activated_any
+        data_tests: [not_null]
+      - name: is_win_activated_prospect
+        data_tests: [not_null]
+      - name: is_win_activated_any
+        data_tests: [not_null]
+      - name: is_self_filer_lead
+        data_tests: [not_null]
+      - name: is_historical_incumbent
+        data_tests: [not_null]
+      - name: is_campaign_type
+        data_tests: [not_null]
+      - name: is_dual_pursuit
+        data_tests: [not_null]
+      - name: is_eo_sales_attributed
+        data_tests: [not_null]
+      - name: is_winner_pursuit
+        data_tests: [not_null]
+      - name: is_win_intake_prospect
+        data_tests: [not_null]
+      - name: is_win_pro_presented_prospect
+        data_tests: [not_null]
+      - name: is_win_pro_won_prospect
+        data_tests: [not_null]
+      - name: win_activated_user_hs_flag
+        data_tests: [not_null]
+      - name: has_won_general_election
+        data_tests: [not_null]
+      - name: gp_user_id
+        description: Resolved product-DB user_id via candidate.prod_db_user_id.
+        data_tests:
+          - unique:
+              config:
+                where: "gp_user_id IS NOT NULL"
+      - name: serve_stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Stage 1: Serve Contacted'
+                  - 'Stage 2: Serve Pitched'
+                  - 'Stage 0: Serve Intake'
+                  - 'Closed: Poll Declined'
+                  - 'Closed: No Show (2x)'
+                  - 'Stage 4: Serve Launched'
+                  - 'Stage 3: Serve Agreed'
+                  - 'Won: Viewed Poll'
+                  - 'Closed: Unable to Verify Candidate'
+                  - 'Closed: Not ICP'
+                  - 'Closed: Approval Withdrawn'
+                  - 'Closed: Too Early'
+              config:
+                severity: warn
+      - name: win_stage
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Stage 0 – Intake'
+                  - 'Closed – Not ICP'
+                  - 'Closed – Not Running / Pledge Not Met'
+                  - 'Previously Pro'
+                  - 'Stage 5 – Closed Won (Pro)'
+                  - 'Stage 1 – New / Assigned'
+                  - 'Closed – Not Interested'
+                  - 'Stage 6 - Activated Pro User'
+                  - 'Closed – Too Early'
+                  - 'Stage 4 – Pro Consideration'
+                  - 'Stage 3 – Pro Presented'
+                  - 'Stage 2 – Discovery Complete'
+              config:
+                severity: warn
+    tests:
+      - dbt_utils.expression_is_true:
+          name: prospects_sales_touched_gate
+          arguments:
+            expression: |
+              was_called or in_serve_funnel or in_win_funnel
+              or is_pledged or has_verbal_pledge or has_email_pledge
+              or is_serve_opted_in
+
   - name: win_user_satisfaction_responses
     description: >
       Win User satisfaction survey (5 stars) responses. Combines survey_id 9

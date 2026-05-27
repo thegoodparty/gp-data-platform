@@ -1,58 +1,58 @@
-guid,disposition_label,source,notes
-73a0d17f-1163-4015-bdd5-ec830791da20,No answer,hubspot_docs,
-17b47fee-58de-441e-a44c-c6300d46f273,Wrong number,hubspot_docs,
-ceffd0bb-a3f0-4ea9-8add-4e8311af5eff,Hung up,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-a2b5d8f1-7a71-4ad6-a39f-1a192ef52e4e,Rejected - No need for services,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-b2cf5968-551e-4856-9783-52b3da59a7d0,Left voicemail,hubspot_docs,
-d5ff9918-03e4-48c3-88dc-1b76d3734082,Verbal Pledge - Self-Directed,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-86c766c5-b12d-43bc-9129-d63987c3fa27,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-4da82d9e-f7aa-4664-a26d-b6af3d683dbe,Verbal Pledge - Uncontested,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-b8241b6a-4e17-440a-80d5-d44009ce2a77,Verbal Pledge - Meeting Booked,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-f240bbac-87c9-4f6e-bf70-924b57d47db7,Connected,hubspot_docs,
-9d9162e7-6cf3-4944-bf63-4dff82258764,Busy,hubspot_docs,
-d3bee2ac-04f0-4fad-88aa-964382fe0b50,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-55444bdb-3fbb-4aa0-b84b-c8dbfa44dcb6,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-e7074547-3a99-4834-95d1-71f2b757d34a,Rejected - Not Running,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-d92c7203-d8e9-4fa1-895c-0ff7f198a6e1,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-c7c4fc97-95a0-4f76-a9a2-710e9f37df4f,Call back later,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-246e6ce6-e79c-4e0f-85e7-5f8b76c8e323,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-55e39b78-b3f3-480d-ba67-69bd67f7c652,Rejected-Uncontested,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-a4c4c377-d246-4b32-a13b-75a56a4cd0ff,Left live message,hubspot_docs,
-ac1ab4fe-52b5-404b-b01d-f71cf5eb80be,DNC List,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-c6863d5a-bb90-45f4-941d-3b485b802a95,Requested Information,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-0c5ce1fa-5c4c-45c4-8799-508f9def9e2b,Rejected - Partisan,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-bbdca77e-b9a9-42e4-8907-c8800fd1fcb0,Verbal Pledge - EO Waitlist,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-14797417-aedc-47b3-adeb-b54c7c28acf0,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-0e13598f-ad98-4270-9f18-77b2e5280104,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-20530431-b242-4056-9e76-520cc50b4a3a,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-7eedd647-3024-46bb-90d4-6a58f3586476,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-108b5876-61f4-4cd8-8260-3354107af3a5,Rejected - Couldn't agree to pledge,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-7e731b63-354b-4beb-9ec4-c842bcb5449a,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-59c6cd26-61e8-4ec6-abed-78b6e8469ca1,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-63909de2-8d6e-40dc-8fdc-e5f9c410dd17,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-af81669c-09fc-473b-aad5-be01193f40f4,Verbal Pledge - EO,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-66258670-5c50-4aa0-8ed4-d0f5b9187cee,Rejected - No Urgency,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-94cb249f-6687-4aa9-b912-cd1457c363cb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-a8a7e405-4abc-4442-b0b2-0b14b4906099,Rejected - No Time,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-d3cf69b0-ed13-400e-a113-e5ee7b9aa43d,Rejected - Not EO,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-6c864764-2ad8-46f2-bb41-f64b3d2a06e5,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-83ae0aa2-49be-49ca-a440-998f0ed9b080,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-30f0d755-4535-4419-8cb5-bc7ade922a4c,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-1211b9a9-c43f-42f0-9422-32dcf61feaf4,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-74fcd6cb-0a77-4c2d-b2ed-4a42313066d5,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-2948382b-59a6-49cd-a57e-e959c5a143cb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-10bb5085-116e-4e1d-9cb2-540c0304ef71,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-feadaed0-8666-4e20-abe8-161a09d24a94,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-73159d4a-a09d-41f4-9002-17763f76b3f6,Busy – Pitched Free Tools,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-4d366032-1414-4994-a6d8-1eba74ebfbee,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-31b1f7f9-356a-4690-be46-dc6acec455bc,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-d487bf7d-1c4d-4443-a0eb-902c1264f25a,Already Booked,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-f730efb3-6745-4b60-ac68-9e66b8e4f0fd,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-80f73f2c-cfd0-479b-bb34-4b54eb89369a,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-8be1e953-b2b3-4fc8-88da-392bc722c82d,Busy – Pitched Values Based,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-a5348b6b-1464-4958-9ec9-aa7e3fece0b1,Confirmed Running,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-f5008477-ecab-4fde-9eef-f799465187d6,Step Up - Meeting Booked,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern"
-62be6577-f006-46ba-ab6c-ece08d82cf08,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-3809b0d1-d023-4ca6-abfb-afd2223508b3,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-22be21ee-fb58-4161-968d-c9271f0aa037,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
-56125b6e-c95e-4f99-acc7-dba83a97b1fb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes
+guid,disposition_label,source,notes,outcome_family
+73a0d17f-1163-4015-bdd5-ec830791da20,No answer,hubspot_docs,,not_connected
+17b47fee-58de-441e-a44c-c6300d46f273,Wrong number,hubspot_docs,,not_connected
+ceffd0bb-a3f0-4ea9-8add-4e8311af5eff,Hung up,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+a2b5d8f1-7a71-4ad6-a39f-1a192ef52e4e,Rejected - No need for services,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+b2cf5968-551e-4856-9783-52b3da59a7d0,Left voicemail,hubspot_docs,,not_connected
+d5ff9918-03e4-48c3-88dc-1b76d3734082,Verbal Pledge - Self-Directed,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_pledge
+86c766c5-b12d-43bc-9129-d63987c3fa27,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+4da82d9e-f7aa-4664-a26d-b6af3d683dbe,Verbal Pledge - Uncontested,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_pledge
+b8241b6a-4e17-440a-80d5-d44009ce2a77,Verbal Pledge - Meeting Booked,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_pledge
+f240bbac-87c9-4f6e-bf70-924b57d47db7,Connected,hubspot_docs,,connected_other
+9d9162e7-6cf3-4944-bf63-4dff82258764,Busy,hubspot_docs,,not_connected
+d3bee2ac-04f0-4fad-88aa-964382fe0b50,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+55444bdb-3fbb-4aa0-b84b-c8dbfa44dcb6,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+e7074547-3a99-4834-95d1-71f2b757d34a,Rejected - Not Running,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+d92c7203-d8e9-4fa1-895c-0ff7f198a6e1,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+c7c4fc97-95a0-4f76-a9a2-710e9f37df4f,Call back later,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",not_connected
+246e6ce6-e79c-4e0f-85e7-5f8b76c8e323,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+55e39b78-b3f3-480d-ba67-69bd67f7c652,Rejected-Uncontested,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+a4c4c377-d246-4b32-a13b-75a56a4cd0ff,Left live message,hubspot_docs,,not_connected
+ac1ab4fe-52b5-404b-b01d-f71cf5eb80be,DNC List,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",not_connected
+c6863d5a-bb90-45f4-941d-3b485b802a95,Requested Information,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+0c5ce1fa-5c4c-45c4-8799-508f9def9e2b,Rejected - Partisan,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+bbdca77e-b9a9-42e4-8907-c8800fd1fcb0,Verbal Pledge - EO Waitlist,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_pledge
+14797417-aedc-47b3-adeb-b54c7c28acf0,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+0e13598f-ad98-4270-9f18-77b2e5280104,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+20530431-b242-4056-9e76-520cc50b4a3a,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+7eedd647-3024-46bb-90d4-6a58f3586476,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+108b5876-61f4-4cd8-8260-3354107af3a5,Rejected - Couldn't agree to pledge,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+7e731b63-354b-4beb-9ec4-c842bcb5449a,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+59c6cd26-61e8-4ec6-abed-78b6e8469ca1,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+63909de2-8d6e-40dc-8fdc-e5f9c410dd17,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+af81669c-09fc-473b-aad5-be01193f40f4,Verbal Pledge - EO,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_pledge
+66258670-5c50-4aa0-8ed4-d0f5b9187cee,Rejected - No Urgency,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+94cb249f-6687-4aa9-b912-cd1457c363cb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+a8a7e405-4abc-4442-b0b2-0b14b4906099,Rejected - No Time,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+d3cf69b0-ed13-400e-a113-e5ee7b9aa43d,Rejected - Not EO,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_reject
+6c864764-2ad8-46f2-bb41-f64b3d2a06e5,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+83ae0aa2-49be-49ca-a440-998f0ed9b080,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+30f0d755-4535-4419-8cb5-bc7ade922a4c,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+1211b9a9-c43f-42f0-9422-32dcf61feaf4,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+74fcd6cb-0a77-4c2d-b2ed-4a42313066d5,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+2948382b-59a6-49cd-a57e-e959c5a143cb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+10bb5085-116e-4e1d-9cb2-540c0304ef71,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+feadaed0-8666-4e20-abe8-161a09d24a94,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+73159d4a-a09d-41f4-9002-17763f76b3f6,Busy – Pitched Free Tools,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+4d366032-1414-4994-a6d8-1eba74ebfbee,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+31b1f7f9-356a-4690-be46-dc6acec455bc,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+d487bf7d-1c4d-4443-a0eb-902c1264f25a,Already Booked,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+f730efb3-6745-4b60-ac68-9e66b8e4f0fd,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+80f73f2c-cfd0-479b-bb34-4b54eb89369a,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+8be1e953-b2b3-4fc8-88da-392bc722c82d,Busy – Pitched Values Based,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+a5348b6b-1464-4958-9ec9-aa7e3fece0b1,Confirmed Running,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+f5008477-ecab-4fde-9eef-f799465187d6,Step Up - Meeting Booked,inferred_from_title,"derived from ""[Nooks Call] - <label> - <name> - by <rep>"" pattern",connected_other
+62be6577-f006-46ba-ab6c-ece08d82cf08,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+3809b0d1-d023-4ca6-abfb-afd2223508b3,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+22be21ee-fb58-4161-968d-c9271f0aa037,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+56125b6e-c95e-4f99-acc7-dba83a97b1fb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped

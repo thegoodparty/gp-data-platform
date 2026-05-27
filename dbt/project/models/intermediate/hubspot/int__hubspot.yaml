@@ -2,17 +2,16 @@ version: 2
 
 models:
   - name: int__hubspot_calls
-    description: >
-      HubSpot call engagements with their disposition GUID resolved to a
-      human-readable label via the `hubspot_call_dispositions` seed. Thin
-      pass-through of the staging model; adds two columns and no row-level
-      transformations.
+    description: |
+      HubSpot engagement calls, deduped to one row per call_id and enriched
+      with the disposition label and outcome_family classification from
+      the hubspot_call_dispositions seed.
     columns:
       - name: id
-        description: "HubSpot engagement ID for the call"
+        description: HubSpot call engagement ID. Unique per call after dedupe.
         data_tests:
-          - unique
           - not_null
+          - unique
       - name: hs_call_disposition
         description: "HubSpot internal GUID for the call outcome"
       - name: disposition_label
@@ -24,7 +23,7 @@ models:
       - name: disposition_label_source
         description: >
           Provenance of the label: `hubspot_docs` (documented default),
-          `inferred_from_title` (custom outcome derived from Nooks Call
+          `inferred_from_title` (custom outcome derived from a call
           title pattern), or `unknown` (GUID present but label not yet
           mapped). Null when the call has no disposition.
         data_tests:
@@ -34,6 +33,24 @@ models:
                   - hubspot_docs
                   - inferred_from_title
                   - unknown
+      - name: outcome_family
+        description: |
+          Disjoint outcome classification: connected_pledge, connected_reject,
+          connected_other, not_connected, unmapped (for GUIDs not yet labeled),
+          or null_disposition (call has no disposition GUID set).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - connected_pledge
+                  - connected_reject
+                  - connected_other
+                  - not_connected
+                  - unmapped
+                  - null_disposition
+              config:
+                severity: warn
     data_tests:
       - dbt_utils.expression_is_true:
           arguments:
@@ -190,3 +207,101 @@ models:
         data_tests:
           - unique
           - not_null
+
+  - name: int__hubspot_prospect_contacts
+    description: |
+      One row per HubSpot contact, with lifecycle/stage/activation/pledge
+      fields and resolved position-based ICP from int__hubspot_contacts.
+      Does NOT filter by name — unlike int__hubspot_contacts — so prospects
+      with missing names are included.
+    columns:
+      - name: id
+        description: HubSpot contact ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: goodparty_user_id
+        description: >
+          Direct HubSpot contact-to-product-DB user link (from
+          stg_airbyte_source__hubspot_api_contacts.goodparty_user_id).
+          Nullable — most contacts without a product account have this as
+          NULL. Used as the preferred gp_user_id source in the prospects
+          mart, ahead of the candidate-mediated prod_db_user_id path.
+
+  - name: int__hubspot_contact_calls
+    description: |
+      One row per HubSpot contact_id with at least one logged call.
+      Disjoint per-outcome_family subtotals sum to total_calls. The
+      connected_calls column is a convenience aggregate (pledge + reject
+      + other) and is excluded from the disjoint-sum invariant test.
+    columns:
+      - name: contact_id
+        description: HubSpot contact ID.
+        data_tests:
+          - not_null
+          - unique
+      - name: total_calls
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: connected_pledge_calls
+        data_tests:
+          - not_null
+      - name: connected_reject_calls
+        data_tests:
+          - not_null
+      - name: connected_other_calls
+        data_tests:
+          - not_null
+      - name: not_connected_calls
+        data_tests:
+          - not_null
+      - name: unmapped_calls
+        data_tests:
+          - not_null
+      - name: null_disposition_calls
+        data_tests:
+          - not_null
+      - name: connected_calls
+        description: |
+          Convenience aggregate = connected_pledge_calls +
+          connected_reject_calls + connected_other_calls. Overlaps with the
+          disjoint subtotals and is excluded from the disjoint-sum invariant.
+        data_tests:
+          - not_null
+      - name: ever_connected
+        data_tests:
+          - not_null
+      - name: first_call_at
+        data_tests:
+          - not_null
+      - name: last_call_at
+        data_tests:
+          - not_null
+      - name: last_connected_call_at
+        description: |
+          Timestamp of the most recent connected-family call. NULL for
+          contacts who have never had a connected call (by design).
+      - name: distinct_owners
+        description: Count of distinct hubspot_owner_id values across this contact's calls.
+        data_tests:
+          - not_null
+      - name: last_owner_id
+        description: |
+          hubspot_owner_id of the most recent call for this contact.
+          Nullable when the owner field is unset on the latest call.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: |
+              total_calls =
+                connected_pledge_calls + connected_reject_calls + connected_other_calls
+                + not_connected_calls + unmapped_calls + null_disposition_calls
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "connected_calls = connected_pledge_calls + connected_reject_calls + connected_other_calls"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_call_at >= first_call_at"
