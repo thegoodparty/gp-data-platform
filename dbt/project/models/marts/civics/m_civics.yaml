@@ -585,6 +585,10 @@ models:
                     "primary runoff",
                     "general",
                     "general runoff",
+                    "primary special",
+                    "general special",
+                    "primary special runoff",
+                    "general special runoff",
                   ]
 
       - name: latest_stage_result
@@ -1037,6 +1041,10 @@ models:
                     "primary runoff",
                     "general",
                     "general runoff",
+                    "primary special",
+                    "general special",
+                    "primary special runoff",
+                    "general special runoff",
                   ]
 
       - name: is_win_icp
@@ -1262,8 +1270,12 @@ models:
                 where: "br_position_database_id is not null"
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                warn_if: ">20"
-                error_if: ">50"
+                # Splitting specials from regulars by is_special increases the
+                # election row count and proportionally surfaces more
+                # missing-position rows from the same drift; thresholds bumped
+                # accordingly.
+                warn_if: ">150"
+                error_if: ">350"
 
       - name: is_judicial
         description: Whether the office is a judicial position (from BallotReady)
@@ -1460,10 +1472,12 @@ models:
 
       - name: stage_type
         description: >
-          Type of election stage (primary, general, primary runoff, general
-          runoff). NULL for gp_api-only rows where no BR/TS/DDHQ provider
-          contributed descriptive data; gp_api int model holds only ID and
-          FK columns by design.
+          Type of election stage. Eight values cover regular and special
+          variants: primary, general, primary runoff, general runoff, plus
+          their `*_special` and `*_special_runoff` counterparts. NULL for
+          gp_api-only rows where no BR/TS/DDHQ provider contributed
+          descriptive data; gp_api int model holds only ID and FK columns by
+          design.
         data_tests:
           - not_null:
               config:
@@ -1475,6 +1489,10 @@ models:
                   - primary
                   - primary runoff
                   - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
 
       - name: election_date
         description: Date of the election stage

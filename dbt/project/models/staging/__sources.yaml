@@ -72,6 +72,14 @@ sources:
                     regex: "^[A-Z]{2} "
                   config:
                     where: "race_name is not null"
+      - name: ddhq_elections_gsheet_reported_races
+        description: >
+          Race-level data loaded from the DDHQ Elections gsheet for races whose
+          results have been reported. One row per ddhq_race_id.
+      - name: ddhq_elections_gsheet_upcoming_races
+        description: >
+          Race-level data loaded from the DDHQ Elections gsheet for races whose
+          results have not yet been reported. One row per ddhq_race_id.
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position

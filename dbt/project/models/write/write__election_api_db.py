@@ -34,6 +34,10 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
+        gp_candidate_id,
+        email,
+        website_url,
+        is_incumbent,
         race_id
     )
     SELECT
@@ -55,6 +59,10 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
+        gp_candidate_id::uuid,
+        email,
+        website_url,
+        is_incumbent,
         race_id::uuid
     FROM {staging_schema}."Candidacy"
     ON CONFLICT (id) DO UPDATE SET
@@ -75,6 +83,10 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name = EXCLUDED.normalized_position_name,
         position_name = EXCLUDED.position_name,
         position_description = EXCLUDED.position_description,
+        gp_candidate_id = EXCLUDED.gp_candidate_id,
+        email = EXCLUDED.email,
+        website_url = EXCLUDED.website_url,
+        is_incumbent = EXCLUDED.is_incumbent,
         race_id = EXCLUDED.race_id
 """
 
@@ -283,7 +295,14 @@ RACE_UPSERT_QUERY = """
         frequency,
         place_id,
         slug,
-        position_names
+        position_names,
+        position_id,
+        number_of_seats,
+        win_number,
+        is_partisan,
+        office_type,
+        official_office_name,
+        office_level
     )
     SELECT
         id::uuid,
@@ -314,7 +333,14 @@ RACE_UPSERT_QUERY = """
         frequency,
         place_id::uuid,
         slug,
-        position_names
+        position_names,
+        position_id::uuid,
+        number_of_seats,
+        win_number,
+        is_partisan,
+        office_type,
+        official_office_name,
+        office_level
     FROM {staging_schema}."Race"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
@@ -344,7 +370,14 @@ RACE_UPSERT_QUERY = """
         frequency = EXCLUDED.frequency,
         place_id = EXCLUDED.place_id,
         slug = EXCLUDED.slug,
-        position_names = EXCLUDED.position_names
+        position_names = EXCLUDED.position_names,
+        position_id = EXCLUDED.position_id,
+        number_of_seats = EXCLUDED.number_of_seats,
+        win_number = EXCLUDED.win_number,
+        is_partisan = EXCLUDED.is_partisan,
+        office_type = EXCLUDED.office_type,
+        official_office_name = EXCLUDED.official_office_name,
+        office_level = EXCLUDED.office_level
 """
 
 STANCE_UPSERT_QUERY = """
@@ -593,38 +626,47 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_name,
     )
 
-    # Load tables to postgres. The ordering of the tables is important to satisfy
-    # foreign key constraints.
+    # Load tables to postgres. The ordering of the tables is important to
+    # satisfy foreign key constraints. The Prisma graph is:
+    #   Place (self-ref)
+    #   District -> (none)
+    #   Position -> District, Place
+    #   Race -> Place, Position
+    #   Candidacy -> Race
+    #   Issue (self-ref)
+    #   Stance -> Issue, Candidacy
+    #   ProjectedTurnout -> District
+    # so referenced parents must load before their children.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [
             "Place",
+            "District",
+            "Position",
             "Race",
             "Candidacy",
             "Issue",
             "Stance",
-            "District",
-            "Position",
             "Projected_Turnout",
         ],
         [
             place_df,
+            district_df,
+            position_df,
             race_df,
             candidacy_df,
             issue_df,
             stance_df,
-            district_df,
-            position_df,
             projected_turnout_df,
         ],
         [
             PLACE_UPSERT_QUERY,
+            DISTRICT_UPSERT_QUERY,
+            POSITION_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
-            DISTRICT_UPSERT_QUERY,
-            POSITION_UPSERT_QUERY,
             PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
     ):

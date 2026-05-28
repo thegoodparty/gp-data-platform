@@ -20,8 +20,9 @@ with
             and state_postal_code is not null
     ),
 
-    -- General election date lookup: find the general-stage election date per
-    -- position+year so primary/runoff stages get the same gp_election_id.
+    -- Anchor primary/runoff stages on their general-stage date so they
+    -- resolve to the same gp_election_id. Partitioned by is_special so a
+    -- special and a regular election for the same office+year stay distinct.
     general_election_dates as (
         select
             official_office_name,
@@ -31,10 +32,11 @@ with
             state_postal_code as state,
             district,
             year(election_date) as election_year,
+            is_special,
             max(election_date) as general_election_date,
             any_value(number_of_seats_in_election) as general_seats
         from source
-        where election_stage = 'general'
+        where election_stage in ('general', 'general special')
         group by
             official_office_name,
             candidate_office,
@@ -42,11 +44,12 @@ with
             office_type,
             state_postal_code,
             district,
-            year(election_date)
+            year(election_date),
+            is_special
     ),
 
-    -- Candidacy-level date lookup: coalesce general > primary > runoff dates
-    -- per candidate+position+year for stable gp_candidacy_id generation.
+    -- Partitioned by is_special so a candidate in both cycles for the same
+    -- office+year gets two distinct gp_candidacy_ids.
     candidacy_dates as (
         select
             candidate_first_name,
@@ -58,17 +61,30 @@ with
             office_level,
             district,
             year(election_date) as election_year,
+            is_special,
             max(
-                case when election_stage = 'general' then election_date end
+                case
+                    when election_stage in ('general', 'general special')
+                    then election_date
+                end
             ) as general_date,
             max(
-                case when election_stage = 'primary' then election_date end
+                case
+                    when election_stage in ('primary', 'primary special')
+                    then election_date
+                end
             ) as primary_date,
             max(
-                case when election_stage = 'general runoff' then election_date end
+                case
+                    when election_stage in ('general runoff', 'general special runoff')
+                    then election_date
+                end
             ) as general_runoff_date,
             max(
-                case when election_stage = 'primary runoff' then election_date end
+                case
+                    when election_stage in ('primary runoff', 'primary special runoff')
+                    then election_date
+                end
             ) as primary_runoff_date
         from source
         group by
@@ -80,7 +96,8 @@ with
             official_office_name,
             office_level,
             district,
-            year(election_date)
+            year(election_date),
+            is_special
     ),
 
     -- ER crosswalk: when Splink clustered this DDHQ row with a BR row, adopt
@@ -145,7 +162,11 @@ with
 
             coalesce(
                 xw.canonical_gp_election_id,
-                {{ generate_gp_election_id("elec_lookup") }}
+                {{
+                    generate_gp_election_id(
+                        "elec_lookup", is_special_expr="elec_lookup.is_special"
+                    )
+                }}
             ) as gp_election_id,
 
             coalesce(
@@ -212,6 +233,7 @@ with
             and s.office_level <=> cd.office_level
             and s.district <=> cd.district
             and year(s.election_date) = cd.election_year
+            and s.is_special = cd.is_special
         left join
             general_election_dates as ged
             on s.official_office_name <=> ged.official_office_name
@@ -221,6 +243,7 @@ with
             and s.state_postal_code <=> ged.state
             and s.district <=> ged.district
             and year(s.election_date) = ged.election_year
+            and s.is_special = ged.is_special
         cross join
             lateral(
                 select
@@ -237,7 +260,8 @@ with
                     ) as election_date,
                     coalesce(
                         ged.general_seats, s.number_of_seats_in_election
-                    ) as seats_available
+                    ) as seats_available,
+                    s.is_special
             ) as elec_lookup
         left join
             canonical_ids as xw

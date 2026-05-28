@@ -30,6 +30,74 @@ with
             case when size(parties) > 0 then parties[0].name else null end as party
         from {{ ref("int__ballotready_party") }}
     ),
+    -- Pre-dedupe int__civics_candidate_ballotready to one row per
+    -- br_candidate_id. That model dedupes by gp_candidate_id, not
+    -- br_candidate_id, so a single BR person whose S3 candidacy rows had
+    -- inconsistent email/phone can produce multiple gp_candidate_ids and
+    -- thus multiple rows with the same br_candidate_id.
+    --
+    -- Use ROW_NUMBER + QUALIFY (not independent max() per column) so the
+    -- output row is internally consistent — gp_candidate_id, email, and
+    -- website_url all come from the same source row. Independent max()
+    -- per column would mix one identity's UUID with another row's email
+    -- because gp_candidate_id is a salted hash with no ordering
+    -- relationship to the email it was seeded from.
+    --
+    -- Sort on whether contact data is present, not on its value:
+    -- gp_candidate_id is a salted UUID seeded from email + phone (see
+    -- int__civics_candidate_ballotready), so different emails for the
+    -- same br_candidate_id produce different gp_candidate_ids. Sorting
+    -- `email asc` would alphabetically pick one arbitrarily, biasing
+    -- which identity wins. `(email is null) asc` only penalizes nulls
+    -- (false < true), preserving "non-null contact data first" without
+    -- adding alphabetical bias; `updated_at desc` is the actual
+    -- tiebreak among rows that both have (or both lack) contact data.
+    --
+    -- int__civics_candidate_ballotready.updated_at is
+    -- coalesce(person_updated_at, _airbyte_extracted_at), so a
+    -- candidacy row with no matching person can get a fresh Airbyte
+    -- extraction timestamp; the IS NULL sort runs first so a
+    -- personless row can't outrank a person-linked row on updated_at.
+    civics_candidate_by_br as (
+        select br_candidate_id, gp_candidate_id, email, website_url
+        from {{ ref("int__civics_candidate_ballotready") }}
+        where br_candidate_id is not null
+        qualify
+            row_number() over (
+                partition by br_candidate_id
+                order by (email is null) asc, (website_url is null) asc, updated_at desc
+            )
+            = 1
+    ),
+    -- (gp_candidate_id, br_position_database_id) -> is_incumbent for the
+    -- most recent election cycle. The civics candidacy source is a
+    -- multi-year union (2025 archive + 2026+); a candidate who was the
+    -- incumbent in a prior cycle but is a challenger now would otherwise
+    -- show is_incumbent=TRUE under bool_or. max_by on general_election_date
+    -- scopes to the current cycle's value.
+    --
+    -- Databricks max_by(value, order) returns NULL for the whole group
+    -- when every `order` value is NULL. Some civics rows have no
+    -- general_election_date (special-election candidates, certain 2025
+    -- archive rows). Fall back to max_by on updated_at (populated on
+    -- every candidacy row) so the most recently updated row wins
+    -- within an all-null-date group — NOT max(is_incumbent), which on
+    -- a Boolean is equivalent to bool_or and would re-introduce the
+    -- stale-incumbent propagation this CTE was rewritten to prevent
+    -- (e.g. a 2025 archive incumbent + 2026 special challenger both
+    -- with null dates would collapse to TRUE under max).
+    civics_candidacy_attrs as (
+        select
+            gp_candidate_id,
+            br_position_database_id,
+            coalesce(
+                max_by(is_incumbent, general_election_date),
+                max_by(is_incumbent, updated_at)
+            ) as is_incumbent
+        from {{ ref("candidacy") }}
+        where gp_candidate_id is not null and br_position_database_id is not null
+        group by gp_candidate_id, br_position_database_id
+    ),
     enhanced_candidacy as (
         select
             tbl_candidacy.id,
@@ -52,6 +120,10 @@ with
             tbl_mart_race.salary,
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
+            tbl_civics_candidate.gp_candidate_id,
+            tbl_civics_candidate.email,
+            tbl_civics_candidate.website_url,
+            tbl_civics_attrs.is_incumbent,
             concat(
                 coalesce(tbl_person.first_name, ''),
                 '-',
@@ -74,8 +146,22 @@ with
         left join
             {{ ref("m_election_api__place") }} as tbl_place
             on tbl_mart_race.place_id = tbl_place.id
+        -- BR candidate.database_id (= S3 br_candidate_id) -> canonical gp_candidate_id
+        left join
+            civics_candidate_by_br as tbl_civics_candidate
+            on tbl_candidacy.candidate_database_id
+            = tbl_civics_candidate.br_candidate_id
+        left join
+            civics_candidacy_attrs as tbl_civics_attrs
+            on tbl_civics_candidate.gp_candidate_id = tbl_civics_attrs.gp_candidate_id
+            and tbl_int_race.br_position_database_id
+            = tbl_civics_attrs.br_position_database_id
     ),
-    non2party_with_person_and_slug as (
+    -- Downstream consumer (LLM-driven onboarding campaign planner) needs every
+    -- candidate in the race regardless of party; the prior major-party filter
+    -- excluded Democrat / Republican / Conservative Party / Progressive / DCP
+    -- and has been dropped per DATA-1922.
+    person_with_slug as (
         select
             id,
             br_database_id,
@@ -95,6 +181,10 @@ with
             normalized_position_name,
             position_name,
             position_description,
+            gp_candidate_id,
+            email,
+            website_url,
+            is_incumbent,
             first_last_name_slug,
             case
                 when position_name is not null
@@ -108,21 +198,20 @@ with
             end as slug,
             race_id
         from enhanced_candidacy
-        where
-            1 = 1
-            and race_id is not null
-            and first_name is not null
-            and last_name is not null
-            and not (
-                party in ('Conservative Party', 'Progressive', 'DCP')
-                or party ilike '%democrat%'
-                or party ilike '%republican%'
-            )
+        where race_id is not null and first_name is not null and last_name is not null
     ),
+    -- Deterministic dedup: with the major-party filter dropped, two unrelated
+    -- candidates can share the same first-last/position slug. Order by
+    -- updated_at first, then break ties on br_database_id so the survivor
+    -- is stable across runs.
     deduped_candidacy as (
         select *
-        from non2party_with_person_and_slug
-        qualify row_number() over (partition by slug order by updated_at desc) = 1
+        from person_with_slug
+        qualify
+            row_number() over (
+                partition by slug order by updated_at desc, br_database_id desc
+            )
+            = 1
     )
 
 select
@@ -144,6 +233,10 @@ select
     normalized_position_name,
     position_name,
     position_description,
+    gp_candidate_id,
+    email,
+    website_url,
+    is_incumbent,
     slug,
     race_id
 from deduped_candidacy

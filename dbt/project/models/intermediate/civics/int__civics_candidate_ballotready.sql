@@ -66,6 +66,11 @@ with
                 )
             }} as gp_candidate_id,
 
+            -- BR person database_id (S3 candidacies carry this as br_candidate_id).
+            -- Exposed so downstream marts can map a BR candidacy row to its
+            -- canonical gp_candidate_id without re-running the salted-UUID macro.
+            candidacies.br_candidate_id,
+
             -- External IDs (NULL for BR-sourced)
             cast(null as string) as hubspot_contact_id,
             cast(null as string) as prod_db_user_id,
@@ -123,6 +128,7 @@ with
 
 select
     gp_candidate_id,
+    br_candidate_id,
     hubspot_contact_id,
     prod_db_user_id,
     candidate_id_tier,
