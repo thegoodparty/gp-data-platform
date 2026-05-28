@@ -28,6 +28,30 @@ Don't edit files under `ai-rules/` directly — changes belong in the submodule'
 
 When reviewing changed code in this repo (e.g. during `/simplify`, `/review`, or any code-review pass), consult the rule files under `ai-rules/` in addition to this file and the per-subproject `CLAUDE.md` files.
 
+## pre-commit
+
+CI runs `pre-commit run --all-files` on every PR, so a failing hook will block the merge. Install the git hook locally so the same checks run before you push:
+
+```bash
+# from the repo root
+pre-commit install
+```
+
+If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
+
+The local pytest hook needs the `dbt/` poetry venv on PATH. Run git from `dbt/` with `poetry run` so the hook can find `pytest`, `pyspark`, and `airflow`:
+
+```bash
+cd dbt && poetry run git commit ...
+```
+
+`poetry install` in `dbt/` builds `psycopg2` from source and needs `pg_config` on PATH. On macOS:
+
+```bash
+brew install libpq
+echo 'export PATH="/opt/homebrew/opt/libpq/bin:$PATH"' >> ~/.zshrc
+```
+
 ## Never
 
 - Don't add a root-level command that assumes one venv. State which subproject to `cd` into.
