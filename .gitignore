@@ -65,6 +65,10 @@ analytics/*/WORKFLOW.md
 analytics/*/notebooks/**
 !analytics/*/notebooks/*.ipynb
 
+# Local-only shared analytics scripts (per-contributor Databricks sync/pull
+# helpers that hardcode user-specific Workspace paths).
+analytics/scripts/
+
 # Per-contributor review sub-agents (kept local; project framing supplied at invocation)
 .claude/agents/product-*.md
 
