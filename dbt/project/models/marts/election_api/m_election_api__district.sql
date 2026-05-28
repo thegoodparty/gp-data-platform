@@ -96,8 +96,18 @@ select
     current_timestamp() as updated_at,
     districts.state,
     districts.l2_district_type,
-    districts.l2_district_name
+    districts.l2_district_name,
+    -- L2-derived voter aggregates. Joined on the salted-id match
+    -- (m_election_api__district and int__l2_district_aggregations
+    -- both hash the same (state, l2_district_type, l2_district_name)
+    -- tuple with the default salt). Turnout-only synthetic districts
+    -- have no L2 row and surface NULL across all three.
+    tbl_agg.voter_count as registered_voters,
+    tbl_agg.unique_cellphones,
+    tbl_agg.unique_landlines
 from districts
+left join
+    {{ ref("int__l2_district_aggregations") }} as tbl_agg on districts.id = tbl_agg.id
 {% if is_incremental() %}
     left join
         {{ this }} as existing

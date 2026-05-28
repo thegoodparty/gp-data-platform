@@ -97,7 +97,10 @@ DISTRICT_UPSERT_QUERY = """
         updated_at,
         state,
         l2_district_type,
-        l2_district_name
+        l2_district_name,
+        registered_voters,
+        unique_cellphones,
+        unique_landlines
     )
     SELECT
         id::uuid,
@@ -105,38 +108,17 @@ DISTRICT_UPSERT_QUERY = """
         updated_at,
         state,
         l2_district_type,
-        l2_district_name
+        l2_district_name,
+        registered_voters,
+        unique_cellphones,
+        unique_landlines
     from {staging_schema}."District"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
         state = EXCLUDED.state,
         l2_district_type = EXCLUDED.l2_district_type,
-        l2_district_name = EXCLUDED.l2_district_name
-    """
-
-DISTRICT_VOTER_STATS_UPSERT_QUERY = """
-    INSERT INTO {db_schema}."DistrictVoterStats" (
-        id,
-        created_at,
-        updated_at,
-        district_id,
-        registered_voters,
-        unique_cellphones,
-        unique_landlines
-    )
-    SELECT
-        id::uuid,
-        now() as created_at,
-        updated_at,
-        district_id::uuid,
-        registered_voters,
-        unique_cellphones,
-        unique_landlines
-    from {staging_schema}."DistrictVoterStats"
-    ON CONFLICT (id) DO UPDATE SET
-        updated_at = EXCLUDED.updated_at,
-        district_id = EXCLUDED.district_id,
+        l2_district_name = EXCLUDED.l2_district_name,
         registered_voters = EXCLUDED.registered_voters,
         unique_cellphones = EXCLUDED.unique_cellphones,
         unique_landlines = EXCLUDED.unique_landlines
@@ -587,7 +569,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     race_df: DataFrame = dbt.ref("m_election_api__race")
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
     district_df: DataFrame = dbt.ref("m_election_api__district")
-    district_voter_stats_df: DataFrame = dbt.ref("m_election_api__district_voter_stats")
     position_df: DataFrame = dbt.ref("m_election_api__position")
     projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
@@ -617,7 +598,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 "Race",
                 "Stance",
                 "District",
-                "DistrictVoterStats",
                 "Projected_Turnout",
             ],
             [
@@ -627,7 +607,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 race_df,
                 stance_df,
                 district_df,
-                district_voter_stats_df,
                 projected_turnout_df,
             ],
         )
@@ -666,14 +645,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   Issue (self-ref)
     #   Stance -> Issue, Candidacy
     #   ProjectedTurnout -> District
-    #   DistrictVoterStats -> District (1:1)
     # so referenced parents must load before their children.
     table_load_counts: Dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [
             "Place",
             "District",
-            "DistrictVoterStats",
             "Position",
             "Race",
             "Candidacy",
@@ -684,7 +661,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         [
             place_df,
             district_df,
-            district_voter_stats_df,
             position_df,
             race_df,
             candidacy_df,
@@ -695,7 +671,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
         [
             PLACE_UPSERT_QUERY,
             DISTRICT_UPSERT_QUERY,
-            DISTRICT_VOTER_STATS_UPSERT_QUERY,
             POSITION_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
