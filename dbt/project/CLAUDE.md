@@ -77,6 +77,56 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 - Avoid subqueries in favor of CTEs
 - Prefer to keep join blocks flat with minimal transformations in the join
   condition by moving the needed transformation up to the SELECT clause
+- **Wrap generic test arguments under `arguments:`.** Top-level args on a
+  generic test (`relationships`, `accepted_values`, `dbt_utils.*`,
+  `dbt_expectations.*`, etc.) are deprecated.
+    - Good:
+      ```yaml
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [a, b]
+      ```
+    - Bad (deprecated):
+      ```yaml
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [a, b]
+      ```
+- **Custom config keys live under `config.meta`, not top-level `config`.**
+  dbt's canonical config keys (`tags`, `materialized`, `unique_key`,
+  `on_schema_change`, `meta`, etc.) stay at the top level of `config:`. Any
+  other key (env-var-driven secrets, per-model settings, ownership tags) goes
+  inside `meta:`.
+    - Good:
+      ```yaml
+      config:
+        tags: ["monthly"]
+        meta:
+          dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+          owner: "Data Engineering Team"
+      ```
+    - Bad (deprecated):
+      ```yaml
+      config:
+        tags: ["monthly"]
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        meta:
+          owner: "Data Engineering Team"
+      ```
+- **Python models read custom config via `meta`.** When a custom config value
+  lives in `config.meta`, read it through `dbt.config.get("meta")` rather than
+  `dbt.config.get("the_key")` directly. For models with multiple accesses,
+  bind `meta` once.
+    - Good:
+      ```python
+      meta = dbt.config.get("meta")
+      dbt_env = meta["dbt_environment"]
+      db_host = meta["election_db_host"]
+      flags_dir = meta.get("l2_haystaq_flags_sftp_dir", "/default")
+      ```
+    - Bad:
+      ```python
+      dbt_env = dbt.config.get("dbt_environment")
+      ```
 
 ## Building and Testing Models
 

@@ -657,13 +657,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # get dbt configs
-    staging_schema = dbt.config.get("staging_schema")
-    db_host = dbt.config.get("people_db_host")
-    db_port = int(dbt.config.get("people_db_port"))
-    db_name = dbt.config.get("people_db_name")
-    db_schema = dbt.config.get("people_db_schema")
-    db_user = dbt.config.get("people_db_user")
-    dbt_env_name = dbt.config.get("dbt_environment")
+    meta = dbt.config.get("meta")
+    staging_schema = meta["staging_schema"]
+    db_host = meta["people_db_host"]
+    db_port = int(meta["people_db_port"])
+    db_name = meta["people_db_name"]
+    db_schema = meta["people_db_schema"]
+    db_user = meta["people_db_user"]
+    dbt_env_name = meta["dbt_environment"]
     db_pw = dbutils.secrets.get(  # type: ignore[name-defined]
         scope=f"dbt-secrets-{dbt_env_name}", key="people-db-password"
     )

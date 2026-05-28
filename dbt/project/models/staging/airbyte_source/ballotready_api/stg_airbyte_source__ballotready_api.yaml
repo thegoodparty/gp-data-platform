@@ -22,7 +22,8 @@ models:
               # BallotReady special elections in 2026+ have 1-6 races; a
               # match with >10 races likely indicates a regular election
               # whose name coincidentally contains "special".
-              expression: "<= 10"
+              arguments:
+                expression: "<= 10"
               config:
                 where: "lower(name) like '%special%' and election_day >= '2026-01-01'"
   - name: stg_airbyte_source__ballotready_api_issue

@@ -323,18 +323,20 @@ def model(dbt, session: SparkSession):
         tags=["l2", "sftp", "s3", "load"],
     )
 
+    meta = dbt.config.get("meta")
+
     # sftp server configuration
-    sftp_host = dbt.config.get("l2_sftp_host")
-    sftp_port = int(dbt.config.get("l2_sftp_port"))
-    sftp_user = dbt.config.get("l2_sftp_user")
-    dbt_env_name = dbt.config.get("dbt_environment")
+    sftp_host = meta["l2_sftp_host"]
+    sftp_port = int(meta["l2_sftp_port"])
+    sftp_user = meta["l2_sftp_user"]
+    dbt_env_name = meta["dbt_environment"]
     sftp_password = dbutils.secrets.get(  # type: ignore[name-defined]
         scope=f"dbt-secrets-{dbt_env_name}", key="l2-sftp-password"
     )
 
     # S3 configuration
-    s3_bucket = dbt.config.get("l2_s3_bucket")
-    s3_access_key = dbt.config.get("l2_s3_access_key")
+    s3_bucket = meta["l2_s3_bucket"]
+    s3_access_key = meta["l2_s3_access_key"]
     s3_secret_key = dbutils.secrets.get(  # type: ignore[name-defined]
         scope=f"dbt-secrets-{dbt_env_name}", key="s3-secret-key"
     )

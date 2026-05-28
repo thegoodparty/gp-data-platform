@@ -46,7 +46,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         ],
     )
 
-    state_allowlist = _parse_state_allowlist(dbt.config.get("l2_state_allowlist"))
+    state_allowlist = _parse_state_allowlist(
+        dbt.config.get("meta")["l2_state_allowlist"]
+    )
 
     uniform_df: DataFrame = dbt.ref("int__l2_nationwide_uniform").withColumn(
         "LALVOTERID", col("LALVOTERID").cast(StringType())

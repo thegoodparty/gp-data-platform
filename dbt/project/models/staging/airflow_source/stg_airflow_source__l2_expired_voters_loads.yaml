@@ -25,7 +25,8 @@ models:
         tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
+              arguments:
+                min_value: 0
       - name: loaded_at
         description: Timestamp when the load completed successfully
         tests:

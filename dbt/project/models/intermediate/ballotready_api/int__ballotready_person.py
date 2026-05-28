@@ -329,7 +329,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # get api token from Databricks secrets
-    dbt_env = dbt.config.get("dbt_environment")
+    dbt_env = dbt.config.get("meta")["dbt_environment"]
     ce_api_token = dbutils.secrets.get(  # type: ignore[name-defined]
         scope=f"dbt-secrets-{dbt_env}", key="civic-engine-api-token"
     )
