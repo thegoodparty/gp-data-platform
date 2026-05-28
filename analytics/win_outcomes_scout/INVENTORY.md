@@ -1,8 +1,18 @@
 # Win product × electoral outcomes — data inventory
 
-A scouting map of the data available to study whether Win product activity correlates with electoral outcomes. Produced before scoping the real EDA, this document characterizes what exists, where it's reliable, how sources join, and what would trip up a longitudinal analysis.
+## TL;DR
 
-Companion notebook (`notebooks/inventory_queries.ipynb`) carries the queries that produced the coverage statistics cited inline. Each numeric claim points to a notebook cell. Run the notebook on Databricks (see `WORKFLOW.md` pattern in `analytics/win_churn/` for the local-edit / Databricks-execute setup).
+**What this is.** A scouting pass for an upcoming exploratory analysis on whether Win product activity correlates with electoral outcomes. Win is GoodParty's product for independent candidates running for office. The scout characterizes what data is already available to answer that question. It does not build new joins, run the correlation analysis itself, or recommend a specific model.
+
+**Scope.** Candidacies in the 2025-05 through 2026-12 cycle window. Unit of analysis is the candidacy (one row per cycle, so a candidate running in two cycles appears twice). Outcome is `latest_stage_reached` paired with `latest_stage_result`. Baseline is all registered Win users including those with zero product engagement. ICP eligibility (`icp_office_win`) is treated as a slicing dimension, not a filter.
+
+**This artifact.** `INVENTORY.md` (this file) holds findings, gaps, and recommended actions. `notebooks/inventory_queries.ipynb` holds the queries that produce every coverage number cited here, parameterized so the cycle window and other filters can be adjusted to reproduce or extend.
+
+**Findings.** Four data sources are in scope, all in Databricks: Win product activity (Amplitude events), candidacy and election outcomes (the civics mart), candidate and user metadata (the product database), and the segmentation dimensions that link them (office level, state, party, ICP flags). These join cleanly at user grain. The gaps are inside specific fields, not in the joins. The analytical work going forward is in cutting each question correctly, not in stitching the data together.
+
+- **Available.** Win product, civics, and Amplitude data in Databricks all join cleanly at user grain, with 96%+ Amplitude join coverage in the 2025-05 to 2026-12 cycle window. Stable keys link product activity, candidacy, outcomes, and segmentation. Any question that fits inside this universe is reachable.
+- **Gaps.** Coverage drops are inside columns, not between tables. Final outcome labels populate only a sub-segment of candidacies (the Did-You-Win modal adds ~970 net new labels but skews ~80% wins via response selection). Viability is sparse on the BR-only `viability_score` and only partially wired in via the better-covered TS-primary `viability_rating_2_0`. Segmentation dimensions like election level, judicial, and appointed thin out at narrow slices. Each modeled Amplitude event has its own instrumentation start date that further bounds who is eligible for any feature-effect analysis.
+- **Implication.** Every correlation question is its own narrow cut, not a single global model. The shape is: pick a feature, pin its launch date and a meaningful exposure window, identify the candidacies whose election date sits after that window, intersect with whichever candidacies actually have an outcome label, then correlate. Recent features have small eligible pools. Old features cover everyone but discriminate poorly. The deliberate shaping is the analysis.
 
 ## How to read this document
 
@@ -10,6 +20,7 @@ Companion notebook (`notebooks/inventory_queries.ipynb`) carries the queries tha
 - Each source section covers the seven facets the user enumerated. Where a facet doesn't apply to a source it is marked "n/a, see [X]".
 - The synthesis at the end maps the six analytical questions to supporting tables, fields, and the biggest data-quality risk per question.
 - Coverage statistics are written as `[NB-N]` where N is a notebook cell; values are filled in after the notebook is run on Databricks.
+- Companion notebook (`notebooks/inventory_queries.ipynb`) carries the queries that produced the coverage statistics cited inline. Each numeric claim points to a notebook cell. Run the notebook on Databricks (see `WORKFLOW.md` pattern in `analytics/win_churn/` for the local-edit / Databricks-execute setup).
 
 ---
 
@@ -694,6 +705,21 @@ For each of the six analytical questions the user posed, this table names the su
 | `is_pro = true` (treatment) | 1,086 | 4.2% | Pro vs free comparison |
 | Amplitude `user_id` joined (any activity) | ~25k | ~96% | Engagement features |
 
+### What does "successful use of Win" mean? (unresolved)
+
+The six analytical questions above all assume outcome-only success (the candidate won). Mid-scout (2026-05-28), the framing surfaced as too narrow: product success may be some combination of engagement quality and outcome, and the actual definition has not been agreed with the product team.
+
+The data supports at least four candidate definitions of "successful use":
+
+1. **Outcome-only.** The candidate won. Treats engagement as a means.
+2. **Engagement-only.** The candidate ran a "real" campaign per some engagement signature, regardless of outcome. Treats winning as largely outside product control (opponent quality, district lean, money).
+3. **Engagement-and-outcome.** The candidate engaged meaningfully AND won. The strictest definition; "won despite zero product use" would not count as a product success.
+4. **Engagement quality, outcome-stratified.** Report engagement signatures separately for winners, losers, and no-outcome candidacies, rather than collapsing into a single composite metric.
+
+This is a product-side definitional question, not a data-side one. The data team can enumerate options and characterize what each requires; product needs to pick. Until that decision lands, any outcome-correlation analysis is implicitly choosing definition 1.
+
+Two practical implications follow. First, this expands the recommended-actions section: a top item there is "agree on a definition of 'successful use of Win' with the product team." Second, engagement-side success analysis (definitions 2 or 4) is feasible today using the same Amplitude substrate documented in Sources 3.1 / 3.1a / 3.5, and could run in parallel to (or ahead of) outcome-correlation work.
+
 ## Biggest risks and gaps (call-out)
 
 In rough order of impact on what the EDA can deliver:
@@ -709,6 +735,39 @@ In rough order of impact on what the EDA can deliver:
 9. **`candidacy_result` cross-stage fallback.** Convenient but contaminated. **For the resolved scope, use `latest_stage_reached + latest_stage_result` from `mart_civics.candidacy`** — it explicitly preserves the deepest stage the candidate reached and the result there. Documented at `m_civics.yaml:516-545` but easy to miss.
 10. **Reverse causation on Pro.** Highly engaged users are more likely to upgrade. Pro-vs-free outcome comparisons need an explicit pre/post-upgrade frame to be causally meaningful.
 11. **L2 PII boundary.** Voter-grain L2 models (`int__l2_nationwide_uniform*`) carry PII-adjacent records. Aggregate-grain queries only; voter-grain joins out of scope for this analysis.
+
+## Recommended actions
+
+Concrete follow-up work that the findings and gaps imply. Items are grouped by the kind of work and the team that would do it, not by priority. Each names the gap or risk it addresses and the analytical capability it unblocks. Sequencing is for the user and the relevant teams to decide.
+
+### Data-platform actions (close coverage gaps)
+
+| Action | Gap addressed | Unblocks |
+|---|---|---|
+| Wire `viability_rating_2_0` and `score_viability_automated` into `users_win_candidacy` via `int__techspeed_viability_scoring.techspeed_candidate_code` | Mart-level viability surfacing currently 12.6% on Win candidacies; the underlying TS scoring covers ~99.7% of TS-touched candidacies | Viability stratification on most Win candidacies; viability as input for outcome models |
+| Resolve the viability code/data discrepancy in `int__candidacy_*` SQL | Intermediate dbt SQL hardcodes `viability_score = NULL` (commit `61120ab1`, 2026-02-09) while prod tables still carry historical scores; two analysts get different answers depending on layer | Stable forward path; removes the "which table do I trust" friction |
+| Backfill or document missing `election_level` (45.6% NULL in window, ~11.9k rows) | Office-level slicing currently loses ~12k rows | All office-level cuts in the EDA |
+| Build intermediate aggregates for additional Amplitude event families (Onboarding mid-funnel, Schedule Text Campaign, Content Builder, Pro Upgrade funnel, Outreach planning) | Only 12 of 314 instrumented event types are modeled today; raw events are in `stg_airbyte_source__amplitude_api_events` | Recommended-action funnel analysis (Source 3.8); broader feature-correlation work |
+| Land a labeled outcome view fed by the Did-You-Win Modal payload (`event_properties:status`) | ~970 net new outcome labels live in Amplitude only | Outcome coverage on additional candidacies (preserving the response-selection caveat as a column on the view, not a footnote) |
+
+### Methodology actions (cut data deliberately)
+
+These are not data-engineering tasks but conventions that the analysis itself must follow. They belong in the EDA spec, not in dbt.
+
+- **Per-feature exposure-window recipe.** For any feature-effect analysis: pin the feature's launch date, define a meaningful exposure window, restrict to candidacies whose election date sits after that window, then intersect with candidacies that have an outcome label.
+- **Outcome-availability filter on top of exposure.** 2026 candidacies whose election has not yet occurred are out, regardless of feature usage. Restate this every time the cohort is described.
+- **Quasi-experimental framing for any causal claim.** "Used vs didn't use" is self-selected, so the default output is correlation, not effect. To approach effect: cohort timing around launch dates, propensity weighting, or before-and-after stratification within the same user.
+- **Self-report-bias handling for Did-You-Win-sourced labels.** Either restrict outcome correlations to civics-sourced labels, weight, or stratify on label source. The 80% self-reported win rate is a known artifact and should be treated as such in any chart or table.
+
+### Product-team actions (resolve definitional questions)
+
+- **Agree on a definition of "successful use of Win"** using the four-option enumeration in the synthesis section above. Without this decision, any outcome-correlation analysis is implicitly choosing definition 1 (outcome-only success).
+- **Characterize Viability 2.0** as a prerequisite to using it for stratification or as an outcome predictor. Specifically: what labels was the `ViabilityWithOpponentData` MLflow model trained against, what features go in, how often is the score refreshed, and is calibration stable across office types? Likely owner is the politics-and-data team that owns the model.
+
+### Followup analyses worth scoping
+
+- **Engagement-side success analysis.** Using the weekly Amplitude substrate plus event-grain milestones, characterize engagement signatures (depth, breadth, recency) on the in-window cohort. Feasible today, runnable in parallel to outcome-correlation work, and serves the "we do not have to wait for product to define success in order to learn things" path.
+- **Pre-vs-post Amplitude cohort comparison.** Quantify what we lose by restricting to `users.created_at >= 2023-12-10` (post-Amplitude cohort) versus accepting structural missingness on the pre-cohort rows. Inform the EDA decision on whether to drop pre-2023-12-10 candidacies entirely.
 
 ## Scoping decisions (resolved 2026-05-27)
 
