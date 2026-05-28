@@ -26,7 +26,7 @@ A separate Serve runbook will live alongside this file at `analytics/runbook/ser
 
 ## 1. Data sources
 
-Win-product analyses draw on five overlapping data domains:
+Win-product analyses draw on six overlapping data domains:
 
 | Domain | Where it lives | Grain | Use when |
 |---|---|---|---|
@@ -34,6 +34,7 @@ Win-product analyses draw on five overlapping data domains:
 | **Analytics mart** | `goodparty_data_catalog.mart_analytics.*` | mostly user×campaign | Keystone tables for product analyses. **`users_win_candidacy` is the primary working table** — joins product user → campaign → candidacy → outcomes → viability → segmentation in one denormalized row. |
 | **Civics mart** | `goodparty_data_catalog.mart_civics.*` | candidate / candidacy / candidacy_stage / election / election_stage | Outcome variables, viability, opponent counts, vote shares. Authoritative for electoral results across BR/TS/DDHQ/HubSpot providers. |
 | **Amplitude product events** | staging: `goodparty_data_catalog.dbt_staging.stg_airbyte_source__amplitude_api_events`<br>intermediates: `goodparty_data_catalog.dbt.int__amplitude_*`<br>mart passthrough: `goodparty_data_catalog.mart_analytics.amplitude_events` | event-grain (raw); user×month or user-grain (aggregates) | Engagement, funnel completion, time-to-action analyses. See §4 for the full landscape. |
+| **HubSpot survey responses** | `goodparty_data_catalog.dbt_staging.stg_airbyte_source__hubspot_api_feedback_submissions` | one row per submission | Self-reported PMF (Sean Ellis "would you be very disappointed if...") and CSAT/stars. Surveys include "Win PMF - Web survey", "Win User satisfaction", and "Win - User research" (recruitment). Powers the third success signal alongside outcomes and engagement — see §3. |
 | **L2 voter data** | `goodparty_data_catalog.dbt.int__l2_*` | district-grain (aggregations); voter-grain (uniform/Haystaq) | Electorate context (voter counts, demographics). **Voter-grain is PII-adjacent — restricted to lawful use cases. Default to district-grain.** Already surfaced into `users_win_candidacy` as `voter_count`, `l2_district_name`, `l2_district_type`. |
 
 ### Keystone working tables
@@ -77,8 +78,8 @@ Field availability differs across these halves — see [§8 Known gotchas](#8-kn
 | **Election (GP-internal)** | `gp_election_id` (uuid) | `election.gp_election_id`, `candidacy.gp_election_id` | The election year × position. |
 | **Election stage** | `gp_election_stage_id` (uuid) | `election_stage.gp_election_stage_id`, `candidacy_stage.gp_election_stage_id` | One per stage. |
 | **TechSpeed candidate code** | `techspeed_candidate_code` (string) | `int__civics_candidacy_techspeed.candidate_code`, `int__techspeed_viability_scoring.techspeed_candidate_code` | Hashed first/last/state/office/city. Use to join TS-side viability directly. |
-| **HubSpot contact** | `hubspot_contact_id` (int) | `candidacy.hubspot_contact_id` | One per candidacy. |
-| **HubSpot company** | `hubspot_company_id` (int) | `candidacy.hubspot_company_ids` (array) | Used in 2025-archive viability join: `tbl_companies.company_id ↔ stg_model_predictions__viability_scores.id`. |
+| **HubSpot contact** | `hubspot_contact_id` (int) on candidate side; `hs_contact_id` (string, cast to BIGINT) on survey staging | `candidate.hubspot_contact_id`, `stg_airbyte_source__hubspot_api_feedback_submissions.hs_contact_id` | Same logical key, two column names by source. Use this to attach survey responses to candidates. |
+| **HubSpot company** | `hubspot_company_id` (int) | `candidacy.hubspot_company_ids` (array), `users_win_candidacy.hubspot_id` | Used in 2025-archive viability join: `tbl_companies.company_id ↔ stg_model_predictions__viability_scores.id`. **Note `users_win_candidacy.hubspot_id` is the COMPANY id, not the contact id** — see §8 gotchas. |
 | **BR position** | `br_position_database_id` (int) | `candidacy.br_position_database_id` | Join key to `int__icp_offices` (district-grain L2 context, ICP flags). |
 
 ### Canonical join recipes
@@ -114,6 +115,14 @@ Use this rather than `candidacy.viability_score` if you need a path that survive
 ```
 candidacy.br_position_database_id = int__icp_offices.br_database_position_id
 ```
+
+**Win user → HubSpot survey response (PMF / CSAT), 2-hop:**
+```
+CAST(stg_airbyte_source__hubspot_api_feedback_submissions.hs_contact_id AS BIGINT)
+    = mart_civics.candidate.hubspot_contact_id
+candidate.prod_db_user_id = users_win_candidacy.user_id
+```
+Then filter `users_win_candidacy` to `is_latest_version AND NOT is_demo`, and dedupe at `submission_id` grain (one user may have multiple candidacies → fan-out). For ICP attribution at submission grain, use `MAX(CASE WHEN icp_office_win THEN 1 ELSE 0 END)`. **Do NOT join `submissions.hs_contact_id` directly to `users_win_candidacy.hubspot_id`** — that returns zero matches because `hubspot_id` on the mart is the company id, not the contact id. See §8 gotchas.
 
 ### Version-aware join: campaign × candidacy
 
@@ -166,6 +175,53 @@ Filter: `COALESCE(impersonation, false) = false` to drop staff-triggered events 
 **⚠ Response selection bias is severe.** Self-reported win rate is ~80% vs ~64% raw win rate in the broader cohort — winners are more motivated to respond. Use the labels but NOT the rate as a population estimate.
 
 See `analytics/win_outcomes_scout/INVENTORY.md` Source 3.5 for the verified reconciliation table.
+
+### Self-reported success signal (PMF / satisfaction)
+
+A parallel "did the product work?" measure that lives next to electoral outcomes rather than inside them. Currently feeding **KR2: 40% of ICP activated users say they would be very disappointed if they could no longer use Win**. Reading as of 2026-05-28: 52% Option 1 (Very disappointed) on n=50 ICP respondents — exceeds target, with small-sample caveat.
+
+**Source table:** `goodparty_data_catalog.dbt_staging.stg_airbyte_source__hubspot_api_feedback_submissions`.
+
+Filter by `survey_name`:
+- `LIKE 'Win PMF%'` — Sean Ellis 4-option survey (started 2026-04-14; n=78 as of 2026-05-28).
+- `LIKE 'Win User satisfaction%'` — CSAT/stars survey (n=12, sparse).
+
+**Response columns:**
+- `pmf_response` — the 4-option answer. **Option 1 = Very disappointed, Option 2 = Somewhat disappointed**; "Not disappointed" and "N/A - I no longer use" are explicit. HubSpot drops the original labels for Option 1/2 in the export; mapping verified by inspecting `pmf_additional_feedback` (Option 1 respondents express strong attachment). See §8 gotchas.
+- `pmf_additional_feedback` — free-text follow-up.
+- `satisfaction_stars` (1–5 int) and `satisfaction_rating` (string) on the CSAT survey.
+
+**Joining to Win users:** 2-hop via candidate. Recipe in §2 canonical join recipes.
+
+**Selection bias:** Survey-response self-selected. Like the Did-You-Win modal, the cohort overrepresents engaged / satisfied users. Use the labels as a signal, but read rates as directional rather than population estimates until volume grows.
+
+**Reading the KR (KR-aligned recipe):**
+
+```sql
+WITH pmf AS (
+  SELECT submission_id, CAST(hs_contact_id AS BIGINT) AS hs_contact_id, pmf_response
+  FROM goodparty_data_catalog.dbt_staging.stg_airbyte_source__hubspot_api_feedback_submissions
+  WHERE survey_name LIKE 'Win PMF%' AND pmf_response IS NOT NULL
+),
+attributed AS (
+  SELECT
+    p.submission_id, p.pmf_response,
+    MAX(CASE WHEN u.icp_office_win THEN 1 ELSE 0 END) AS any_icp_win
+  FROM pmf p
+  LEFT JOIN goodparty_data_catalog.mart_civics.candidate c
+    ON p.hs_contact_id = c.hubspot_contact_id
+  LEFT JOIN goodparty_data_catalog.mart_analytics.users_win_candidacy u
+    ON c.prod_db_user_id = u.user_id AND u.is_latest_version AND NOT u.is_demo
+  GROUP BY 1, 2
+)
+SELECT
+  COUNT(*) AS icp_respondents,
+  SUM(CASE WHEN pmf_response = 'Option 1' THEN 1 ELSE 0 END) AS very_disappointed,
+  ROUND(100.0 * SUM(CASE WHEN pmf_response = 'Option 1' THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_very_disappointed
+FROM attributed WHERE any_icp_win = 1;
+```
+
+See `analytics/win_outcomes_scout/INVENTORY.md` Source 7 for the full 7-facet inventory and the cross-bucket response table.
 
 ---
 
@@ -454,6 +510,8 @@ These are recurring traps. When you hit one, add a one-liner here so the next pe
 | **L2 PII boundary** | Voter-grain L2 models carry PII-adjacent records. | Aggregate-grain queries only by default. `voter_count`, `l2_district_type` already surfaced in `users_win_candidacy`. |
 | **Mart staleness vs SQL state** | Prod mart may carry data the current SQL doesn't produce (e.g., viability). | When code/data disagree, trust the data for current state but flag the discrepancy. Don't extrapolate forward. |
 | **VIRTUAL_ENV breaks pre-commit pytest hook** | `Executable pytest not found` on commit when an analytics venv is active. | Use `env -u VIRTUAL_ENV poetry run git commit ...` from `dbt/`. |
+| **`users_win_candidacy.hubspot_id` is the COMPANY id, not the contact id** | Joining `stg_airbyte_source__hubspot_api_feedback_submissions.hs_contact_id` directly to `users_win_candidacy.hubspot_id` returns zero matches. | 2-hop via candidate: `submissions.hs_contact_id` → `candidate.hubspot_contact_id` → `candidate.prod_db_user_id` → `users_win_candidacy.user_id`. Recipe in §2. |
+| **HubSpot PMF Option 1/2 labels obscured in export** | `pmf_response` returns the literal strings `"Option 1"` and `"Option 2"` instead of "Very disappointed" / "Somewhat disappointed". | Treat **Option 1 = Very disappointed, Option 2 = Somewhat disappointed**. Verified by sampling `pmf_additional_feedback`: Option 1 respondents express strong attachment; Option 2 are measured. Worth a follow-up with data engineering to either fix the HubSpot export or document the mapping in a `m_hubspot.yaml`. |
 
 ---
 
@@ -461,7 +519,7 @@ These are recurring traps. When you hit one, add a one-liner here so the next pe
 
 ### Project scouts that contributed insights
 
-- **`analytics/win_outcomes_scout/INVENTORY.md`** (DATA-1935) — Win product × electoral outcomes data scout. Seeded most of the content here, especially §3-§5.
+- **`analytics/win_outcomes_scout/INVENTORY.md`** (DATA-1935) — Win product × electoral outcomes data scout. Seeded most of the content here, especially §3-§5. Source 7 in the inventory carries the full HubSpot survey detail (per-survey submission counts, response distribution by ICP/Win bucket, the verified Option 1/2 mapping evidence).
 - **`analytics/win_churn/`** (DATA-1924) — Win churn modeling. Engagement-as-outcome counterpart. Source for some of the multi-cycle and pre-2023-12-10 gotchas.
 
 ### Authoritative dbt model docs
