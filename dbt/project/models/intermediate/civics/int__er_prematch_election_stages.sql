@@ -112,6 +112,10 @@ select
     u.source_name,
     u.state,
     u.official_office_name,
+    -- candidate_office: race-level grain has no separate normalized office;
+    -- mirror official_office_name so the ExactMatch("candidate_office")
+    -- Splink comparison still has a column to read.
+    u.official_office_name as candidate_office,
     -- Race-level matcher has no person fields, but matcha's shared
     -- pipeline.load_and_prepare requires the column; emit an empty array.
     array() as first_name_aliases,
@@ -122,5 +126,13 @@ select
     u.is_runoff,
     u.number_of_seats,
     u.ballotready_position_id,
-    u.br_race_id_int as br_race_id
+    u.br_race_id_int as br_race_id,
+    -- Placeholders for Splink comparison columns the source int models do
+    -- not expose at race grain. NULL-tolerant via NullLevel; the
+    -- comparisons still serve as gamma=0 baselines for EM training.
+    cast(null as string) as office_level,
+    cast(null as string) as office_type,
+    cast(null as int) as district_identifier,
+    cast(null as string) as district_raw,
+    cast(null as string) as seat_name
 from unioned as u
