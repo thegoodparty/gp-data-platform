@@ -43,13 +43,21 @@ with
     -- because gp_candidate_id is a salted hash with no ordering
     -- relationship to the email it was seeded from.
     --
-    -- Sort contact-data presence first (email/website_url asc nulls
-    -- last) so that a row with real email/website beats a personless
-    -- candidacy-only row. int__civics_candidate_ballotready.updated_at
-    -- is coalesce(person_updated_at, _airbyte_extracted_at), so a
+    -- Sort on whether contact data is present, not on its value:
+    -- gp_candidate_id is a salted UUID seeded from email + phone (see
+    -- int__civics_candidate_ballotready), so different emails for the
+    -- same br_candidate_id produce different gp_candidate_ids. Sorting
+    -- `email asc` would alphabetically pick one arbitrarily, biasing
+    -- which identity wins. `(email is null) asc` only penalizes nulls
+    -- (false < true), preserving "non-null contact data first" without
+    -- adding alphabetical bias; `updated_at desc` is the actual
+    -- tiebreak among rows that both have (or both lack) contact data.
+    --
+    -- int__civics_candidate_ballotready.updated_at is
+    -- coalesce(person_updated_at, _airbyte_extracted_at), so a
     -- candidacy row with no matching person can get a fresh Airbyte
-    -- extraction timestamp that would otherwise outrank a genuine
-    -- person row by `updated_at desc` alone.
+    -- extraction timestamp; the IS NULL sort runs first so a
+    -- personless row can't outrank a person-linked row on updated_at.
     civics_candidate_by_br as (
         select br_candidate_id, gp_candidate_id, email, website_url
         from {{ ref("int__civics_candidate_ballotready") }}
@@ -57,8 +65,7 @@ with
         qualify
             row_number() over (
                 partition by br_candidate_id
-                order by
-                    email asc nulls last, website_url asc nulls last, updated_at desc
+                order by (email is null) asc, (website_url is null) asc, updated_at desc
             )
             = 1
     ),

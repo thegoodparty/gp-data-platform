@@ -59,7 +59,7 @@ CANDIDACY_UPSERT_QUERY = """
         normalized_position_name,
         position_name,
         position_description,
-        gp_candidate_id,
+        gp_candidate_id::uuid,
         email,
         website_url,
         is_incumbent,
