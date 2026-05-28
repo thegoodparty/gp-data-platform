@@ -77,18 +77,22 @@ with
     -- scopes to the current cycle's value.
     --
     -- Databricks max_by(value, order) returns NULL for the whole group
-    -- when every `order` value is NULL, even if `value` is populated.
-    -- Some civics rows have no general_election_date (special-election
-    -- candidates, certain 2025 archive rows); fall back to max() so
-    -- those candidates keep their is_incumbent flag. The fallback only
-    -- fires when no date signal exists in the group, so the stale-
-    -- incumbent fix above still applies to the cases that matter.
+    -- when every `order` value is NULL. Some civics rows have no
+    -- general_election_date (special-election candidates, certain 2025
+    -- archive rows). Fall back to max_by on updated_at (populated on
+    -- every candidacy row) so the most recently updated row wins
+    -- within an all-null-date group — NOT max(is_incumbent), which on
+    -- a Boolean is equivalent to bool_or and would re-introduce the
+    -- stale-incumbent propagation this CTE was rewritten to prevent
+    -- (e.g. a 2025 archive incumbent + 2026 special challenger both
+    -- with null dates would collapse to TRUE under max).
     civics_candidacy_attrs as (
         select
             gp_candidate_id,
             br_position_database_id,
             coalesce(
-                max_by(is_incumbent, general_election_date), max(is_incumbent)
+                max_by(is_incumbent, general_election_date),
+                max_by(is_incumbent, updated_at)
             ) as is_incumbent
         from {{ ref("candidacy") }}
         where gp_candidate_id is not null and br_position_database_id is not null

@@ -25,10 +25,12 @@ models:
           from mart_civics.candidacy (TS-supplied; ~51k populated in civics)
           and scoped to the most recent election cycle for this
           (gp_candidate_id, br_position_database_id) pair via
-          max_by(is_incumbent, general_election_date), with a max()
-          fallback for groups where every general_election_date is null.
-          Null when no civics row carries either a general_election_date
-          or an is_incumbent value for this person + position.
+          max_by(is_incumbent, general_election_date). For groups where
+          every general_election_date is null, falls back to
+          max_by(is_incumbent, updated_at) so the most recently updated
+          row's value wins without collapsing all rows into a boolean OR.
+          Null when no civics row carries an is_incumbent value for this
+          person + position.
       - name: gp_candidate_id
         description: >
           Canonical civics candidate UUID. Resolved via
