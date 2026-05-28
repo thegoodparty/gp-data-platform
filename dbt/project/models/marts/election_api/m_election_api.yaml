@@ -81,6 +81,63 @@ models:
               - l2_district_type
               - l2_district_name
 
+  - name: m_election_api__district_voter_stats
+    description: >
+      District-level voter aggregates that feed election-api's
+      DistrictVoterStats table (one row per District). Surfaced via
+      Race -> Position -> District -> DistrictVoterStats on the consumer
+      side. Counts come from int__l2_district_aggregations (distinct
+      lalvoterid, segmented by phone-column presence). The id is a
+      salted UUID seeded from district_id with salt
+      "district_voter_stats"; district_id mirrors m_election_api__district.id.
+    columns:
+      - name: id
+        description: "UUID of the DistrictVoterStats row"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: district_id
+        description: "FK to m_election_api__district.id; unique 1:1 with District"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+          - relationships:
+              arguments:
+                to: ref('m_election_api__district')
+                field: id
+      - name: registered_voters
+        description: >
+          Distinct L2 voters appearing in this district. Aliased from
+          int__l2_district_aggregations.voter_count.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: registered_voters_with_cellphone
+        description: >
+          Distinct L2 voters in this district whose
+          votertelephones_cellphoneformatted column is non-empty.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: registered_voters_with_landline
+        description: >
+          Distinct L2 voters in this district whose
+          votertelephones_landlineformatted column is non-empty.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+
   - name: m_election_api__issue
     description: "Mart model that serves the Election API"
     columns:
