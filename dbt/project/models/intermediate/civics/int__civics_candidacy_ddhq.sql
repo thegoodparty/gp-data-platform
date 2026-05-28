@@ -35,16 +35,39 @@ with
             cast(null as string) as verification_status_reason,
             cast(null as boolean) as is_partisan,
 
-            -- Candidacy result: runoff is the final determination
+            -- Candidacy result: runoff is the final determination. Special
+            -- variants group with their non-special counterpart at each
+            -- precedence level since a candidacy is normally in either the
+            -- regular or special cycle, not both.
             coalesce(
                 max(
-                    case when election_stage = 'general runoff' then election_result end
+                    case
+                        when
+                            election_stage
+                            in ('general runoff', 'general special runoff')
+                        then election_result
+                    end
                 ),
-                max(case when election_stage = 'general' then election_result end),
                 max(
-                    case when election_stage = 'primary runoff' then election_result end
+                    case
+                        when election_stage in ('general', 'general special')
+                        then election_result
+                    end
                 ),
-                max(case when election_stage = 'primary' then election_result end)
+                max(
+                    case
+                        when
+                            election_stage
+                            in ('primary runoff', 'primary special runoff')
+                        then election_result
+                    end
+                ),
+                max(
+                    case
+                        when election_stage in ('primary', 'primary special')
+                        then election_result
+                    end
+                )
             ) as candidacy_result,
 
             -- Stage-specific dates (already computed at candidacy level)

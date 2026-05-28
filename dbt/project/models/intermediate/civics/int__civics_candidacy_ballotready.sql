@@ -52,7 +52,14 @@ with
                 regexp_extract(candidacies.position_name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name,
-            br_position.is_partisan
+            br_position.is_partisan,
+            -- is_special tracks whether this row belongs to a special election;
+            -- it partitions the rollup grain and feeds the gp_election_id hash
+            -- so special and regular cycles for the same position+year resolve
+            -- to distinct IDs (matching int__civics_election_stage_ballotready).
+            coalesce(
+                lower(candidacies.election_name) like '%special%', false
+            ) as is_special
         from candidacies
         left join br_position on candidacies.br_position_id = br_position.database_id
         left join
@@ -62,13 +69,18 @@ with
 
     -- Roll up from race-level to candidacy-level
     -- Group by candidate + position + election YEAR (not br_election_id, which
-    -- differs between primary and general stages in BallotReady data)
+    -- differs between primary and general stages in BallotReady data).
+    -- is_special is derived per candidacy via bool_or so the lookup join and
+    -- gp_election_id hash can distinguish special vs regular cycles without
+    -- splitting the rollup grain on data-quality-fragile signals (some BR
+    -- stages have NULL or inconsistent election_name).
     candidacy_rolled_up as (
         select
             -- Natural key for grouping stages into one candidacy
             br_candidate_id,
             br_position_id,
             year(election_day) as election_year,
+            bool_or(is_special) as is_special,
 
             -- Take candidate fields from any row (they're the same across stages)
             any_value(first_name) as first_name,
@@ -123,18 +135,20 @@ with
     ),
 
     -- Look up the general election date and seats from the election_stage model
-    -- (which uses the API race data and has the same year-based general-date
-    -- lookup). This ensures the candidacy model computes the same
-    -- gp_election_id as the election and election_stage tables.
+    -- (which uses the API race data and has the same is_special-partitioned
+    -- year-based general-date lookup). This ensures the candidacy model
+    -- computes the same gp_election_id as the election and election_stage
+    -- tables, including for special elections.
     general_election_date_lookup as (
         select
             br_position_id,
             year(election_date) as election_year,
+            is_special,
             max(election_date) as general_election_date,
             any_value(number_of_seats) as seats_available
         from {{ ref("int__civics_election_stage_ballotready") }}
         where not is_primary and not is_runoff
-        group by br_position_id, year(election_date)
+        group by br_position_id, year(election_date), is_special
     ),
 
     candidacies_enriched as (
@@ -184,6 +198,7 @@ with
             general_election_date_lookup as ged
             on rolled.br_position_id = ged.br_position_id
             and rolled.election_year = ged.election_year
+            and rolled.is_special = ged.is_special
     ),
 
     candidacies_with_ids as (
@@ -220,8 +235,11 @@ with
             }} as gp_candidate_id,
 
             -- gp_election_id - use the generate_gp_election_id macro
-            -- The macro expects columns without table prefix in the current scope
-            {{ generate_gp_election_id() }} as gp_election_id,
+            -- The macro expects columns without table prefix in the current
+            -- scope. is_special partitions special vs regular cycles into
+            -- distinct hashes, matching int__civics_election_stage_ballotready.
+            {{ generate_gp_election_id(is_special_expr="is_special") }}
+            as gp_election_id,
 
             -- External IDs (NULL for BR-sourced records until we link them in
             -- followup work)

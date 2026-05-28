@@ -15,7 +15,11 @@ with
             row_number() over (
                 partition by gp_election_id
                 order by
-                    case when election_stage = 'general' then 0 else 1 end,
+                    case
+                        when election_stage in ('general', 'general special')
+                        then 0
+                        else 1
+                    end,
                     updated_at desc,
                     candidate_full_name
             )

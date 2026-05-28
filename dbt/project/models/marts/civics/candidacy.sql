@@ -289,11 +289,19 @@ with
                         election_stage
                         when 'general runoff'
                         then 4
+                        when 'general special runoff'
+                        then 4
                         when 'general'
+                        then 3
+                        when 'general special'
                         then 3
                         when 'primary runoff'
                         then 2
+                        when 'primary special runoff'
+                        then 2
                         when 'primary'
+                        then 1
+                        when 'primary special'
                         then 1
                         else 0
                     end desc,
@@ -319,7 +327,10 @@ select
     deduplicated.office_type,
     deduplicated.candidacy_result,
     case
-        when latest.latest_stage_reached in ('general', 'general runoff')
+        when
+            latest.latest_stage_reached in (
+                'general', 'general runoff', 'general special', 'general special runoff'
+            )
         then latest.latest_stage_result
     end as general_election_result,
     latest.latest_stage_reached,

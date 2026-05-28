@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: int__ddhq_races
+    description: >
+      Race-level union of DDHQ reported and upcoming races from the DDHQ
+      Elections gsheet. One row per ddhq_race_id. is_reported is true when
+      the row originates from the reported_races staging table and false
+      when it originates from the upcoming_races staging table.
+    columns:
+      - name: ddhq_race_id
+        description: DDHQ race ID
+        data_tests:
+          - not_null
+          - unique
+      - name: state_postal_code
+        description: 2-letter US state postal code
+        data_tests:
+          - not_null
+      - name: race_name
+        data_tests:
+          - not_null
+      - name: election_date
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: Normalized stage derived from election_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - primary
+                  - general
+                  - "primary runoff"
+                  - "general runoff"
+                  - "primary special"
+                  - "general special"
+                  - "primary special runoff"
+                  - "general special runoff"
+      - name: is_reported
+        description: >
+          True when the race appears in the reported_races feed (results
+          reported by DDHQ); false when it appears in the upcoming_races feed.
+        data_tests:
+          - not_null
