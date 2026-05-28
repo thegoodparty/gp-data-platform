@@ -112,20 +112,24 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
         meta:
           owner: "Data Engineering Team"
       ```
-- **Python models read custom config via `meta`.** When a custom config value
-  lives in `config.meta`, read it through `dbt.config.get("meta")` rather than
-  `dbt.config.get("the_key")` directly. For models with multiple accesses,
-  bind `meta` once.
+- **Python models read custom config via `dbt.config.meta_get`.** The
+  dbt-databricks Python materialization populates `meta_dict` only for keys
+  accessed through `dbt.config.meta_get(key)` in the Python source. Other
+  patterns (`dbt.config.get("meta")[key]`, `dbt.config.get("meta").get(key)`)
+  resolve to `None` at runtime — the wrapper macro does not expose the full
+  `meta` dict.
     - Good:
       ```python
-      meta = dbt.config.get("meta")
-      dbt_env = meta["dbt_environment"]
-      db_host = meta["election_db_host"]
-      flags_dir = meta.get("l2_haystaq_flags_sftp_dir", "/default")
+      dbt_env = dbt.config.meta_get("dbt_environment")
+      db_host = dbt.config.meta_get("election_db_host")
+      flags_dir = dbt.config.meta_get(
+          "l2_haystaq_flags_sftp_dir", "/default"
+      )
       ```
     - Bad:
       ```python
-      dbt_env = dbt.config.get("dbt_environment")
+      dbt_env = dbt.config.get("dbt_environment")        # custom key at top of config: triggers deprecation
+      dbt_env = dbt.config.get("meta")["dbt_environment"]  # returns None on dbt-databricks
       ```
 
 ## Building and Testing Models

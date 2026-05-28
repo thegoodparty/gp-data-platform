@@ -109,7 +109,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["l2", "s3", "databricks", "load"],
     )
 
-    s3_bucket = dbt.config.get("meta")["l2_s3_bucket"]
+    s3_bucket = dbt.config.meta_get("l2_s3_bucket")
     databricks_schema = f"{dbt.this.schema}_source"
 
     # get files loaded from sftp server into s3

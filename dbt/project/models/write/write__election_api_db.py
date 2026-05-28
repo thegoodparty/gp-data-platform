@@ -509,17 +509,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # get db configs
-    meta = dbt.config.get("meta")
-    staging_schema = meta["staging_schema"]
-    db_host = meta["election_db_host"]
-    db_port = int(meta["election_db_port"])
-    db_user = meta["election_db_user"]
-    dbt_env = meta["dbt_environment"]
+    staging_schema = dbt.config.meta_get("staging_schema")
+    db_host = dbt.config.meta_get("election_db_host")
+    db_port = int(dbt.config.meta_get("election_db_port"))
+    db_user = dbt.config.meta_get("election_db_user")
+    dbt_env = dbt.config.meta_get("dbt_environment")
     db_pw = dbutils.secrets.get(  # type: ignore[name-defined]
         scope=f"dbt-secrets-{dbt_env}", key="election-db-password"
     )
-    db_name = meta["election_db_name"]
-    db_schema = meta["election_db_schema"]
+    db_name = dbt.config.meta_get("election_db_name")
+    db_schema = dbt.config.meta_get("election_db_schema")
 
     # get the data to write
     candidacy_df: DataFrame = dbt.ref("m_election_api__candidacy")

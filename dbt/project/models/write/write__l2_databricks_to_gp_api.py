@@ -1017,15 +1017,14 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     # get dbt configs
-    meta = dbt.config.get("meta")
-    staging_schema = meta["staging_schema"]
-    db_host = meta["voter_db_host"]
-    db_port = int(meta["voter_db_port"])
-    db_user = meta["voter_db_user"]
-    dbt_env = meta["dbt_environment"]
+    staging_schema = dbt.config.meta_get("staging_schema")
+    db_host = dbt.config.meta_get("voter_db_host")
+    db_port = int(dbt.config.meta_get("voter_db_port"))
+    db_user = dbt.config.meta_get("voter_db_user")
+    dbt_env = dbt.config.meta_get("dbt_environment")
     db_pw = dbutils.secrets.get(scope=f"dbt-secrets-{dbt_env}", key="voter-db-password")  # type: ignore[name-defined]
-    db_name = meta["voter_db_name"]
-    db_schema = meta["voter_db_schema"]
+    db_name = dbt.config.meta_get("voter_db_name")
+    db_schema = dbt.config.meta_get("voter_db_schema")
 
     # get latest files loaded to databricks, filtering for uniform files
     loaded_to_databricks: DataFrame = dbt.ref("load__l2_s3_to_databricks").filter(

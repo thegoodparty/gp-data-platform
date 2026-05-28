@@ -44,9 +44,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["intermediate", "l2", "nationwide_haystaq", "haystaq", "flags"],
     )
 
-    state_allowlist = _parse_state_allowlist(
-        dbt.config.get("meta")["l2_state_allowlist"]
-    )
+    state_allowlist = _parse_state_allowlist(dbt.config.meta_get("l2_state_allowlist"))
 
     this_df: Optional[DataFrame] = None
     if dbt.is_incremental:

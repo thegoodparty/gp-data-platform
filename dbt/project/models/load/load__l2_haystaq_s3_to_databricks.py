@@ -51,9 +51,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["l2", "haystaq", "s3", "databricks", "load"],
     )
 
-    meta = dbt.config.get("meta")
-    s3_bucket = meta["l2_s3_bucket"]
-    databricks_schema_override = meta["l2_haystaq_databricks_schema"]
+    s3_bucket = dbt.config.meta_get("l2_s3_bucket")
+    databricks_schema_override = dbt.config.meta_get("l2_haystaq_databricks_schema")
 
     if databricks_schema_override:
         databricks_schema = databricks_schema_override
