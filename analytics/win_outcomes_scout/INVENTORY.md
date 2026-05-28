@@ -13,6 +13,67 @@ Companion notebook (`notebooks/inventory_queries.ipynb`) carries the queries tha
 
 ---
 
+## Completeness summary (start here)
+
+A consolidated answer to "what fraction of the data is available for the connections we want to make?" The full detail per source is in the sections below; this is the top-of-funnel view.
+
+**Scope** (resolved 2026-05-27):
+- Cycle window: `general_election_date BETWEEN '2025-05-01' AND '2026-12-31'`.
+- Unit of analysis: candidacy (`gp_candidacy_id`), filtered to Win users via `users_win_candidacy` (non-demo, latest version).
+- Outcome variable: `latest_stage_reached + latest_stage_result` from `mart_civics.candidacy`.
+- ICP: dimension (slice), not filter.
+
+**Base population in window: 26,072 candidacies** (across 25,982 distinct users).
+
+### Per-field completeness (all rates against the 26,072 in-window base)
+
+| Field family | Field | Populated | % of in-window | Notes / source |
+|---|---|---:|---:|---|
+| **Outcomes (canonical)** | `latest_stage_result` (any value) | 15,826 | **60.7%** | Source 1.5 / Source 2.5. The preferred outcome variable. |
+| | `latest_stage_result` in `('Won', 'Lost')` | ~13,681 | ~52% | Binary win/loss subset. |
+| | `general_election_result` (general stage only) | 11,329 | 43.5% | Smaller than `latest_stage_result` because candidates eliminated at primary don't reach the general. |
+| | `votes_received` / vote-share | — | per-stage | On `candidacy_stage`, not denormalized in `users_win_candidacy`. Source 2.5. |
+| **Outcomes (Amplitude supplement)** | `Candidacy - Did You Win Modal Completed` (self-reported) | 2,136 users | 8.2% | Source 3.5. Of these, ~970 are NEW labels not in the civics mart. Heavy response-selection bias — 80% self-reported win rate. |
+| **Viability** | `viability_score` (Viability 2.0, 0-5 scale) | 3,281 | **12.6%** | Source 4. Effectively bound by TS coverage of Win candidacies. |
+| | `win_number` | 13,897 | 53.3% | BR-sourced; populates more readily than `viability_score`. |
+| **Engagement (modeled)** | Amplitude user_id joinable | ~25k | ~96% | Source 3.3. Pre-2023-12-10 cohort has no event history. |
+| | `Dashboard - Candidate Dashboard Viewed` (any) | 11,584 users | 44% | Source 3.1. Big-3 modeled event by users. |
+| | `Voter Outreach - Campaign Completed` (any) | 1,238 users | 4.7% | Source 3.1. Power-user signal. |
+| | `pro_upgrade_complete` (any) | 1,303 users | 5.0% | Source 3.1. Pro upgrade timing. |
+| **Engagement (unmodeled but instrumented)** | Schedule Text Campaign funnel | up to 2,048 users | up to 7.9% | Source 3.1a / 3.8. 15 event types, 0 modeled. Aggregatable in-scope. |
+| | Content Builder funnel | up to 2,331 users | up to 8.9% | Source 3.1a. 20 event types, 0 modeled. |
+| | Onboarding mid-funnel (`Onboarding - Candidate Office Searched`) | 17,332 users | 66% | Source 3.1a. Largest single candidate-touched event, unmodeled. |
+| | Pro Upgrade funnel | up to 3,686 users | up to 14.1% | Source 3.1a. 25 event types, 1 modeled (`pro_upgrade_complete`). |
+| | Outreach planning | up to 4,024 users | up to 15.4% | Source 3.1a. 6 event types, 0 modeled. |
+| **Segmentation (out of the box)** | `election_level` (non-NULL) | 14,181 | 54.4% | Source 1.4. 45.6% NULL — caveat for office-level slices. |
+| | `office_type` | populated for most | ~80% (see NB-4) | Source 1.4. |
+| | `campaign_state` | populated for most | ~99% | Source 1.4. |
+| | `campaign_party` | populated for most | ~95% | Source 1.4. |
+| | `is_pro` | 1,086 true | 4.2% | Source 1.4. Treatment variable for Pro lift analysis. |
+| | `icp_office_win = true` | 12,427 | 47.7% | Source 1.4. ICP slice. |
+| | `is_incumbent` (TS-sourced) | partial | ~70% | Source 2.4. Higher for TS-side. |
+| | `is_open_seat` | partial | varies | Source 2.4. BR > TS > DDHQ; NULL on BR-only. |
+
+### Per-join completeness (the connections matter)
+
+| Connection | Join keys | Success rate in-window | Risk |
+|---|---|---:|---|
+| Win candidate → engagement | `users_win_candidacy.user_id` ↔ `int__amplitude_*.user_id` | ~96% (Amplitude users mostly match product users) | Pre-2023-12-10 candidates have no events but join; treat as missingness, not "no engagement". |
+| Win candidate → outcomes | `users_win_candidacy.campaign_id` ↔ `candidacy.product_campaign_id` | ~98% (most Win users land on a candidacy) | Multi-cycle users → multiple candidacies; handle via `is_latest_version`. |
+| Win candidate → viability score | candidacy join → viability via `br.viability_score` (currently) OR via `techspeed_candidate_code` (forward-stable) | ~13% via the mart field | Code/data discrepancy in viability surfacing (Source 4); EDA should be prepared to join `int__techspeed_viability_scoring` directly. |
+| Win candidate → ICP context | candidacy join → `int__icp_offices` via `br_position_database_id` | partial (BR-position-bound) | Candidacies without a BR position match have NULL `icp_office_win` / `voter_count` / `l2_district_*`. |
+| Win candidate → self-reported outcome | `user_id` ↔ Amplitude `Candidacy - Did You Win Modal Completed` | 8.2% (~2,136 users) | Response selection bias; the cohort overrepresents winners. |
+
+### Headline "what we can answer"
+
+- ✅ **Binary win/loss correlations on 2025 cohort** with ~13.7k labeled candidacies, viability stratification on ~3.3k, Pro/ICP stratification on the full cohort.
+- ✅ **Recommended-action funnel** is answerable from raw Amplitude (Source 3.8) — requires building new intermediate aggregates, not new instrumentation.
+- ⚠ **2026 forward-prediction** is limited — only 5% of 2026 candidacies have outcomes captured. The window includes most 2026 elections, but they haven't happened yet.
+- ⚠ **Office-level analysis** is constrained by the 45.6% NULL `election_level` bucket; either backfill or treat as a fifth category.
+- ⚠ **Viability stratification** is thin (12.6% coverage on Win users); the underlying TS-side intermediate has 99.7% rated, so the gap is in the mart-surfacing path, not the model itself.
+
+---
+
 ## Source 1: `mart_analytics.users_win_candidacy` — the keystone
 
 **Path:** `dbt/project/models/marts/analytics/users_win_candidacy.sql`
@@ -38,16 +99,23 @@ This mart already joins product user → candidacy → outcomes → viability �
 
 **Claimed invariants (from dbt tests; see `m_analytics.yaml`):** the `m_analytics.yaml` model description is sparse for this view. The upstream tests live on the constituent tables — `campaigns` (`campaign_version_id` unique + not_null), `users` (`user_id` unique + not_null), `candidacy` (`gp_candidacy_id` unique + not_null, see `m_civics.yaml`).
 
-**Observed coverage (notebook NB-1, NB-2, populated 2026-05-26 via `dbt show`):**
-- Total rows: 105,311
-- Latest-version rows: 61,905
-- Non-demo latest-version rows: **59,693** (this is the working population for outcome analysis — use as default)
-- Distinct `user_id`: 61,748
-- Distinct `campaign_id`: 61,905 (very close to user count — most users have a single campaign; multi-cycle is the rule, not the exception, in the *campaign version* sense, but multi-campaign-per-user is rare)
-- Rows with at least one stage outcome captured: 14,582 (24.4% of non-demo latest)
-- `general_election_result` populated: 14,279 (23.9%)
-- `viability_score` populated: 10,210 (17.1%)
-- `win_number` populated: 25,038 (42.0%) — **note: `win_number` populated more often than `viability_score`. Both are BR-only fields, but BR populates them on different cadences.**
+**Observed coverage (NB-1, NB-2, cycle-windowed to `general_election_date BETWEEN '2025-05-01' AND '2026-12-31'`, populated 2026-05-27):**
+
+- Non-demo latest-version rows total: 59,826
+- **Non-demo latest-version rows in window: 26,072** (44% of total — this is the working population for the EDA)
+- Distinct `user_id` in window: 25,982
+- Distinct `campaign_id` in window: 25,983 (≈1:1 with users)
+
+**Outcome and viability coverage within the cycle window:**
+
+| Field | Populated | % of in-window |
+|---|---:|---:|
+| `latest_stage_result` (per-candidacy latest stage outcome — preferred outcome variable per scope decision) | 15,826 | **60.7%** |
+| `general_election_result` (general-stage outcome only) | 11,329 | 43.5% |
+| `viability_score` | 3,281 | **12.6%** |
+| `win_number` | 13,897 | 53.3% |
+
+`latest_stage_result` populated nearly 1.4× more often than `general_election_result` — confirms the resolved scoping decision to use the latest-stage pair as the outcome variable. Candidates who lost at primary or earlier stages get a captured outcome that the `general_election_result` projection masks as NULL.
 
 **Quality flags:**
 - `is_latest_version` separates the canonical row from historical reuse versions. For "did the user win?" analyses, pre-filter to `is_latest_version` unless explicitly studying campaign reuse. (`users_win_candidacy.sql:43`)
@@ -66,17 +134,17 @@ This mart already joins product user → candidacy → outcomes → viability �
 ### 1.4 Segmentation dimensions
 
 Available out of the box:
-- **Office level**: `election_level`. Observed values + counts (NB-4, non-demo latest):
+- **Office level**: `election_level`. Observed values + counts (NB-4, non-demo latest, cycle-windowed):
 
-| election_level | rows | viability populated | general result populated |
-|---|---:|---:|---:|
-| **NULL** | **36,717 (61.5%)** | 7.6% | 13.3% |
-| city | 18,179 | 37.3% | 50.7% |
-| county | 1,952 | 28.1% | 8.0% |
-| state | 1,689 | 5.7% | 0.7% |
-| federal | 1,156 | 1.1% | 0.1% |
+| election_level | rows | % of in-window | viability % | `latest_stage_result` % | `general_election_result` % |
+|---|---:|---:|---:|---:|---:|
+| **NULL** | **11,891** | **45.6%** | 8.5% | 50.1% | 34.6% |
+| city | 11,178 | 42.9% | 19.5% | 84.4% | 63.3% |
+| state | 1,233 | 4.7% | 1.2% | 10.2% | 0.7% |
+| federal | 897 | 3.4% | 0.1% | 1.8% | 0.1% |
+| county | 873 | 3.3% | 7.8% | 32.6% | 15.1% |
 
-**⚠ Surprise finding: 61.5% of candidacies have NULL `election_level`.** Investigating this NULL bucket is a prerequisite for any analysis sliced by office level — these 36,717 rows include candidacies where the position couldn't be mapped to a level upstream. They are *not* the candidacies with general election results either (only 13.3% of the NULL bucket has a general result captured), suggesting the NULL bucket is dominated by candidacies that never reached / never had outcome data ingested. Verify in notebook before deciding whether to (a) restrict to non-NULL, (b) drop, or (c) backfill via a different source (e.g. join to `int__icp_offices` or extract from `office_type`).
+**⚠ 45.6% of in-window candidacies have NULL `election_level`** (down from 61.5% in the unwindowed view, but still the largest single bucket). The NULL bucket has 50% `latest_stage_result` coverage and 34% `general_election_result` coverage — meaningfully populated, just unclassified by level. Investigating this NULL bucket is a prerequisite for any office-level slice — these 11,891 rows include candidacies where the position couldn't be mapped to a level upstream. Verify in notebook before deciding whether to (a) restrict to non-NULL, (b) drop, or (c) backfill via a different source (e.g. join to `int__icp_offices` or extract from `office_type`).
 
 - **Office type**: `office_type` (string; HubSpot-sourced, common values are documented at `m_civics.yaml:507-514` — School Board, City Council, Mayor, Judge, State House, etc.)
 - **Geography**: `campaign_state`, plus the L2 district context from `int__icp_offices` (`l2_district_name`, `l2_district_type`)
@@ -150,23 +218,19 @@ Use these when `users_win_candidacy` doesn't carry the field you need (vote coun
 - `viability_score`, `win_number`: BR-only in 2026+. 2025 may carry through HubSpot — verify in notebook.
 - `source_systems`: `hubspot` value only appears for 2025 archive rows. For 2026+ rows the array is some subset of `{ballotready, techspeed, ddhq, gp_api}`.
 
-**Observed coverage (NB-5, non-demo latest, slicing on `year(general_election_date)`):**
+**Observed coverage in the cycle window (NB-5, non-demo latest, `users_win_candidacy` joined to `mart_civics.candidacy` for `latest_stage_result`):**
 
-| cycle | rows | viability populated | general result populated | won | lost |
-|---|---:|---:|---:|---:|---:|
-| 2025 | 19,831 | 29.0% (5,759) | 69.3% (13,738) | 8,763 | 4,490 |
-| 2026 | 9,697 | 5.1% (494) | 5.4% (525) | 325 | 194 |
-| 2027 | 969 | 0% | 0% | 0 | 0 |
-| 2028 | 75 | 0% | 1 | 0 | 1 |
-| 2030 | 1 | 0% | 0% | 0 | 0 |
-| (NULL election_date) | balance to 59,693 | — | — | — | — |
+| cycle | rows | viability % | `latest_stage_result` % | `general_election_result` % | won (latest) | lost (latest) |
+|---|---:|---:|---:|---:|---:|---:|
+| 2025 | 16,280 | 16.9% | 91.8% | 66.4% | 7,541 | 5,293 |
+| 2026 | 9,792 | 5.3% | 9.1% | 5.4% | 462 | 385 |
 
 **Interpretation:**
-- 2025 is the most-complete cycle for outcomes (69.3% have a general result), which makes sense — 2025 elections have largely concluded.
-- 2026 has very low outcome coverage (5.4%) because most 2026 elections haven't happened yet.
-- 2027+ have effectively no outcomes — they're future races.
-- The remaining 29,121 candidacies have NULL `general_election_date` — these are candidacies without a captured general date (could be primary-only, withdrawn, or position-only registrations).
-- **2025 viability coverage is higher (29%) than 2026 (5%)** — counterintuitive given the 2025 archive structure. Confirms that the HubSpot archive does carry viability for many 2025 candidacies, contradicting the planning-time worry that the 2025 archive would lose viability. Worth a closer look.
+- **2025 is the operative cohort for outcomes**: 92% have a `latest_stage_result` and 66% have a `general_election_result`. Most 2025 races have concluded.
+- **2026 is almost entirely unconcluded**: only 9.1% have any `latest_stage_result` captured. The few cases that do are likely early primaries that have already happened.
+- The 2025 cohort dominates win/loss labels — **12,834 of the 13,681 in-window labeled outcomes (94%) are 2025 races**. Any cross-cycle analysis is effectively a 2025-anchored analysis with limited 2026 holdout.
+
+(The `latest_stage_result` populated rate is much higher than `general_election_result` for both cycles, confirming the resolved scope decision.)
 
 Distinct `source_systems` combinations: see NB-5 second pane.
 
@@ -251,6 +315,78 @@ Win-relevant:
 
 Serve-side (not directly relevant to Win-only analyses but present): `Serve Onboarding - Getting Started Viewed`, `Constituency Profile Viewed`, `Poll Value Props Viewed`, `Poll Strategy Viewed`, `Add Image Viewed`, `Poll Preview Viewed`, `SMS Poll Sent`.
 
+### 3.1a Universe vs modeled subset
+
+The intermediate Amplitude models cover only a small slice of what is actually being tracked. Counting distinct `event_type` values within the analysis window (2025-05-01 to 2026-12-31, per NB-9):
+
+- **Total distinct event types in window:** 314
+- **Aggregated in at least one intermediate model:** 12 (3.8% of event types)
+- **Events on modeled types:** 291,478 of 12,363,089 total events (2.4%)
+
+Most bulk volume is auto-instrumented Amplitude system events (`[Amplitude] Page Viewed`, `Scroll Depth`, `session_start`) with no `user_id` attached. Restricting to candidate-attributed product events (excluding `amplitude_autotrack`, `experiment_assignment`, `gtm_bootstrap`, `session_or_browser`, `viewed_generic`, `marketing_or_misc`, `cta_clicks`):
+
+- **Candidate-attributed events in window:** ~1.4M
+- **Modeled candidate-attributed events:** 291k (~21%)
+
+Coverage stat ran via `notebooks/_pull_amplitude_universe.py` against `goodparty_data_catalog.dbt_staging.stg_airbyte_source__amplitude_api_events`. Per-event-type breakdown lives in `notebooks/amplitude_event_universe.csv` (gitignored, regenerable from NB-9).
+
+**Event families in window, sorted by total events:**
+
+| event_family | n_types | events | max_users_one_event | n_modeled | Notes |
+|---|---:|---:|---:|---:|---|
+| `viewed_generic` | 1 | 3,531,322 | 23,699 | 0* | `Viewed` event. `int__amplitude_serve_activity` filters this on `event_properties:path = '/dashboard/polls'` — partial use. |
+| `amplitude_autotrack` | 12 | 3,039,947 | 0 | 0 | `[Amplitude] *` autoevents. Anonymous. Skip. |
+| `session_or_browser` | 8 | 2,443,054 | 455 | 0 | `Scroll Depth`, `session_*`. Mostly anonymous. Skip. |
+| `experiment_assignment` | 4 | 1,891,990 | 12,152 | 0 | `[Experiment] Assignment/Exposure/Impression`. Usable as a stratification covariate. |
+| **`win_onboarding`** | 26 | 292,245 | 17,332 | 2 | We model registration + `onboarding_complete`. 24 mid-funnel events unmodeled. Largest single candidate-touched event: `Onboarding - Candidate Office Searched` (17,332u). |
+| **`win_dashboard`** | 8 | 253,821 | 11,589 | 1 | We model `Dashboard - Candidate Dashboard Viewed`. New events: `Dashboard - Campaign Plan Viewed` (started 2026-04, AI weekly plan). |
+| **`win_outreach_scheduling`** | 15 | 252,368 | 2,048 | 0 | Schedule Text Campaign funnel — 15 steps from script generation to send. Entirely unmodeled. |
+| `navigation` | 22 | 251,831 | 5,811 | 0 | Site navigation. Useful for path analysis if needed. |
+| **`win_content_builder`** | 20 | 63,924 | 2,331 | 0 | Content / AI authoring funnel — `Content Builder: Generation Started/Completed`, `ai_content_generation_*`. |
+| **`win_voter_data`** | 24 | 53,734 | 1,515 | 0 | Voter file viewing, downloading, customizing. |
+| **`win_outreach_planning`** | 6 | 45,881 | 4,024 | 0 | `Outreach - View Accessed` (4,024u), `Outreach - Click Create` (2,605u), door-knock + social-media actions. |
+| **`win_pro_upgrade`** | 25 | 44,612 | 3,686 | 1 | We model `pro_upgrade_complete` only. 24 mid-funnel events unmodeled (Modal Shown / Exit / Splash / Confirm / Service Agreement). |
+| `marketing_or_misc` | 7 | 40,300 | 1 | 0 | Anonymous marketing events. Skip. |
+| **`win_compliance_or_planning`** | 4 | 28,271 | 619 | 0 | 10DLC compliance, campaign verify, campaign plan weekly digest. |
+| **`win_candidate_profile`** | 20 | 26,895 | 2,161 | 0 | Profile setup funnel — running against / top issues / campaign details / fun facts. |
+| **`serve`** | 33 | 25,873 | 1,829 | 7 | Serve product. 7 onboarding events modeled. Unmodeled: `Serve Onboarding - Meet Your Constituents Viewed` (1,713u), Sworn In events, polls authoring. |
+| `auth_or_settings` | 20 | 23,703 | 1,295 | 0 | Sign in / sign up / settings / account. |
+| **`win_candidate_website`** | 8 | 10,986 | 1,516 | 0 | Public candidate-website builder — Started (1,516u) / Published (1,267u). |
+| **`win_voter_outreach`** | 8 | 10,751 | 1,240 | 1 | We model `Voter Outreach - Campaign Completed`. Unmodeled: 10DLC compliance funnel for outreach. |
+| **`win_ai_assistant`** | 10 | 10,435 | 1,482 | 0 | Campaign assistant — `question_complete` (1,482u), `AI Assistant: Ask a question` (985u). |
+| **`win_candidacy_self_report`** | 3 | 5,951 | 2,281 | 0 | **`Candidacy - Did You Win Modal` events — see "Outcome variables" subsection below; this is a previously-unsurfaced outcome stream.** |
+| **`win_contacts`** | 6 | 4,966 | 624 | 0 | Contacts CRM features. |
+| `cta_clicks` | 6 | 4,432 | 8 | 0 | Marketing CTAs. Mostly anonymous. Skip. |
+| **`win_p2p_upgrade`** | 3 | 3,161 | 923 | 0 | Peer-to-peer texting upgrade. Separate from Pro. |
+| **`win_resources`** | 1 | 2,328 | 807 | 0 | Resource library click-throughs. |
+| **`win_briefings`** | 6 | 242 | 8 | 0 | Brand-new feature (started 2026-04-10). Tiny user base. |
+| `payment` | 3 | 60 | 18 | 0 | Payment flow. Tiny. |
+| `gtm_bootstrap` | 4 | 4 | 0 | 0 | GTM init. Skip. |
+| `other` | 1 | 2 | 0 | 0 | Unclassified noise. Skip. |
+
+\* `viewed_generic` n_modeled = 0 strictly, but `int__amplitude_serve_activity` uses a property-filtered slice of `Viewed`.
+
+**Top unmodeled events per Win family, ranked by `distinct_users`** (the events we'd most want to know about for a "what actions correlate with outcomes" analysis):
+
+- **`win_onboarding`**: `Onboarding - Candidate Office Searched` (17,332u, 129k events), `Onboarding - Office Step: Office Selected` (12,758u), `Onboarding - Office Step: Click Next` (12,204u), `Onboarding - Party Step: Click Submit` (11,902u), `Onboarding - Candidate Office Completed` (11,794u)
+- **`win_outreach_scheduling`**: `Schedule Text Campaign: Exit` (2,048u), `Schedule Text Campaign: Next` (1,851u), `Schedule Text Campaign - Audience: Check Audience` (1,332u)
+- **`win_pro_upgrade`**: `Pro Upgrade - Modal: Modal Shown` (3,686u — denominator for upsell impressions), `Pro Upgrade - Modal: Exit` (2,768u), `Pro Upgrade: Confirm office` (2,329u), `Pro Upgrade - Splash Page: Click upgrade` (2,161u)
+- **`win_content_builder`**: `Content Builder: Generation Started` (2,331u), `Content Builder: Generation Completed` (2,317u), `Content Builder: Click Generate` (2,178u)
+- **`win_outreach_planning`**: `Outreach - View Accessed` (4,024u), `Outreach - Click Create` (2,605u)
+- **`win_candidate_profile`**: `Profile - Running Against: Click Save` (2,161u), `Profile - Top Issues: Click Finish Entering Issues` (1,595u)
+- **`win_ai_assistant`**: `question_complete` (1,482u), `AI Assistant: Ask a question` (985u)
+- **`win_voter_data`**: `Voter Data: Click Detail View` (1,515u), `Download Voter File attempt` (1,212u)
+- **`win_candidate_website`**: `Candidate Website - Started` (1,516u), `Candidate Website - Published` (1,267u)
+- **`win_candidacy_self_report`**: `Candidacy - Did You Win Modal Viewed` (2,281u, started 2025-10-31), `Candidacy - Did You Win Modal Completed` (2,159u)
+
+**Instrumentation start date pattern:** most product-event families have first-seen dates clustered around 2025-05-28 (suggesting a major instrumentation push around that date). Briefings (2026-04-10), Candidacy self-report (2025-10-31), and Dashboard Campaign Plan (2026-04-09) are newer. Anything before 2025-05-28 was tracked sparsely.
+
+**Implications for the analysis:**
+
+1. **The "what fraction of recommended actions do users complete" question is answerable** — see updated subsection 3.8 below. Rich instrumentation exists across the onboarding / outreach / content / Pro funnels; the work is to build new intermediate aggregates from the staging table, not to add new instrumentation.
+2. **The current Amplitude intermediate models vastly undersample available signal.** Adding event-family aggregates is a tractable in-scope build using the FAMILY_CASE_SQL pattern in NB-9.
+3. **`Candidacy - Did You Win` is a previously-unsurfaced outcome stream.** See updated subsection 3.5 below.
+
 ### 3.2 Data quality and coverage
 
 - **Source**: `stg_airbyte_source__amplitude_api_events` → ultimately Amplitude API via Airbyte.
@@ -272,7 +408,51 @@ None native to the Amplitude models — they're event aggregates. Segmentation c
 
 ### 3.5 Outcome variables
 
-n/a — Amplitude carries engagement, not electoral outcomes.
+Mostly engagement, **but with one important exception verified in NB-9c**: the `win_candidacy_self_report` family carries self-reported electoral outcomes captured in product.
+
+| event_type | distinct_users | events | First seen |
+|---|---:|---:|---|
+| `Candidacy - Did You Win Modal Viewed` | 2,281 | 3,350 | 2025-10-31 |
+| `Candidacy - Did You Win Modal Completed` | 2,159 | 2,434 | 2025-10-31 |
+| `Candidacy - Campaign Completed` | 155 | 167 | 2025-09-18 |
+
+**Verified payload schema** (NB-9c, against `event_properties` of `Candidacy - Did You Win Modal Completed`):
+
+```json
+{"impersonation": <bool | null>, "status": "won" | "lost"}
+```
+
+- `status` is the user's self-reported outcome — `"won"` or `"lost"`. No other values observed.
+- `impersonation` indicates whether a staff member triggered the event while impersonating a user. The field was **added 2026-03** (events before that have `impersonation = null`; events after carry an explicit `true` or `false`). For analytical use, treat `null` as not-impersonated (the legacy cohort is the bulk of the data — 2,007 of 2,160 users).
+
+**User-grain summary (latest event per `user_id`, dropping impersonated):**
+
+| | users |
+|---|---:|
+| Total users with completed modal | 2,159 |
+| With non-impersonated latest response | 2,136 |
+| ↳ self-reported "won" | 1,707 (80%) |
+| ↳ self-reported "lost" | 429 (20%) |
+
+**Response selection bias is severe.** The 80% self-reported win rate is far above the 64% raw win rate among all candidacies with a `general_election_result` (Source 1.4). Two plausible drivers: (a) winners are more motivated to come back to the product and respond; (b) the modal may be shown more aggressively to winners. **The cohort is NOT a random sample of Win candidates.** Use it cautiously.
+
+**Reconciliation with civics-mart outcomes (NB-9c):** of the 2,136 users with a non-impersonated self-reported response:
+
+| Civics-mart state | Users | Notes |
+|---|---:|---|
+| `general_election_result` populated AND matches Amplitude | ~1,201 | Reconciled both ways |
+| `general_election_result` populated, Amplitude disagrees | ~17 | Disagreement (<1%) — manual investigation needed; likely user error, multi-cycle confusion, or modal interpretation issue |
+| `general_election_result` NULL, but `latest_stage_result` populated | ~708 | **Mart partial — Amplitude adds full outcome.** Most are primary-stage losses or primary-stage wins reported with no general stage ingested yet. |
+| `general_election_result` NULL AND `latest_stage_result` NULL (no civics-mart row) | ~262 | **Amplitude-only outcome.** Users without a civics-mart candidacy join (could be edge-case `campaign_id` mismatch or candidacy not ingested). |
+
+**Net new outcome labels addressable from Amplitude (beyond `general_election_result`): ~970 users.** This nearly doubles the labeled-outcome population (from 14,279 civics-mart general results to ~15,200 with Amplitude added).
+
+**Caveat on combining sources**: the modal asks the candidate about the general outcome but no formal authority order has been defined. The 17-user disagreement set should be inspected before adopting an authoritative-mart-then-Amplitude-fallback rule.
+
+**Implications for the EDA**:
+- Source 1.5's outcome columns plus the Amplitude self-reported `status` together give a richer label set, especially for 2025 cycle wins/losses that the civics mart hasn't ingested.
+- The response selection bias means we can't use the self-reported `won` rate as a population estimate — but we can use the labels themselves to study correlates of winning *within the responding cohort*.
+- The 2,136 responding users are 3.6% of the 59,693 non-demo latest-version candidacies — small but non-trivial.
 
 ### 3.6 Viability score → n/a
 
@@ -283,91 +463,117 @@ n/a — Amplitude carries engagement, not electoral outcomes.
 - "How does behavior change as a function of days-to-election?" → join weekly activity to per-stage dates on `users_win_candidacy`, compute `general_election_date - week_start_date`, bucket. Watch the 2023-12-10 floor (pre-floor users are missing).
 - "Time-to-first-meaningful-action" → use `min(first_dashboard_viewed_at, first_campaign_sent_at)` from milestones; anchor to `users_win_base.registered_at`.
 
-### 3.8 Recommended-action funnel (call-out)
+### 3.8 Recommended-action funnel — revised after NB-9 universe scan
 
-The user's original question included "what fraction of recommended actions do users complete, and where's the drop-off?" — singled out here because **the instrumentation doesn't directly support it**:
+The original framing ("instrumentation doesn't directly support this") was wrong. After NB-9 surfaced the full 314-event-type universe, the picture is:
 
-- `int__amplitude_win_activity` has 2 event types.
-- `int__amplitude_user_milestones` adds 5 more for Win (registration, dashboard, onboarding_complete, campaign sent, pro upgrade) — coarse lifecycle, not recommended actions.
-- The product DB may have a structured task/step table (`campaign_planner_step` or similar) — see Source 4 below.
+**Rich funnel instrumentation already exists in the raw Amplitude stream.** Specifically:
 
-**Recommended action for the user before scoping the EDA:** decide whether the question is (a) redefined as lifecycle-milestone completion (answerable today), (b) instrumented properly with a new Amplitude event family (multi-week ask), or (c) reconstructed from the product DB if a structured task table exists (verify in notebook).
+- **Schedule Text Campaign funnel** (15 events, 252k events in window, 2,048u max per step): script generation → audience selection → preview → send.
+- **Content Builder funnel** (20 events, 64k events in window, 2,331u max per step): generation started → completed → publish.
+- **Pro Upgrade funnel** (25 events, 45k events in window, 3,686u max per step): modal shown → splash page → confirm office → service agreement → complete.
+- **Profile setup funnel** (20 events, 27k events in window, 2,161u max per step): running against / top issues / campaign details / fun facts.
+- **Onboarding funnel** (26 events, 292k events in window, 17,332u max per step): registration → office search → office selected → party → pledge → complete.
+- **Outreach planning funnel** (6 events, 46k events in window, 4,024u max per step): view → click create → action clicked → method-specific completion (door knock / social / phone).
+- **Candidate Website funnel** (8 events): started → domain selection → published.
+
+**What's not modeled is the aggregation, not the events.** The work to answer "what fraction of recommended actions do users complete, and where's the drop-off" is:
+
+1. Define which funnels count as "recommended actions" with the product team (most likely the Onboarding + Outreach + Profile setup funnels).
+2. Add intermediate-layer aggregation models on top of `stg_airbyte_source__amplitude_api_events` that compute per-user funnel-step reach. Pattern follows `int__amplitude_user_milestones`.
+3. The aggregation can be funnel-step-grain (user × step → reached_at), which then collapses to user-grain via pivot.
+
+This is **in-scope analytics work**, not a new instrumentation ask. Drop-off rates per step are derivable directly from the existing raw events.
+
+**Caveat — funnel definition is a product decision, not a data decision.** Which Win product actions actually count as "recommended" in the recommended-action sense (the dashboard widget the user has in mind?) needs confirmation from product. The data supports any reasonable definition we land on.
 
 ---
 
-## Source 4: Viability score — dedicated characterization
+## Source 4: Viability Score 2.0 — dedicated characterization
 
-The user asked for this field to be characterized specifically, not used as a primary outcome or control. Treated here as a cross-cutting field rather than a source.
+**Important correction from the previous draft:** Viability Score 2.0 is the politics-team electoral-viability-for-winning score (not, as previously stated, a BR-only field or a lead-routing scorer). It is produced internally from TechSpeed-primary candidate data by the MLflow model `goodparty_data_catalog.model_predictions.ViabilityWithOpponentData`, joined into the candidacy mart via several paths described below.
 
-### 4.1 Where the score lives
+### 4.1 What it is
 
-- **`candidacy.viability_score`** (and `candidacy.win_number`, `candidacy.win_number_model`). Sourced exclusively from `int__civics_candidacy_ballotready` per `candidacy.sql:141`. The columns are documented at `m_civics.yaml:665-672` as "Model-generated viability rating" / "Estimated votes needed to win" / "Model version used for win number calculation".
-- Surfaced in `users_win_candidacy.sql:86-87` for Win users.
+`int__techspeed_viability_scoring.py` (`dbt/project/models/intermediate/techspeed_to_hubspot/`) wraps the MLflow model registered as `ViabilityWithOpponentData`. The model is a sklearn classifier that outputs `predict_proba`; the wrapper transforms the probability into:
 
-### 4.2 Is there a non-ML rule-based version?
+- **`viability_rating_2_0`** — `round(5 * probability_of_winning, 2)`. Range 0.0 to 5.0. This is the column the user referenced as "viability 2.0".
+- **`score_viability_automated`** — 5-band categorical label:
+  - `< 1.0` → `No Chance`
+  - `1.0 – < 2.0` → `Unlikely to Win`
+  - `2.0 – < 3.0` → `Has a Chance`
+  - `3.0 – < 4.0` → `Likely to Win`
+  - `≥ 4.0` → `Frontrunner`
 
-The user mentioned a politics-team-drafted score with ~5 inputs (incumbency, contested race, open seat, partisan/nonpartisan, seat/opponent ratio). After reading the marts:
+**Features (model inputs):** `is_incumbent`, `open_seat`, `multi_seat`, `partisan_contest`, `is_unexpired` (always False in this pipeline), `log_n_losers` (log of opponents-minus-seats, floored at log(0.001) for uncontested), plus three Weight-of-Evidence-encoded categorical features `state_woe`, `level_woe`, `office_type_woe` (encodings live in `goodparty_data_catalog.model_predictions.viability_br_{state,level,office_type}_woe`).
 
-- The score column on the candidacy mart is **BR-sourced**. BR computes it externally; we receive it as a number.
-- The inputs the user listed map onto fields the candidacy mart already carries: `is_incumbent`, `is_open_seat`, `is_partisan` (the seat/opponent ratio and "contested race" would need to be reconstructed from `candidacy_stage` counts per `gp_election_stage_id`).
-- There is no internal model in this repo that recomputes the viability score from the inputs. `int__techspeed_viability_scoring.py` (at `dbt/project/models/intermediate/techspeed_to_hubspot/`) is a **different** model — it scores TechSpeed inbound leads using an MLflow model registered at `goodparty_data_catalog.model_predictions` for HubSpot routing decisions, not the politics-team electoral viability. Do not conflate.
+**A row gets a score only if every feature is populated** (`int__techspeed_viability_scoring.py:53` — `valid_rows = df[model.feature_names_in_].notnull().all(axis=1)`). Missing one feature → NULL rating. This is why BR-only candidacies are "spotty" per the user — BR doesn't supply `n_seats`, `is_incumbent`, or `n_candidates` for all rows.
 
-**Implication:** if the user wants to characterize what drives the viability score, that work happens upstream of this repo (in BR's documentation), or by regressing the score against the underlying fields in our own data.
+### 4.2 Where the score lives (3 distinct tables, distinct join paths)
 
-### 4.3 Coverage
+| Table | Key | Rows | Rated | Purpose |
+|---|---|---:|---:|---|
+| `goodparty_data_catalog.dbt.int__techspeed_viability_scoring` | `techspeed_candidate_code` | 63,223 | 63,010 (99.7%) | The model output, keyed to TS-side candidates. Used downstream by `m_techspeed__candidate_to_hubspot` to push scores to HubSpot. |
+| `goodparty_data_catalog.dbt.stg_model_predictions__viability_scores` | HubSpot company `id` | 10,509 | 10,509 (100%) | A separate scoring run keyed to HubSpot company IDs. Used by `int__civics_candidacy_2025.sql:89,113` to enrich the 2025 archive via `tbl_companies.company_id = viability_scores.id`. |
+| `goodparty_data_catalog.mart_civics.candidacy.viability_score` | `gp_candidacy_id` | varies by source bucket | varies (see 4.3) | The mart-level field surfaced into `users_win_candidacy`. Different join paths depending on whether the candidacy is BR-matched, TS-only, gp_api-only, ddhq-only, or 2025-archive. |
 
-**Observed coverage (NB-6):**
+### 4.3 Coverage in `mart_civics.candidacy` by source bucket (NB-7a, 2025-05-01 to 2026-12-31 window)
 
-Coverage by `election_level` — already shown in Source 1.4 table. Headline: **17.1% overall coverage, with city = 37.3%, county = 28.1%, state = 5.7%, federal = 1.1%, NULL-level = 7.6%.**
-
-Coverage by cycle (NB-5):
-- 2025 cycle: 29.0% have a `viability_score`
-- 2026 cycle: 5.1%
-- 2027+: 0%
-
-Coverage by `is_pro`:
-
-| is_pro | rows | viability populated | win rate among rows with general result |
+| source_bucket | rows in window | viability populated | coverage % |
 |---|---:|---:|---:|
-| False | 55,951 | 17.4% | 64.3% (8,885 / 13,818) |
-| (NULL — no campaign join) | 2,361 | 0.2% | 67% (2 / 3) |
-| True | 1,381 | 32.0% | **45.6% (209 / 458)** |
+| 2025 archive (HubSpot) | 65,284 | 2,854 | **4.4%** |
+| 2026+ TS-only (no BR match) | 36,395 | 35,611 | **97.8%** |
+| 2026+ BR-matched (TS+BR) | 14,475 | 8,148 | **56.3%** |
+| 2026+ gp_api-only | 8,808 | 0 | **0%** |
+| 2026+ ddhq-only | 2,990 | 0 | **0%** |
 
-**⚠ Surprise: Pro users show a LOWER raw win rate (46%) than free users (64%).** This is the strongest immediate finding from this scout. Important caveats before reading any signal into it:
+**This breakdown corrects the earlier "BR-only / 17% overall" framing.** Coverage is highest where TechSpeed has provided full feature data (97.8%), middling where BR has been matched to a TS candidacy but BR's feature contribution leaves gaps (56.3%), and absent for candidacies sourced solely from `gp_api` or DDHQ (because those sources don't feed `int__techspeed_viability_scoring`).
 
-1. **Selection bias.** Pro users self-select. They likely run for higher-stakes races (state, federal, contested cities) where the competition is fiercer. Free users may be skewed toward low-competition local races (school board, town council) where the field is small or uncontested.
-2. **Reverse causation.** Pro upgrade is downstream of high engagement — but high engagement may also be a proxy for "candidate took the campaign seriously" which is itself correlated with running in a tougher race.
-3. **`general_election_result` is the denominator.** The Pro bucket has 458 rows with a general result vs 13,818 for free users — Pro is a small population. Confidence intervals on the 46% will be wide.
-4. **Office-level controls flip the sign?** Need to verify by stratifying. The headline number is meaningless without controls.
+**For the Win-product analysis specifically:** `users_win_candidacy` filters to Win-product users (i.e. candidacies linked through `gp_api.product_campaign_id`). Win users get attached to a candidacy via ER crosswalk; whichever side the canonical match landed on determines whether the score surfaces. The empirical Win-user viability coverage from Source 1.4 (17.1% overall, city=37%, county=28%, state=5.7%, federal=1.1%, NULL-level=7.6%) reflects the practical mix. **These numbers need to be re-run with the 2025-05-01 to 2026-12-31 window applied** — currently they are unwindowed.
 
-**This is the kind of finding the EDA exists to interpret carefully.** Flagged here as a starting hypothesis to test, not a conclusion.
+**⚠ Code/data discrepancy worth flagging upstream:** the current SQL files for `int__civics_candidacy_ballotready.sql` and `int__civics_candidacy_techspeed.sql` (both in main) hardcode `cast(null as float) as viability_score`. Yet the prod intermediate tables show: TS intermediate has 58,580 / 59,870 = 97.8% populated, BR intermediate has 0 populated. Two possibilities:
+1. The prod TS intermediate hasn't been rebuilt since the `null` hardcode landed (2026-02-09 in commit `61120ab1`), and a future rebuild will drop ~58k scores from the mart.
+2. There is an unobserved code path (a separate notebook, an Airflow job, a hand-merge) that populates `viability_score` post-hoc on the TS intermediate.
 
-**Other coverage cuts (deferred to notebook run):** by state, by candidate type (incumbent / open-seat). See NB-6 for the by-state slice.
+**Either way the analysis should not assume the current mart coverage is stable.** If the EDA depends on `viability_score`, build a forward-compatible join path that goes directly to `int__techspeed_viability_scoring` keyed by `techspeed_candidate_code`. (Open: how does `users_win_candidacy` get from `user_id` to a TS candidate code? Likely via the BR position → TS candidacy crosswalk, but verify.)
 
-**Initial expectation reconciliation:** the plan predicted "coverage is bounded by BR's coverage, federal/state better covered than local". Observed data flips this: **city has highest coverage (37%), federal has lowest (1.1%).** Likely explanation: BR's viability model is trained on the kind of local race where Win operates; federal races may not be in BR's scoring scope at all. Worth confirming with BR's documentation.
+### 4.4 Stability — is the score recomputed?
 
-### 4.4 Stability — is it recomputed?
+- `int__techspeed_viability_scoring` is materialized as a `table` (not a view). The model recomputes scores on each `dbt run` via the MLflow client — the latest registered version is fetched and applied. **No historical snapshot is preserved.**
+- A given candidate's score can shift between materializations if the MLflow model is retrained, OR if their input features (incumbency, opponent count, etc.) are updated upstream.
+- **Calibration implication:** for a "did candidates at score X win at rate Y" plot, you can only use the score as-of-mart-read, not as-of-prediction. If the model has been retrained against post-2025-election data, calibration on 2025 outcomes is potentially contaminated by knowledge of those outcomes (a leakage risk worth flagging).
 
-- `candidacy.viability_score` is a passthrough column from `int__civics_candidacy_ballotready`. That intermediate model is materialized as the dbt default (likely a view or non-incremental table — confirm in `dbt_project.yml`).
-- BR refreshes the score externally; we re-ingest on each `dbt run`. There is **no historical snapshot** of viability score in this repo — once BR updates the score, the previous value is lost from the mart.
-- For a calibration analysis ("do candidates at score X win at rate Y?") you can only use the **current** score against the realized outcome, not the score-as-of-a-historical-date. **This is a meaningful limitation.**
+### 4.5 Score distribution (NB-7a, from `int__techspeed_viability_scoring`)
 
-### 4.5 Component availability
+| band | rows |
+|---|---:|
+| Frontrunner (≥4.0) | 33,373 |
+| No Chance (<1.0) | 20,653 |
+| Likely to Win (3.0–4.0) | 3,605 |
+| Unlikely to Win (1.0–2.0) | 3,368 |
+| Has a Chance (2.0–3.0) | 2,011 |
+| (NULL) | 213 |
 
-Even where `viability_score` is NULL, the underlying inputs are partially available:
-- `is_incumbent`: on `candidacy` (TS-sourced)
+**Mean rating: 3.07; range 0.0 to 5.0.** The distribution is heavily bimodal — 86% of scored candidates land in either Frontrunner or No Chance, with only 14% spread across the three middle bands. This is consistent with a model that uses incumbency + open-seat + opponent-count as primary features: incumbent or uncontested → Frontrunner; challenger in a crowded field → No Chance. The bimodality has implications for any downstream stratification — "viability decile" buckets won't be evenly populated.
+
+### 4.6 Component availability for candidacies WITHOUT a score
+
+Even where `viability_score` is NULL, the underlying features are partially available:
+- `is_incumbent`: on `candidacy` (TS-sourced; sparse on BR-only rows)
 - `is_open_seat`: on `candidacy` (BR > TS > DDHQ)
 - `is_partisan`: on `candidacy`
-- Seat/opponent ratio: reconstructible from `candidacy_stage` counts grouped by `gp_election_stage_id`
-- "Contested race": derive from opponent count > 1
+- `n_seats` / `n_candidates` / `log_n_losers`: reconstructible from `candidacy_stage` counts grouped by `gp_election_stage_id` (count candidacies per stage)
+- WoE encodings for state/level/office_type: stable lookup tables in `model_predictions.viability_br_*_woe`
 
-So the score could in principle be reconstructed for additional candidacies — but only if (a) the user has BR's scoring methodology, or (b) the user is willing to fit a regression to learn the scoring rule. Both are out-of-scope for this scout but worth flagging.
+So the score could be **back-scored** for additional candidacies by joining their feature rows against the existing MLflow model. This is in-scope analytics work if needed, but the scout flags it as out-of-scope for the inventory deliverable.
 
-### 4.6 Calibration (historical fit)
+### 4.7 Calibration on closed 2025 races
 
-`[NB-7]` will compute observed win rate by `viability_score` decile, on candidacies where both the score and a `general_election_result ∈ ('Won', 'Lost')` are populated. Expected: calibration is reasonable on 2024 cycle data (where BR has had time to refresh against actual outcomes); 2026 calibration only meaningful post-election.
+Calibration analysis (observed win rate by `viability_score` decile, restricted to candidacies with both a non-null score and a `latest_stage_result ∈ ('Won', 'Lost')`) is pending NB-7b. Expected challenges:
 
-**Calibration risk:** because the score is overwritten with each BR refresh, the score-at-time-of-prediction may differ from the score-at-time-of-mart-read. If BR refreshes after results come in, the score is contaminated by knowledge of the outcome. Worth flagging when interpreting calibration plots.
+1. **Bimodality** of the score (4.5) means decile buckets will be unevenly populated — switching to quintile or to a coarser scheme aligned with the 5-band `score_viability_automated` may be more interpretable.
+2. **Score overwriting** (4.4) means the calibration is against the *current* score, not the *prediction-time* score. Note this when interpreting.
+3. **The TS-only 97.8% cohort dominates the rated population** — calibration will be effectively a TS-cohort calibration unless explicitly stratified.
 
 ---
 
@@ -465,43 +671,55 @@ L2 is **not needed** to answer any of the six questions the user posed in the or
 
 ## Synthesis: mapping the analytical questions to data
 
-For each of the six analytical questions the user posed, this table names the supporting tables, fields, joins, and the biggest data-quality risk.
+For each of the six analytical questions the user posed, this table names the supporting tables, fields, joins, and the biggest data-quality risk. Outcome variable across all rows is the **`latest_stage_reached` + `latest_stage_result` pair** from `mart_civics.candidacy` (resolved scoping decision — captures candidates who lost at primary or earlier stages, not just general). Cycle window throughout: `general_election_date BETWEEN '2025-05-01' AND '2026-12-31'`. ICP = dimension (slice), not a filter.
 
 | # | Question | Outcome / target field | Predictor source | Required joins | Biggest data-quality risk |
 |---|---|---|---|---|---|
-| 1 | Which product actions correlate with winning, controlling for office type and level? | `users_win_candidacy.general_election_result` | `int__amplitude_win_activity_weekly` (per-week activity) + `int__amplitude_user_milestones` (lifecycle ts) | `user_id` | Only 2 event types individually addressable; richer action detail missing from instrumentation |
-| 2 | What fraction of recommended actions do users complete, and where's the drop-off? | None — funnel question | Coarse proxy: `int__amplitude_user_milestones` (Registration → Dashboard → Onboarding → Campaign Sent → Pro). True product DB: `stg_airbyte_source__gp_api_db_path_to_victory` (verify) | `user_id` | **Instrumentation gap.** May not be answerable as posed. Decide between coarse-milestone redefinition, new instrumentation, or product-DB reconstruction |
-| 3 | Does Pro-tier show outcome lift over self-serve, holding candidate type roughly constant? | `users_win_candidacy.general_election_result` | `users_win_base.is_pro` (flag); `int__amplitude_user_milestones.pro_upgrade_completed_at` (timing) | `user_id` | Reverse causation: Pro users are pre-selected for engagement. Need explicit time-of-upgrade vs time-of-election framing |
-| 4 | How does behavior change as a function of days-to-election? | n/a (descriptive) | `int__amplitude_win_activity_weekly.week_start_date`; `users_win_candidacy.general_election_date` | `user_id` | Pre-2023-12-10 users have no event history; election_date NULL for between-cycles users; users with multiple cycles need explicit cycle assignment |
-| 5 | Are there meaningful user segments with distinct outcome patterns? | `users_win_candidacy.general_election_result` | Segmentation dims (Source 1.4) | n/a or candidacy join for `is_incumbent` / `is_open_seat` | 2025 archive vs 2026+ cycle shape mismatch; small-cell counts in fine office/state slices |
-| 6 | How does time-to-first-meaningful-action vary across users, and does it predict downstream engagement? | n/a (descriptive); for prediction: `int__amplitude_win_activity_weekly` activity at later periods | `int__amplitude_user_milestones.first_dashboard_viewed_at`, `first_campaign_sent_at`; `users_win_base.registered_at` | Definition of "meaningful action" matters — dashboard view is low-bar, campaign send is high-bar; user-week autocorrelation flagged in the churn SESSION_NOTES |
+| 1 | Which product actions correlate with winning, controlling for office type and level? | `candidacy.latest_stage_result ∈ ('Won', 'Lost')` joined through `users_win_candidacy` on `campaign_id` → `product_campaign_id`. Optional Amplitude self-reported supplement: ~970 additional labels (Source 3.5). | `int__amplitude_win_activity_weekly` (per-week activity) + `int__amplitude_user_milestones` (lifecycle ts); broader event-family aggregates derivable from raw `stg_airbyte_source__amplitude_api_events` (Source 3.1a) | `user_id` | Only 2 event types are aggregated today; 312 more exist in the raw stream and can be aggregated in-scope (Source 3.8). |
+| 2 | What fraction of recommended actions do users complete, and where's the drop-off? | None — funnel question | Raw `stg_airbyte_source__amplitude_api_events` filtered to funnel-relevant event types (Onboarding / Outreach / Content Builder / Profile / Pro Upgrade families — see Source 3.1a). New intermediate aggregates needed. | `user_id` | Funnel definition is a product decision, not a data limitation. Adding intermediate aggregates is in-scope analytics work. |
+| 3 | Does Pro-tier show outcome lift over self-serve, holding candidate type roughly constant? | `candidacy.latest_stage_result` | `users_win_base.is_pro` (flag); `int__amplitude_user_milestones.pro_upgrade_completed_at` (timing) | `user_id` | **Raw Pro win-rate is LOWER than free** (39.8% vs 59.3% in-window). Reverse causation: Pro users are pre-selected for engagement. Need explicit pre-/post-upgrade frame + office-stratified analysis. |
+| 4 | How does behavior change as a function of days-to-election? | n/a (descriptive); time-to-event predictor | `int__amplitude_win_activity_weekly.week_start_date`; per-stage dates from `users_win_candidacy` (`primary_election_date`, `general_election_date`, runoffs) | `user_id` | Pre-2023-12-10 users have no event history; users with multiple cycles need explicit cycle assignment; in-window 2026 candidates have election dates in the future (engagement to date is partial). |
+| 5 | Are there meaningful user segments with distinct outcome patterns? | `candidacy.latest_stage_result` | Segmentation dims (Source 1.4) including `is_pro`, `icp_office_win`, `election_level`, `office_type`, `campaign_state`, `campaign_party`, `is_incumbent`, `is_open_seat`, `is_partisan` | candidacy join for `is_incumbent` / `is_open_seat` (latter NULL for BR-only) | 45.6% NULL `election_level` in window; small-cell counts in state × office_type slices; **ICP=true cohort has lower raw win rate (53.8%) than ICP=false (63.5%)** — slice carefully. |
+| 6 | How does time-to-first-meaningful-action vary across users, and does it predict downstream engagement? | n/a (descriptive); for prediction: `int__amplitude_win_activity_weekly` activity at later periods | `int__amplitude_user_milestones.first_dashboard_viewed_at`, `first_campaign_sent_at`; `users_win_base.registered_at` | Definition of "meaningful action" matters — dashboard view is low-bar, campaign send is high-bar; user-week autocorrelation flagged in the churn SESSION_NOTES. |
+
+**Cross-cutting completeness per question (in-window, 26,072 candidacies):**
+
+| Field | Populated | % in-window | Use case |
+|---|---:|---:|---|
+| `latest_stage_result` (any value) | 15,826 | 60.7% | All outcome questions |
+| `latest_stage_result ∈ ('Won', 'Lost')` | ~13,681 | ~52% | Binary win/loss questions |
+| `general_election_result` | 11,329 | 43.5% | General-stage-only questions |
+| `viability_score` | 3,281 | 12.6% | Viability stratification |
+| `icp_office_win = true` (slice value) | 12,427 | 47.7% | Win-ICP slice |
+| `is_pro = true` (treatment) | 1,086 | 4.2% | Pro vs free comparison |
+| Amplitude `user_id` joined (any activity) | ~25k | ~96% | Engagement features |
 
 ## Biggest risks and gaps (call-out)
 
 In rough order of impact on what the EDA can deliver:
 
-1. **No structured recommended-action funnel in current instrumentation.** Amplitude tracks 2 event types in the activity model + 6 Win lifecycle milestones. There is no per-action completion table. Question #2 may need to be redefined or scoped out.
-2. **61.5% of non-demo latest-version candidacies have NULL `election_level`.** Any analysis sliced by office level must decide how to handle this bucket: restrict to populated rows (slashes sample size to ~23k), backfill from `office_type` / `int__icp_offices`, or treat as a fifth category. **Surfaced during the scout pass — verify in notebook before scoping.**
-3. **Pro users show counterintuitively lower raw win rate (46%) than free users (64%).** Confounded by selection bias and unobserved race competitiveness; needs office-stratified analysis. **Surfaced during the scout pass — this is the most likely starting hypothesis to test rigorously in the EDA.**
-4. **`viability_score` is BallotReady-only, with no historical snapshot.** Coverage bounded by BR's coverage (17% overall, with strongest coverage at city level not federal). Value gets overwritten on each refresh — calibration analyses on closed cycles are still informative but represent the score "at the time the mart materialized", not "at the time of prediction".
+1. **Existing Amplitude intermediate models cover ~4% of tracked event types.** The raw `stg_airbyte_source__amplitude_api_events` table carries 314 distinct event types in the analysis window; intermediate models aggregate only 12. **The recommended-action funnel question IS answerable** — see Source 3.1a and 3.8. Required work is new aggregation models over existing raw events, not new instrumentation.
+2. **45.6% of in-window candidacies have NULL `election_level`** (11,891 rows). Outcome coverage in the NULL bucket is meaningful (50% have `latest_stage_result`), so dropping it loses real signal. Any analysis sliced by office level must decide: restrict to populated rows (slashes sample size to ~14k), backfill from `office_type` / `int__icp_offices`, or treat as a fifth category.
+3. **Pro users show counterintuitively lower raw win rate (39.8%) than free users (59.3%) in window.** ICP=true users also show a lower win rate (53.8%) than ICP=false (63.5%). Both gaps narrow vs the unwindowed view but persist. Confounded by selection bias and unobserved race competitiveness; needs office-stratified analysis. **This is the most likely starting hypothesis to test rigorously in the EDA.**
+4. **`viability_score` (Viability Score 2.0) is TS-primary with rich coverage, but the mart surfacing path is unstable.** The score is produced internally by `int__techspeed_viability_scoring.py` against the MLflow model `ViabilityWithOpponentData` (not BR-sourced as previously framed). Coverage in the mart by source bucket: 97.8% for TS-only candidacies, 56.3% for BR-matched, 4.4% for 2025 archive, 0% for gp_api-only or ddhq-only. **There is a code/data discrepancy** — the current intermediate SQL files set `viability_score = NULL` but prod tables carry scores; a future rebuild may drop these. For forward stability, the EDA should be prepared to join `int__techspeed_viability_scoring` directly (via `techspeed_candidate_code`). See Source 4.
 5. **2025 archive vs 2026+ cycle shape mismatch.** Some fields (incumbency, open-seat) have different coverage by cycle. Cross-cycle longitudinal analyses risk silently averaging over structurally different cohorts.
 6. **Outcome data is concentrated in 2025.** Only 5.4% of 2026 candidacies have a `general_election_result` yet (most 2026 elections haven't happened). For the foreseeable future, "did they win the general?" analyses are effectively a 2025 cohort study.
 7. **Pre-2023-12-10 candidates have no Amplitude history.** Any engagement-features analysis must restrict to `users.created_at >= 2023-12-10` (or accept structural missingness).
 8. **Multi-cycle candidates.** One `user_id` can produce multiple `campaign_version_id` rows across cycles. Unit-of-analysis decisions affect the answer. The mart already provides `is_latest_version` and `campaign_version_id` as the natural seams, but the analyst must pick.
-9. **`candidacy_result` cross-stage fallback.** Convenient but contaminated. **Prefer `general_election_result` for binary win/loss questions.** Documented at `m_civics.yaml:516-545` but easy to miss.
+9. **`candidacy_result` cross-stage fallback.** Convenient but contaminated. **For the resolved scope, use `latest_stage_reached + latest_stage_result` from `mart_civics.candidacy`** — it explicitly preserves the deepest stage the candidate reached and the result there. Documented at `m_civics.yaml:516-545` but easy to miss.
 10. **Reverse causation on Pro.** Highly engaged users are more likely to upgrade. Pro-vs-free outcome comparisons need an explicit pre/post-upgrade frame to be causally meaningful.
 11. **L2 PII boundary.** Voter-grain L2 models (`int__l2_nationwide_uniform*`) carry PII-adjacent records. Aggregate-grain queries only; voter-grain joins out of scope for this analysis.
 
-## Open scoping questions for the real EDA
+## Scoping decisions (resolved 2026-05-27)
 
-These don't block the scout but should be resolved when scoping the EDA:
+These were originally open and have been resolved in conversation:
 
-- **Unit of analysis**: candidacy / candidate / user? Multi-cycle candidates appear at multiple grains.
-- **Outcome row selection**: when a candidacy has primary + general + runoff stages, which row defines "the outcome"? `general_election_result` is the proposed default but biases toward candidates who reached the general.
-- **Cycle restriction**: 2024 + 2026 only, or include 2025 archive rows?
-- **Engagement-zero candidates**: include as "no product use" or exclude?
-- **ICP gating**: apply `icp_office_win` at the candidacy level, or report unfiltered first to characterize the broader population?
-- **Time-of-engagement window**: trailing N days before election? Trailing N days since registration? Both?
+- **Unit of analysis**: candidacy (`gp_candidacy_id`).
+- **Outcome row selection**: `latest_stage_reached + latest_stage_result` from `mart_civics.candidacy`. Captures candidates who lost at primary or earlier stages, not just the general.
+- **Cycle restriction**: `general_election_date BETWEEN '2025-05-01' AND '2026-12-31'`. Applied at the candidacy grain.
+- **Engagement window**: same as the candidacy/outcome window (2025-05 to 2026-12).
+- **Baseline**: include all registered Win users with engagement-zero treated as a valid predictor value (i.e. engagement-zero is a row, not an exclusion).
+- **ICP gating**: `icp_office_win` is a slicing dimension, not a filter. The analysis reports across all candidacies and stratifies by ICP=true / ICP=false / NULL.
 
 ## Verification
 
