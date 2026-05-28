@@ -122,8 +122,8 @@ DISTRICT_VOTER_STATS_UPSERT_QUERY = """
         updated_at,
         district_id,
         registered_voters,
-        registered_voters_with_cellphone,
-        registered_voters_with_landline
+        unique_cellphones,
+        unique_landlines
     )
     SELECT
         id::uuid,
@@ -131,15 +131,15 @@ DISTRICT_VOTER_STATS_UPSERT_QUERY = """
         updated_at,
         district_id::uuid,
         registered_voters,
-        registered_voters_with_cellphone,
-        registered_voters_with_landline
+        unique_cellphones,
+        unique_landlines
     from {staging_schema}."DistrictVoterStats"
     ON CONFLICT (id) DO UPDATE SET
         updated_at = EXCLUDED.updated_at,
         district_id = EXCLUDED.district_id,
         registered_voters = EXCLUDED.registered_voters,
-        registered_voters_with_cellphone = EXCLUDED.registered_voters_with_cellphone,
-        registered_voters_with_landline = EXCLUDED.registered_voters_with_landline
+        unique_cellphones = EXCLUDED.unique_cellphones,
+        unique_landlines = EXCLUDED.unique_landlines
     """
 
 POSITION_UPSERT_QUERY = """

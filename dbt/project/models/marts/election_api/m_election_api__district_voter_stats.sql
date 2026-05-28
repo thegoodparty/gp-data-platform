@@ -19,8 +19,8 @@ select
     as id,
     tbl_district.id as district_id,
     tbl_agg.voter_count as registered_voters,
-    tbl_agg.voter_count_with_cellphone as registered_voters_with_cellphone,
-    tbl_agg.voter_count_with_landline as registered_voters_with_landline,
+    tbl_agg.unique_cellphones,
+    tbl_agg.unique_landlines,
     tbl_agg.loaded_at as updated_at
 from {{ ref("m_election_api__district") }} as tbl_district
 inner join

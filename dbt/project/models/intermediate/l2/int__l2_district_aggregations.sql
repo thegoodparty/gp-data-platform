@@ -24,10 +24,14 @@ Output schema:
     - district_type: String (e.g., "US_Congressional_District", "State_Senate_District", "State")
     - district_name: String (the actual district identifier/name, or state code for statewide)
     - voter_count: Long (number of distinct voters in this district)
-    - voter_count_with_cellphone: Long (distinct voters whose
-      votertelephones_cellphoneformatted is non-empty)
-    - voter_count_with_landline: Long (distinct voters whose
-      votertelephones_landlineformatted is non-empty)
+    - unique_cellphones: Long (distinct voters whose
+      votertelephones_cellphoneformatted is non-empty — the
+      uniqueness collapse is on lalvoterid, so the count is "distinct
+      voters with a cellphone in this district", not "distinct phone
+      numbers")
+    - unique_landlines: Long (distinct voters whose
+      votertelephones_landlineformatted is non-empty — same
+      collapse semantics as unique_cellphones)
     - loaded_at: Timestamp (from the source data)
 
 Adding the phone-segmented counts changes the table schema. With
@@ -150,7 +154,7 @@ with
                         and trim(votertelephones_cellphoneformatted) != ''
                     then lalvoterid
                 end
-            ) as voter_count_with_cellphone,
+            ) as unique_cellphones,
             count(
                 distinct case
                     when
@@ -158,7 +162,7 @@ with
                         and trim(votertelephones_landlineformatted) != ''
                     then lalvoterid
                 end
-            ) as voter_count_with_landline,
+            ) as unique_landlines,
             max(loaded_at) as loaded_at
         from filtered_districts
         group by state_postal_code, district_type, district_name
@@ -202,7 +206,7 @@ with
                         and trim(l2.votertelephones_cellphoneformatted) != ''
                     then l2.lalvoterid
                 end
-            ) as voter_count_with_cellphone,
+            ) as unique_cellphones,
             count(
                 distinct case
                     when
@@ -210,7 +214,7 @@ with
                         and trim(l2.votertelephones_landlineformatted) != ''
                     then l2.lalvoterid
                 end
-            ) as voter_count_with_landline,
+            ) as unique_landlines,
             max(l2.loaded_at) as loaded_at
         from {{ ref("int__l2_nationwide_uniform") }} l2
         {% if is_incremental() %}
@@ -243,7 +247,7 @@ select
     district_type,
     district_name,
     voter_count,
-    voter_count_with_cellphone,
-    voter_count_with_landline,
+    unique_cellphones,
+    unique_landlines,
     loaded_at
 from all_aggregations

@@ -117,20 +117,24 @@ models:
               arguments:
                 min_value: 0
                 inclusive: true
-      - name: registered_voters_with_cellphone
+      - name: unique_cellphones
         description: >
           Distinct L2 voters in this district whose
-          votertelephones_cellphoneformatted column is non-empty.
+          votertelephones_cellphoneformatted column is non-empty. The
+          uniqueness collapse is on lalvoterid, so this counts
+          distinct voters with a cellphone rather than distinct phone
+          numbers.
         tests:
           - not_null
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
                 inclusive: true
-      - name: registered_voters_with_landline
+      - name: unique_landlines
         description: >
           Distinct L2 voters in this district whose
-          votertelephones_landlineformatted column is non-empty.
+          votertelephones_landlineformatted column is non-empty. Same
+          collapse semantics as unique_cellphones.
         tests:
           - not_null
           - dbt_utils.accepted_range:
