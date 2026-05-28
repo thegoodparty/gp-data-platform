@@ -58,6 +58,10 @@ test_data/
 analytics/*/SESSION_NOTES.md
 analytics/*/WORKFLOW.md
 
+# Scouting / inventory deliverables are drafted locally and synced to the
+# ClickUp product-analytics doc instead of being committed here.
+analytics/*/INVENTORY.md
+
 # Analytics notebook scratch (checkpoints, ad-hoc files, sync/pull scripts that
 # point at a per-contributor Databricks folder). The notebook itself is
 # allow-listed below — using `**` instead of a trailing slash so the
