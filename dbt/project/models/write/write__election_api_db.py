@@ -97,7 +97,10 @@ DISTRICT_UPSERT_QUERY = """
         updated_at,
         state,
         l2_district_type,
-        l2_district_name
+        l2_district_name,
+        registered_voters,
+        unique_cellphones,
+        unique_landlines
     )
     SELECT
         id::uuid,
@@ -105,14 +108,20 @@ DISTRICT_UPSERT_QUERY = """
         updated_at,
         state,
         l2_district_type,
-        l2_district_name
+        l2_district_name,
+        registered_voters,
+        unique_cellphones,
+        unique_landlines
     from {staging_schema}."District"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
         state = EXCLUDED.state,
         l2_district_type = EXCLUDED.l2_district_type,
-        l2_district_name = EXCLUDED.l2_district_name
+        l2_district_name = EXCLUDED.l2_district_name,
+        registered_voters = EXCLUDED.registered_voters,
+        unique_cellphones = EXCLUDED.unique_cellphones,
+        unique_landlines = EXCLUDED.unique_landlines
     """
 
 POSITION_UPSERT_QUERY = """

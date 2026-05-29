@@ -73,6 +73,42 @@ models:
                   "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
                   "DC", "US"
                 ]
+      - name: registered_voters
+        description: >
+          Distinct L2 voters appearing in this district, joined from
+          int__l2_district_aggregations.voter_count. Null for
+          turnout-only synthetic districts that have no L2 aggregation
+          row.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: unique_cellphones
+        description: >
+          Distinct cellphone numbers
+          (votertelephones_cellphoneformatted) appearing on L2 voters
+          in this district. The collapse is on the phone-number value
+          itself, so two voters sharing a household phone count as
+          one — this matches per-channel send/dial costs downstream
+          (SMS, robocall). Null for turnout-only synthetic districts.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: unique_landlines
+        description: >
+          Distinct landline numbers
+          (votertelephones_landlineformatted) appearing on L2 voters
+          in this district. Same collapse semantics as
+          unique_cellphones. Null for turnout-only synthetic
+          districts.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
