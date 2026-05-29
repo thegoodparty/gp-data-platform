@@ -108,6 +108,12 @@ sources:
         description: raw data load from gp_api_db postgres db from table `outreach`
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
+        # The upstream `path_to_victory` table was dropped from gp-api on 2026-04-15
+        # (https://github.com/thegoodparty/gp-api/pull/1444). No new rows will load,
+        # so freshness is disabled here to stop the source from going STALE. Source
+        # is retained in dbt for now; remove once downstream usage is cleaned up.
+        config:
+          freshness: null
       - name: gp_api_db_position
         description: raw data load from gp_api_db postgres db from table `position`
         config:
