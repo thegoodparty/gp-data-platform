@@ -33,12 +33,6 @@ Output schema:
       as unique_cellphones)
     - loaded_at: Timestamp (from the source data)
 
-Adding the phone-segmented counts changes the table schema. With
-`on_schema_change="fail"`, the next incremental run after this PR
-deploys will reject the schema mismatch — trigger a one-time
-`dbt run --full-refresh --select int__l2_district_aggregations`
-(plus downstream marts) when deploying.
-
 Performance notes (as of 2026-01-14):
     - Full refresh: ~15 minutes
     - Incremental run: ~2 minutes
