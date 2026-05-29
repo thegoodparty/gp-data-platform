@@ -73,6 +73,11 @@ analytics/*/notebooks/**
 # helpers that hardcode user-specific Workspace paths).
 analytics/scripts/
 
+# Ad-hoc analysis notebooks + briefs are personal working experiments by
+# default. Promote a specific analysis with `git add -f` if it should be
+# team-shared. See win.md §7 "Lightweight analysis pattern" for the convention.
+analytics/analyses/
+
 # Calibration logs are personal per-session working documents — the durable
 # lessons land in the runbook + agent edits the log drives, not in the log
 # itself. See win.md §9 "Calibration logs" for the convention.
