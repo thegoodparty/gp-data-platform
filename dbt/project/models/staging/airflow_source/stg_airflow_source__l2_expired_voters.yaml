@@ -8,9 +8,10 @@ models:
       flagged as expired on L2's SFTP server.
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - lalvoterid
-            - dag_run_id
+          arguments:
+            combination_of_columns:
+              - lalvoterid
+              - dag_run_id
     columns:
       - name: lalvoterid
         description: The L2 voter identifier that has been expired
