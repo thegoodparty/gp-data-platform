@@ -78,8 +78,8 @@ analytics/scripts/
 # itself. See win.md §9 "Calibration logs" for the convention.
 analytics/runbook/CALIBRATION_*.md
 
-# Per-contributor review sub-agents (kept local; project framing supplied at invocation)
-.claude/agents/product-*.md
+# Per-contributor review sub-agent (PM agent kept local; project framing supplied at invocation)
+.claude/agents/product-manager.md
 
 # Entity resolution local data and results
 entity_resolution/data/
