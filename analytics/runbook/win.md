@@ -579,6 +579,10 @@ After a substantive analysis run, write findings that should update the runbook 
 
 Calibration logs are personal working documents — they are gitignored (`analytics/runbook/CALIBRATION_*.md`) so each analyst's working tree can carry them without affecting the shared repo. The durable team-shared output is the runbook + agent edits the log drives.
 
+**Beware over-calibration.** A single-analysis log surfaces failure modes specific to that run's data state alongside general principles. When promoting findings into runbook or agent edits, distinguish between the two: universal hygiene (data-existence checks, CIs, documentation) can be codified freely; data-state-dependent defaults (cohort filters, metric choices, funnel decompositions) should carry hedges noting current state, or wait for confirmation across two or three calibration cycles before being treated as settled rules. Tightening a rule "so this exact failure can't happen again" often encodes the failure mode rather than the underlying principle.
+
+**Beware runbook bloat.** Even genuinely general principles compete for the reader's attention budget. The runbook is useful only if a framer can hold the relevant subset in working memory; past some point, adding rules makes following the runbook harder, not better — the analog of an over-parameterized model losing generalization. When applying a calibration finding, prefer sharpening or generalizing an existing rule over adding a new one. If the runbook starts to feel exhaustive rather than usable, that's a signal to consolidate, not extend.
+
 ### Project scouts that contributed insights
 
 - **`analytics/win_outcomes_scout/INVENTORY.md`** (DATA-1935) — Win product × electoral outcomes data scout. Seeded most of the content here, especially §3-§5. Source 7 in the inventory carries the full HubSpot survey detail (per-survey submission counts, response distribution by ICP/Win bucket, the verified Option 1/2 mapping evidence).
