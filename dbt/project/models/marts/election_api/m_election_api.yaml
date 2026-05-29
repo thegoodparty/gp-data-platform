@@ -86,11 +86,12 @@ models:
                 inclusive: true
       - name: unique_cellphones
         description: >
-          Distinct L2 voters in this district whose
-          votertelephones_cellphoneformatted column is non-empty. The
-          uniqueness collapse is on lalvoterid, so this counts
-          distinct voters with a cellphone rather than distinct phone
-          numbers. Null for turnout-only synthetic districts.
+          Distinct cellphone numbers
+          (votertelephones_cellphoneformatted) appearing on L2 voters
+          in this district. The collapse is on the phone-number value
+          itself, so two voters sharing a household phone count as
+          one — this matches per-channel send/dial costs downstream
+          (SMS, robocall). Null for turnout-only synthetic districts.
         tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -98,10 +99,11 @@ models:
                 inclusive: true
       - name: unique_landlines
         description: >
-          Distinct L2 voters in this district whose
-          votertelephones_landlineformatted column is non-empty. Same
-          collapse semantics as unique_cellphones. Null for
-          turnout-only synthetic districts.
+          Distinct landline numbers
+          (votertelephones_landlineformatted) appearing on L2 voters
+          in this district. Same collapse semantics as
+          unique_cellphones. Null for turnout-only synthetic
+          districts.
         tests:
           - dbt_utils.accepted_range:
               arguments:

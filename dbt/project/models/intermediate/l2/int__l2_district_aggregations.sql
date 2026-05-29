@@ -24,14 +24,13 @@ Output schema:
     - district_type: String (e.g., "US_Congressional_District", "State_Senate_District", "State")
     - district_name: String (the actual district identifier/name, or state code for statewide)
     - voter_count: Long (number of distinct voters in this district)
-    - unique_cellphones: Long (distinct voters whose
-      votertelephones_cellphoneformatted is non-empty — the
-      uniqueness collapse is on lalvoterid, so the count is "distinct
-      voters with a cellphone in this district", not "distinct phone
-      numbers")
-    - unique_landlines: Long (distinct voters whose
-      votertelephones_landlineformatted is non-empty — same
-      collapse semantics as unique_cellphones)
+    - unique_cellphones: Long (distinct cellphone numbers
+      (votertelephones_cellphoneformatted) appearing on L2 voters in
+      this district — the collapse is on the phone-number value, so
+      two voters sharing a household phone count as one)
+    - unique_landlines: Long (distinct landline numbers
+      (votertelephones_landlineformatted) — same collapse semantics
+      as unique_cellphones)
     - loaded_at: Timestamp (from the source data)
 
 Adding the phone-segmented counts changes the table schema. With
@@ -139,8 +138,10 @@ with
     ),
     -- Step 5: Aggregate all voters for the districts (including historical voters)
     -- This ensures voter_count represents the total, not just incremental count.
-    -- Phone-presence counts use count(distinct case ...) so a voter appearing on
-    -- multiple unpivoted district rows is still counted once per district.
+    -- voter_count collapses on lalvoterid (distinct voters); the two phone
+    -- counts collapse on the phone-number value itself (so household-shared
+    -- phones count once per district, which matches per-channel
+    -- send/dial costs downstream).
     district_aggregations as (
         select
             state_postal_code,
@@ -152,7 +153,7 @@ with
                     when
                         votertelephones_cellphoneformatted is not null
                         and trim(votertelephones_cellphoneformatted) != ''
-                    then lalvoterid
+                    then votertelephones_cellphoneformatted
                 end
             ) as unique_cellphones,
             count(
@@ -160,7 +161,7 @@ with
                     when
                         votertelephones_landlineformatted is not null
                         and trim(votertelephones_landlineformatted) != ''
-                    then lalvoterid
+                    then votertelephones_landlineformatted
                 end
             ) as unique_landlines,
             max(loaded_at) as loaded_at
@@ -204,7 +205,7 @@ with
                     when
                         l2.votertelephones_cellphoneformatted is not null
                         and trim(l2.votertelephones_cellphoneformatted) != ''
-                    then l2.lalvoterid
+                    then l2.votertelephones_cellphoneformatted
                 end
             ) as unique_cellphones,
             count(
@@ -212,7 +213,7 @@ with
                     when
                         l2.votertelephones_landlineformatted is not null
                         and trim(l2.votertelephones_landlineformatted) != ''
-                    then l2.lalvoterid
+                    then l2.votertelephones_landlineformatted
                 end
             ) as unique_landlines,
             max(l2.loaded_at) as loaded_at
