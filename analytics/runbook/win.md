@@ -15,6 +15,7 @@ A separate Serve runbook will live alongside this file at `analytics/runbook/ser
 1. [Data sources](#1-data-sources) — where the data lives
 2. [Join keys](#2-join-keys) — how tables connect
 3. [Outcome variables](#3-outcome-variables) — measuring "did they win?"
+3.5 [Canonical engagement metrics](#35-canonical-engagement-metrics) — team OKR metrics for engagement/activation
 4. [Amplitude event landscape](#4-amplitude-event-landscape) — engagement + funnel analyses
 5. [Viability Score 2.0](#5-viability-score-20) — race-difficulty stratification
 6. [Segmentation dimensions](#6-segmentation-dimensions) — slicing the population
@@ -92,7 +93,8 @@ Use `users_win_candidacy` if you only need outcomes + segmentation that's alread
 
 **Win user → engagement (Amplitude weekly):**
 ```
-users_win_candidacy.user_id = int__amplitude_win_activity_weekly.user_id  (both BIGINT)
+users_win_candidacy.user_id = int__amplitude_win_activity.user_id  (both BIGINT)
+-- A weekly variant (int__amplitude_win_activity_weekly) is in development; framers must verify availability per the framer agent's "Pre-brief verification checklist" before relying on it.
 ```
 
 **Win user → lifecycle milestones:**
@@ -225,6 +227,26 @@ See `analytics/win_outcomes_scout/INVENTORY.md` Source 7 for the full 7-facet in
 
 ---
 
+## 3.5 Canonical engagement metrics
+
+The team has documented engagement / activation metrics in `mart_analytics.users_win_base` (per `m_analytics.yaml:152-247`). Default to these before defining new ones.
+
+| Metric | Source column | Definition | When to use |
+|---|---|---|---|
+| `has_amplitude_data` | bool | True if user has ≥1 milestone event (registration, dashboard view, campaign, onboarding complete, pro upgrade, or SMS poll). Note: misses the broader onboarding-progress event family (`Onboarding -%` steps). | Coverage indicator; lower bound on "user appears in Amplitude milestone tables." |
+| `is_post_amplitude_registration` | bool | True if `user_created_at >= 2023-12-10` (the documented Amplitude tracking start). **Caveat:** Win-product event instrumentation actually started ~2025-05-28; this flag is too loose for engagement analyses. |
+| `has_completed_onboarding_flow` | bool | True if `onboarding_completed_at IS NOT NULL` (event = `onboarding_complete`). | **Default cohort filter for engagement-outcome analyses** — see §7. |
+| `is_onboarded` | bool | True if US user viewed candidate dashboard within 14 days of Amplitude registration. Stricter than `has_completed_onboarding_flow`. | Onboarding CVR analyses. |
+| `is_active_candidate_7d` / `_30d` / `_90d` | bool | True if user viewed dashboard in trailing N days. Computed against `current_date`. `_30d` is the canonical Active Candidates OKR. | Active-candidate OKR reporting; recompute against an anchor date for retrospective analyses. |
+| `is_activated` | bool | True if user has sent ≥1 voter outreach campaign. **Canonical Activated Candidates OKR.** | Deeper-funnel engagement analyses; do not conflate with the colloquial "activated." |
+| `total_campaigns_sent` | int | Count of `Voter Outreach - Campaign Completed` events. | Intensity-of-outreach analyses. |
+
+### Terminology
+
+The team's **`is_activated`** is specifically *sent ≥1 outreach campaign* — narrow, OKR-aligned. When referring colloquially to "users who engaged with the product at all," prefer the term **"onboarded"** (`has_completed_onboarding_flow = TRUE`), which is broader (~21% of registered cohort) and is the default cohort filter for engagement-outcome analyses.
+
+---
+
 ## 4. Amplitude event landscape
 
 ### The modeling layers
@@ -233,7 +255,7 @@ See `analytics/win_outcomes_scout/INVENTORY.md` Source 7 for the full 7-facet in
 |---|---|---|
 | Staging (raw) | `stg_airbyte_source__amplitude_api_events` | **Full universe.** ~300+ distinct `event_type` values in any reasonable window. |
 | Staging (catalog) | `stg_airbyte_source__amplitude_api_events_list` | Amplitude's own event catalog (name, totals, hidden flags). |
-| Intermediate (Win) | `int__amplitude_win_activity` (+ `_weekly`) | **Only 2 event types**: `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. |
+| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) is in development — verify availability before use. | **Only 2 event types**: `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. |
 | Intermediate (lifecycle) | `int__amplitude_user_milestones` | ~12 lifecycle milestones (registration, dashboard, onboarding complete, campaign sent, pro upgrade, Serve onboarding). One row per user. |
 | Intermediate (Serve) | `int__amplitude_serve_activity` | Filters `Viewed` event to `event_properties:path = '/dashboard/polls'` + `user_properties:Serve Activated = true`. |
 | Mart passthrough | `mart_analytics.amplitude_events` | Thin alias of the staging events for Sigma BI consumption. No transformation. |
@@ -286,7 +308,7 @@ Newer families:
 
 ### Building new funnel aggregates
 
-The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity_weekly` (per-week aggregates).
+The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity` (per-month aggregates).
 
 Reusable Python pull-script template at `analytics/win_outcomes_scout/notebooks/_pull_amplitude_universe.py` (uses `databricks-sql-connector` via the global env vars — see user-level CLAUDE.md).
 
@@ -425,6 +447,19 @@ These apply by default to Win-product analyses. Document deviations in your proj
 | Baseline | All registered Win users; engagement-zero is a valid predictor value (not an exclusion) |
 | ICP gating | `icp_office_win` is a slicing dimension, not a filter |
 
+### Default cohorts by analysis type
+
+Different analyses call for different cohorts. The full Win-product registered population includes registered-but-never-active candidates, pre-instrumentation registrants, CRM-sync candidates who never logged in, and other heterogeneous funnel stages. Pooling them produces misleading correlations — for example, raw engagement-vs-win-rate looks *inverse* (more engagement → lower win rate) because the 0-engagement bin is dominated by candidates who never used the product at all, not by candidates who tried-and-failed to engage.
+
+| Analysis type | Default cohort | Source flag |
+|---|---|---|
+| Engagement vs outcome | Onboarded cohort | `has_completed_onboarding_flow = TRUE` (in `users_win_base`) |
+| Outreach intensity vs outcome | Activated cohort (sent ≥1 outreach) | `is_activated = TRUE` |
+| Funnel / dropoff analyses | Full registered population | `users_win_candidacy` filtered to `is_latest_version AND NOT is_demo` |
+| Active candidates OKR reporting | Active candidates (trailing 30d) | `is_active_candidate_30d = TRUE` (or recompute anchored to a target date) |
+
+Always name the cohort in the analysis title and headline so consumers know which population is being characterized. "Among onboarded Win candidates..." not "Among Win candidates..."
+
 ### Scoping checklist for a new analysis
 
 Before writing any code:
@@ -438,9 +473,9 @@ Before writing any code:
 
 If any of these is ambiguous, surface it to the analytics owner via `AskUserQuestion` (or equivalent) BEFORE writing code. Do not list as "open questions" in the deliverable — that wastes a review cycle.
 
-### Project folder pattern
+### Project folder pattern (scout-project flavor)
 
-For each non-trivial analysis, create:
+For multi-week scout projects with reusable inventory, create the full structure:
 
 ```
 analytics/<project_name>/
@@ -452,6 +487,18 @@ analytics/<project_name>/
 ```
 
 The notebook should be set up with a parameterized cycle window at the top so re-running under a different scope is trivial. See `analytics/win_outcomes_scout/notebooks/inventory_queries.ipynb` for the verification-notebook pattern.
+
+### Lightweight analysis pattern (ad-hoc flavor)
+
+For single-notebook ad-hoc analyses (one question, one notebook, no reusable inventory), use the lighter shape:
+
+```
+analytics/analyses/
+  <YYYY-MM-DD>_<slug>.ipynb
+  <YYYY-MM-DD>_<slug>_brief.yaml
+```
+
+Date-prefixed filenames are required (chronological sortability). No INVENTORY.md / SESSION_NOTES.md scaffolding. The brief sits alongside the notebook so the framing is retrievable after the fact.
 
 ### Notebook sync workflow
 
@@ -478,6 +525,15 @@ Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve
 
 For larger query results that exceed `dbt show` truncation, use the `databricks-sql-connector` Python client via the global env vars (see user-level CLAUDE.md). Pattern in `analytics/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
 
+### Binning conventions
+
+When binning a continuous engagement or outcome metric:
+
+- Prefer pre-registered bins in the brief, with anchors tied to interpretable thresholds (e.g., funnel-stage boundaries: 0 active weeks = didn't return, 1-3 = light user, etc.).
+- If bins are chosen after viewing the distribution, document this explicitly in the notebook and report sensitivity to bin choice.
+- Always report Wilson 95% CIs alongside point estimates so readers can distinguish real differences from sampling noise.
+- Flag any bin with N<30 as small-sample.
+
 ### Verification protocol
 
 A scout / analysis is "done" when:
@@ -498,7 +554,7 @@ These are recurring traps. When you hit one, add a one-liner here so the next pe
 | **`users_win_base.election_date = coalesce(next, last)`** | Leaks future election dates into "current cycle" analyses. | Use per-stage dates from `users_win_candidacy` instead. They are NOT coalesced and preserve cycle separation. |
 | **`candidacy_result` cross-stage fallback** | A primary winner who lost the general can show `candidacy_result = 'Won'`. | Use `latest_stage_result` + `latest_stage_reached` for win/loss analyses. Or use `general_election_result` if specifically wanting general-stage outcomes. |
 | **Viability score code/data discrepancy** | `candidacy.viability_score` is populated in prod but the SQL files hardcode it to NULL. Future rebuilds could drop ~58k scores. | Join `int__techspeed_viability_scoring` directly via `techspeed_candidate_code` for forward-stable access. |
-| **Pre-2023-12-10 candidates have no Amplitude history** | Engagement features look like missingness. | Restrict to `users.created_at >= '2023-12-10'` for engagement-features analyses, OR explicitly treat the pre-cohort as out-of-scope. |
+| **Pre-2025-05-28 candidates have no Win-product Amplitude history** | Product-event instrumentation for the Win product went live ~2025-05-28; the modeled weekly/monthly tables start ~2025-06-01. Earlier `users.created_at` rows exist in the product DB but have no Win-Amplitude events. | For engagement-window floors, use the **actual coverage `MIN(week_start_date)`** of the source table (currently 2025-06-23 for the weekly model), not a fixed date. Document the coverage window in the brief's `data_provenance` field. |
 | **45.6% NULL `election_level` in window** | Office-level slicing loses half the population if you filter. | Decide explicitly: (a) restrict, (b) backfill from `office_type` / `int__icp_offices`, or (c) treat NULL as a fifth category. |
 | **Pro users have LOWER raw win rate than free** | Naive Pro-lift analysis flips intuition. | Confounded by selection bias (Pro users self-select into harder races) and reverse causation (engagement → Pro). Office-stratify; use pre/post-upgrade frame for timing. |
 | **ICP=true cohort has LOWER raw win rate than ICP=false** | Same direction as the Pro finding. | ICP=true offices are by-design competitive. Slice rather than filter. |
@@ -516,6 +572,12 @@ These are recurring traps. When you hit one, add a one-liner here so the next pe
 ---
 
 ## 9. References
+
+### Calibration logs
+
+After a substantive analysis run, write findings that should update the runbook or agents into a dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`. Hand-process the log into runbook/agent edits before treating it as resolved.
+
+Calibration logs are personal working documents — they are gitignored (`analytics/runbook/CALIBRATION_*.md`) so each analyst's working tree can carry them without affecting the shared repo. The durable team-shared output is the runbook + agent edits the log drives.
 
 ### Project scouts that contributed insights
 
@@ -571,6 +633,18 @@ population:
     Cohorts explicitly removed (demo accounts, internal users, out-of-scope geo, etc.).
   source_model: |
     The dbt model or table this population is drawn from.
+
+data_provenance:
+  schema_status: prod | dev | pending_merge
+  coverage_start: |
+    Actual MIN of the time column in the source table, verified by query
+    (not the brief's assumed floor). E.g., MIN(week_start_date) from
+    int__amplitude_win_activity_weekly.
+  coverage_end: |
+    Actual MAX of the time column.
+  post_merge_swap: |
+    If schema_status = dev or pending_merge: what to change after merge
+    (e.g., "swap WIN_ACTIVITY_WEEKLY_SCHEMA from 'private_tristan' to 'dbt'").
 
 eligibility:
   tenure_requirement: |
