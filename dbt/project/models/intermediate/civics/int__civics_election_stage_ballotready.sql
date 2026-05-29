@@ -181,6 +181,14 @@ with
                 else ''
             end as race_name,
 
+            -- Office attributes (race grain). Carried through for the
+            -- election_stage ER prematch view (int__er_prematch_election_stages).
+            races_with_fields.candidate_office,
+            races_with_fields.office_level,
+            races_with_fields.office_type,
+            races_with_fields.district,
+            races_with_fields.seat_name,
+
             races_with_fields.is_primary,
             races_with_fields.is_runoff,
             races_with_fields.is_special,
@@ -246,6 +254,11 @@ select
     election_date,
     election_name,
     race_name,
+    candidate_office,
+    office_level,
+    office_type,
+    district,
+    seat_name,
     is_primary,
     is_runoff,
     is_special,

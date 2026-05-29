@@ -21,6 +21,16 @@
 -- - TS has no native state column; we extract the 2-letter prefix from
 -- race_name (which TS constructs as `state || ' ' || official_office_name`).
 -- is_special is always false (TS does not surface special-election flags).
+-- - official_office_name strips the leading 2-letter state prefix on every
+-- source. state is already a dedicated ExactMatch comparison, so keeping the
+-- prefix inside the office string only inflates Jaro-Winkler on the shared
+-- prefix and guarantees a shared locality token (defeating office
+-- discrimination across distinct races in the same state).
+-- - Office attributes (candidate_office, office_level, office_type,
+-- district_raw, district_identifier, seat_name) are carried up from the
+-- source election_stage models. district_identifier is parsed from the
+-- district string. seat_name is BR-only; the others are populated on all
+-- three sources.
 with
     -- BallotReady positions provide state for BR election stages
     br_position as (
@@ -34,7 +44,17 @@ with
             cast(es.br_race_id as string) as source_id,
             cast(es.br_position_id as bigint) as ballotready_position_id,
             bp.state as state,
-            nullif(lower(trim(es.race_name)), '') as official_office_name,
+            nullif(
+                regexp_replace(lower(trim(es.race_name)), '^[a-z]{2} ', ''), ''
+            ) as official_office_name,
+            es.candidate_office,
+            es.office_level,
+            es.office_type,
+            nullif(es.district, '') as district_raw,
+            try_cast(
+                regexp_extract(es.district, '([0-9]+)') as int
+            ) as district_identifier,
+            nullif(es.seat_name, '') as seat_name,
             try_cast(es.br_race_id as int) as br_race_id_int,
             es.election_date,
             es.stage_type as election_stage,
@@ -59,7 +79,18 @@ with
             -- V1: leave NULL; see header comment.
             cast(null as bigint) as ballotready_position_id,
             state_postal_code as state,
-            nullif(lower(trim(race_name)), '') as official_office_name,
+            nullif(
+                regexp_replace(lower(trim(race_name)), '^[a-z]{2} ', ''), ''
+            ) as official_office_name,
+            candidate_office,
+            office_level,
+            office_type,
+            nullif(district, '') as district_raw,
+            coalesce(
+                try_cast(regexp_extract(district, '([0-9]+)') as int),
+                try_cast(regexp_extract(race_name, ' ([0-9]+)$') as int)
+            ) as district_identifier,
+            seat_name,
             cast(null as int) as br_race_id_int,
             election_date,
             stage_type as election_stage,
@@ -79,10 +110,21 @@ with
             -- TS race_name is `state || ' ' || official_office_name` (see
             -- int__civics_election_stage_techspeed); extract the prefix.
             substring(race_name, 1, 2) as state,
-            -- Keep the full race_name (state prefix included) to match BR and
-            -- DDHQ, whose race_names also carry a 2-letter state prefix. Aligning
-            -- the prefix across all three sources keeps JW similarity comparable.
-            nullif(lower(trim(race_name)), '') as official_office_name,
+            -- Strip the leading 2-letter state prefix (see header note);
+            -- applied uniformly across BR/DDHQ/TS so the office string carries
+            -- only the locality + office, not the state.
+            nullif(
+                regexp_replace(lower(trim(race_name)), '^[a-z]{2} ', ''), ''
+            ) as official_office_name,
+            candidate_office,
+            -- TS staging emits mixed-case office_level; initcap to match BR/DDHQ.
+            initcap(office_level) as office_level,
+            office_type,
+            nullif(district, '') as district_raw,
+            try_cast(
+                regexp_extract(district, '([0-9]+)') as int
+            ) as district_identifier,
+            nullif(seat_name, '') as seat_name,
             cast(null as int) as br_race_id_int,
             election_date,
             stage_type as election_stage,
@@ -111,10 +153,7 @@ select
     u.source_name,
     u.state,
     u.official_office_name,
-    -- candidate_office: race-level grain has no separate normalized office;
-    -- mirror official_office_name so the ExactMatch("candidate_office")
-    -- Splink comparison still has a column to read.
-    u.official_office_name as candidate_office,
+    u.candidate_office,
     -- Race-level matcher has no person fields, but matcha's shared
     -- pipeline.load_and_prepare requires the column; emit an empty array.
     array() as first_name_aliases,
@@ -126,12 +165,12 @@ select
     u.number_of_seats,
     u.ballotready_position_id,
     u.br_race_id_int as br_race_id,
-    -- Placeholders for Splink comparison columns the source int models do
-    -- not expose at race grain. NULL-tolerant via NullLevel; the
-    -- comparisons still serve as gamma=0 baselines for EM training.
-    cast(null as string) as office_level,
-    cast(null as string) as office_type,
-    cast(null as int) as district_identifier,
-    cast(null as string) as district_raw,
-    cast(null as string) as seat_name
+    -- Office attributes carried up from the source election_stage models.
+    -- Sparse on some sources (e.g. seat_name is BR-only); Splink's NullLevel
+    -- handles per-row missing values.
+    u.office_level,
+    u.office_type,
+    u.district_identifier,
+    u.district_raw,
+    u.seat_name
 from unioned as u
