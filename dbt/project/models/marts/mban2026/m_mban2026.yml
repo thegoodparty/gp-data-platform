@@ -285,9 +285,10 @@ models:
 
     data_tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - hubspot_id
-            - outreach_id
+          arguments:
+            combination_of_columns:
+              - hubspot_id
+              - outreach_id
 
   - name: mban_election_results
     description: |
@@ -423,7 +424,8 @@ models:
 
     data_tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - hubspot_company_id
-            - election_date
-            - election_type
+          arguments:
+            combination_of_columns:
+              - hubspot_company_id
+              - election_date
+              - election_type
