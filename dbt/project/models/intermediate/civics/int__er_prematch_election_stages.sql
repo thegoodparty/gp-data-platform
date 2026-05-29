@@ -79,11 +79,10 @@ with
             -- TS race_name is `state || ' ' || official_office_name` (see
             -- int__civics_election_stage_techspeed); extract the prefix.
             substring(race_name, 1, 2) as state,
-            -- Drop the leading state prefix before normalizing so JW similarity
-            -- against BR/DDHQ office strings isn't penalized by the prefix.
-            nullif(
-                lower(trim(regexp_replace(race_name, '^[A-Z]{2} ', ''))), ''
-            ) as official_office_name,
+            -- Keep the full race_name (state prefix included) to match BR and
+            -- DDHQ, whose race_names also carry a 2-letter state prefix. Aligning
+            -- the prefix across all three sources keeps JW similarity comparable.
+            nullif(lower(trim(race_name)), '') as official_office_name,
             cast(null as int) as br_race_id_int,
             election_date,
             stage_type as election_stage,
