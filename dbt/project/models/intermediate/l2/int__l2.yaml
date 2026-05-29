@@ -32,6 +32,35 @@ models:
           - dbt_expectations.expect_column_values_to_be_of_type:
               arguments:
                 column_type: BIGINT
+      - name: unique_cellphones
+        description: >-
+          Distinct voters in this district whose
+          votertelephones_cellphoneformatted is non-empty.
+          Uniqueness collapse is on lalvoterid (distinct voters
+          with a cellphone, not distinct phone numbers).
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              arguments:
+                column_type: BIGINT
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: unique_landlines
+        description: >-
+          Distinct voters in this district whose
+          votertelephones_landlineformatted is non-empty.
+          Same collapse semantics as unique_cellphones.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              arguments:
+                column_type: BIGINT
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: loaded_at
         description: "Timestamp from the source L2 uniform data"
         tests:
