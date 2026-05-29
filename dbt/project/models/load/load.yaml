@@ -6,18 +6,18 @@ models:
     description: >
       This model loads data from the L2 SFTP server to S3.
     config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      l2_sftp_host: "{{ env_var('DBT_L2_SFTP_HOST') }}"
-      l2_sftp_port: "{{ env_var('DBT_L2_SFTP_PORT') }}"
-      l2_sftp_user: "{{ env_var('DBT_L2_SFTP_USER') }}"
-      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
-      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
-      # TODO: use dbt cloud account id for temp volume path s3 staging prefix
-      # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
-      # current env vars listed in docs are not available
-      # dbt_cloud_account_id: "{{ env_var('DBT_CLOUD_ACCOUNT_ID') }}"
-      # dbt_cloud_account: "{{ env_var('DBT_CLOUD_ACCOUNT') }}"
       meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        l2_sftp_host: "{{ env_var('DBT_L2_SFTP_HOST') }}"
+        l2_sftp_port: "{{ env_var('DBT_L2_SFTP_PORT') }}"
+        l2_sftp_user: "{{ env_var('DBT_L2_SFTP_USER') }}"
+        l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+        l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
+        # TODO: use dbt cloud account id for temp volume path s3 staging prefix
+        # see https://docs.getdbt.com/docs/build/environment-variables#special-environment-variables
+        # current env vars listed in docs are not available
+        # dbt_cloud_account_id: "{{ env_var('DBT_CLOUD_ACCOUNT_ID') }}"
+        # dbt_cloud_account: "{{ env_var('DBT_CLOUD_ACCOUNT') }}"
         owner: "Data Engineering Team"
         contains_pii: false
     columns:
@@ -38,10 +38,10 @@ models:
     description: >
       This model loads data from S3 to Databricks.
     config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
-      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
       meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+        l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
         owner: "Data Engineering Team"
         contains_pii: false
     columns:
@@ -69,18 +69,18 @@ models:
     description: >
       This model loads Haystaq issue model data from the L2 SFTP server to S3.
     config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      l2_sftp_host: "{{ env_var('DBT_L2_SFTP_HOST') }}"
-      l2_sftp_port: "{{ env_var('DBT_L2_SFTP_PORT') }}"
-      l2_sftp_user: "{{ env_var('DBT_L2_SFTP_USER') }}"
-      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
-      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
-      # optional: comma/space-separated list like "AK,AL" for iterative runs
-      l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-      # folders live alongside VM2Uniform on the SFTP server
-      l2_haystaq_flags_sftp_dir: "/L2-Haystaq Issue Model Flags for Voters"
-      l2_haystaq_scores_sftp_dir: "/L2-Haystaq Issue Model Scores"
       meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        l2_sftp_host: "{{ env_var('DBT_L2_SFTP_HOST') }}"
+        l2_sftp_port: "{{ env_var('DBT_L2_SFTP_PORT') }}"
+        l2_sftp_user: "{{ env_var('DBT_L2_SFTP_USER') }}"
+        l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+        l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
+        # optional: comma/space-separated list like "AK,AL" for iterative runs
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+        # folders live alongside VM2Uniform on the SFTP server
+        l2_haystaq_flags_sftp_dir: "/L2-Haystaq Issue Model Flags for Voters"
+        l2_haystaq_scores_sftp_dir: "/L2-Haystaq Issue Model Scores"
         owner: "Data Engineering Team"
         contains_pii: false
     columns:
@@ -101,12 +101,12 @@ models:
     description: >
       This model loads Haystaq issue model data from S3 to Databricks.
     config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
-      l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
-      # optional override if your user doesn't have CREATE TABLE on the shared source schema
-      l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
       meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        l2_s3_bucket: "{{ env_var('DBT_S3_BUCKET') }}"
+        l2_s3_access_key: "{{ env_var('DBT_S3_ACCESS_KEY') }}"
+        # optional override if your user doesn't have CREATE TABLE on the shared source schema
+        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
         owner: "Data Engineering Team"
         contains_pii: false
     columns:

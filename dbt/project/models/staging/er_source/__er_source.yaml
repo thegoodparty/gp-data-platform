@@ -41,7 +41,8 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed", "ddhq", "gp_api"]
+              arguments:
+                values: ["ballotready", "techspeed", "ddhq", "gp_api"]
       - name: first_name
         description: Candidate first name (lowercased, trimmed in prematch).
       - name: last_name
@@ -71,15 +72,16 @@ models:
         description: Election stage (Primary, General, Runoff, or Special variants).
         data_tests:
           - accepted_values:
-              values:
-                - "Primary"
-                - "General"
-                - "Primary Runoff"
-                - "General Runoff"
-                - "Primary Special"
-                - "General Special"
-                - "Primary Special Runoff"
-                - "General Special Runoff"
+              arguments:
+                values:
+                  - "Primary"
+                  - "General"
+                  - "Primary Runoff"
+                  - "General Runoff"
+                  - "Primary Special"
+                  - "General Special"
+                  - "Primary Special Runoff"
+                  - "General Special Runoff"
       - name: email
         description: Candidate email address (sparse — used as a high-signal comparison in matching).
       - name: phone
@@ -138,13 +140,15 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed", "ddhq", "gp_api"]
+              arguments:
+                values: ["ballotready", "techspeed", "ddhq", "gp_api"]
       - name: source_name_r
         description: Origin source for the right record.
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready", "techspeed", "ddhq", "gp_api"]
+              arguments:
+                values: ["ballotready", "techspeed", "ddhq", "gp_api"]
       - name: source_id_l
         description: Left record's source-specific identifier.
       - name: source_id_r
@@ -352,7 +356,8 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready_techspeed", "gp_api"]
+              arguments:
+                values: ["ballotready_techspeed", "gp_api"]
       - name: first_name
         description: Official's first name (lowercased, trimmed in prematch).
       - name: last_name
@@ -443,8 +448,9 @@ models:
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0.01
-              max_value: 1.0
+              arguments:
+                min_value: 0.01
+                max_value: 1.0
       - name: unique_id_l
         description: Composite key (source_name|source_id) for the left record.
         data_tests:
@@ -458,13 +464,15 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready_techspeed", "gp_api"]
+              arguments:
+                values: ["ballotready_techspeed", "gp_api"]
       - name: source_name_r
         description: Origin source for the right record.
         data_tests:
           - not_null
           - accepted_values:
-              values: ["ballotready_techspeed", "gp_api"]
+              arguments:
+                values: ["ballotready_techspeed", "gp_api"]
       - name: source_id_l
         description: Source-specific identifier for the left record.
       - name: source_id_r
@@ -654,5 +662,6 @@ models:
           2=state+last_name, 3=phone exact, 4=email exact.
         data_tests:
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 4
+              arguments:
+                min_value: 0
+                max_value: 4

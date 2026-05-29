@@ -32,11 +32,16 @@ with
     -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical election_id.
     -- Deduped per source_candidate_id; any match for this candidacy gives BR's id.
     canonical_election as (
+        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- for full rationale. canonical_gp_election_id is NULL for non-BR cluster
+        -- rows and populated for BR-anchored rows, so `is null` puts BR-anchored
+        -- rows first; ties tiebreak on the existing UUID order.
         select ts_source_candidate_id, canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
         qualify
             row_number() over (
-                partition by ts_source_candidate_id order by canonical_gp_election_id
+                partition by ts_source_candidate_id
+                order by canonical_gp_election_id is null, canonical_gp_election_id
             )
             = 1
     ),

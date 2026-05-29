@@ -23,7 +23,14 @@ Output schema:
     - state_postal_code: String (two-letter state code)
     - district_type: String (e.g., "US_Congressional_District", "State_Senate_District", "State")
     - district_name: String (the actual district identifier/name, or state code for statewide)
-    - voter_count: Long (number of voters in this district)
+    - voter_count: Long (number of distinct voters in this district)
+    - unique_cellphones: Long (distinct cellphone numbers
+      (votertelephones_cellphoneformatted) appearing on L2 voters in
+      this district — the collapse is on the phone-number value, so
+      two voters sharing a household phone count as one)
+    - unique_landlines: Long (distinct landline numbers
+      (votertelephones_landlineformatted) — same collapse semantics
+      as unique_cellphones)
     - loaded_at: Timestamp (from the source data)
 
 Performance notes (as of 2026-01-14):
@@ -77,6 +84,8 @@ with
         select
             state_postal_code,
             lalvoterid,
+            votertelephones_cellphoneformatted,
+            votertelephones_landlineformatted,
             loaded_at,
             {{ get_l2_district_columns(use_backticks=true, cast_to_string=true) }}
         from {{ ref("int__l2_nationwide_uniform") }}
@@ -86,6 +95,8 @@ with
         select
             state_postal_code,
             lalvoterid,
+            votertelephones_cellphoneformatted,
+            votertelephones_landlineformatted,
             district_column_name as district_type,
             district_value as district_name,
             loaded_at
@@ -102,6 +113,8 @@ with
         select
             l2_data_districts.state_postal_code,
             l2_data_districts.lalvoterid,
+            l2_data_districts.votertelephones_cellphoneformatted,
+            l2_data_districts.votertelephones_landlineformatted,
             l2_data_districts.district_type,
             l2_data_districts.district_name,
             l2_data_districts.loaded_at
@@ -118,13 +131,33 @@ with
         {% endif %}
     ),
     -- Step 5: Aggregate all voters for the districts (including historical voters)
-    -- This ensures voter_count represents the total, not just incremental count
+    -- This ensures voter_count represents the total, not just incremental count.
+    -- voter_count collapses on lalvoterid (distinct voters); the two phone
+    -- counts collapse on the phone-number value itself (so household-shared
+    -- phones count once per district, which matches per-channel
+    -- send/dial costs downstream).
     district_aggregations as (
         select
             state_postal_code,
             district_type,
             district_name,
             count(distinct lalvoterid) as voter_count,
+            count(
+                distinct case
+                    when
+                        votertelephones_cellphoneformatted is not null
+                        and trim(votertelephones_cellphoneformatted) != ''
+                    then votertelephones_cellphoneformatted
+                end
+            ) as unique_cellphones,
+            count(
+                distinct case
+                    when
+                        votertelephones_landlineformatted is not null
+                        and trim(votertelephones_landlineformatted) != ''
+                    then votertelephones_landlineformatted
+                end
+            ) as unique_landlines,
             max(loaded_at) as loaded_at
         from filtered_districts
         group by state_postal_code, district_type, district_name
@@ -161,6 +194,22 @@ with
             'State' as district_type,
             l2.state_postal_code as district_name,
             count(distinct l2.lalvoterid) as voter_count,
+            count(
+                distinct case
+                    when
+                        l2.votertelephones_cellphoneformatted is not null
+                        and trim(l2.votertelephones_cellphoneformatted) != ''
+                    then l2.votertelephones_cellphoneformatted
+                end
+            ) as unique_cellphones,
+            count(
+                distinct case
+                    when
+                        l2.votertelephones_landlineformatted is not null
+                        and trim(l2.votertelephones_landlineformatted) != ''
+                    then l2.votertelephones_landlineformatted
+                end
+            ) as unique_landlines,
             max(l2.loaded_at) as loaded_at
         from {{ ref("int__l2_nationwide_uniform") }} l2
         {% if is_incremental() %}
@@ -188,5 +237,12 @@ select
                 "all_aggregations.district_name",
             ]
         )
-    }} as id, state_postal_code, district_type, district_name, voter_count, loaded_at
+    }} as id,
+    state_postal_code,
+    district_type,
+    district_name,
+    voter_count,
+    unique_cellphones,
+    unique_landlines,
+    loaded_at
 from all_aggregations

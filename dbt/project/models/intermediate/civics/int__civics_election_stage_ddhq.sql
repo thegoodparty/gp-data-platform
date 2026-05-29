@@ -30,9 +30,15 @@ with
             || initcap(any_value(election_stage)) as election_name,
             any_value(race_name) as race_name,
 
-            any_value(election_stage) in ('primary', 'primary runoff') as is_primary,
-            any_value(election_stage)
-            in ('general runoff', 'primary runoff') as is_runoff,
+            any_value(election_stage) in (
+                'primary', 'primary runoff', 'primary special', 'primary special runoff'
+            ) as is_primary,
+            any_value(election_stage) in (
+                'general runoff',
+                'primary runoff',
+                'general special runoff',
+                'primary special runoff'
+            ) as is_runoff,
             false as is_retention,
             any_value(number_of_seats_in_election) as number_of_seats,
             any_value(total_number_of_ballots_in_race) as total_votes_cast,

@@ -32,6 +32,38 @@ models:
           - dbt_expectations.expect_column_values_to_be_of_type:
               arguments:
                 column_type: BIGINT
+      - name: unique_cellphones
+        description: >-
+          Distinct cellphone numbers
+          (votertelephones_cellphoneformatted) appearing on L2 voters
+          in this district. The collapse is on the phone-number value
+          itself, so two voters sharing a household phone count as
+          one — this matches per-channel send/dial costs downstream
+          (SMS, robocall).
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              arguments:
+                column_type: BIGINT
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: unique_landlines
+        description: >-
+          Distinct landline numbers
+          (votertelephones_landlineformatted) appearing on L2 voters
+          in this district. Same collapse semantics as
+          unique_cellphones.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              arguments:
+                column_type: BIGINT
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: loaded_at
         description: "Timestamp from the source L2 uniform data"
         tests:
@@ -58,11 +90,12 @@ models:
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:
       tags: ["monthly"]
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      # optional: comma/space-separated list like \"AK,AL\" for iterative runs
-      l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-      # optional override if your user doesn't have permissions on the default source schema
-      l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        # optional: comma/space-separated list like \"AK,AL\" for iterative runs
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+        # optional override if your user doesn't have permissions on the default source schema
+        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
     columns:
       - name: LALVOTERID
         description: "The ID of the voter"
@@ -74,11 +107,12 @@ models:
     description: "Combined Haystaq issue model scores from all states (loaded from per-state L2 Haystaq scores tables)"
     config:
       tags: ["monthly"]
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      # optional: comma/space-separated list like \"AK,AL\" for iterative runs
-      l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
-      # optional override if your user doesn't have permissions on the default source schema
-      l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        # optional: comma/space-separated list like \"AK,AL\" for iterative runs
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+        # optional override if your user doesn't have permissions on the default source schema
+        l2_haystaq_databricks_schema: "{{ var('l2_haystaq_databricks_schema', '') }}"
     columns:
       - name: LALVOTERID
         description: "The ID of the voter"
@@ -90,9 +124,10 @@ models:
     description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
     config:
       tags: ["monthly"]
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      # optional: comma/space-separated list like \"AK,AL\" for iterative runs
-      l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        # optional: comma/space-separated list like \"AK,AL\" for iterative runs
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
     columns:
       - name: state_postal_code
         description: "Uppercase two-letter state postal code"

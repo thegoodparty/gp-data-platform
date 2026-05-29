@@ -72,6 +72,14 @@ sources:
                     regex: "^[A-Z]{2} "
                   config:
                     where: "race_name is not null"
+      - name: ddhq_elections_gsheet_reported_races
+        description: >
+          Race-level data loaded from the DDHQ Elections gsheet for races whose
+          results have been reported. One row per ddhq_race_id.
+      - name: ddhq_elections_gsheet_upcoming_races
+        description: >
+          Race-level data loaded from the DDHQ Elections gsheet for races whose
+          results have not yet been reported. One row per ddhq_race_id.
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_campaign_position
@@ -100,6 +108,12 @@ sources:
         description: raw data load from gp_api_db postgres db from table `outreach`
       - name: gp_api_db_path_to_victory
         description: raw data load from gp_api_db postgres db from table `path_to_victory`
+        # The upstream `path_to_victory` table was dropped from gp-api on 2026-04-15
+        # (https://github.com/thegoodparty/gp-api/pull/1444). No new rows will load,
+        # so freshness is disabled here to stop the source from going STALE. Source
+        # is retained in dbt for now; remove once downstream usage is cleaned up.
+        config:
+          freshness: null
       - name: gp_api_db_position
         description: raw data load from gp_api_db postgres db from table `position`
         config:
@@ -1516,10 +1530,11 @@ sources:
 
     tables:
       - name: clustered_candidacy_stages
-        # Date-suffixed snapshot from the 2026-04-30 matcha run (er-audit/
-        # prematch-candidacy-stages-2026-04-30 branch). Update the identifier
+        # Date-suffixed snapshot from the 2026-05-27 matcha run, promoted
+        # as part of DATA-1523 (Phase 3) to use cluster assignments derived
+        # from the post-Phase-2 parsed candidate codes. Update the identifier
         # when promoting a new run; staging models stay unchanged.
-        identifier: clustered_candidacy_stages20260430
+        identifier: clustered_candidacy_stages20260527
         description: >
           Cluster assignments produced by Splink's connected-components clustering
           (threshold: 0.95 match probability). Each row is a single candidacy-stage record
@@ -1529,7 +1544,7 @@ sources:
           unmatched records.
 
       - name: pairwise_candidacy_stages
-        identifier: pairwise_candidacy_stages20260430
+        identifier: pairwise_candidacy_stages20260527
         description: >
           Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),
           after post-prediction filters for person identity, race-level agreement, and

@@ -162,7 +162,33 @@ with
             {{ non_br_cluster_canonicals("cw.cluster_id") }}
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
-        where cw.source_name = 'techspeed'
+        where
+            cw.source_name = 'techspeed'
+            -- DATA-1523: skip (ts_source_candidate_id, election_date)
+            -- combos already produced by ts_stage_matches above. This guards
+            -- against ts_key_unique_in_crosswalk failures when a single
+            -- TS person has two distinct candidacies on the same election
+            -- date but in different clusters (one BR-paired, one TS-only).
+            -- Root cause is upstream: candidate_code is keyed on
+            -- (first_name, last_name, state, city, office_type) and
+            -- office_type='other' can't distinguish specialty districts in
+            -- the same city (e.g. Robert Emmons ME 2026-06-09: Wells Water
+            -- District General + Kennebunk Sewer District Primary both
+            -- collapse to the same stripped ts_source_candidate_id).
+            -- The BR-paired ts_stage_matches branch owns the canonical
+            -- mapping; the TS-only candidacy still gets a row in
+            -- mart_civics.candidacy via int__civics_candidacy_techspeed
+            -- with a TS-derived gp_candidate_id fallback. A proper fix
+            -- would add official_office_name to candidate_code upstream
+            -- (would re-rotate codes for many TS rows — out of scope here).
+            and not exists (
+                select 1
+                from ts_stage_matches s
+                where
+                    s.ts_source_candidate_id
+                    = regexp_replace(cw.source_id, '__(primary|general|runoff)$', '')
+                    and s.ts_stage_election_date <=> cast(cw.election_date as date)
+            )
         qualify
             row_number() over (
                 partition by ts_source_candidate_id, ts_stage_election_date
