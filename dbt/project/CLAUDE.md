@@ -77,6 +77,60 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 - Avoid subqueries in favor of CTEs
 - Prefer to keep join blocks flat with minimal transformations in the join
   condition by moving the needed transformation up to the SELECT clause
+- **Wrap generic test arguments under `arguments:`.** Top-level args on a
+  generic test (`relationships`, `accepted_values`, `dbt_utils.*`,
+  `dbt_expectations.*`, etc.) are deprecated.
+    - Good:
+      ```yaml
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [a, b]
+      ```
+    - Bad (deprecated):
+      ```yaml
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [a, b]
+      ```
+- **Custom config keys live under `config.meta`, not top-level `config`.**
+  dbt's canonical config keys (`tags`, `materialized`, `unique_key`,
+  `on_schema_change`, `meta`, etc.) stay at the top level of `config:`. Any
+  other key (env-var-driven secrets, per-model settings, ownership tags) goes
+  inside `meta:`.
+    - Good:
+      ```yaml
+      config:
+        tags: ["monthly"]
+        meta:
+          dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+          owner: "Data Engineering Team"
+      ```
+    - Bad (deprecated):
+      ```yaml
+      config:
+        tags: ["monthly"]
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        meta:
+          owner: "Data Engineering Team"
+      ```
+- **Python models read custom config via `dbt.config.meta_get`.** The
+  dbt-databricks Python materialization populates `meta_dict` only for keys
+  accessed through `dbt.config.meta_get(key)` in the Python source. Other
+  patterns (`dbt.config.get("meta")[key]`, `dbt.config.get("meta").get(key)`)
+  resolve to `None` at runtime — the wrapper macro does not expose the full
+  `meta` dict.
+    - Good:
+      ```python
+      dbt_env = dbt.config.meta_get("dbt_environment")
+      db_host = dbt.config.meta_get("election_db_host")
+      flags_dir = dbt.config.meta_get(
+          "l2_haystaq_flags_sftp_dir", "/default"
+      )
+      ```
+    - Bad:
+      ```python
+      dbt_env = dbt.config.get("dbt_environment")        # custom key at top of config: triggers deprecation
+      dbt_env = dbt.config.get("meta")["dbt_environment"]  # returns None on dbt-databricks
+      ```
 
 ## Building and Testing Models
 

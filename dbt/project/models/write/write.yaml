@@ -6,14 +6,14 @@ models:
     description: >
       This model writes data to the election api database.
     config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      election_db_host: "{{ env_var('DBT_ELECTION_DB_HOST') }}"
-      election_db_port: "{{ env_var('DBT_ELECTION_DB_PORT') }}"
-      election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
-      election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
-      election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
-      staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
       meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        election_db_host: "{{ env_var('DBT_ELECTION_DB_HOST') }}"
+        election_db_port: "{{ env_var('DBT_ELECTION_DB_PORT') }}"
+        election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
+        election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
+        election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
+        staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
         owner: "Data Engineering Team"
         contains_pii: true
     columns:
@@ -33,14 +33,14 @@ models:
     description: >
       This model writes data from Databricks to the voter db in gp-api.
     config:
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
-      voter_db_host: "{{ env_var('DBT_VOTER_DB_HOST') }}"
-      voter_db_port: "{{ env_var('DBT_VOTER_DB_PORT') }}"
-      voter_db_name: "{{ env_var('DBT_VOTER_DB_NAME') }}"
-      voter_db_schema: "{{ env_var('DBT_VOTER_DB_SCHEMA') }}"
-      voter_db_user: "{{ env_var('DBT_VOTER_DB_USER') }}"
       meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
+        voter_db_host: "{{ env_var('DBT_VOTER_DB_HOST') }}"
+        voter_db_port: "{{ env_var('DBT_VOTER_DB_PORT') }}"
+        voter_db_name: "{{ env_var('DBT_VOTER_DB_NAME') }}"
+        voter_db_schema: "{{ env_var('DBT_VOTER_DB_SCHEMA') }}"
+        voter_db_user: "{{ env_var('DBT_VOTER_DB_USER') }}"
         owner: "Data Engineering Team"
         contains_pii: false
     columns:
@@ -61,10 +61,11 @@ models:
       This model writes data from Databricks to the people api database.
     config:
       tags: ["monthly"]
-      dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-      staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
-      people_db_host: "{{ env_var('DBT_PEOPLE_DB_HOST') }}"
-      people_db_port: "{{ env_var('DBT_PEOPLE_DB_PORT') }}"
-      people_db_name: "{{ env_var('DBT_PEOPLE_DB_NAME') }}"
-      people_db_schema: "{{ env_var('DBT_PEOPLE_DB_SCHEMA') }}"
-      people_db_user: "{{ env_var('DBT_PEOPLE_DB_USER') }}"
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
+        people_db_host: "{{ env_var('DBT_PEOPLE_DB_HOST') }}"
+        people_db_port: "{{ env_var('DBT_PEOPLE_DB_PORT') }}"
+        people_db_name: "{{ env_var('DBT_PEOPLE_DB_NAME') }}"
+        people_db_schema: "{{ env_var('DBT_PEOPLE_DB_SCHEMA') }}"
+        people_db_user: "{{ env_var('DBT_PEOPLE_DB_USER') }}"
