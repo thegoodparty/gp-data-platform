@@ -44,9 +44,8 @@ with
             cast(es.br_race_id as string) as source_id,
             cast(es.br_position_id as bigint) as ballotready_position_id,
             bp.state as state,
-            nullif(
-                regexp_replace(lower(trim(es.race_name)), '^[a-z]{2} ', ''), ''
-            ) as official_office_name,
+            {{ strip_office_name_state_prefix("es.race_name") }}
+            as official_office_name,
             es.candidate_office,
             es.office_level,
             es.office_type,
@@ -79,9 +78,7 @@ with
             -- V1: leave NULL; see header comment.
             cast(null as bigint) as ballotready_position_id,
             state_postal_code as state,
-            nullif(
-                regexp_replace(lower(trim(race_name)), '^[a-z]{2} ', ''), ''
-            ) as official_office_name,
+            {{ strip_office_name_state_prefix("race_name") }} as official_office_name,
             candidate_office,
             office_level,
             office_type,
@@ -110,12 +107,7 @@ with
             -- TS race_name is `state || ' ' || official_office_name` (see
             -- int__civics_election_stage_techspeed); extract the prefix.
             substring(race_name, 1, 2) as state,
-            -- Strip the leading 2-letter state prefix (see header note);
-            -- applied uniformly across BR/DDHQ/TS so the office string carries
-            -- only the locality + office, not the state.
-            nullif(
-                regexp_replace(lower(trim(race_name)), '^[a-z]{2} ', ''), ''
-            ) as official_office_name,
+            {{ strip_office_name_state_prefix("race_name") }} as official_office_name,
             candidate_office,
             -- TS staging emits mixed-case office_level; initcap to match BR/DDHQ.
             initcap(office_level) as office_level,
