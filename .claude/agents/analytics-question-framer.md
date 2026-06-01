@@ -71,7 +71,7 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 
 Before producing the final brief, verify the following against the actual codebase and data. Don't trust runbook references alone.
 
-**Data existence.** For every model/table the brief references, run `dbt show --inline "SELECT 1 FROM <catalog>.<schema>.<table> LIMIT 1"` (or equivalent) to confirm it exists at the schema and name documented.
+**Data existence.** For every model/table the brief references, confirm it exists by querying the **live catalog** — `SELECT 1 FROM <catalog>.<schema>.<table> LIMIT 1`, or `SELECT table_schema, table_name FROM <catalog>.information_schema.tables WHERE table_name = '<name>'`, or `SHOW TABLES IN <catalog>.<schema>`. Do NOT infer existence (or absence) from `dbt/project/target/` compiled artifacts or from the runbook — both drift. A table can exist in prod that the runbook calls "in development," and a `target/` reference can survive after the model is gone. The catalog is ground truth. (2026-06-01: a framer wrongly reported `int__amplitude_win_activity_weekly` absent based on stale `target/` artifacts when it existed in the `dbt` schema.)
 
 **Coverage window.** For the engagement/outcome source tables, query `MIN/MAX` of the relevant time column to confirm the coverage window matches the brief's assumed eligibility window. If they don't match, reconcile before finalizing. Document the actual coverage in the brief's `data_provenance` field.
 

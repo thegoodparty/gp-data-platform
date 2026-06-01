@@ -94,7 +94,7 @@ Use `users_win_candidacy` if you only need outcomes + segmentation that's alread
 **Win user → engagement (Amplitude weekly):**
 ```
 users_win_candidacy.user_id = int__amplitude_win_activity.user_id  (both BIGINT)
--- A weekly variant (int__amplitude_win_activity_weekly) is in development; framers must verify availability per the framer agent's "Pre-brief verification checklist" before relying on it.
+-- A weekly variant (int__amplitude_win_activity_weekly) now exists in prod `dbt` (as of 2026-06-01; coverage week_start_date 2025-06-23+). Same 2 recurrent events as the monthly model (dashboard_views, campaigns_sent). Still verify the live catalog before relying on it.
 ```
 
 **Win user → lifecycle milestones:**
@@ -233,7 +233,7 @@ The team has documented engagement / activation metrics in `mart_analytics.users
 
 | Metric | Source column | Definition | When to use |
 |---|---|---|---|
-| `has_amplitude_data` | bool | True if user has ≥1 milestone event (registration, dashboard view, campaign, onboarding complete, pro upgrade, or SMS poll). Note: misses the broader onboarding-progress event family (`Onboarding -%` steps). | Coverage indicator; lower bound on "user appears in Amplitude milestone tables." |
+| `has_amplitude_data` | bool | True if user has ≥1 milestone event (registration, dashboard view, campaign, onboarding complete, pro upgrade, or SMS poll). Note: misses the broader onboarding-progress event family (`Onboarding -%` steps), so it materially **undercounts** true coverage (e.g. Nov-2025 cohort: 36% by this flag vs ~79% with ≥1 raw candidate-attributed event). Don't use it as a funnel top — compute "any Win evidence" from the raw stream instead. | Coverage indicator; lower bound on "user appears in Amplitude milestone tables." |
 | `is_post_amplitude_registration` | bool | True if `user_created_at >= 2023-12-10` (the documented Amplitude tracking start). **Caveat:** Win-product event instrumentation actually started ~2025-05-28; this flag is too loose for engagement analyses. |
 | `has_completed_onboarding_flow` | bool | True if `onboarding_completed_at IS NOT NULL` (event = `onboarding_complete`). | **Default cohort filter for engagement-outcome analyses** — see §7. |
 | `is_onboarded` | bool | True if US user viewed candidate dashboard within 14 days of Amplitude registration. Stricter than `has_completed_onboarding_flow`. | Onboarding CVR analyses. |
@@ -245,6 +245,14 @@ The team has documented engagement / activation metrics in `mart_analytics.users
 
 The team's **`is_activated`** is specifically *sent ≥1 outreach campaign* — narrow, OKR-aligned. When referring colloquially to "users who engaged with the product at all," prefer the term **"onboarded"** (`has_completed_onboarding_flow = TRUE`), which is broader (~21% of registered cohort) and is the default cohort filter for engagement-outcome analyses.
 
+### Point-in-time caveat for retrospective cohorts
+
+`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor, so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today.)
+
+### "Any evidence" vs "engaged beyond account creation"
+
+Raw "any Win-product Amplitude evidence" (≥1 candidate-attributed event) reads high (~79% for Nov-2025) but is heavily padded by the one-off registration event `Onboarding - User Created`: ~45% of that cohort had *only* that single event and nothing else. When characterizing engagement, report **"engaged beyond account creation"** (≥2 distinct candidate-attributed events, ~34% for Nov-2025) alongside raw any-evidence — the former is the meaningful floor, the latter is barely above "registered."
+
 ---
 
 ## 4. Amplitude event landscape
@@ -255,7 +263,7 @@ The team's **`is_activated`** is specifically *sent ≥1 outreach campaign* — 
 |---|---|---|
 | Staging (raw) | `stg_airbyte_source__amplitude_api_events` | **Full universe.** ~300+ distinct `event_type` values in any reasonable window. |
 | Staging (catalog) | `stg_airbyte_source__amplitude_api_events_list` | Amplitude's own event catalog (name, totals, hidden flags). |
-| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) is in development — verify availability before use. | **Only 2 event types**: `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. |
+| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) now exists in prod `dbt` (coverage week_start_date 2025-06-23+); verify the live catalog before use. | **Only 2 event types**: `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. These are the *recurrent* activities; one-off lifecycle milestones live in `int__amplitude_user_milestones`. |
 | Intermediate (lifecycle) | `int__amplitude_user_milestones` | ~12 lifecycle milestones (registration, dashboard, onboarding complete, campaign sent, pro upgrade, Serve onboarding). One row per user. |
 | Intermediate (Serve) | `int__amplitude_serve_activity` | Filters `Viewed` event to `event_properties:path = '/dashboard/polls'` + `user_properties:Serve Activated = true`. |
 | Mart passthrough | `mart_analytics.amplitude_events` | Thin alias of the staging events for Sigma BI consumption. No transformation. |
@@ -500,6 +508,10 @@ analytics/analyses/
 
 Date-prefixed filenames are required (chronological sortability). No INVENTORY.md / SESSION_NOTES.md scaffolding. The brief sits alongside the notebook so the framing is retrievable after the fact.
 
+### Reusable building blocks — build the working set once, slice it
+
+Don't rebuild cohort + engagement logic from scratch each analysis. The committed package `analytics/lib/win_analysis.py` holds the canonical Win event-family allowlist (`win_event_predicate`), a `build_win_working_set(run_query, cohorts, ...)` that returns one consolidated per-user `cohort × engagement` DataFrame carrying the standard §6 slicing dimensions, and `wilson`. **Default executor step:** build that one working set first, then slice every cut from it in pandas (codifies the build-once-slice-many rule). Carrying the slice dimensions up front makes re-cuts (e.g. ICP vs not) free — see the amend path in §9. Keep `win_analysis.py` in sync with §4 until the planned dbt `int__amplitude_event_taxonomy` model supersedes both.
+
 ### Notebook sync workflow
 
 Sync local notebooks to Databricks for execution:
@@ -542,6 +554,7 @@ A scout / analysis is "done" when:
 2. Cycle / scope parameters are parameterized so the work re-runs under a different scope.
 3. Open scoping questions are RESOLVED (not deferred to the reader).
 4. The runbook is updated with any reusable insights (joins, gotchas, source-system precedence rules) that emerged.
+5. **Calibration pass done.** Findings that should update the agents or runbook are triaged into a dated `CALIBRATION_<date>.md` (see §9), OR you have explicitly recorded that none were needed. This is a required closing step, not optional — it's how the process self-corrects across runs.
 
 ---
 
@@ -575,9 +588,20 @@ These are recurring traps. When you hit one, add a one-liner here so the next pe
 
 ### Calibration logs
 
-After a substantive analysis run, write findings that should update the runbook or agents into a dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`. Hand-process the log into runbook/agent edits before treating it as resolved.
+After a substantive analysis run, write findings that should update the runbook or agents into a dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`. Hand-process the log into runbook/agent edits before treating it as resolved. This is a **required closing step** of every substantive analysis (see §7 verification protocol item 5): either produce the log and distribute it, or explicitly record that no calibration was needed. It's what makes the process self-correct rather than relying on someone remembering.
 
 Calibration logs are personal working documents — they are gitignored (`analytics/runbook/CALIBRATION_*.md`) so each analyst's working tree can carry them without affecting the shared repo. The durable team-shared output is the runbook + agent edits the log drives.
+
+**Distribution mapping.** Each finding lands in the file that *owns* it; the log itself is disposable. Use this routing:
+
+| Finding type | Lands in |
+|---|---|
+| How the framer scopes / verifies (data-existence checks, metric-semantics steps) | `.claude/agents/analytics-question-framer.md` |
+| How the executor builds notebooks (working-set pattern, mandatory checks) | executor instructions / `analytics/lib` |
+| How the DS reviews / interprets (leakage classes, calibration self-checks) | `.claude/agents/product-data-scientist.md` |
+| Data facts, joins, gotchas, metric definitions, coverage | the relevant `win.md` section |
+
+Tag each finding **universal** (codify freely) vs **data-state** (hedge, or wait 2-3 cycles), and prefer sharpening an existing rule over adding a new one — per the cautions below.
 
 **Beware over-calibration.** A single-analysis log surfaces failure modes specific to that run's data state alongside general principles. When promoting findings into runbook or agent edits, distinguish between the two: universal hygiene (data-existence checks, CIs, documentation) can be codified freely; data-state-dependent defaults (cohort filters, metric choices, funnel decompositions) should carry hedges noting current state, or wait for confirmation across two or three calibration cycles before being treated as settled rules. Tightening a rule "so this exact failure can't happen again" often encodes the failure mode rather than the underlying principle.
 
@@ -718,3 +742,12 @@ execution_notes:
 - Claude Code should treat the brief as a spec. If something in the brief is ambiguous or unworkable on inspection of the actual data, kick it back to `analytics-question-framer` rather than improvising.
 - After execution, `product-data-scientist` reviews the notebook against the brief — both for methodological soundness and to interpret what the results mean.
 - Briefs are durable: save them alongside the executed notebook so the framing is retrievable later.
+
+### Amending a brief vs re-framing
+
+When the owner wants to modify the question after a brief exists, decide which path applies:
+
+- **Amend (no new framer round).** The change is an additional stratification or slice on the *same* population, metric, and comparison — e.g. "also cut by ICP vs not." Append the new dimension to the brief's `cohorts` section and re-slice. If the working set was built via `analytics/lib` carrying the standard §6 dimensions, this is a zero-query pandas `groupby` (see §7). Note the amendment in the brief so it stays the source of truth.
+- **Re-frame (new framer round + brief revision).** The change touches **population, eligibility, target metric, or comparison** — e.g. "filter to ICP only" (not slice), switch the outcome variable, or change the cohort window. These are exactly what the framer owns, so send it back through `analytics-question-framer` for a revised brief.
+
+Decision rule: if population/eligibility/target/comparison are unchanged and you're only adding a breakdown, it's an amend. Otherwise re-frame. (Example: ICP vs not = amend; ICP-only = re-frame.)
