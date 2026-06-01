@@ -275,8 +275,13 @@ with
             br_candidacy_id,
             br_race_id,
 
-            -- Assessment fields (hardcoded until we join viability/p2v in followup
-            -- work)
+            -- Assessment fields. BallotReady provides none of these: it does not
+            -- compute a viability_score, and supplies no win number at all.
+            -- Downstream, the candidacy mart fills viability_score from
+            -- TechSpeed's model; win_number / win_number_model have no live
+            -- source (only the 2023-2025 HubSpot archive in
+            -- int__civics_candidacy_2025 carries win_number), so they stay null
+            -- on the BR path.
             cast(null as float) as viability_score,
             cast(null as int) as win_number,
             cast(null as string) as win_number_model,
