@@ -62,12 +62,13 @@ analytics/projects/*/WORKFLOW.md
 # ClickUp product-analytics doc instead of being committed here.
 analytics/projects/*/INVENTORY.md
 
-# Analytics notebook scratch (checkpoints, ad-hoc files, sync/pull scripts that
-# point at a per-contributor Databricks folder). The notebook itself is
-# allow-listed below — using `**` instead of a trailing slash so the
-# re-inclusion pattern works.
+# Analytics notebooks are per-contributor working artifacts. The durable
+# knowledge is promoted to the runbook + the ClickUp product-analytics doc, not
+# committed (same paradigm as INVENTORY.md / SESSION_NOTES.md). Keep them local.
 analytics/projects/*/notebooks/**
-!analytics/projects/*/notebooks/*.ipynb
+
+# Scout project dependency pins are local working artifacts too.
+analytics/projects/*/requirements.txt
 
 # Local-only shared analytics scripts (per-contributor Databricks sync/pull
 # helpers that hardcode user-specific Workspace paths).
