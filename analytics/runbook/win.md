@@ -1,6 +1,6 @@
 # Win product analytics runbook
 
-Evergreen reference for data sources, joins, outcomes, and methodology used in Win-product analyses. Project-specific scout outputs (e.g. `analytics/win_outcomes_scout/INVENTORY.md`) feed insights up into this runbook as they crystallize into reusable knowledge.
+Evergreen reference for data sources, joins, outcomes, and methodology used in Win-product analyses. Project-specific scout outputs (e.g. `analytics/projects/win_outcomes_scout/INVENTORY.md`) feed insights up into this runbook as they crystallize into reusable knowledge.
 
 A separate Serve runbook will live alongside this file at `analytics/runbook/serve.md` (forthcoming).
 
@@ -176,7 +176,7 @@ Filter: `COALESCE(impersonation, false) = false` to drop staff-triggered events 
 
 **⚠ Response selection bias is severe.** Self-reported win rate is ~80% vs ~64% raw win rate in the broader cohort — winners are more motivated to respond. Use the labels but NOT the rate as a population estimate.
 
-See `analytics/win_outcomes_scout/INVENTORY.md` Source 3.5 for the verified reconciliation table.
+See `analytics/projects/win_outcomes_scout/INVENTORY.md` Source 3.5 for the verified reconciliation table.
 
 ### Self-reported success signal (PMF / satisfaction)
 
@@ -223,7 +223,7 @@ SELECT
 FROM attributed WHERE any_icp_win = 1;
 ```
 
-See `analytics/win_outcomes_scout/INVENTORY.md` Source 7 for the full 7-facet inventory and the cross-bucket response table.
+See `analytics/projects/win_outcomes_scout/INVENTORY.md` Source 7 for the full 7-facet inventory and the cross-bucket response table.
 
 ---
 
@@ -276,7 +276,7 @@ The dbt intermediates aggregate only **~4% of distinct event types** (12 of ~300
 
 ### Event family taxonomy
 
-Use this SQL CASE-WHEN pattern (originally from `analytics/win_outcomes_scout/notebooks/inventory_queries.ipynb` NB-9) to bucket raw `event_type` values into product feature areas:
+Use this SQL CASE-WHEN pattern (originally from `analytics/projects/win_outcomes_scout/notebooks/inventory_queries.ipynb` NB-9) to bucket raw `event_type` values into product feature areas:
 
 | Family | Pattern (LIKE / IN) | Example events |
 |---|---|---|
@@ -318,7 +318,7 @@ Newer families:
 
 The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity` (per-month aggregates).
 
-Reusable Python pull-script template at `analytics/win_outcomes_scout/notebooks/_pull_amplitude_universe.py` (uses `databricks-sql-connector` via the global env vars — see user-level CLAUDE.md).
+Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py` (uses `databricks-sql-connector` via the global env vars — see user-level CLAUDE.md).
 
 ---
 
@@ -486,22 +486,22 @@ If any of these is ambiguous, surface it to the analytics owner via `AskUserQues
 For multi-week scout projects with reusable inventory, create the full structure:
 
 ```
-analytics/<project_name>/
+analytics/projects/<project_name>/
   CLAUDE.md          (optional, project-local AI guidance)
-  INVENTORY.md       (committed; the scout findings for this project)
+  INVENTORY.md       (gitignored locally; durable home is the ClickUp product-analytics doc)
   SESSION_NOTES.md   (gitignored, local-only running journal)
   notebooks/
     <project>.ipynb  (the working analysis notebook)
 ```
 
-The notebook should be set up with a parameterized cycle window at the top so re-running under a different scope is trivial. See `analytics/win_outcomes_scout/notebooks/inventory_queries.ipynb` for the verification-notebook pattern.
+The notebook should be set up with a parameterized cycle window at the top so re-running under a different scope is trivial. See `analytics/projects/win_outcomes_scout/notebooks/inventory_queries.ipynb` for the verification-notebook pattern.
 
 ### Lightweight analysis pattern (ad-hoc flavor)
 
 For single-notebook ad-hoc analyses (one question, one notebook, no reusable inventory), use the lighter shape:
 
 ```
-analytics/analyses/
+analytics/ad_hoc/
   <YYYY-MM-DD>_<slug>.ipynb
   <YYYY-MM-DD>_<slug>_brief.yaml
 ```
@@ -517,13 +517,13 @@ Don't rebuild cohort + engagement logic from scratch each analysis. The committe
 Sync local notebooks to Databricks for execution:
 
 ```bash
-./analytics/scripts/sync.sh <project_folder>     # watcher: local → Databricks
-./analytics/scripts/pull.sh <project_folder> <notebook_name>   # reverse: Databricks → local
+./analytics/scripts/sync.sh projects/<project_folder>     # watcher: local → Databricks
+./analytics/scripts/pull.sh projects/<project_folder> <notebook_name>   # reverse: Databricks → local
 ```
 
-Both honor a `DATABRICKS_WORKSPACE_USER` env var. Default scratchpad: `/Workspace/Users/${USER}/scratchpad/`. Notebook filenames must be unique across all `analytics/*/notebooks/` since they land flat in scratchpad.
+Both honor a `DATABRICKS_WORKSPACE_USER` env var. Default scratchpad: `/Workspace/Users/${USER}/scratchpad/`. Notebook filenames must be unique across all `analytics/projects/*/notebooks/` since they land flat in scratchpad. (`scripts/` is gitignored and per-contributor; if your local `sync.sh`/`pull.sh` hardcode `analytics/<arg>`, update them to `analytics/projects/<arg>` after this move.)
 
-See `analytics/win_churn/WORKFLOW.md` for the full local-canonical / Workspace-execution rationale.
+See `analytics/projects/win_churn/WORKFLOW.md` for the full local-canonical / Workspace-execution rationale.
 
 ### Ad-hoc query pattern
 
@@ -535,7 +535,7 @@ dbt show --inline "SELECT ... FROM goodparty_data_catalog.<schema>.<table> WHERE
 
 Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve to stale dev artifacts. Prod schemas: `dbt_staging` (staging), `dbt` (most intermediates), `mart_analytics` / `mart_civics` (marts), `model_predictions` (MLflow outputs).
 
-For larger query results that exceed `dbt show` truncation, use the `databricks-sql-connector` Python client via the global env vars (see user-level CLAUDE.md). Pattern in `analytics/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
+For larger query results that exceed `dbt show` truncation, use the `databricks-sql-connector` Python client via the global env vars (see user-level CLAUDE.md). Pattern in `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
 
 ### Binning conventions
 
@@ -609,8 +609,8 @@ Tag each finding **universal** (codify freely) vs **data-state** (hedge, or wait
 
 ### Project scouts that contributed insights
 
-- **`analytics/win_outcomes_scout/INVENTORY.md`** (DATA-1935) — Win product × electoral outcomes data scout. Seeded most of the content here, especially §3-§5. Source 7 in the inventory carries the full HubSpot survey detail (per-survey submission counts, response distribution by ICP/Win bucket, the verified Option 1/2 mapping evidence).
-- **`analytics/win_churn/`** (DATA-1924) — Win churn modeling. Engagement-as-outcome counterpart. Source for some of the multi-cycle and pre-2023-12-10 gotchas.
+- **`analytics/projects/win_outcomes_scout/INVENTORY.md`** (DATA-1935) — Win product × electoral outcomes data scout. Seeded most of the content here, especially §3-§5. Source 7 in the inventory carries the full HubSpot survey detail (per-survey submission counts, response distribution by ICP/Win bucket, the verified Option 1/2 mapping evidence).
+- **`analytics/projects/win_churn/`** (DATA-1924) — Win churn modeling. Engagement-as-outcome counterpart. Source for some of the multi-cycle and pre-2023-12-10 gotchas.
 
 ### Authoritative dbt model docs
 

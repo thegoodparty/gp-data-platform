@@ -55,19 +55,19 @@ test_data/
 .databricks/
 
 # Local-only project journals (per-contributor context for AI-assisted work)
-analytics/*/SESSION_NOTES.md
-analytics/*/WORKFLOW.md
+analytics/projects/*/SESSION_NOTES.md
+analytics/projects/*/WORKFLOW.md
 
 # Scouting / inventory deliverables are drafted locally and synced to the
 # ClickUp product-analytics doc instead of being committed here.
-analytics/*/INVENTORY.md
+analytics/projects/*/INVENTORY.md
 
 # Analytics notebook scratch (checkpoints, ad-hoc files, sync/pull scripts that
 # point at a per-contributor Databricks folder). The notebook itself is
 # allow-listed below — using `**` instead of a trailing slash so the
 # re-inclusion pattern works.
-analytics/*/notebooks/**
-!analytics/*/notebooks/*.ipynb
+analytics/projects/*/notebooks/**
+!analytics/projects/*/notebooks/*.ipynb
 
 # Local-only shared analytics scripts (per-contributor Databricks sync/pull
 # helpers that hardcode user-specific Workspace paths).
@@ -76,7 +76,7 @@ analytics/scripts/
 # Ad-hoc analysis notebooks + briefs are personal working experiments by
 # default. Promote a specific analysis with `git add -f` if it should be
 # team-shared. See win.md §7 "Lightweight analysis pattern" for the convention.
-analytics/analyses/
+analytics/ad_hoc/
 
 # Calibration logs are personal per-session working documents — the durable
 # lessons land in the runbook + agent edits the log drives, not in the log
