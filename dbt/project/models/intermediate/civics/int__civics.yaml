@@ -3063,7 +3063,9 @@ models:
       entity) to BR's canonical gp_election_stage_id. Broader race-level coverage
       than int__civics_er_canonical_ids's candidacy-derived
       canonical_gp_election_stage_id (links races even without a matched
-      candidacy). BR-anchored clusters only; non-BR clusters keep their natural id.
+      candidacy). BR-anchored clusters adopt BR's id; non-BR cross-source
+      clusters (DDHQ <-> TS, no BR member) adopt a representative member's id so
+      they still collapse. Single-record clusters keep their natural id.
 
       Grain: one row per non-BR provider election stage (source_name +
       gp_election_stage_id). Note: DDHQ and TS can share a natural
