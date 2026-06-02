@@ -5,22 +5,27 @@ stop rebuilding the same cohort and engagement logic from scratch each run.
 
 ## Why this exists
 
-The Win event-family allowlist (a large `CASE WHEN event_type LIKE ...` block) and
-the consolidated per-user working set were being retyped in every analysis. That is
-a token cost, a time cost, and a transcription-drift risk. This package holds one
-copy. See the runbook (`analytics/runbook/win.md`) section 4 for the taxonomy this
-mirrors and section 7 for the build-once-slice-many pattern.
+The Win event-family allowlist and the consolidated per-user working set were being
+retyped in every analysis. That is a token cost, a time cost, and a transcription-drift
+risk. This package holds one copy. The event classification is now sourced from the dbt
+model `int__amplitude_event_taxonomy` (DATA-1945) so there is a single source of truth
+shared by the dbt models and notebooks. See the runbook (`analytics/runbook/win.md`)
+section 4 for the family taxonomy and section 7 for the build-once-slice-many pattern.
 
 ## What's here
 
 `win_analysis.py`:
-- `win_event_predicate(include_partial=False)` — the drift-controlled Win event
-  allowlist as a SQL predicate string. Pattern-based, so new event_types in known
-  families classify automatically.
-- `build_win_working_set(run_query, cohorts, ...)` — builds one per-user
-  `cohort x engagement` DataFrame with all funnel steps anchored point-in-time to
-  the election date, carrying the standard section-6 slicing dimensions so re-cuts
-  (e.g. ICP vs not) need no new query.
+- `win_event_predicate(drift_cutoff="2026-01-01")` — the drift-controlled Win event
+  allowlist as a SQL predicate string. Reads `int__amplitude_event_taxonomy`
+  (`is_win` for membership; `first_seen_date <= drift_cutoff` for drift control), so
+  it stays in sync with the dbt models automatically. Returns an
+  `event_type IN (<subquery>)` expression — use it in a WHERE/HAVING/JOIN, not inside
+  a scalar CASE (Spark restricts IN-subqueries to filter contexts).
+- `build_win_working_set(run_query, cohorts, ..., drift_cutoff="2026-01-01")` — builds
+  one per-user `cohort x engagement` DataFrame with all funnel steps anchored
+  point-in-time to the election date, carrying the standard section-6 slicing
+  dimensions so re-cuts (e.g. ICP vs not) need no new query. Win events are tagged via
+  a LEFT JOIN to the taxonomy.
 - `wilson(k, n)` — Wilson 95% score interval.
 
 ## Usage from a notebook
@@ -55,14 +60,20 @@ df = wa.build_win_working_set(run_query, cohorts)
   common one-latest-candidacy user; a multi-cycle user gets the max. `groupby` on a
   dimension drops NULLs by default (e.g. the ~45% NULL `election_level` bucket), so
   pass `dropna=False` when you want NULL as a category.
-- The 2025-08-01 drift cutoff is encoded by the explicit exclusions in
-  `_CORE_PREDICATE` (drops `Dashboard - Campaign Plan Viewed` and `win_briefings`),
-  not parameterized by date.
+- Drift control is the `drift_cutoff` date (default `2026-01-01`), applied as
+  `first_seen_date <= drift_cutoff` against the taxonomy. The default keeps all 2025
+  product families and excludes the 2026 drift families (`win_briefings`,
+  `Dashboard - Campaign Plan Viewed`). Pass a tighter `drift_cutoff` (e.g. relative to
+  your cohort window) for a stricter coverage-comparability check. The former
+  core/partial split is retired — a sensitivity check is just a second run with a
+  different cutoff.
+- Reads `goodparty_data_catalog.dbt.int__amplitude_event_taxonomy` (prod). That table
+  must exist (a prod dbt run of the model); it does as of DATA-1945.
 
-## Follow-up: dbt event-taxonomy model (planned)
+## Single source of truth: the dbt event-taxonomy model
 
-The durable single source of truth is a planned dbt model `int__amplitude_event_taxonomy`
-(pattern-based: `event_type, family, is_win, is_recurrent, first_seen_date`) that both
-dbt models and notebooks read, replacing the hardcoded event lists in
-`int__amplitude_win_activity` / `int__amplitude_user_milestones` and this predicate.
-Until that lands, keep `_CORE_PREDICATE` in sync with runbook section 4. Ticket: DATA-1945.
+`int__amplitude_event_taxonomy` (`event_type, family, is_win, is_recurrent,
+first_seen_date`; DATA-1945) is the one classifier. The dbt models
+(`int__amplitude_win_activity` / `_weekly`) consume it via `is_recurrent`, and this
+helper consumes it via `is_win` + `first_seen_date`. There is no longer a separate
+hardcoded allowlist to keep in sync.

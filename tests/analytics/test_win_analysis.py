@@ -37,3 +37,21 @@ def test_wilson_midpoint_is_symmetric():
 def test_wilson_rejects_k_outside_zero_to_n(k, n):
     with pytest.raises(ValueError):
         wa.wilson(k, n)
+
+
+def test_win_event_predicate_sources_from_taxonomy_with_cutoff():
+    pred = wa.win_event_predicate("2026-01-01")
+    assert pred.startswith("event_type IN (")
+    assert "int__amplitude_event_taxonomy" in pred
+    assert "is_win" in pred
+    assert "first_seen_date <= DATE'2026-01-01'" in pred
+
+
+def test_win_event_predicate_default_cutoff():
+    assert wa.DEFAULT_DRIFT_CUTOFF in wa.win_event_predicate()
+
+
+@pytest.mark.parametrize("bad", ["2026/01/01", "not-a-date", "2026-1-1", ""])
+def test_win_event_predicate_rejects_bad_cutoff(bad):
+    with pytest.raises(ValueError):
+        wa.win_event_predicate(bad)

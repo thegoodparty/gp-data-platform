@@ -1,19 +1,17 @@
 """Reusable helpers for Win-product engagement analyses.
 
-Single Python source of truth for the Win event-family allowlist (mirrors
-``analytics/runbook/win.md`` section 4) and the consolidated per-user working
-set. Keeping the family logic here means ad-hoc notebooks stop retyping a large
-``CASE WHEN event_type LIKE ...`` block per query, which is both a token cost and
-a transcription-drift risk.
+Win event classification is sourced from the single-source dbt model
+``int__amplitude_event_taxonomy`` (DATA-1945) rather than a hand-maintained
+``CASE WHEN event_type LIKE ...`` block: an event is "Win" when its taxonomy
+``is_win`` flag is true, and drift is controlled by
+``first_seen_date <= drift_cutoff`` (features first seen after the cutoff are
+excluded so coverage is comparable across a cohort). The former core/partial
+split is retired in favor of that single date cutoff -- run with a different
+cutoff for a sensitivity check.
 
 This module is connection-agnostic: callers inject a ``run_query(sql) -> DataFrame``
 callable, so it works equally with the gp-ai-projects ``DatabricksClient`` or an
 inline ``databricks.sql.connect`` cursor.
-
-Keep this in sync with runbook section 4 until the dbt ``int__amplitude_event_taxonomy``
-model supersedes both (see README.md). The drift cutoff (2025-08-01) is currently
-encoded by the explicit exclusions below, not parameterized by date; a true
-date-parameterized cutoff awaits the taxonomy model's ``first_seen_date`` column.
 """
 
 from __future__ import annotations
@@ -28,30 +26,15 @@ EVENTS_TABLE = (
     "goodparty_data_catalog.dbt_staging.stg_airbyte_source__amplitude_api_events"
 )
 USERS_WIN_CANDIDACY = "goodparty_data_catalog.mart_analytics.users_win_candidacy"
+EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_taxonomy"
 
-# Drift-controlled core Win event families (runbook section 4). Pattern-based so
-# new event_types within these families classify automatically. Excludes families
-# first-seen after the 2025-08-01 drift cutoff ('Dashboard - Campaign Plan Viewed',
-# first-seen 2026-04-09; win_briefings, first-seen 2026-04-10) and all anonymous /
-# cross-product noise (autotrack, session, navigation, auth, experiment, serve).
-_CORE_PREDICATE = """(
-   event_type LIKE 'Onboarding -%' OR event_type LIKE 'Onboarding:%' OR event_type IN ('onboarding_complete','Invalid Party','Sign Up Clicked')
-   OR (event_type LIKE 'Dashboard -%' AND event_type <> 'Dashboard - Campaign Plan Viewed')
-   OR event_type LIKE 'Voter Outreach -%' OR event_type LIKE 'Outreach -%'
-   OR event_type LIKE 'Schedule Text Campaign%' OR event_type LIKE 'schedule_campaign%'
-   OR event_type LIKE 'Content Builder%' OR event_type LIKE 'ai_content_%' OR event_type LIKE 'campaign_assistant%'
-   OR event_type LIKE 'Voter Data -%' OR event_type LIKE 'Voter Data:%' OR event_type LIKE 'Download Voter%' OR event_type LIKE 'Custom Voter%'
-   OR event_type LIKE 'Profile -%'
-   OR event_type LIKE 'Pro Upgrade -%' OR event_type LIKE 'Pro Upgrade:%' OR event_type = 'pro_upgrade_complete'
-   OR event_type LIKE 'P2P Upgrade -%' OR event_type LIKE 'Candidate Website%'
-   OR event_type LIKE 'Campaign Verify%' OR event_type LIKE 'Campaign Plan%' OR event_type LIKE '10 DLC Compliance%'
-   OR event_type LIKE 'AI Assistant%' OR event_type = 'question_complete' OR event_type LIKE 'Resources -%'
-)"""
+# Default drift cutoff: keep all 2025 product families in scope and exclude the
+# 2026 drift families (win_briefings, 'Dashboard - Campaign Plan Viewed', etc.).
+# Tighten per analysis (e.g. relative to a cohort's window) for stricter coverage
+# comparability.
+DEFAULT_DRIFT_CUTOFF = "2026-01-01"
 
-# Partial-ramp families: real Win activity, but first-seen mid-September 2025
-# (Candidacy 2025-09-18, Contacts 2025-09-19), so only partially present in a
-# pre-Nov-2025 window. Reported alongside core so sensitivity to them is visible.
-_PARTIAL_PREDICATE = "(event_type LIKE 'Candidacy -%' OR event_type LIKE 'Contacts -%')"
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # Slicing dimensions available on users_win_candidacy with no join (runbook section 6).
 # Carried on the working set so re-cuts (e.g. ICP vs not) need no new query.
@@ -64,15 +47,38 @@ DEFAULT_DIMS = (
 )
 
 
-def win_event_predicate(include_partial: bool = False) -> str:
-    """Return the SQL boolean predicate selecting drift-controlled Win events.
+def _require_date(label: str, value: str) -> None:
+    """Validate a YYYY-MM-DD date string before it is interpolated into SQL."""
+    if not _DATE_RE.fullmatch(value):
+        raise ValueError(f"{label} must be YYYY-MM-DD, got: {value!r}")
 
-    Pass ``include_partial=True`` to also include the partial-ramp families
-    (Candidacy, Contacts). The canonical headline metric uses core only.
+
+def _win_event_types_sql(drift_cutoff: str) -> str:
+    """Subquery selecting drift-controlled Win event_types from the taxonomy."""
+    _require_date("drift_cutoff", drift_cutoff)
+    return (
+        f"SELECT event_type FROM {EVENT_TAXONOMY} "
+        f"WHERE is_win AND first_seen_date <= DATE'{drift_cutoff}'"
+    )
+
+
+def win_event_predicate(drift_cutoff: str = DEFAULT_DRIFT_CUTOFF) -> str:
+    """Return a SQL predicate selecting drift-controlled Win-product events.
+
+    Win membership comes from ``int__amplitude_event_taxonomy.is_win``; drift is
+    controlled by ``first_seen_date <= drift_cutoff``. Supersedes the former
+    hand-maintained LIKE allowlist.
+
+    The result is an ``event_type IN (<subquery>)`` expression. Spark restricts
+    IN-subqueries to filter contexts, so use it in a WHERE / HAVING / JOIN clause,
+    not inside a scalar CASE expression. (``build_win_working_set`` uses the same
+    taxonomy filter via a LEFT JOIN for exactly that reason.)
+
+    Args:
+        drift_cutoff: YYYY-MM-DD. Only event_types first seen on or before this
+            date count as Win. Default keeps 2025 families and drops the 2026 ones.
     """
-    if include_partial:
-        return f"({_CORE_PREDICATE} OR {_PARTIAL_PREDICATE})"
-    return _CORE_PREDICATE
+    return f"event_type IN ({_win_event_types_sql(drift_cutoff)})"
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float, float]:
@@ -102,13 +108,15 @@ def build_win_working_set(
     slice_dims: tuple[str, ...] = DEFAULT_DIMS,
     preelection_days: int = 84,
     event_floor: str = "2025-01-01",
+    drift_cutoff: str = DEFAULT_DRIFT_CUTOFF,
 ) -> pd.DataFrame:
     """Build one consolidated per-user cohort x engagement working set, slice it in pandas.
 
     This is the "build once, slice many" pattern (runbook section 7). All funnel
     steps are derived point-in-time from the raw event stream (events strictly
     before each user's election anchor), so onboarding/activation are anchored
-    rather than as-of-today.
+    rather than as-of-today. Win events are identified by a LEFT JOIN to the
+    drift-controlled Win event_types from ``int__amplitude_event_taxonomy``.
 
     Args:
         run_query: callable taking a SQL string and returning a DataFrame.
@@ -119,24 +127,26 @@ def build_win_working_set(
         preelection_days: width of the pre-election window (84 = 12 weeks).
         event_floor: lower bound on event_time to bound the scan (real Win
             coverage starts ~2025-04-24; default 2025-01-01 excludes junk).
+        drift_cutoff: YYYY-MM-DD; only event_types first seen on or before this
+            date count as Win (see win_event_predicate). Run with a tighter cutoff
+            for a coverage-sensitivity check.
 
     Returns:
         One row per (user_id, cohort) with columns: the slice_dims, plus
         any_core, onboarded, dash_viewed, activated (0/1 funnel flags, anchored),
-        core_all, core_distinct_types, corepartial_all, core_preelection (counts),
-        and beyond_signup (1 if the user touched >= 2 *distinct* core event types,
-        i.e. engaged past account creation; runbook section 3.5).
+        core_all, core_distinct_types, core_preelection (counts), and beyond_signup
+        (1 if the user touched >= 2 *distinct* Win event types, i.e. engaged past
+        account creation; runbook section 3.5).
 
     Security:
         ``cohorts[*]["filter"]`` and ``["anchor"]`` are interpolated verbatim as SQL
         expressions (they are WHERE/SELECT fragments and cannot be parameterized), so
         they must come from trusted, analyst-controlled code only -- never from
-        external or user-supplied input. ``event_floor`` is format-validated below.
+        external or user-supplied input. ``event_floor`` and ``drift_cutoff`` are
+        format-validated.
     """
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", event_floor):
-        raise ValueError(f"event_floor must be YYYY-MM-DD, got: {event_floor!r}")
-    core = win_event_predicate(include_partial=False)
-    partial = _PARTIAL_PREDICATE
+    _require_date("event_floor", event_floor)
+    win_types = _win_event_types_sql(drift_cutoff)  # also validates drift_cutoff
     dim_cols = "".join(f", MAX({d}) AS {d}" for d in slice_dims)
 
     cohort_selects = []
@@ -155,19 +165,20 @@ WITH cohort AS (
 ),
 ev AS (
   SELECT co.user_id, co.cohort,
-    MAX(CASE WHEN {core} THEN 1 ELSE 0 END) AS any_core,
-    MAX(CASE WHEN event_type = 'onboarding_complete' THEN 1 ELSE 0 END) AS onboarded,
-    MAX(CASE WHEN event_type = 'Dashboard - Candidate Dashboard Viewed' THEN 1 ELSE 0 END) AS dash_viewed,
-    MAX(CASE WHEN event_type = 'Voter Outreach - Campaign Completed' THEN 1 ELSE 0 END) AS activated,
-    SUM(CASE WHEN {core} THEN 1 ELSE 0 END) AS core_all,
-    COUNT(DISTINCT CASE WHEN {core} THEN event_type END) AS core_distinct_types,
-    SUM(CASE WHEN {core} OR {partial} THEN 1 ELSE 0 END) AS corepartial_all,
-    SUM(CASE WHEN ({core}) AND e.event_time >= co.anchor - INTERVAL {preelection_days} DAYS THEN 1 ELSE 0 END) AS core_preelection
+    MAX(CASE WHEN wt.event_type IS NOT NULL THEN 1 ELSE 0 END) AS any_core,
+    MAX(CASE WHEN e.event_type = 'onboarding_complete' THEN 1 ELSE 0 END) AS onboarded,
+    MAX(CASE WHEN e.event_type = 'Dashboard - Candidate Dashboard Viewed' THEN 1 ELSE 0 END) AS dash_viewed,
+    MAX(CASE WHEN e.event_type = 'Voter Outreach - Campaign Completed' THEN 1 ELSE 0 END) AS activated,
+    SUM(CASE WHEN wt.event_type IS NOT NULL THEN 1 ELSE 0 END) AS core_all,
+    COUNT(DISTINCT CASE WHEN wt.event_type IS NOT NULL THEN e.event_type END) AS core_distinct_types,
+    SUM(CASE WHEN wt.event_type IS NOT NULL AND e.event_time >= co.anchor - INTERVAL {preelection_days} DAYS THEN 1 ELSE 0 END) AS core_preelection
   FROM cohort co
   JOIN {EVENTS_TABLE} e
     ON try_cast(e.user_id AS bigint) = co.user_id
    AND e.event_time < co.anchor
    AND e.event_time >= DATE'{event_floor}'
+  LEFT JOIN ({win_types}) wt
+    ON wt.event_type = e.event_type
   GROUP BY co.user_id, co.cohort
 )
 SELECT co.*,
@@ -177,13 +188,12 @@ SELECT co.*,
   COALESCE(ev.activated, 0) AS activated,
   COALESCE(ev.core_all, 0) AS core_all,
   COALESCE(ev.core_distinct_types, 0) AS core_distinct_types,
-  COALESCE(ev.corepartial_all, 0) AS corepartial_all,
   COALESCE(ev.core_preelection, 0) AS core_preelection
 FROM cohort co
 LEFT JOIN ev ON ev.user_id = co.user_id AND ev.cohort = co.cohort
 """
     df = run_query(sql)
-    # "Engaged beyond account creation" is >= 2 *distinct* core event types
+    # "Engaged beyond account creation" is >= 2 *distinct* Win event types
     # (runbook section 3.5), not >= 2 event rows: a single feature double-fired
     # must not count. core_all is kept for intensity analyses.
     df["beyond_signup"] = (df["core_distinct_types"] >= 2).astype(int)
