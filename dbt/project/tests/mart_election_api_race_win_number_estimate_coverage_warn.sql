@@ -13,16 +13,20 @@
 -- endpoint serves is always win_number_estimate, and that estimate is null
 -- whenever a race has no positive Projected_Turnout for its election year.
 --
--- This test guards that single remaining source of a win number. It tracks the
--- share of upcoming races whose district has no positive projected turnout for
--- the race's election year (i.e. races that would serve a null win number and a
--- null contacts_needed_estimate).
+-- This test guards that single remaining source of a win number. Among upcoming
+-- races whose position resolves to a district, it tracks the share whose
+-- district has no positive projected turnout for the race's election year.
+-- Races whose position has no district (the unmatched_br_positions branch of
+-- m_election_api__position, where district_id is null) are excluded: they can
+-- never match a projected-turnout row for position-matching reasons unrelated
+-- to turnout ingestion, and would otherwise inflate this metric (about half the
+-- gap at authoring). Position-match coverage is a separate concern.
 -- 0 rows = coverage healthy
--- 1 row  = WARN: > 15% of races would serve a null win number
+-- 1 row  = WARN: > 15% of district-matched races lack positive projected turnout
 -- 2 rows = ERROR: > 25% (both indicator rows fire)
--- Baseline at authoring: ~7.7% missing. Thresholds leave headroom for normal
+-- Baseline at authoring: ~3.9% missing. Thresholds leave headroom for normal
 -- drift while catching a projected-turnout ingestion regression that would
--- silently null the win number for the entire endpoint.
+-- silently null the win number across the endpoint.
 with
     races as (
         select
@@ -33,6 +37,7 @@ with
         left join
             {{ ref("m_election_api__position") }} as tbl_position
             on tbl_race.position_id = tbl_position.id
+        where tbl_position.district_id is not null
     ),
 
     projected_turnout as (
