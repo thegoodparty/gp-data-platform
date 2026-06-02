@@ -37,13 +37,17 @@ with
         group by br_race_id
     ),
 
-    -- One row per gp_election_id with the race-level civics attributes. These
-    -- are position-grain (is_partisan, office_type, official_office_name) or
-    -- per-stage from BR's viability_score (win_number) but in practice
-    -- invariant across candidacies within an election cycle. Aggregate with
-    -- any non-null value; downstream Race rows that share a gp_election_id
-    -- (i.e. multiple BR race stages for the same election cycle) will all
-    -- carry the same values.
+    -- One row per gp_election_id with the race-level civics attributes
+    -- (is_partisan, office_type, official_office_name, office_level), which are
+    -- position-grain and in practice invariant across candidacies within an
+    -- election cycle. win_number is carried here too but has no live source:
+    -- BallotReady supplies no win number, and the only values that exist come
+    -- from the 2023-2025 HubSpot archive (int__civics_candidacy_2025), whose
+    -- past elections fall outside this mart's forward-looking date filter, so
+    -- win_number is null for every row this mart emits, and consumers fall back
+    -- to a computed estimate. Aggregate with any non-null value; downstream Race
+    -- rows that share a gp_election_id (i.e. multiple BR race stages for the
+    -- same election cycle) will all carry the same values.
     civics_race_attrs as (
         select
             gp_election_id,
