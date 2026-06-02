@@ -278,32 +278,34 @@ The dbt intermediates aggregate only **~4% of distinct event types** (12 of ~300
 
 Use this SQL CASE-WHEN pattern (originally from `analytics/projects/win_outcomes_scout/notebooks/inventory_queries.ipynb` NB-9) to bucket raw `event_type` values into product feature areas:
 
-| Family | Pattern (LIKE / IN) | Example events |
-|---|---|---|
-| `win_onboarding` | `'Onboarding -%'` or `'Onboarding:%'` or `IN ('onboarding_complete', 'Invalid Party', 'Sign Up Clicked')` | `Onboarding - Candidate Office Searched`, `Onboarding - Registration Completed` |
-| `win_dashboard` | `'Dashboard -%'` | `Dashboard - Candidate Dashboard Viewed`, `Dashboard - Campaign Plan Viewed` |
-| `win_voter_outreach` | `'Voter Outreach -%'` | `Voter Outreach - Campaign Completed` |
-| `win_outreach_planning` | `'Outreach -%'` | `Outreach - View Accessed`, `Outreach - Click Create` |
-| `win_outreach_scheduling` | `'Schedule Text Campaign%'` or `'schedule_campaign%'` | `Schedule Text Campaign: Exit`, `Schedule Text Campaign - Audience: ...` |
-| `win_content_builder` | `'Content Builder%'` or `'ai_content_%'` or `'campaign_assistant%'` | `Content Builder: Generation Started`, `ai_content_generation_start` |
-| `win_voter_data` | `'Voter Data -%'` or `'Voter Data:%'` or `'Download Voter%'` or `'Custom Voter%'` | `Voter Data: Click Detail View`, `Download Voter File attempt` |
-| `win_candidate_profile` | `'Profile -%'` | `Profile - Running Against: Click Save` |
-| `win_pro_upgrade` | `'Pro Upgrade -%'` or `'Pro Upgrade:%'` or `= 'pro_upgrade_complete'` | `Pro Upgrade - Modal: Modal Shown`, `pro_upgrade_complete` |
-| `win_p2p_upgrade` | `'P2P Upgrade -%'` | `P2P Upgrade - Modal: Modal Shown` |
-| `win_candidate_website` | `'Candidate Website%'` | `Candidate Website - Started`, `Candidate Website - Published` |
-| `win_candidacy_self_report` | `'Candidacy -%'` | `Candidacy - Did You Win Modal Completed` (see §3 for outcomes use) |
-| `win_compliance_or_planning` | `'Campaign Verify%'` or `'Campaign Plan%'` or `'10 DLC Compliance%'` | `Campaign Plan - Weekly Tasks Digest` |
-| `win_ai_assistant` | `'AI Assistant%'` or `= 'question_complete'` | `AI Assistant: Ask a question` |
-| `win_briefings` | `'Briefings -%'` | New since 2026-04. |
-| `win_contacts` | `'Contacts -%'` | Contacts CRM features. |
-| `win_resources` | `'Resources -%'` | Resource library clicks. |
-| `serve` | `'Serve Onboarding%'` or `'Poll - %'` or `'Polls -%'` or `'Polls:%'` | Serve product (covered in the Serve runbook). |
-| `auth_or_settings` | `'Sign In:%'`, `'Sign Up:%'`, `'Set Password:%'`, `'Account -%'`, `'Settings -%'` | Cross-product. |
-| `navigation` | `'Navigation -%'` or `'Navigation Top -%'` | Cross-product. |
-| `viewed_generic` | `= 'Viewed'` | Generic event partially used by `int__amplitude_serve_activity` via property filter. |
-| `amplitude_autotrack` | `'[Amplitude]%'` | Anonymous. Skip for candidate-attributed analyses. |
-| `experiment_assignment` | `'[Experiment]%'` or `= 'Experiment Viewed'` | A/B test exposure. Usable as a stratification covariate. |
-| `session_or_browser` | `IN ('Scroll Depth', 'session_start', 'session_end', 'page_view', 'Page Viewed', 'Page', 'usersnap_submission')` or `'Segment Consent%'` | Mostly anonymous. Skip. |
+The **Classification** column reflects how `analytics/lib/win_analysis.py` treats each family for the canonical engagement metric, relative to the 2025-08-01 drift cutoff: `core` = the drift-controlled Win headline set (`_CORE_PREDICATE`); `partial` = real Win activity but first-seen mid-September 2025, so only partially present in a pre-Nov-2025 window (`_PARTIAL_PREDICATE`, reported alongside core); `drift-excluded` = a Win family first-seen after the cutoff, held out of the headline; `cross-product` = not Win-attributed; `noise` = anonymous / autotracked. Keep this column in sync with `win_analysis.py`. The durable source will be `int__amplitude_event_taxonomy` (`is_win`, `first_seen_date`) once DATA-1945 lands, at which point `core`/`partial`/`drift-excluded` become a `first_seen_date` cutoff rather than a hand-maintained label.
+
+| Family | Classification | Pattern (LIKE / IN) | Example events |
+|---|---|---|---|
+| `win_onboarding` | core | `'Onboarding -%'` or `'Onboarding:%'` or `IN ('onboarding_complete', 'Invalid Party', 'Sign Up Clicked')` | `Onboarding - Candidate Office Searched`, `Onboarding - Registration Completed` |
+| `win_dashboard` | core (excl. `Dashboard - Campaign Plan Viewed`, first-seen 2026-04-09, carved out of `_CORE_PREDICATE`) | `'Dashboard -%'` | `Dashboard - Candidate Dashboard Viewed`, `Dashboard - Campaign Plan Viewed` |
+| `win_voter_outreach` | core | `'Voter Outreach -%'` | `Voter Outreach - Campaign Completed` |
+| `win_outreach_planning` | core | `'Outreach -%'` | `Outreach - View Accessed`, `Outreach - Click Create` |
+| `win_outreach_scheduling` | core | `'Schedule Text Campaign%'` or `'schedule_campaign%'` | `Schedule Text Campaign: Exit`, `Schedule Text Campaign - Audience: ...` |
+| `win_content_builder` | core | `'Content Builder%'` or `'ai_content_%'` or `'campaign_assistant%'` | `Content Builder: Generation Started`, `ai_content_generation_start` |
+| `win_voter_data` | core | `'Voter Data -%'` or `'Voter Data:%'` or `'Download Voter%'` or `'Custom Voter%'` | `Voter Data: Click Detail View`, `Download Voter File attempt` |
+| `win_candidate_profile` | core | `'Profile -%'` | `Profile - Running Against: Click Save` |
+| `win_pro_upgrade` | core | `'Pro Upgrade -%'` or `'Pro Upgrade:%'` or `= 'pro_upgrade_complete'` | `Pro Upgrade - Modal: Modal Shown`, `pro_upgrade_complete` |
+| `win_p2p_upgrade` | core | `'P2P Upgrade -%'` | `P2P Upgrade - Modal: Modal Shown` |
+| `win_candidate_website` | core | `'Candidate Website%'` | `Candidate Website - Started`, `Candidate Website - Published` |
+| `win_candidacy_self_report` | partial | `'Candidacy -%'` | `Candidacy - Did You Win Modal Completed` (see §3 for outcomes use) |
+| `win_compliance_or_planning` | core | `'Campaign Verify%'` or `'Campaign Plan%'` or `'10 DLC Compliance%'` | `Campaign Plan - Weekly Tasks Digest` |
+| `win_ai_assistant` | core | `'AI Assistant%'` or `= 'question_complete'` | `AI Assistant: Ask a question` |
+| `win_briefings` | drift-excluded (first-seen 2026-04-10, after the cutoff) | `'Briefings -%'` | New since 2026-04. |
+| `win_contacts` | partial | `'Contacts -%'` | Contacts CRM features. |
+| `win_resources` | core | `'Resources -%'` | Resource library clicks. |
+| `serve` | cross-product | `'Serve Onboarding%'` or `'Poll - %'` or `'Polls -%'` or `'Polls:%'` | Serve product (covered in the Serve runbook). |
+| `auth_or_settings` | cross-product | `'Sign In:%'`, `'Sign Up:%'`, `'Set Password:%'`, `'Account -%'`, `'Settings -%'` | Cross-product. |
+| `navigation` | cross-product | `'Navigation -%'` or `'Navigation Top -%'` | Cross-product. |
+| `viewed_generic` | noise | `= 'Viewed'` | Generic event partially used by `int__amplitude_serve_activity` via property filter. |
+| `amplitude_autotrack` | noise | `'[Amplitude]%'` | Anonymous. Skip for candidate-attributed analyses. |
+| `experiment_assignment` | noise (usable covariate) | `'[Experiment]%'` or `= 'Experiment Viewed'` | A/B test exposure. Usable as a stratification covariate. |
+| `session_or_browser` | noise | `IN ('Scroll Depth', 'session_start', 'session_end', 'page_view', 'Page Viewed', 'Page', 'usersnap_submission')` or `'Segment Consent%'` | Mostly anonymous. Skip. |
 
 ### Instrumentation start date
 

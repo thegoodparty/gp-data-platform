@@ -19,6 +19,7 @@ date-parameterized cutoff awaits the taxonomy model's ``first_seen_date`` column
 from __future__ import annotations
 
 import math
+import re
 from typing import Callable, Mapping
 
 import pandas as pd
@@ -78,6 +79,11 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float, float]:
     """Return (point_pct, lo_pct, hi_pct) Wilson score interval for k successes of n."""
     if n == 0:
         return (float("nan"), float("nan"), float("nan"))
+    if not 0 <= k <= n:
+        # Guards against the opaque "math domain error" that k > n would otherwise
+        # raise inside math.sqrt (p*(1-p) goes negative). Catches swapped args, e.g.
+        # wilson(n, k).
+        raise ValueError(f"wilson() requires 0 <= k <= n, got k={k}, n={n}")
     p = k / n
     den = 1 + z * z / n
     center = (p + z * z / (2 * n)) / den
@@ -120,7 +126,15 @@ def build_win_working_set(
         core_all, core_distinct_types, corepartial_all, core_preelection (counts),
         and beyond_signup (1 if the user touched >= 2 *distinct* core event types,
         i.e. engaged past account creation; runbook section 3.5).
+
+    Security:
+        ``cohorts[*]["filter"]`` and ``["anchor"]`` are interpolated verbatim as SQL
+        expressions (they are WHERE/SELECT fragments and cannot be parameterized), so
+        they must come from trusted, analyst-controlled code only -- never from
+        external or user-supplied input. ``event_floor`` is format-validated below.
     """
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", event_floor):
+        raise ValueError(f"event_floor must be YYYY-MM-DD, got: {event_floor!r}")
     core = win_event_predicate(include_partial=False)
     partial = _PARTIAL_PREDICATE
     dim_cols = "".join(f", MAX({d}) AS {d}" for d in slice_dims)
