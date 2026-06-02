@@ -316,6 +316,24 @@ Newer families:
 - `Dashboard - Campaign Plan Viewed` (since 2026-04-09)
 - `Briefings - *` (since 2026-04-10)
 
+### Onboarding flow versions (2026-05-07 cutover)
+
+The Win onboarding flow was rebuilt in a clean same-night switch ~**2026-05-07 01:54 UTC** (no overlap / holdback observed in-data; DATA-1947). Event names changed across the cutover, so any onboarding analysis spanning it must use **version-agnostic** anchors:
+
+| Role | Old flow (pre) | New flow (post) | Version-agnostic (both eras) |
+|---|---|---|---|
+| Entry / top | `Onboarding - Registration Completed` (died ~2026-04-20) | `Onboarding - Welcome Completed` (post only) | **product-DB account creation** (`users_win_candidacy.user_created_at`) — every Amplitude entry event changed |
+| Completion / bottom | `onboarding_complete`, `Onboarding - Complete Step: Click Go to Dashboard` (died at cutover) | per-step `*Completed` events (pledge is the final step) | **`Onboarding - Candidate Pledge Completed`** (final step, both eras) |
+| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | `Onboarding - Candidate Affiliation Completed` |
+
+**`onboarding_complete` / `has_completed_onboarding_flow` (and the lib's `onboarded` flag) are NEW-FLOW-BLIND** — FALSE for every post-cutover user — so using them across the cutover fakes a completion collapse to zero (see §8). The party gate is *not* gate-equivalent across the cutover (the `Invalid Party` block was removed), so for a pre/post completion comparison condition on reaching the party step.
+
+### Channel / UTM (acquisition source)
+
+UTM lives only in the `user_properties` JSON on `stg_airbyte_source__amplitude_api_events` (no dedicated column). Extract with `get_json_object(user_properties,'$.utm_medium')` (also `$.initial_utm_medium`, `$.utm_source`, `$.initial_utm_source`); `utm_source` and `initial_utm_source` co-populate. There is **no instrumentation ramp** (UTM has been captured continuously since ~2025-06), and NULL conflates true organic with untracked. So the honest channel split is **3 buckets — paid-tagged (`utm_medium='paid'` OR `initial_utm_medium='paid'`) / other-tagged / untracked**, not a clean "organic." Lead non-paid; keep paid as a reference.
+
+> ⚠ **Point-in-time figures (verified 2026-06-02; these drift — re-verify before citing):** UTM coverage fluctuated ~30-70% month to month; paid share of registrants collapsed from ~27% (Jan 2026) to ~3% (Apr 2026). Source: DATA-1947.
+
 ### Building new funnel aggregates
 
 The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity` (per-month aggregates).
@@ -583,6 +601,10 @@ These are recurring traps. When you hit one, add a one-liner here so the next pe
 | **VIRTUAL_ENV breaks pre-commit pytest hook** | `Executable pytest not found` on commit when an analytics venv is active. | Use `env -u VIRTUAL_ENV poetry run git commit ...` from `dbt/`. |
 | **`users_win_candidacy.hubspot_id` is the COMPANY id, not the contact id** | Joining `stg_airbyte_source__hubspot_api_feedback_submissions.hs_contact_id` directly to `users_win_candidacy.hubspot_id` returns zero matches. | 2-hop via candidate: `submissions.hs_contact_id` → `candidate.hubspot_contact_id` → `candidate.prod_db_user_id` → `users_win_candidacy.user_id`. Recipe in §2. |
 | **HubSpot PMF Option 1/2 labels obscured in export** | `pmf_response` returns the literal strings `"Option 1"` and `"Option 2"` instead of "Very disappointed" / "Somewhat disappointed". | Treat **Option 1 = Very disappointed, Option 2 = Somewhat disappointed**. Verified by sampling `pmf_additional_feedback`: Option 1 respondents express strong attachment; Option 2 are measured. Worth a follow-up with data engineering to either fix the HubSpot export or document the mapping in a `m_hubspot.yaml`. |
+| **Onboarding milestone flags are new-flow-blind** | `onboarding_complete` / `has_completed_onboarding_flow` / the lib `onboarded` flag read FALSE for all post-2026-05-07 onboarding-flow users; a cross-cutover analysis shows a fake completion collapse. | Use `Onboarding - Candidate Pledge Completed` (version-agnostic final step) as completion; anchor top-of-funnel on `user_created_at`. See §4 "Onboarding flow versions". |
+| **Account-creation column name** | `users_win_base.user_created_at` does NOT exist. | Account creation = `users_win_candidacy.user_created_at` (= `users_win_base.registered_at`, byte-identical). |
+| **Civics classification lag on recent signups** | Recent registrants carry NULL `election_level` / `office_type = 'Other'` until the civics mart classifies them, so office/level cuts on a recent cohort collapse. | Treat office/level stratification as a structural finding on the older classified cohort; don't read a recent pre/post office cut. |
+| **Amplitude coverage can lead the calendar date** | `MAX(event_time)` may be ahead of "today" (e.g. 2026-06-06 seen on 2026-06-02). | Compute `data_max = MAX(event_time)` live and derive censoring cutoffs from it; never hardcode "today" or a stale max. |
 
 ---
 
