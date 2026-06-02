@@ -117,8 +117,9 @@ def build_win_working_set(
     Returns:
         One row per (user_id, cohort) with columns: the slice_dims, plus
         any_core, onboarded, dash_viewed, activated (0/1 funnel flags, anchored),
-        core_all, corepartial_all, core_preelection (counts), and beyond_signup
-        (1 if the user did >= 2 core events, i.e. anything past account creation).
+        core_all, core_distinct_types, corepartial_all, core_preelection (counts),
+        and beyond_signup (1 if the user touched >= 2 *distinct* core event types,
+        i.e. engaged past account creation; runbook section 3.5).
     """
     core = win_event_predicate(include_partial=False)
     partial = _PARTIAL_PREDICATE
@@ -145,6 +146,7 @@ ev AS (
     MAX(CASE WHEN event_type = 'Dashboard - Candidate Dashboard Viewed' THEN 1 ELSE 0 END) AS dash_viewed,
     MAX(CASE WHEN event_type = 'Voter Outreach - Campaign Completed' THEN 1 ELSE 0 END) AS activated,
     SUM(CASE WHEN {core} THEN 1 ELSE 0 END) AS core_all,
+    COUNT(DISTINCT CASE WHEN {core} THEN event_type END) AS core_distinct_types,
     SUM(CASE WHEN {core} OR {partial} THEN 1 ELSE 0 END) AS corepartial_all,
     SUM(CASE WHEN ({core}) AND e.event_time >= co.anchor - INTERVAL {preelection_days} DAYS THEN 1 ELSE 0 END) AS core_preelection
   FROM cohort co
@@ -160,11 +162,15 @@ SELECT co.*,
   COALESCE(ev.dash_viewed, 0) AS dash_viewed,
   COALESCE(ev.activated, 0) AS activated,
   COALESCE(ev.core_all, 0) AS core_all,
+  COALESCE(ev.core_distinct_types, 0) AS core_distinct_types,
   COALESCE(ev.corepartial_all, 0) AS corepartial_all,
   COALESCE(ev.core_preelection, 0) AS core_preelection
 FROM cohort co
 LEFT JOIN ev ON ev.user_id = co.user_id AND ev.cohort = co.cohort
 """
     df = run_query(sql)
-    df["beyond_signup"] = (df["core_all"] >= 2).astype(int)
+    # "Engaged beyond account creation" is >= 2 *distinct* core event types
+    # (runbook section 3.5), not >= 2 event rows: a single feature double-fired
+    # must not count. core_all is kept for intensity analyses.
+    df["beyond_signup"] = (df["core_distinct_types"] >= 2).astype(int)
     return df
