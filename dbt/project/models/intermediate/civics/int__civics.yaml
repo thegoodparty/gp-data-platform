@@ -3055,3 +3055,38 @@ models:
               - gp_api_stage_election_date
           config:
             where: "gp_api_campaign_id is not null"
+
+  - name: int__civics_er_canonical_election_stages
+    description: >
+      Direct election-stage ER crosswalk: maps DDHQ / TechSpeed election stages
+      that clustered with a BallotReady race (gp-data-matcha election_stage
+      entity) to BR's canonical gp_election_stage_id. Broader race-level coverage
+      than int__civics_er_canonical_ids's candidacy-derived
+      canonical_gp_election_stage_id (links races even without a matched
+      candidacy). BR-anchored clusters only; non-BR clusters keep their natural id.
+
+      Grain: one row per non-BR provider election stage (source_name +
+      gp_election_stage_id). Note: DDHQ and TS can share a natural
+      gp_election_stage_id for the same race, so the id is unique only within a
+      source. A small number (~41) of such shared ids map to different BR
+      canonicals (the matcher anchored the DDHQ vs TS record to different BR
+      races); consumers join per-source so the mapping stays deterministic.
+    columns:
+      - name: source_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ddhq", "techspeed"]
+      - name: gp_election_stage_id
+        description: The provider's own gp_election_stage_id (the matched non-BR record).
+        data_tests:
+          - not_null
+      - name: canonical_gp_election_stage_id
+        description: BR's gp_election_stage_id for the cluster; consumers coalesce against this.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_name, gp_election_stage_id]

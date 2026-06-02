@@ -1571,3 +1571,20 @@ sources:
           ballotready_position_id), and Bayes factors. Includes 11 comparisons vs 9 for
           candidacy stages (adds office_type, office_level, and ballotready_position_id;
           drops election_date).
+
+      - name: clustered_election_stages
+        description: >
+          Cluster assignments from the election-stage entity resolution pipeline
+          (gp-data-matcha election_stage entity). Each row is a race-level record from
+          BallotReady, DDHQ, or TechSpeed, annotated with a cluster_id grouping records
+          believed to represent the same real-world election stage (race). Cross-source
+          clusters form the race-level crosswalk; single-record clusters are unmatched
+          races. 0.95 match-probability threshold; post-prediction filters enforce state +
+          election_date + election_stage agreement and office identity (no person fields).
+
+      - name: pairwise_election_stages
+        description: >
+          Scored race pairs from the election-stage Splink prediction (threshold: 0.01),
+          after post-prediction filters. Each row is a pair of election-stage records with
+          match weights, match probabilities, and per-comparison gamma levels. For auditing
+          election-stage match quality.
