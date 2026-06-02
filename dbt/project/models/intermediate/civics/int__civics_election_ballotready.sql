@@ -19,7 +19,9 @@ with
     br_normalized as (select * from {{ ref("int__ballotready_normalized_position") }}),
 
     -- Pick one representative stage per election to derive election-level fields.
-    -- Prefer the general stage; fall back to the earliest stage otherwise.
+    -- Prefer the general stage (regular or special), then general runoff, then
+    -- fall back to the earliest stage so a special-cycle gp_election_id that
+    -- only has runoff/primary stages still gets a sensible representative.
     representative_stage as (
         select *
         from stages
@@ -27,7 +29,19 @@ with
             row_number() over (
                 partition by gp_election_id
                 order by
-                    case stage_type when 'general' then 0 else 1 end, election_date asc
+                    case
+                        stage_type
+                        when 'general'
+                        then 0
+                        when 'general special'
+                        then 0
+                        when 'general runoff'
+                        then 1
+                        when 'general special runoff'
+                        then 1
+                        else 2
+                    end,
+                    election_date asc
             )
             = 1
     ),

@@ -65,6 +65,7 @@ with
             tbl_election_frequency.frequency,
             tbl_filing_period.start_on as filing_date_start,
             tbl_filing_period.end_on as filing_date_end,
+            tbl_position.database_id as br_position_database_id,
             tbl_position.geo_id as position_geo_id,
             -- For some MTFCCs, need to roll up to parent geo_id of the position to
             -- get the correct place by geo_id
@@ -152,6 +153,7 @@ with
             tbl_race.frequency,
             tbl_race.filing_date_start,
             tbl_race.filing_date_end,
+            tbl_race.br_position_database_id,
             tbl_race.position_geo_id,
             tbl_race.position_mtfcc,
             tbl_race.position_to_place_geo_id,
@@ -192,6 +194,7 @@ select
     frequency,
     filing_date_start,
     filing_date_end,
+    br_position_database_id,
     position_geo_id,
     position_mtfcc,
     position_to_place_geo_id,

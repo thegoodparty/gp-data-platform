@@ -815,6 +815,10 @@ models:
                   - general
                   - primary runoff
                   - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
 
       - name: election_date
         description: Date of the election stage
@@ -2181,6 +2185,10 @@ models:
                   - primary
                   - primary runoff
                   - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
 
       - name: election_date
         description: Date of the election stage
@@ -2210,6 +2218,16 @@ models:
       - name: is_runoff
         description: Whether this stage is a runoff election
         data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_special
+        description: >
+          Whether this stage belongs to a special election (vacancy fill).
+          Derived from the BallotReady election.name containing 'special'.
+        data_tests:
+          - not_null
           - accepted_values:
               arguments:
                 values: [true, false]

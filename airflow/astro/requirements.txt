@@ -1,9 +1,9 @@
 # Astro Runtime pre-installed provider packages: https://docs.astronomer.io/astro/runtime-image-architecture#provider-packages
-duckdb==1.5.2
+duckdb==1.5.3
 tabulate==0.10.0
 pyarrow
 paramiko>=5.0.0,<6.0.0
 databricks-sql-connector>=4.2.6,<5.0.0
-databricks-sdk>=0.106.0,<1.0.0
+databricks-sdk>=0.112.0,<1.0.0
 psycopg2-binary>=2.9.12,<3.0.0
 sshtunnel>=0.4.0,<1.0.0

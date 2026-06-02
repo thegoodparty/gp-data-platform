@@ -19,6 +19,36 @@ models:
           - not_null
           - unique
           - is_uuid
+      - name: is_incumbent
+        description: >
+          Whether the candidate is the incumbent for this position. Sourced
+          from mart_civics.candidacy (TS-supplied; ~51k populated in civics)
+          and scoped to the most recent election cycle for this
+          (gp_candidate_id, br_position_database_id) pair via
+          max_by(is_incumbent, general_election_date). For groups where
+          every general_election_date is null, falls back to
+          max_by(is_incumbent, updated_at) so the most recently updated
+          row's value wins without collapsing all rows into a boolean OR.
+          Null when no civics row carries an is_incumbent value for this
+          person + position.
+      - name: gp_candidate_id
+        description: >
+          Canonical civics candidate UUID. Resolved via
+          int__civics_candidate_ballotready (BR person.database_id ->
+          gp_candidate_id). Pre-aggregated by br_candidate_id with
+          max(gp_candidate_id) for deterministic selection when a single BR
+          person produced multiple gp_candidate_ids upstream. Null when the
+          BR candidate is not present in civics.
+      - name: email
+        description: >
+          Candidate email, sourced from int__civics_candidate_ballotready
+          (which itself coalesces S3 candidacy email with the BR API
+          person.contacts email). Surfaced by the campaign-strategy-context
+          endpoint so the caller can match the requesting user.
+      - name: website_url
+        description: >
+          Candidate website URL, sourced from int__civics_candidate_ballotready
+          (extracted from BR person.urls where type='website').
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
@@ -43,6 +73,42 @@ models:
                   "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
                   "DC", "US"
                 ]
+      - name: registered_voters
+        description: >
+          Distinct L2 voters appearing in this district, joined from
+          int__l2_district_aggregations.voter_count. Null for
+          turnout-only synthetic districts that have no L2 aggregation
+          row.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: unique_cellphones
+        description: >
+          Distinct cellphone numbers
+          (votertelephones_cellphoneformatted) appearing on L2 voters
+          in this district. The collapse is on the phone-number value
+          itself, so two voters sharing a household phone count as
+          one — this matches per-channel send/dial costs downstream
+          (SMS, robocall). Null for turnout-only synthetic districts.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: unique_landlines
+        description: >
+          Distinct landline numbers
+          (votertelephones_landlineformatted) appearing on L2 voters
+          in this district. Same collapse semantics as
+          unique_cellphones. Null for turnout-only synthetic
+          districts.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -216,6 +282,64 @@ models:
               arguments:
                 to: ref('int__enhanced_race')
                 field: br_database_id
+      - name: position_id
+        description: >
+          UUID of the BallotReady position the race is for. Foreign key to
+          m_election_api__position. Lets API consumers traverse
+          Race -> Position -> District -> ProjectedTurnout. The race
+          mart explicitly filters out rows without a matching Position
+          so this is always populated.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__position')
+                field: id
+      - name: number_of_seats
+        description: >
+          Number of seats this election fills, from mart_civics.election_stage
+          (br_race_id match). Null when civics has no matching stage row.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: win_number
+        description: >
+          BallotReady viability_score.win_number passed through from
+          mart_civics.candidacy. Sparse in practice; null for nearly all
+          small non-partisan local races. The consuming app computes a
+          fallback estimate from projected_turnout / number_of_seats; do not
+          coalesce here.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: is_partisan
+        description: >
+          Whether the race is partisan, from mart_civics.candidacy aggregated
+          to the gp_election_id grain (invariant within an election cycle).
+          Null when civics has no matching candidacy rows.
+      - name: office_type
+        description: >
+          Standardized office_type from mart_civics.candidacy
+          (e.g. City Council, School Board, State House). Null when civics
+          has no matching candidacy rows.
+      - name: official_office_name
+        description: >
+          Canonical BallotReady-supplied office name from
+          mart_civics.candidacy. The existing position_names[] array carries
+          the BR position name(s) for the race; official_office_name is the
+          civics-standardized single string. Null when civics has no
+          matching candidacy rows.
+      - name: office_level
+        description: >
+          Civics (HubSpot-sourced) office level. Distinct from the BR
+          positionLevel column (CITY / COUNTY / FEDERAL / LOCAL / REGIONAL /
+          STATE / TOWNSHIP); office_level uses the civics taxonomy and can
+          be null even when positionLevel is populated. Aggregated from
+          mart_civics.candidacy by gp_election_id.
 
   - name: m_election_api__zip_to_position
     description: >

@@ -398,7 +398,9 @@ models:
         BR > TS > DDHQ (gp_api carries no value):
           is_open_seat
         BR-only:
-          hubspot_company_ids, viability_score, win_number, win_number_model
+          hubspot_company_ids, win_number, win_number_model
+        TS-derived (BR/DDHQ/gp_api don't compute viability):
+          viability_score, score_viability_automated
 
       created_at semantics: gp_api's created_at reflects "campaign registered
       in PD," which may post-date BR's data acquisition timestamp. Downstream
@@ -583,6 +585,10 @@ models:
                     "primary runoff",
                     "general",
                     "general runoff",
+                    "primary special",
+                    "general special",
+                    "primary special runoff",
+                    "general special runoff",
                   ]
 
       - name: latest_stage_result
@@ -663,7 +669,34 @@ models:
                 error_if: ">300"
 
       - name: viability_score
-        description: Model-generated viability rating
+        description: >
+          Numeric viability rating (0..5) from the TechSpeed-trained
+          MLflow model (int__techspeed_viability_scoring.viability_rating_2_0).
+          Populated for TS-sourced candidacies via join in
+          int__civics_candidacy_techspeed. NULL for non-TS rows that have
+          no upstream score and for the small fraction of TS rows the
+          MLflow model skips due to incomplete features.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+
+      - name: score_viability_automated
+        description: >
+          String category derived from viability_score by the MLflow model.
+          Values: "No Chance" (score < 1), "Unlikely to Win" (1..2),
+          "Has a Chance" (2..3), "Likely to Win" (3..4), "Frontrunner"
+          (4..5). NULL where viability_score is NULL.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "No Chance"
+                  - "Unlikely to Win"
+                  - "Has a Chance"
+                  - "Likely to Win"
+                  - "Frontrunner"
 
       - name: win_number
         description: Estimated votes needed to win
@@ -1008,6 +1041,10 @@ models:
                     "primary runoff",
                     "general",
                     "general runoff",
+                    "primary special",
+                    "general special",
+                    "primary special runoff",
+                    "general special runoff",
                   ]
 
       - name: is_win_icp
@@ -1233,8 +1270,12 @@ models:
                 where: "br_position_database_id is not null"
                 # Some position IDs may not exist in the API position table yet
                 # (API data is loaded incrementally, S3 data may be ahead).
-                warn_if: ">20"
-                error_if: ">50"
+                # Splitting specials from regulars by is_special increases the
+                # election row count and proportionally surfaces more
+                # missing-position rows from the same drift; thresholds bumped
+                # accordingly.
+                warn_if: ">150"
+                error_if: ">350"
 
       - name: is_judicial
         description: Whether the office is a judicial position (from BallotReady)
@@ -1431,10 +1472,12 @@ models:
 
       - name: stage_type
         description: >
-          Type of election stage (primary, general, primary runoff, general
-          runoff). NULL for gp_api-only rows where no BR/TS/DDHQ provider
-          contributed descriptive data; gp_api int model holds only ID and
-          FK columns by design.
+          Type of election stage. Eight values cover regular and special
+          variants: primary, general, primary runoff, general runoff, plus
+          their `*_special` and `*_special_runoff` counterparts. NULL for
+          gp_api-only rows where no BR/TS/DDHQ provider contributed
+          descriptive data; gp_api int model holds only ID and FK columns by
+          design.
         data_tests:
           - not_null:
               config:
@@ -1446,6 +1489,10 @@ models:
                   - primary
                   - primary runoff
                   - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
 
       - name: election_date
         description: Date of the election stage

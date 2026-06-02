@@ -206,6 +206,25 @@ seeds:
                   - unknown
       - name: notes
         description: "Free-text notes, e.g. derivation method or TODO markers"
+      - name: outcome_family
+        description: >
+          Coarse outcome category for this disposition. One of: connected_pledge,
+          connected_reject, connected_other, not_connected, unmapped.
+          unmapped is used for rows where the disposition label is not yet known
+          (source = 'unknown'). null_disposition is coalesced at the model level
+          for calls with no disposition GUID at all.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - connected_pledge
+                  - connected_reject
+                  - connected_other
+                  - not_connected
+                  - unmapped
+              config:
+                severity: warn
 
   - name: states_zip_code_range
     description: "States and their zip code ranges. Sourced from https://zipcodes.org/us-zip-codes"

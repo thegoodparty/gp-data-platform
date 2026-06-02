@@ -73,17 +73,16 @@ with
                 nullif(regexp_extract(race_name, ' ([0-9]+)$'), ''),
                 ''
             ) as district,
-            case
-                when
-                    lower(election_type) like '%runoff%'
-                    and lower(election_type) like '%primary%'
-                then 'primary runoff'
-                when lower(election_type) like '%runoff%'
-                then 'general runoff'
-                when lower(election_type) like '%primary%'
-                then 'primary'
-                else 'general'
-            end as election_stage,
+            lower(
+                {{
+                    derive_election_stage(
+                        "lower(election_type) like '%primary%'",
+                        "lower(election_type) like '%runoff%'",
+                        "election_type",
+                    )
+                }}
+            ) as election_stage,
+            election_stage like '%special%' as is_special,
             {{ parse_party_affiliation("candidate_party") }} as party_affiliation
         from with_state
     ),
