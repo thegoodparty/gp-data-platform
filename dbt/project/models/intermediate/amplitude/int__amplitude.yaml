@@ -464,3 +464,93 @@ models:
             expression: "recipient_count >= 0"
           config:
             where: "recipient_count is not null"
+
+  - name: int__amplitude_event_taxonomy
+    description: >
+      Single source of truth for Amplitude event-family classification. One row
+      per distinct event_type, bucketed into a product-feature family via
+      pattern matching (amplitude_event_family macro). Replaces event-type logic
+      previously duplicated across int__amplitude_win_activity,
+      int__amplitude_user_milestones, the analytics helper, and the runbook
+      (DATA-1945). Pattern-based so new event_types in known families classify
+      automatically; first_seen_date enables drift control via
+      WHERE first_seen_date <= '<cutoff>'.
+
+      Grain: one row per distinct event_type. Source:
+      stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: event_type
+        description: Distinct Amplitude event name. Primary key for this model.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: family
+        description: >
+          Product-feature bucket. Win families are prefixed `win_`; non-Win
+          buckets cover serve, auth/settings, navigation, and anonymous noise.
+          Unmatched event_types fall through to 'other' for triage.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - win_onboarding
+                  - win_dashboard
+                  - win_voter_outreach
+                  - win_outreach_planning
+                  - win_outreach_scheduling
+                  - win_content_builder
+                  - win_voter_data
+                  - win_candidate_profile
+                  - win_pro_upgrade
+                  - win_p2p_upgrade
+                  - win_candidate_website
+                  - win_candidacy_self_report
+                  - win_compliance_or_planning
+                  - win_ai_assistant
+                  - win_briefings
+                  - win_contacts
+                  - win_resources
+                  - serve
+                  - auth_or_settings
+                  - navigation
+                  - viewed_generic
+                  - amplitude_autotrack
+                  - experiment_assignment
+                  - session_or_browser
+                  - other
+
+      - name: is_win
+        description: >
+          True for Win-product candidate-attributed families (family like 'win_%').
+          False for serve / cross-product / noise.
+        data_tests:
+          - not_null
+
+      - name: is_recurrent
+        description: >
+          True for recurrent-activity events (vs one-off lifecycle milestones).
+          Determines which events belong in the Win activity rollups. Event-level
+          allowlist, not a pattern (see amplitude_event_is_recurrent macro).
+        data_tests:
+          - not_null
+
+      - name: first_seen_date
+        description: >
+          Date of first appearance in the raw event stream. Use as a drift cutoff
+          to exclude late-arriving event families from retrospective analyses.
+        data_tests:
+          - not_null
+
+      - name: event_count
+        description: Total occurrences of this event_type in the raw stream (volume context).
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_win or not is_recurrent"

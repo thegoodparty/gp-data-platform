@@ -54,9 +54,14 @@ with
         where
             user_id is not null
             and try_cast(user_id as bigint) is not null
+            -- Recurrent-activity events come from the single-source taxonomy
+            -- (DATA-1945) instead of a hardcoded list. Resolves to the same 2
+            -- events: 'Voter Outreach - Campaign Completed',
+            -- 'Dashboard - Candidate Dashboard Viewed'.
             and event_type in (
-                'Voter Outreach - Campaign Completed',
-                'Dashboard - Candidate Dashboard Viewed'
+                select event_type
+                from {{ ref("int__amplitude_event_taxonomy") }}
+                where is_recurrent
             )
     ),
 
