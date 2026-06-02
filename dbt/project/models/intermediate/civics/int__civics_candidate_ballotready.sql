@@ -53,15 +53,20 @@ with
             -- phone_number
             -- BallotReady has no birth_date, so it will be NULL (coalesced to '' by
             -- macro)
+            -- Hash the canonical per-person identity inputs (one deterministic
+            -- value per br_candidate_id) so this model and
+            -- int__civics_candidacy_ballotready resolve a person to the same
+            -- gp_candidate_id. Hashing per-row contact fields here split a
+            -- person with varying email across candidacies into multiple ids.
             {{
                 generate_salted_uuid(
                     fields=[
-                        "candidacies.first_name",
-                        "candidacies.last_name",
-                        "candidacies.state",
+                        "identity.id_first_name",
+                        "identity.id_last_name",
+                        "identity.id_state",
                         "cast(null as string)",
-                        "coalesce(candidacies.email, person_urls.api_email)",
-                        "candidacies.phone",
+                        "identity.id_email",
+                        "identity.id_phone",
                     ]
                 )
             }} as gp_candidate_id,
@@ -112,6 +117,9 @@ with
         from candidacies
         left join
             person_urls on candidacies.br_candidate_id = person_urls.person_database_id
+        left join
+            {{ ref("int__ballotready_candidate_identity") }} as identity
+            on candidacies.br_candidate_id = identity.br_candidate_id
     ),
 
     deduplicated as (

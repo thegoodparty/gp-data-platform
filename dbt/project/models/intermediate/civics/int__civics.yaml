@@ -1101,6 +1101,23 @@ models:
         data_tests:
           - not_null
 
+  - name: int__ballotready_candidate_identity
+    description: >
+      Canonical BallotReady candidate identity inputs, one deterministic row per
+      br_candidate_id. int__civics_candidate_ballotready and
+      int__civics_candidacy_ballotready both hash these columns for
+      gp_candidate_id, so a person resolves to the same id in both models
+      (previously they picked divergent per-row vs rolled-up contact values and
+      orphaned candidates whose email varied across candidacy rows).
+
+      Grain: One row per br_candidate_id.
+    columns:
+      - name: br_candidate_id
+        description: BallotReady candidate (person) database_id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+
   - name: int__civics_candidate_ballotready
     description: >
       BallotReady candidates transformed into civics mart candidate schema.
