@@ -305,22 +305,14 @@ with
             is not null
     ),
 
-    -- Ensure referential integrity with candidate table
-    valid_candidates as (
-        select gp_candidate_id from {{ ref("int__civics_candidate_ballotready") }}
-    ),
-
-    filtered as (
-        select candidacies_with_ids.*
-        from candidacies_with_ids
-        inner join
-            valid_candidates
-            on candidacies_with_ids.gp_candidate_id = valid_candidates.gp_candidate_id
-    ),
-
+    -- gp_candidate_id is sourced from int__ballotready_candidate_identity (the
+    -- same model int__civics_candidate_ballotready hashes), so every candidacy's
+    -- gp_candidate_id is in the candidate table by construction. The prior
+    -- valid_candidates referential inner join is therefore redundant; the
+    -- candidate <-> candidacy relationships tests guard the invariant instead.
     deduplicated as (
         select *
-        from filtered
+        from candidacies_with_ids
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
             = 1
