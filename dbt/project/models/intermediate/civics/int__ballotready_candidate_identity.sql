@@ -28,30 +28,41 @@ with
         where database_id is not null
     ),
 
-    -- One deterministic value per person. min() is order-independent and skips
-    -- nulls, so it is stable across runs regardless of candidacy-row ordering.
-    agg as (
+    -- One coherent representative candidacy row per person: the most recently
+    -- updated, with deterministic email/phone tie-breaks (mirrors the ordering
+    -- int__civics_candidate_ballotready used for its dedup). Taking a single
+    -- row keeps the identity fields internally consistent and uses the person's
+    -- freshest contact info, rather than a per-column min() that could stitch
+    -- together values from different candidacy rows.
+    ranked as (
         select
             br_candidate_id,
-            min(first_name) as first_name,
-            min(last_name) as last_name,
-            min(state) as state,
-            min(email) as s3_email,
-            min(phone) as phone
+            first_name,
+            last_name,
+            state,
+            email as s3_email,
+            phone,
+            row_number() over (
+                partition by br_candidate_id
+                order by
+                    coalesce(candidacy_updated_at, _airbyte_extracted_at) desc,
+                    email asc nulls last,
+                    phone asc nulls last
+            ) as rn
         from candidacies
-        group by br_candidate_id
     )
 
 -- Columns are id_-prefixed so consumers can join this model without colliding
 -- with their own first_name / last_name / state / email / phone columns.
 select
-    agg.br_candidate_id,
-    agg.first_name as id_first_name,
-    agg.last_name as id_last_name,
-    agg.state as id_state,
-    -- Prefer the deterministic S3 email, fall back to the API person email,
-    -- matching the coalesce(email, api_email) the consumers used before.
-    coalesce(agg.s3_email, person_emails.api_email) as id_email,
-    agg.phone as id_phone
-from agg
-left join person_emails on agg.br_candidate_id = person_emails.person_database_id
+    ranked.br_candidate_id,
+    ranked.first_name as id_first_name,
+    ranked.last_name as id_last_name,
+    ranked.state as id_state,
+    -- Prefer the representative row's S3 email, fall back to the API person
+    -- email, matching the coalesce(email, api_email) the consumers used before.
+    coalesce(ranked.s3_email, person_emails.api_email) as id_email,
+    ranked.phone as id_phone
+from ranked
+left join person_emails on ranked.br_candidate_id = person_emails.person_database_id
+where ranked.rn = 1
