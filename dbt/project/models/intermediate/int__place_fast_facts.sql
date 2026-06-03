@@ -8,6 +8,8 @@
 }}
 
 with
+    -- uscities deduped to most-populous city per county.
+    -- UNCHANGED: used only by the non-G4110 substring path.
     deduped_cities as (
         select *
         from
@@ -21,64 +23,126 @@ with
             ) ranked
         where rn = 1
     ),
-    joined_by_geo_id as (
-        select
-            tbl_place.database_id,
-            tbl_place.geo_id,
-            tbl_place.name,
-            tbl_place.slug,
-            tbl_place.state,
-            tbl_place.updated_at,
-            tbl_cities.county_name,
-            tbl_cities.county_fips,
-            tbl_cities.city,
-            tbl_cities.zips,
-            tbl_cities.csa_name,
-            tbl_cities.population,
-            tbl_cities.density,
-            tbl_cities.home_value,
-            tbl_cities.unemployment_rate,
-            tbl_cities.income_household_median
-        from {{ ref("stg_airbyte_source__ballotready_api_place") }} as tbl_place
-        left join
-            deduped_cities as tbl_cities
-            on substring(tbl_place.geo_id, 1, 5) = tbl_cities.county_fips
-            and tbl_place.state = tbl_cities.state_id
+
+    -- NEW: uscities deduped to most-populous city per (state, normalized city_ascii).
+    -- Used only by the G4110 exact path. Per-(state,name) dedup => the G4110 join is
+    -- 1:1
+    -- (protects equal_rowcount) and resolves same-name collisions deterministically.
+    deduped_cities_by_name as (
+        select * except (rn)
+        from
+            (
+                select
+                    *,
+                    lower(
+                        trim(
+                            regexp_replace(
+                                regexp_replace(city_ascii, ' *\\([^)]*\\) *$', ''),
+                                ' +',
+                                ' '
+                            )
+                        )
+                    ) as normalized_city,
+                    row_number() over (
+                        partition by
+                            state_id,
+                            lower(
+                                trim(
+                                    regexp_replace(
+                                        regexp_replace(
+                                            city_ascii, ' *\\([^)]*\\) *$', ''
+                                        ),
+                                        ' +',
+                                        ' '
+                                    )
+                                )
+                            )
+                        order by population desc nulls last, county_fips asc
+                    ) as rn
+                from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }}
+            ) ranked
+        where rn = 1
+    ),
+
+    -- place rows, carrying mtfcc internally (not emitted in final)
+    places as (
+        select database_id, geo_id, name, slug, state, updated_at, mtfcc
+        from {{ ref("stg_airbyte_source__ballotready_api_place") }}
         {% if is_incremental() %}
-            where tbl_place.updated_at > (select max(updated_at) from {{ this }})
+            where updated_at > (select max(updated_at) from {{ this }})
         {% endif %}
     ),
-    unmatched as (select * from joined_by_geo_id where county_fips is null),
-    string_matched_city_state as (
+
+    -- --------------------------------------------------------------
+    -- NON-G4110 BRANCH: existing logic, filtered to non-G4110.
+    -- Unchanged by construction.
+    -- --------------------------------------------------------------
+    non_g4110_places as (select * from places where mtfcc <> 'G4110' or mtfcc is null),
+    joined_by_geo_id as (
         select
-            tbl_unmatched.database_id,
-            tbl_unmatched.geo_id,
-            tbl_unmatched.name,
-            tbl_unmatched.slug,
-            tbl_unmatched.state,
-            tbl_unmatched.updated_at,
-            coalesce(tbl_unmatched.county_name, tbl_cities.county_name) as county_name,
-            coalesce(tbl_unmatched.county_fips, tbl_cities.county_fips) as county_fips,
-            coalesce(tbl_unmatched.city, tbl_cities.city) as city,
-            coalesce(tbl_unmatched.zips, tbl_cities.zips) as zips,
-            coalesce(tbl_unmatched.csa_name, tbl_cities.csa_name) as csa_name,
-            coalesce(tbl_unmatched.population, tbl_cities.population) as population,
-            coalesce(tbl_unmatched.density, tbl_cities.density) as density,
-            coalesce(tbl_unmatched.home_value, tbl_cities.home_value) as home_value,
-            coalesce(
-                tbl_unmatched.unemployment_rate, tbl_cities.unemployment_rate
-            ) as unemployment_rate,
-            coalesce(
-                tbl_unmatched.income_household_median,
-                tbl_cities.income_household_median
-            ) as income_household_median
-        from unmatched as tbl_unmatched
+            p.database_id,
+            p.geo_id,
+            p.name,
+            p.slug,
+            p.state,
+            p.updated_at,
+            c.county_name,
+            c.county_fips,
+            c.city,
+            c.zips,
+            c.csa_name,
+            c.population,
+            c.density,
+            c.home_value,
+            c.unemployment_rate,
+            c.income_household_median
+        from non_g4110_places as p
         left join
-            {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }} as tbl_cities
-            on tbl_unmatched.name ilike concat('%', tbl_cities.city, '%')
-            and tbl_unmatched.state = tbl_cities.state_id
+            deduped_cities as c
+            on substring(p.geo_id, 1, 5) = c.county_fips
+            and p.state = c.state_id
     ),
-    deduped_matched_by_string as (
+    non_g4110_unmatched as (select * from joined_by_geo_id where county_fips is null),
+    non_g4110_string_matched as (
+        select
+            u.database_id,
+            u.geo_id,
+            u.name,
+            u.slug,
+            u.state,
+            u.updated_at,
+            coalesce(u.county_name, c.county_name) as county_name,
+            coalesce(u.county_fips, c.county_fips) as county_fips,
+            coalesce(u.city, c.city) as city,
+            coalesce(u.zips, c.zips) as zips,
+            coalesce(u.csa_name, c.csa_name) as csa_name,
+            coalesce(u.population, c.population) as population,
+            coalesce(u.density, c.density) as density,
+            coalesce(u.home_value, c.home_value) as home_value,
+            coalesce(u.unemployment_rate, c.unemployment_rate) as unemployment_rate,
+            coalesce(
+                u.income_household_median, c.income_household_median
+            ) as income_household_median
+        from non_g4110_unmatched as u
+        left join
+            {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }} as c
+            on u.name ilike concat('%', c.city, '%')
+            and u.state = c.state_id
+    ),
+    non_g4110_string_deduped as (
+        select * except (rn)
+        from
+            (
+                select
+                    *,
+                    row_number() over (
+                        partition by database_id order by population desc
+                    ) as rn
+                from non_g4110_string_matched
+            ) ranked
+        where rn = 1
+    ),
+    non_g4110_resolved as (
         select
             database_id,
             geo_id,
@@ -96,24 +160,160 @@ with
             home_value,
             unemployment_rate,
             income_household_median
+        from joined_by_geo_id
+        where county_fips is not null
+        union all
+        select
+            database_id,
+            geo_id,
+            name,
+            slug,
+            state,
+            updated_at,
+            county_name,
+            county_fips,
+            city,
+            zips,
+            csa_name,
+            population,
+            density,
+            home_value,
+            unemployment_rate,
+            income_household_median
+        from non_g4110_string_deduped
+    ),
+
+    -- --------------------------------------------------------------
+    -- G4110 BRANCH: exact name+state match -> ILIKE fallback -> NULL
+    -- --------------------------------------------------------------
+    g4110_places as (
+        select
+            *,
+            lower(
+                trim(
+                    regexp_replace(
+                        regexp_replace(name, ' *\\([^)]*\\) *$', ''), ' +', ' '
+                    )
+                )
+            ) as normalized_name
+        from places
+        where mtfcc = 'G4110'
+    ),
+    g4110_exact as (
+        select
+            p.database_id,
+            p.geo_id,
+            p.name,
+            p.slug,
+            p.state,
+            p.updated_at,
+            c.county_name,
+            c.county_fips,
+            c.city,
+            c.zips,
+            c.csa_name,
+            c.population,
+            c.density,
+            c.home_value,
+            c.unemployment_rate,
+            c.income_household_median
+        from g4110_places as p
+        left join
+            deduped_cities_by_name as c
+            on p.state = c.state_id
+            and p.normalized_name = c.normalized_city
+    ),
+    g4110_exact_hit as (select * from g4110_exact where county_fips is not null),
+    g4110_exact_miss as (
+        select database_id, geo_id, name, slug, state, updated_at
+        from g4110_exact
+        where county_fips is null
+    ),
+    -- ILIKE fallback: same relation + order as the non-G4110 pass-2, so these rows
+    -- are bit-for-bit the current fallback result (no regression).
+    g4110_ilike as (
+        select
+            m.database_id,
+            m.geo_id,
+            m.name,
+            m.slug,
+            m.state,
+            m.updated_at,
+            c.county_name,
+            c.county_fips,
+            c.city,
+            c.zips,
+            c.csa_name,
+            c.population,
+            c.density,
+            c.home_value,
+            c.unemployment_rate,
+            c.income_household_median
+        from g4110_exact_miss as m
+        left join
+            {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }} as c
+            on m.name ilike concat('%', c.city, '%')
+            and m.state = c.state_id
+    ),
+    g4110_ilike_deduped as (
+        select * except (rn)
         from
             (
                 select
                     *,
                     row_number() over (
-                        partition by database_id order by population desc
+                        partition by database_id order by population desc nulls last
                     ) as rn
-                from string_matched_city_state
+                from g4110_ilike
             ) ranked
         where rn = 1
     ),
+    g4110_resolved as (
+        select
+            database_id,
+            geo_id,
+            name,
+            slug,
+            state,
+            updated_at,
+            county_name,
+            county_fips,
+            city,
+            zips,
+            csa_name,
+            population,
+            density,
+            home_value,
+            unemployment_rate,
+            income_household_median
+        from g4110_exact_hit
+        union all
+        select
+            database_id,
+            geo_id,
+            name,
+            slug,
+            state,
+            updated_at,
+            county_name,
+            county_fips,
+            city,
+            zips,
+            csa_name,
+            population,
+            density,
+            home_value,
+            unemployment_rate,
+            income_household_median
+        from g4110_ilike_deduped
+    ),
+
     final as (
         select *
-        from joined_by_geo_id
-        where county_fips is not null
+        from non_g4110_resolved
         union all
         select *
-        from deduped_matched_by_string
+        from g4110_resolved
     )
 
 select
