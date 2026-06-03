@@ -117,7 +117,12 @@ with
                 regexp_extract(district, '([0-9]+)') as int
             ) as district_identifier,
             nullif(seat_name, '') as seat_name,
-            cast(null as int) as br_race_id_int,
+            -- TS rows carry a BallotReady br_race_id (the source's own reference
+            -- to a BR race). Surface it so the matcher can block on br_race_id
+            -- and anchor TS to its BR race, recovering matches the office/geo
+            -- blocking rules miss. ~91% of distinct TS br_race_ids point to a
+            -- real BR race; the post-prediction filter still confirms the pair.
+            try_cast(br_race_id as int) as br_race_id_int,
             election_date,
             stage_type as election_stage,
             false as is_special,
@@ -140,8 +145,8 @@ with
     )
 
 select
-    source_name || '|' || source_id as unique_id,
-    source_id,
+    u.source_name || '|' || u.source_id as unique_id,
+    u.source_id,
     u.source_name,
     u.state,
     u.official_office_name,
@@ -164,5 +169,18 @@ select
     u.office_type,
     u.district_identifier,
     u.district_raw,
-    u.seat_name
+    u.seat_name,
+    -- Candidacy-overlap signal: the candidacy_stage ER cluster_ids of this
+    -- race's candidacies. Two election_stages sharing a cluster have a matched
+    -- candidacy in common (same race even when office names diverge). The
+    -- matcher blocks + bypasses office identity on this; empty for races with
+    -- no matched candidacies (e.g. upcoming elections), which fall back to the
+    -- office/geo path. BR + DDHQ only (TS already anchors via br_race_id).
+    coalesce(
+        cc.matched_candidacy_stage_clusters, array()
+    ) as matched_candidacy_stage_clusters
 from unioned as u
+left join
+    {{ ref("int__er_election_stage_candidacy_clusters") }} as cc
+    on u.source_name = cc.source_name
+    and u.source_id = cc.source_id
