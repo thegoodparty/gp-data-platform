@@ -1,4 +1,4 @@
-# gp-data-loader
+# people-api-loader
 
 Generic Databricks -> S3 -> RDS loading harness for GoodParty.org pipelines.
 
@@ -65,7 +65,7 @@ uv reads `.python-version` and downloads Python 3.12 on first sync — no
 separate `pyenv` install is needed.
 
 ```bash
-# Pull the ai-rules submodule (one-time after fresh clone)
+# Pull the ai-rules submodule from the monorepo root (one-time after fresh clone)
 git submodule update --init --recursive
 
 # Sync deps (creates .venv and downloads Python 3.12 if missing)
@@ -89,7 +89,7 @@ any step that touches AWS.
 - Test: `uv run pytest`
 - Pre-commit: `uv run pre-commit install` once, then commits run hooks automatically.
 
-CI runs all of the above on push / PR. See `.github/workflows/ci.yml`.
+CI runs all of the above on push / PR. See `.github/workflows/people-api-loader.yml`.
 
 ## Reference
 
@@ -100,4 +100,4 @@ CI runs all of the above on push / PR. See `.github/workflows/ci.yml`.
 
 ## License
 
-Released under the [Good Party Open Source License v1.0](LICENSE.md) — see `LICENSE.md` for the full terms.
+Released under the [Good Party Open Source License v1.0](../LICENSE.md) — see `../LICENSE.md` for the full terms.

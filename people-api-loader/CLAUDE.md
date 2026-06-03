@@ -1,18 +1,10 @@
 # CLAUDE.md
 
-Short, non-obvious context for `gp-data-loader`. The repo overview is in `README.md`; the full TDD is in `docs/PLAN_LOADER.md`.
+Short, non-obvious context for `people-api-loader`. The repo overview is in `README.md`; the full TDD is in `docs/PLAN_LOADER.md`.
 
 ## ai-rules submodule
 
-`ai-rules/` is a git submodule (`thegoodparty/ai-rules`). After a fresh clone:
-
-```bash
-git submodule update --init --recursive
-```
-
-Don't edit files under `ai-rules/` directly — changes belong in the submodule's upstream repo.
-
-When reviewing changed code in this repo (e.g. during `/simplify`, `/review`, or any code-review pass), consult the rule files under `ai-rules/` in addition to this file.
+`ai-rules/` is a git submodule at the repository root (`thegoodparty/ai-rules`). After a fresh clone, run `git submodule update --init --recursive` from the repo root. Don't edit files under `ai-rules/` directly — changes belong in the submodule's upstream repo. When reviewing changed code in this directory, consult the rule files at `../../ai-rules/` in addition to this file.
 
 ## Astral-only toolchain
 
