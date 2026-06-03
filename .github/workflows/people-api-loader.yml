@@ -1,0 +1,35 @@
+name: people-api-loader
+
+on:
+  pull_request:
+    paths:
+      - 'people-api-loader/**'
+      - '.github/workflows/people-api-loader.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'people-api-loader/**'
+      - '.github/workflows/people-api-loader.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: people-api-loader
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: people-api-loader/uv.lock
+      - name: Install
+        run: uv sync --extra dev
+      - name: Ruff check
+        run: uv run ruff check src tests
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+      - name: Type check (ty)
+        run: uv run ty check
+      - name: Pytest
+        run: uv run pytest -ra
