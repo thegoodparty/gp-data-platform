@@ -1,0 +1,54 @@
+[project]
+name = "people-api-loader"
+version = "0.1.0"
+description = "GoodParty.org data loader: generic Databricks -> S3 -> RDS pipeline harness, plus the people-API consumer as its first concrete pipeline."
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.35",
+    "psycopg[binary,pool]>=3.2",
+    "databricks-sdk>=0.40",
+    "pydantic>=2.8",
+    "typer>=0.15",
+    "structlog>=24.4",
+    "rich>=13.9",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-mock>=3.14",
+    "ruff>=0.7",
+    "ty==0.0.36",
+    "pre-commit>=4.0",
+]
+
+[project.scripts]
+loader = "loader.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loader"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# E501: line length handled by formatter
+# RUF002: en-dash in docstrings is intentional
+ignore = ["E501", "RUF002"]
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
