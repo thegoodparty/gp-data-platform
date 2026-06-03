@@ -1,15 +1,13 @@
 {% macro first_name_tokens(col) %}
-    -- Token array for Splink ArrayIntersectLevel first-name overlap. Splits the
-    -- first name on non-letter characters and keeps tokens >= 2 chars, so a
-    -- compound first name where one source carries an extra given name,
-    -- honorific, or parenthetical still intersects on the shared name (e.g.
-    -- "charles kirk" and "charles" overlap on "charles"; "dr. lori" and "lori"
-    -- overlap on "lori"). Single-char tokens are dropped to avoid spurious
-    -- initial-only overlaps; empty tokens from repeated separators are filtered
-    -- out by the same length guard.
-    --
-    -- Mirrors the first-name tokenization in the matcha repo's scripts/configs
-    -- comparisons -- keep both in sync when editing.
+    /*
+        Splits the first name into separate tokens (e.g. "james earl" ->
+        "['james', 'earl']") so compound first names have a chance to match
+        between sources if any of the first name tokens overlap.
+
+        Single-character tokens are dropped to avoid initial-only overlaps.
+
+        Mirrored in the matcha repo's first-name comparison; keep in sync.
+    */
     filter(
         split(regexp_replace(lower({{ col }}), '[^a-z ]', ' '), ' '),
         t -> length(t) >= 2

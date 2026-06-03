@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "entity_resolution"]) }}
-
 -- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ x GP API
 -- candidacy-stages. Unions candidacy-stage records from all sources into a
 -- standardized schema for Splink matching.
@@ -382,15 +380,12 @@ select
     source_name || '|' || source_id as unique_id,
     source_id,
     u.source_name,
-    u.first_name,
+    {{ first_name_normalized("u.first_name") }} as first_name,
     u.last_name,
     -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel
     coalesce(na.aliases, array(u.first_name)) as first_name_aliases,
-    -- Alpha-only normalized first name and >=2-char token array for Splink
-    -- first-name comparisons: collapses period/whitespace variants ("r.j." vs
-    -- "rj") and lets compound first names overlap on a shared given name
-    -- ("charles kirk" vs "charles").
-    {{ first_name_normalized("u.first_name") }} as first_name_normalized,
+    -- >=2-char first-name token array for Splink ArrayIntersectLevel: lets
+    -- compound first names overlap on a shared token ("charles kirk" vs "charles")
     {{ first_name_tokens("u.first_name") }} as first_name_tokens,
     u.state,
     party,
