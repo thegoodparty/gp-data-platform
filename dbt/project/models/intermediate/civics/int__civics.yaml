@@ -1942,6 +1942,20 @@ models:
         data_tests:
           - not_null
 
+      - name: first_name_normalized
+        description: >
+          Alpha-only normalized first name (non-letter characters stripped) for
+          Splink exact-match comparison. Collapses period/whitespace variants
+          such as "r.j." and "rj" to a single value. Consumed by the matcha
+          first-name comparison; keep first_name_normalized macro in sync.
+
+      - name: first_name_tokens
+        description: >
+          Array of >=2-char first-name tokens (split on non-letter characters)
+          for Splink ArrayIntersectLevel. Lets compound first names overlap on a
+          shared given name (e.g. "charles kirk" vs "charles"). Consumed by the
+          matcha first-name comparison; keep first_name_tokens macro in sync.
+
       - name: last_name
         description: Candidate last name (lowercased, trimmed)
         data_tests:
@@ -2072,6 +2086,20 @@ models:
           - dbt_utils.expression_is_true:
               arguments:
                 expression: "!= ''"
+
+      - name: first_name_normalized
+        description: >
+          Alpha-only normalized first name (non-letter characters stripped) for
+          Splink exact-match comparison. Collapses period/whitespace variants
+          such as "r.j." and "rj" to a single value. Consumed by the matcha
+          first-name comparison; keep first_name_normalized macro in sync.
+
+      - name: first_name_tokens
+        description: >
+          Array of >=2-char first-name tokens (split on non-letter characters)
+          for Splink ArrayIntersectLevel. Lets compound first names overlap on a
+          shared given name (e.g. "charles kirk" vs "charles"). Consumed by the
+          matcha first-name comparison; keep first_name_tokens macro in sync.
 
       - name: last_name
         description: Official last name (lowercased, trimmed; blank names filtered out)

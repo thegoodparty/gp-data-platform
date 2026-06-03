@@ -144,6 +144,12 @@ select
     u.last_name,
     -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel
     coalesce(na.aliases, array(u.first_name)) as first_name_aliases,
+    -- Alpha-only normalized first name and >=2-char token array for Splink
+    -- first-name comparisons: collapses period/whitespace variants ("r.j." vs
+    -- "rj") and lets compound first names overlap on a shared given name
+    -- ("charles kirk" vs "charles").
+    {{ first_name_normalized("u.first_name") }} as first_name_normalized,
+    {{ first_name_tokens("u.first_name") }} as first_name_tokens,
     u.state,
     party,
     candidate_office,
