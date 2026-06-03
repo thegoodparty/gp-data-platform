@@ -8,8 +8,7 @@
 }}
 
 with
-    -- uscities deduped to most-populous city per county.
-    -- UNCHANGED: used only by the non-G4110 substring path.
+    -- per-county dedup; used only by the non-G4110 substring path below
     deduped_cities as (
         select *
         from
@@ -24,10 +23,9 @@ with
         where rn = 1
     ),
 
-    -- NEW: uscities deduped to most-populous city per (state, normalized city_ascii).
-    -- Used only by the G4110 exact path. Per-(state,name) dedup => the G4110 join is
-    -- 1:1
-    -- (protects equal_rowcount) and resolves same-name collisions deterministically.
+    -- Per-(state, normalized name) dedup for the G4110 exact join: one row per key
+    -- keeps the join 1:1 (protects equal_rowcount) and resolves same-name collisions
+    -- to the most-populous match, deterministically.
     deduped_cities_by_name as (
         select * except (rn)
         from
@@ -64,7 +62,7 @@ with
         where rn = 1
     ),
 
-    -- place rows, carrying mtfcc internally (not emitted in final)
+    -- mtfcc is read only to split the branches below; it is not in the final output
     places as (
         select database_id, geo_id, name, slug, state, updated_at, mtfcc
         from {{ ref("stg_airbyte_source__ballotready_api_place") }}
@@ -73,10 +71,8 @@ with
         {% endif %}
     ),
 
-    -- --------------------------------------------------------------
-    -- NON-G4110 BRANCH: existing logic, filtered to non-G4110.
-    -- Unchanged by construction.
-    -- --------------------------------------------------------------
+    -- Non-G4110 branch: byte-identical to the pre-fix model (only the mtfcc filter
+    -- is added). Keep it that way so the same-snapshot non-G4110 diff stays 0.
     non_g4110_places as (select * from places where mtfcc <> 'G4110' or mtfcc is null),
     joined_by_geo_id as (
         select
@@ -183,9 +179,7 @@ with
         from non_g4110_string_deduped
     ),
 
-    -- --------------------------------------------------------------
-    -- G4110 BRANCH: exact name+state match -> ILIKE fallback -> NULL
-    -- --------------------------------------------------------------
+    -- G4110 resolution chain: exact name+state match -> ILIKE fallback -> NULL
     g4110_places as (
         select
             *,
