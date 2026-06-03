@@ -218,6 +218,11 @@ with
             c.unemployment_rate,
             c.income_household_median
         from g4110_places as p
+        -- NOTE: normalized_name (g4110_places) and normalized_city
+        -- (deduped_cities_by_name) MUST use the identical normalization
+        -- expression. If you edit one, edit BOTH, or this exact-match join
+        -- silently returns zero matches and every G4110 place falls through
+        -- to the ILIKE/NULL path.
         left join
             deduped_cities_by_name as c
             on p.state = c.state_id
