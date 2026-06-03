@@ -57,7 +57,14 @@ with
             max(official_office_name) as official_office_name,
             max(office_level) as office_level
         from {{ ref("candidacy") }}
-        where gp_election_id is not null
+        where
+            gp_election_id is not null
+            -- Exclude candidacies whose only provenance is the GP product DB
+            -- (gp_api). A singular gp_api source means the candidacy exists
+            -- only because someone signed up in our product, with no external
+            -- (BallotReady / TechSpeed / DDHQ / HubSpot) corroboration, so it
+            -- should not feed the election-api.
+            and not (size(source_systems) = 1 and source_systems[0] = 'gp_api')
         group by gp_election_id
     )
 
