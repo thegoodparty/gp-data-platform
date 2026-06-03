@@ -140,8 +140,10 @@ select
     u.source_name,
     {{ first_name_normalized("u.first_name") }} as first_name,
     u.last_name,
-    -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel
-    coalesce(na.aliases, array(u.first_name)) as first_name_aliases,
+    -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel.
+    coalesce(
+        na.aliases, array({{ first_name_normalized("u.first_name") }})
+    ) as first_name_aliases,
     -- >=2-char first-name token array for Splink ArrayIntersectLevel: lets
     -- compound first names overlap on a shared token ("charles kirk" vs "charles")
     {{ first_name_tokens("u.first_name") }} as first_name_tokens,
