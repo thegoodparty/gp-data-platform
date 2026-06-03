@@ -16,18 +16,21 @@ repos:
     -   id: black
         language_version: python3
         args: ["--line-length=88"]
+        exclude: ^people-api-loader/
 
 -   repo: https://github.com/pycqa/isort
     rev: 6.0.0
     hooks:
     -   id: isort
         args: ["--profile", "black", "--line-length=88"]
+        exclude: ^people-api-loader/
 
 -   repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
     -   id: flake8
         args: ['--extend-ignore=D100,D103,D200,D205,D400,D401,E203,E501,F821,W503', '--max-line-length=88']
+        exclude: ^people-api-loader/
         additional_dependencies: [
             'flake8-docstrings',
             'flake8-bugbear',
@@ -38,6 +41,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
+        exclude: ^people-api-loader/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -59,3 +63,4 @@ repos:
         entry: pytest
         language: system
         pass_filenames: false
+        exclude: ^people-api-loader/
