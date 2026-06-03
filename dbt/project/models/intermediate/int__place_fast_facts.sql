@@ -71,8 +71,10 @@ with
         {% endif %}
     ),
 
-    -- Non-G4110 branch: byte-identical to the pre-fix model (only the mtfcc filter
-    -- is added). Keep it that way so the same-snapshot non-G4110 diff stays 0.
+    -- Non-G4110 branch: byte-identical to the pre-fix model (only the mtfcc filter is
+    -- added) so the same-snapshot non-G4110 diff stays 0. A null mtfcc routes here too
+    -- (the legacy path); assert_place_mtfcc_present fails loudly if one appears, since
+    -- mtfcc is the only branch signal and is non-null for all places today.
     non_g4110_places as (select * from places where mtfcc <> 'G4110' or mtfcc is null),
     joined_by_geo_id as (
         select
