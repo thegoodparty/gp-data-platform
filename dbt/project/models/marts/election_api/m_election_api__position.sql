@@ -60,6 +60,41 @@ with
             {% endif %}
     ),
 
+    -- Overrides normally correct an existing LLM match row. Positions added to
+    -- BallotReady after the static match snapshot have no row to correct, so we
+    -- inject their match directly from the override seed. Override seed rows
+    -- always carry an explicit state / l2_district_type / l2_district_name.
+    override_injected_positions as (
+        select distinct
+            tbl_position.id as id,
+            tbl_override.br_database_id,
+            tbl_position.br_position_id as br_position_id,
+            tbl_position.name,
+            tbl_override.state,
+            tbl_position.level,
+            tbl_district.id as district_id,
+            tbl_position.created_at,
+            tbl_position.updated_at
+        from {{ ref("l2_br_match_overrides") }} as tbl_override
+        inner join
+            {{ ref("int__enhanced_position") }} as tbl_position
+            on tbl_override.br_database_id = tbl_position.br_database_id
+        inner join
+            {{ ref("m_election_api__district") }} as tbl_district
+            on tbl_override.state = tbl_district.state
+            and tbl_override.l2_district_type = tbl_district.l2_district_type
+            and tbl_override.l2_district_name = tbl_district.l2_district_name
+        where
+            tbl_override.br_database_id not in (
+                select br_database_id
+                from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+                where br_database_id is not null
+            )
+    -- No incremental filter: re-emit injected rows every run so seed edits
+    -- always propagate, mirroring how override rows bypass the updated_at
+    -- gate in matched_positions.
+    ),
+
     unmatched_br_positions as (
         select
             tbl_position.id as id,
@@ -78,6 +113,11 @@ with
                 from matched_positions
                 where br_database_id is not null
             )
+            and tbl_position.br_database_id not in (
+                select br_database_id
+                from override_injected_positions
+                where br_database_id is not null
+            )
             {% if is_incremental() %}
                 and tbl_position.updated_at > (select max(updated_at) from {{ this }})
             {% endif %}
@@ -94,6 +134,18 @@ select
     created_at,
     updated_at
 from matched_positions
+union all
+select
+    id,
+    br_database_id,
+    br_position_id,
+    name,
+    state,
+    level,
+    district_id,
+    created_at,
+    updated_at
+from override_injected_positions
 union all
 select
     id,

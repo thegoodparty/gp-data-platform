@@ -95,7 +95,9 @@ seeds:
       When the Gemini string matcher maps a BR position to the wrong L2
       district, add a row here with the correct l2_district_type and
       l2_district_name. These take precedence over the LLM match in the
-      election-api position mart.
+      election-api position mart. A row is also honored when its BR position has
+      no LLM match row at all (e.g. positions added after the static match
+      snapshot): the position mart injects the match directly from this seed.
     columns:
       - name: br_database_id
         description: BallotReady position database ID to override
