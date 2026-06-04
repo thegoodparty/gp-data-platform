@@ -330,7 +330,7 @@ The Win onboarding flow was rebuilt in a clean same-night switch ~**2026-05-07 0
 |---|---|---|---|
 | Entry / top | `Onboarding - Registration Completed` (died ~2026-04-20) | `Onboarding - Welcome Completed` (post only) | **product-DB account creation** (`users_win_candidacy.user_created_at`) — every Amplitude entry event changed |
 | Completion / bottom | `onboarding_complete`, `Onboarding - Complete Step: Click Go to Dashboard` (died at cutover) | per-step `*Completed` events (pledge is the final step) | **`Onboarding - Candidate Pledge Completed`** (final step, both eras) |
-| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | `Onboarding - Candidate Affiliation Completed` |
+| Party gate | party step + `Invalid Party` block (block died at cutover) | `Onboarding - Party Selection Completed` | No single version-agnostic event — use old-flow `Invalid Party` (pre-cutover) and new-flow `Onboarding - Party Selection Completed` (post-cutover) separately. `Onboarding - Candidate Affiliation Completed` has not been verified in-data (DATA-1947). |
 
 **`onboarding_complete` / `has_completed_onboarding_flow` (and the lib's `onboarded` flag) are NEW-FLOW-BLIND** — FALSE for every post-cutover user — so using them across the cutover fakes a completion collapse to zero (see §8). The party gate is *not* gate-equivalent across the cutover (the `Invalid Party` block was removed), so for a pre/post completion comparison condition on reaching the party step.
 
