@@ -22,6 +22,11 @@ from typing import Callable, Mapping
 
 import pandas as pd
 
+# Fully-qualified prod table paths. These are intentionally hardcoded to the
+# ``goodparty_data_catalog`` prod schemas (``dbt_staging`` for raw staging, ``dbt``
+# for intermediates, ``mart_analytics`` for marts) rather than resolved via dbt
+# ``ref()``: this module runs outside dbt (notebooks / ad-hoc), where ``ref()`` can
+# resolve to stale dev artifacts (runbook §7). Repoint these for a dev/test catalog.
 EVENTS_TABLE = (
     "goodparty_data_catalog.dbt_staging.stg_airbyte_source__amplitude_api_events"
 )
