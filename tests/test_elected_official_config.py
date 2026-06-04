@@ -73,3 +73,18 @@ def test_new_columns_in_additional_columns_to_retain():
             "Downstream consumers fetch ICP from int__civics_elected_official_ballotready "
             "via br_office_holder_id join."
         )
+
+
+def test_first_name_comparison_has_token_intersect_level():
+    """first_name comparison mirrors candidacy: includes an ArrayIntersectLevel
+    over the precomputed first_name_tokens column so compound names overlap on a
+    shared >=2-char token (normalization/tokenization happens upstream in dbt)."""
+    fn = next(
+        c
+        for c in ELECTED_OFFICIAL_CONFIG.comparisons
+        if c.get_comparison("duckdb").output_column_name == "first_name"
+    )
+    assert any(
+        "first_name_tokens" in level.get("sql_condition", "")
+        for level in fn.get_comparison("duckdb").as_dict()["comparison_levels"]
+    ), "Expected an ArrayIntersectLevel over first_name_tokens"

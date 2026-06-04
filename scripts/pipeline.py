@@ -31,7 +31,11 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
     # so Splink's ArrayIntersectLevel can operate on them. Databricks emits
     # arrays as native lists, but cli._normalize_to_strings re-serializes them
     # to JSON to keep the DataFrame all-string.
-    for col in ("first_name_aliases", "official_office_name_tokens"):
+    for col in (
+        "first_name_aliases",
+        "first_name_tokens",
+        "official_office_name_tokens",
+    ):
         if col in df.columns:
             df[col] = df[col].apply(
                 lambda v: json.loads(v) if isinstance(v, str) else None

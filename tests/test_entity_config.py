@@ -55,10 +55,10 @@ def test_candidacy_config_has_election_date():
 
 
 def test_candidacy_config_blocking_rules():
-    """Candidacy config has 6 blocking rules including br_race_id."""
+    """Candidacy config has 7 blocking rules including br_race_id."""
     from scripts.configs.candidacy import CANDIDACY_CONFIG
 
-    assert len(CANDIDACY_CONFIG.blocking_rules_for_prediction) == 6
+    assert len(CANDIDACY_CONFIG.blocking_rules_for_prediction) == 7
 
 
 def test_elected_official_config_comparisons():

@@ -33,6 +33,8 @@ def test_is_databricks_fqn_with_path_separator():
 
 
 def test_df_to_databricks_schema():
+    # matcha standardizes on string-typed outputs: every column is STRING
+    # regardless of pandas dtype. Downstream dbt staging models cast as needed.
     df = pd.DataFrame(
         {
             "name": ["alice"],
@@ -43,9 +45,9 @@ def test_df_to_databricks_schema():
     )
     schema = _df_to_databricks_schema(df)
     assert "`name` STRING" in schema
-    assert "`age` BIGINT" in schema
-    assert "`score` DOUBLE" in schema
-    assert "`active` BOOLEAN" in schema
+    assert "`age` STRING" in schema
+    assert "`score` STRING" in schema
+    assert "`active` STRING" in schema
 
 
 def test_parquet_schema_coerces_null_columns_to_string(tmp_path):

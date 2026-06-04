@@ -27,6 +27,8 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
                     tf_adjustment_column="first_name",
                 ),
                 cll.ArrayIntersectLevel("first_name_aliases", min_intersection=1),
+                # Compound first names overlap on a shared >=2-char token
+                cll.ArrayIntersectLevel("first_name_tokens", min_intersection=1),
                 cll.JaroWinklerLevel("first_name", distance_threshold=0.92),
                 cll.ElseLevel(),
             ],

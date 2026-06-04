@@ -36,3 +36,22 @@ def test_office_level_not_in_additional_columns_to_retain():
 def test_gamma_office_level_in_audit_gamma_columns():
     """gamma_office_level is exposed in the audit gamma columns list."""
     assert "gamma_office_level" in CANDIDACY_CONFIG.audit_gamma_columns
+
+
+def _first_name_comparison_sql():
+    fn = next(
+        c
+        for c in CANDIDACY_CONFIG.comparisons
+        if c.get_comparison("duckdb").output_column_name == "first_name"
+    )
+    return fn.get_comparison("duckdb").as_dict()
+
+
+def test_first_name_comparison_has_token_intersect_level():
+    """first_name comparison includes an ArrayIntersectLevel over the precomputed
+    first_name_tokens column."""
+    cmp = _first_name_comparison_sql()
+    assert any(
+        "first_name_tokens" in level.get("sql_condition", "")
+        for level in cmp["comparison_levels"]
+    ), "Expected an ArrayIntersectLevel over first_name_tokens"
