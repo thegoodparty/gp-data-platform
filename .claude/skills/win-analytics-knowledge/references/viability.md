@@ -27,7 +27,7 @@ goodparty_data_catalog.model_predictions.ViabilityWithOpponentData
 NOT a BR-sourced field. NOT a lead-routing scorer. The model wraps `predict_proba` and surfaces two columns:
 
 - **`viability_rating_2_0`** — `round(5 * probability_of_winning, 2)`. Range 0.0 to 5.0.
-- **`score_viability_automated`** — 5-band categorical label:
+- **`score_viability_automated`** — 5-band categorical label. The bands below mirror the model code (`int__techspeed_viability_scoring.py`, the `score_viability_automated` CASE); that code is the source of truth if the thresholds ever change:
 
 | Band | Threshold |
 |---|---|

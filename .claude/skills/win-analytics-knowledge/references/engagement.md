@@ -57,7 +57,7 @@ Raw "any Win-product Amplitude evidence" (≥1 candidate-attributed event) reads
 |---|---|---|
 | Staging (raw) | `stg_airbyte_source__amplitude_api_events` | **Full universe.** ~300+ distinct `event_type` values in any reasonable window. |
 | Staging (catalog) | `stg_airbyte_source__amplitude_api_events_list` | Amplitude's own event catalog (name, totals, hidden flags). |
-| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) now exists in prod `dbt` (coverage week_start_date 2025-06-23+); verify the live catalog before use. | **Only 2 event types**: `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. These are the *recurrent* activities; one-off lifecycle milestones live in `int__amplitude_user_milestones`. |
+| Intermediate (Win) | `int__amplitude_win_activity` (monthly grain). A weekly variant (`_weekly`) now exists in prod `dbt` (coverage week_start_date 2025-06-23+); verify the live catalog before use. | **Only 2 event types** (the recurrent-activity allowlist, authoritative in the `amplitude_event_is_recurrent` macro): `Voter Outreach - Campaign Completed`, `Dashboard - Candidate Dashboard Viewed`. One-off lifecycle milestones live in `int__amplitude_user_milestones`. |
 | Intermediate (lifecycle) | `int__amplitude_user_milestones` | ~12 lifecycle milestones (registration, dashboard, onboarding complete, campaign sent, pro upgrade, Serve onboarding). One row per user. |
 | Intermediate (Serve) | `int__amplitude_serve_activity` | Filters `Viewed` event to `event_properties:path = '/dashboard/polls'` + `user_properties:Serve Activated = true`. |
 | Mart passthrough | `mart_analytics.amplitude_events` | Thin alias of the staging events for Sigma BI consumption. No transformation. |
@@ -70,34 +70,11 @@ The dbt intermediates aggregate only **~4% of distinct event types** (12 of ~300
 
 ### Event family taxonomy
 
-The classification is sourced from the dbt model `int__amplitude_event_taxonomy` (`is_win` for Win membership, `first_seen_date` for drift), consumed by both the dbt models and `analytics/lib/win_analysis.py`, so there is no separate hand-maintained allowlist to keep in sync. The patterns themselves live in the `amplitude_event_family` macro (`dbt/project/macros/amplitude_event_taxonomy.sql`). The **Classification** column below is a human-readable summary: `core` / `partial` / `drift-excluded` are not separate code paths — they are just where a family's `first_seen_date` falls relative to the analysis's `drift_cutoff` (the helper default is `2026-01-01`, which keeps the 2025 product families and excludes the 2026 drift families). `cross-product` and `noise` are the non-Win families (`is_win = false`).
+Membership is **not** maintained here. `is_win` (Win membership) and `first_seen_date` (drift) live in the dbt model `int__amplitude_event_taxonomy`; the LIKE/IN patterns live in the `amplitude_event_family` macro (`dbt/project/macros/amplitude_event_taxonomy.sql`). Read those for the authoritative set — do not infer membership from the index below. This list is a human-readable index of what families exist and how to read them; it deliberately omits the patterns (the macro owns them) and per-family first-seen dates (the model's `first_seen_date` owns them, governed by the analysis `drift_cutoff`, default `2026-01-01`).
 
-| Family | Classification | Pattern (LIKE / IN) | Example events |
-|---|---|---|---|
-| `win_onboarding` | core | `'Onboarding -%'` or `'Onboarding:%'` or `IN ('onboarding_complete', 'Invalid Party', 'Sign Up Clicked')` | `Onboarding - Candidate Office Searched`, `Onboarding - Registration Completed` |
-| `win_dashboard` | core (excl. `Dashboard - Campaign Plan Viewed`, first-seen 2026-04-09, carved out of `_CORE_PREDICATE`) | `'Dashboard -%'` | `Dashboard - Candidate Dashboard Viewed`, `Dashboard - Campaign Plan Viewed` |
-| `win_voter_outreach` | core | `'Voter Outreach -%'` | `Voter Outreach - Campaign Completed` |
-| `win_outreach_planning` | core | `'Outreach -%'` | `Outreach - View Accessed`, `Outreach - Click Create` |
-| `win_outreach_scheduling` | core | `'Schedule Text Campaign%'` or `'schedule_campaign%'` | `Schedule Text Campaign: Exit`, `Schedule Text Campaign - Audience: ...` |
-| `win_content_builder` | core | `'Content Builder%'` or `'ai_content_%'` or `'campaign_assistant%'` | `Content Builder: Generation Started`, `ai_content_generation_start` |
-| `win_voter_data` | core | `'Voter Data -%'` or `'Voter Data:%'` or `'Download Voter%'` or `'Custom Voter%'` | `Voter Data: Click Detail View`, `Download Voter File attempt` |
-| `win_candidate_profile` | core | `'Profile -%'` | `Profile - Running Against: Click Save` |
-| `win_pro_upgrade` | core | `'Pro Upgrade -%'` or `'Pro Upgrade:%'` or `= 'pro_upgrade_complete'` | `Pro Upgrade - Modal: Modal Shown`, `pro_upgrade_complete` |
-| `win_p2p_upgrade` | core | `'P2P Upgrade -%'` | `P2P Upgrade - Modal: Modal Shown` |
-| `win_candidate_website` | core | `'Candidate Website%'` | `Candidate Website - Started`, `Candidate Website - Published` |
-| `win_candidacy_self_report` | partial | `'Candidacy -%'` | `Candidacy - Did You Win Modal Completed` (see [outcomes.md](outcomes.md) for outcomes use) |
-| `win_compliance_or_planning` | core | `'Campaign Verify%'` or `'Campaign Plan%'` or `'10 DLC Compliance%'` | `Campaign Plan - Weekly Tasks Digest` |
-| `win_ai_assistant` | core | `'AI Assistant%'` or `= 'question_complete'` | `AI Assistant: Ask a question` |
-| `win_briefings` | drift-excluded (first-seen 2026-04-10, after the cutoff) | `'Briefings -%'` | New since 2026-04. |
-| `win_contacts` | partial | `'Contacts -%'` | Contacts CRM features. |
-| `win_resources` | core | `'Resources -%'` | Resource library clicks. |
-| `serve` | cross-product | `'Serve Onboarding%'` or `'Poll - %'` or `'Polls -%'` or `'Polls:%'` | Serve product (covered in the Serve runbook). |
-| `auth_or_settings` | cross-product | `'Sign In:%'`, `'Sign Up:%'`, `'Set Password:%'`, `'Account -%'`, `'Settings -%'` | Cross-product. |
-| `navigation` | cross-product | `'Navigation -%'` or `'Navigation Top -%'` | Cross-product. |
-| `viewed_generic` | noise | `= 'Viewed'` | Generic event partially used by `int__amplitude_serve_activity` via property filter. |
-| `amplitude_autotrack` | noise | `'[Amplitude]%'` | Anonymous. Skip for candidate-attributed analyses. |
-| `experiment_assignment` | noise (usable covariate) | `'[Experiment]%'` or `= 'Experiment Viewed'` | A/B test exposure. Usable as a stratification covariate. |
-| `session_or_browser` | noise | `IN ('Scroll Depth', 'session_start', 'session_end', 'page_view', 'Page Viewed', 'Page', 'usersnap_submission')` or `'Segment Consent%'` | Mostly anonymous. Skip. |
+**Win families** (`is_win = true`, prefixed `win_`): `win_onboarding`, `win_dashboard`, `win_voter_outreach`, `win_outreach_planning`, `win_outreach_scheduling`, `win_content_builder`, `win_voter_data`, `win_candidate_profile`, `win_pro_upgrade`, `win_p2p_upgrade`, `win_candidate_website`, `win_candidacy_self_report` (the Did-You-Win modal — see [outcomes.md](outcomes.md) for outcomes use), `win_compliance_or_planning`, `win_ai_assistant`, `win_briefings`, `win_contacts`, `win_resources`. Families first seen after the cutoff (e.g. `win_briefings`, and `Dashboard - Campaign Plan Viewed` within `win_dashboard`) fall out as drift unless you widen `drift_cutoff`.
+
+**Non-Win families** (`is_win = false`): `serve` (Serve product, covered in the Serve runbook), `auth_or_settings`, `navigation` (cross-product); `viewed_generic`, `amplitude_autotrack`, `session_or_browser` (noise — skip for candidate-attributed analysis); `experiment_assignment` (noise, but usable as an A/B-exposure stratification covariate). Anything unmatched falls through to `other`.
 
 ### Instrumentation start date
 
