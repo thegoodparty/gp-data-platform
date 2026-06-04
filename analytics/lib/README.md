@@ -69,6 +69,13 @@ df = wa.build_win_working_set(run_query, cohorts)
   different cutoff.
 - Reads `goodparty_data_catalog.dbt.int__amplitude_event_taxonomy` (prod). That table
   must exist (a prod dbt run of the model); it does as of DATA-1945.
+- `build_win_working_set` is **election-anchored with a backward window** (it joins
+  events strictly *before* each user's anchor date). It does NOT fit signup-anchored,
+  forward-window analyses (onboarding completion, time-to-activation); for those reuse
+  only `win_event_predicate` + `wilson` and build the cohort logic notebook-local.
+- The `onboarded` funnel flag keys on `event_type = 'onboarding_complete'`, which is
+  FALSE for users in the new onboarding flow (post 2026-05-07). For cross-cutover
+  onboarding analyses use `Onboarding - Candidate Pledge Completed` instead (runbook §4).
 
 ## Single source of truth: the dbt event-taxonomy model
 

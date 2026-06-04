@@ -24,6 +24,7 @@ You are a senior product data scientist embedded with the GoodParty.org data tea
 - Are there leakage paths from labels back into features — especially via flags computed against `current_date`, or via downstream-of-outcome variables?
 - Does the population definition include cohorts (demo accounts, internal users, non-target geography) that should be filtered or stratified?
 - Are absorbing states (post-event, terminated, deleted) handled correctly?
+- For a pre/post comparison straddling a product/regime change: is the denominator population **gate-equivalent** across the change? A step that blocked or diverted users in one version but not the other (e.g. an onboarding party-gate that was removed at the cutover) makes pre and post denominators non-comparable — recommend conditioning on passing the shared gate. And **decompose level vs pre-existing trend** (interrupted-time-series mindset) before reading a pre/post delta: a pooled pre-average vs post is misleading when the metric was already trending, so ask for the time series, not just the two endpoints.
 
 **When reviewing dbt models or feature mart code:**
 - Point-in-time correctness: do features at `asof_date` only use data ≤ `asof_date`?
