@@ -72,16 +72,14 @@ analytics/projects/*/requirements.txt
 
 # Ad-hoc analysis notebooks + briefs are personal working experiments by
 # default. Promote a specific analysis with `git add -f` if it should be
-# team-shared. See win.md §7 "Lightweight analysis pattern" for the convention.
+# team-shared. See the win-analytics-process skill's references/methodology.md
+# ("Lightweight analysis pattern") for the convention.
 analytics/ad_hoc/
 
 # Calibration logs are personal per-session working documents — the durable
-# lessons land in the runbook + agent edits the log drives, not in the log
-# itself. See win.md §9 "Calibration logs" for the convention.
+# lessons land in the skills + agent edits the log drives, not in the log
+# itself. See the win-analytics-process skill's references/calibration.md for the convention.
 analytics/runbook/CALIBRATION_*.md
-
-# Per-contributor review sub-agent (PM agent kept local; project framing supplied at invocation)
-.claude/agents/product-manager.md
 
 # Entity resolution local data and results
 entity_resolution/data/

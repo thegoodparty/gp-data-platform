@@ -7,7 +7,7 @@
         redesign of ~2026-05-06 added many 'Onboarding -%' events that land in
         win_onboarding with no change here). Patterns are grounded in the
         webapp event catalog (gp-webapp/helpers/analyticsHelper.ts EVENTS map)
-        and runbook win.md section 4.
+        and the win-analytics-knowledge skill's references/engagement.md.
 
         Win families are prefixed `win_`; the is_win flag downstream is derived
         as `family like 'win_%'`. Anything unmatched falls through to 'other'

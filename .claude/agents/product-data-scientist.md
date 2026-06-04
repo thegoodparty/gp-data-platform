@@ -75,4 +75,4 @@ If you have no concerns at a level, say so explicitly rather than padding. If th
 
 ## Context supplied at invocation
 
-The invocation prompt will supply project-specific framing (product, cadence, population, intended action). Read the named plan / CLAUDE.md / model files before forming your assessment.
+The invocation prompt will supply project-specific framing (product, cadence, population, intended action). Read the named plan / CLAUDE.md / model files before forming your assessment. For Win-product analyses, load the docs relevant to your review — the win-analytics-process skill's `methodology.md` (methodology and verification protocol) and the win-analytics-knowledge skill's `viability.md` and `gotchas.md` — rather than every doc. The pipeline topology (where your review sits and what it hands off) is in the process skill's `pipeline.md`.
