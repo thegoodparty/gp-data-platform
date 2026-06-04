@@ -60,7 +60,7 @@ See `analytics/projects/win_outcomes_scout/INVENTORY.md` Source 3.5 for the veri
 
 A parallel "did the product work?" measure that lives next to electoral outcomes rather than inside them. The governed KR2 definition is in [canonical_metrics.md](canonical_metrics.md): **40% of ICP activated users say they would be very disappointed if they could no longer use Win**. Reading as of 2026-05-28: 52% Option 1 (Very disappointed) on n=50 ICP respondents — exceeds target, with small-sample caveat.
 
-**Source table:** `goodparty_data_catalog.dbt_staging.stg_airbyte_source__hubspot_api_feedback_submissions`.
+**Source table:** `goodparty_data_catalog.dbt.stg_airbyte_source__hubspot_api_feedback_submissions`.
 
 Filter by `survey_name`:
 - `LIKE 'Win PMF%'` — Sean Ellis 4-option survey (started 2026-04-14; n=78 as of 2026-05-28).
@@ -80,7 +80,7 @@ Filter by `survey_name`:
 ```sql
 WITH pmf AS (
   SELECT submission_id, CAST(hs_contact_id AS BIGINT) AS hs_contact_id, pmf_response
-  FROM goodparty_data_catalog.dbt_staging.stg_airbyte_source__hubspot_api_feedback_submissions
+  FROM goodparty_data_catalog.dbt.stg_airbyte_source__hubspot_api_feedback_submissions
   WHERE survey_name LIKE 'Win PMF%' AND pmf_response IS NOT NULL
 ),
 attributed AS (

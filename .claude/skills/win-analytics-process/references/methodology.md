@@ -95,7 +95,7 @@ For inspection / scoping queries, use `dbt show --inline` (from `dbt/project/`) 
 dbt show --inline "SELECT ... FROM goodparty_data_catalog.<schema>.<table> WHERE ..." --limit 50
 ```
 
-Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve to stale dev artifacts. Prod schemas: `dbt_staging` (staging), `dbt` (most intermediates), `mart_analytics` / `mart_civics` (marts), `model_predictions` (MLflow outputs).
+Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve to stale dev artifacts. Prod schemas: `dbt` (staging + intermediates; the legacy `dbt_staging` schema is being retired, everything is consolidating into `dbt`), `mart_analytics` / `mart_civics` (marts), `model_predictions` (MLflow outputs).
 
 For larger query results that exceed `dbt show` truncation, use the `databricks-sql-connector` Python client via the global env vars (see user-level CLAUDE.md). Pattern in `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
 
