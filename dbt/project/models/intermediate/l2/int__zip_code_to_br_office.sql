@@ -87,6 +87,82 @@ with
                 order by br_race_database_id desc
             )
             = 1
+    ),
+
+    -- Mirror of zip_code_to_br_office for positions that have no LLM match row
+    -- (added to BallotReady after the static match snapshot). The match-driven
+    -- path above keys the zip->office linkage off tbl_match, so these positions
+    -- get zero zip rows and are invisible to the officepicker even after
+    -- m_election_api__position picks up their district via the override seed.
+    -- Here we build the same linkage from l2_br_match_overrides instead, keyed
+    -- on the override's (state, l2_district_type, l2_district_name). Scoped to
+    -- overrides absent from the snapshot, so existing overrides (which all have
+    -- a match row) are untouched and the unique key cannot collide. Reads the
+    -- unfiltered zip->district source so a newly added override backfills its
+    -- rows on the next run without a full refresh; the inner join to the tiny
+    -- override set keeps the scan cheap.
+    override_zip_to_br_office as (
+        select
+            tbl_zip.zip_code,
+            tbl_zip.state_postal_code,
+            tbl_zip.district_type,
+            tbl_zip.district_name,
+            tbl_zip.voters_in_zip_district,
+            tbl_zip.voters_in_zip,
+            tbl_zip.loaded_at,
+            tbl_override.br_position_name as name,
+            tbl_override.br_database_id,
+            tbl_br_race.id as br_race_id,
+            tbl_br_race.database_id as br_race_database_id,
+            tbl_br_position.id as br_position_id,
+            tbl_override.l2_district_name,
+            tbl_override.l2_district_type,
+            true as is_matched,
+            'l2_br_match_overrides seed (no LLM match row)' as llm_reason,
+            null as confidence,
+            null as embeddings,
+            null as top_embedding_score
+        from {{ ref("int__zip_code_to_l2_district") }} as tbl_zip
+        inner join
+            {{ ref("int__general_states_zip_code_range") }} as zip_range
+            on tbl_zip.state_postal_code = zip_range.state_postal_code
+            and tbl_zip.zip_code >= zip_range.zip_code_range[0]
+            and tbl_zip.zip_code <= zip_range.zip_code_range[1]
+        inner join
+            {{ ref("l2_br_match_overrides") }} as tbl_override
+            on lower(tbl_zip.district_name) = lower(tbl_override.l2_district_name)
+            and lower(tbl_zip.district_type) = lower(tbl_override.l2_district_type)
+            and lower(tbl_zip.state_postal_code) = lower(tbl_override.state)
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_position") }} as tbl_br_position
+            on tbl_override.br_database_id = tbl_br_position.database_id
+        left join
+            {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_br_race
+            on tbl_br_position.database_id = tbl_br_race.position.databaseid
+        where
+            tbl_override.br_database_id not in (
+                select br_database_id
+                from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
+                where br_database_id is not null
+            )
+        qualify
+            row_number() over (
+                partition by
+                    tbl_zip.zip_code,
+                    tbl_zip.district_type,
+                    tbl_zip.district_name,
+                    tbl_override.br_database_id
+                order by tbl_br_race.database_id desc
+            )
+            = 1
+    ),
+
+    combined as (
+        select *
+        from zip_code_to_br_office
+        union all
+        select *
+        from override_zip_to_br_office
     )
 select
     zip_code,
@@ -108,7 +184,7 @@ select
     confidence,
     embeddings,
     top_embedding_score
-from zip_code_to_br_office
+from combined
 -- Keep only rows with a live BR position. This drops both LLM-unmatched rows
 -- (br_database_id null) and orphan rows whose br_database_id no longer exists
 -- in stg_airbyte_source__ballotready_api_position. Unmatched rows would
