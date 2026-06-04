@@ -89,18 +89,12 @@ with
             = 1
     ),
 
-    -- Mirror of zip_code_to_br_office for positions that have no LLM match row
-    -- (added to BallotReady after the static match snapshot). The match-driven
-    -- path above keys the zip->office linkage off tbl_match, so these positions
-    -- get zero zip rows and are invisible to the officepicker even after
-    -- m_election_api__position picks up their district via the override seed.
-    -- Here we build the same linkage from l2_br_match_overrides instead, keyed
-    -- on the override's (state, l2_district_type, l2_district_name). Scoped to
-    -- overrides absent from the snapshot, so existing overrides (which all have
-    -- a match row) are untouched and the unique key cannot collide. Reads the
-    -- unfiltered zip->district source so a newly added override backfills its
-    -- rows on the next run without a full refresh; the inner join to the tiny
-    -- override set keeps the scan cheap.
+    -- Same zip->office linkage as above, but built from the override seed for
+    -- positions absent from the LLM snapshot (the match-driven path keys off
+    -- the snapshot, so they would otherwise get zero zip rows). Scoped to
+    -- snapshot-absent overrides, so existing overrides are untouched and the
+    -- unique key cannot collide. Reads the unfiltered zip->district source so a
+    -- new override backfills without a full refresh.
     override_zip_to_br_office as (
         select
             tbl_zip.zip_code,

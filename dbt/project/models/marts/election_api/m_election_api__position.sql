@@ -60,10 +60,8 @@ with
             {% endif %}
     ),
 
-    -- Overrides normally correct an existing LLM match row. Positions added to
-    -- BallotReady after the static match snapshot have no row to correct, so we
-    -- inject their match directly from the override seed. Override seed rows
-    -- always carry an explicit state / l2_district_type / l2_district_name.
+    -- Inject a match from the override seed for positions absent from the LLM
+    -- snapshot (the left join above can only correct rows that exist there).
     override_injected_positions as (
         select distinct
             tbl_position.id as id,
@@ -90,9 +88,7 @@ with
                 from {{ ref("stg_model_predictions__llm_l2_br_match_20260126") }}
                 where br_database_id is not null
             )
-    -- No incremental filter: re-emit injected rows every run so seed edits
-    -- always propagate, mirroring how override rows bypass the updated_at
-    -- gate in matched_positions.
+    -- No incremental filter: re-emit every run so seed edits always propagate.
     ),
 
     unmatched_br_positions as (
