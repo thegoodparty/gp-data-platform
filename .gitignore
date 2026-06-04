@@ -70,10 +70,6 @@ analytics/projects/*/notebooks/**
 # Scout project dependency pins are local working artifacts too.
 analytics/projects/*/requirements.txt
 
-# Local-only shared analytics scripts (per-contributor Databricks sync/pull
-# helpers that hardcode user-specific Workspace paths).
-analytics/scripts/
-
 # Ad-hoc analysis notebooks + briefs are personal working experiments by
 # default. Promote a specific analysis with `git add -f` if it should be
 # team-shared. See win.md §7 "Lightweight analysis pattern" for the convention.
