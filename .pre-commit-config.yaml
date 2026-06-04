@@ -60,7 +60,9 @@ repos:
     hooks:
     -   id: pytest
         name: Run pytest
-        entry: pytest
+        # Scope to the repo-level tests/ dir (matches python_tests.yml). Bare
+        # `pytest` collects the whole tree, including people-api-loader/, which
+        # has its own uv env and isn't importable in this environment.
+        entry: pytest tests
         language: system
         pass_filenames: false
-        exclude: ^people-api-loader/

@@ -6,6 +6,7 @@ Stub: scaffolding only. Per-step implementation tracked under ClickUp DATA-1908.
 from __future__ import annotations
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.manifests import UnloadManifest
 
 
 def run(
@@ -14,5 +15,5 @@ def run(
     *,
     state_filter: str | None = None,
     skip_submit: bool = False,
-) -> None:
+) -> UnloadManifest:
     raise NotImplementedError("loader.people_api.steps.unload is a stub; implement per ClickUp DATA-1908.")
