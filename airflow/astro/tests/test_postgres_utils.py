@@ -4,15 +4,10 @@ These tests mock all external dependencies (airflow, sshtunnel) so they
 can run without the Astro runtime installed.
 """
 
-import os
 import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-# Add the astro directory to sys.path so `include.custom_functions` resolves
-# when pytest runs from the repo root (outside the Astro runtime).
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir))
 
 # Stub external modules so the test file can be collected by pytest
 # in any environment (the Astro runtime, the dbt poetry env, or bare).
@@ -34,7 +29,7 @@ _STUBS = (
 for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
-from include.custom_functions.postgres_utils import (  # noqa: E402
+from include.custom_functions.postgres_utils import (
     get_postgres_via_ssh,
     upsert_rows,
 )

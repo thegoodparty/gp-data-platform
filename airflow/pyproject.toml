@@ -28,3 +28,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 package-mode = false
+
+[tool.pytest.ini_options]
+pythonpath = ["astro"]
+testpaths = ["astro/tests"]

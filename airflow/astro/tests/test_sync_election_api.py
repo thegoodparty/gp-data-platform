@@ -6,14 +6,9 @@ explicitly. Mocks airflow/databricks/etc. so the file collects without the
 Astro runtime installed.
 """
 
-import os
 import sys
 from datetime import datetime
 from unittest.mock import MagicMock
-
-# Add the astro directory to sys.path so `dags.*` resolves when pytest runs
-# from the repo root (outside the Astro runtime).
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir))
 
 # Stub external modules so the DAG file can be imported in any environment.
 _STUBS = (
@@ -34,7 +29,7 @@ _STUBS = (
 for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
-from dags.sync_election_api import (  # noqa: E402
+from dags.sync_election_api import (
     DTI_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
