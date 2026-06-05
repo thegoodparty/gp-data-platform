@@ -29,7 +29,7 @@ _STUBS = (
 for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
-from dags.sync_election_api import (
+from dags.sync_election_api import (  # noqa: E402
     DTI_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,

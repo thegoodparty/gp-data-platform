@@ -29,7 +29,7 @@ _STUBS = (
 for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
-from include.custom_functions.postgres_utils import (
+from include.custom_functions.postgres_utils import (  # noqa: E402
     get_postgres_via_ssh,
     upsert_rows,
 )
