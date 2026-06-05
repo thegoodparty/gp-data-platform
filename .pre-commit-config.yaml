@@ -1,3 +1,7 @@
+# Install both hook types so `pre-commit install` wires up the pre-push test
+# check below in addition to the per-commit lint/format hooks.
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -35,3 +39,16 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
+
+-   repo: local
+    hooks:
+    -   id: pytest
+        name: Run pytest (local pre-push check)
+        # Local-only quick check before pushing. Scoped to the repo-level tests/
+        # dir (matches python_tests.yml). The pre-push stage keeps it OUT of the
+        # CI `pre-commit run --all-files` job (default pre-commit stage), so the
+        # tests are not duplicated in CI; CI test coverage is python_tests.yml.
+        entry: pytest tests
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
