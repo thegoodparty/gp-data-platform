@@ -62,55 +62,63 @@ with
         where rn = 1
     ),
 
+    -- Canonical 2-digit FIPS prefix per state = the prefix shared by the MOST
+    -- uscities rows.
+    -- Strays are a tiny minority, so mode-by-count picks the real state prefix.
+    -- Robust where
+    -- simpler aggregates fail: MAX(case when population is not null ...) returns NULL
+    -- for an
+    -- all-null-population state (VI, 194 rows) and drops the whole state; MIN(prefix)
+    -- picks a
+    -- stray whose prefix sorts below the real one (TN's KY stray 21 < 47). (PR #443
+    -- delegate review.)
+    state_fips_prefixes as (
+        select state_id, state_fips_prefix
+        from
+            (
+                select
+                    state_id,
+                    substring(county_fips, 1, 2) as state_fips_prefix,
+                    count(*) as n
+                from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }}
+                group by state_id, substring(county_fips, 1, 2)
+            ) counts
+        qualify row_number() over (partition by state_id order by n desc) = 1
+    ),
+
     -- One row per (state, normalized county name) for the G5420 county match. Two
-    -- correctness rules beyond a plain dedup (DATA-1950 PR #443 Codex + delegate
-    -- review):
+    -- correctness
+    -- rules beyond a plain dedup (DATA-1950 PR #443 Codex + delegate review):
     -- 1. order by county_fips ASC (not population): when a county shares its name
     -- with an
     -- independent city in the same state (Baltimore, St. Louis MO, Richmond / Roanoke /
     -- Franklin VA), US FIPS numbers the independent city higher (510+), so the LOWER
     -- county_fips is the actual county. Population-desc would pick the bigger city.
-    -- 2. keep only county_fips whose 2-digit state prefix matches the state's OWN
-    -- prefix (the
-    -- prefix of its populated rows): drops degenerate cross-state stray rows (e.g. a
-    -- state_id='GA' row carrying TN county_fips 47139) that create false ambiguity.
-    -- This
-    -- targets the real symptom (state/FIPS mismatch), NOT a null-population proxy, so
-    -- it
-    -- keeps legitimate population-less counties (e.g. GA Echols 13101, VA James City)
-    -- that
-    -- a `population is not null` filter would silently NULL. The state-prefix filter
-    -- runs
-    -- BEFORE row_number(), so a stray can never win the dedup.
+    -- 2. join to state_fips_prefixes: keep only rows whose county_fips is in the
+    -- state's own FIPS
+    -- prefix, dropping degenerate cross-state stray rows (e.g. a state_id='GA' row
+    -- carrying TN
+    -- county_fips 47139). The join filters BEFORE row_number(), so a stray can never
+    -- win the
+    -- dedup, and it keeps legitimate population-less counties (GA Echols 13101, VA
+    -- James City,
+    -- the VI district) that a null-population proxy would silently NULL.
     -- Keeps the (state, county_name) join key 1:1 (protects equal_rowcount).
     deduped_counties_by_name as (
         select * except (rn)
         from
             (
                 select
-                    * except (state_fips_prefix),
+                    c.*,
                     row_number() over (
-                        partition by state_id, lower(county_name)
-                        order by county_fips asc, population desc nulls last
+                        partition by c.state_id, lower(c.county_name)
+                        order by c.county_fips asc, c.population desc nulls last
                     ) as rn
-                from
-                    (
-                        select
-                            *,
-                            max(
-                                case
-                                    when population is not null
-                                    then substring(county_fips, 1, 2)
-                                end
-                            ) over (partition by state_id) as state_fips_prefix
-                        from
-                            {{
-                                ref(
-                                    "stg_airbyte_source__ballotready_s3_uscities_v1_77"
-                                )
-                            }}
-                    ) prefixed
-                where substring(county_fips, 1, 2) = state_fips_prefix
+                from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }} as c
+                join
+                    state_fips_prefixes as p
+                    on p.state_id = c.state_id
+                    and substring(c.county_fips, 1, 2) = p.state_fips_prefix
             ) ranked
         where rn = 1
     ),
