@@ -20,7 +20,9 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: thegoodparty/gp-data-matcha
+  # Published under the gp-data-platform repo path so the package is owned by
+  # this repo and the workflow GITHUB_TOKEN has push access.
+  IMAGE_NAME: thegoodparty/gp-data-platform/matcha
 
 jobs:
   build:
@@ -78,14 +80,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_TAG: pr-${{ github.event.number }}
+          # Package name is gp-data-platform/matcha; the slash must be
+          # percent-encoded (%2F) in the REST API path.
+          PACKAGE: gp-data-platform%2Fmatcha
         run: |
           # Find the package version with this PR tag
           VERSION_ID=$(gh api \
-            /orgs/thegoodparty/packages/container/gp-data-matcha/versions \
+            /orgs/thegoodparty/packages/container/$PACKAGE/versions \
             --jq ".[] | select(.metadata.container.tags[] == \"$PR_TAG\") | .id")
           if [[ -n "$VERSION_ID" ]]; then
             gh api --method DELETE \
-              /orgs/thegoodparty/packages/container/gp-data-matcha/versions/$VERSION_ID
+              /orgs/thegoodparty/packages/container/$PACKAGE/versions/$VERSION_ID
             echo "Deleted package version $VERSION_ID (tag: $PR_TAG)"
           else
             echo "No package version found with tag: $PR_TAG"

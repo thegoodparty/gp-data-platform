@@ -60,20 +60,20 @@ echo $(gh auth token) | docker login ghcr.io -u $(gh api user --jq .login) --pas
 Pull and run the latest image:
 
 ```bash
-docker pull ghcr.io/thegoodparty/gp-data-matcha:latest
+docker pull ghcr.io/thegoodparty/gp-data-platform/matcha:latest
 
 # Show help
-docker run ghcr.io/thegoodparty/gp-data-matcha:latest match --help
+docker run ghcr.io/thegoodparty/gp-data-platform/matcha:latest match --help
 
 # Run with a local CSV
 docker run \
   -m 8g --cpus 4 \
   -v ~/path/to/input.csv:/app/data/input.csv \
-  ghcr.io/thegoodparty/gp-data-matcha:latest \
+  ghcr.io/thegoodparty/gp-data-platform/matcha:latest \
   match --input /app/data/input.csv --output-dir /app/out
 ```
 
-PR builds are tagged `pr-<number>` (e.g. `ghcr.io/thegoodparty/gp-data-matcha:pr-2`).
+PR builds are tagged `pr-<number>` (e.g. `ghcr.io/thegoodparty/gp-data-platform/matcha:pr-2`).
 
 ### Docker (local build)
 
@@ -289,6 +289,6 @@ completion.
 ## CI/CD
 
 The monorepo's `.github/workflows/matcha-container.yml` workflow builds multi-arch (amd64 + arm64) images (it fires only on changes under `matcha/`):
-- **On PR:** builds and pushes `ghcr.io/thegoodparty/gp-data-matcha:pr-<number>`
+- **On PR:** builds and pushes `ghcr.io/thegoodparty/gp-data-platform/matcha:pr-<number>`
 - **On push to main:** pushes `:latest` and `:<sha>` tags
 - **On PR close:** cleans up the PR-specific image tag
