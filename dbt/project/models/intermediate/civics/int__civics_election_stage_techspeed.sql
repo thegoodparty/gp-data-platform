@@ -228,6 +228,14 @@ with
             || initcap(stage_type) as election_name,
             state || ' ' || official_office_name as race_name,
 
+            -- Office attributes (race grain). Carried through for the
+            -- election_stage ER prematch view (int__er_prematch_election_stages).
+            candidate_office,
+            office_level,
+            office_type,
+            district,
+            seat_name,
+
             is_primary,
             false as is_runoff,
             false as is_retention,
