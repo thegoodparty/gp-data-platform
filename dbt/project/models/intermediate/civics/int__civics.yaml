@@ -1291,7 +1291,7 @@ models:
           Centralizing generation here prevents salt/source drift across the
           downstream models that reference this UUID.
         data_tests:
-          - is_uuid  # repo's is_uuid test ignores nulls, so vacancy NULLs are fine
+          - is_uuid # repo's is_uuid test ignores nulls, so vacancy NULLs are fine
 
       - name: br_office_holder_id
         description: BallotReady natural key for the office-holder term record
@@ -1959,6 +1959,13 @@ models:
         data_tests:
           - not_null
 
+      - name: first_name_tokens
+        description: >
+          Array of >=2-char first-name tokens (split on non-letter characters)
+          for Splink ArrayIntersectLevel. Lets compound first names overlap on a
+          shared given name (e.g. "charles kirk" vs "charles"). Consumed by the
+          matcha first-name comparison; keep first_name_tokens macro in sync.
+
       - name: last_name
         description: Candidate last name (lowercased, trimmed)
         data_tests:
@@ -2089,6 +2096,14 @@ models:
           - dbt_utils.expression_is_true:
               arguments:
                 expression: "!= ''"
+
+
+      - name: first_name_tokens
+        description: >
+          Array of >=2-char first-name tokens (split on non-letter characters)
+          for Splink ArrayIntersectLevel. Lets compound first names overlap on a
+          shared given name (e.g. "charles kirk" vs "charles"). Consumed by the
+          matcha first-name comparison; keep first_name_tokens macro in sync.
 
       - name: last_name
         description: Official last name (lowercased, trimmed; blank names filtered out)
@@ -2612,7 +2627,7 @@ models:
                   - state
 
       - name: candidacy_result
-        description: 'Won if did_win, else null. Under-populated in source.'
+        description: "Won if did_win, else null. Under-populated in source."
         data_tests:
           - accepted_values:
               arguments:
