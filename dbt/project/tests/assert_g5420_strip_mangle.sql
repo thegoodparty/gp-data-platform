@@ -8,6 +8,8 @@ with
     t(name, expected_city_cand, expected_county_cand) as (
         values
             ('Mount Union Area School District', 'mount union', cast(null as string)),
+            ('Region 10 School District', 'region', cast(null as string)),
+            ('Columbia 93 School District', 'columbia', cast(null as string)),
             (
                 'Dodge City Unified School District 443',
                 'dodge city',
