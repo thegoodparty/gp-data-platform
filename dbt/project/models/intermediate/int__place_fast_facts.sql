@@ -62,14 +62,18 @@ with
         where rn = 1
     ),
 
-    -- One row per (state, normalized county name), most-populous — for the G5420
-    -- county match.
-    -- Distinct from deduped_cities (1 row per county_fips): a few states have a
-    -- county AND an
-    -- independent city sharing a name (e.g. VA Richmond city vs Richmond County), so
-    -- (state, county_name) is NOT unique in deduped_cities. Deduping by (state,
-    -- county_name)
-    -- here keeps the county join 1:1 (protects equal_rowcount).
+    -- One row per (state, normalized county name) for the G5420 county match. Two
+    -- correctness rules beyond a plain dedup (see DATA-1950 PR #443 Codex review):
+    -- 1. order by county_fips ASC (not population): when a county shares its name with
+    -- an independent city in the same state (Baltimore, St. Louis MO, Richmond /
+    -- Roanoke / Franklin VA), US FIPS always numbers the independent city higher
+    -- (510+), so the LOWER county_fips is the actual county. Population-desc would
+    -- wrongly pick the larger independent city (e.g. Baltimore County PS -> Baltimore
+    -- city). The lower-FIPS county is correct.
+    -- 2. where population is not null: drops degenerate cross-state stray rows (e.g. a
+    -- state_id='GA' row carrying TN county_fips 47139) that create false ambiguity and
+    -- could otherwise win county_fips-asc from the wrong state (e.g. OH Allen vs IN).
+    -- Keeps the (state, county_name) join key 1:1 (protects equal_rowcount).
     deduped_counties_by_name as (
         select * except (rn)
         from
@@ -78,9 +82,10 @@ with
                     *,
                     row_number() over (
                         partition by state_id, lower(county_name)
-                        order by population desc nulls last, county_fips asc
+                        order by county_fips asc, population desc nulls last
                     ) as rn
                 from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }}
+                where population is not null
             ) ranked
         where rn = 1
     ),

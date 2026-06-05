@@ -19,6 +19,8 @@ with
                     ('2005580', '20057'),  -- Dodge City USD 443      -> Ford KS (city primary)
                     ('0634320', '06073'),  -- San Diego City Unified  -> San Diego CA (city retry)
                     ('4216020', '42061'),  -- Mount Union Area SD     -> Huntingdon PA
+                    ('2400120', '24005'),  -- Baltimore County PS     -> Baltimore County MD (not city 24510)
+                    ('5103270', '51159'),  -- Richmond County PS (VA)  -> Richmond County VA (not city 51760)
                     ('1739090', cast(null as string)),  -- Cumberland CUSD 77      -> NULL (honest; v2)
                     ('1741690', cast(null as string))  -- Indian Prairie CUSD 204 -> NULL (honest; v2)
             ) as t(geo_id, expected_county_fips)
