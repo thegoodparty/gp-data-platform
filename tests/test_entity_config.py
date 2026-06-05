@@ -104,3 +104,12 @@ def test_get_config_unknown():
     """get_config raises ValueError for unknown entity types."""
     with pytest.raises(ValueError, match="Unknown entity type"):
         get_config("nonexistent")
+
+
+def test_election_stage_registered():
+    """election_stage is in the ENTITY_TYPES list and resolves via get_config."""
+    from scripts.entity_config import ENTITY_TYPES, get_config
+
+    assert "election_stage" in ENTITY_TYPES
+    cfg = get_config("election_stage")
+    assert cfg.entity_type == "election_stage"

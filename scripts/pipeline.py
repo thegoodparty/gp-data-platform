@@ -8,6 +8,7 @@ Usage:
 """
 
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -35,6 +36,7 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
         "first_name_aliases",
         "first_name_tokens",
         "official_office_name_tokens",
+        "matched_candidacy_stage_clusters",
     ):
         if col in df.columns:
             df[col] = df[col].apply(
@@ -124,6 +126,29 @@ def predict_and_cluster(
                 SELECT unique_id_l, unique_id_r, match_probability, match_weight
                 FROM {pred_table}
             """).fetchdf()
+
+        # Splink drops gamma_<col> from the prediction frame when a comparison
+        # is never trained — e.g. a column used only as an exact-equality
+        # blocking key (m never estimated) or one that is NULL across the whole
+        # input. A post-prediction filter that references such a gamma column
+        # would either raise a DuckDB binder error or, worse, silently skip the
+        # guard and over-match. Fail loudly instead: the fix is to reference the
+        # retained raw _l/_r columns (see ELECTION_STAGE_POST_PREDICTION_FILTER).
+        available_cols = {
+            d[0]
+            for d in linker._db_api._con.execute(
+                f"SELECT * FROM {pred_table} LIMIT 0"
+            ).description
+        }
+        for f in config.post_prediction_filters:
+            missing = sorted(set(re.findall(r"\bgamma_\w+", f)) - available_cols)
+            if missing:
+                raise ValueError(
+                    "Post-prediction filter references gamma column(s) absent "
+                    f"from the prediction frame: {missing}. Splink drops gamma "
+                    "columns for untrained comparisons (blocking-only or "
+                    "all-NULL columns); reference the raw _l/_r columns instead."
+                )
 
         combined_filter = " AND ".join(
             f"({f.strip()})" for f in config.post_prediction_filters

@@ -43,7 +43,7 @@ class EntityConfig:
     false_negative_group_cols: list[str] = field(default_factory=list)
 
 
-ENTITY_TYPES: list[str] = ["candidacy_stage", "elected_official"]
+ENTITY_TYPES: list[str] = ["candidacy_stage", "elected_official", "election_stage"]
 
 
 def get_config(entity_type: str) -> EntityConfig:
@@ -57,4 +57,8 @@ def get_config(entity_type: str) -> EntityConfig:
         from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
 
         return ELECTED_OFFICIAL_CONFIG
+    if entity_type == "election_stage":
+        from scripts.configs.election_stage import ELECTION_STAGE_CONFIG
+
+        return ELECTION_STAGE_CONFIG
     raise ValueError(f"Unknown entity type '{entity_type}'. Available: {ENTITY_TYPES}")

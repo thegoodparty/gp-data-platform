@@ -122,3 +122,14 @@ def test_match_elected_official_with_csv(mock_run, tmp_path):
     call_args = mock_run.call_args
     config = call_args.kwargs.get("config") or call_args[0][2]
     assert config.entity_type == "elected_official"
+
+
+def test_cli_accepts_election_stage_entity_type():
+    """CLI --entity-type accepts 'election_stage'."""
+    from click.testing import CliRunner
+    from scripts.cli import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["match", "--help"])
+    assert result.exit_code == 0
+    assert "election_stage" in result.output

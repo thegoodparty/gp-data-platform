@@ -44,6 +44,8 @@ def test_df_to_databricks_schema():
         }
     )
     schema = _df_to_databricks_schema(df)
+    # matcha standardizes Databricks output on STRING-typed columns (downstream
+    # dbt staging casts back); _df_to_databricks_schema reflects that.
     assert "`name` STRING" in schema
     assert "`age` STRING" in schema
     assert "`score` STRING" in schema
