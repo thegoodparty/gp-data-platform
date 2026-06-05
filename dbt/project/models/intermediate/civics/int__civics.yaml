@@ -2080,12 +2080,6 @@ models:
               arguments:
                 expression: "!= ''"
 
-      - name: first_name_normalized
-        description: >
-          Alpha-only normalized first name (non-letter characters stripped) for
-          Splink exact-match comparison. Collapses period/whitespace variants
-          such as "r.j." and "rj" to a single value. Consumed by the matcha
-          first-name comparison; keep first_name_normalized macro in sync.
 
       - name: first_name_tokens
         description: >
