@@ -84,12 +84,16 @@ def _build_connect_kwargs() -> dict:
 
     if config.client_id and config.client_secret:
         print("Auth: OAuth M2M (service principal)")
-        credentials = lambda: oauth_service_principal(config)
+
+        def credentials():
+            return oauth_service_principal(config)
     else:
         print(f"Auth: Databricks CLI / SDK default ({hostname})")
+
         # Wrap config.authenticate to match the expected
         # () -> (() -> dict) HeaderFactory signature.
-        credentials = lambda: config.authenticate
+        def credentials():
+            return config.authenticate
 
     return {
         "server_hostname": hostname,
@@ -207,25 +211,16 @@ def write_table(
                 cursor.execute(f"CREATE TABLE {t.quoted} ({schema_spec})")
             except Exception as e:
                 if "already exists" in str(e).lower():
-                    raise RuntimeError(
-                        f"Table {fqn} already exists. Use --overwrite to replace it."
-                    ) from e
+                    raise RuntimeError(f"Table {fqn} already exists. Use --overwrite to replace it.") from e
                 raise
         print(f"Created table {fqn}")
 
-        cursor.execute(
-            f"CREATE VOLUME IF NOT EXISTS "
-            f"`{t.catalog}`.`{t.schema}`.`{staging_volume}`"
-        )
+        cursor.execute(f"CREATE VOLUME IF NOT EXISTS " f"`{t.catalog}`.`{t.schema}`.`{staging_volume}`")
 
-        volume_path = (
-            f"/Volumes/{t.catalog}/{t.schema}/{staging_volume}/{t.table}.parquet"
-        )
+        volume_path = f"/Volumes/{t.catalog}/{t.schema}/{staging_volume}/{t.table}.parquet"
         # Force every parquet column to string so the COPY INTO never has to
         # merge a list / null / numeric field into the STRING table schema.
-        schema = pa.schema(
-            [pa.field(name, pa.string(), nullable=True) for name in df.columns]
-        )
+        schema = pa.schema([pa.field(name, pa.string(), nullable=True) for name in df.columns])
 
         with tempfile.NamedTemporaryFile(suffix=".parquet") as tmp:
             df.to_parquet(tmp.name, index=False, schema=schema)

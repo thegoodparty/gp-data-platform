@@ -1,8 +1,6 @@
 # tests/test_audit.py
 """Tests for audit false-negative 3-state classification."""
 
-import pytest
-
 from scripts.audit_false_negatives import _canonicalize_pair_key, _classify_pair
 
 
@@ -17,22 +15,15 @@ def test_classify_generated_and_kept():
     """Pair in pairwise_predictions -> generated_and_kept."""
     pairwise_keys = {("a", "b")}
     filtered_keys = set()
-    assert (
-        _classify_pair("a", "b", pairwise_keys, filtered_keys) == "generated_and_kept"
-    )
-    assert (
-        _classify_pair("b", "a", pairwise_keys, filtered_keys) == "generated_and_kept"
-    )
+    assert _classify_pair("a", "b", pairwise_keys, filtered_keys) == "generated_and_kept"
+    assert _classify_pair("b", "a", pairwise_keys, filtered_keys) == "generated_and_kept"
 
 
 def test_classify_generated_but_filtered():
     """Pair in filtered_pairs but not pairwise -> generated_but_filtered."""
     pairwise_keys = set()
     filtered_keys = {("a", "b")}
-    assert (
-        _classify_pair("a", "b", pairwise_keys, filtered_keys)
-        == "generated_but_filtered"
-    )
+    assert _classify_pair("a", "b", pairwise_keys, filtered_keys) == "generated_but_filtered"
 
 
 def test_classify_never_generated():

@@ -39,9 +39,7 @@ def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFram
         "matched_candidacy_stage_clusters",
     ):
         if col in df.columns:
-            df[col] = df[col].apply(
-                lambda v: json.loads(v) if isinstance(v, str) else None
-            )
+            df[col] = df[col].apply(lambda v: json.loads(v) if isinstance(v, str) else None)
 
     # Normalize nulls so Splink treats missing data correctly
     df = df.where(df.notna(), None)
@@ -87,9 +85,7 @@ def train_model(linker: Linker, config: EntityConfig) -> int:
             print(f"WARNING: EM training on {cols} failed: {e}")
             print("Continuing with remaining training blocks...")
 
-    print(
-        f"EM training blocks succeeded: {successful_blocks}/{len(config.em_training_blocks)}"
-    )
+    print(f"EM training blocks succeeded: {successful_blocks}/{len(config.em_training_blocks)}")
 
     if successful_blocks == 0:
         raise RuntimeError(
@@ -103,14 +99,10 @@ def predict_and_cluster(
     linker: Linker, config: EntityConfig, output_dir: Path | None = None
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Predict matches, apply post-prediction filters, cluster."""
-    predictions = linker.inference.predict(
-        threshold_match_probability=config.predict_threshold
-    )
+    predictions = linker.inference.predict(threshold_match_probability=config.predict_threshold)
 
     pred_table = predictions.physical_name
-    pre_count = linker._db_api._con.execute(
-        f"SELECT count(*) FROM {pred_table}"
-    ).fetchone()[0]
+    pre_count = linker._db_api._con.execute(f"SELECT count(*) FROM {pred_table}").fetchone()[0]
     print(f"Pairwise predictions: {pre_count:,} pairs above {config.predict_threshold}")
 
     if pre_count == 0:
@@ -135,10 +127,7 @@ def predict_and_cluster(
         # guard and over-match. Fail loudly instead: the fix is to reference the
         # retained raw _l/_r columns (see ELECTION_STAGE_POST_PREDICTION_FILTER).
         available_cols = {
-            d[0]
-            for d in linker._db_api._con.execute(
-                f"SELECT * FROM {pred_table} LIMIT 0"
-            ).description
+            d[0] for d in linker._db_api._con.execute(f"SELECT * FROM {pred_table} LIMIT 0").description
         }
         for f in config.post_prediction_filters:
             missing = sorted(set(re.findall(r"\bgamma_\w+", f)) - available_cols)
@@ -150,9 +139,7 @@ def predict_and_cluster(
                     "all-NULL columns); reference the raw _l/_r columns instead."
                 )
 
-        combined_filter = " AND ".join(
-            f"({f.strip()})" for f in config.post_prediction_filters
-        )
+        combined_filter = " AND ".join(f"({f.strip()})" for f in config.post_prediction_filters)
         linker._db_api._con.execute(f"""
             CREATE OR REPLACE TABLE {pred_table} AS
             SELECT * FROM {pred_table}
@@ -165,9 +152,7 @@ def predict_and_cluster(
                 SELECT unique_id_l, unique_id_r
                 FROM {pred_table}
             """).fetchdf()
-            post_keys = set(
-                zip(post_filter_pairs["unique_id_l"], post_filter_pairs["unique_id_r"])
-            )
+            post_keys = set(zip(post_filter_pairs["unique_id_l"], post_filter_pairs["unique_id_r"]))
             filtered_mask = ~pre_filter_pairs.apply(
                 lambda r: (r["unique_id_l"], r["unique_id_r"]) in post_keys, axis=1
             )
@@ -274,9 +259,7 @@ def save_results(
     print(f"\nResults saved to {output_dir}/")
 
 
-def run(
-    input_df: pd.DataFrame, output_dir: Path, config: EntityConfig
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+def run(input_df: pd.DataFrame, output_dir: Path, config: EntityConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Prepare data, train, predict, cluster, save. Returns (pairwise_df, clustered_df)."""
     output_dir.mkdir(parents=True, exist_ok=True)
     source_dfs = load_and_prepare(input_df, config)

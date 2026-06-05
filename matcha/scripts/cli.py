@@ -49,9 +49,7 @@ def _normalize_to_strings(df: pd.DataFrame) -> pd.DataFrame:
         if isinstance(sample, (np.ndarray, list)):
             df[col] = df[col].apply(_serialize_array_value)
         else:
-            df[col] = df[col].apply(
-                lambda v: str(v).removesuffix(".0") if pd.notna(v) else v
-            )
+            df[col] = df[col].apply(lambda v: str(v).removesuffix(".0") if pd.notna(v) else v)
     return df
 
 
@@ -69,9 +67,7 @@ def _load_input(input_value: str) -> pd.DataFrame:
     return pd.read_csv(path, dtype=str)
 
 
-def _load_results(
-    results_dir: Path, config: EntityConfig
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _load_results(results_dir: Path, config: EntityConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load input, pairwise, and clustered DataFrames from a results directory."""
     input_df = pd.read_parquet(results_dir / "input.parquet")
     pairwise_df = pd.read_csv(results_dir / "pairwise_predictions.csv")
@@ -142,9 +138,7 @@ def match(
         output_dir = _DEFAULT_RESULTS / config.entity_type
 
     input_df = _load_input(input_value)
-    pairwise_df, clustered_df = run(
-        input_df=input_df, output_dir=output_dir, config=config
-    )
+    pairwise_df, clustered_df = run(input_df=input_df, output_dir=output_dir, config=config)
 
     if pairwise_df.empty and clustered_df.empty:
         raise click.ClickException(
@@ -232,9 +226,7 @@ def audit_summary(entity_type: str, results_dir: Path | None) -> None:
     type=int,
     help="Number of most-ambiguous pairs to return.",
 )
-def audit_low_confidence(
-    entity_type: str, results_dir: Path | None, sample_n: int
-) -> None:
+def audit_low_confidence(entity_type: str, results_dir: Path | None, sample_n: int) -> None:
     """Find the most ambiguous matches for manual review."""
     from scripts.audit_low_confidence import run_low_confidence
 
@@ -259,18 +251,14 @@ def audit_low_confidence(
     type=int,
     help="Number of suspicious pairs to find.",
 )
-def audit_false_negatives(
-    entity_type: str, results_dir: Path | None, sample_n: int
-) -> None:
+def audit_false_negatives(entity_type: str, results_dir: Path | None, sample_n: int) -> None:
     """Find plausible matches that the model missed."""
     from scripts.audit_false_negatives import run_false_negatives
 
     config = get_config(entity_type)
     results_dir = _resolve_results_dir(results_dir, config)
     input_df, pairwise_df, clustered_df = _load_results(results_dir, config)
-    run_false_negatives(
-        input_df, pairwise_df, clustered_df, results_dir, config, sample_n
-    )
+    run_false_negatives(input_df, pairwise_df, clustered_df, results_dir, config, sample_n)
 
 
 if __name__ == "__main__":

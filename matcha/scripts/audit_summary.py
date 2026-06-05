@@ -23,11 +23,7 @@ def run_summary(
     # ── Input record counts + coverage ──
     cluster_sizes = clustered_df.groupby("cluster_id").size()
     multi_cluster_ids = cluster_sizes[cluster_sizes > 1].index
-    matched_ids = set(
-        clustered_df.loc[
-            clustered_df["cluster_id"].isin(multi_cluster_ids), "unique_id"
-        ]
-    )
+    matched_ids = set(clustered_df.loc[clustered_df["cluster_id"].isin(multi_cluster_ids), "unique_id"])
 
     print("\n── Input Records ──")
     summary_rows = []
@@ -50,8 +46,7 @@ def run_summary(
     for row in summary_rows:
         p = row["provider"]
         print(
-            f"  {p}: {row['matched_records']:,}/{row['input_records']:,} "
-            f"({row['match_rate'] * 100:.1f}%)"
+            f"  {p}: {row['matched_records']:,}/{row['input_records']:,} " f"({row['match_rate'] * 100:.1f}%)"
         )
 
     # ── Cluster size distribution ──
@@ -62,9 +57,7 @@ def run_summary(
 
     # ── Match rate by provider pair ──
     print("\n── Pairwise Matches by Provider Pair ──")
-    for (src_l, src_r), group in sorted(
-        pairwise_df.groupby(["source_name_l", "source_name_r"])
-    ):
+    for (src_l, src_r), group in sorted(pairwise_df.groupby(["source_name_l", "source_name_r"])):
         pair = f"{src_l} × {src_r}"
         print(f"  {pair}: {len(group):,} pairs")
         probs = group["match_probability"]
@@ -72,9 +65,7 @@ def run_summary(
         high = (probs >= 0.95).sum()
         mid = ((probs >= 0.5) & (probs < 0.95)).sum()
         low = (probs < 0.5).sum()
-        print(
-            f"    high (≥0.95): {high:,}  |  mid (0.5–0.95): {mid:,}  |  low (<0.5): {low:,}"
-        )
+        print(f"    high (≥0.95): {high:,}  |  mid (0.5–0.95): {mid:,}  |  low (<0.5): {low:,}")
 
     # ── Cross-source vs within-source clusters ──
     print("\n── Cluster Types ──")

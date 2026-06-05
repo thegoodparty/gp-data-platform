@@ -15,9 +15,9 @@ CANDIDACY_CONFIG = EntityConfig(
     display_name="Candidacy Stages",
     default_input_table="goodparty_data_catalog.dbt.int__er_prematch_candidacy_stages",
     comparisons=[
-        cl.JaroWinklerAtThresholds(
-            "last_name", score_threshold_or_thresholds=[0.95, 0.88]
-        ).configure(term_frequency_adjustments=True),
+        cl.JaroWinklerAtThresholds("last_name", score_threshold_or_thresholds=[0.95, 0.88]).configure(
+            term_frequency_adjustments=True
+        ),
         CustomComparison(
             output_column_name="first_name",
             comparison_levels=[
@@ -50,9 +50,7 @@ CANDIDACY_CONFIG = EntityConfig(
                 # "Lincoln County R-IV School District" ↔ BR "Winfield R-4
                 # School Board" both yield "r-4"). Tokens are pre-normalized
                 # in dbt via the office_name_tokens macro.
-                cll.ArrayIntersectLevel(
-                    "official_office_name_tokens", min_intersection=1
-                ),
+                cll.ArrayIntersectLevel("official_office_name_tokens", min_intersection=1),
                 cll.ElseLevel(),
             ],
         ),

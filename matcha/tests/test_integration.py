@@ -57,12 +57,8 @@ def test_match_databricks_round_trip(databricks_tables):
     assert (ctx["output_dir"] / "input.parquet").exists()
 
     # ── At least 1 cross-source cluster (proves matching worked) ──
-    multi_source = (
-        clustered_df.groupby("cluster_id")["source_name"].nunique() > 1
-    ).sum()
-    assert (
-        multi_source >= 1
-    ), f"Expected at least 1 cross-source cluster, got {multi_source}"
+    multi_source = (clustered_df.groupby("cluster_id")["source_name"].nunique() > 1).sum()
+    assert multi_source >= 1, f"Expected at least 1 cross-source cluster, got {multi_source}"
 
 
 @pytest.mark.integration

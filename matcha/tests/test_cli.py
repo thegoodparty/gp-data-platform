@@ -127,6 +127,7 @@ def test_match_elected_official_with_csv(mock_run, tmp_path):
 def test_cli_accepts_election_stage_entity_type():
     """CLI --entity-type accepts 'election_stage'."""
     from click.testing import CliRunner
+
     from scripts.cli import cli
 
     runner = CliRunner()

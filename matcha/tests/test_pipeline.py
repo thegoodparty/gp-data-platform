@@ -150,9 +150,7 @@ def test_build_settings_elected_official():
 def test_eo_pipeline_smoke(tmp_path):
     """Full EO pipeline on tiny fixture: proves comparisons, blocking, filters, clustering work."""
     df = pd.read_csv(Path(__file__).parent / "dummy_data_elected.csv", dtype=str)
-    pairwise_df, clustered_df = run(
-        input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG
-    )
+    pairwise_df, clustered_df = run(input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG)
 
     # Pipeline completed without error
     assert len(pairwise_df) > 0, "No pairwise predictions generated"
@@ -163,9 +161,7 @@ def test_eo_pipeline_smoke(tmp_path):
     assert (tmp_path / "clustered_elected_officials.csv").exists()
 
     # At least 1 cross-source cluster (proves matching worked)
-    multi_source = (
-        clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1
-    ).sum()
+    multi_source = (clustered_df.groupby("cluster_id")["source_dataset"].nunique() > 1).sum()
     assert multi_source >= 1, f"Expected cross-source clusters, got {multi_source}"
 
     # EO-specific retained columns present in clustered output
@@ -176,18 +172,12 @@ def test_eo_pipeline_smoke(tmp_path):
 def test_eo_pipeline_smoke_synonym_match(tmp_path):
     """br_006 (City Alderperson) and ts_004 (Springfield City Council) must cluster together."""
     df = pd.read_csv(Path(__file__).parent / "dummy_data_elected.csv", dtype=str)
-    pairwise_df, clustered_df = run(
-        input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG
-    )
+    pairwise_df, clustered_df = run(input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG)
 
-    br_006_cluster = clustered_df.loc[
-        clustered_df["unique_id"] == "br_006", "cluster_id"
-    ]
+    br_006_cluster = clustered_df.loc[clustered_df["unique_id"] == "br_006", "cluster_id"]
     assert len(br_006_cluster) == 1, "br_006 not found in clustered output"
 
-    ts_004_cluster = clustered_df.loc[
-        clustered_df["unique_id"] == "ts_004", "cluster_id"
-    ]
+    ts_004_cluster = clustered_df.loc[clustered_df["unique_id"] == "ts_004", "cluster_id"]
     assert len(ts_004_cluster) == 1, "ts_004 not found in clustered output"
     assert (
         br_006_cluster.iloc[0] == ts_004_cluster.iloc[0]
@@ -197,16 +187,10 @@ def test_eo_pipeline_smoke_synonym_match(tmp_path):
 def test_eo_pipeline_smoke_rejects_cross_office_same_name(tmp_path):
     """Same name + same state but different office_type and no contact match must not cluster."""
     df = pd.read_csv(Path(__file__).parent / "dummy_data_elected.csv", dtype=str)
-    _, clustered_df = run(
-        input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG
-    )
+    _, clustered_df = run(input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG)
 
-    br_010_cluster = clustered_df.loc[
-        clustered_df["unique_id"] == "br_010", "cluster_id"
-    ]
-    ts_005_cluster = clustered_df.loc[
-        clustered_df["unique_id"] == "ts_005", "cluster_id"
-    ]
+    br_010_cluster = clustered_df.loc[clustered_df["unique_id"] == "br_010", "cluster_id"]
+    ts_005_cluster = clustered_df.loc[clustered_df["unique_id"] == "ts_005", "cluster_id"]
     assert len(br_010_cluster) == 1, "br_010 not found in clustered output"
     assert len(ts_005_cluster) == 1, "ts_005 not found in clustered output"
     assert (
@@ -217,28 +201,20 @@ def test_eo_pipeline_smoke_rejects_cross_office_same_name(tmp_path):
 def test_eo_pipeline_smoke_token_overlap_preserved(tmp_path):
     """Pairs rescued by locality-token overlap (no contact, no office_type match) must still match."""
     df = pd.read_csv(Path(__file__).parent / "dummy_data_elected.csv", dtype=str)
-    pairwise_df, _ = run(
-        input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG
-    )
+    pairwise_df, _ = run(input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG)
 
     # br_012/ts_010: "hamilton county: springdale township trustee" vs "springdale village council"
     # JW < 0.75, different office_type, no email/phone — rescued by shared "springdale" token
     pair_exists = (
-        (pairwise_df["unique_id_l"] == "br_012")
-        & (pairwise_df["unique_id_r"] == "ts_010")
-    ).any() or (
-        (pairwise_df["unique_id_l"] == "ts_010")
-        & (pairwise_df["unique_id_r"] == "br_012")
-    ).any()
+        (pairwise_df["unique_id_l"] == "br_012") & (pairwise_df["unique_id_r"] == "ts_010")
+    ).any() or ((pairwise_df["unique_id_l"] == "ts_010") & (pairwise_df["unique_id_r"] == "br_012")).any()
     assert pair_exists, "br_012/ts_010 pair should survive via locality-token overlap"
 
 
 def test_eo_pipeline_smoke_contact_bypass(tmp_path):
     """Contact-confirmed pairs bypass office compatibility — survive post-prediction filter."""
     df = pd.read_csv(Path(__file__).parent / "dummy_data_elected.csv", dtype=str)
-    pairwise_df, _ = run(
-        input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG
-    )
+    pairwise_df, _ = run(input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG)
 
     # br_005 (Linda Brown, County Clerk, office_type=County) and ts_011 (Linda Brown,
     # County Board Supervisor, office_type=County Board) share phone but have different
@@ -247,12 +223,8 @@ def test_eo_pipeline_smoke_contact_bypass(tmp_path):
     # (On tiny fixture data the match probability is too low to cluster, but the
     # filter must not be the reason it fails — that's what this test proves.)
     pair_exists = (
-        (pairwise_df["unique_id_l"] == "br_005")
-        & (pairwise_df["unique_id_r"] == "ts_011")
-    ).any() or (
-        (pairwise_df["unique_id_l"] == "ts_011")
-        & (pairwise_df["unique_id_r"] == "br_005")
-    ).any()
+        (pairwise_df["unique_id_l"] == "br_005") & (pairwise_df["unique_id_r"] == "ts_011")
+    ).any() or ((pairwise_df["unique_id_l"] == "ts_011") & (pairwise_df["unique_id_r"] == "br_005")).any()
     assert pair_exists, "br_005/ts_011 pair should survive filter via phone bypass"
 
 
@@ -282,9 +254,7 @@ def test_train_model_continues_on_partial_failure(capsys):
         if call_count == 1:
             raise RuntimeError("EM failed for first block")
 
-    mock_linker.training.estimate_parameters_using_expectation_maximisation.side_effect = (
-        side_effect
-    )
+    mock_linker.training.estimate_parameters_using_expectation_maximisation.side_effect = side_effect
 
     result = train_model(mock_linker, CANDIDACY_CONFIG)
 

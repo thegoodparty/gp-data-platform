@@ -7,8 +7,7 @@ from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
 def test_ballotready_position_id_in_comparisons():
     """ballotready_position_id is added as an ExactMatch comparison."""
     comparison_columns = [
-        c.get_comparison("duckdb").output_column_name
-        for c in ELECTED_OFFICIAL_CONFIG.comparisons
+        c.get_comparison("duckdb").output_column_name for c in ELECTED_OFFICIAL_CONFIG.comparisons
     ]
     assert "ballotready_position_id" in comparison_columns
 
@@ -30,9 +29,7 @@ def _rule_text(rule) -> str:
 
 def test_ballotready_position_id_in_blocking_rules():
     """A blocking rule references ballotready_position_id (state + position_id)."""
-    blocking_rule_strs = [
-        _rule_text(r) for r in ELECTED_OFFICIAL_CONFIG.blocking_rules_for_prediction
-    ]
+    blocking_rule_strs = [_rule_text(r) for r in ELECTED_OFFICIAL_CONFIG.blocking_rules_for_prediction]
     assert any(
         "ballotready_position_id" in s for s in blocking_rule_strs
     ), "Expected a blocking rule referencing ballotready_position_id"

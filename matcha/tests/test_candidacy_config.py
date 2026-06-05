@@ -6,10 +6,7 @@ from scripts.configs.candidacy import CANDIDACY_CONFIG
 
 def test_office_level_in_comparisons():
     """office_level is added as an ExactMatch comparison."""
-    comparison_columns = [
-        c.get_comparison("duckdb").output_column_name
-        for c in CANDIDACY_CONFIG.comparisons
-    ]
+    comparison_columns = [c.get_comparison("duckdb").output_column_name for c in CANDIDACY_CONFIG.comparisons]
     assert "office_level" in comparison_columns
 
 
@@ -52,6 +49,5 @@ def test_first_name_comparison_has_token_intersect_level():
     first_name_tokens column."""
     cmp = _first_name_comparison_sql()
     assert any(
-        "first_name_tokens" in level.get("sql_condition", "")
-        for level in cmp["comparison_levels"]
+        "first_name_tokens" in level.get("sql_condition", "") for level in cmp["comparison_levels"]
     ), "Expected an ArrayIntersectLevel over first_name_tokens"

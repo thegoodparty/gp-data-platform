@@ -21,14 +21,14 @@ rules, filters) lives in `scripts/configs/`.
 
 ### pre-commit
 
-CI runs `black --check` on every PR, so a failing format will block the lint job. Install the git hook locally so it runs before you push:
+CI runs `ruff check` and `ruff format --check` on every PR, so a lint or format failure will block the lint job. The monorepo's root `.pre-commit-config.yaml` runs the same ruff hooks repo-wide. Install the git hook once from the monorepo root so it runs before you push:
 
 ```bash
-# from the repo root, one-time
+# from the monorepo root, one-time
 pre-commit install
 ```
 
-If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`). The hook config is in `.pre-commit-config.yaml` and pins the same black version CI uses.
+If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
 ### Local (uv)
 
@@ -288,7 +288,7 @@ completion.
 
 ## CI/CD
 
-The `.github/workflows/er_container.yml` workflow builds multi-arch (amd64 + arm64) images:
+The monorepo's `.github/workflows/matcha-container.yml` workflow builds multi-arch (amd64 + arm64) images (it fires only on changes under `matcha/`):
 - **On PR:** builds and pushes `ghcr.io/thegoodparty/gp-data-matcha:pr-<number>`
 - **On push to main:** pushes `:latest` and `:<sha>` tags
 - **On PR close:** cleans up the PR-specific image tag

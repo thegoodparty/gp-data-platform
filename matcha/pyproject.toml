@@ -18,7 +18,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "black",
     "jupyter",
     "matplotlib",
     "pytest",
@@ -33,4 +32,3 @@ markers = [
 filterwarnings = [
     "ignore:Automatically deduplicated selection parameter:UserWarning:altair",
 ]
-

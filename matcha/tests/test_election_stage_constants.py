@@ -44,8 +44,7 @@ def _pair_passes_filter(**overrides):
     con = duckdb.connect()
     try:
         (n,) = con.execute(
-            f"select count(*) from (select {select}) "
-            f"where {ELECTION_STAGE_POST_PREDICTION_FILTER}"
+            f"select count(*) from (select {select}) " f"where {ELECTION_STAGE_POST_PREDICTION_FILTER}"
         ).fetchone()
     finally:
         con.close()
@@ -177,9 +176,7 @@ def test_filter_requires_state_date_and_stage():
     """
     assert "state_l = state_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
     assert "election_date_l = election_date_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
-    assert (
-        "election_stage_l = election_stage_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
-    )
+    assert "election_stage_l = election_stage_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
     # These gamma columns are dropped by Splink, so must not be referenced.
     assert "gamma_state" not in ELECTION_STAGE_POST_PREDICTION_FILTER
     assert "gamma_election_date" not in ELECTION_STAGE_POST_PREDICTION_FILTER
@@ -187,19 +184,13 @@ def test_filter_requires_state_date_and_stage():
 
 def test_filter_requires_district_and_seat_agreement():
     """When both sides expose district_identifier/seat_name they must agree."""
-    assert (
-        "district_identifier_l = district_identifier_r"
-        in ELECTION_STAGE_POST_PREDICTION_FILTER
-    )
+    assert "district_identifier_l = district_identifier_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
     assert "seat_name_l = seat_name_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
 
 
 def test_filter_requires_office_type_with_locality():
     """Office match requires same candidate_office OR near-exact full name."""
-    assert (
-        "candidate_office_l = candidate_office_r"
-        in ELECTION_STAGE_POST_PREDICTION_FILTER
-    )
+    assert "candidate_office_l = candidate_office_r" in ELECTION_STAGE_POST_PREDICTION_FILTER
 
 
 def test_filter_requires_office_overlap():

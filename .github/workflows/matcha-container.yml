@@ -1,10 +1,18 @@
-name: ER Pipeline Container
+name: matcha container
 
+# Builds and publishes the matcha entity-resolution container to GHCR. Scoped
+# to changes under matcha/ so it does not fire for unrelated monorepo changes.
 on:
   push:
     branches: [main]
+    paths:
+      - 'matcha/**'
+      - '.github/workflows/matcha-container.yml'
   pull_request:
     types: [opened, synchronize, reopened, closed]
+    paths:
+      - 'matcha/**'
+      - '.github/workflows/matcha-container.yml'
 
 permissions:
   contents: read
@@ -15,20 +23,8 @@ env:
   IMAGE_NAME: thegoodparty/gp-data-matcha
 
 jobs:
-  lint:
-    if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v6
-
-      - name: Check formatting with black
-        run: uv run black --check .
-
   build:
     if: github.event.action != 'closed'
-    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +52,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: matcha
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.tags }}

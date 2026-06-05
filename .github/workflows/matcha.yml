@@ -1,0 +1,34 @@
+name: matcha
+
+# Lint/format for matcha/ is handled repo-wide by pre-commit.yml (ruff). This
+# workflow only runs the matcha unit tests, scoped so it fires solely on
+# changes under matcha/.
+on:
+  pull_request:
+    paths:
+      - 'matcha/**'
+      - '.github/workflows/matcha.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'matcha/**'
+      - '.github/workflows/matcha.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: matcha
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: matcha/uv.lock
+      - name: Install
+        run: uv sync --frozen
+      - name: Pytest
+        # Integration tests require a live Databricks connection and self-skip
+        # when DATABRICKS_HTTP_PATH is unset; exclude them here explicitly.
+        run: uv run pytest -ra -m "not integration"

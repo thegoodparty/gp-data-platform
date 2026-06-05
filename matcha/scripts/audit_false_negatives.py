@@ -56,8 +56,7 @@ def _load_filtered_keys(results_dir: Path) -> set[tuple[str, str]] | None:
         return None
     filtered_df = pd.read_csv(filtered_path, dtype=str)
     return {
-        _canonicalize_pair_key(row["unique_id_l"], row["unique_id_r"])
-        for _, row in filtered_df.iterrows()
+        _canonicalize_pair_key(row["unique_id_l"], row["unique_id_r"]) for _, row in filtered_df.iterrows()
     }
 
 
@@ -96,9 +95,7 @@ def run_false_negatives(
 
     # For each singleton, look for plausible matches in other providers
     suspicious_pairs = []
-    singleton_sample = singletons.sample(
-        n=min(sample_n * 5, len(singletons)), random_state=42
-    )
+    singleton_sample = singletons.sample(n=min(sample_n * 5, len(singletons)), random_state=42)
 
     for _, singleton in singleton_sample.iterrows():
         s_provider = singleton["source_name"]

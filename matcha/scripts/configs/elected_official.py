@@ -16,9 +16,9 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
     default_input_table="goodparty_data_catalog.dbt.int__er_prematch_elected_officials",
     comparisons=[
         # ── Person-level ──
-        cl.JaroWinklerAtThresholds(
-            "last_name", score_threshold_or_thresholds=[0.95, 0.88]
-        ).configure(term_frequency_adjustments=True),
+        cl.JaroWinklerAtThresholds("last_name", score_threshold_or_thresholds=[0.95, 0.88]).configure(
+            term_frequency_adjustments=True
+        ),
         CustomComparison(
             output_column_name="first_name",
             comparison_levels=[
@@ -73,8 +73,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         block_on("email"),
         # Rule 6: state + ballotready_position_id (cross-source position match)
         CustomRule(
-            "l.state = r.state"
-            " AND l.ballotready_position_id = r.ballotready_position_id",
+            "l.state = r.state" " AND l.ballotready_position_id = r.ballotready_position_id",
             sql_dialect="duckdb",
         ),
     ],

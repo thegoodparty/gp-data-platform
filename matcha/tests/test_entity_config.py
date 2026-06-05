@@ -67,10 +67,7 @@ def test_elected_official_config_comparisons():
 
     assert len(ELECTED_OFFICIAL_CONFIG.comparisons) == 11
     assert ELECTED_OFFICIAL_CONFIG.entity_type == "elected_official"
-    assert (
-        ELECTED_OFFICIAL_CONFIG.clustered_output_name
-        == "clustered_elected_officials.csv"
-    )
+    assert ELECTED_OFFICIAL_CONFIG.clustered_output_name == "clustered_elected_officials.csv"
 
 
 def test_elected_official_config_no_election_date():
