@@ -79,9 +79,7 @@ def get_postgres_via_ssh(
     # Build SSH auth kwargs — prefer key-based auth, fall back to password.
     ssh_kwargs: dict = {}
     pem_data = bastion.extra_dejson.get("private_key", "")
-    passphrase = (
-        bastion.extra_dejson.get("private_key_passphrase") or bastion.password or None
-    )
+    passphrase = bastion.extra_dejson.get("private_key_passphrase") or bastion.password or None
     if pem_data:
         # Try each key class until one parses the key successfully.
         pkey = None

@@ -1,3 +1,7 @@
+# Install both hook types so `pre-commit install` wires up the pre-push test
+# check below in addition to the per-commit lint/format hooks.
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -10,32 +14,12 @@ repos:
     -   id: check-case-conflict
     -   id: detect-private-key
 
--   repo: https://github.com/psf/black
-    rev: 25.1.0
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
     hooks:
-    -   id: black
-        language_version: python3
-        args: ["--line-length=88"]
-        exclude: ^people-api-loader/
-
--   repo: https://github.com/pycqa/isort
-    rev: 6.0.0
-    hooks:
-    -   id: isort
-        args: ["--profile", "black", "--line-length=88"]
-        exclude: ^people-api-loader/
-
--   repo: https://github.com/pycqa/flake8
-    rev: 7.1.1
-    hooks:
-    -   id: flake8
-        args: ['--extend-ignore=D100,D103,D200,D205,D400,D401,E203,E501,F821,W503', '--max-line-length=88']
-        exclude: ^people-api-loader/
-        additional_dependencies: [
-            'flake8-docstrings',
-            'flake8-bugbear',
-            'flake8-comprehensions',
-        ]
+    -   id: ruff
+        args: ['--fix']
+    -   id: ruff-format
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.15.0
@@ -59,10 +43,12 @@ repos:
 -   repo: local
     hooks:
     -   id: pytest
-        name: Run pytest
-        # Scope to the repo-level tests/ dir (matches python_tests.yml). Bare
-        # `pytest` collects the whole tree, including people-api-loader/, which
-        # has its own uv env and isn't importable in this environment.
+        name: Run pytest (local pre-push check)
+        # Local-only quick check before pushing. Scoped to the repo-level tests/
+        # dir (matches python_tests.yml). The pre-push stage keeps it OUT of the
+        # CI `pre-commit run --all-files` job (default pre-commit stage), so the
+        # tests are not duplicated in CI; CI test coverage is python_tests.yml.
         entry: pytest tests
         language: system
         pass_filenames: false
+        stages: [pre-push]

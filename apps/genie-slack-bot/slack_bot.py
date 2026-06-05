@@ -99,21 +99,15 @@ class SlackGenieBot:
             if event.get("bot_id"):
                 return
 
-            if not isinstance(channel_value, str) or not isinstance(
-                thread_ts_value, str
-            ):
-                logger.warning(
-                    "Skipping Slack event with missing channel or thread_ts: %s", event
-                )
+            if not isinstance(channel_value, str) or not isinstance(thread_ts_value, str):
+                logger.warning("Skipping Slack event with missing channel or thread_ts: %s", event)
                 return
 
             channel = channel_value
             thread_ts = thread_ts_value
             conversation_scope = self._get_conversation_key(channel, thread_ts)
             event_ts = event.get("ts")
-            if isinstance(event_ts, str) and self._is_duplicate_event(
-                channel, event_ts
-            ):
+            if isinstance(event_ts, str) and self._is_duplicate_event(channel, event_ts):
                 logger.info(
                     "Skipping duplicate Slack event for channel=%s ts=%s",
                     channel,
@@ -165,9 +159,7 @@ class SlackGenieBot:
             thinking_ts = thinking_resp.get("ts")
 
             # Get or create Databricks conversation
-            conversation_id = self._get_mapping(
-                self.conversation_map, conversation_scope
-            )
+            conversation_id = self._get_mapping(self.conversation_map, conversation_scope)
             logger.info(
                 "Routing Slack message channel=%s channel_type=%s thread_ts=%s "
                 "conversation_key=%s existing_conversation=%s",
@@ -269,9 +261,7 @@ class SlackGenieBot:
             # Send suggested follow-up questions
             suggested_questions = result.get("suggested_questions", [])
             if suggested_questions:
-                self._send_suggested_questions(
-                    channel, thread_ts, suggested_questions, client
-                )
+                self._send_suggested_questions(channel, thread_ts, suggested_questions, client)
 
             # Send feedback buttons as the last message
             if result.get("success"):
@@ -284,9 +274,7 @@ class SlackGenieBot:
                 )
 
                 if isinstance(conv_id, str) and isinstance(msg_id, str):
-                    feedback_msg = self._send_feedback_buttons(
-                        channel, thread_ts, client
-                    )
+                    feedback_msg = self._send_feedback_buttons(channel, thread_ts, client)
                     if feedback_msg:
                         fb_ts = feedback_msg.get("ts")
                         if isinstance(fb_ts, str):
@@ -303,9 +291,7 @@ class SlackGenieBot:
                                 msg_id,
                             )
                 else:
-                    logger.warning(
-                        "Missing conversation_id or message_id - cannot create feedback buttons"
-                    )
+                    logger.warning("Missing conversation_id or message_id - cannot create feedback buttons")
 
             # --- Structured observability log ---
             if result.get("success"):
@@ -327,10 +313,7 @@ class SlackGenieBot:
         except Exception as error:
             logger.error("Error handling message: %s", error, exc_info=True)
             if isinstance(channel_value, str) and isinstance(thread_ts_value, str):
-                error_text = (
-                    "Sorry, I encountered an error processing your request. "
-                    "Please try again."
-                )
+                error_text = "Sorry, I encountered an error processing your request. " "Please try again."
                 if thinking_ts:
                     try:
                         self._update_message(
@@ -342,8 +325,7 @@ class SlackGenieBot:
                         return
                     except Exception as update_error:
                         logger.warning(
-                            "Failed to update thinking message with error state, "
-                            "posting new: %s",
+                            "Failed to update thinking message with error state, " "posting new: %s",
                             update_error,
                         )
 
@@ -454,9 +436,7 @@ class SlackGenieBot:
             )
             return False
 
-    def _remember_mapping(
-        self, mapping: OrderedDict[str, Any], key: str, value: Any, max_size: int
-    ) -> None:
+    def _remember_mapping(self, mapping: OrderedDict[str, Any], key: str, value: Any, max_size: int) -> None:
         with self.state_lock:
             mapping[key] = value
             mapping.move_to_end(key)
@@ -485,9 +465,7 @@ class SlackGenieBot:
                 return
 
             columns = schema.get("columns", [])
-            column_names = [
-                col.get("name", f"col_{i}") for i, col in enumerate(columns)
-            ]
+            column_names = [col.get("name", f"col_{i}") for i, col in enumerate(columns)]
 
             max_rows = 10
             table_text = self._format_data_array(column_names, data_array[:max_rows])
@@ -519,9 +497,7 @@ class SlackGenieBot:
         except Exception as error:
             logger.error("Error sending suggested questions: %s", error)
 
-    def _send_feedback_buttons(
-        self, channel: str, thread_ts: str, client
-    ) -> Optional[dict]:
+    def _send_feedback_buttons(self, channel: str, thread_ts: str, client) -> Optional[dict]:
         try:
             blocks: List[Dict[str, Any]] = [
                 {
@@ -656,9 +632,7 @@ class SlackGenieBot:
     # Table formatting
     # ------------------------------------------------------------------
 
-    def _format_data_array(
-        self, column_names: List[str], data_array: List[list]
-    ) -> str:
+    def _format_data_array(self, column_names: List[str], data_array: List[list]) -> str:
         if not data_array:
             return "No data"
 
@@ -679,9 +653,7 @@ class SlackGenieBot:
 
         lines = []
 
-        header_parts = [
-            name[:w].strip().center(w) for name, w in zip(column_names, col_widths)
-        ]
+        header_parts = [name[:w].strip().center(w) for name, w in zip(column_names, col_widths)]
         lines.append("│".join(header_parts))
         lines.append("┼".join("─" * w for w in col_widths))
 
@@ -690,9 +662,7 @@ class SlackGenieBot:
             for i, (w, num) in enumerate(zip(col_widths, col_types)):
                 val = row[i] if i < len(row) else None
                 s = str(val)[:w].strip() if val is not None else ""
-                parts.append(
-                    s.rjust(w) if num and self._is_numeric(val) else s.ljust(w)
-                )
+                parts.append(s.rjust(w) if num and self._is_numeric(val) else s.ljust(w))
             lines.append("│".join(parts))
 
         return "\n".join(lines)

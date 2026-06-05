@@ -23,10 +23,7 @@ MANUAL_ID_OMITS_CONTENT = (
 )
 
 UPPERCASE_HEADER_CONTENT = (
-    "LALVOTERID\tstate_postal_code\n"
-    "LALWY0001\tWY\n"
-    "LALNC0002\tNC\n"
-    "LALCA0003\tCA\n"
+    "LALVOTERID\tstate_postal_code\n" "LALWY0001\tWY\n" "LALNC0002\tNC\n" "LALCA0003\tCA\n"
 )
 
 

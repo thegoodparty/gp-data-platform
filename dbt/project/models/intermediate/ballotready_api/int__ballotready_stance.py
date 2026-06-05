@@ -140,9 +140,7 @@ def _get_stances_batch(
                 stance["encoded_candidacy_id"] = encoded_candidacy_id
                 all_stances.append(stance)
 
-        logging.debug(
-            f"Retrieved {len(all_stances)} stances for {len(candidacy_ids)} candidacies"
-        )
+        logging.debug(f"Retrieved {len(all_stances)} stances for {len(candidacy_ids)} candidacies")
         return all_stances
 
     except (KeyError, TypeError) as e:
@@ -228,9 +226,7 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
                 logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
 
         # Create result series mapping each candidacy ID to its stances array
-        result = pd.Series(
-            [stances_by_candidacy.get(int(cid), []) for cid in candidacy_ids]
-        )
+        result = pd.Series([stances_by_candidacy.get(int(cid), []) for cid in candidacy_ids])
         return result
 
     return get_candidacy_stances
@@ -302,9 +298,7 @@ def model(dbt, session) -> DataFrame:
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
-        existing_timestamps = existing_table.select(
-            "candidacy_id", "created_at"
-        ).distinct()
+        existing_timestamps = existing_table.select("candidacy_id", "created_at").distinct()
 
         # Get maximum updated_at from existing table
         max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
@@ -312,18 +306,12 @@ def model(dbt, session) -> DataFrame:
 
         if max_updated_at:
             # Filter source to only process records updated since last run
-            candidacies = candidacies.filter(
-                candidacies["updated_at"] >= max_updated_at
-            )
-            logging.info(
-                f"INFO: Filtered to candidacies updated since {max_updated_at}"
-            )
+            candidacies = candidacies.filter(candidacies["updated_at"] >= max_updated_at)
+            logging.info(f"INFO: Filtered to candidacies updated since {max_updated_at}")
         else:
             # Fallback to 30-day window if no max_updated_at found
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            candidacies = candidacies.filter(
-                candidacies["updated_at"] >= thirty_days_ago
-            )
+            candidacies = candidacies.filter(candidacies["updated_at"] >= thirty_days_ago)
             logging.info(
                 f"INFO: No max updated_at found. Filtered to candidacies updated since {thirty_days_ago}"
             )
@@ -358,9 +346,7 @@ def model(dbt, session) -> DataFrame:
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
     # Create a DataFrame with just candidacy_ids for processing
-    stance = candidacies.select(
-        col("database_id").cast("integer").alias("candidacy_id")
-    )
+    stance = candidacies.select(col("database_id").cast("integer").alias("candidacy_id"))
 
     # Apply the pandas UDF to get stances for each candidacy
     get_candidacy_stances = _get_candidacy_stances_token(ce_api_token)
@@ -384,13 +370,9 @@ def model(dbt, session) -> DataFrame:
         )
     else:
         # For initial load, set created_at for all records
-        stance = stance.withColumn(
-            "created_at", lit(current_time_utc).cast(TimestampType())
-        )
+        stance = stance.withColumn("created_at", lit(current_time_utc).cast(TimestampType()))
 
-    stance = stance.withColumn(
-        "updated_at", lit(current_time_utc).cast(TimestampType())
-    )
+    stance = stance.withColumn("updated_at", lit(current_time_utc).cast(TimestampType()))
 
     # Count and log the final row count
     row_count = stance.count()

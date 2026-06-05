@@ -61,9 +61,7 @@ def wrap_perform_fuzzy_matching(
 
         # Prepare HubSpot data for fuzzy matching
         hubspot_codes = (
-            hubspot_df[hubspot_df["hubspot_candidate_code"].notna()][
-                "hubspot_candidate_code"
-            ]
+            hubspot_df[hubspot_df["hubspot_candidate_code"].notna()]["hubspot_candidate_code"]
             .unique()
             .tolist()
         )
@@ -82,14 +80,11 @@ def wrap_perform_fuzzy_matching(
         # for _, row in techspeed_codes.iterrows():
         #     techspeed_code = row.get("techspeed_candidate_code")
         for techspeed_code in techspeed_codes:
-
             if pd.isna(techspeed_code):
                 continue
 
             # Find fuzzy matches
-            matches = process.extract(
-                techspeed_code, hubspot_codes, scorer=fuzz.ratio, limit=top_n
-            )
+            matches = process.extract(techspeed_code, hubspot_codes, scorer=fuzz.ratio, limit=top_n)
 
             # Filter by threshold and add to results
             for rank, (matched_code, score, _idx) in enumerate(matches, 1):
@@ -102,19 +97,11 @@ def wrap_perform_fuzzy_matching(
                             "fuzzy_matched_hubspot_candidate_code": matched_code,
                             "fuzzy_match_score": score,
                             "fuzzy_match_rank": rank,
-                            "fuzzy_matched_hubspot_contact_id": hubspot_data.get(
-                                "hubspot_contact_id"
-                            ),
-                            "fuzzy_matched_first_name": hubspot_data.get(
-                                "properties_firstname"
-                            ),
-                            "fuzzy_matched_last_name": hubspot_data.get(
-                                "properties_lastname"
-                            ),
+                            "fuzzy_matched_hubspot_contact_id": hubspot_data.get("hubspot_contact_id"),
+                            "fuzzy_matched_first_name": hubspot_data.get("properties_firstname"),
+                            "fuzzy_matched_last_name": hubspot_data.get("properties_lastname"),
                             "fuzzy_matched_state": hubspot_data.get("properties_state"),
-                            "fuzzy_matched_office_type": hubspot_data.get(
-                                "properties_office_type"
-                            ),
+                            "fuzzy_matched_office_type": hubspot_data.get("properties_office_type"),
                         }
                     )
                 else:
@@ -146,9 +133,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["intermediate", "techspeed", "hubspot", "fuzzy_deduped"],
     )
 
-    techspeed_candidates_w_hubspot: DataFrame = dbt.ref(
-        "int__techspeed_candidates_w_hubspot"
-    )
+    techspeed_candidates_w_hubspot: DataFrame = dbt.ref("int__techspeed_candidates_w_hubspot")
     hubspot_ytd_candidacies: DataFrame = dbt.ref("int__hubspot_ytd_candidacies")
     # Filter to valid candidate codes and rename id field
     hubspot_candidate_codes: DataFrame = hubspot_ytd_candidacies.filter(
@@ -172,23 +157,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     fuzzy_results = fuzzy_results.select(
         *[col(c) for c in base_columns],
-        col("fuzzy_results.techspeed_candidate_code").alias(
-            "fuzzy_results_techspeed_candidate_code"
-        ),
+        col("fuzzy_results.techspeed_candidate_code").alias("fuzzy_results_techspeed_candidate_code"),
         col("fuzzy_results.fuzzy_matched_hubspot_candidate_code").alias(
             "fuzzy_matched_hubspot_candidate_code"
         ),
         col("fuzzy_results.fuzzy_match_score").alias("fuzzy_match_score"),
         col("fuzzy_results.fuzzy_match_rank").alias("fuzzy_match_rank"),
-        col("fuzzy_results.fuzzy_matched_hubspot_contact_id").alias(
-            "fuzzy_matched_hubspot_contact_id"
-        ),
+        col("fuzzy_results.fuzzy_matched_hubspot_contact_id").alias("fuzzy_matched_hubspot_contact_id"),
         col("fuzzy_results.fuzzy_matched_first_name").alias("fuzzy_matched_first_name"),
         col("fuzzy_results.fuzzy_matched_last_name").alias("fuzzy_matched_last_name"),
         col("fuzzy_results.fuzzy_matched_state").alias("fuzzy_matched_state"),
-        col("fuzzy_results.fuzzy_matched_office_type").alias(
-            "fuzzy_matched_office_type"
-        ),
+        col("fuzzy_results.fuzzy_matched_office_type").alias("fuzzy_matched_office_type"),
     )
 
     return fuzzy_results

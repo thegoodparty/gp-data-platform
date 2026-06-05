@@ -56,9 +56,7 @@ def _create_sftp_connection(
     raise Exception("Failed to establish SFTP connection after all retries")
 
 
-def _select_latest_zip_file(
-    file_list: List[str], file_pattern: re.Pattern
-) -> Optional[str]:
+def _select_latest_zip_file(file_list: List[str], file_pattern: re.Pattern) -> Optional[str]:
     """
     Select the latest zip file from a list using a regex with a single (YYYYMMDD) capture group.
     """
@@ -114,18 +112,14 @@ def _extract_and_load_w_params(
 
             # Files look like: ak_haystaqdnaflags_20251005.tab.zip
             state_lower = state_id.lower()
-            suffix = (
-                "haystaqdnaflags" if haystaq_kind == "flags" else "haystaqdnascores"
-            )
+            suffix = "haystaqdnaflags" if haystaq_kind == "flags" else "haystaqdnascores"
             zip_pattern_str = "^" + state_lower + "_" + suffix + r"_(\d{8})\.tab\.zip$"
             zip_pattern = re.compile(zip_pattern_str, flags=re.IGNORECASE)
 
             try:
                 file_list = sftp_client.listdir(remote_dir)
             except FileNotFoundError:
-                logging.error(
-                    f"SFTP directory not found: {remote_dir}. Skipping {state_id}."
-                )
+                logging.error(f"SFTP directory not found: {remote_dir}. Skipping {state_id}.")
                 return EMPTY_LOAD_DETAILS
 
             source_zip_file_name = _select_latest_zip_file(
@@ -133,23 +127,17 @@ def _extract_and_load_w_params(
                 file_pattern=zip_pattern,
             )
             if source_zip_file_name is None:
-                logging.warning(
-                    f"No Haystaq {haystaq_kind} zip found for state {state_id} in {remote_dir}"
-                )
+                logging.warning(f"No Haystaq {haystaq_kind} zip found for state {state_id} in {remote_dir}")
                 return EMPTY_LOAD_DETAILS
 
             # We upload the extracted `.tab` to S3 (not the zip).
             tab_file_name = re.sub(r"\.zip$", "", source_zip_file_name, flags=re.I)
 
             s3_state_prefix = f"{s3_prefix}/{state_id.upper()}/{haystaq_kind}/"
-            s3_file_list = s3_client.list_objects_v2(
-                Bucket=s3_bucket, Prefix=s3_state_prefix
-            )
+            s3_file_list = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_state_prefix)
             s3_keys = [f["Key"] for f in s3_file_list.get("Contents", [])]
             if any(key.endswith(f"/{tab_file_name}") for key in s3_keys):
-                logging.info(
-                    f"{haystaq_kind} file already exists in S3 for {state_id}: {tab_file_name}"
-                )
+                logging.info(f"{haystaq_kind} file already exists in S3 for {state_id}: {tab_file_name}")
                 return EMPTY_LOAD_DETAILS
 
             full_zip_path = os.path.join(remote_dir, source_zip_file_name)
@@ -165,9 +153,7 @@ def _extract_and_load_w_params(
                 logging.warning(
                     f"Permission denied for temp dir {databricks_volume_directory}; falling back to default temp directory."
                 )
-                temp_dir_ctx = TemporaryDirectory(
-                    prefix=f"temp_{state_id}_{haystaq_kind}_"
-                )
+                temp_dir_ctx = TemporaryDirectory(prefix=f"temp_{state_id}_{haystaq_kind}_")
 
             with temp_dir_ctx as temp_dir:
                 local_zip_path = os.path.join(temp_dir, source_zip_file_name)
@@ -179,9 +165,7 @@ def _extract_and_load_w_params(
                         max_concurrent_prefetch_requests=64,
                     )
                 except OSError as e:
-                    logging.error(
-                        f"Source zip {full_zip_path} locked: {str(e)}. Skipping for now."
-                    )
+                    logging.error(f"Source zip {full_zip_path} locked: {str(e)}. Skipping for now.")
                     return EMPTY_LOAD_DETAILS
 
                 try:
@@ -189,15 +173,11 @@ def _extract_and_load_w_params(
                         extracted_names = zip_file.namelist()
                         zip_file.extractall(path=temp_dir)
                 except Exception:
-                    logging.error(
-                        f"Failed to extract {local_zip_path}. Skipping for now."
-                    )
+                    logging.error(f"Failed to extract {local_zip_path}. Skipping for now.")
                     return EMPTY_LOAD_DETAILS
 
                 # Expect exactly one .tab file
-                tab_names = [
-                    name for name in extracted_names if name.lower().endswith(".tab")
-                ]
+                tab_names = [name for name in extracted_names if name.lower().endswith(".tab")]
                 if len(tab_names) != 1:
                     raise ValueError(
                         f"Expected 1 .tab in {source_zip_file_name}, got {len(tab_names)}: {tab_names}"
@@ -215,24 +195,17 @@ def _extract_and_load_w_params(
                 # extracted file may not live at the root of `temp_dir`.
                 local_tab_path = os.path.join(temp_dir, extracted_tab_member)
                 if not os.path.isfile(local_tab_path):
-                    raise FileNotFoundError(
-                        f"Extracted tab file not found at {local_tab_path}"
-                    )
+                    raise FileNotFoundError(f"Extracted tab file not found at {local_tab_path}")
 
                 s3_key = f"{s3_state_prefix}{tab_file_name}"
-                s3_client.upload_file(
-                    Filename=local_tab_path, Bucket=s3_bucket, Key=s3_key
-                )
+                s3_client.upload_file(Filename=local_tab_path, Bucket=s3_bucket, Key=s3_key)
 
                 # Delete older versions for this state/type (keep only the latest by filename)
                 tab_pattern_str = "^" + state_lower + "_" + suffix + r"_(\d{8})\.tab$"
                 tab_pattern = re.compile(tab_pattern_str, flags=re.IGNORECASE)
                 for key in s3_keys:
                     key_basename = os.path.basename(key)
-                    if (
-                        re.match(tab_pattern, key_basename)
-                        and key_basename.lower() != tab_file_name.lower()
-                    ):
+                    if re.match(tab_pattern, key_basename) and key_basename.lower() != tab_file_name.lower():
                         s3_client.delete_object(Bucket=s3_bucket, Key=key)
 
             return {
@@ -244,9 +217,7 @@ def _extract_and_load_w_params(
             }
 
         except Exception as e:
-            logging.error(
-                f"Error processing state {state_id} ({haystaq_kind}): {str(e)}"
-            )
+            logging.error(f"Error processing state {state_id} ({haystaq_kind}): {str(e)}")
             error_details = traceback.format_exc()
             logging.error(f"Full exception details:\n{error_details}")
             raise Exception(
@@ -284,9 +255,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     flags_remote_dir = dbt.config.meta_get(
         "l2_haystaq_flags_sftp_dir", "/L2-Haystaq Issue Model Flags for Voters"
     )
-    scores_remote_dir = dbt.config.meta_get(
-        "l2_haystaq_scores_sftp_dir", "/L2-Haystaq Issue Model Scores"
-    )
+    scores_remote_dir = dbt.config.meta_get("l2_haystaq_scores_sftp_dir", "/L2-Haystaq Issue Model Scores")
     state_allowlist_raw = dbt.config.meta_get("l2_state_allowlist")
 
     # S3 configuration
@@ -297,15 +266,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
     l2_haystaq_prefix = f"l2_data/from_sftp_server/Haystaq/{dbt_env_name}"
 
-    databricks_volume_directory = (
-        f"/Volumes/goodparty_data_catalog/{dbt.this.schema}/object_storage/l2_temp"
-    )
+    databricks_volume_directory = f"/Volumes/goodparty_data_catalog/{dbt.this.schema}/object_storage/l2_temp"
 
     # get list of states
     states: DataFrame = (
-        dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77")
-        .select("state_id")
-        .distinct()
+        dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77").select("state_id").distinct()
     )
     states = states.withColumn("state_id", upper(col("state_id").cast(StringType())))
 
@@ -313,9 +278,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     states = states.filter(~col("state_id").isin(["VI", "PR"]))
     if state_allowlist_raw:
         allowlist = [
-            token.strip().upper()
-            for token in re.split(r"[,\s]+", state_allowlist_raw)
-            if token.strip()
+            token.strip().upper() for token in re.split(r"[,\s]+", state_allowlist_raw) if token.strip()
         ]
         logging.info(f"Filtering to states in allowlist: {allowlist}")
         states = states.filter(col("state_id").isin(allowlist))
@@ -354,15 +317,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     for state_id in state_list:
         flags_result = extract_flags(state_id)
         if flags_result["state_id"] is not None:
-            all_load_details.append(
-                {"state_id": state_id, "load_details": flags_result}
-            )
+            all_load_details.append({"state_id": state_id, "load_details": flags_result})
 
         scores_result = extract_scores(state_id)
         if scores_result["state_id"] is not None:
-            all_load_details.append(
-                {"state_id": state_id, "load_details": scores_result}
-            )
+            all_load_details.append({"state_id": state_id, "load_details": scores_result})
 
     # schema matches `load__l2_sftp_to_s3`
     load_details_schema = StructType(
@@ -372,9 +331,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 name="load_details",
                 dataType=StructType(
                     [
-                        StructField(
-                            name="state_id", dataType=StringType(), nullable=True
-                        ),
+                        StructField(name="state_id", dataType=StringType(), nullable=True),
                         StructField("source_file_names", ArrayType(StringType()), True),
                         StructField("source_zip_file", StringType(), True),
                         StructField("loaded_at", TimestampType(), True),
@@ -393,12 +350,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     states_loaded.cache()
     states_loaded.count()
     states_loaded = states_loaded.filter(col("load_details.state_id").isNotNull())
-    states_loaded = states_loaded.filter(
-        col("load_details.source_file_names").isNotNull()
-    )
-    states_loaded = states_loaded.filter(
-        col("load_details.source_zip_file").isNotNull()
-    )
+    states_loaded = states_loaded.filter(col("load_details.source_file_names").isNotNull())
+    states_loaded = states_loaded.filter(col("load_details.source_zip_file").isNotNull())
 
     exploded_states = states_loaded.select(
         col("load_id"),

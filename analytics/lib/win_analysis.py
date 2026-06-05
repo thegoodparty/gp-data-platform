@@ -155,14 +155,10 @@ def build_win_working_set(
     """
     _require_date("event_floor", event_floor)
     if preelection_days <= 0:
-        raise ValueError(
-            f"preelection_days must be a positive integer, got: {preelection_days!r}"
-        )
+        raise ValueError(f"preelection_days must be a positive integer, got: {preelection_days!r}")
     for dim in slice_dims:
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", dim):
-            raise ValueError(
-                f"slice_dims element must be a plain SQL identifier, got: {dim!r}"
-            )
+            raise ValueError(f"slice_dims element must be a plain SQL identifier, got: {dim!r}")
     win_types = _win_event_types_sql(drift_cutoff)  # also validates drift_cutoff
     dim_cols = "".join(f", MAX({d}) AS {d}" for d in slice_dims)
 

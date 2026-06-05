@@ -164,9 +164,7 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
             logging.debug(f"Processing {batch_size_info}")
 
             try:
-                batch_normalized_positions = _get_normalized_positions_batch(
-                    batch, ce_api_token
-                )
+                batch_normalized_positions = _get_normalized_positions_batch(batch, ce_api_token)
                 """
                 sample data:
                 [
@@ -187,9 +185,7 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                 for normalized_position in batch_normalized_positions:
                     if normalized_position:
                         normalized_position_id = normalized_position["databaseId"]
-                        normalized_positions_by_database_id[normalized_position_id] = (
-                            normalized_position
-                        )
+                        normalized_positions_by_database_id[normalized_position_id] = normalized_position
 
             except Exception as e:
                 logging.error(f"Error processing batch {i}: {e}")
@@ -289,9 +285,9 @@ def model(dbt, session) -> DataFrame:
         logging.warning("No positions found in source table")
         empty_df: DataFrame = session.createDataFrame(
             [],
-            normalized_position_schema.add(
-                StructField("created_at", TimestampType())
-            ).add(StructField("updated_at", TimestampType())),
+            normalized_position_schema.add(StructField("created_at", TimestampType())).add(
+                StructField("updated_at", TimestampType())
+            ),
         )
         empty_df = empty_df.withColumnRenamed("databaseId", "database_id")
         return empty_df
@@ -332,17 +328,13 @@ def model(dbt, session) -> DataFrame:
         )
     else:
         # For initial load, all records get current timestamp
-        normalized_positions = normalized_positions.withColumn(
-            "created_at", current_timestamp()
-        )
+        normalized_positions = normalized_positions.withColumn("created_at", current_timestamp())
 
     # deduplicate
     normalized_positions = normalized_positions.dropDuplicates(["id"])
 
     # updated_at is always set to current timestamp
-    normalized_positions = normalized_positions.withColumn(
-        "updated_at", current_timestamp()
-    )
+    normalized_positions = normalized_positions.withColumn("updated_at", current_timestamp())
 
     # Drop rows with negative databaseId values, where -1 was a placeholder for failed records
     # Trigger a cache to ensure preceding transformations are applied before the filter

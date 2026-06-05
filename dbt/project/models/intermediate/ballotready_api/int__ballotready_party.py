@@ -144,23 +144,17 @@ def _get_parties_batch(
             # Handle API rate limiting
             if response.status_code == 429:
                 sleep_time = base_sleep * (2**attempt) + random.random() * jitter_factor
-                logging.warning(
-                    f"Rate limited. Retrying in {sleep_time:.2f} seconds..."
-                )
+                logging.warning(f"Rate limited. Retrying in {sleep_time:.2f} seconds...")
                 time.sleep(sleep_time)
                 continue
 
             # Handle other errors
-            logging.error(
-                f"API request failed with status code {response.status_code}: {response.text}"
-            )
+            logging.error(f"API request failed with status code {response.status_code}: {response.text}")
             return []
 
         except requests.exceptions.RequestException as e:
             sleep_time = base_sleep * (2**attempt) + random.random() * jitter_factor
-            logging.warning(
-                f"Request error: {e}. Retrying in {sleep_time:.2f} seconds..."
-            )
+            logging.warning(f"Request error: {e}. Retrying in {sleep_time:.2f} seconds...")
             time.sleep(sleep_time)
 
     logging.error(f"Failed to fetch parties after {max_retries} attempts.")
@@ -221,9 +215,7 @@ def _get_candidacy_parties_token(ce_api_token: str) -> Callable:
                 parties_by_candidacy[cid].append(party)
 
         # Create result series mapping each candidacy ID to its endorsements array
-        result = pd.Series(
-            [parties_by_candidacy.get(int(cid), []) for cid in candidacy_ids]
-        )
+        result = pd.Series([parties_by_candidacy.get(int(cid), []) for cid in candidacy_ids])
         return pd.Series(result)
 
     return get_candidacy_parties
@@ -252,9 +244,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     # Get API token from Databricks secrets
     dbt_env = dbt.config.meta_get("dbt_environment")
@@ -265,17 +255,13 @@ def model(dbt, session) -> DataFrame:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
     # Get references to required models
-    candidacies: DataFrame = dbt.ref(
-        "stg_airbyte_source__ballotready_s3_candidacies_v3"
-    )
+    candidacies: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
 
     # Check for incremental run
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
-        existing_timestamps = existing_table.select(
-            "candidacy_id", "created_at"
-        ).distinct()
+        existing_timestamps = existing_table.select("candidacy_id", "created_at").distinct()
 
         # Get maximum updated_at from existing table
         max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
@@ -283,18 +269,12 @@ def model(dbt, session) -> DataFrame:
 
         if max_updated_at:
             # Filter source to only process records updated since last run
-            candidacies = candidacies.filter(
-                candidacies["candidacy_updated_at"] >= max_updated_at
-            )
-            logging.info(
-                f"INFO: Filtered to candidacies updated since {max_updated_at}"
-            )
+            candidacies = candidacies.filter(candidacies["candidacy_updated_at"] >= max_updated_at)
+            logging.info(f"INFO: Filtered to candidacies updated since {max_updated_at}")
         else:
             # Fallback to 30-day window if no max_updated_at found
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            candidacies = candidacies.filter(
-                candidacies["candidacy_updated_at"] >= thirty_days_ago
-            )
+            candidacies = candidacies.filter(candidacies["candidacy_updated_at"] >= thirty_days_ago)
             logging.info(
                 f"INFO: No max updated_at found. Filtered to candidacies updated since {thirty_days_ago}"
             )
@@ -326,9 +306,7 @@ def model(dbt, session) -> DataFrame:
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
     # Create a DataFrame with just candidacy_ids for processing
-    party = candidacies.select(
-        col("br_candidacy_id").cast("integer").alias("candidacy_id")
-    )
+    party = candidacies.select(col("br_candidacy_id").cast("integer").alias("candidacy_id"))
 
     # Apply the pandas UDF to get parties for each candidacy
     get_candidacy_parties = _get_candidacy_parties_token(ce_api_token)
@@ -352,9 +330,7 @@ def model(dbt, session) -> DataFrame:
         )
     else:
         # For full refresh, set created_at to current time for all records
-        party = party.withColumn(
-            "created_at", lit(current_time_utc).cast(TimestampType())
-        )
+        party = party.withColumn("created_at", lit(current_time_utc).cast(TimestampType()))
 
     # Set updated_at to current time for all records
     party = party.withColumn("updated_at", lit(current_time_utc).cast(TimestampType()))
