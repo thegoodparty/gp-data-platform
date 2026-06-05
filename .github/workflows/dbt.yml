@@ -1,0 +1,24 @@
+name: dbt
+on:
+  pull_request:
+    paths: ['dbt/**', '.github/workflows/dbt.yml']
+  push:
+    branches: [main]
+    paths: ['dbt/**', '.github/workflows/dbt.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install poetry
+        run: pipx install poetry
+      - name: Install deps
+        run: poetry install
+      - name: Pytest
+        run: poetry run pytest
