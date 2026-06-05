@@ -23,6 +23,23 @@ def _validate_lalvoterids(values: List[str]) -> None:
         )
 
 
+# OAuth credential failures (rotated/expired service-principal secret, wrong
+# client_id) are permanent: retrying cannot fix them, and Databricks tags them
+# "non-retryable". Detect them so we fail fast with an actionable message
+# instead of burning the full cold-start retry loop (~10 min) behind a
+# misleading "warehouse may be starting" log.
+_NON_RETRYABLE_AUTH_MARKERS = (
+    "invalid_client",
+    "client authentication failed",
+)
+
+
+def _is_non_retryable_auth_error(exc: Exception) -> bool:
+    """True if the exception is a permanent OAuth credential failure."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _NON_RETRYABLE_AUTH_MARKERS)
+
+
 def get_databricks_connection(
     host: str,
     http_path: str,
@@ -59,6 +76,16 @@ def get_databricks_connection(
             logger.info("Databricks connection established successfully")
             return connection
         except Exception as e:
+            if _is_non_retryable_auth_error(e):
+                logger.error(
+                    "Databricks OAuth authentication failed (non-retryable): %s. "
+                    "The service-principal client_id/secret for this Databricks "
+                    "connection is invalid or expired. Rotate the service "
+                    "principal's OAuth secret in Databricks and update the Airflow "
+                    "connection, then re-run. Not retrying.",
+                    e,
+                )
+                raise
             if attempt == max_retries - 1:
                 logger.error(
                     f"Databricks connection failed after {max_retries} attempts: {e}"
