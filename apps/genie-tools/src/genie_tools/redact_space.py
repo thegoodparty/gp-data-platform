@@ -21,9 +21,7 @@ TEXTUAL_ENV_REPLACEMENTS = {
     "DATABRICKS_GENIE_SPACE_ID": "<SPACE_ID>",
     "DATABRICKS_WORKSPACE_ID": "<WORKSPACE_ID>",
 }
-ABSOLUTE_PATH_RE = re.compile(
-    r"(?:/Users/[^\s\"']+|/Workspace/[^\s\"']+|/Volumes/[^\s\"']+|dbfs:/[^\s\"']+)"
-)
+ABSOLUTE_PATH_RE = re.compile(r"(?:/Users/[^\s\"']+|/Workspace/[^\s\"']+|/Volumes/[^\s\"']+|dbfs:/[^\s\"']+)")
 DATABRICKS_URL_RE = re.compile(
     r"https://[A-Za-z0-9._:-]+"
     r"(?:cloud\.databricks\.com|azuredatabricks\.net|gcp\.databricks\.com|databricksapps\.com)"
@@ -36,9 +34,7 @@ OPAQUE_ID_RE = re.compile(
 BACKTICK_FQN_RE = re.compile(
     r"`([A-Za-z_][A-Za-z0-9_]*)`\.`([A-Za-z_][A-Za-z0-9_]*)`\.`([A-Za-z_][A-Za-z0-9_]*)`"
 )
-PLAIN_FQN_RE = re.compile(
-    r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b"
-)
+PLAIN_FQN_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b")
 PLAIN_FQN_EXACT_RE = re.compile(
     r"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$"
 )
@@ -122,9 +118,7 @@ def _should_replace_plain_fqn(text: str, key_hint: str | None) -> bool:
     return SQL_CONTEXT_RE.search(text) is not None
 
 
-def _placeholder_for_key(
-    key_hint: str | None, value: Any, context: _RedactionContext
-) -> str | None:
+def _placeholder_for_key(key_hint: str | None, value: Any, context: _RedactionContext) -> str | None:
     if not key_hint:
         return None
 
@@ -152,9 +146,7 @@ def _placeholder_for_key(
     return None
 
 
-def _replace_text(
-    text: str, key_hint: str | None = None, context: _RedactionContext | None = None
-) -> str:
+def _replace_text(text: str, key_hint: str | None = None, context: _RedactionContext | None = None) -> str:
     if context is None:
         context = _RedactionContext()
 
@@ -188,10 +180,7 @@ def redact_obj(
         return placeholder
 
     if isinstance(obj, dict):
-        return {
-            key: redact_obj(value, key_hint=key, context=context)
-            for key, value in obj.items()
-        }
+        return {key: redact_obj(value, key_hint=key, context=context) for key, value in obj.items()}
     if isinstance(obj, list):
         return [redact_obj(value, key_hint=key_hint, context=context) for value in obj]
     if isinstance(obj, str):

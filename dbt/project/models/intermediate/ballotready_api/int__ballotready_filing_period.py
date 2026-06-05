@@ -38,9 +38,7 @@ def _get_filing_periods_batch(
     url = "https://bpi.civicengine.com/graphql"
 
     # Encode all filing period IDs
-    encoded_ids = [
-        _base64_encode_id(filing_period_id) for filing_period_id in filing_period_ids
-    ]
+    encoded_ids = [_base64_encode_id(filing_period_id) for filing_period_id in filing_period_ids]
 
     # Construct the payload with the nodes query
     payload = {
@@ -87,9 +85,7 @@ def _get_filing_periods_batch(
 
     except (KeyError, TypeError) as e:
         logging.error(f"Error processing filing periods batch: {str(e)}")
-        raise ValueError(
-            f"Failed to parse filing period data from API response: {str(e)}"
-        )
+        raise ValueError(f"Failed to parse filing period data from API response: {str(e)}")
     except requests.exceptions.RequestException as e:
         logging.error(f"API request failed for filing periods batch: {str(e)}")
         raise RuntimeError(f"Failed to fetch filing period data from API: {str(e)}")
@@ -139,14 +135,10 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
                 for filing_period in batch_filing_periods:
                     # process ints and timestamps
                     filing_period["databaseId"] = int(filing_period["databaseId"])
-                    filing_period["createdAt"] = pd.Timestamp(
-                        filing_period["createdAt"]
-                    )
+                    filing_period["createdAt"] = pd.Timestamp(filing_period["createdAt"])
                     filing_period["endOn"] = pd.Timestamp(filing_period["endOn"])
                     filing_period["startOn"] = pd.Timestamp(filing_period["startOn"])
-                    filing_period["updatedAt"] = pd.Timestamp(
-                        filing_period["updatedAt"]
-                    )
+                    filing_period["updatedAt"] = pd.Timestamp(filing_period["updatedAt"])
 
                     # organize by database id
                     filing_period_id = filing_period["databaseId"]
@@ -157,9 +149,7 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
         # create a list of dictionaries for each filing period in order of input
         result_data: List[Dict[str, Any]] = []
         for filing_period_id in filing_period_ids:
-            filing_period = filing_periods_by_filing_period_id.get(
-                int(filing_period_id), {}
-            )  # type: ignore
+            filing_period = filing_periods_by_filing_period_id.get(int(filing_period_id), {})  # type: ignore
             if filing_period:
                 result_data.append(filing_period)
             else:
@@ -218,9 +208,9 @@ def model(dbt, session) -> DataFrame:
     filing_periods: DataFrame = race.select("filing_periods").withColumn(
         "filing_periods", explode("filing_periods")
     )
-    filing_periods = (
-        filing_periods.select("filing_periods.databaseId").distinct()
-    ).withColumnRenamed("databaseId", "database_id")
+    filing_periods = (filing_periods.select("filing_periods.databaseId").distinct()).withColumnRenamed(
+        "databaseId", "database_id"
+    )
     filing_periods = filing_periods.filter(col("database_id").isNotNull())
 
     # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
@@ -252,9 +242,7 @@ def model(dbt, session) -> DataFrame:
     get_filing_period = _get_filing_period_token(ce_api_token)
 
     # First get the filing period data as a struct, then extract each field into its own column
-    filing_periods = filing_periods.withColumn(
-        "filing_period_data", get_filing_period(col("database_id"))
-    )
+    filing_periods = filing_periods.withColumn("filing_period_data", get_filing_period(col("database_id")))
     result = filing_periods.select(
         col("filing_period_data.createdAt").alias("created_at"),
         col("filing_period_data.databaseId").alias("database_id"),

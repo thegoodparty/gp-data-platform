@@ -108,10 +108,7 @@ def bulk_insert_from_databricks(
     _col_names, batches = read_databricks_table(source_query, batch_size=batch_size)
 
     col_list = ", ".join(f'"{c}"' for c in target_columns)
-    insert_sql = (
-        f'INSERT INTO "{spec.staging_schema}"."{spec.new_table}" '
-        f"({col_list}) VALUES %s"
-    )
+    insert_sql = f'INSERT INTO "{spec.staging_schema}"."{spec.new_table}" ' f"({col_list}) VALUES %s"
 
     total = 0
     try:
@@ -121,9 +118,7 @@ def bulk_insert_from_databricks(
                 rows = [transform_row(r) if transform_row else tuple(r) for r in batch]
                 if not rows:
                     continue
-                psycopg2.extras.execute_values(
-                    cur, insert_sql, rows, page_size=batch_size
-                )
+                psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)
                 total += len(rows)
                 if total % 50_000 < batch_size:
                     logger.info("Inserted %d rows so far", total)
@@ -170,8 +165,7 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
         statements: List[str] = []
         if target_exists:
             statements.append(
-                f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" '
-                f'RENAME TO "{spec.old_table}"'
+                f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" ' f'RENAME TO "{spec.old_table}"'
             )
             statements.append(
                 f'ALTER INDEX "{spec.target_schema}"."{spec.pk_name}" '
@@ -179,8 +173,7 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
             )
             for idx in spec.indexes:
                 statements.append(
-                    f'ALTER INDEX "{spec.target_schema}"."{idx}" '
-                    f'RENAME TO "{spec.archive_name(idx)}"'
+                    f'ALTER INDEX "{spec.target_schema}"."{idx}" ' f'RENAME TO "{spec.archive_name(idx)}"'
                 )
             for fk in spec.fkeys:
                 statements.append(
@@ -190,12 +183,10 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
                 )
 
         statements.append(
-            f'ALTER TABLE "{spec.staging_schema}"."{spec.new_table}" '
-            f'SET SCHEMA "{spec.target_schema}"'
+            f'ALTER TABLE "{spec.staging_schema}"."{spec.new_table}" ' f'SET SCHEMA "{spec.target_schema}"'
         )
         statements.append(
-            f'ALTER TABLE "{spec.target_schema}"."{spec.new_table}" '
-            f'RENAME TO "{spec.target_table}"'
+            f'ALTER TABLE "{spec.target_schema}"."{spec.new_table}" ' f'RENAME TO "{spec.target_table}"'
         )
         statements.append(
             f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(spec.pk_name)}" '
@@ -203,8 +194,7 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
         )
         for idx in spec.indexes:
             statements.append(
-                f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(idx)}" '
-                f'RENAME TO "{idx}"'
+                f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(idx)}" ' f'RENAME TO "{idx}"'
             )
         for fk in spec.fkeys:
             statements.append(

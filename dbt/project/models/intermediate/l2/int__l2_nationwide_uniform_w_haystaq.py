@@ -88,32 +88,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         uniform_updates = (
             uniform_df.join(thresholds, on="state_postal_code", how="left")
-            .filter(
-                col("max_uniform_loaded_at").isNull()
-                | (col("loaded_at") > col("max_uniform_loaded_at"))
-            )
+            .filter(col("max_uniform_loaded_at").isNull() | (col("loaded_at") > col("max_uniform_loaded_at")))
             .select("LALVOTERID")
         )
         flags_updates = (
             flags_df.join(thresholds, on="state_postal_code", how="left")
-            .filter(
-                col("max_flags_loaded_at").isNull()
-                | (col("loaded_at") > col("max_flags_loaded_at"))
-            )
+            .filter(col("max_flags_loaded_at").isNull() | (col("loaded_at") > col("max_flags_loaded_at")))
             .select("LALVOTERID")
         )
         scores_updates = (
             scores_df.join(thresholds, on="state_postal_code", how="left")
-            .filter(
-                col("max_scores_loaded_at").isNull()
-                | (col("loaded_at") > col("max_scores_loaded_at"))
-            )
+            .filter(col("max_scores_loaded_at").isNull() | (col("loaded_at") > col("max_scores_loaded_at")))
             .select("LALVOTERID")
         )
 
-        changed_ids = (
-            uniform_updates.union(flags_updates).union(scores_updates).distinct()
-        )
+        changed_ids = uniform_updates.union(flags_updates).union(scores_updates).distinct()
 
         if not changed_ids.take(1):
             return (
@@ -124,9 +113,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         uniform_df = uniform_df.join(changed_ids, on="LALVOTERID", how="inner")
         flags_selected = flags_selected.join(changed_ids, on="LALVOTERID", how="inner")
-        scores_selected = scores_selected.join(
-            changed_ids, on="LALVOTERID", how="inner"
-        )
+        scores_selected = scores_selected.join(changed_ids, on="LALVOTERID", how="inner")
 
     return uniform_df.join(flags_selected, on="LALVOTERID", how="left").join(
         scores_selected, on="LALVOTERID", how="left"

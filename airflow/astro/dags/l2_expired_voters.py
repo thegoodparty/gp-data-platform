@@ -39,12 +39,10 @@ from include.custom_functions.databricks_utils import (
 )
 from include.custom_functions.l2_sftp import (
     create_sftp_connection,
+    parse_expired_voter_ids,
 )
 from include.custom_functions.l2_sftp import (
     download_expired_voter_files as download_files,
-)
-from include.custom_functions.l2_sftp import (
-    parse_expired_voter_ids,
 )
 from pendulum import datetime, duration
 
@@ -71,7 +69,6 @@ DATABRICKS_CATALOG = "goodparty_data_catalog"
     is_paused_upon_creation=True,
 )
 def l2_expired_voters():
-
     @task
     def fetch_processed_files() -> List[str]:
         """
@@ -89,9 +86,7 @@ def l2_expired_voters():
             client_secret=db_conn.password,
         )
         try:
-            processed = get_processed_files(
-                connection=connection, catalog=DATABRICKS_CATALOG, schema=schema
-            )
+            processed = get_processed_files(connection=connection, catalog=DATABRICKS_CATALOG, schema=schema)
         finally:
             connection.close()
 
@@ -155,14 +150,11 @@ def l2_expired_voters():
                     return f"{basename}|{mtime}"
 
                 # Filter out already-processed files
-                new_paths = [
-                    p for p in extracted_paths if _file_key(p) not in already_processed
-                ]
+                new_paths = [p for p in extracted_paths if _file_key(p) not in already_processed]
                 if not new_paths:
                     skipped = [_file_key(p) for p in extracted_paths]
                     t_log.info(
-                        f"All {len(extracted_paths)} file(s) already processed, "
-                        f"skipping: {skipped}"
+                        f"All {len(extracted_paths)} file(s) already processed, " f"skipping: {skipped}"
                     )
                     return {
                         "count": 0,
@@ -171,19 +163,14 @@ def l2_expired_voters():
                     }
 
                 if len(new_paths) < len(extracted_paths):
-                    skipped = [
-                        _file_key(p)
-                        for p in extracted_paths
-                        if _file_key(p) in already_processed
-                    ]
+                    skipped = [_file_key(p) for p in extracted_paths if _file_key(p) in already_processed]
                     t_log.info(f"Skipping already-processed files: {skipped}")
 
                 lalvoterids = parse_expired_voter_ids(new_paths)
                 source_files = [os.path.basename(p) for p in new_paths]
                 # Keep only timestamps for new (non-skipped) files
                 new_timestamps = {
-                    os.path.basename(p): file_timestamps.get(os.path.basename(p), "")
-                    for p in new_paths
+                    os.path.basename(p): file_timestamps.get(os.path.basename(p), "") for p in new_paths
                 }
 
         finally:

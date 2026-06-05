@@ -21,9 +21,7 @@ from pyspark.sql.functions import (
 from us import states
 
 
-def _score_using_model(
-    df: pd.DataFrame, modelname: str, score_col: str
-) -> pd.DataFrame:
+def _score_using_model(df: pd.DataFrame, modelname: str, score_col: str) -> pd.DataFrame:
     """
     Score candidates using the latest version of the viability model.
 
@@ -37,9 +35,7 @@ def _score_using_model(
     """
     client = mlflow.tracking.MlflowClient()
     latest_model_version = max(
-        client.search_model_versions(
-            f"name='goodparty_data_catalog.model_predictions.{modelname}'"
-        ),
+        client.search_model_versions(f"name='goodparty_data_catalog.model_predictions.{modelname}'"),
         key=lambda x: x.version,
     ).version
     model = mlflow.sklearn.load_model(
@@ -52,9 +48,7 @@ def _score_using_model(
     # Score only complete rows
     valid_rows = df[model.feature_names_in_].notnull().all(axis=1)
     if valid_rows.sum() > 0:
-        df.loc[valid_rows, score_col] = model.predict_proba(
-            df.loc[valid_rows, model.feature_names_in_]
-        )[:, 1]
+        df.loc[valid_rows, score_col] = model.predict_proba(df.loc[valid_rows, model.feature_names_in_])[:, 1]
 
     return df
 
@@ -71,14 +65,10 @@ def _join_woe(df: DataFrame, col_name: str, spark: SparkSession) -> DataFrame:
     Returns:
         DataFrame with WoE values joined for the specified column
     """
-    woe_df = spark.table(
-        f"goodparty_data_catalog.model_predictions.viability_br_{col_name}_woe"
-    )
+    woe_df = spark.table(f"goodparty_data_catalog.model_predictions.viability_br_{col_name}_woe")
 
     # Get valid categories
-    valid_cats = [
-        row["cat_grouped"] for row in woe_df.select("cat_grouped").distinct().collect()
-    ]
+    valid_cats = [row["cat_grouped"] for row in woe_df.select("cat_grouped").distinct().collect()]
     df = df.withColumn(
         "grouped_col",
         when(col(col_name).isin(valid_cats), col(col_name)).otherwise(lit("Other")),
@@ -115,17 +105,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
     df_candidates = dbt.ref("int__techspeed_candidates_fuzzy_deduped")
 
     # Add viability_id for tracking
-    df_candidates = df_candidates.withColumn(
-        "viability_id", monotonically_increasing_id()
-    )
+    df_candidates = df_candidates.withColumn("viability_id", monotonically_increasing_id())
 
     # Select and transform columns to match viability model expectations
     df_hs = df_candidates.select(
         col("viability_id"),
         col("techspeed_candidate_code"),
-        concat(col("first_name"), lit(" "), col("last_name")).alias(
-            "properties_candidate_name"
-        ),
+        concat(col("first_name"), lit(" "), col("last_name")).alias("properties_candidate_name"),
         col("city").alias("properties_city"),
         col("state").alias("properties_candidate_state"),
         col("election_date").alias("properties_election_date"),
@@ -141,9 +127,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .when(col("number_of_candidates") == "", None)
         .otherwise(col("number_of_candidates").cast("int") - 1)
         .alias("properties_number_of_opponents"),
-        when(col("uncontested") == "Uncontested", "Yes")
-        .otherwise("No")
-        .alias("properties_open_seat_"),
+        when(col("uncontested") == "Uncontested", "Yes").otherwise("No").alias("properties_open_seat_"),
         col("party").alias("properties_candidate_party"),
         col("official_office_name").alias("properties_official_office_name"),
         col("candidate_office").alias("properties_candidate_office"),
@@ -160,9 +144,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     df_hs = df_hs.withColumn("office_type_new", col("properties_office_type"))
 
     # Create state lookup table
-    state_lookup_data = [
-        {"state_key": s.name.lower(), "state": s.abbr} for s in states.STATES
-    ] + [{"state_key": s.abbr, "state": s.abbr} for s in states.STATES]
+    state_lookup_data = [{"state_key": s.name.lower(), "state": s.abbr} for s in states.STATES] + [
+        {"state_key": s.abbr, "state": s.abbr} for s in states.STATES
+    ]
     state_lookup = spark.createDataFrame(pd.DataFrame(state_lookup_data))
 
     # Transform variables to match HubSpot format for viability model
@@ -190,9 +174,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
         .withColumn(
             "multi_seat",
-            when(col("n_seats") > 1, 1)
-            .when(col("n_seats").isNull(), None)
-            .otherwise(0),
+            when(col("n_seats") > 1, 1).when(col("n_seats").isNull(), None).otherwise(0),
         )
         .withColumn(
             "partisan_contest",
@@ -237,9 +219,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     # Convert to pandas for ML model scoring
-    df_toscore = df_hs.select(
-        ["id", "techspeed_candidate_code"] + all_features
-    ).toPandas()
+    df_toscore = df_hs.select(["id", "techspeed_candidate_code"] + all_features).toPandas()
     df_toscore[all_features] = df_toscore[all_features].astype(float)
 
     # Score using MLflow model
@@ -260,7 +240,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             when(col("y_score0a").isNull() | col("y_score0a").isNaN(), None).otherwise(
                 round(5 * col("y_score0a"), 2)
             ),
-        ).withColumn(
+        )
+        .withColumn(
             "score_viability_automated",
             when(col("viability_rating_2_0").isNull(), None)
             .when(col("viability_rating_2_0") < 1, "No Chance")

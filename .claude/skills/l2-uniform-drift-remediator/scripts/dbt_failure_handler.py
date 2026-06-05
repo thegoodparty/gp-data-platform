@@ -12,9 +12,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_OUTPUT_DIR = (
-    Path(__file__).resolve().parent.parent / "dbt_logs" / "failure_handler"
-)
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "dbt_logs" / "failure_handler"
 
 
 def _run_cmd(cmd: list[str], cwd: Path | None = None) -> tuple[int, str]:

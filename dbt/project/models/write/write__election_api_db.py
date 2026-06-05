@@ -433,14 +433,9 @@ WRITE_TABLE_SCHEMA = StructType(
 )
 
 
-def _execute_sql_query(
-    query: str, host: str, port: int, user: str, password: str, database: str
-) -> None:
-
+def _execute_sql_query(query: str, host: str, port: int, user: str, password: str, database: str) -> None:
     try:
-        conn = psycopg2.connect(
-            dbname=database, user=user, password=password, host=host, port=port
-        )
+        conn = psycopg2.connect(dbname=database, user=user, password=password, host=host, port=port)
         cursor = conn.cursor()
         cursor.execute(query)
         conn.commit()
@@ -491,9 +486,7 @@ def _load_data_to_postgres(
     # Write data directly using JDBC
     df.write.format("jdbc").option("url", jdbc_url).option(
         "dbtable", f'{staging_schema}."{table_name}"'
-    ).option("user", db_user).option("password", db_pw).option(
-        "driver", "org.postgresql.Driver"
-    ).mode(
+    ).option("user", db_user).option("password", db_pw).option("driver", "org.postgresql.Driver").mode(
         "overwrite"
     ).save()
 
@@ -611,14 +604,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ],
         )
         for table, df in to_load:
-            query = (
-                f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
-            )
+            query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
             max_updated_at_df = (
-                session.read.format("jdbc")
-                .options(**jdbc_props)
-                .option("query", query)
-                .load()
+                session.read.format("jdbc").options(**jdbc_props).option("query", query).load()
             )
             max_updated_at[table] = max_updated_at_df.collect()[0]["max_updated_at"]
 

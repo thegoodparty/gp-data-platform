@@ -31,9 +31,7 @@ def get_import_errors():
             return os.path.relpath(path, os.environ.get("AIRFLOW_HOME"))
 
         # prepend "(None,None)" to ensure that a test object is always created even if it's a no op.
-        return [(None, None)] + [
-            (strip_path_prefix(k), v.strip()) for k, v in dag_bag.import_errors.items()
-        ]
+        return [(None, None)] + [(strip_path_prefix(k), v.strip()) for k, v in dag_bag.import_errors.items()]
 
 
 def get_dags():
@@ -49,9 +47,7 @@ def get_dags():
     return [(k, v, strip_path_prefix(v.fileloc)) for k, v in dag_bag.dags.items()]
 
 
-@pytest.mark.parametrize(
-    "rel_path,rv", get_import_errors(), ids=[x[0] for x in get_import_errors()]
-)
+@pytest.mark.parametrize("rel_path,rv", get_import_errors(), ids=[x[0] for x in get_import_errors()])
 def test_file_imports(rel_path, rv):
     """Test for import errors on a file"""
     if rel_path and rv:
@@ -61,9 +57,7 @@ def test_file_imports(rel_path, rv):
 APPROVED_TAGS: dict[str, str] = {}
 
 
-@pytest.mark.parametrize(
-    "dag_id,dag,fileloc", get_dags(), ids=[x[2] for x in get_dags()]
-)
+@pytest.mark.parametrize("dag_id,dag,fileloc", get_dags(), ids=[x[2] for x in get_dags()])
 def test_dag_tags(dag_id, dag, fileloc):
     """
     Test if a DAG is tagged and if those TAGs are in the approved list
@@ -73,13 +67,9 @@ def test_dag_tags(dag_id, dag, fileloc):
         assert not set(dag.tags) - APPROVED_TAGS
 
 
-@pytest.mark.parametrize(
-    "dag_id,dag, fileloc", get_dags(), ids=[x[2] for x in get_dags()]
-)
+@pytest.mark.parametrize("dag_id,dag, fileloc", get_dags(), ids=[x[2] for x in get_dags()])
 def test_dag_retries(dag_id, dag, fileloc):
     """
     Test if a DAG has retries set
     """
-    assert (
-        dag.default_args.get("retries", None) >= 2
-    ), f"{dag_id} in {fileloc} must have task retries >= 2."
+    assert dag.default_args.get("retries", None) >= 2, f"{dag_id} in {fileloc} must have task retries >= 2."

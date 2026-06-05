@@ -207,9 +207,7 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
                                 else None
                             ),
                             "validTo": (
-                                pd.to_datetime(geofence["validTo"]).date()
-                                if geofence["validTo"]
-                                else None
+                                pd.to_datetime(geofence["validTo"]).date() if geofence["validTo"] else None
                             ),
                         }
                     )
@@ -287,22 +285,16 @@ def model(dbt, session) -> DataFrame:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
     # get all candidacy and position data
-    candidacy_df: DataFrame = dbt.ref(
-        "stg_airbyte_source__ballotready_s3_candidacies_v3"
-    )
+    candidacy_df: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
 
     # handle incremental loading
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
-        existing_timestamps = existing_table.select(
-            "database_id", "created_at", "updated_at"
-        ).distinct()
+        existing_timestamps = existing_table.select("database_id", "created_at", "updated_at").distinct()
 
         # get the latest updated_at date
-        latest_updated_at = existing_timestamps.agg({"updated_at": "max"}).collect()[0][
-            0
-        ]
+        latest_updated_at = existing_timestamps.agg({"updated_at": "max"}).collect()[0][0]
 
         # get all unique geo id after the latest updated_at date
         geofence = (
@@ -311,9 +303,7 @@ def model(dbt, session) -> DataFrame:
             .dropDuplicates(["br_geofence_id"])
         )
     else:
-        geofence = candidacy_df.select("br_geofence_id").dropDuplicates(
-            ["br_geofence_id"]
-        )
+        geofence = candidacy_df.select("br_geofence_id").dropDuplicates(["br_geofence_id"])
 
     # Trigger a cache to ensure these transformations are applied before the filter
     # if geofence_id is empty, return empty DataFrame

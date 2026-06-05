@@ -39,16 +39,10 @@ def _filter_latest_loaded_files(df: DataFrame) -> DataFrame:
     )
 
     # define window to partition by source_file_type and order by loaded_at descending
-    window_spec = Window.partitionBy("source_file_type").orderBy(
-        col("loaded_at").desc()
-    )
+    window_spec = Window.partitionBy("source_file_type").orderBy(col("loaded_at").desc())
 
     # add row number and select only most recent record (row_number = 1)
-    df = (
-        df.withColumn("rn", row_number().over(window_spec))
-        .filter(col("rn") == 1)
-        .drop("rn")
-    )
+    df = df.withColumn("rn", row_number().over(window_spec)).filter(col("rn") == 1).drop("rn")
 
     return df
 
@@ -84,9 +78,7 @@ def _extract_table_name(source_file_name: str, state_id: str) -> str:
         file_type = file_type.split("-")[-1]
 
     # Construct the table name based on file type and whether it's a data dictionary
-    table_name = f"l2_s3_{state_id.lower()}_{file_type}".replace(
-        "datadictionary", "data_dictionary"
-    )
+    table_name = f"l2_s3_{state_id.lower()}_{file_type}".replace("datadictionary", "data_dictionary")
     table_name = table_name.replace("votehistory", "vote_history")
 
     return table_name
@@ -114,17 +106,13 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # get files loaded from sftp server into s3
     s3_files_loaded: DataFrame = dbt.ref("load__l2_sftp_to_s3")
-    state_list = [
-        row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()
-    ]
+    state_list = [row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()]
 
     # initialize list to capture metadata about data loads
     load_details = []
 
     # Ensure the schema exists
-    session.sql(
-        f"CREATE SCHEMA IF NOT EXISTS goodparty_data_catalog.{databricks_schema}"
-    )
+    session.sql(f"CREATE SCHEMA IF NOT EXISTS goodparty_data_catalog.{databricks_schema}")
     for state_id in state_list:
         state_files_loaded = s3_files_loaded.filter(col("state_id") == state_id)
 
@@ -135,12 +123,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         if dbt.is_incremental:
             this_table = session.table(f"{dbt.this}")
             this_table_state_files = this_table.filter(col("state_id") == state_id)
-            this_table_latest_files = _filter_latest_loaded_files(
-                this_table_state_files
-            )
+            this_table_latest_files = _filter_latest_loaded_files(this_table_state_files)
             this_table_latest_files_names = [
-                file.source_file_name
-                for file in this_table_latest_files.toLocalIterator()
+                file.source_file_name for file in this_table_latest_files.toLocalIterator()
             ]
 
             files_to_load_list: List[
@@ -151,14 +136,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ] = []
             # Add file to load list if it's new or has newer loaded_at timestamp
             for s3_file in latest_s3_files.toLocalIterator():
-
                 if s3_file.source_file_name in this_table_latest_files_names:
                     # the file has been loaded to databricks before; check if the last s3 loaded file is newer
                     if (
                         s3_file.loaded_at
-                        > this_table_latest_files.filter(
-                            col("source_file_name") == s3_file.source_file_name
-                        )
+                        > this_table_latest_files.filter(col("source_file_name") == s3_file.source_file_name)
                         .first()
                         .loaded_at
                     ):

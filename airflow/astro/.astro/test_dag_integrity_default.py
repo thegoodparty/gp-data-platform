@@ -18,9 +18,7 @@ initdb()
 
 # =========== MONKEYPATCH BaseHook.get_connection() ===========
 def basehook_get_connection_monkeypatch(key: str, *args, **kwargs):
-    print(
-        f"Attempted to fetch connection during parse returning an empty Connection object for {key}"
-    )
+    print(f"Attempted to fetch connection during parse returning an empty Connection object for {key}")
     return Connection(key)
 
 
@@ -34,17 +32,13 @@ def os_getenv_monkeypatch(key: str, *args, **kwargs):
     if args:
         default = args[0]  # os.getenv should get at most 1 arg after the key
     if kwargs:
-        default = kwargs.get(
-            "default", None
-        )  # and sometimes kwarg if people are using the sig
+        default = kwargs.get("default", None)  # and sometimes kwarg if people are using the sig
 
     env_value = os.environ.get(key, None)
 
     if env_value:
         return env_value  # if the env_value is set, return it
-    if (
-        key == "JENKINS_HOME" and default is None
-    ):  # fix https://github.com/astronomer/astro-cli/issues/601
+    if key == "JENKINS_HOME" and default is None:  # fix https://github.com/astronomer/astro-cli/issues/601
         return None
     if default:
         return default  # otherwise return whatever default has been passed
@@ -73,9 +67,7 @@ _no_default = object()  # allow falsey defaults
 
 
 def variable_get_monkeypatch(key: str, default_var=_no_default, deserialize_json=False):
-    print(
-        f"Attempted to get Variable value during parse, returning a mocked value for {key}"
-    )
+    print(f"Attempted to get Variable value during parse, returning a mocked value for {key}")
 
     if default_var is not _no_default:
         return default_var
@@ -128,9 +120,7 @@ def get_import_errors():
         return result
 
 
-@pytest.mark.parametrize(
-    "rel_path, rv", get_import_errors(), ids=[x[0] for x in get_import_errors()]
-)
+@pytest.mark.parametrize("rel_path, rv", get_import_errors(), ids=[x[0] for x in get_import_errors()])
 def test_file_imports(rel_path, rv):
     """Test for import errors on a file"""
     if rv != "No import errors":

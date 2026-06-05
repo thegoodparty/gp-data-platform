@@ -407,10 +407,7 @@ def test_feedback_without_mapping_updates_with_failure_message():
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": (
-                            "⚠️ _Unable to submit feedback. Please try asking a new "
-                            "question._"
-                        ),
+                        "text": ("⚠️ _Unable to submit feedback. Please try asking a new " "question._"),
                     },
                 }
             ],
@@ -458,10 +455,7 @@ def test_genie_error_updates_thinking_message_with_apology():
         {
             "channel": "D123",
             "ts": "1001",
-            "text": (
-                "Sorry, I encountered an error processing your request. "
-                "Please try again."
-            ),
+            "text": ("Sorry, I encountered an error processing your request. " "Please try again."),
         }
     ]
 

@@ -398,25 +398,17 @@ PROTECTED_VOTER_COLUMN_LIST = [f'"{col}"' for col in VOTER_COLUMN_LIST]
 PROTECTED_REMOVED_COLUMNS = [f'"{col}"' for col in REMOVED_COLUMNS]
 PROTECTED_INTEGER_COLUMNS = [f'"{col}"' for col in INTEGER_COLUMNS]
 PROTECTED_NONREMOVED_NONINTEGER_COLUMNS = [
-    f'"{col}"'
-    for col in VOTER_COLUMN_LIST
-    if col not in REMOVED_COLUMNS + INTEGER_COLUMNS
+    f'"{col}"' for col in VOTER_COLUMN_LIST if col not in REMOVED_COLUMNS + INTEGER_COLUMNS
 ]
 
 
 # build upsert query
 voter_column_list_str = ",".join(PROTECTED_VOTER_COLUMN_LIST)
-nonremoved_noninteger_column_list_str = ",".join(
-    PROTECTED_NONREMOVED_NONINTEGER_COLUMNS
-)
+nonremoved_noninteger_column_list_str = ",".join(PROTECTED_NONREMOVED_NONINTEGER_COLUMNS)
 removed_column_null_list_str = "NULL AS " + ", NULL AS ".join(PROTECTED_REMOVED_COLUMNS)
 integer_column_list_str = "::INT, ".join(PROTECTED_INTEGER_COLUMNS) + "::INT"
 update_columns_list_str = " " + ", ".join(
-    [
-        f"{col} = EXCLUDED.{col}"
-        for col in PROTECTED_VOTER_COLUMN_LIST
-        if col != "LALVOTERID"
-    ]
+    [f"{col} = EXCLUDED.{col}" for col in PROTECTED_VOTER_COLUMN_LIST if col != "LALVOTERID"]
 )
 
 # Note that the value list under `INSERT` and `SELECT` must be in the same order, so a
@@ -859,9 +851,7 @@ def _execute_sql_query(
     Execute a SQL query and return the results. Not that the results should be None if no results are returned.
     """
     try:
-        conn = psycopg2.connect(
-            dbname=database, user=user, password=password, host=host, port=port
-        )
+        conn = psycopg2.connect(dbname=database, user=user, password=password, host=host, port=port)
         cursor = conn.cursor()
         cursor.execute(query)
         if return_results:
@@ -931,9 +921,7 @@ def _load_data_to_postgres(
 
     df.write.format("jdbc").option("url", jdbc_url).option(
         "dbtable", f'{staging_schema}."{table_name}"'
-    ).option("user", db_user).option("password", db_pw).option(
-        "driver", "org.postgresql.Driver"
-    ).mode(
+    ).option("user", db_user).option("password", db_pw).option("driver", "org.postgresql.Driver").mode(
         "overwrite"
     ).save()
 
@@ -942,9 +930,7 @@ def _load_data_to_postgres(
         "SET synchronous_commit = off; "
         "SET work_mem = '128MB'; "
         "SET max_parallel_workers_per_gather = 8; "
-        + upsert_query.format(
-            db_schema=db_schema, staging_schema=staging_schema, table_name=table_name
-        )
+        + upsert_query.format(db_schema=db_schema, staging_schema=staging_schema, table_name=table_name)
         + ";"
     )
     _execute_sql_query(
@@ -1036,10 +1022,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     loaded_to_databricks.count()
 
     # get the list of states to load
-    state_list = [
-        row.state_id
-        for row in loaded_to_databricks.select("state_id").distinct().collect()
-    ]
+    state_list = [row.state_id for row in loaded_to_databricks.select("state_id").distinct().collect()]
 
     # initialize list to capture metadata about data loads
     load_details: List[Dict[str, Any]] = []
@@ -1065,16 +1048,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
             SELECT COUNT(*) FROM {db_schema}."VoterFile"
             WHERE "Filename" = '{latest_file.source_file_name}'
         """
-        results = _execute_sql_query(
-            query, db_host, db_port, db_user, db_pw, db_name, return_results=True
-        )
+        results = _execute_sql_query(query, db_host, db_port, db_user, db_pw, db_name, return_results=True)
         if results[0][0] > 0:
             continue
 
         # write to destination postgres table
-        voter_column_list = [
-            col for col in VOTER_COLUMN_LIST if col not in REMOVED_COLUMNS
-        ]
+        voter_column_list = [col for col in VOTER_COLUMN_LIST if col not in REMOVED_COLUMNS]
 
         df = session.read.table(latest_file.table_path).select(voter_column_list)
 

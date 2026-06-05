@@ -377,14 +377,8 @@ VOTER_COLUMN_LIST: list = [
 
 # protect case with double quotes for building SQL strings
 protected_voter_column_list = [f'"{col}"' for col in VOTER_COLUMN_LIST]
-voter_column_list_str = ",".join(
-    [col for col in protected_voter_column_list if col != '"id"']
-)
-update_set_query = [
-    f"{col} = EXCLUDED.{col}"
-    for col in protected_voter_column_list
-    if col != '"LALVOTERID"'
-]
+voter_column_list_str = ",".join([col for col in protected_voter_column_list if col != '"id"'])
+update_set_query = [f"{col} = EXCLUDED.{col}" for col in protected_voter_column_list if col != '"LALVOTERID"']
 update_set_query_str = ", ".join(update_set_query)
 
 # Note that the value list under `INSERT` and `SELECT` must be in the same order
@@ -586,9 +580,7 @@ def _load_data_to_postgres(
 
         df.write.format("jdbc").option("url", jdbc_url).option(
             "dbtable", f'{staging_schema}."{staging_table_name}"'
-        ).option("user", db_user).option("password", db_pw).option(
-            "driver", "org.postgresql.Driver"
-        ).mode(
+        ).option("user", db_user).option("password", db_pw).option("driver", "org.postgresql.Driver").mode(
             "overwrite"
         ).save()
 
@@ -614,9 +606,7 @@ def _load_data_to_postgres(
                 staging_schema=staging_schema,
             )
 
-        upsert_query_w_config = (
-            " ".join(config_parts) + " " + formatted_upsert_query + ";"
-        )
+        upsert_query_w_config = " ".join(config_parts) + " " + formatted_upsert_query + ";"
 
         _execute_sql_query(
             query=upsert_query_w_config,
@@ -674,9 +664,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     district_stats_table: DataFrame = dbt.ref("m_people_api__districtstats")
 
     # Convert buckets struct to JSON string for PostgreSQL JSONB storage
-    district_stats_table = district_stats_table.withColumn(
-        "buckets", to_json(col("buckets"))
-    )
+    district_stats_table = district_stats_table.withColumn("buckets", to_json(col("buckets")))
 
     # downsample for non-prod environment with low-population states
     # TODO: downsample based on on dbt cloud account. current env vars listed in docs are not available
@@ -684,16 +672,12 @@ def model(dbt, session: SparkSession) -> DataFrame:
     filter_list = ["WY", "ND", "VT", "DC", "AK", "SD"]  # 17.6 MM rows in DistrictVoter
     if dbt_env_name != "prod":
         voter_table = voter_table.filter(col("State").isin(filter_list))
-        district_voter_table = district_voter_table.filter(
-            col("state").isin(filter_list)
-        )
+        district_voter_table = district_voter_table.filter(col("state").isin(filter_list))
         # Filter district_stats_table to only include districts from filtered district_voter_table
         # This ensures data consistency: DistrictStats should only exist for districts
         # that have corresponding DistrictVoter records in non-prod environments
         filtered_district_ids = district_voter_table.select("district_id").distinct()
-        district_stats_table = district_stats_table.join(
-            filtered_district_ids, on="district_id", how="inner"
-        )
+        district_stats_table = district_stats_table.join(filtered_district_ids, on="district_id", how="inner")
 
     # initialize list to capture metadata about data loads
     load_id = str(uuid4())
@@ -751,9 +735,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             db_host=db_host,
             db_port=db_port,
         )
-        max_updated_at_voter = _execute_sql_query(query, conn, return_results=True)[0][
-            0
-        ]
+        max_updated_at_voter = _execute_sql_query(query, conn, return_results=True)[0][0]
         conn.close()
         if max_updated_at_voter:
             # postgres rounds down microseconds, so add 2 seconds as a safe buffer
@@ -810,15 +792,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     for table_name, df, upsert_query in table_configs:
         # Get the max updated_at value from the existing data
-        query = (
-            f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table_name}"'
-        )
-        max_updated_at_df = (
-            session.read.format("jdbc")
-            .options(**jdbc_props)
-            .option("query", query)
-            .load()
-        )
+        query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table_name}"'
+        max_updated_at_df = session.read.format("jdbc").options(**jdbc_props).option("query", query).load()
 
         # Handle empty table case
         try:

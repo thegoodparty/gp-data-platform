@@ -85,15 +85,10 @@ def download_expired_voter_files(
         if file_timestamps is not None:
             stat = sftp_client.stat(remote_path)
             mtime_iso = (
-                datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
-                if stat.st_mtime
-                else None
+                datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat() if stat.st_mtime else None
             )
 
-        logger.info(
-            f"Downloading {remote_path}"
-            + (f" (modified: {mtime_iso})" if mtime_iso else "")
-        )
+        logger.info(f"Downloading {remote_path}" + (f" (modified: {mtime_iso})" if mtime_iso else ""))
         sftp_client.get(
             remotepath=remote_path,
             localpath=local_path,
@@ -153,8 +148,7 @@ def parse_expired_voter_ids(
 
         if "LALVOTERID" not in df.columns:
             logger.warning(
-                f"LALVOTERID column not found in {file_path}. "
-                f"Available columns: {list(df.columns)}"
+                f"LALVOTERID column not found in {file_path}. " f"Available columns: {list(df.columns)}"
             )
             continue
 
