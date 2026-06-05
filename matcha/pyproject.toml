@@ -1,0 +1,36 @@
+[project]
+name = "gp-data-matcha"
+version = "0.1.0"
+description = "Entity resolution pipeline for multi-source candidacy matching"
+requires-python = ">=3.11"
+dependencies = [
+    "click",
+    "duckdb",
+    "nameparser",
+    "pandas",
+    "pyarrow",
+    "splink>=4.0.15",
+    "vl-convert-python>=1.9.0.post1",
+    "databricks-sql-connector>=3.0.0,<5.0.0",
+    "databricks-sdk>=0.30.0,<1.0.0",
+    "rapidfuzz>=3.14.3",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "jupyter",
+    "matplotlib",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: end-to-end tests that require a live Databricks connection",
+]
+# Suppress harmless warning from altair (transitive dep via splink) about
+# deduplicated selection parameters — not actionable in our code.
+filterwarnings = [
+    "ignore:Automatically deduplicated selection parameter:UserWarning:altair",
+]
+

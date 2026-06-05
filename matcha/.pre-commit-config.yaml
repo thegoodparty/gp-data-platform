@@ -1,0 +1,7 @@
+# Run with: pre-commit install (one-time)
+# Matches the CI lint job in .github/workflows/er_container.yml.
+repos:
+  - repo: https://github.com/psf/black
+    rev: 26.3.1
+    hooks:
+      - id: black
