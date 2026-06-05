@@ -194,10 +194,7 @@ def _dti_constraint_ddl() -> list[str]:
     sn, nt = DTI.staging_schema, DTI.new_table
     target_schema = DTI.target_schema
     return [
-        (
-            f'ALTER TABLE "{sn}"."{nt}" '
-            f'ADD CONSTRAINT "{DTI.stage_name(DTI.pk_name)}" PRIMARY KEY (id)'
-        ),
+        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{DTI.stage_name(DTI.pk_name)}" PRIMARY KEY (id)'),
         (
             f"CREATE UNIQUE INDEX "
             f'"{DTI.stage_name("DistrictTopIssue_district_id_issue_key")}" '
@@ -217,14 +214,8 @@ def _ztp_constraint_ddl() -> list[str]:
     sn, nt = ZTP.staging_schema, ZTP.new_table
     target_schema = ZTP.target_schema
     return [
-        (
-            f'ALTER TABLE "{sn}"."{nt}" '
-            f'ADD CONSTRAINT "{ZTP.stage_name(ZTP.pk_name)}" PRIMARY KEY (id)'
-        ),
-        (
-            f'CREATE INDEX "{ZTP.stage_name("ZipToPosition_zip_code_idx")}" '
-            f'ON "{sn}"."{nt}" (zip_code)'
-        ),
+        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{ZTP.stage_name(ZTP.pk_name)}" PRIMARY KEY (id)'),
+        (f'CREATE INDEX "{ZTP.stage_name("ZipToPosition_zip_code_idx")}" ' f'ON "{sn}"."{nt}" (zip_code)'),
         (
             f'CREATE INDEX "{ZTP.stage_name("ZipToPosition_position_id_idx")}" '
             f'ON "{sn}"."{nt}" (position_id)'
@@ -266,10 +257,8 @@ def _ztp_constraint_ddl() -> list[str]:
     is_paused_upon_creation=True,
 )
 def sync_election_api():
-
     @task_group(group_id="zip_to_position")
     def zip_to_position():
-
         @task
         def build_staging() -> None:
             with _open_pg() as conn:
@@ -301,22 +290,16 @@ def sync_election_api():
         @task
         def quality_checks(loaded_count: int) -> None:
             if loaded_count < 1_000:
-                raise ValueError(
-                    f"Only {loaded_count} rows loaded (<1000) — refusing to swap"
-                )
+                raise ValueError(f"Only {loaded_count} rows loaded (<1000) — refusing to swap")
             with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
                     cur.execute(
-                        f"SELECT COUNT(DISTINCT state) "
-                        f'FROM "{ZTP.staging_schema}"."{ZTP.new_table}"'
+                        f"SELECT COUNT(DISTINCT state) " f'FROM "{ZTP.staging_schema}"."{ZTP.new_table}"'
                     )
                     distinct_states = cur.fetchone()[0]
                     if distinct_states < 30:
-                        raise ValueError(
-                            f"Only {distinct_states} distinct states "
-                            f"— refusing to swap"
-                        )
+                        raise ValueError(f"Only {distinct_states} distinct states " f"— refusing to swap")
                     cur.execute(
                         f"SELECT MIN(election_date), MAX(election_date) "
                         f'FROM "{ZTP.staging_schema}"."{ZTP.new_table}"'
@@ -352,7 +335,6 @@ def sync_election_api():
 
     @task_group(group_id="district_top_issues")
     def district_top_issues():
-
         @task
         def build_staging() -> None:
             with _open_pg() as conn:

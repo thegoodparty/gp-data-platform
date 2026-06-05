@@ -343,9 +343,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Join with district table to get district_id
     result_df = (
         districts_from_voters.join(
-            district__mart_df.select(
-                col("id").alias("district_id"), col("state"), col("type"), col("name")
-            ),
+            district__mart_df.select(col("id").alias("district_id"), col("state"), col("type"), col("name")),
             on=["state", "type", "name"],
             how="left",
         )

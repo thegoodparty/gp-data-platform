@@ -125,7 +125,6 @@ def _get_issue_batch(
 
 
 def _get_issue_token(ce_api_token: str) -> Callable:
-
     @pandas_udf(ISSUE_BR_SCHEMA)
     def get_issue(issue_database_id: pd.Series) -> pd.DataFrame:
         """
@@ -163,9 +162,7 @@ def _get_issue_token(ce_api_token: str) -> Callable:
                 empty_issue[field.name] = {}
             else:
                 empty_issue[field.name] = None
-        issues_list = [
-            issues_by_issue_db_id.get(id, empty_issue) for id in issue_database_id
-        ]
+        issues_list = [issues_by_issue_db_id.get(id, empty_issue) for id in issue_database_id]
         return pd.DataFrame(issues_list)
 
     return get_issue
@@ -194,9 +191,7 @@ def model(dbt, session) -> DataFrame:
     stances: DataFrame = dbt.ref("int__ballotready_stance")
 
     # First, explode the stances array to get individual stance records then extract the issue database IDs
-    exploded_stances = stances.select("stances").withColumn(
-        "stance", explode("stances")
-    )
+    exploded_stances = stances.select("stances").withColumn("stance", explode("stances"))
     issue_database_ids = exploded_stances.select(
         col("stance.issue.databaseId").alias("database_id")
     ).distinct()
@@ -251,7 +246,6 @@ def model(dbt, session) -> DataFrame:
 
     # add in created_at and updated_at timestamps
     if dbt.is_incremental:
-
         # get new issues that do not exist in the existing table and add created_at and updated_at timestamps
         new_issues = issue.join(
             other=existing_table,

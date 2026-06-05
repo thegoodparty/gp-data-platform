@@ -1,0 +1,19 @@
+.venv/
+.claude/
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.env
+.env.local
+dist/
+build/
+*.egg-info/
+
+# Local captures from step 0 — these are large and best regenerated
+schema/prod_dump.sql
+schema/databricks_columns.json
+target_environment.json

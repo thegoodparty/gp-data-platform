@@ -66,9 +66,7 @@ def _parse_serialized_space(serialized_space: Any) -> tuple[dict[str, Any], str]
         try:
             payload = json.loads(serialized_space)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "serialized_space was returned but did not contain valid JSON"
-            ) from exc
+            raise RuntimeError("serialized_space was returned but did not contain valid JSON") from exc
         if not isinstance(payload, dict):
             raise RuntimeError("serialized_space JSON must decode to an object")
         return payload, serialized_space
@@ -76,9 +74,7 @@ def _parse_serialized_space(serialized_space: Any) -> tuple[dict[str, Any], str]
     if isinstance(serialized_space, dict):
         return serialized_space, json.dumps(serialized_space, ensure_ascii=False)
 
-    raise RuntimeError(
-        "serialized_space returned an unexpected type; expected a JSON string export"
-    )
+    raise RuntimeError("serialized_space returned an unexpected type; expected a JSON string export")
 
 
 def _build_metadata(
@@ -91,12 +87,8 @@ def _build_metadata(
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "requested_space_id": requested_space_id,
-        "exported_at_utc": datetime.now(timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z"),
-        "serialized_space_sha256": hashlib.sha256(
-            serialized_space.encode("utf-8")
-        ).hexdigest(),
+        "exported_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "serialized_space_sha256": hashlib.sha256(serialized_space.encode("utf-8")).hexdigest(),
         "top_level_keys": sorted(payload),
     }
     if host:

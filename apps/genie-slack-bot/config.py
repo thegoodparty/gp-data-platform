@@ -34,7 +34,5 @@ class Config:
         ]
         missing = [v for v in required if not getattr(cls, v)]
         if missing:
-            raise ValueError(
-                f"Missing required environment variables: {', '.join(missing)}"
-            )
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
         return True

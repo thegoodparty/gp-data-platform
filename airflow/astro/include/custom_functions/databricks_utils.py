@@ -18,9 +18,24 @@ def _validate_lalvoterids(values: List[str]) -> None:
     """Raise ValueError if any value doesn't match the expected LALVOTERID format."""
     bad = [v for v in values if not LALVOTERID_PATTERN.match(v)]
     if bad:
-        raise ValueError(
-            f"{len(bad)} invalid LALVOTERID(s) — refusing to build SQL: {bad[:5]}"
-        )
+        raise ValueError(f"{len(bad)} invalid LALVOTERID(s) — refusing to build SQL: {bad[:5]}")
+
+
+# OAuth credential failures (rotated/expired service-principal secret, wrong
+# client_id) are permanent: retrying cannot fix them, and Databricks tags them
+# "non-retryable". Detect them so we fail fast with an actionable message
+# instead of burning the full cold-start retry loop (~10 min) behind a
+# misleading "warehouse may be starting" log.
+_NON_RETRYABLE_AUTH_MARKERS = (
+    "invalid_client",
+    "client authentication failed",
+)
+
+
+def _is_non_retryable_auth_error(exc: Exception) -> bool:
+    """True if the exception is a permanent OAuth credential failure."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _NON_RETRYABLE_AUTH_MARKERS)
 
 
 def get_databricks_connection(
@@ -59,10 +74,18 @@ def get_databricks_connection(
             logger.info("Databricks connection established successfully")
             return connection
         except Exception as e:
-            if attempt == max_retries - 1:
+            if _is_non_retryable_auth_error(e):
                 logger.error(
-                    f"Databricks connection failed after {max_retries} attempts: {e}"
+                    "Databricks OAuth authentication failed (non-retryable): %s. "
+                    "The service-principal client_id/secret for this Databricks "
+                    "connection is invalid or expired. Rotate the service "
+                    "principal's OAuth secret in Databricks and update the Airflow "
+                    "connection, then re-run. Not retrying.",
+                    e,
                 )
+                raise
+            if attempt == max_retries - 1:
+                logger.error(f"Databricks connection failed after {max_retries} attempts: {e}")
                 raise
             logger.warning(
                 f"Databricks connection attempt {attempt + 1}/{max_retries} failed: {e}. "
@@ -151,17 +174,12 @@ def stage_expired_voter_ids(
     # files with the same name but new content are re-processed.
     file_ts = file_timestamps or {}
     source_keys = [f"{f}|{file_ts.get(f, '')}" for f in source_files]
-    source_file_keys_str = (
-        ", ".join(source_keys).replace("\\", "\\\\").replace("'", "\\'")
-    )
+    source_file_keys_str = ", ".join(source_keys).replace("\\", "\\\\").replace("'", "\\'")
 
     latest_ts = max(file_ts.values()) if file_ts else None
     ts_sql = f"'{latest_ts}'" if latest_ts else "NULL"
 
-    merge_cols = (
-        "lalvoterid, source_files, source_file_keys, "
-        "file_modified_at, ingested_at, dag_run_id"
-    )
+    merge_cols = "lalvoterid, source_files, source_file_keys, " "file_modified_at, ingested_at, dag_run_id"
 
     cursor = connection.cursor()
     try:
@@ -186,9 +204,7 @@ def stage_expired_voter_ids(
         )
 
         # Clean up any previous load record for this dag_run_id (idempotent retry)
-        cursor.execute(
-            f"DELETE FROM {loads_table} WHERE dag_run_id = '{dag_run_id_safe}'"
-        )
+        cursor.execute(f"DELETE FROM {loads_table} WHERE dag_run_id = '{dag_run_id_safe}'")
 
         total_upserted = 0
         for i in range(0, len(lalvoterids), batch_size):
@@ -229,8 +245,7 @@ def stage_expired_voter_ids(
             f"{total_upserted}, current_timestamp())"
         )
         logger.info(
-            f"Recorded load completion in {loads_table}: "
-            f"{total_upserted} rows, dag_run_id={dag_run_id}"
+            f"Recorded load completion in {loads_table}: " f"{total_upserted} rows, dag_run_id={dag_run_id}"
         )
 
         logger.info(f"Total upserted to {full_table_name}: {total_upserted} rows")
@@ -286,8 +301,7 @@ def read_databricks_table(
                 if not transient or attempt == max_retries - 1:
                     raise
                 logger.warning(
-                    "Databricks execute attempt %d/%d hit transient error: %s. "
-                    "Retrying in %ds...",
+                    "Databricks execute attempt %d/%d hit transient error: %s. " "Retrying in %ds...",
                     attempt + 1,
                     max_retries,
                     msg,

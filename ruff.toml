@@ -1,0 +1,15 @@
+# Repo-wide ruff config. Conservative lint set (E,F,I) only; the opinionated
+# rules (UP,B,SIM,RUF) are ratcheted in per-directory as each gets its CI
+# workflow. people-api-loader/ overrides this with its own fuller [tool.ruff]
+# in pyproject.toml (ruff applies the nearest config per file).
+line-length = 110
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# dbt model scripts run on Databricks where `dbutils` is an injected runtime
+# global; the previous flake8 config ignored F821 for the same reason.
+"dbt/project/models/**/*.py" = ["F821"]

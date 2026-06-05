@@ -99,7 +99,6 @@ DISTRICT_STATS_COLUMNS = [
     },
 )
 def load_people_api():
-
     @task
     def load_districts():
         """Read District from Databricks and upsert into PostgreSQL.
@@ -108,9 +107,7 @@ def load_people_api():
         Must complete before DistrictStats due to foreign key constraint.
         """
         params = get_current_context()["params"]
-        skip_watermark = params.get("full_reload") or params.get(
-            "full_reload_districts"
-        )
+        skip_watermark = params.get("full_reload") or params.get("full_reload_districts")
         catalog = Variable.get("databricks_catalog")
         schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
@@ -163,9 +160,7 @@ def load_people_api():
         Streams rows in batches to stay within the Astro worker memory limit.
         """
         params = get_current_context()["params"]
-        skip_watermark = params.get("full_reload") or params.get(
-            "full_reload_district_stats"
-        )
+        skip_watermark = params.get("full_reload") or params.get("full_reload_district_stats")
         catalog = Variable.get("databricks_catalog")
         schema = Variable.get("databricks_dbt_schema")
         batch_size = 5000
@@ -205,10 +200,7 @@ def load_people_api():
                             row[2],  # total_constituents
                             row[3],  # total_constituents_with_cell_phone
                             Json(  # buckets — parse and fix camelCase keys
-                                {
-                                    _BUCKET_KEY_MAP.get(k, k): v
-                                    for k, v in json.loads(row[4]).items()
-                                }
+                                {_BUCKET_KEY_MAP.get(k, k): v for k, v in json.loads(row[4]).items()}
                             ),
                         )
                         for row in batch

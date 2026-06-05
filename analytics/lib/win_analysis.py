@@ -23,13 +23,13 @@ from typing import Callable, Mapping
 import pandas as pd
 
 # Fully-qualified prod table paths. These are intentionally hardcoded to the
-# ``goodparty_data_catalog`` prod schemas (``dbt_staging`` for raw staging, ``dbt``
-# for intermediates, ``mart_analytics`` for marts) rather than resolved via dbt
+# ``goodparty_data_catalog`` prod schemas (``dbt`` for staging + intermediates,
+# ``mart_analytics`` for marts; the legacy ``dbt_staging`` schema is being retired)
+# rather than resolved via dbt
 # ``ref()``: this module runs outside dbt (notebooks / ad-hoc), where ``ref()`` can
-# resolve to stale dev artifacts (runbook §7). Repoint these for a dev/test catalog.
-EVENTS_TABLE = (
-    "goodparty_data_catalog.dbt_staging.stg_airbyte_source__amplitude_api_events"
-)
+# resolve to stale dev artifacts (win-analytics-process skill's references/methodology.md).
+# Repoint these for a dev/test catalog.
+EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events"
 USERS_WIN_CANDIDACY = "goodparty_data_catalog.mart_analytics.users_win_candidacy"
 EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_taxonomy"
 
@@ -41,7 +41,8 @@ DEFAULT_DRIFT_CUTOFF = "2026-01-01"
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
-# Slicing dimensions available on users_win_candidacy with no join (runbook section 6).
+# Slicing dimensions available on users_win_candidacy with no join
+# (win-analytics-knowledge skill's references/segmentation.md).
 # Carried on the working set so re-cuts (e.g. ICP vs not) need no new query.
 DEFAULT_DIMS = (
     "icp_office_win",
@@ -117,7 +118,8 @@ def build_win_working_set(
 ) -> pd.DataFrame:
     """Build one consolidated per-user cohort x engagement working set, slice it in pandas.
 
-    This is the "build once, slice many" pattern (runbook section 7). All funnel
+    This is the "build once, slice many" pattern (win-analytics-process skill's
+    references/methodology.md). All funnel
     steps are derived point-in-time from the raw event stream (events strictly
     before each user's election anchor), so onboarding/activation are anchored
     rather than as-of-today. Win events are identified by a LEFT JOIN to the
@@ -141,7 +143,7 @@ def build_win_working_set(
         any_core, onboarded, dash_viewed, activated (0/1 funnel flags, anchored),
         core_all, core_distinct_types, core_preelection (counts), and beyond_signup
         (1 if the user touched >= 2 *distinct* Win event types, i.e. engaged past
-        account creation; runbook section 3.5).
+        account creation; win-analytics-knowledge skill's references/engagement.md).
 
     Security:
         ``cohorts[*]["filter"]`` and ``["anchor"]`` are interpolated verbatim as SQL
@@ -153,14 +155,10 @@ def build_win_working_set(
     """
     _require_date("event_floor", event_floor)
     if preelection_days <= 0:
-        raise ValueError(
-            f"preelection_days must be a positive integer, got: {preelection_days!r}"
-        )
+        raise ValueError(f"preelection_days must be a positive integer, got: {preelection_days!r}")
     for dim in slice_dims:
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", dim):
-            raise ValueError(
-                f"slice_dims element must be a plain SQL identifier, got: {dim!r}"
-            )
+            raise ValueError(f"slice_dims element must be a plain SQL identifier, got: {dim!r}")
     win_types = _win_event_types_sql(drift_cutoff)  # also validates drift_cutoff
     dim_cols = "".join(f", MAX({d}) AS {d}" for d in slice_dims)
 
@@ -209,7 +207,7 @@ LEFT JOIN ev ON ev.user_id = co.user_id AND ev.cohort = co.cohort
 """
     df = run_query(sql)
     # "Engaged beyond account creation" is >= 2 *distinct* Win event types
-    # (runbook section 3.5), not >= 2 event rows: a single feature double-fired
+    # (win-analytics-knowledge skill's references/engagement.md), not >= 2 event rows: a single feature double-fired
     # must not count. core_all is kept for intensity analyses.
     df["beyond_signup"] = (df["core_distinct_types"] >= 2).astype(int)
     return df

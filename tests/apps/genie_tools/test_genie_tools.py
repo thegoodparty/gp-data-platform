@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+
 from genie_tools import cli
 from genie_tools.export_space import FetchedSpace, export_space_bundle
 from genie_tools.normalize_space import normalize_space_config
@@ -146,9 +147,7 @@ def test_export_space_bundle_writes_expected_files(tmp_path):
         )
 
     raw_payload = json.loads(artifacts.raw_path.read_text(encoding="utf-8"))
-    normalized_payload = json.loads(
-        artifacts.normalized_path.read_text(encoding="utf-8")
-    )
+    normalized_payload = json.loads(artifacts.normalized_path.read_text(encoding="utf-8"))
     redacted_payload = json.loads(artifacts.redacted_path.read_text(encoding="utf-8"))
     metadata_payload = json.loads(artifacts.metadata_path.read_text(encoding="utf-8"))
 
@@ -166,9 +165,7 @@ def test_cli_export_command_writes_files_and_reports_paths(tmp_path, capsys):
 
     with patch(
         "genie_tools.export_space.fetch_space_record",
-        return_value=FetchedSpace(
-            payload=payload, metadata={"requested_space_id": "s"}
-        ),
+        return_value=FetchedSpace(payload=payload, metadata={"requested_space_id": "s"}),
     ):
         exit_code = cli.main(
             [

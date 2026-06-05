@@ -145,9 +145,7 @@ def _get_endorsements_batch(
                 endorsement["updatedAt"] = pd.to_datetime(endorsement["updatedAt"])
                 all_endorsements.append(endorsement)
 
-        logging.debug(
-            f"Retrieved {len(all_endorsements)} endorsements for {len(candidacy_ids)} candidacies"
-        )
+        logging.debug(f"Retrieved {len(all_endorsements)} endorsements for {len(candidacy_ids)} candidacies")
         return all_endorsements
 
     except (KeyError, TypeError) as e:
@@ -256,9 +254,7 @@ def _get_candidacy_endorsements_token(ce_api_token: str) -> Callable:
                 logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
 
         # Create result series mapping each candidacy ID to its endorsements array
-        result = pd.Series(
-            [endorsements_by_candidacy.get(int(cid), []) for cid in candidacy_ids]
-        )
+        result = pd.Series([endorsements_by_candidacy.get(int(cid), []) for cid in candidacy_ids])
         return result
 
     return get_candidacy_endorsements
@@ -287,9 +283,7 @@ def model(dbt, session) -> DataFrame:
     )
 
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     # Get API token from Databricks secrets
     dbt_env = dbt.config.meta_get("dbt_environment")
@@ -300,17 +294,13 @@ def model(dbt, session) -> DataFrame:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
     # Get references to required models
-    candidacies: DataFrame = dbt.ref(
-        "stg_airbyte_source__ballotready_s3_candidacies_v3"
-    )
+    candidacies: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
 
     # Handle incremental loading
     if dbt.is_incremental:
         logging.info("INFO: Running in incremental mode")
         existing_table = session.table(f"{dbt.this}")
-        existing_timestamps = existing_table.select(
-            "candidacy_id", "created_at"
-        ).distinct()
+        existing_timestamps = existing_table.select("candidacy_id", "created_at").distinct()
 
         # Get maximum updated_at from existing table
         max_updated_at_row = existing_table.agg({"updated_at": "max"}).collect()[0]
@@ -318,18 +308,12 @@ def model(dbt, session) -> DataFrame:
 
         if max_updated_at:
             # Filter source to only process records updated since last run
-            candidacies = candidacies.filter(
-                candidacies["candidacy_updated_at"] >= max_updated_at
-            )
-            logging.info(
-                f"INFO: Filtered to candidacies updated since {max_updated_at}"
-            )
+            candidacies = candidacies.filter(candidacies["candidacy_updated_at"] >= max_updated_at)
+            logging.info(f"INFO: Filtered to candidacies updated since {max_updated_at}")
         else:
             # Fallback to 30-day window if no max_updated_at found
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            candidacies = candidacies.filter(
-                candidacies["candidacy_updated_at"] >= thirty_days_ago
-            )
+            candidacies = candidacies.filter(candidacies["candidacy_updated_at"] >= thirty_days_ago)
             logging.info(
                 f"INFO: No max updated_at found. Filtered to candidacies updated since {thirty_days_ago}"
             )
@@ -361,15 +345,11 @@ def model(dbt, session) -> DataFrame:
     logging.info("INFO: Starting parallel processing of candidacies using pandas UDF")
 
     # Create a DataFrame with just candidacy_ids for processing
-    endorsement = candidacies.select(
-        col("br_candidacy_id").cast("integer").alias("candidacy_id")
-    )
+    endorsement = candidacies.select(col("br_candidacy_id").cast("integer").alias("candidacy_id"))
 
     # Apply the pandas UDF to get endorsements for each candidacy
     get_candidacy_endorsements = _get_candidacy_endorsements_token(ce_api_token)
-    endorsement = endorsement.withColumn(
-        "endorsements", get_candidacy_endorsements("candidacy_id")
-    )
+    endorsement = endorsement.withColumn("endorsements", get_candidacy_endorsements("candidacy_id"))
 
     # Add timestamp metadata
     current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -379,9 +359,7 @@ def model(dbt, session) -> DataFrame:
         existing_created_at_lookup = existing_timestamps
 
         # Left join with this lookup to preserve original created_at values for existing records
-        endorsement = endorsement.join(
-            existing_created_at_lookup, on="candidacy_id", how="left"
-        )
+        endorsement = endorsement.join(existing_created_at_lookup, on="candidacy_id", how="left")
 
         # Use coalesce to keep original created_at for existing records, and set current time for new ones
         endorsement = endorsement.withColumn(
@@ -390,14 +368,10 @@ def model(dbt, session) -> DataFrame:
         )
     else:
         # For full refresh, set created_at to current time for all records
-        endorsement = endorsement.withColumn(
-            "created_at", lit(current_time_utc).cast(TimestampType())
-        )
+        endorsement = endorsement.withColumn("created_at", lit(current_time_utc).cast(TimestampType()))
 
     # Set updated_at to current time for all records
-    endorsement = endorsement.withColumn(
-        "updated_at", lit(current_time_utc).cast(TimestampType())
-    )
+    endorsement = endorsement.withColumn("updated_at", lit(current_time_utc).cast(TimestampType()))
 
     # Count and log the final row count
     row_count = endorsement.count()

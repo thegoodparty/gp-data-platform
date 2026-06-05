@@ -1,10 +1,13 @@
 """Tests for Databricks utility functions."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from include.custom_functions import databricks_utils
 from include.custom_functions.databricks_utils import (
+    _is_non_retryable_auth_error,
     _validate_lalvoterids,
+    get_databricks_connection,
     get_processed_files,
     stage_expired_voter_ids,
 )
@@ -82,9 +85,7 @@ class TestGetProcessedFiles:
         cursor.fetchone.return_value = (1,)
         # Each row is a DAG run's comma-joined source_file_keys
         cursor.fetchall.return_value = [
-            (
-                "file1.tab|2026-01-15T10:00:00+00:00, file2.tab|2026-01-16T10:00:00+00:00",
-            ),
+            ("file1.tab|2026-01-15T10:00:00+00:00, file2.tab|2026-01-16T10:00:00+00:00",),
         ]
 
         result = get_processed_files(conn, catalog="cat", schema="sch")
@@ -202,9 +203,7 @@ class TestStageExpiredVoterIds:
             file_timestamps={"file1.tab": "2026-01-15T10:00:00+00:00"},
         )
 
-        merge_sql = [
-            c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]
-        ][0]
+        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
         assert "2026-01-15T10:00:00+00:00" in merge_sql
         # source_file_keys stores composite "filename|mtime" for idempotency
         assert "file1.tab|2026-01-15T10:00:00+00:00" in merge_sql
@@ -223,9 +222,7 @@ class TestStageExpiredVoterIds:
             dag_run_id="run_123",
         )
 
-        merge_sql = [
-            c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]
-        ][0]
+        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
         assert "NULL" in merge_sql
 
     def test_dag_run_id_escaped(self, mock_connection):
@@ -242,15 +239,11 @@ class TestStageExpiredVoterIds:
         )
 
         # Loads table DELETE has escaped dag_run_id
-        delete_calls = [
-            c[0][0] for c in cursor.execute.call_args_list if "DELETE FROM" in c[0][0]
-        ]
+        delete_calls = [c[0][0] for c in cursor.execute.call_args_list if "DELETE FROM" in c[0][0]]
         assert len(delete_calls) == 1
         assert "run_with\\'quote" in delete_calls[0]
         # MERGE also has escaped dag_run_id
-        merge_sql = [
-            c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]
-        ][0]
+        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
         assert "run_with\\'quote" in merge_sql
 
     def test_loads_record_is_last_execute(self, mock_connection):
@@ -276,3 +269,102 @@ class TestStageExpiredVoterIds:
         # All MERGEs come before the loads INSERT
         assert all(m < loads_insert_pos[0] for m in merge_positions)
         assert "3" in calls[loads_insert_pos[0]]  # row_count
+
+
+# ---------------------------------------------------------------------------
+# _is_non_retryable_auth_error
+# ---------------------------------------------------------------------------
+
+
+class TestIsNonRetryableAuthError:
+    """The classifier that decides whether to fail fast."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "invalid_client: Client authentication failed",
+            "Error during request to server. invalid_client: ...",
+            "CLIENT AUTHENTICATION FAILED",  # case-insensitive
+        ],
+    )
+    def test_auth_errors_are_non_retryable(self, message):
+        """Credential auth failures are classified as non-retryable."""
+        assert _is_non_retryable_auth_error(Exception(message)) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "warehouse is starting",
+            "connection timed out",
+            "temporary network failure",
+        ],
+    )
+    def test_other_errors_are_retryable(self, message):
+        """Transient / cold-start errors are not classified as non-retryable."""
+        assert _is_non_retryable_auth_error(Exception(message)) is False
+
+
+# ---------------------------------------------------------------------------
+# get_databricks_connection
+# ---------------------------------------------------------------------------
+
+
+class TestGetDatabricksConnection:
+    """Retry behavior of get_databricks_connection."""
+
+    def _kwargs(self, **overrides):
+        """Build connection kwargs with a zero retry delay for fast tests."""
+        base = {
+            "host": "https://example.cloud.databricks.com",
+            "http_path": "/sql/1.0/warehouses/abc",
+            "client_id": "cid",
+            "client_secret": "secret",
+            "retry_delay": 0,
+        }
+        base.update(overrides)
+        return base
+
+    def test_fails_fast_on_auth_error_without_retrying(self):
+        """An invalid_client error raises immediately with no retry sleeps."""
+        auth_error = Exception("invalid_client: Client authentication failed")
+        with (
+            patch.object(databricks_utils.databricks_sql, "connect", side_effect=auth_error) as mock_connect,
+            patch.object(databricks_utils.time, "sleep") as mock_sleep,
+        ):
+            with pytest.raises(Exception, match="invalid_client"):
+                get_databricks_connection(**self._kwargs(max_retries=20))
+
+        assert mock_connect.call_count == 1
+        mock_sleep.assert_not_called()
+
+    def test_retries_transient_errors_then_succeeds(self):
+        """A transient error is retried and the eventual connection returned."""
+        conn = MagicMock()
+        with (
+            patch.object(
+                databricks_utils.databricks_sql,
+                "connect",
+                side_effect=[Exception("warehouse may be starting"), conn],
+            ) as mock_connect,
+            patch.object(databricks_utils.time, "sleep") as mock_sleep,
+        ):
+            result = get_databricks_connection(**self._kwargs(max_retries=5))
+
+        assert result is conn
+        assert mock_connect.call_count == 2
+        mock_sleep.assert_called_once()
+
+    def test_raises_after_exhausting_retries_on_transient_errors(self):
+        """Persistent transient errors raise after exhausting max_retries."""
+        with (
+            patch.object(
+                databricks_utils.databricks_sql,
+                "connect",
+                side_effect=Exception("warehouse may be starting"),
+            ) as mock_connect,
+            patch.object(databricks_utils.time, "sleep"),
+        ):
+            with pytest.raises(Exception, match="warehouse"):
+                get_databricks_connection(**self._kwargs(max_retries=3))
+
+        assert mock_connect.call_count == 3

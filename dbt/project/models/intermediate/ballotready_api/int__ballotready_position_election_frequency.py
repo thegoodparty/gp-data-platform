@@ -54,10 +54,7 @@ def _get_position_election_frequency_batch(
     url = "https://bpi.civicengine.com/graphql"
 
     # Encode all position IDs
-    encoded_ids = [
-        _base64_encode_id(position_database_id)
-        for position_database_id in position_database_ids
-    ]
+    encoded_ids = [_base64_encode_id(position_database_id) for position_database_id in position_database_ids]
 
     # Construct the payload with the nodes query
     payload = {
@@ -147,9 +144,7 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        position_election_frequency_by_database_id: Dict[int, Dict[str, Any] | None] = (
-            {}
-        )
+        position_election_frequency_by_database_id: Dict[int, Dict[str, Any] | None] = {}
 
         # Set batch size for API calls
         batch_size = 100
@@ -161,8 +156,8 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
             logging.debug(f"Processing {batch_size_info}")
 
             try:
-                batch_position_election_frequency = (
-                    _get_position_election_frequency_batch(batch, ce_api_token)
+                batch_position_election_frequency = _get_position_election_frequency_batch(
+                    batch, ce_api_token
                 )
             except Exception as e:
                 logging.error(f"Error processing batch {i}: {e}")
@@ -170,12 +165,10 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
 
             for position_election_frequency in batch_position_election_frequency:
                 if position_election_frequency:
-                    position_election_frequency_id = position_election_frequency[
-                        "databaseId"
-                    ]
-                    position_election_frequency_by_database_id[
-                        position_election_frequency_id
-                    ] = position_election_frequency
+                    position_election_frequency_id = position_election_frequency["databaseId"]
+                    position_election_frequency_by_database_id[position_election_frequency_id] = (
+                        position_election_frequency
+                    )
 
                     # handle timestamp columns
                     position_election_frequency["validFrom"] = pd.to_datetime(
@@ -197,9 +190,7 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
         }
 
         position_election_frequency_by_database_id = [
-            position_election_frequency_by_database_id.get(
-                position_database_id, empty_dictionary
-            )
+            position_election_frequency_by_database_id.get(position_database_id, empty_dictionary)
             for position_database_id in position_database_ids
         ]  # type: ignore
 
@@ -240,13 +231,12 @@ def model(dbt, session) -> DataFrame:
         .withColumn("election_frequency", explode("election_frequencies"))
         .select(col("election_frequency.databaseId").alias("database_id"))
     )
-    position_election_frequency = position_election_frequency.select(
-        "database_id"
-    ).dropDuplicates(["database_id"])
+    position_election_frequency = position_election_frequency.select("database_id").dropDuplicates(
+        ["database_id"]
+    )
 
     # Filter if incremental by updated_at
     if dbt.is_incremental:
-
         # Get existing database_ids from the incremental table
         existing_records = session.table(f"{dbt.this}")
 
@@ -260,9 +250,7 @@ def model(dbt, session) -> DataFrame:
         # Trigger a cache to ensure these transformations are applied. This is important for incremental models to avoid unnecessary API calls
         position_election_frequency.cache()
         position_count = position_election_frequency.count()
-        logging.info(
-            f"Found {position_count} new position election frequencies to process"
-        )
+        logging.info(f"Found {position_count} new position election frequencies to process")
 
     # Validate source data
     if position_election_frequency.count() == 0:
@@ -288,9 +276,7 @@ def model(dbt, session) -> DataFrame:
     # 200
     # )
 
-    get_position_election_frequency = _get_position_election_frequency_token(
-        ce_api_token
-    )
+    get_position_election_frequency = _get_position_election_frequency_token(ce_api_token)
     position_election_frequency = position_election_frequency.withColumn(
         "api_data", get_position_election_frequency(col("database_id"))
     )
@@ -309,7 +295,5 @@ def model(dbt, session) -> DataFrame:
     # in pandas UDF. Trigger a cache to ensure these transformations are applied before filtering
     position_election_frequency.cache()
     position_election_frequency.count()
-    position_election_frequency = position_election_frequency.filter(
-        col("database_id") >= 0
-    )
+    position_election_frequency = position_election_frequency.filter(col("database_id") >= 0)
     return position_election_frequency

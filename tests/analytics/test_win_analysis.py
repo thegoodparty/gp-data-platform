@@ -71,17 +71,13 @@ def test_win_event_predicate_rejects_bad_cutoff(bad):
 
 
 def test_build_working_set_beyond_signup_boundary():
-    df_in = pd.DataFrame(
-        {"user_id": [1, 2], "cohort": ["c", "c"], "core_distinct_types": [1, 2]}
-    )
+    df_in = pd.DataFrame({"user_id": [1, 2], "cohort": ["c", "c"], "core_distinct_types": [1, 2]})
     out = wa.build_win_working_set(_stub(df_in), COHORTS)
     assert list(out["beyond_signup"]) == [0, 1]
 
 
 def test_build_working_set_keeps_zero_event_user():
-    df_in = pd.DataFrame(
-        {"user_id": [1], "cohort": ["c"], "core_distinct_types": [0], "any_core": [0]}
-    )
+    df_in = pd.DataFrame({"user_id": [1], "cohort": ["c"], "core_distinct_types": [0], "any_core": [0]})
     out = wa.build_win_working_set(_stub(df_in), COHORTS)
     assert len(out) == 1
     assert out.loc[0, "beyond_signup"] == 0

@@ -68,9 +68,7 @@ def create_fuzzy_matching_udf(
 
     # Prepare HubSpot data for fuzzy matching
     hubspot_codes = (
-        hubspot_df[hubspot_df[hubspot_code_field_name].notna()][hubspot_code_field_name]
-        .unique()
-        .tolist()
+        hubspot_df[hubspot_df[hubspot_code_field_name].notna()][hubspot_code_field_name].unique().tolist()
     )
 
     # Create lookup dictionary for HubSpot data
@@ -100,15 +98,11 @@ def create_fuzzy_matching_udf(
         for candidate_code in candidate_codes:
             if pd.isna(candidate_code):
                 # Handle null candidate codes
-                fuzzy_results.append(
-                    _create_null_result(candidate_code, candidate_code_field_name)
-                )
+                fuzzy_results.append(_create_null_result(candidate_code, candidate_code_field_name))
                 continue
 
             # Find fuzzy matches
-            matches = process.extract(
-                candidate_code, hubspot_codes, scorer=fuzz.ratio, limit=top_n
-            )
+            matches = process.extract(candidate_code, hubspot_codes, scorer=fuzz.ratio, limit=top_n)
 
             # Process matches above threshold
             match_found = False
@@ -130,9 +124,7 @@ def create_fuzzy_matching_udf(
 
             # If no match found above threshold, add null entry
             if not match_found:
-                fuzzy_results.append(
-                    _create_null_result(candidate_code, candidate_code_field_name)
-                )
+                fuzzy_results.append(_create_null_result(candidate_code, candidate_code_field_name))
 
         return pd.DataFrame(fuzzy_results)
 
@@ -176,9 +168,7 @@ def _create_null_result(candidate_code: str, candidate_code_field_name: str) -> 
     }
 
 
-def add_match_type_column(
-    df, match_indicator_col: str = "fuzzy_matched_hubspot_candidate_code"
-):
+def add_match_type_column(df, match_indicator_col: str = "fuzzy_matched_hubspot_candidate_code"):
     """
     Adds a match_type column to the DataFrame based on whether fuzzy matches were found.
 
@@ -243,15 +233,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         ),
         col("fuzzy_results.fuzzy_match_score").alias("fuzzy_match_score"),
         col("fuzzy_results.fuzzy_match_rank").alias("fuzzy_match_rank"),
-        col("fuzzy_results.fuzzy_matched_hubspot_contact_id").alias(
-            "fuzzy_matched_hubspot_contact_id"
-        ),
+        col("fuzzy_results.fuzzy_matched_hubspot_contact_id").alias("fuzzy_matched_hubspot_contact_id"),
         col("fuzzy_results.fuzzy_matched_first_name").alias("fuzzy_matched_first_name"),
         col("fuzzy_results.fuzzy_matched_last_name").alias("fuzzy_matched_last_name"),
         col("fuzzy_results.fuzzy_matched_state").alias("fuzzy_matched_state"),
-        col("fuzzy_results.fuzzy_matched_office_type").alias(
-            "fuzzy_matched_office_type"
-        ),
+        col("fuzzy_results.fuzzy_matched_office_type").alias("fuzzy_matched_office_type"),
     )
 
     # Add match type column using shared utility

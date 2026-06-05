@@ -10,9 +10,7 @@ from .validate_space import validate_space_file
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Export and validate Databricks Genie space config"
-    )
+    parser = argparse.ArgumentParser(description="Export and validate Databricks Genie space config")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     export_parser = subparsers.add_parser(

@@ -8,11 +8,9 @@ from pyspark.sql.functions import (
     count,
     length,
     lit,
-)
-from pyspark.sql.functions import sum as spark_sum
-from pyspark.sql.functions import (
     when,
 )
+from pyspark.sql.functions import sum as spark_sum
 from pyspark.sql.types import (
     LongType,
     StringType,
@@ -104,14 +102,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
 
     district_type_from_columns = (
-        dbt.ref("int__model_prediction_voter_turnout")
-        .select(col("district_type"))
-        .distinct()
-        .collect()
+        dbt.ref("int__model_prediction_voter_turnout").select(col("district_type")).distinct().collect()
     )
-    district_type_from_columns = [
-        district_type.district_type for district_type in district_type_from_columns
-    ]
+    district_type_from_columns = [district_type.district_type for district_type in district_type_from_columns]
 
     district_type_from_columns = [
         district_type
@@ -136,9 +129,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         # if zipcode is 4 characters, pad with a 0
         district_df = district_df.withColumn(
             "zip_code",
-            when(
-                length(col("zip_code")) == 4, concat(lit("0"), col("zip_code"))
-            ).otherwise(col("zip_code")),
+            when(length(col("zip_code")) == 4, concat(lit("0"), col("zip_code"))).otherwise(col("zip_code")),
         )
 
         district_df = (

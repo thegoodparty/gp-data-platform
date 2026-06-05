@@ -9,8 +9,9 @@ The Win event-family allowlist and the consolidated per-user working set were be
 retyped in every analysis. That is a token cost, a time cost, and a transcription-drift
 risk. This package holds one copy. The event classification is now sourced from the dbt
 model `int__amplitude_event_taxonomy` (DATA-1945) so there is a single source of truth
-shared by the dbt models and notebooks. See the runbook (`analytics/runbook/win.md`)
-section 4 for the family taxonomy and section 7 for the build-once-slice-many pattern.
+shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
+`references/engagement.md` for the family taxonomy and the win-analytics-process skill's
+`references/methodology.md` for the build-once-slice-many pattern.
 
 ## What's here
 
@@ -23,8 +24,8 @@ section 4 for the family taxonomy and section 7 for the build-once-slice-many pa
   a scalar CASE (Spark restricts IN-subqueries to filter contexts).
 - `build_win_working_set(run_query, cohorts, ..., drift_cutoff="2026-01-01")` — builds
   one per-user `cohort x engagement` DataFrame with all funnel steps anchored
-  point-in-time to the election date, carrying the standard section-6 slicing
-  dimensions so re-cuts (e.g. ICP vs not) need no new query. Win events are tagged via
+  point-in-time to the election date, carrying the standard slicing dimensions from the
+  win-analytics-knowledge skill's `references/segmentation.md` so re-cuts (e.g. ICP vs not) need no new query. Win events are tagged via
   a LEFT JOIN to the taxonomy.
 - `wilson(k, n)` — Wilson 95% score interval.
 
@@ -69,6 +70,13 @@ df = wa.build_win_working_set(run_query, cohorts)
   different cutoff.
 - Reads `goodparty_data_catalog.dbt.int__amplitude_event_taxonomy` (prod). That table
   must exist (a prod dbt run of the model); it does as of DATA-1945.
+- `build_win_working_set` is **election-anchored with a backward window** (it joins
+  events strictly *before* each user's anchor date). It does NOT fit signup-anchored,
+  forward-window analyses (onboarding completion, time-to-activation); for those reuse
+  only `win_event_predicate` + `wilson` and build the cohort logic notebook-local.
+- The `onboarded` funnel flag keys on `event_type = 'onboarding_complete'`, which is
+  FALSE for users in the new onboarding flow (post 2026-05-07). For cross-cutover
+  onboarding analyses use `Onboarding - Candidate Pledge Completed` instead (win-analytics-knowledge skill's `references/engagement.md`).
 
 ## Single source of truth: the dbt event-taxonomy model
 

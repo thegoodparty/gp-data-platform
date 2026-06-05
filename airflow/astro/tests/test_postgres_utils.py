@@ -59,9 +59,7 @@ class TestUpsertRows:
         conn, cursor = self._make_conn()
         rows = [(1, "a"), (2, "b")]
 
-        with patch(
-            "include.custom_functions.postgres_utils.psycopg2.extras.execute_values"
-        ) as mock_ev:
+        with patch("include.custom_functions.postgres_utils.psycopg2.extras.execute_values") as mock_ev:
             upsert_rows(
                 conn=conn,
                 schema="public",
@@ -80,9 +78,7 @@ class TestUpsertRows:
         conn, cursor = self._make_conn()
         rows = [("v1", "d1", 100)]
 
-        with patch(
-            "include.custom_functions.postgres_utils.psycopg2.extras.execute_values"
-        ) as mock_ev:
+        with patch("include.custom_functions.postgres_utils.psycopg2.extras.execute_values") as mock_ev:
             upsert_rows(
                 conn=conn,
                 schema="public",
@@ -101,9 +97,7 @@ class TestUpsertRows:
         conn, cursor = self._make_conn()
         rows = [("d1", "2024-01-01", 100, 50, "{}")]
 
-        with patch(
-            "include.custom_functions.postgres_utils.psycopg2.extras.execute_values"
-        ) as mock_ev:
+        with patch("include.custom_functions.postgres_utils.psycopg2.extras.execute_values") as mock_ev:
             upsert_rows(
                 conn=conn,
                 schema="public",
@@ -132,9 +126,7 @@ class TestUpsertRows:
         conn, cursor = self._make_conn()
         rows = [(i, f"name_{i}") for i in range(12)]
 
-        with patch(
-            "include.custom_functions.postgres_utils.psycopg2.extras.execute_values"
-        ) as mock_ev:
+        with patch("include.custom_functions.postgres_utils.psycopg2.extras.execute_values") as mock_ev:
             total = upsert_rows(
                 conn=conn,
                 schema="public",
@@ -177,9 +169,7 @@ class TestGetPostgresViaSsh:
     @patch("include.custom_functions.postgres_utils.BaseHook.get_connection")
     def test_lifecycle(self, mock_get_conn, mock_tunnel_cls, mock_pg_connect):
         """Tunnel starts, connection opens, both close on exit."""
-        bastion_conn = MagicMock(
-            host="bastion.example.com", port=22, login="user", password="pw"
-        )
+        bastion_conn = MagicMock(host="bastion.example.com", port=22, login="user", password="pw")
         bastion_conn.extra_dejson = {}
         pg_conn = MagicMock(
             host="pg.internal",
@@ -210,9 +200,7 @@ class TestGetPostgresViaSsh:
     @patch("include.custom_functions.postgres_utils.BaseHook.get_connection")
     def test_cleanup_on_error(self, mock_get_conn, mock_tunnel_cls, mock_pg_connect):
         """Tunnel and connection close even when task raises."""
-        bastion_conn = MagicMock(
-            host="bastion.example.com", port=22, login="user", password="pw"
-        )
+        bastion_conn = MagicMock(host="bastion.example.com", port=22, login="user", password="pw")
         bastion_conn.extra_dejson = {}
         pg_conn = MagicMock(
             host="pg.internal",

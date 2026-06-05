@@ -110,8 +110,7 @@ class DatabricksGenieClient:
                 if is_retryable and attempt < max_retries - 1:
                     wait_seconds = min(2**attempt, 8)
                     logger.warning(
-                        "Retryable API error on %s %s (status=%s, attempt=%s/%s): %s. "
-                        "Retrying in %ss",
+                        "Retryable API error on %s %s (status=%s, attempt=%s/%s): %s. " "Retrying in %ss",
                         method,
                         path,
                         status_code,
@@ -134,9 +133,7 @@ class DatabricksGenieClient:
                 return None
         return None
 
-    def send_message(
-        self, conversation_id: Optional[str], message: str
-    ) -> Optional[Dict[str, Any]]:
+    def send_message(self, conversation_id: Optional[str], message: str) -> Optional[Dict[str, Any]]:
         """
         Send a message to the Genie space
 
@@ -184,9 +181,7 @@ class DatabricksGenieClient:
             "raw_response": result,
         }
 
-    def get_message_status(
-        self, conversation_id: str, message_id: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_message_status(self, conversation_id: str, message_id: str) -> Optional[Dict[str, Any]]:
         """
         Get the status and response of a message
 
@@ -249,9 +244,7 @@ class DatabricksGenieClient:
                 if empty_polls >= max_empty_polls:
                     return None
                 time.sleep(current_poll_interval)
-                current_poll_interval = min(
-                    current_poll_interval + 1, max_poll_interval
-                )
+                current_poll_interval = min(current_poll_interval + 1, max_poll_interval)
                 continue
 
             empty_polls = 0
@@ -339,9 +332,7 @@ class DatabricksGenieClient:
         actual_conversation_id = message_result.get("conversation_id", conversation_id)
         message_id = message_result.get("id") or message_result.get("message_id")
 
-        if not isinstance(actual_conversation_id, str) or not isinstance(
-            message_id, str
-        ):
+        if not isinstance(actual_conversation_id, str) or not isinstance(message_id, str):
             return {
                 "success": False,
                 "conversation_id": conversation_id,
@@ -416,30 +407,18 @@ class DatabricksGenieClient:
                     query_attachment_id,
                 )
                 if attachment_result:
-                    statement_response = attachment_result.get(
-                        "statement_response", attachment_result
-                    )
+                    statement_response = attachment_result.get("statement_response", attachment_result)
                     result_data = {
                         "data": statement_response.get("result", {}),
-                        "schema": statement_response.get("manifest", {}).get(
-                            "schema", {}
-                        ),
+                        "schema": statement_response.get("manifest", {}).get("schema", {}),
                     }
 
             if not response_text.strip():
                 content = response.get("content")
-                response_text = (
-                    content
-                    if isinstance(content, str) and content
-                    else "No response generated"
-                )
+                response_text = content if isinstance(content, str) and content else "No response generated"
 
             raw_suggested_questions = response.get("suggested_questions")
-            suggested_questions = (
-                raw_suggested_questions
-                if isinstance(raw_suggested_questions, list)
-                else []
-            )
+            suggested_questions = raw_suggested_questions if isinstance(raw_suggested_questions, list) else []
 
             return {
                 "success": True,
@@ -456,9 +435,7 @@ class DatabricksGenieClient:
             raw_error = response.get("error")
             if isinstance(raw_error, dict):
                 error_message = raw_error.get("message")
-                error_msg = (
-                    error_message if isinstance(error_message, str) else "Unknown error"
-                )
+                error_msg = error_message if isinstance(error_message, str) else "Unknown error"
             elif isinstance(raw_error, str) and raw_error:
                 error_msg = raw_error
             else:

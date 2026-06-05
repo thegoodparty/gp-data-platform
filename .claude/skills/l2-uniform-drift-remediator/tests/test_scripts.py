@@ -84,16 +84,10 @@ class TestL2UniformPreflightTool(unittest.TestCase):
             self.assertEqual(summary["finding_count"], 1)
             self.assertEqual(summary["impacted_states"], ["ME"])
             self.assertTrue(
-                any(
-                    "stg_dbt_source__l2_s3_me_uniform" in command
-                    for command in plan["safe_commands"]
-                )
+                any("stg_dbt_source__l2_s3_me_uniform" in command for command in plan["safe_commands"])
             )
             self.assertTrue(
-                any(
-                    "l2_uniform_schema_preflight" in command
-                    for command in plan["safe_commands"]
-                )
+                any("l2_uniform_schema_preflight" in command for command in plan["safe_commands"])
             )
 
     def test_tool_returns_2_when_manual_actions_exist(self) -> None:
@@ -101,9 +95,7 @@ class TestL2UniformPreflightTool(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             log_file = tmp_path / "preflight.log"
-            log_file.write_text(
-                sample_preflight_log_with_manual_actions(), encoding="utf-8"
-            )
+            log_file.write_text(sample_preflight_log_with_manual_actions(), encoding="utf-8")
             json_out = tmp_path / "triage.json"
 
             result = subprocess.run(
@@ -151,9 +143,7 @@ class TestL2UniformPreflightTool(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             log_file = tmp_path / "preflight.log"
-            log_file.write_text(
-                sample_preflight_log_with_string_strict_false(), encoding="utf-8"
-            )
+            log_file.write_text(sample_preflight_log_with_string_strict_false(), encoding="utf-8")
             json_out = tmp_path / "triage.json"
 
             result = subprocess.run(
@@ -213,9 +203,7 @@ class TestFailureHandler(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             log_file = tmp_path / "preflight.log"
-            log_file.write_text(
-                sample_preflight_log_with_manual_actions(), encoding="utf-8"
-            )
+            log_file.write_text(sample_preflight_log_with_manual_actions(), encoding="utf-8")
             output_dir = tmp_path / "out"
 
             result = subprocess.run(

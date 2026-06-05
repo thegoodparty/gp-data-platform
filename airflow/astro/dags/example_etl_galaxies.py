@@ -64,7 +64,6 @@ _NUM_GALAXIES_TOTAL = int(os.getenv("NUM_GALAXIES_TOTAL", 20))
     is_paused_upon_creation=False,  # start running the DAG as soon as its created
 )
 def example_etl_galaxies():  # by default the dag_id is the name of the decorated function
-
     # ---------------- #
     # Task Definitions #
     # ---------------- #
@@ -136,23 +135,15 @@ def example_etl_galaxies():  # by default the dag_id is the name of the decorate
             pd.DataFrame: A DataFrame containing filtered galaxy data.
         """
         # retrieve param values from the context
-        closeness_threshold_light_years = context["params"][
-            _CLOSENESS_THRESHOLD_LY_PARAMETER_NAME
-        ]
+        closeness_threshold_light_years = context["params"][_CLOSENESS_THRESHOLD_LY_PARAMETER_NAME]
 
-        t_log.info(
-            f"Filtering for galaxies closer than {closeness_threshold_light_years} light years."
-        )
+        t_log.info(f"Filtering for galaxies closer than {closeness_threshold_light_years} light years.")
 
-        filtered_galaxy_df = galaxy_df[
-            galaxy_df["distance_from_milkyway"] < closeness_threshold_light_years
-        ]
+        filtered_galaxy_df = galaxy_df[galaxy_df["distance_from_milkyway"] < closeness_threshold_light_years]
 
         return filtered_galaxy_df
 
-    @task(
-        outlets=[Asset(_DUCKDB_TABLE_URI)]
-    )  # Define that this task produces updates to an Airflow Dataset.
+    @task(outlets=[Asset(_DUCKDB_TABLE_URI)])  # Define that this task produces updates to an Airflow Dataset.
     # Downstream DAGs can be scheduled based on combinations of Dataset updates
     # coming from tasks in the same Airflow instance or calls to the Airflow API.
     # See: https://www.astronomer.io/docs/learn/airflow-datasets
@@ -171,9 +162,7 @@ def example_etl_galaxies():  # by default the dag_id is the name of the decorate
         """
         t_log.info("Loading galaxy data into DuckDB.")
         cursor = duckdb.connect(duckdb_instance_name)
-        cursor.sql(
-            f"INSERT OR IGNORE INTO {table_name} BY NAME SELECT * FROM filtered_galaxy_df;"
-        )
+        cursor.sql(f"INSERT OR IGNORE INTO {table_name} BY NAME SELECT * FROM filtered_galaxy_df;")
         t_log.info("Galaxy data loaded into DuckDB.")
 
     @task
@@ -193,9 +182,7 @@ def example_etl_galaxies():  # by default the dag_id is the name of the decorate
         """
         cursor = duckdb.connect(duckdb_instance_name)
         near_galaxies_df = cursor.sql(f"SELECT * FROM {table_name};").df()
-        near_galaxies_df = near_galaxies_df.sort_values(
-            by="distance_from_milkyway", ascending=True
-        )
+        near_galaxies_df = near_galaxies_df.sort_values(by="distance_from_milkyway", ascending=True)
         t_log.info(tabulate(near_galaxies_df, headers="keys", tablefmt="pretty"))
 
     # ------------------------------------ #
@@ -212,9 +199,7 @@ def example_etl_galaxies():  # by default the dag_id is the name of the decorate
 
     # you can set explicit dependencies using the chain function (or bit-shift operators)
     # See: https://www.astronomer.io/docs/learn/managing-dependencies
-    chain(
-        create_galaxy_table_in_duckdb_obj, load_galaxy_data_obj, print_loaded_galaxies()
-    )
+    chain(create_galaxy_table_in_duckdb_obj, load_galaxy_data_obj, print_loaded_galaxies())
 
 
 # Instantiate the DAG

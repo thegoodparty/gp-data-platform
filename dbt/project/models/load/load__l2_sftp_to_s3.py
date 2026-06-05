@@ -158,18 +158,11 @@ def _extract_and_load_w_params(
             source_zip_file_name = file_list[0]
             source_zip_file_base_name = source_zip_file_name.split(".")[0]
             s3_state_prefix = f"{s3_prefix}/{state_id.upper()}/"
-            s3_file_list = s3_client.list_objects_v2(
-                Bucket=s3_bucket, Prefix=s3_state_prefix
-            )
+            s3_file_list = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_state_prefix)
             s3_file_list = [f["Key"] for f in s3_file_list.get("Contents", [])]
-            s3_file_exists = any(
-                source_zip_file_base_name in s3_file_name
-                for s3_file_name in s3_file_list
-            )
+            s3_file_exists = any(source_zip_file_base_name in s3_file_name for s3_file_name in s3_file_list)
             if s3_file_exists:
-                logging.info(
-                    f"File with base name {source_zip_file_base_name} already exists in S3"
-                )
+                logging.info(f"File with base name {source_zip_file_base_name} already exists in S3")
                 return EMPTY_LOAD_DETAILS
 
             # download the file from the sftp server and extract it
@@ -224,8 +217,7 @@ def _extract_and_load_w_params(
 
                 # get list of files to upload
                 file_name_paths = [
-                    os.path.join(temp_extract_dir, file_name)
-                    for file_name in extracted_file_names
+                    os.path.join(temp_extract_dir, file_name) for file_name in extracted_file_names
                 ]
                 file_names_to_upload = []
                 if is_uniform:
@@ -253,16 +245,10 @@ def _extract_and_load_w_params(
                             extension = match.group(2)  # _DataDictionary.csv or .tab
 
                         # headers and footers must be removed from data dictionary files
-                        if (
-                            file_type in ["DEMOGRAPHIC", "UNIFORM"]
-                            and extension == "_DataDictionary.csv"
-                        ):
+                        if file_type in ["DEMOGRAPHIC", "UNIFORM"] and extension == "_DataDictionary.csv":
                             df = pd.read_csv(file_path, skiprows=15, skipfooter=24)
                             df.to_csv(file_path, index=False)
-                        elif (
-                            file_type == "VOTEHISTORY"
-                            and extension == "_DataDictionary.csv"
-                        ):
+                        elif file_type == "VOTEHISTORY" and extension == "_DataDictionary.csv":
                             df = pd.read_csv(file_path, skiprows=15, skipfooter=4)
                             df.to_csv(file_path, index=False)
                     else:
@@ -272,9 +258,7 @@ def _extract_and_load_w_params(
                     s3_key = f"{s3_state_prefix}{filename}"
 
                     if os.path.isfile(local_file_path):
-                        s3_client.upload_file(
-                            Filename=local_file_path, Bucket=s3_bucket, Key=s3_key
-                        )
+                        s3_client.upload_file(Filename=local_file_path, Bucket=s3_bucket, Key=s3_key)
                         # delete locally extracted files
                         os.remove(local_file_path)
 
@@ -282,17 +266,13 @@ def _extract_and_load_w_params(
                         for existing_s3_file in s3_file_list:
                             s3_regexp_match = re.match(pattern, existing_s3_file)
                             if s3_regexp_match and existing_s3_file != filename:
-                                s3_client.delete_object(
-                                    Bucket=s3_bucket, Key=existing_s3_file
-                                )
+                                s3_client.delete_object(Bucket=s3_bucket, Key=existing_s3_file)
 
         except Exception as e:
             logging.error(f"Error processing state {state_id}: {str(e)}")
             error_details = traceback.format_exc()
             logging.error(f"Full exception details:\n{error_details}")
-            raise Exception(
-                f"Error processing state {state_id}: {str(e)}\nFull traceback:\n{error_details}"
-            )
+            raise Exception(f"Error processing state {state_id}: {str(e)}\nFull traceback:\n{error_details}")
         finally:
             # Close SFTP connection
             if sftp_client is not None:
@@ -340,15 +320,11 @@ def model(dbt, session: SparkSession):
     )
     l2_vmfiles_prefix = f"l2_data/from_sftp_server/VMFiles/{dbt_env_name}"
 
-    databricks_volume_directory = (
-        f"/Volumes/goodparty_data_catalog/{dbt.this.schema}/object_storage/l2_temp"
-    )
+    databricks_volume_directory = f"/Volumes/goodparty_data_catalog/{dbt.this.schema}/object_storage/l2_temp"
 
     # get list of states
     states: DataFrame = (
-        dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77")
-        .select("state_id")
-        .distinct()
+        dbt.ref("stg_airbyte_source__ballotready_s3_uscities_v1_77").select("state_id").distinct()
     )
     states = states.withColumn("state_id", upper(col("state_id").cast(StringType())))
 
@@ -397,18 +373,12 @@ def model(dbt, session: SparkSession):
         # Process uniform load
         uniform_result = extract_and_load_uniform(state_id)
         if uniform_result["state_id"] is not None:  # Only add if load was successful
-            all_load_details.append(
-                {"state_id": state_id, "load_details": uniform_result}
-            )
+            all_load_details.append({"state_id": state_id, "load_details": uniform_result})
 
         # Process non-uniform load
         non_uniform_result = extract_and_load_non_uniform(state_id)
-        if (
-            non_uniform_result["state_id"] is not None
-        ):  # Only add if load was successful
-            all_load_details.append(
-                {"state_id": state_id, "load_details": non_uniform_result}
-            )
+        if non_uniform_result["state_id"] is not None:  # Only add if load was successful
+            all_load_details.append({"state_id": state_id, "load_details": non_uniform_result})
 
     states_loaded_pd = pd.DataFrame(all_load_details)
 
@@ -420,9 +390,7 @@ def model(dbt, session: SparkSession):
                 name="load_details",
                 dataType=StructType(
                     [
-                        StructField(
-                            name="state_id", dataType=StringType(), nullable=True
-                        ),
+                        StructField(name="state_id", dataType=StringType(), nullable=True),
                         StructField("source_file_names", ArrayType(StringType()), True),
                         StructField("source_zip_file", StringType(), True),
                         StructField("loaded_at", TimestampType(), True),

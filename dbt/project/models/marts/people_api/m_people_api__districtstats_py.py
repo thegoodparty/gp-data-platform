@@ -67,9 +67,7 @@ OUTPUT_SCHEMA = StructType(
 )
 
 
-def _aggregate_buckets(
-    df: DataFrame, district_col: str, category_col: str
-) -> DataFrame:
+def _aggregate_buckets(df: DataFrame, district_col: str, category_col: str) -> DataFrame:
     """
     Aggregate counts per category for each district.
     Returns DataFrame with district_id, label, count columns.
@@ -171,9 +169,7 @@ def _get_income_bucket_label(income_int_col):
     )
 
 
-def _process_age_buckets(
-    voters_with_buckets: DataFrame, district_totals: DataFrame
-) -> DataFrame:
+def _process_age_buckets(voters_with_buckets: DataFrame, district_totals: DataFrame) -> DataFrame:
     """Process age bucket aggregation."""
     age_counts = _aggregate_buckets(voters_with_buckets, "district_id", "age_bucket")
     age_counts_with_total = age_counts.join(
@@ -184,16 +180,12 @@ def _process_age_buckets(
     return _buckets_to_array(age_counts_with_total, "age")
 
 
-def _process_homeowner_buckets(
-    voters_with_buckets: DataFrame, district_totals: DataFrame
-) -> DataFrame:
+def _process_homeowner_buckets(voters_with_buckets: DataFrame, district_totals: DataFrame) -> DataFrame:
     """
     Process homeowner bucket aggregation with label mapping:
     "Home Owner" / "Probable Home Owner" -> "Yes", "Renter" -> "No", else -> "Unknown"
     """
-    homeowner_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Homeowner_Probability_Model"
-    )
+    homeowner_counts = _aggregate_buckets(voters_with_buckets, "district_id", "Homeowner_Probability_Model")
     # Map labels to simplified categories
     homeowner_counts = homeowner_counts.withColumn(
         "label",
@@ -202,9 +194,7 @@ def _process_homeowner_buckets(
         .otherwise(F.lit("Unknown")),
     )
     # Re-aggregate to combine mapped labels
-    homeowner_counts = homeowner_counts.groupBy("district_id", "label").agg(
-        F.sum("count").alias("count")
-    )
+    homeowner_counts = homeowner_counts.groupBy("district_id", "label").agg(F.sum("count").alias("count"))
     homeowner_counts_with_total = homeowner_counts.join(
         district_totals.select("district_id", "total_constituents"),
         on="district_id",
@@ -213,9 +203,7 @@ def _process_homeowner_buckets(
     return _buckets_to_array(homeowner_counts_with_total, "homeowner")
 
 
-def _process_education_buckets(
-    voters_with_buckets: DataFrame, district_totals: DataFrame
-) -> DataFrame:
+def _process_education_buckets(voters_with_buckets: DataFrame, district_totals: DataFrame) -> DataFrame:
     """
     Process education bucket aggregation with label mapping:
     - "Did Not Complete High School Likely" -> "None"
@@ -227,9 +215,7 @@ def _process_education_buckets(
     - "Attended But Did Not Complete College Likely" -> "Some College"
     - else -> "Unknown"
     """
-    education_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Education_Of_Person"
-    )
+    education_counts = _aggregate_buckets(voters_with_buckets, "district_id", "Education_Of_Person")
     # Map labels to human-readable categories
     education_counts = education_counts.withColumn(
         "label",
@@ -255,9 +241,7 @@ def _process_education_buckets(
         .otherwise(F.lit("Unknown")),
     )
     # Re-aggregate to combine mapped labels
-    education_counts = education_counts.groupBy("district_id", "label").agg(
-        F.sum("count").alias("count")
-    )
+    education_counts = education_counts.groupBy("district_id", "label").agg(F.sum("count").alias("count"))
     education_counts_with_total = education_counts.join(
         district_totals.select("district_id", "total_constituents"),
         on="district_id",
@@ -273,9 +257,7 @@ def _process_presence_of_children_buckets(
     Process presence of children bucket aggregation with label mapping:
     "Y" -> "Yes", "N" -> "No", else -> "Unknown"
     """
-    children_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "Presence_Of_Children"
-    )
+    children_counts = _aggregate_buckets(voters_with_buckets, "district_id", "Presence_Of_Children")
     # Map labels to human-readable categories
     children_counts = children_counts.withColumn(
         "label",
@@ -284,9 +266,7 @@ def _process_presence_of_children_buckets(
         .otherwise(F.lit("Unknown")),
     )
     # Re-aggregate to combine mapped labels
-    children_counts = children_counts.groupBy("district_id", "label").agg(
-        F.sum("count").alias("count")
-    )
+    children_counts = children_counts.groupBy("district_id", "label").agg(F.sum("count").alias("count"))
     children_counts_with_total = children_counts.join(
         district_totals.select("district_id", "total_constituents"),
         on="district_id",
@@ -295,13 +275,9 @@ def _process_presence_of_children_buckets(
     return _buckets_to_array(children_counts_with_total, "presenceOfChildren")
 
 
-def _process_income_buckets(
-    voters_with_buckets: DataFrame, district_totals: DataFrame
-) -> DataFrame:
+def _process_income_buckets(voters_with_buckets: DataFrame, district_totals: DataFrame) -> DataFrame:
     """Process estimated income range bucket aggregation."""
-    income_counts = _aggregate_buckets(
-        voters_with_buckets, "district_id", "income_bucket"
-    )
+    income_counts = _aggregate_buckets(voters_with_buckets, "district_id", "income_bucket")
     income_counts_with_total = income_counts.join(
         district_totals.select("district_id", "total_constituents"),
         on="district_id",
@@ -336,11 +312,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         max_updated_at = this_df.agg({"updated_at": "max"}).collect()[0][0]
         if max_updated_at:
             # Get districts with updated voters
-            updated_voter_ids = (
-                voter_df.filter(F.col("updated_at") > max_updated_at)
-                .select("id")
-                .distinct()
-            )
+            updated_voter_ids = voter_df.filter(F.col("updated_at") > max_updated_at).select("id").distinct()
             # Get distinct district IDs for updated voters
             updated_district_ids = (
                 districtvoter_df.join(
@@ -382,9 +354,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Add age and income bucket label columns
     voters_with_buckets = voters_with_districts.withColumn(
         "age_bucket", _get_age_bucket_label("Age_Int")
-    ).withColumn(
-        "income_bucket", _get_income_bucket_label("Estimated_Income_Amount_Int")
-    )
+    ).withColumn("income_bucket", _get_income_bucket_label("Estimated_Income_Amount_Int"))
 
     # Compute total constituents per district and max updated_at from voters
     district_totals = voters_with_buckets.groupBy("district_id").agg(
@@ -401,15 +371,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # Compute all bucket aggregations using helper functions
     age_buckets_df = _process_age_buckets(voters_with_buckets, district_totals)
-    homeowner_buckets_df = _process_homeowner_buckets(
-        voters_with_buckets, district_totals
-    )
-    education_buckets_df = _process_education_buckets(
-        voters_with_buckets, district_totals
-    )
-    children_buckets_df = _process_presence_of_children_buckets(
-        voters_with_buckets, district_totals
-    )
+    homeowner_buckets_df = _process_homeowner_buckets(voters_with_buckets, district_totals)
+    education_buckets_df = _process_education_buckets(voters_with_buckets, district_totals)
+    children_buckets_df = _process_presence_of_children_buckets(voters_with_buckets, district_totals)
     income_buckets_df = _process_income_buckets(voters_with_buckets, district_totals)
 
     # Join all bucket dataframes together

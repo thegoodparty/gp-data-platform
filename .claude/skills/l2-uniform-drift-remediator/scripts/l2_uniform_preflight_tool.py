@@ -134,9 +134,7 @@ def _preflight_command_argv(metadata_catalog: str | None) -> list[str]:
 
 def _build_plan(summary: dict[str, Any]) -> dict[str, Any]:
     impacted_states: list[str] = summary["impacted_states"]
-    staging_selectors = [
-        f"stg_dbt_source__l2_s3_{state.lower()}_uniform" for state in impacted_states
-    ]
+    staging_selectors = [f"stg_dbt_source__l2_s3_{state.lower()}_uniform" for state in impacted_states]
 
     safe_command_argv: list[list[str]] = []
     if staging_selectors:
@@ -185,9 +183,7 @@ def _print_analysis(summary: dict[str, Any]) -> None:
     print("# L2 Uniform Preflight Analysis")
     print(f"- status: {summary['status']}")
     print(f"- strict: {summary['strict']}")
-    print(
-        f"- metadata_catalog: {summary['metadata_catalog'] or '(not provided in log)'}"
-    )
+    print(f"- metadata_catalog: {summary['metadata_catalog'] or '(not provided in log)'}")
     print(f"- finding_count: {summary['finding_count']}")
     print(f"- impacted_states: {', '.join(summary['impacted_states']) or '(none)'}")
     print("")
@@ -271,8 +267,7 @@ def main() -> int:
 
     if args.json_out:
         args.json_out.write_text(
-            json.dumps({"summary": summary, "plan": plan}, indent=2, sort_keys=True)
-            + "\n",
+            json.dumps({"summary": summary, "plan": plan}, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 

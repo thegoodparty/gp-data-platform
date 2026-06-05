@@ -45,6 +45,12 @@ The local pytest hook needs the `dbt/` poetry venv on PATH. Run git from `dbt/` 
 cd dbt && poetry run git commit ...
 ```
 
+If an analytics venv is active (common when working under `analytics/`), the hook can still fail with `Executable pytest not found` because `VIRTUAL_ENV` shadows the poetry env. Unset it for the commit:
+
+```bash
+env -u VIRTUAL_ENV poetry run git commit ...   # from dbt/
+```
+
 `poetry install` in `dbt/` builds `psycopg2` from source and needs `pg_config` on PATH. On macOS:
 
 ```bash

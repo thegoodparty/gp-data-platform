@@ -171,19 +171,13 @@ def _get_candidacy_batch(
         # process each entry (rename, handle timestamps)
         for candidacy in candidacies:
             if candidacy:
-                candidacy["candidate_database_id"] = int(
-                    candidacy["candidate"]["databaseId"]
-                )
+                candidacy["candidate_database_id"] = int(candidacy["candidate"]["databaseId"])
                 candidacy["created_at"] = pd.to_datetime(candidacy["createdAt"])
                 candidacy["database_id"] = int(candidacy["databaseId"])
-                candidacy["election_database_id"] = int(
-                    candidacy["election"]["databaseId"]
-                )
+                candidacy["election_database_id"] = int(candidacy["election"]["databaseId"])
                 candidacy["is_certified"] = candidacy["isCertified"]
                 candidacy["is_hidden"] = candidacy["isHidden"]
-                candidacy["position_database_id"] = int(
-                    candidacy["position"]["databaseId"]
-                )
+                candidacy["position_database_id"] = int(candidacy["position"]["databaseId"])
                 candidacy["race_database_id"] = int(candidacy["race"]["databaseId"])
                 candidacy["updated_at"] = pd.to_datetime(candidacy["updatedAt"])
         return candidacies
@@ -290,9 +284,7 @@ def model(dbt, session) -> DataFrame:
         raise ValueError("Missing required secret: civic-engine-api-token")
 
     # get candidacies
-    candidacies_s3: DataFrame = dbt.ref(
-        "stg_airbyte_source__ballotready_s3_candidacies_v3"
-    )
+    candidacies_s3: DataFrame = dbt.ref("stg_airbyte_source__ballotready_s3_candidacies_v3")
 
     if dbt.is_incremental:
         existing_table = session.table(f"{dbt.this}")
@@ -300,9 +292,7 @@ def model(dbt, session) -> DataFrame:
         max_updated_at = max_updated_at_row[0] if max_updated_at_row else None
 
         if max_updated_at:
-            candidacies_s3 = candidacies_s3.filter(
-                candidacies_s3["candidacy_updated_at"] >= max_updated_at
-            )
+            candidacies_s3 = candidacies_s3.filter(candidacies_s3["candidacy_updated_at"] >= max_updated_at)
 
     # get distinct candidacy IDs
     candidacy_ids = candidacies_s3.select("br_candidacy_id").distinct()
@@ -320,9 +310,7 @@ def model(dbt, session) -> DataFrame:
     # this is a slow operation; it helps to downsample during development with
     # dataframe.sample(False, 0.1).limit(1000)
     get_candidacy = _get_candidacy_token(ce_api_token)
-    candidacies = candidacy_ids.withColumn(
-        "candidacy", get_candidacy(col("br_candidacy_id"))
-    )
+    candidacies = candidacy_ids.withColumn("candidacy", get_candidacy(col("br_candidacy_id")))
 
     candidacies = candidacies.select(
         col("candidacy.candidate_database_id").alias("candidate_database_id"),

@@ -52,5 +52,17 @@ logs/
 !.claude/skills/l2-uniform-drift-remediator/dbt_logs/README.md
 
 # Entity resolution local data and results (restricted data — never commit)
+# Ad-hoc analysis notebooks + briefs are personal working experiments by
+# default. Promote a specific analysis with `git add -f` if it should be
+# team-shared. See the win-analytics-process skill's references/methodology.md
+# ("Lightweight analysis pattern") for the convention.
+analytics/ad_hoc/
+
+# Calibration logs are personal per-session working documents — the durable
+# lessons land in the skills + agent edits the log drives, not in the log
+# itself. See the win-analytics-process skill's references/calibration.md for the convention.
+analytics/runbook/CALIBRATION_*.md
+
+# Entity resolution local data and results
 entity_resolution/data/
 entity_resolution/results/*.csv
