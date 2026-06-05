@@ -21,10 +21,22 @@ with
     -- (e.g. robert ↔ bob).
     -- Produces an array like [`daniel`, `dan`, `danny`]
     nickname_aliases as (
+        -- Normalize the seed with the same alpha-only rule applied to
+        -- first_name below, so both the join key and the alias array members
+        -- are in normalized form. Without this, the 4 seed nicknames carrying
+        -- punctuation (e.g. casey -> "k.c.", leroy -> "l.r.") would land
+        -- un-normalized in the alias array and never intersect a normalized
+        -- first_name ("kc") in Splink's ArrayIntersectLevel.
         select
-            name1, array_distinct(array_append(collect_list(name2), name1)) as aliases
+            {{ first_name_normalized("name1") }} as name1,
+            array_distinct(
+                array_append(
+                    collect_list({{ first_name_normalized("name2") }}),
+                    {{ first_name_normalized("name1") }}
+                )
+            ) as aliases
         from {{ ref("nicknames") }}
-        group by name1
+        group by {{ first_name_normalized("name1") }}
     ),
 
     -- BallotReady staging: each row is a candidacy-stage (candidate x race)
@@ -411,4 +423,5 @@ select
     nullif(seat_name, '') as seat_name,
     partisan_type
 from unioned as u
-left join nickname_aliases as na on u.first_name = na.name1
+left join
+    nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1

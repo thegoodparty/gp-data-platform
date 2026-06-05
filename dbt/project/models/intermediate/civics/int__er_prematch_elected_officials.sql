@@ -8,10 +8,22 @@
 -- Spec: .tickets/data-1731/eo-prematch-rewrite-design-spec-v2.md (v2.2)
 with
     nickname_aliases as (
+        -- Normalize the seed with the same alpha-only rule applied to
+        -- first_name below, so both the join key and the alias array members
+        -- are in normalized form. Without this, the 4 seed nicknames carrying
+        -- punctuation (e.g. casey -> "k.c.", leroy -> "l.r.") would land
+        -- un-normalized in the alias array and never intersect a normalized
+        -- first_name ("kc") in Splink's ArrayIntersectLevel.
         select
-            name1, array_distinct(array_append(collect_list(name2), name1)) as aliases
+            {{ first_name_normalized("name1") }} as name1,
+            array_distinct(
+                array_append(
+                    collect_list({{ first_name_normalized("name2") }}),
+                    {{ first_name_normalized("name1") }}
+                )
+            ) as aliases
         from {{ ref("nicknames") }}
-        group by name1
+        group by {{ first_name_normalized("name1") }}
     ),
 
     -- Source 1 build: BR term + crosswalk + raw TS (guard-in-join)
@@ -170,4 +182,5 @@ select
     gp_api_elected_office_id,
     gp_api_organization_slug
 from unioned as u
-left join nickname_aliases as na on u.first_name = na.name1
+left join
+    nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1
