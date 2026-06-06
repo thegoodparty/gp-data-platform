@@ -45,7 +45,7 @@ The same pattern against `source_name = 'techspeed'` yields the
 
 ### Accuracy caveat
 
-In the dev (`dbt_hugh`) schema the crosswalk is currently built from the
+In the developer dev schema the crosswalk is currently built from the
 **OR-baseline** matcher output (no anchors), so dev row counts **overstate** the
 gap. The model logic is correct and self-corrects once prod's crosswalk is
 rebuilt from the final-config matcher (post-merge prod refresh + prod matcha

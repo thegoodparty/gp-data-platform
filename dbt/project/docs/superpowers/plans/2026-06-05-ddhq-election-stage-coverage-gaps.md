@@ -6,7 +6,7 @@
 
 **Architecture:** A single `view` model in `models/intermediate/civics/`. It scopes BR election_stages (2026+, non-state/non-federal), determines DDHQ/TS matches from the `int__civics_er_canonical_election_stages` crosswalk via null-safe left-joins (anti-join for the DDHQ gap), and enriches with a TS-match flag and BR candidacy count.
 
-**Tech Stack:** dbt (Databricks/Spark SQL), dbt Cloud CLI, dev schema `dbt_hugh`. Commit via `cd dbt && poetry run git ...` (pre-commit pytest/sqlfmt hooks). Branch: `data-1582/ddhq-election-stage-coverage-gaps`.
+**Tech Stack:** dbt (Databricks/Spark SQL), dbt Cloud CLI, the developer dbt dev schema (`dbt_<dev>`). Commit via `cd dbt && poetry run git ...` (pre-commit pytest/sqlfmt hooks). Branch: `data-1582/ddhq-election-stage-coverage-gaps`.
 
 Spec: `docs/superpowers/specs/2026-06-05-ddhq-election-stage-coverage-gaps-design.md`
 

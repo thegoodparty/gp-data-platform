@@ -37,7 +37,6 @@ with
         where
             es.election_date >= date '2026-01-01'
             and es.office_level not in ('State', 'Federal')
-            and bp.state is not null
     ),
 
     -- BR races that DID get a DDHQ / TS match: their gp_election_stage_id is the
@@ -54,11 +53,16 @@ with
         where source_name = 'techspeed' and canonical_gp_election_stage_id is not null
     ),
 
-    -- BR candidacies per race (the candidate count on the BR side).
+    -- BR candidacies per race (the candidate count on the BR side). Source from
+    -- the race-grain S3 staging so every stage's br_race_id gets its own count;
+    -- the rolled-up int__civics_candidacy_ballotready collapses all stages onto
+    -- one any_value br_race_id, which would zero-out the non-selected stages.
     br_candidacy_counts as (
-        select br_race_id, count(distinct gp_candidacy_id) as br_candidate_count
-        from {{ ref("int__civics_candidacy_ballotready") }}
-        where br_race_id is not null
+        select
+            cast(br_race_id as string) as br_race_id,
+            count(distinct cast(br_candidate_id as string)) as br_candidate_count
+        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        where br_race_id is not null and election_day >= date '2026-01-01'
         group by br_race_id
     )
 
