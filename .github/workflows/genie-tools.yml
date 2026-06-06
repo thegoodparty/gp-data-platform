@@ -1,0 +1,22 @@
+name: genie-tools
+on:
+  pull_request:
+    paths: ['apps/genie-tools/**', '.github/workflows/genie-tools.yml']
+  push:
+    branches: [main]
+    paths: ['apps/genie-tools/**', '.github/workflows/genie-tools.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/genie-tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -e . && pip install pytest
+      - name: Pytest
+        run: pytest
