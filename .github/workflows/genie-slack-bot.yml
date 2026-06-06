@@ -1,0 +1,22 @@
+name: genie-slack-bot
+on:
+  pull_request:
+    paths: ['apps/genie-slack-bot/**', '.github/workflows/genie-slack-bot.yml']
+  push:
+    branches: [main]
+    paths: ['apps/genie-slack-bot/**', '.github/workflows/genie-slack-bot.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/genie-slack-bot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install -r requirements.txt && pip install pytest
+      - name: Pytest
+        run: pytest
