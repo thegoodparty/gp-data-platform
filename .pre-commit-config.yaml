@@ -42,13 +42,52 @@ repos:
 
 -   repo: local
     hooks:
-    -   id: pytest
-        name: Run pytest (local pre-push check)
-        # Local-only quick check before pushing. Scoped to the repo-level tests/
-        # dir (matches python_tests.yml). The pre-push stage keeps it OUT of the
-        # CI `pre-commit run --all-files` job (default pre-commit stage), so the
-        # tests are not duplicated in CI; CI test coverage is python_tests.yml.
-        entry: pytest tests
+    # Per-directory test suites, gated by which files changed, run on push only.
+    # The pre-push stage keeps them OUT of the CI `pre-commit run --all-files`
+    # job (default pre-commit stage), so CI is not duplicated — each directory's
+    # own workflow is the CI coverage. Each hook runs the suite in that
+    # directory's environment, so that env must be set up locally first
+    # (`uv sync` / `poetry install` / `pip install ...`). `files:` means a push
+    # only runs the suites for directories it actually touched.
+    -   id: pytest-people-api-loader
+        name: people-api-loader tests (pre-push)
+        entry: bash -c 'cd people-api-loader && uv run pytest'
         language: system
+        files: ^people-api-loader/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-airflow
+        name: airflow tests (pre-push)
+        entry: bash -c 'cd airflow && poetry run pytest'
+        language: system
+        files: ^airflow/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-dbt
+        name: dbt tests (pre-push)
+        entry: bash -c 'cd dbt && poetry run pytest'
+        language: system
+        files: ^dbt/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-analytics
+        name: analytics tests (pre-push)
+        entry: bash -c 'cd analytics && pytest'
+        language: system
+        files: ^analytics/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-genie-tools
+        name: genie-tools tests (pre-push)
+        entry: bash -c 'cd apps/genie-tools && pytest'
+        language: system
+        files: ^apps/genie-tools/
+        pass_filenames: false
+        stages: [pre-push]
+    -   id: pytest-genie-slack-bot
+        name: genie-slack-bot tests (pre-push)
+        entry: bash -c 'cd apps/genie-slack-bot && pytest'
+        language: system
+        files: ^apps/genie-slack-bot/
         pass_filenames: false
         stages: [pre-push]
