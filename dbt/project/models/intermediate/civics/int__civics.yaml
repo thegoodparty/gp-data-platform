@@ -3107,3 +3107,25 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_name, gp_election_stage_id]
+
+  - name: int__civics_ddhq_election_stage_coverage_gaps
+    description: >
+      Diagnostic: BallotReady local election_stages (election_date >= 2026-01-01,
+      non-state/non-federal) that have no matched DDHQ counterpart per the
+      int__civics_er_canonical_election_stages crosswalk. One row per BR
+      gp_election_stage_id with no DDHQ match. NOTE: dev counts overstate the
+      gap (crosswalk is OR-baseline in dev); self-corrects in prod.
+    columns:
+      - name: gp_election_stage_id
+        description: BallotReady race/stage id (primary key).
+        data_tests:
+          - unique
+          - not_null
+      - name: br_race_id
+        description: BallotReady race id.
+        data_tests:
+          - not_null
+      - name: has_techspeed_match
+        description: True if TechSpeed covered this race even though DDHQ did not.
+      - name: br_candidate_count
+        description: Number of BR candidacies on the race.
