@@ -35,8 +35,9 @@ with
         from {{ ref("int__civics_election_stage_ballotready") }} as es
         left join br_position as bp on es.br_position_id = bp.br_position_id
         where
-            es.election_date >= '2026-01-01'
+            es.election_date >= date '2026-01-01'
             and es.office_level not in ('State', 'Federal')
+            and bp.state is not null
     ),
 
     -- BR races that DID get a DDHQ / TS match: their gp_election_stage_id is the
