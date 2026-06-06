@@ -64,6 +64,15 @@ with
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where br_race_id is not null and election_day >= date '2026-01-01'
         group by br_race_id
+    ),
+
+    -- Latest election DDHQ has loaded. Rows dated after this are beyond DDHQ's
+    -- data horizon (not yet ingested), so they are not meaningful coverage gaps;
+    -- the flag below marks rows on/before it. Computed dynamically so it tracks
+    -- as DDHQ loads more.
+    ddhq_horizon as (
+        select max(election_date) as last_ddhq_reported_election_date
+        from {{ ref("int__civics_election_stage_ddhq") }}
     )
 
 select
@@ -79,11 +88,15 @@ select
     b.election_date,
     b.stage_type,
     ts.canonical_gp_election_stage_id is not null as has_techspeed_match,
-    coalesce(cc.br_candidate_count, 0) as br_candidate_count
+    coalesce(cc.br_candidate_count, 0) as br_candidate_count,
+    h.last_ddhq_reported_election_date,
+    b.election_date
+    <= h.last_ddhq_reported_election_date as is_before_last_ddhq_reported_election_date
 from br_local as b
 left join
     ddhq_matched as dq on b.gp_election_stage_id = dq.canonical_gp_election_stage_id
 left join ts_matched as ts on b.gp_election_stage_id = ts.canonical_gp_election_stage_id
 left join br_candidacy_counts as cc on b.br_race_id = cc.br_race_id
+cross join ddhq_horizon as h
 -- Null-safe anti-join: keep only BR races with NO DDHQ match.
 where dq.canonical_gp_election_stage_id is null

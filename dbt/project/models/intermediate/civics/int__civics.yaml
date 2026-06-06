@@ -3129,3 +3129,13 @@ models:
         description: True if TechSpeed covered this race even though DDHQ did not.
       - name: br_candidate_count
         description: Number of BR candidacies on the race.
+      - name: last_ddhq_reported_election_date
+        description: >
+          Max election_date present in DDHQ's loaded data (the data horizon),
+          computed dynamically.
+      - name: is_before_last_ddhq_reported_election_date
+        description: >
+          True if this race's election_date is on/before DDHQ's data horizon.
+          False rows are dated after DDHQ has loaded, so they are not meaningful
+          coverage gaps (DDHQ simply hasn't ingested that window yet) -- filter
+          to true for the fair DDHQ-vs-BR comparison.
