@@ -81,6 +81,10 @@ with
                     substring(county_fips, 1, 2) as state_fips_prefix,
                     count(*) as n
                 from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }}
+                -- exclude null county_fips: a (state, NULL) bucket could otherwise
+                -- win the mode, making the prefix NULL, which the join below reads
+                -- as "no match" and silently drops the whole state. (PR #443 review.)
+                where county_fips is not null
                 group by state_id, substring(county_fips, 1, 2)
             ) counts
         qualify row_number() over (partition by state_id order by n desc) = 1
