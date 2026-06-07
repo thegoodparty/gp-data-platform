@@ -87,7 +87,13 @@ with
                 where county_fips is not null
                 group by state_id, substring(county_fips, 1, 2)
             ) counts
-        qualify row_number() over (partition by state_id order by n desc) = 1
+        -- order-by tie-breaker is deterministic (state_fips_prefix asc) so the mode
+        -- is reproducible across builds; a count tie is not reachable on today's data.
+        qualify
+            row_number() over (
+                partition by state_id order by n desc, state_fips_prefix asc
+            )
+            = 1
     ),
 
     -- One row per (state, normalized county name) for the G5420 county match. Two
@@ -116,7 +122,14 @@ with
                     c.*,
                     row_number() over (
                         partition by c.state_id, lower(c.county_name)
-                        order by c.county_fips asc, c.population desc nulls last
+                        -- county_fips asc is the correctness key (picks the county
+                        -- over a same-named independent city); population desc then
+                        -- city_ascii asc make the representative-city demographics
+                        -- deterministic on a population tie.
+                        order by
+                            c.county_fips asc,
+                            c.population desc nulls last,
+                            c.city_ascii asc
                     ) as rn
                 from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }} as c
                 join
