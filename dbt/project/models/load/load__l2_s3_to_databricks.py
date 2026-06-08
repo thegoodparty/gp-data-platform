@@ -139,7 +139,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                         s3_file.loaded_at
                         > this_table_latest_files.filter(col("source_file_name") == s3_file.source_file_name)
                         .first()
-                        .loaded_at
+                        .loaded_at  # type: ignore[union-attr]
                     ):
                         files_to_load_list.append(
                             {
