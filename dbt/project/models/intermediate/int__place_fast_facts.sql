@@ -62,6 +62,84 @@ with
         where rn = 1
     ),
 
+    -- Canonical 2-digit FIPS prefix per state = the prefix shared by the MOST
+    -- uscities rows.
+    -- Strays are a tiny minority, so mode-by-count picks the real state prefix.
+    -- Robust where
+    -- simpler aggregates fail: MAX(case when population is not null ...) returns NULL
+    -- for an
+    -- all-null-population state (VI, 194 rows) and drops the whole state; MIN(prefix)
+    -- picks a
+    -- stray whose prefix sorts below the real one (TN's KY stray 21 < 47). (PR #443
+    -- delegate review.)
+    state_fips_prefixes as (
+        select state_id, state_fips_prefix
+        from
+            (
+                select
+                    state_id,
+                    substring(county_fips, 1, 2) as state_fips_prefix,
+                    count(*) as n
+                from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }}
+                -- exclude null county_fips: a (state, NULL) bucket could otherwise
+                -- win the mode, making the prefix NULL, which the join below reads
+                -- as "no match" and silently drops the whole state. (PR #443 review.)
+                where county_fips is not null
+                group by state_id, substring(county_fips, 1, 2)
+            ) counts
+        -- order-by tie-breaker is deterministic (state_fips_prefix asc) so the mode
+        -- is reproducible across builds; a count tie is not reachable on today's data.
+        qualify
+            row_number() over (
+                partition by state_id order by n desc, state_fips_prefix asc
+            )
+            = 1
+    ),
+
+    -- One row per (state, normalized county name) for the G5420 county match. Two
+    -- correctness
+    -- rules beyond a plain dedup (DATA-1950 PR #443 Codex + delegate review):
+    -- 1. order by county_fips ASC (not population): when a county shares its name
+    -- with an
+    -- independent city in the same state (Baltimore, St. Louis MO, Richmond / Roanoke /
+    -- Franklin VA), US FIPS numbers the independent city higher (510+), so the LOWER
+    -- county_fips is the actual county. Population-desc would pick the bigger city.
+    -- 2. join to state_fips_prefixes: keep only rows whose county_fips is in the
+    -- state's own FIPS
+    -- prefix, dropping degenerate cross-state stray rows (e.g. a state_id='GA' row
+    -- carrying TN
+    -- county_fips 47139). The join filters BEFORE row_number(), so a stray can never
+    -- win the
+    -- dedup, and it keeps legitimate population-less counties (GA Echols 13101, VA
+    -- James City,
+    -- the VI district) that a null-population proxy would silently NULL.
+    -- Keeps the (state, county_name) join key 1:1 (protects equal_rowcount).
+    deduped_counties_by_name as (
+        select * except (rn)
+        from
+            (
+                select
+                    c.*,
+                    row_number() over (
+                        partition by c.state_id, lower(c.county_name)
+                        -- county_fips asc is the correctness key (picks the county
+                        -- over a same-named independent city); population desc then
+                        -- city_ascii asc make the representative-city demographics
+                        -- deterministic on a population tie.
+                        order by
+                            c.county_fips asc,
+                            c.population desc nulls last,
+                            c.city_ascii asc
+                    ) as rn
+                from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }} as c
+                join
+                    state_fips_prefixes as p
+                    on p.state_id = c.state_id
+                    and substring(c.county_fips, 1, 2) = p.state_fips_prefix
+            ) ranked
+        where rn = 1
+    ),
+
     -- mtfcc is read only to split the branches below; it is not in the final output
     places as (
         select database_id, geo_id, name, slug, state, updated_at, mtfcc
@@ -75,7 +153,9 @@ with
     -- added) so the same-snapshot non-G4110 diff stays 0. A null mtfcc routes here too
     -- (the legacy path); assert_place_mtfcc_present fails loudly if one appears, since
     -- mtfcc is the only branch signal and is non-null for all places today.
-    non_g4110_places as (select * from places where mtfcc <> 'G4110' or mtfcc is null),
+    non_g4110_places as (
+        select * from places where (mtfcc not in ('G4110', 'G5420')) or mtfcc is null
+    ),
     joined_by_geo_id as (
         select
             p.database_id,
@@ -309,12 +389,175 @@ with
         from g4110_ilike_deduped
     ),
 
+    -- G5420 (school district) branch (spec D2/D3): strip the district-type suffix to
+    -- a candidate
+    -- place name; if it ends in " county" -> county match (or NULL, no city
+    -- fall-through);
+    -- otherwise city primary -> city retry (strip one trailing place-type word) ->
+    -- NULL. The
+    -- strip peels only trailing DESCRIPTOR words + district numbers/class codes and
+    -- KEEPS place
+    -- nouns so "Dodge City"/"Mount Union" survive. n0 reuses the SAME base
+    -- normalization as
+    -- g4110_places / deduped_cities_by_name — keep in sync. No same-select lateral
+    -- aliases
+    -- (n0 is a g5420_base column; city_cand a g5420_candidates column), so it
+    -- compiles broadly.
+    g5420_base as (
+        select
+            database_id,
+            geo_id,
+            name,
+            slug,
+            state,
+            updated_at,
+            lower(
+                trim(
+                    regexp_replace(
+                        regexp_replace(name, ' *\\([^)]*\\) *$', ''), ' +', ' '
+                    )
+                )
+            ) as n0
+        from places
+        where mtfcc = 'G5420'
+    ),
+    g5420_candidates as (
+        select
+            database_id,
+            geo_id,
+            name,
+            slug,
+            state,
+            updated_at,
+            n0,
+            trim(
+                regexp_replace(
+                    regexp_replace(
+                        regexp_replace(
+                            n0,
+                            ' ((no[.]?|number|#) ?)?([0-9][0-9a-z-]*|r-[ivxlc]+|re-?[0-9]+[a-z]?|[a-z]-[0-9]+[a-z]?) *$',
+                            ''
+                        ),
+                        ' ((union free|community consolidated|community unit|community|consolidated|independent|unified|central|area|regional|elementary|high|joint|cooperative|special|graded|common|metropolitan|public) )?(school district|school districts|school corporation|public schools|schools|school|district) *$',
+                        ''
+                    ),
+                    ' (r-[ivxlc]+|re-?[0-9]+[a-z]?|[a-z]-[0-9]+[a-z]?|[0-9]+) *$',
+                    ''
+                )
+            ) as city_cand
+        from g5420_base
+    ),
+    g5420_candidates2 as (
+        select
+            database_id,
+            geo_id,
+            name,
+            slug,
+            state,
+            updated_at,
+            city_cand,
+            case
+                when city_cand rlike ' county$'
+                then trim(regexp_replace(city_cand, ' county$', ''))
+            end as county_cand,
+            trim(
+                regexp_replace(
+                    city_cand, ' (city|town|township|twp|borough|boro|village) *$', ''
+                )
+            ) as city_cand_retry
+        from g5420_candidates
+    ),
+    g5420_resolved as (
+        select
+            c.database_id,
+            c.geo_id,
+            c.name,
+            c.slug,
+            c.state,
+            c.updated_at,
+            coalesce(
+                case when c.county_cand is not null then cnty.county_name end,
+                cp.county_name,
+                crt.county_name
+            ) as county_name,
+            coalesce(
+                case when c.county_cand is not null then cnty.county_fips end,
+                cp.county_fips,
+                crt.county_fips
+            ) as county_fips,
+            coalesce(
+                case when c.county_cand is not null then cnty.city end,
+                cp.city,
+                crt.city
+            ) as city,
+            coalesce(
+                case when c.county_cand is not null then cnty.zips end,
+                cp.zips,
+                crt.zips
+            ) as zips,
+            coalesce(
+                case when c.county_cand is not null then cnty.csa_name end,
+                cp.csa_name,
+                crt.csa_name
+            ) as csa_name,
+            coalesce(
+                case when c.county_cand is not null then cnty.population end,
+                cp.population,
+                crt.population
+            ) as population,
+            coalesce(
+                case when c.county_cand is not null then cnty.density end,
+                cp.density,
+                crt.density
+            ) as density,
+            coalesce(
+                case when c.county_cand is not null then cnty.home_value end,
+                cp.home_value,
+                crt.home_value
+            ) as home_value,
+            coalesce(
+                case when c.county_cand is not null then cnty.unemployment_rate end,
+                cp.unemployment_rate,
+                crt.unemployment_rate
+            ) as unemployment_rate,
+            coalesce(
+                case
+                    when c.county_cand is not null then cnty.income_household_median
+                end,
+                cp.income_household_median,
+                crt.income_household_median
+            ) as income_household_median
+        from g5420_candidates2 as c
+        left join
+            deduped_counties_by_name as cnty
+            on c.county_cand is not null
+            and cnty.state_id = c.state
+            and lower(cnty.county_name) = c.county_cand
+            and length(c.county_cand) >= 2
+        left join
+            deduped_cities_by_name as cp
+            on c.county_cand is null
+            and cp.state_id = c.state
+            and cp.normalized_city = c.city_cand
+            and length(c.city_cand) >= 3
+        left join
+            deduped_cities_by_name as crt
+            on c.county_cand is null
+            and crt.state_id = c.state
+            and crt.normalized_city = c.city_cand_retry
+            and crt.normalized_city <> c.city_cand
+            and length(c.city_cand_retry) >= 3
+    ),
+
     final as (
         select *
         from non_g4110_resolved
         union all
         select *
         from g4110_resolved
+        union all
+        select *
+        from g5420_resolved
     )
 
 select

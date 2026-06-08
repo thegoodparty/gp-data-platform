@@ -1,0 +1,93 @@
+name: matcha container
+
+# Builds and publishes the matcha entity-resolution container to GHCR. Scoped
+# to changes under matcha/ so it does not fire for unrelated monorepo changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'matcha/**'
+      - '.github/workflows/matcha-container.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - 'matcha/**'
+      - '.github/workflows/matcha-container.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # Published under the gp-data-platform repo path so the package is owned by
+  # this repo and the workflow GITHUB_TOKEN has push access.
+  IMAGE_NAME: thegoodparty/gp-data-platform/matcha
+
+jobs:
+  build:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tags
+        id: tags
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: matcha
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Post image summary
+        run: |
+          echo "### Container Image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.number }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete PR image and orphaned versions
+        # Multi-arch/attestation-aware cleanup. Deletes the pr-<N> manifest list
+        # together with its child platform images, then removes dangling
+        # untagged orphans left by earlier synchronize pushes and stranded
+        # provenance/attestation referrers. Untagged children of still-tagged
+        # images (latest, the SHA tag, other open PRs) are preserved — a plain
+        # "delete every untagged version" would corrupt those multi-arch tags.
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: thegoodparty
+          packages: gp-data-platform/matcha
+          delete-tags: pr-${{ github.event.number }}
+          delete-untagged: true
+          delete-orphaned-images: true
+          token: ${{ secrets.GITHUB_TOKEN }}

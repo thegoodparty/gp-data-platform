@@ -1101,6 +1101,23 @@ models:
         data_tests:
           - not_null
 
+  - name: int__ballotready_candidate_identity
+    description: >
+      Canonical BallotReady candidate identity inputs, one deterministic row per
+      br_candidate_id. int__civics_candidate_ballotready and
+      int__civics_candidacy_ballotready both hash these columns for
+      gp_candidate_id, so a person resolves to the same id in both models
+      (previously they picked divergent per-row vs rolled-up contact values and
+      orphaned candidates whose email varied across candidacy rows).
+
+      Grain: One row per br_candidate_id.
+    columns:
+      - name: br_candidate_id
+        description: BallotReady candidate (person) database_id. Primary key.
+        data_tests:
+          - unique
+          - not_null
+
   - name: int__civics_candidate_ballotready
     description: >
       BallotReady candidates transformed into civics mart candidate schema.
@@ -1274,7 +1291,7 @@ models:
           Centralizing generation here prevents salt/source drift across the
           downstream models that reference this UUID.
         data_tests:
-          - is_uuid  # repo's is_uuid test ignores nulls, so vacancy NULLs are fine
+          - is_uuid # repo's is_uuid test ignores nulls, so vacancy NULLs are fine
 
       - name: br_office_holder_id
         description: BallotReady natural key for the office-holder term record
@@ -1942,6 +1959,13 @@ models:
         data_tests:
           - not_null
 
+      - name: first_name_tokens
+        description: >
+          Array of >=2-char first-name tokens (split on non-letter characters)
+          for Splink ArrayIntersectLevel. Lets compound first names overlap on a
+          shared given name (e.g. "charles kirk" vs "charles"). Consumed by the
+          matcha first-name comparison; keep first_name_tokens macro in sync.
+
       - name: last_name
         description: Candidate last name (lowercased, trimmed)
         data_tests:
@@ -2073,6 +2097,14 @@ models:
               arguments:
                 expression: "!= ''"
 
+
+      - name: first_name_tokens
+        description: >
+          Array of >=2-char first-name tokens (split on non-letter characters)
+          for Splink ArrayIntersectLevel. Lets compound first names overlap on a
+          shared given name (e.g. "charles kirk" vs "charles"). Consumed by the
+          matcha first-name comparison; keep first_name_tokens macro in sync.
+
       - name: last_name
         description: Official last name (lowercased, trimmed; blank names filtered out)
         data_tests:
@@ -2097,6 +2129,117 @@ models:
           Lowered + trimmed + nullif of position_name for BR+TS;
           lowered + trimmed + nullif of raw campaign_office_raw for gp-api
           (preserves seat/district context).
+
+  - name: int__er_prematch_election_stages
+    description: >
+      Entity resolution prematch input for the matcha election_stage entity
+      type. Unions BR / DDHQ / TS race-level records into a standardized
+      schema for Splink matching. One row per source race record.
+
+      Grain: One row per source race record (election stage).
+
+      Sources: int__civics_election_stage_ballotready (BR, joined to BR
+      position staging for state), int__civics_election_stage_ddhq (DDHQ;
+      ddhq_race_id can repeat across stages, so source_id uses
+      gp_election_stage_id), int__civics_election_stage_techspeed (TS; state
+      extracted from race_name's `STATE ` prefix).
+
+      ballotready_position_id is NULL on the DDHQ and TS branches in V1.
+      DDHQ has no native BR position FK, and resolving it requires the
+      election_stage ER clusters that this view itself seeds; revisit once
+      int__civics_er_canonical_election_stages exists.
+
+      first_name_aliases is emitted as an empty array because matcha's
+      shared pipeline.load_and_prepare unconditionally reads the column even
+      though election_stage has no person fields.
+
+      Output of matcha lands at
+      goodparty_data_catalog.er_source.er_clustered_election_stages and is
+      consumed by int__civics_er_canonical_election_stages in a follow-up PR.
+
+    columns:
+      - name: unique_id
+        description: >
+          Primary key for Splink — source_name || '|' || source_id.
+          Guaranteed unique across all sources.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: source_name
+        description: Origin of the record ('ballotready', 'ddhq', or 'techspeed').
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - ddhq
+                  - techspeed
+
+      - name: source_id
+        description: >
+          Source-specific identifier. BR: br_race_id; DDHQ:
+          gp_election_stage_id (not ddhq_race_id; see model docstring);
+          TS: gp_election_stage_id.
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state (2-letter code)
+        data_tests:
+          - not_null
+          - is_state_abbreviation:
+              config:
+                severity: warn
+
+      - name: election_date
+        description: Election date for this election stage.
+        data_tests:
+          - not_null
+
+      - name: election_stage
+        description: >
+          Stage type. Values: primary, general, primary runoff, general
+          runoff, primary special, general special, primary special runoff,
+          general special runoff. Lowercased per upstream stage_type.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - primary
+                  - general
+                  - primary runoff
+                  - general runoff
+                  - primary special
+                  - general special
+                  - primary special runoff
+                  - general special runoff
+
+      - name: is_special
+        description: >
+          Whether this is a special election. Native on BR; derived from
+          stage_type LIKE '%special%' on DDHQ; always false on TS (TS does
+          not surface special-election flags).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: official_office_name
+        description: >
+          Lowercased + trimmed race_name from each upstream model. Each
+          source constructs race_name with a 2-letter state prefix, so the
+          prefix is left intact for cross-source comparability.
+
+      - name: ballotready_position_id
+        description: >
+          BR position FK. Populated for BR rows; NULL for DDHQ and TS in V1.
+
+      - name: br_race_id
+        description: BR race FK as int. Populated for BR rows only.
 
   - name: int__civics_election_ballotready
     description: >
@@ -2484,7 +2627,7 @@ models:
                   - state
 
       - name: candidacy_result
-        description: 'Won if did_win, else null. Under-populated in source.'
+        description: "Won if did_win, else null. Under-populated in source."
         data_tests:
           - accepted_values:
               arguments:
@@ -2927,3 +3070,40 @@ models:
               - gp_api_stage_election_date
           config:
             where: "gp_api_campaign_id is not null"
+
+  - name: int__civics_er_canonical_election_stages
+    description: >
+      Direct election-stage ER crosswalk: maps DDHQ / TechSpeed election stages
+      that clustered with a BallotReady race (gp-data-matcha election_stage
+      entity) to BR's canonical gp_election_stage_id. Broader race-level coverage
+      than int__civics_er_canonical_ids's candidacy-derived
+      canonical_gp_election_stage_id (links races even without a matched
+      candidacy). BR-anchored clusters adopt BR's id; non-BR cross-source
+      clusters (DDHQ <-> TS, no BR member) adopt a representative member's id so
+      they still collapse. Single-record clusters keep their natural id.
+
+      Grain: one row per non-BR provider election stage (source_name +
+      gp_election_stage_id). Note: DDHQ and TS can share a natural
+      gp_election_stage_id for the same race, so the id is unique only within a
+      source. A small number (~41) of such shared ids map to different BR
+      canonicals (the matcher anchored the DDHQ vs TS record to different BR
+      races); consumers join per-source so the mapping stays deterministic.
+    columns:
+      - name: source_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ddhq", "techspeed"]
+      - name: gp_election_stage_id
+        description: The provider's own gp_election_stage_id (the matched non-BR record).
+        data_tests:
+          - not_null
+      - name: canonical_gp_election_stage_id
+        description: BR's gp_election_stage_id for the cluster; consumers coalesce against this.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_name, gp_election_stage_id]

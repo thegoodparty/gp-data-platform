@@ -219,17 +219,22 @@ with
             }}
             as gp_candidacy_id,
 
-            -- gp_candidate_id - matches int__civics_candidate_ballotready pattern
-            -- Must use coalesce(email, api_email) to match the candidate model
+            -- gp_candidate_id - hash the canonical per-person identity inputs
+            -- (one deterministic value per br_candidate_id) shared with
+            -- int__civics_candidate_ballotready via
+            -- int__ballotready_candidate_identity, so a person resolves to the
+            -- same id in both models. Hashing the rolled-up any_value(email)
+            -- here previously diverged from the candidate model and orphaned
+            -- candidates whose email varied across candidacy rows.
             {{
                 generate_salted_uuid(
                     fields=[
-                        "first_name",
-                        "last_name",
-                        "state",
+                        "identity.id_first_name",
+                        "identity.id_last_name",
+                        "identity.id_state",
                         "cast(null as string)",
-                        "coalesce(email, api_email)",
-                        "phone",
+                        "identity.id_email",
+                        "identity.id_phone",
                     ]
                 )
             }} as gp_candidate_id,
@@ -291,6 +296,9 @@ with
             _airbyte_extracted_at as updated_at
 
         from candidacies_enriched
+        left join
+            {{ ref("int__ballotready_candidate_identity") }} as identity
+            on candidacies_enriched.br_candidate_id = identity.br_candidate_id
         where
             -- Must have at least a general or primary election date for ID generation
             coalesce(
@@ -302,22 +310,14 @@ with
             is not null
     ),
 
-    -- Ensure referential integrity with candidate table
-    valid_candidates as (
-        select gp_candidate_id from {{ ref("int__civics_candidate_ballotready") }}
-    ),
-
-    filtered as (
-        select candidacies_with_ids.*
-        from candidacies_with_ids
-        inner join
-            valid_candidates
-            on candidacies_with_ids.gp_candidate_id = valid_candidates.gp_candidate_id
-    ),
-
+    -- gp_candidate_id is sourced from int__ballotready_candidate_identity (the
+    -- same model int__civics_candidate_ballotready hashes), so every candidacy's
+    -- gp_candidate_id is in the candidate table by construction. The prior
+    -- valid_candidates referential inner join is therefore redundant; the
+    -- candidate <-> candidacy relationships tests guard the invariant instead.
     deduplicated as (
         select *
-        from filtered
+        from candidacies_with_ids
         qualify
             row_number() over (partition by gp_candidacy_id order by updated_at desc)
             = 1

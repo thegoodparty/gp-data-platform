@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+results/
+*.csv
+*.html
+*.png
+.claude/
+tests/

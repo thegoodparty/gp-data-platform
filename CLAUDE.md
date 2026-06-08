@@ -12,10 +12,11 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 | `dbt/` | poetry | 3.12 | `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via poetry. |
 | `airflow/` | poetry | 3.12 | Local DAG dev outside Astronomer. To run Airflow itself: `cd airflow/astro && astro dev start`. |
 | `analytics/` | pip + root `requirements_test.txt` | 3.12 | No own deps file; its tests rely on the root test deps. |
+| `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
 | `apps/genie-tools/` | pip + setuptools (PEP 621) | 3.12+ | `pip install -e .`, not poetry. |
 | `apps/genie-slack-bot/` | pip + `requirements.txt` | unpinned | Not poetry. |
 
-Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (3.12). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
+Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (3.12 for most; `matcha` on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
 ## ai-rules submodule
 

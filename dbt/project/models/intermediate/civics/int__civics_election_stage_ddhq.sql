@@ -48,6 +48,17 @@ with
             cast(null as string) as filing_requirements,
             cast(null as string) as filing_address,
             cast(null as string) as filing_phone,
+
+            -- Office attributes (race grain). Aggregated up from the
+            -- candidacy-stage source for the election_stage ER prematch view
+            -- (int__er_prematch_election_stages). Office is constant per race,
+            -- so any_value is safe. seat_name is not carried by DDHQ.
+            any_value(candidate_office) as candidate_office,
+            any_value(office_level) as office_level,
+            any_value(office_type) as office_type,
+            any_value(district) as district,
+            cast(null as string) as seat_name,
+
             min(created_at) as created_at,
             max(updated_at) as updated_at
 
