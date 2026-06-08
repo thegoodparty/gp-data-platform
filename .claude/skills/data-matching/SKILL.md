@@ -1,12 +1,17 @@
 ---
-keywords: databricks, data matching, ICP, joins, campaigns, ballotready, position ID, race ID
-summary: Patterns and join paths for matching ad-hoc tables to ICP flags and other reference data in Databricks
-last_updated: 2026-02-13
+name: data-matching
+description: Match an external or ad-hoc table (HubSpot export, lead list, P2V sample) to ICP flags or other reference data in Databricks. Use when you have a table of people or races and need to attach int__icp_offices flags (icp_office_win / icp_office_serve, voter_count, etc.) but the table only has emails, BallotReady race IDs, or position IDs, not the ICP join. Routes by which ID you have: email (two-hop via campaigns), race ID (two-hop via race staging), or position ID (direct join). General Databricks matching reference; not Win-pipeline specific.
 ---
 
-# Data Matching Runbook
+# Data matching
 
-> **For Claude**: When asked to help with a data matching exercise, read this runbook first for established join paths, reference tables, and known gotchas — don't build queries from scratch. After completing a matching task, update this runbook with any new patterns, join paths, or gotchas discovered, but keep entries concise so this remains a quick reference.
+Match an arbitrary table to ICP flags (and other reference data) in Databricks using established join paths. Route by which ID your source table carries:
+
+- It has **emails** but no BallotReady IDs → **Path 1** (via `campaigns`).
+- It has a **BallotReady race ID** but no position ID → **Path 2** (via the race staging struct).
+- It already has a **position ID** → **Path 3** (direct join to `int__icp_offices`).
+
+Verify any named table/column against the live `goodparty_data_catalog` before relying on it; these recipes drift.
 
 ## Key Reference Tables
 
@@ -99,12 +104,3 @@ LEFT JOIN goodparty_data_catalog.dbt.int__icp_offices icp
 - **Struct access**: The race staging table stores position as a struct — use `r.position.databaseId` (camelCase).
 - **Email case**: Always use `LOWER()` on both sides when joining on email.
 - **One-to-many risk**: A user email can match multiple campaigns. Check for duplicates with `GROUP BY email HAVING COUNT(*) > 1` before saving.
-
----
-
-## Output Tables Created
-
-| Table | Date | Source | Join Path | Rows | Match Rate |
-|-------|------|--------|-----------|------|------------|
-| `private_tristan.hubspot_leads_jack_20260211_w_icp` | 2026-02-11 | HubSpot leads export | Path 2 (race ID) | 1,259 | 92.5% |
-| `private_tristan.win_icp_signups_p2v_w_icp` | 2026-02-13 | Win ICP signups P2V sample | Path 1 (email) | 61 | 90.2% |
