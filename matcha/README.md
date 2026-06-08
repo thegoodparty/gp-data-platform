@@ -15,7 +15,7 @@ rules, filters) lives in `scripts/configs/`.
 
 ### Prerequisites
 
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/) for local development
+- Python 3.14+ and [uv](https://docs.astral.sh/uv/) for local development
 - Docker for container-based runs
 - [GitHub CLI](https://cli.github.com/) (`gh`) for pulling pre-built images
 

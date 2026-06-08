@@ -1,5 +1,5 @@
 # Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /usr/local/bin/uv
 
@@ -9,7 +9,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime — same slim base, no build tools carried over
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

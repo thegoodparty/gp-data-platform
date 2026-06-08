@@ -10,7 +10,7 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 |---|---|---|---|
 | `dbt/` | poetry | 3.12 | Hosts the pre-commit pytest hook. `dbt` itself is the system-installed dbt Cloud CLI — do not invoke it via poetry. |
 | `airflow/` | poetry | 3.12 | Local DAG dev outside Astronomer. To run Airflow itself: `cd airflow/astro && astro dev start`. |
-| `matcha/` | uv | 3.11 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
+| `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
 | `apps/genie-tools/` | pip + setuptools (PEP 621) | 3.12+ | `pip install -e .`, not poetry. |
 | `apps/genie-slack-bot/` | pip + `requirements.txt` | unpinned | Not poetry. |
 | Root CI pytest | pip + `requirements_test.txt` | **3.11** | `.github/workflows/python_tests.yml` runs this. |
