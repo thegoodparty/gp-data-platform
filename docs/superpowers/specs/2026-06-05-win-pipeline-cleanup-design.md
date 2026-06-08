@@ -4,6 +4,8 @@ Status: approved design, pending implementation plan
 Date: 2026-06-05
 Supersedes parts of: `~/Downloads/pipeline_leanup_plan.md` (the working plan this was brainstormed from)
 Builds on: DATA-1959 / PR #441 (runbook split into the two `win-analytics-*` skills)
+Conventions from: the org `runbooks` repo (books / commands / experiments / scripts model); see
+"Conventions adopted from the org runbooks repo" below
 
 ## Background
 
@@ -13,8 +15,8 @@ workflow). That landed the content split. It did not fix the pipeline topology, 
 add a session entry point. This is the Phase 1 cleanup that closes both, plus one related
 re-home of the data-matching reference.
 
-Validation and evals (the former Phase 2, Tracks A and B) are out of scope here and tracked
-separately.
+Validation, evals, the repeatable benchmark, and per-directory CI are out of scope here; see
+"Deferred and related work" for where each lands.
 
 The working plan this was brainstormed from assumed two things that the repo and current usage
 overruled, both captured below: that the data-match runbook should be folded into `joins.md`
@@ -82,6 +84,14 @@ Retire `.claude/data-match-runbook.md` after extraction.
 
 Each fact has one home.
 
+### Long-term home
+
+The data-matching reference is general, not Win-specific, and matches the kind of standalone
+Databricks reference the org runbooks repo already hosts as a book (cf. `books/query-voter-data.md`).
+Building it as a skill here now is the pragmatic step. Migrating it to the runbooks repo `books/`
+is a later cross-repo step once this pipeline moves toward that process. Out of scope for this spec;
+see "Deferred and related work."
+
 ## Component 2: the entry-point runbook
 
 There is no entry point today, which is why a cold session diverges from an already-primed one
@@ -89,7 +99,9 @@ and takes the shortest path, skipping framing. The fix is a single supported fro
 consistency with the org's runbook convention, the entry point is a runbook (not a skill); the
 reference content stays as the two `win-analytics-*` skills. This is a deliberate mixed model.
 
-New runbook: `analytics/runbook/product-analysis.md`
+New runbook: `analytics/runbook/product-analysis.md`. (Name kept from the chosen `/product-analysis`
+invocation. The org convention prefers action-led procedure names such as `run-product-analysis.md`;
+this is an open naming choice flagged for review.)
 
 - Product-agnostic front door. Step 1 determines the product. Only the Win branch is populated
   today; Serve and others are added later. No routing machinery beyond a simple branch (YAGNI).
@@ -101,9 +113,14 @@ New runbook: `analytics/runbook/product-analysis.md`
 - It seeds the corrected stages as a to-do (agents follow a to-do far more faithfully than
   prose): refine the question in the orchestrator, get human approval of the brief, execute,
   spawn the reviewers, capture calibration.
+- It follows the org book proc shape: one-line summary, prerequisites, steps, then a short
+  troubleshooting block; kebab-case; written for an agent first, a human second. See the
+  conventions section below.
 
-`analytics/runbook/README.md` is updated to point at this runbook as the way in. Today it points
-only at the two skills.
+`analytics/runbook/README.md` is rebuilt as a routing index in the org's `INDEX.md` style: a small
+table (type, trigger keywords, path, one-line description) that routes to this entry runbook and
+names the two skills. Today it only points at the two skills. The routing table is how a session
+finds the entry point by keyword rather than by remembering a filename.
 
 Invocation is explicit and human-driven, consistent with the chosen "user explicitly invokes
 it" model. The team convention becomes "start a product analysis from this runbook." It is not
@@ -113,9 +130,10 @@ a slash command and not auto-surfaced.
 
 Because the runbook is passive and explicitly invoked, the acceptance criterion "a cold session
 reaches the framing step" holds only when the user actually starts from the runbook. A cold
-session that skips it can still shortcut to an answer. A skill front door would have closed that
-gap autonomously; the runbook relies on the team always starting there. This trade was chosen
-deliberately for org-convention consistency.
+session that skips it can still shortcut to an answer. The routing index in
+`analytics/runbook/README.md` (keyword triggers) partially mitigates this, matching how the org
+repo handles discoverability, but it is not the autonomous guarantee a skill front door would have
+given. This trade was chosen deliberately for org-convention consistency.
 
 ## Component 3: topology fix, framer agent to framing routine
 
@@ -174,6 +192,28 @@ competing with the main task. The staged to-do is what keeps framing from being 
 - Clean the stale line in `.claude/settings.local.json` (a pre-commit permission that references
   both the deleted `analytics/runbook/win.md` and the framer agent file).
 
+## Conventions adopted from the org runbooks repo (item 3)
+
+The org `runbooks` repo defines an AI-first convention set. We adopt the parts that fit this repo
+now, so the product-analytics artifacts are portable to that repo later:
+
+- **Book shape for the entry runbook.** One-line summary first, then prerequisites (data sources,
+  credentials, the skills to load), then the staged steps, then a short troubleshooting block.
+  Written for an AI agent first, a human second.
+- **A routing index for discoverability.** `analytics/runbook/README.md` becomes a routing table in
+  the org's `INDEX.md` style: a row per artifact with a type tag (`proc` / `ref`), trigger
+  keywords, path, and one-line description, routing to the entry runbook and naming the two skills.
+  Keyword routing is the org's answer to discoverability and partially mitigates the Component 2
+  known property.
+- **Naming and portability.** Kebab-case, action-led names; standalone docs with no hardcoded
+  machine paths. Same-repo skill links are fine now; full standalone portability is only required
+  if an artifact migrates to the runbooks repo later.
+- **Delete, do not deprecate.** Retiring the framer agent and the old `win.md` follows the org rule
+  to delete stale docs rather than keep dated snapshots; git history is the archive.
+
+Not adopted now (these belong to the deferred work below): the runbook-to-experiment lifecycle, the
+manifest schema, the `qa_validate` verdict harness, and the path-filtered publish CI.
+
 ## Acceptance criteria
 
 - Framing and execution both run in the orchestrator as two distinct ordered steps with the
@@ -195,11 +235,32 @@ competing with the main task. The staged to-do is what keeps framing from being 
 
 ## Out of scope
 
-- Validation and evals (former Phase 2, Tracks A and B). Tracked separately.
+- Validation, evals, the repeatable benchmark, and per-directory CI. See "Deferred and related
+  work" for where each lands.
 - Auto-generating metric definitions with an LLM. Humans own definitions; Claude drafts docs.
 - Any rework of the `win-analytics-process` or `win-analytics-knowledge` reference content beyond
   the framing-routine addition and the repointing above.
 - A Serve branch in the entry runbook. Stub the product branch only; do not build it.
+
+## Deferred and related work
+
+These came up during design and are deliberately not in this spec:
+
+- **Repeatable benchmark (former Track B).** A fixed-question benchmark that measures a few
+  auto-measurable metrics (cost, runtime, turns, schema or verdict pass) plus human feedback, run
+  repeatedly to tell whether pipeline changes move in the right direction. Modeled on the org repo's
+  `qa-validate` verdict harness (`ok` / `warn` / `block`) and `analyze-experiment-costs` metrics.
+  Gets its own spec, built after Phase 1. Noted tradeoff: building it after Phase 1 forgoes a clean
+  pre-change baseline for the Phase 1 changes themselves.
+- **Per-directory CI (item 2).** Path-filtered CI scoped to the product-analytics directory,
+  following the org repo's `paths:`-filtered workflow plus `CODEOWNERS` model. Designed and built
+  with the Track A linter on the `data-1960` branch (DATA-1960), not here, so CI lands with the
+  checks it runs.
+- **Migrating the `data-matching` skill to the runbooks repo `books/`.** It is a general,
+  standalone Databricks reference and a natural fit for that repo. A later cross-repo step.
+- **Porting the pipeline to the runbook-to-experiment process.** The long-term arc: prove the
+  workflow as runbooks here, then port to schema-contracted, autonomously runnable experiments in
+  the org repo. Out of scope for Phase 1.
 
 ## Verification before and during implementation
 
