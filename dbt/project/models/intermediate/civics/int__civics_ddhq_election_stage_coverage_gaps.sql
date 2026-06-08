@@ -62,7 +62,11 @@ with
             cast(br_race_id as string) as br_race_id,
             count(distinct cast(br_candidate_id as string)) as br_candidate_count
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where br_race_id is not null and election_day >= date '2026-01-01'
+        -- No election_day filter: the join to br_local (below) already scopes
+        -- counts to date-bounded races via br_race_id (stage-specific, so it
+        -- pins the date). An S3-side date filter is redundant and silently
+        -- drops candidacies whose election_day the staging model NULLed out.
+        where br_race_id is not null
         group by br_race_id
     ),
 
