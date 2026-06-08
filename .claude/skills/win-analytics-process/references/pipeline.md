@@ -5,16 +5,18 @@ pipeline's stages and handoff contracts. Agents reference this doc instead of de
 flow themselves.
 
 **Descriptive, not active.** This pipeline runs as a conversation in which the human shapes the
-framing and approves the brief. There is no automated driver that runs the stages end to end —
-doing so would skip those human inputs. This doc documents the flow; a human (or the process
-skill stepping through it) drives it.
+framing and approves the brief. The supported entry point is the
+`analytics/runbook/run-product-analysis.md` runbook, which seeds the staged to-do list (frame →
+approve → execute → review → calibrate). There is no
+automated driver that runs the stages end to end; doing so would skip those human inputs. This
+doc documents the flow; a human (or the process skill stepping through it) drives it.
 
 ## Stages and handoffs
 
-| # | Stage | Agent | Consumes | Produces | May / may not |
+| # | Stage | Actor | Consumes | Produces | May / may not |
 |---|---|---|---|---|---|
-| 1 | **Frame** | `analytics-question-framer` | a vague question + the human's intent | a structured analysis **brief** (YAML per [brief-schema.md](brief-schema.md)) | Read-only and advisory. Shapes and scopes; verifies data exists against the live catalog. Does **not** write analysis code. Does not produce the brief until the human approves the framing. |
-| 2 | **Execute** | Executor (general-purpose Claude Code) | the approved brief | an executed notebook + the brief saved alongside it | Treats the brief as a spec. Builds the working set once, slices in pandas. If the brief is unworkable on inspection of the data, kicks it back to stage 1 rather than improvising. |
+| 1 | **Frame** | Orchestrator (framing routine, [framing.md](framing.md)) | a vague question + the human's intent | a structured analysis **brief** (YAML per [brief-schema.md](brief-schema.md)) | Runs in the orchestrator's own context so it can converse with the human. Shapes and scopes; verifies data exists against the live catalog. Does **not** write analysis code, and does not produce the brief until the human approves the framing. |
+| 2 | **Execute** | Orchestrator (same session, after the approval gate) | the approved brief | an executed notebook + the brief saved alongside it | A distinct ordered step after framing, separated by the human-approval gate. Treats the brief as a spec. Builds the working set once, slices in pandas. If the brief is unworkable on inspection of the data, returns to framing rather than improvising. |
 | 3 | **Review (methodology + interpretation)** | `product-data-scientist` | the executed notebook, read against the brief | a methodology review + an interpretation of results | Read-only and advisory. Surfaces leakage / survivorship / calibration concerns and interprets effect sizes. Does not edit code or open PRs. |
 | + | **Review (usefulness)** | `product-manager` | the plan or the deliverable | a framing / actionability review | Read-only and advisory. Asks whether this answers the team's real question and whether names/segments/thresholds match how consumers think. Invoked proactively at plan checkpoints and pre-PR — a checkpoint, not a strict sequence position. |
 
@@ -27,8 +29,9 @@ skill stepping through it) drives it.
 ## Closing the loop
 
 Every substantive run ends with a calibration pass ([calibration.md](calibration.md)): findings
-are triaged into the file that owns them — the framer agent, the executor instructions /
-`analytics/lib`, the data-scientist agent, or a knowledge-skill domain doc — so the pipeline
+are triaged into the file that owns them — the framing routine ([framing.md](framing.md)), the
+executor instructions / `analytics/lib`, the data-scientist agent, or a knowledge-skill domain
+doc — so the pipeline
 self-corrects across runs. The log itself is disposable; the doc and agent edits are the durable output.
 
 ## Cross-references

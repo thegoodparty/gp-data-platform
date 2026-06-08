@@ -14,6 +14,7 @@ Part of the **win-analytics-knowledge** skill. The ID landscape and canonical jo
 - IF you need to attach a HubSpot survey response → use the 2-hop via `candidate`, **NOT** `users_win_candidacy.hubspot_id` (that is the company id; see below and [gotchas.md](gotchas.md)).
 - IF you need viability on a forward-stable path → join `int__techspeed_viability_scoring` via `techspeed_candidate_code`; see [viability.md](viability.md).
 - IF the question is about what a metric *means* rather than how to join → see [canonical_metrics.md](canonical_metrics.md).
+- IF you have an external or ad-hoc table (emails, BallotReady race IDs) that needs ICP flags attached → use the **data-matching** skill, which owns the email→campaigns and race-id→position entry paths. This doc covers only the Win-entity ICP path (`candidacy.br_position_database_id`, below).
 
 ## The ID landscape
 
@@ -92,3 +93,4 @@ For user-level analyses, collapse with explicit handling of "which candidacy rep
 - [viability.md](viability.md) — the forward-stable viability join rationale.
 - [outcomes.md](outcomes.md) — the PMF/CSAT survey join in context.
 - [gotchas.md](gotchas.md) — the `hubspot_id` company-vs-contact trap and multi-cycle traps.
+- [data-matching skill](../../data-matching/SKILL.md) — matching external tables to ICP flags by email / race ID / position ID.

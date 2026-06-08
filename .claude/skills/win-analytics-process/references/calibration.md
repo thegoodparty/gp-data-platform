@@ -19,7 +19,7 @@ Each finding lands in the file that *owns* it; the log itself is disposable. Use
 
 | Finding type | Lands in |
 |---|---|
-| How the framer scopes / verifies (data-existence checks, metric-semantics steps) | `.claude/agents/analytics-question-framer.md` |
+| How framing scopes / verifies (data-existence checks, metric-semantics steps) | `.claude/skills/win-analytics-process/references/framing.md` |
 | How the executor builds notebooks (working-set pattern, mandatory checks) | executor instructions / `analytics/lib` |
 | How the DS reviews / interprets (leakage classes, calibration self-checks) | `.claude/agents/product-data-scientist.md` |
 | Data facts, joins, gotchas, metric definitions, coverage | the owning doc in the **win-analytics-knowledge** skill (`.claude/skills/win-analytics-knowledge/references/`) |

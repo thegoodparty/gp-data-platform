@@ -141,6 +141,6 @@ A scout / analysis is "done" when:
 ## Cross-references
 
 - [pipeline.md](pipeline.md) — the pipeline topology and stage handoffs.
-- [brief-schema.md](brief-schema.md) — the framer→executor brief contract.
+- [brief-schema.md](brief-schema.md) — the framing→execution brief contract.
 - [calibration.md](calibration.md) — the closing calibration step.
 - Knowledge skill (`.claude/skills/win-analytics-knowledge/references/`) — the data facts these methods operate on.
