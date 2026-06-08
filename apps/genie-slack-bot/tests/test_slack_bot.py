@@ -2,9 +2,6 @@ import importlib
 import sys
 import threading
 import types
-from pathlib import Path
-
-APP_DIR = Path(__file__).resolve().parents[3] / "apps" / "genie-slack-bot"
 
 
 def load_slack_bot_module():
@@ -57,7 +54,6 @@ def load_slack_bot_module():
     slack_sdk.WebClient = FakeWebClient
     sys.modules["slack_sdk"] = slack_sdk
 
-    sys.path.insert(0, str(APP_DIR))
     sys.modules.pop("slack_bot", None)
     return importlib.import_module("slack_bot")
 

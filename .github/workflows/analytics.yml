@@ -1,0 +1,22 @@
+name: analytics
+on:
+  pull_request:
+    paths: ['analytics/**', '.github/workflows/analytics.yml']
+  push:
+    branches: [main]
+    paths: ['analytics/**', '.github/workflows/analytics.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements_test.txt
+      - name: Install deps
+        run: pip install -r requirements_test.txt
+      - name: Pytest
+        working-directory: analytics
+        run: pytest
