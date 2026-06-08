@@ -31,7 +31,13 @@ with
             ) as district_identifier,
             es.seat_name,
             es.election_date,
-            es.stage_type
+            es.stage_type,
+            -- Partisan primaries are out of scope for the DDHQ coverage
+            -- agreement (independent / 3rd-party candidates are ineligible), so
+            -- flag them for exclusion from the agreement-scoped gap count.
+            coalesce(
+                es.partisan_type = 'partisan' and es.is_primary, false
+            ) as is_partisan_primary
         from {{ ref("int__civics_election_stage_ballotready") }} as es
         left join br_position as bp on es.br_position_id = bp.br_position_id
         where
@@ -91,6 +97,7 @@ select
     b.seat_name,
     b.election_date,
     b.stage_type,
+    b.is_partisan_primary,
     ts.canonical_gp_election_stage_id is not null as has_techspeed_match,
     coalesce(cc.br_candidate_count, 0) as br_candidate_count,
     h.last_ddhq_reported_election_date,

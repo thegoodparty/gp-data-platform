@@ -3129,6 +3129,12 @@ models:
         description: True if TechSpeed covered this race even though DDHQ did not.
       - name: br_candidate_count
         description: Number of BR candidacies on the race.
+      - name: is_partisan_primary
+        description: >
+          True if this is a partisan primary (partisan_type = 'partisan' and
+          is_primary). These are out of scope for the DDHQ coverage agreement
+          (independent / 3rd-party candidates are ineligible); exclude them
+          (filter to false) for the agreement-scoped gap count.
       - name: last_ddhq_reported_election_date
         description: >
           Max election_date present in DDHQ's loaded data (the data horizon),
