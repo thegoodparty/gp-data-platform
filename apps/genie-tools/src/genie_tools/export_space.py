@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +47,7 @@ def write_json(path: Path, payload: Any) -> None:
 
 
 def _coerce_json_value(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, str | int | float | bool) or value is None:
         return value
     if isinstance(value, dict):
         return {str(key): _coerce_json_value(item) for key, item in value.items()}
@@ -56,7 +56,7 @@ def _coerce_json_value(value: Any) -> Any:
 
     sentinel = object()
     enum_value = getattr(value, "value", sentinel)
-    if enum_value is not sentinel and isinstance(enum_value, (str, int, float, bool)):
+    if enum_value is not sentinel and isinstance(enum_value, str | int | float | bool):
         return enum_value
     return str(value)
 
@@ -87,7 +87,7 @@ def _build_metadata(
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "requested_space_id": requested_space_id,
-        "exported_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "exported_at_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "serialized_space_sha256": hashlib.sha256(serialized_space.encode("utf-8")).hexdigest(),
         "top_level_keys": sorted(payload),
     }

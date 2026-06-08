@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+
 from genie_tools import cli
 from genie_tools.export_space import FetchedSpace, export_space_bundle
 from genie_tools.normalize_space import normalize_space_config
