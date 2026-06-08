@@ -3,29 +3,62 @@
 Part of the **win-analytics-process** skill. The closing step that makes the pipeline self-correct.
 
 After a substantive analysis run, write findings that should update the docs or agents into a
-dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`. Hand-process the log
-into doc/agent edits before treating it as resolved. This is a **required closing step** of
-every substantive analysis (see the verification protocol in [methodology.md](methodology.md)):
-either produce the log and distribute it, or explicitly record that no calibration was needed.
-It's what makes the process self-correct rather than relying on someone remembering.
+dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`, then handle each finding
+per its track (below). This is a **required closing step** of every substantive analysis (see the
+verification protocol in [methodology.md](methodology.md)): either produce the log and process it,
+or explicitly record that no calibration was needed. It's what makes the process self-correct
+rather than relying on someone remembering.
 
-Calibration logs are personal working documents — they are gitignored
+Calibration logs are personal working documents: they are gitignored
 (`analytics/runbook/CALIBRATION_*.md`) so each analyst's working tree can carry them without
 affecting the shared repo. The durable team-shared output is the doc + agent edits the log drives.
 
-## Distribution mapping
+**No core or shared file is ever edited without explicit human approval.** Approved edits land via
+the branch/PR convention below, never on `main` directly and never mixed into an analysis branch.
 
-Each finding lands in the file that *owns* it; the log itself is disposable. Use this routing:
+## Two tracks
 
-| Finding type | Lands in |
+Calibration findings split into two tracks with different defaults:
+
+### Track 1: data calibration (default, ON)
+
+Reusable **data facts**: joins, gotchas, metric definitions, coverage, additions to the canonical
+metrics list. These land in the owning doc of the **win-analytics-knowledge** skill
+(`.claude/skills/win-analytics-knowledge/references/`). Runs on every substantive analysis.
+Propose the exact edit; apply **only after explicit human approval**.
+
+### Track 2: process calibration (default, OFF)
+
+Findings that change the **process itself**: the framing routine ([framing.md](framing.md)), the
+executor instructions / `analytics/lib`, the reviewer agents (e.g.
+`.claude/agents/product-data-scientist.md`), or the process skill. On a standard run, do **not**
+propose or apply these. Park them in the log under a **"Process-design candidates"** heading, and
+in the closing summary state plainly that process calibration was **OFF (not run)** and offer to
+rerun in process-design mode. Act on Track 2 only if the user has **explicitly opted into
+process-design mode** this session.
+
+| Finding | Track |
 |---|---|
-| How framing scopes / verifies (data-existence checks, metric-semantics steps) | `.claude/skills/win-analytics-process/references/framing.md` |
-| How the executor builds notebooks (working-set pattern, mandatory checks) | executor instructions / `analytics/lib` |
-| How the DS reviews / interprets (leakage classes, calibration self-checks) | `.claude/agents/product-data-scientist.md` |
-| Data facts, joins, gotchas, metric definitions, coverage | the owning doc in the **win-analytics-knowledge** skill (`.claude/skills/win-analytics-knowledge/references/`) |
+| Data facts, joins, gotchas, metric definitions, coverage, canonical-list additions | Track 1 (data) |
+| How framing scopes / verifies; how the executor builds; how a reviewer agent reviews; process-skill wording | Track 2 (process) |
 
 Tag each finding **universal** (codify freely) vs **data-state** (hedge, or wait 2-3 cycles),
-and prefer sharpening an existing rule over adding a new one — per the cautions below.
+and prefer sharpening an existing rule over adding a new one, per the cautions below.
+
+## Branch / PR convention for approved edits
+
+Once edits are approved, the orchestrator lands them without the user having to ask for a branch:
+
+- **Branch off `main`** (never `main` directly, never an analysis branch):
+  `calib/<track>/<YYYY-MM-DD>-<slug>`, where `<track>` is `data` or `process`, the date is the
+  calibration-log date, and `<slug>` is a short kebab description. Prefix `<slug>` with a
+  `DATA-####` ticket where one exists, matching the repo's branch convention.
+- **One PR per calibration batch.** Title `calib(<track>): <slug>`. Body links the calibration-log
+  date, lists each finding and the file it touched, and tags the track. Process-track PRs note
+  that they change shared process behavior and request review.
+- The orchestrator creates the branch, commits, and opens the PR automatically when edits are
+  approved. **Merging stays a human action.** This convention is the standing authorization to
+  open the PR, not to merge it.
 
 ## Beware over-calibration
 
