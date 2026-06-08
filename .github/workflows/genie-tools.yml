@@ -16,7 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: apps/genie-tools/pyproject.toml
       - name: Install
-        run: pip install -e . && pip install pytest
+        run: pip install -e . pytest
       - name: Pytest
         run: pytest

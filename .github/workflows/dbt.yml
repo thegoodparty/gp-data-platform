@@ -13,11 +13,13 @@ jobs:
         working-directory: dbt
     steps:
       - uses: actions/checkout@v4
+      - name: Install poetry
+        run: pipx install poetry
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install poetry
-        run: pipx install poetry
+          cache: 'poetry'
+          cache-dependency-path: dbt/poetry.lock
       - name: Install deps
         run: poetry install
       - name: Pytest
