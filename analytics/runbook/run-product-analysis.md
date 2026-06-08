@@ -9,8 +9,8 @@ Start a product-analytics session on the right path: refine the question to an a
 ## Steps
 
 1. **Determine the product.** Today only the **Win** product is supported; route to the Win skills above. (Serve and others will be added here later.)
-2. **Frame (refine the question).** Run the framing routine in `.claude/skills/win-analytics-process/references/framing.md` in this conversation: ask the user clarifying questions, resolve scoping forks, and produce a brief per `.claude/skills/win-analytics-process/references/brief-schema.md`. Do not write analysis code yet.
-3. **Get human approval of the brief.** This is the hard gate between framing and execution. Do not proceed until the user approves.
+2. **Frame (refine the question).** Run the framing routine in `.claude/skills/win-analytics-process/references/framing.md` in this conversation: ask the user clarifying questions, resolve scoping forks, and propose a framing (population, eligibility, target, comparison, cohorts). Do not write the brief or any analysis code yet.
+3. **Get human approval of the framing.** This is the hard gate between framing and execution. Once the user approves, produce the structured brief per `.claude/skills/win-analytics-process/references/brief-schema.md` as the handoff artifact. Do not proceed to execution until the user approves.
 4. **Execute.** Build the working set once with `analytics/lib/win_analysis.py`, then slice every cut in pandas. Save the brief alongside the executed notebook (ad-hoc: `analytics/ad_hoc/<YYYY-MM-DD>_<brief_id>_brief.yaml`).
 5. **Review.** Spawn the `product-data-scientist` (methodology + interpretation) and `product-manager` (usefulness) reviewers as sub-agents on the executed analysis.
 6. **Capture calibration.** Run the closing calibration pass (`.claude/skills/win-analytics-process/references/calibration.md`): route findings into the file that owns them, or record that none were needed.
