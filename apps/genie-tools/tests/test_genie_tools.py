@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from genie_tools import cli
-from genie_tools.export_space import FetchedSpace, export_space_bundle
+from genie_tools.export_space import FetchedSpace, _parse_serialized_space, export_space_bundle
 from genie_tools.normalize_space import normalize_space_config
 from genie_tools.redact_space import redact_obj
 from genie_tools.validate_space import (
@@ -184,3 +184,24 @@ def test_cli_export_command_writes_files_and_reports_paths(tmp_path, capsys):
     assert "WROTE normalized:" in captured.out
     assert (tmp_path / "raw" / "space-123.json").exists()
     assert (tmp_path / "metadata" / "space-123.json").exists()
+
+
+def test_parse_serialized_space_accepts_json_string():
+    payload, text = _parse_serialized_space('{"key": "value"}')
+    assert payload == {"key": "value"}
+    assert text == '{"key": "value"}'
+
+
+def test_parse_serialized_space_accepts_dict():
+    payload, _text = _parse_serialized_space({"key": "value"})
+    assert payload == {"key": "value"}
+
+
+def test_parse_serialized_space_raises_on_invalid_json():
+    with pytest.raises(RuntimeError, match="did not contain valid JSON"):
+        _parse_serialized_space("not-json{{{")
+
+
+def test_parse_serialized_space_raises_on_non_dict_json():
+    with pytest.raises(RuntimeError, match="must decode to an object"):
+        _parse_serialized_space("[1, 2, 3]")
