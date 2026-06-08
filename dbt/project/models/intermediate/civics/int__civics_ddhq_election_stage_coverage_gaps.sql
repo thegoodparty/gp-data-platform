@@ -90,8 +90,11 @@ select
     ts.canonical_gp_election_stage_id is not null as has_techspeed_match,
     coalesce(cc.br_candidate_count, 0) as br_candidate_count,
     h.last_ddhq_reported_election_date,
-    b.election_date
-    <= h.last_ddhq_reported_election_date as is_before_last_ddhq_reported_election_date
+    -- coalesce to false when DDHQ has no data (empty source -> NULL horizon),
+    -- so the flag is never NULL.
+    coalesce(
+        b.election_date <= h.last_ddhq_reported_election_date, false
+    ) as is_before_last_ddhq_reported_election_date
 from br_local as b
 left join
     ddhq_matched as dq on b.gp_election_stage_id = dq.canonical_gp_election_stage_id
