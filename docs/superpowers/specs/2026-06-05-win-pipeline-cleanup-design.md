@@ -99,9 +99,8 @@ and takes the shortest path, skipping framing. The fix is a single supported fro
 consistency with the org's runbook convention, the entry point is a runbook (not a skill); the
 reference content stays as the two `win-analytics-*` skills. This is a deliberate mixed model.
 
-New runbook: `analytics/runbook/product-analysis.md`. (Name kept from the chosen `/product-analysis`
-invocation. The org convention prefers action-led procedure names such as `run-product-analysis.md`;
-this is an open naming choice flagged for review.)
+New runbook: `analytics/runbook/run-product-analysis.md`. (Action-led name per the org procedure
+convention. The session is started by pointing Claude at this runbook; it is not a slash command.)
 
 - Product-agnostic front door. Step 1 determines the product. Only the Win branch is populated
   today; Serve and others are added later. No routing machinery beyond a simple branch (YAGNI).
@@ -169,7 +168,7 @@ competing with the main task. The staged to-do is what keeps framing from being 
 
 - Rewrite `pipeline.md` so the documented flow matches the new topology. Stage 1 (Frame) and
   stage 2 (Execute) become orchestrator-owned, driven by the process skill, not separate
-  agents. The reviewer rows stay as sub-agents. The `product-analysis.md` runbook is documented
+  agents. The reviewer rows stay as sub-agents. The `run-product-analysis.md` runbook is documented
   as the start of the flow.
 - Repoint the references to the retired framer agent found across the repo. References that name
   "the framer" as a role or the "framer-to-executor contract" can stay (it is still a step).
@@ -211,14 +210,19 @@ now, so the product-analytics artifacts are portable to that repo later:
 - **Delete, do not deprecate.** Retiring the framer agent and the old `win.md` follows the org rule
   to delete stale docs rather than keep dated snapshots; git history is the archive.
 
-Not adopted now (these belong to the deferred work below): the runbook-to-experiment lifecycle, the
-manifest schema, the `qa_validate` verdict harness, and the path-filtered publish CI.
+Not adopted now. Each maps to a different destination in the deferred work below, not all to one
+track:
+
+- The runbook-to-experiment lifecycle and the manifest schema belong to the long-term port to the
+  experiment process (neither Track A nor Track B).
+- The `qa_validate` verdict harness maps to the repeatable benchmark (former Track B).
+- The path-filtered publish CI maps to per-directory CI, built with the Track A linter (DATA-1960).
 
 ## Acceptance criteria
 
 - Framing and execution both run in the orchestrator as two distinct ordered steps with the
   approval gate between them. No step that needs to talk to the user is a sub-agent.
-- There is one supported entry point, the `analytics/runbook/product-analysis.md` runbook, that
+- There is one supported entry point, the `analytics/runbook/run-product-analysis.md` runbook, that
   primes the session and seeds the staged to-do, and `pipeline.md` matches the topology it
   drives.
 - A concept resolves to one governed definition via `canonical_metrics.md`, not several
