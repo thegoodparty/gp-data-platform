@@ -1,18 +1,15 @@
 # analytics/runbook
 
-The Win product-analytics runbook now lives as **two skills**, not a single `win.md` monolith:
+Routing index for product-analytics work. Match your task to a row, then open that artifact. Start at the entry-point runbook.
 
-- **`.claude/skills/win-analytics-knowledge/`** — the data facts (sources, joins, outcomes,
-  engagement, viability, segmentation, gotchas) behind a thin router (`SKILL.md`) that resolves
-  a concept to its one governed definition in `references/canonical_metrics.md`.
-- **`.claude/skills/win-analytics-process/`** — the analyst workflow: scoping methodology,
-  reusable analysis patterns, the brief contract, the pipeline topology, and the calibration-log
-  convention.
+| Type | Trigger keywords | Path | Description |
+|---|---|---|---|
+| proc | start analysis, product analysis, new analysis, frame question, kick off, where do I start | `analytics/runbook/run-product-analysis.md` | Entry point. Primes the session and seeds the staged to-do: frame → approve → execute → review → calibrate. |
+| ref | how to work, scoping, methodology, brief, pipeline, calibration, reviewers | `.claude/skills/win-analytics-process/` (`SKILL.md`) | The analyst workflow: framing routine, methodology, brief contract, pipeline topology, calibration. |
+| ref | data facts, which table, which metric, joins, engagement, outcomes, viability, segmentation, gotchas | `.claude/skills/win-analytics-knowledge/` (`SKILL.md`) | The data facts behind Win analyses, behind a router over the canonical metrics registry. |
 
-Start at either skill's `SKILL.md`. A Serve runbook will live alongside these when it exists.
+A Serve entry will be added here when it exists.
 
 ## What still lives here
 
-- **`CALIBRATION_<YYYY-MM-DD>.md`** — per-session calibration logs. These are gitignored working
-  documents; durable lessons are promoted into the two skills above (and the agent files). See
-  `.claude/skills/win-analytics-process/references/calibration.md` for the convention.
+- **`CALIBRATION_<YYYY-MM-DD>.md`** — per-session calibration logs. Gitignored working documents; durable lessons are promoted into the two skills above (and the agent files). See `.claude/skills/win-analytics-process/references/calibration.md` for the convention.
