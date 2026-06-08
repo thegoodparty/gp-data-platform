@@ -25,7 +25,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha)/
+        exclude: ^(people-api-loader|matcha|apps/genie-tools)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -86,7 +86,7 @@ repos:
         stages: [pre-push]
     -   id: pytest-genie-tools
         name: genie-tools tests (pre-push)
-        entry: bash -c 'cd apps/genie-tools && pytest'
+        entry: bash -c 'cd apps/genie-tools && uv run pytest'
         language: system
         files: ^apps/genie-tools/
         pass_filenames: false
