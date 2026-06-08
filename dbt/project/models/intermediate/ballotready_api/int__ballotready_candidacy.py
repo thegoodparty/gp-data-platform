@@ -2,7 +2,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -87,12 +88,12 @@ def _base64_encode_id_udf(candidacy_id: pd.Series) -> pd.Series:
 
 
 def _get_candidacy_batch(
-    candidacy_ids: List[int],
+    candidacy_ids: list[int],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 60,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches candidacies from the BallotReady API in batches.
 
@@ -166,7 +167,7 @@ def _get_candidacy_batch(
 
         response.raise_for_status()
         data = response.json()
-        candidacies: List[Dict[str, Any]] = data["data"]["nodes"]
+        candidacies: list[dict[str, Any]] = data["data"]["nodes"]
 
         # process each entry (rename, handle timestamps)
         for candidacy in candidacies:
@@ -183,15 +184,15 @@ def _get_candidacy_batch(
         return candidacies
 
     except (KeyError, TypeError) as e:
-        logging.error(f"Error processing candidacy batch: {str(e)}")
+        logging.error(f"Error processing candidacy batch: {e!s}")
         raise ValueError(
-            f"Failed to parse candidacy data from API response: {str(e)}"
+            f"Failed to parse candidacy data from API response: {e!s}"
             f"payload sent: {payload}"
             f"data received: {data}"
-        )
+        ) from e
     except requests.exceptions.RequestException as e:
-        logging.error(f"API request failed for candidacy batch: {str(e)}")
-        raise RuntimeError(f"Failed to fetch candidacy data from API: {str(e)}")
+        logging.error(f"API request failed for candidacy batch: {e!s}")
+        raise RuntimeError(f"Failed to fetch candidacy data from API: {e!s}") from e
 
 
 def _get_candidacy_token(ce_api_token: str) -> Callable:
@@ -212,7 +213,7 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
-        candidacies_by_candidacy_id: Dict[int, Dict[str, Any] | None] = {}
+        candidacies_by_candidacy_id: dict[int, dict[str, Any] | None] = {}
 
         batch_size = 100
 
@@ -233,7 +234,7 @@ def _get_candidacy_token(ce_api_token: str) -> Callable:
                 raise e
 
         # create a list of dictionaries for each candidacy in order of input
-        result_data: List[Dict[str, Any]] = []
+        result_data: list[dict[str, Any]] = []
         for candidacy_id in candidacy_ids:
             candidacy = candidacies_by_candidacy_id.get(int(candidacy_id), {})  # type: ignore
             if candidacy:

@@ -3,7 +3,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -58,12 +59,12 @@ def _base64_encode_id_udf(issue_id: pd.Series) -> pd.Series:
 
 
 def _get_issue_batch(
-    issue_ids: List[int],
+    issue_ids: list[int],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 60,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches issues from the BallotReady API in batches.
 
@@ -116,12 +117,12 @@ def _get_issue_batch(
         # Parse the response
         response_data = response.json()
         logging.debug(f"Received response for {len(encoded_ids)} issues")
-        issues: List[Dict[str, Any]] = response_data["data"]["nodes"]
+        issues: list[dict[str, Any]] = response_data["data"]["nodes"]
         return issues
 
     except (KeyError, TypeError) as e:
-        logging.error(f"Error processing issue batch: {str(e)}")
-        raise ValueError(f"Failed to parse issue data from API response: {str(e)}")
+        logging.error(f"Error processing issue batch: {e!s}")
+        raise ValueError(f"Failed to parse issue data from API response: {e!s}") from e
 
 
 def _get_issue_token(ce_api_token: str) -> Callable:
@@ -133,7 +134,7 @@ def _get_issue_token(ce_api_token: str) -> Callable:
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
-        issues_by_issue_db_id: Dict[int, Dict[str, Any] | None] = {}
+        issues_by_issue_db_id: dict[int, dict[str, Any] | None] = {}
 
         batch_size = 100
 
@@ -154,7 +155,7 @@ def _get_issue_token(ce_api_token: str) -> Callable:
                 raise e
 
         # create empty issue dict for missing issue ids. order according to input id list
-        empty_issue: Dict[str, Any] = {}
+        empty_issue: dict[str, Any] = {}
         for field in ISSUE_BR_SCHEMA:
             if isinstance(field.dataType, ArrayType):
                 empty_issue[field.name] = []

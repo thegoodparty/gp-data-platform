@@ -1,5 +1,4 @@
 import pytest
-
 from dbt.project.models.load.load__l2_s3_to_databricks import _extract_table_name
 
 

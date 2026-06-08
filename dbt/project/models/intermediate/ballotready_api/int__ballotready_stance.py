@@ -2,8 +2,9 @@ import logging
 import random
 import time
 from base64 import b64encode
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pandas as pd
 import requests
@@ -37,12 +38,12 @@ def _base64_encode_id(candidacy_id: str) -> str:
 
 
 def _get_stances_batch(
-    candidacy_ids: List[str],
+    candidacy_ids: list[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Queries the CivicEngine GraphQL API to get stance IDs for multiple candidacies. Uses the 'nodes' GraphQL query for efficient batch processing.
 
@@ -144,10 +145,10 @@ def _get_stances_batch(
         return all_stances
 
     except (KeyError, TypeError) as e:
-        logging.warning(f"Error processing stances for candidacies batch: {str(e)}")
+        logging.warning(f"Error processing stances for candidacies batch: {e!s}")
         return []
     except requests.exceptions.RequestException as e:
-        logging.error(f"API request failed for candidacies batch: {str(e)}")
+        logging.error(f"API request failed for candidacies batch: {e!s}")
         return []
 
 
@@ -199,7 +200,7 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        stances_by_candidacy: Dict[int, List[Any]] = {}
+        stances_by_candidacy: dict[int, list[Any]] = {}
 
         # Get unique candidacy IDs to avoid duplicate API calls
         unique_candidacy_ids = candidacy_ids.unique().tolist()
@@ -223,7 +224,7 @@ def _get_candidacy_stances_token(ce_api_token: str) -> Callable:
                         stances_by_candidacy[cid] = []
                     stances_by_candidacy[cid].append(stance)
             except Exception as e:
-                logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
+                logging.error(f"Error processing batch {i//batch_size}: {e!s}")
 
         # Create result series mapping each candidacy ID to its stances array
         result = pd.Series([stances_by_candidacy.get(int(cid), []) for cid in candidacy_ids])
@@ -354,7 +355,7 @@ def model(dbt, session) -> DataFrame:
     logging.info(f"INFO: Processed {stance.count()} candidacies with pandas UDF")
 
     # Add timestamp metadata
-    current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    current_time_utc = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
         # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values

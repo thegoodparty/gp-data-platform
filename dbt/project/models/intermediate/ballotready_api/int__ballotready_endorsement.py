@@ -2,8 +2,9 @@ import logging
 import random
 import time
 from base64 import b64encode
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pandas as pd
 import requests
@@ -37,12 +38,12 @@ def _base64_encode_id(candidacy_id: str) -> str:
 
 
 def _get_endorsements_batch(
-    candidacy_ids: List[str],
+    candidacy_ids: list[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches endorsements for a batch of candidacy IDs from the CivicEngine GraphQL API.
 
@@ -149,11 +150,11 @@ def _get_endorsements_batch(
         return all_endorsements
 
     except (KeyError, TypeError) as e:
-        logging.warning(f"Error processing stances for candidacies batch: {str(e)}")
-        raise ValueError(f"Failed to process stances: {str(e)}")
+        logging.warning(f"Error processing stances for candidacies batch: {e!s}")
+        raise ValueError(f"Failed to process stances: {e!s}") from e
     except requests.exceptions.RequestException as e:
-        logging.error(f"API request failed for candidacies batch: {str(e)}")
-        raise RuntimeError(f"API request failed: {str(e)}")
+        logging.error(f"API request failed for candidacies batch: {e!s}")
+        raise RuntimeError(f"API request failed: {e!s}") from e
 
 
 # Schema for endorsement data
@@ -228,7 +229,7 @@ def _get_candidacy_endorsements_token(ce_api_token: str) -> Callable:
             Series of endorsement data
         """
         # Create a map to store endorsements by candidacy ID
-        endorsements_by_candidacy: Dict[int, List[Any]] = {}
+        endorsements_by_candidacy: dict[int, list[Any]] = {}
         candidacy_ids = candidacy_ids.tolist()
 
         # Set batch size for API calls
@@ -251,7 +252,7 @@ def _get_candidacy_endorsements_token(ce_api_token: str) -> Callable:
                     endorsements_by_candidacy[cid].append(endorsement)
 
             except Exception as e:
-                logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
+                logging.error(f"Error processing batch {i//batch_size}: {e!s}")
 
         # Create result series mapping each candidacy ID to its endorsements array
         result = pd.Series([endorsements_by_candidacy.get(int(cid), []) for cid in candidacy_ids])
@@ -352,7 +353,7 @@ def model(dbt, session) -> DataFrame:
     endorsement = endorsement.withColumn("endorsements", get_candidacy_endorsements("candidacy_id"))
 
     # Add timestamp metadata
-    current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    current_time_utc = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
         # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values
