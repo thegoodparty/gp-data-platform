@@ -1,8 +1,8 @@
 # Analysis brief schema
 
-Part of the **win-analytics-process** skill. The framer→executor handoff contract.
+Part of the **win-analytics-process** skill. The framing→execution handoff contract.
 
-When the `analytics-question-framer` agent finishes shaping a question, it produces a
+When the framing routine (see [framing.md](framing.md)) finishes shaping a question, it produces a
 structured analysis brief. This brief is the handoff artifact to the executor (Claude Code, or
 whoever runs the analysis). The format below is the contract. See [pipeline.md](pipeline.md)
 for where the brief sits in the overall flow.
@@ -13,7 +13,7 @@ Every brief must use this template. Don't omit sections; if a section doesn't ap
 ```yaml
 brief_id: short-kebab-case-identifier  # e.g., messaging-tool-win-rate-2026q2
 created: YYYY-MM-DD
-author: analytics-question-framer (refined with <username>)
+author: framing routine (refined with <username>)
 
 decision:
   what_action: |
@@ -99,7 +99,7 @@ falsification:
 
 known_concerns:
   - |
-    Concerns raised by analytics-question-framer that the user chose to proceed past.
+    Concerns raised during framing that the user chose to proceed past.
   - |
     Limitations of the data or design.
 
@@ -113,7 +113,7 @@ execution_notes:
 
 ## Notes on using briefs
 
-- The executor should treat the brief as a spec. If something in the brief is ambiguous or unworkable on inspection of the actual data, kick it back to `analytics-question-framer` rather than improvising.
+- The executor should treat the brief as a spec. If something in the brief is ambiguous or unworkable on inspection of the actual data, return to the framing step (re-run [framing.md](framing.md)) rather than improvising.
 - After execution, `product-data-scientist` reviews the notebook against the brief — both for methodological soundness and to interpret what the results mean.
 - Briefs are durable: save them alongside the executed notebook so the framing is retrievable later.
 
@@ -122,7 +122,7 @@ execution_notes:
 When the owner wants to modify the question after a brief exists, decide which path applies:
 
 - **Amend (no new framer round).** The change is an additional stratification or slice on the *same* population, metric, and comparison — e.g. "also cut by ICP vs not." Append the new dimension to the brief's `cohorts` section and re-slice. If the working set was built via `analytics/lib` carrying the standard dimensions from the **win-analytics-knowledge** skill's [segmentation.md](../../win-analytics-knowledge/references/segmentation.md), this is a zero-query pandas `groupby` (see [methodology.md](methodology.md)). Note the amendment in the brief so it stays the source of truth.
-- **Re-frame (new framer round + brief revision).** The change touches **population, eligibility, target metric, or comparison** — e.g. "filter to ICP only" (not slice), switch the outcome variable, or change the cohort window. These are exactly what the framer owns, so send it back through `analytics-question-framer` for a revised brief.
+- **Re-frame (new framing round + brief revision).** The change touches **population, eligibility, target metric, or comparison** — e.g. "filter to ICP only" (not slice), switch the outcome variable, or change the cohort window. These are exactly what framing owns, so re-run [framing.md](framing.md) for a revised brief.
 
 Decision rule: if population/eligibility/target/comparison are unchanged and you're only adding a breakdown, it's an amend. Otherwise re-frame. (Example: ICP vs not = amend; ICP-only = re-frame.)
 
