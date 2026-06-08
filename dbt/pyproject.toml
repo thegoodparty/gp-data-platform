@@ -50,3 +50,8 @@ ignore = ["E501", "RUF002", "RUF001"]
 [tool.mypy]
 python_version = "3.14"
 ignore_missing_imports = true
+# mypy only type-checks the files passed on the command line (tests/). The model
+# scripts under project/models/ are Databricks runtime scripts (pyspark + the
+# injected `dbutils` global), not locally type-checkable; they get pulled in only
+# as followed imports, so silence errors from followed modules.
+follow_imports = "silent"
