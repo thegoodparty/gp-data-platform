@@ -275,14 +275,16 @@ def read_databricks_table(
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
 
-    if not (db_conn.host and db_conn.login and db_conn.password):
+    http_path = db_conn.extra_dejson.get("http_path", "")
+    if not (db_conn.host and db_conn.login and db_conn.password and http_path):
         raise ValueError(
-            f"Databricks connection '{db_conn_id}' is missing a required " "host, login, or password field"
+            f"Databricks connection '{db_conn_id}' is missing a required "
+            "host, login, password, or http_path (extra) field"
         )
 
     connection = get_databricks_connection(
         host=db_conn.host,
-        http_path=db_conn.extra_dejson.get("http_path", ""),
+        http_path=http_path,
         client_id=db_conn.login,
         client_secret=db_conn.password,
         use_cloud_fetch=use_cloud_fetch,
