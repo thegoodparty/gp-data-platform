@@ -1,0 +1,21 @@
+from loader.people_api.schema.voter_columns import (
+    DERIVED_COLUMNS,
+    INTEGER_COLUMNS,
+    LEGACY_RENAMES,
+    NEW_DEMOGRAPHIC_COLUMNS,
+    NEW_DISTRICT_COLUMNS,
+    REMOVED_COLUMNS,
+    VOTER_TARGET_COLUMNS,
+    TargetColumn,
+)
+
+__all__ = [
+    "DERIVED_COLUMNS",
+    "INTEGER_COLUMNS",
+    "LEGACY_RENAMES",
+    "NEW_DEMOGRAPHIC_COLUMNS",
+    "NEW_DISTRICT_COLUMNS",
+    "REMOVED_COLUMNS",
+    "VOTER_TARGET_COLUMNS",
+    "TargetColumn",
+]
