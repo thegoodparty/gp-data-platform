@@ -30,6 +30,17 @@ def test_row_counts_outside_tolerance_fail(monkeypatch: pytest.MonkeyPatch) -> N
     assert check.details["mismatch_count"] == 1
 
 
+def test_row_counts_expected_zero_requires_exact_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    # expected=0 collapses the ±10% band to [0, 0], so only actual==0 passes.
+    pass_conn = FakeConn().queue_result((0,))
+    monkeypatch.setattr(step, "connect_new", fake_connect(pass_conn))
+    assert step._check_row_counts(_CFG, "20260609", "wh", {"TX": 0}).passed is True
+
+    fail_conn = FakeConn().queue_result((1,))
+    monkeypatch.setattr(step, "connect_new", fake_connect(fail_conn))
+    assert step._check_row_counts(_CFG, "20260609", "wh", {"TX": 0}).passed is False
+
+
 def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
