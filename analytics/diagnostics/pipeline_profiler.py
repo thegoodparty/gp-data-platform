@@ -89,6 +89,26 @@ def _token_totals(records: list[dict]) -> dict:
     return totals
 
 
+def _split_time(records: list[dict]) -> tuple[float, float]:
+    """Return (model_active_seconds, human_idle_seconds) across the slice."""
+    active = 0.0
+    idle = 0.0
+    prev_ts = None
+    for rec in records:
+        ts = rec.get("timestamp")
+        if not ts:
+            continue
+        cur = _parse_ts(ts)
+        if prev_ts is not None:
+            delta = (cur - prev_ts).total_seconds()
+            if _is_human_message(rec):
+                idle += delta
+            else:
+                active += delta
+        prev_ts = cur
+    return active, idle
+
+
 def _classify_marker(name: str, tool_input: dict) -> str | None:
     """Map a tool_use to a stage-boundary marker, or None."""
     if name == "Skill" and tool_input.get("skill") in SKILL_NAMES:

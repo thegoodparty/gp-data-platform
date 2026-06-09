@@ -117,3 +117,21 @@ def test_token_totals_empty_slice_is_zeros():
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
     }
+
+
+def test_split_time_attributes_idle_before_human_and_active_otherwise():
+    records = [
+        {"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "q?"}},
+        # 120s waiting on the human -> human_idle
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answer"}},
+        # 30s of model/tool work -> model_active
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:30Z", "message": {"content": "done"}},
+    ]
+    active, idle = pp._split_time(records)
+    assert idle == 120.0
+    assert active == 30.0
+
+
+def test_split_time_single_record_is_zero():
+    rec = [{"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "x"}}]
+    assert pp._split_time(rec) == (0.0, 0.0)
