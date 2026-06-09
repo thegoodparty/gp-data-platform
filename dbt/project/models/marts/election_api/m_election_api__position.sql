@@ -117,40 +117,63 @@ with
             {% if is_incremental() %}
                 and tbl_position.updated_at > (select max(updated_at) from {{ this }})
             {% endif %}
+    ),
+
+    all_positions as (
+        select
+            id,
+            br_database_id,
+            br_position_id,
+            name,
+            state,
+            level,
+            district_id,
+            created_at,
+            updated_at
+        from matched_positions
+        union all
+        select
+            id,
+            br_database_id,
+            br_position_id,
+            name,
+            state,
+            level,
+            district_id,
+            created_at,
+            updated_at
+        from override_injected_positions
+        union all
+        select
+            id,
+            br_database_id,
+            br_position_id,
+            name,
+            state,
+            level,
+            district_id,
+            created_at,
+            updated_at
+        from unmatched_br_positions
     )
 
+-- ICP win/serve are office-eligibility flags joined from int__icp_offices on
+-- the BallotReady position id. Intentionally nullable (null = the office's
+-- voter_count is unknown). Not date-gated: a position is not tied to a single
+-- election, so consumers gate per-race if they need that.
 select
-    id,
-    br_database_id,
-    br_position_id,
-    name,
-    state,
-    level,
-    district_id,
-    created_at,
-    updated_at
-from matched_positions
-union all
-select
-    id,
-    br_database_id,
-    br_position_id,
-    name,
-    state,
-    level,
-    district_id,
-    created_at,
-    updated_at
-from override_injected_positions
-union all
-select
-    id,
-    br_database_id,
-    br_position_id,
-    name,
-    state,
-    level,
-    district_id,
-    created_at,
-    updated_at
-from unmatched_br_positions
+    all_positions.id,
+    all_positions.br_database_id,
+    all_positions.br_position_id,
+    all_positions.name,
+    all_positions.state,
+    all_positions.level,
+    all_positions.district_id,
+    all_positions.created_at,
+    all_positions.updated_at,
+    icp.icp_office_win as is_win_icp,
+    icp.icp_office_serve as is_serve_icp
+from all_positions
+left join
+    {{ ref("int__icp_offices") }} as icp
+    on all_positions.br_database_id = icp.br_database_position_id

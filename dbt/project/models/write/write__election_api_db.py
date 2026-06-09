@@ -132,7 +132,9 @@ POSITION_UPSERT_QUERY = """
         name,
         state,
         level,
-        district_id
+        district_id,
+        is_win_icp,
+        is_serve_icp
     )
     SELECT
         id::uuid,
@@ -141,7 +143,9 @@ POSITION_UPSERT_QUERY = """
         name,
         state,
         level::\"PositionLevel\",
-        district_id::uuid
+        district_id::uuid,
+        is_win_icp,
+        is_serve_icp
     FROM {staging_schema}."Position"
     ON CONFLICT (id) DO UPDATE SET
         br_database_id = EXCLUDED.br_database_id,
@@ -149,7 +153,9 @@ POSITION_UPSERT_QUERY = """
         name = EXCLUDED.name,
         state = EXCLUDED.state,
         level = EXCLUDED.level,
-        district_id = EXCLUDED.district_id
+        district_id = EXCLUDED.district_id,
+        is_win_icp = EXCLUDED.is_win_icp,
+        is_serve_icp = EXCLUDED.is_serve_icp
 """
 ISSUE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Issue" (
