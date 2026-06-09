@@ -4,9 +4,10 @@ import re
 import shutil
 import time
 import traceback
+from collections.abc import Callable
 from datetime import datetime
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict
+from typing import Any
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -65,7 +66,7 @@ def _create_sftp_connection(
             logging.info("SFTP client created successfully")
             return transport, sftp_client
         except Exception as e:
-            logging.error(f"SFTP connection attempt {attempt + 1} failed: {str(e)}")
+            logging.error(f"SFTP connection attempt {attempt + 1} failed: {e!s}")
             if attempt == max_retries - 1:
                 raise
             logging.warning(f"Waiting {retry_delay} seconds before next attempt...")
@@ -105,7 +106,7 @@ def _extract_and_load_w_params(
         A pandas UDF function
     """
 
-    def _extract_and_load(state_id: str) -> Dict[str, Any]:
+    def _extract_and_load(state_id: str) -> dict[str, Any]:
         """
         UDF to process state IDs and extract and load files from SFTP to S3.
 
@@ -182,7 +183,7 @@ def _extract_and_load_w_params(
                     )
                 except OSError as e:
                     logging.error(
-                        f"Source file from sftp server {full_file_path} is locked: {str(e)}."
+                        f"Source file from sftp server {full_file_path} is locked: {e!s}."
                         " This may happen when source SFTP server is being updated."
                         " Skipping for now. Will retry later."
                     )
@@ -269,10 +270,12 @@ def _extract_and_load_w_params(
                                 s3_client.delete_object(Bucket=s3_bucket, Key=existing_s3_file)
 
         except Exception as e:
-            logging.error(f"Error processing state {state_id}: {str(e)}")
+            logging.error(f"Error processing state {state_id}: {e!s}")
             error_details = traceback.format_exc()
             logging.error(f"Full exception details:\n{error_details}")
-            raise Exception(f"Error processing state {state_id}: {str(e)}\nFull traceback:\n{error_details}")
+            raise Exception(
+                f"Error processing state {state_id}: {e!s}\nFull traceback:\n{error_details}"
+            ) from e
         finally:
             # Close SFTP connection
             if sftp_client is not None:

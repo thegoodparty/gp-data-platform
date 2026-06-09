@@ -1,12 +1,11 @@
 import re
-from typing import List, Optional, Set
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
 from pyspark.sql.types import DoubleType, StringType
 
 
-def _parse_state_allowlist(raw: Optional[str]) -> Optional[Set[str]]:
+def _parse_state_allowlist(raw: str | None) -> set[str] | None:
     if raw is None:
         return None
     normalized = raw.strip().upper()
@@ -46,11 +45,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     state_allowlist = _parse_state_allowlist(dbt.config.meta_get("l2_state_allowlist"))
 
-    this_df: Optional[DataFrame] = None
+    this_df: DataFrame | None = None
     if dbt.is_incremental:
         this_df = session.table(f"{dbt.this}")
 
-    per_state_dfs: List[DataFrame] = []
+    per_state_dfs: list[DataFrame] = []
 
     # Alabama
     if state_allowlist is None or "AL" in state_allowlist:
@@ -724,8 +723,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     for next_df in per_state_dfs[1:]:
         df = df.unionByName(next_df, allowMissingColumns=True)
 
-    if dbt.is_incremental:
-        if df.count() == 0:
-            return session.createDataFrame(data=[], schema=df.schema)
+    if dbt.is_incremental and df.count() == 0:
+        return session.createDataFrame(data=[], schema=df.schema)
 
     return df

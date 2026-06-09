@@ -2,7 +2,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -152,12 +153,12 @@ def _base64_encode_id_udf(person_id: pd.Series) -> pd.Series:
 
 
 def _get_person_batch(
-    person_ids: List[int],
+    person_ids: list[int],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 60,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches persons from the BallotReady API in batches.
 
@@ -254,7 +255,7 @@ def _get_person_batch(
         # Parse the response
         response_data = response.json()
         logging.debug(f"Received response for {len(encoded_ids)} persons")
-        persons: List[Dict[str, Any]] = response_data["data"]["nodes"]
+        persons: list[dict[str, Any]] = response_data["data"]["nodes"]
 
         # handle necessary transformations to match schema
         for person in persons:
@@ -265,8 +266,8 @@ def _get_person_batch(
         return persons
 
     except (KeyError, TypeError) as e:
-        logging.error(f"Error processing person batch: {str(e)}")
-        raise ValueError(f"Failed to parse person data from API response: {str(e)}")
+        logging.error(f"Error processing person batch: {e!s}")
+        raise ValueError(f"Failed to parse person data from API response: {e!s}") from e
 
 
 def _get_person_token(ce_api_token: str) -> Callable:
@@ -283,7 +284,7 @@ def _get_person_token(ce_api_token: str) -> Callable:
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
-        persons_by_person_id: Dict[int, Dict[str, Any] | None] = {}
+        persons_by_person_id: dict[int, dict[str, Any] | None] = {}
 
         batch_size = 100
 
@@ -303,7 +304,7 @@ def _get_person_token(ce_api_token: str) -> Callable:
                 logging.error(f"Error processing person batch: {e}")
                 raise e
 
-        empty_person: Dict[str, Any] = {}
+        empty_person: dict[str, Any] = {}
         for field in PERSON_BR_SCHEMA:
             if isinstance(field.dataType, ArrayType):
                 empty_person[field.name] = []

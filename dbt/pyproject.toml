@@ -3,37 +3,55 @@ name = "dbt-goodparty"
 version = "0.1.0"
 description = "Data warehouse for GoodParty.org"
 authors = [
-    {name = "Hugh Karimi",email = "hkarimi@goodparty.org"}
+    { name = "Data Engineering at GoodParty" },
 ]
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "pandas (>=2.2.3,<3.0.0)",
-    "requests (>=2.34.2,<3.0.0)",
-    "pyspark (>=3.5.5,<4.0.0)",
-    "psycopg2 (>=2.9.12,<3.0.0)",
-    "paramiko (>=3.5.1,<4.0.0)",
-    "boto3 (>=1.43.24,<2.0.0)",
-    "pytest (>=9.0.3,<10.0.0)",
-    "apache-airflow (==3.2.0)",
-    "thefuzz (<1.0.0)",
-    "google-genai (>=1.75.0,<2.0.0)",
-    "tqdm (>=4.68.1,<5.0.0)",
-    "databricks-sql-connector (>=4.2.6,<5.0.0)",
-    "databricks-sdk (>=0.94.0,<0.95.0)",
+    "pandas>=2.2.3,<3.0.0",
+    "requests>=2.34.2,<3.0.0",
+    "pyspark>=3.5.5,<4.0.0",
+    "psycopg2-binary>=2.9.12,<3.0.0",
+    "paramiko>=3.5.1,<4.0.0",
+    "boto3>=1.43.24,<2.0.0",
+    "apache-airflow==3.2.0",
+    "thefuzz<1.0.0",
+    "google-genai>=1.75.0,<2.0.0",
+    "tqdm>=4.68.1,<5.0.0",
+    "databricks-sql-connector>=4.2.6,<5.0.0",
+    "databricks-sdk>=0.94.0,<0.95.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10.0.0",
+    "mypy>=1.15",
+]
 
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
-package-mode = false
-
-[tool.poetry.group.dev.dependencies]
-pre-commit = "^4.6.0"
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
 pythonpath = [".."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "RUF002", "RUF001"]
+
+[tool.ruff.lint.per-file-ignores]
+# dbt model scripts run on Databricks where `dbutils` is an injected runtime global.
+"project/models/**/*.py" = ["F821"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+# mypy only type-checks the files passed on the command line (tests/). The model
+# scripts under project/models/ are Databricks runtime scripts (pyspark + the
+# injected `dbutils` global), not locally type-checkable; they get pulled in only
+# as followed imports, so silence errors from followed modules.
+follow_imports = "silent"

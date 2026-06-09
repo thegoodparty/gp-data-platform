@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import uuid4
 
 import psycopg2
@@ -493,7 +493,7 @@ def _execute_sql_query(
     query: str,
     conn: psycopg2.extensions.connection,
     return_results: bool = False,
-) -> List[Tuple[Any, ...]]:
+) -> list[tuple[Any, ...]]:
     """
     Execute a SQL query and return the results. Not that the results should be None if no results are returned.
     """
@@ -501,10 +501,7 @@ def _execute_sql_query(
     try:
         cursor = conn.cursor()
         cursor.execute(query)
-        if return_results:
-            results = cursor.fetchall() if cursor.rowcount > 0 else []
-        else:
-            results = []
+        results = (cursor.fetchall() if cursor.rowcount > 0 else []) if return_results else []
         conn.commit()
     except Exception as e:
         logging.error(f"Error executing query: {query}")
@@ -528,7 +525,7 @@ def _load_data_to_postgres(
     db_name: str,
     staging_schema: str,
     db_schema: str,
-    state_id: Optional[str] = None,
+    state_id: str | None = None,
 ) -> int:
     """
     Load a DataFrame to PostgreSQL via JDBC and execute an upsert query.
@@ -681,7 +678,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # initialize list to capture metadata about data loads
     load_id = str(uuid4())
-    load_details: List[Dict[str, Any]] = []
+    load_details: list[dict[str, Any]] = []
 
     # count (forces cache and preceding filters) the dataframe and enforce filter before for-loop filtering
     voter_table.count()
@@ -717,7 +714,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         .select("State")
         .collect()
     )
-    state_list: List[str] = [row.State for row in state_counts]
+    state_list: list[str] = [row.State for row in state_counts]
 
     # load data state by state since job may time out
     for state_id in state_list:

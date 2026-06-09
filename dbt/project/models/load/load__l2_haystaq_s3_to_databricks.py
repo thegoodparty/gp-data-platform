@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
@@ -57,7 +57,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     state_list = [row.state_id for row in s3_files_loaded.select("state_id").distinct().collect()]
 
     load_id = str(uuid4())
-    load_details: List[Dict[str, Any]] = []
+    load_details: list[dict[str, Any]] = []
 
     for state_id in state_list:
         state_s3_files = s3_files_loaded.filter(col("state_id") == state_id)
@@ -73,8 +73,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 file.source_file_name for file in this_table_latest_files.toLocalIterator()
             ]
 
-            files_to_load_list: List[
-                Dict[
+            files_to_load_list: list[
+                dict[
                     Literal["source_file_name", "source_file_type", "s3_state_prefix"],
                     str,
                 ]

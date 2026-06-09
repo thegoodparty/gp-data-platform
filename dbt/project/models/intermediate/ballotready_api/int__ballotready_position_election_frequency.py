@@ -2,7 +2,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -35,12 +36,12 @@ def _base64encode_id_udf(database_ids: pd.Series) -> pd.Series:
 
 
 def _get_position_election_frequency_batch(
-    position_database_ids: List[int],
+    position_database_ids: list[int],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 60,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches position election frequency data for a batch of position database IDs from the CivicEngine API.
 
@@ -105,7 +106,7 @@ def _get_position_election_frequency_batch(
         return nodes
 
     except Exception as e:
-        logging.error(f"Error fetching position election frequency data: {str(e)}")
+        logging.error(f"Error fetching position election frequency data: {e!s}")
         raise e
 
 
@@ -144,7 +145,7 @@ def _get_position_election_frequency_token(ce_api_token: str) -> Callable:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        position_election_frequency_by_database_id: Dict[int, Dict[str, Any] | None] = {}
+        position_election_frequency_by_database_id: dict[int, dict[str, Any] | None] = {}
 
         # Set batch size for API calls
         batch_size = 100
