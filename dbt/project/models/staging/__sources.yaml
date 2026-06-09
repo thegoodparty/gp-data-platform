@@ -1530,11 +1530,6 @@ sources:
 
     tables:
       - name: clustered_candidacy_stages
-        # Date-suffixed snapshot from the 2026-05-27 matcha run, promoted
-        # as part of DATA-1523 (Phase 3) to use cluster assignments derived
-        # from the post-Phase-2 parsed candidate codes. Update the identifier
-        # when promoting a new run; staging models stay unchanged.
-        identifier: clustered_candidacy_stages20260527
         description: >
           Cluster assignments produced by Splink's connected-components clustering
           (threshold: 0.95 match probability). Each row is a single candidacy-stage record
