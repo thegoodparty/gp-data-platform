@@ -73,7 +73,10 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE")
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_commons")
         with conn.cursor() as cur:
-            # emit_target_schema returns str; str satisfies LiteralString at runtime.
+            # psycopg's parameterless execute overloads require LiteralString (a
+            # type-checker concept, not a runtime type); emit_target_schema returns
+            # plain str, so ty can't prove it. It is safe — the DDL is assembled
+            # from controlled literals, not user input.
             cur.execute(ddl)  # ty:ignore[no-matching-overload]
         log.info("schema.ddl_applied")
 
