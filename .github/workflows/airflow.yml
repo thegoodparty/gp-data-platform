@@ -13,14 +13,13 @@ jobs:
         working-directory: airflow
     steps:
       - uses: actions/checkout@v4
-      - name: Install poetry
-        run: pipx install poetry
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.12'
-          cache: 'poetry'
-          cache-dependency-path: airflow/poetry.lock
-      - name: Install deps
-        run: poetry install
+          enable-cache: true
+          cache-dependency-glob: airflow/uv.lock
+      - name: Install
+        run: uv sync --frozen
       - name: Pytest
-        run: poetry run pytest
+        run: uv run pytest -ra
+      - name: Type check
+        run: uv run mypy astro/dags astro/tests
