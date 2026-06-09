@@ -8,7 +8,7 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 
 | Subproject | Tool | Python | Notes |
 |---|---|---|---|
-| `people-api-loader/` | uv | 3.12 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
+| `people-api-loader/` | uv | 3.14 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
 | `dbt/` | poetry | 3.12 | `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via poetry. |
 | `airflow/` | uv | 3.14 | Local DAG dev outside Astronomer (`cd airflow && uv sync`, `uv run pytest`). Deploy is Astro Runtime via `astro/Dockerfile` + `astro/requirements.txt` (not uv). To run Airflow itself: `cd airflow/astro && astro dev start`. |
 | `analytics/` | pip + root `requirements_test.txt` | 3.12 | No own deps file; its tests rely on the root test deps. |
