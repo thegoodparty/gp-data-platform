@@ -20,7 +20,7 @@ Part of the **win-analytics-knowledge** skill. The ID landscape and canonical jo
 
 | Concept | Field | Where it lives | Notes |
 |---|---|---|---|
-| **Win user (product)** | `user_id` (BIGINT) | `users.user_id`, `users_win_*.user_id`, `int__amplitude_*.user_id` | Cast from Amplitude string `user_id` at the staging→intermediate boundary; non-numeric or empty IDs excluded. |
+| **Win user (product)** | `user_id` (BIGINT) | `users.user_id`, `users_win_*.user_id`, `int__amplitude_*.user_id` | Cast from Amplitude string `user_id` at the staging→intermediate boundary; non-numeric or empty IDs excluded. When querying raw `stg_airbyte_source__amplitude_api_events` directly (ad-hoc, BIGINT marts), use `try_cast(user_id as bigint) is not null` — **not** `where user_id rlike '^[0-9]+$' ... cast(user_id as bigint)`, which Spark can reorder so the cast runs before the regex filter and raises `CAST_INVALID_INPUT` on Firebase-style ids. |
 | **Win campaign (product)** | `campaign_id` (string) | `campaigns.campaign_id`, `users_win_candidacy.campaign_id`, `candidacy.product_campaign_id` | A campaign can have multiple historical versions (`campaign_version_id`) if the user reused it across cycles. |
 | **Campaign version** | `campaign_version_id` (string) | `users_win_candidacy.campaign_version_id` | Grain of `users_win_candidacy`. Pre-filter to `is_latest_version` for canonical rows. |
 | **Candidacy (GP-internal)** | `gp_candidacy_id` (uuid) | `candidacy.gp_candidacy_id`, `candidacy_stage.gp_candidacy_id` | Hashed UUID. Stable across providers via ER crosswalk in `int__civics_er_canonical_ids`. |
