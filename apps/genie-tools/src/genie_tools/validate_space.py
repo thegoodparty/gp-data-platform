@@ -29,7 +29,7 @@ def validate_space_payload(payload: Any) -> None:
     if not payload:
         raise ValueError("Top-level JSON object is empty")
 
-    structured_keys = [key for key, value in payload.items() if isinstance(value, (dict, list))]
+    structured_keys = [key for key, value in payload.items() if isinstance(value, dict | list)]
     if not structured_keys:
         raise ValueError("Top-level JSON object does not contain any structured Genie config sections")
 
@@ -38,7 +38,7 @@ def validate_space_payload(payload: Any) -> None:
         raise ValueError("Top-level JSON object does not contain any recognized Genie sections")
 
     for key in present_known_sections:
-        if not isinstance(payload[key], (dict, list)):
+        if not isinstance(payload[key], dict | list):
             raise ValueError(f"Top-level section {key!r} must be a JSON object or array")
 
 

@@ -13,8 +13,8 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 | `airflow/` | poetry | 3.12 | Local DAG dev outside Astronomer. To run Airflow itself: `cd airflow/astro && astro dev start`. |
 | `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
 | `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
-| `apps/genie-tools/` | pip + setuptools (PEP 621) | 3.12+ | `pip install -e .`, not poetry. |
-| `apps/genie-slack-bot/` | pip + `requirements.txt` | unpinned | Not poetry. |
+| `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
+| `apps/genie-slack-bot/` | uv | 3.14 | `cd apps/genie-slack-bot && uv sync`, `uv run ...`. |
 
 Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (3.12 for most; `matcha` on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
@@ -46,7 +46,7 @@ pre-commit install
 
 If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
-For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `poetry install` in `dbt/` and `airflow/`, `uv sync` in `people-api-loader/`, `pip install -e .` in `apps/genie-tools/`, `pip install -r requirements.txt` in `apps/genie-slack-bot/`, and `uv sync` in `analytics/`. Each hook `cd`s into its directory and runs the suite via that env (`poetry run` / `uv run` / `pytest`), so you do not need to wrap `git` in any venv.
+For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `poetry install` in `dbt/` and `airflow/`, `uv sync` in `people-api-loader/`, `analytics/`, `apps/genie-tools/`, and `apps/genie-slack-bot/`. Each hook `cd`s into its directory and runs the suite via that env (`poetry run` / `uv run` / `pytest`), so you do not need to wrap `git` in any venv.
 
 `poetry install` in `dbt/` builds `psycopg2` from source and needs `pg_config` on PATH. On macOS:
 
