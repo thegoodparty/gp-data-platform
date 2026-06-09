@@ -203,7 +203,7 @@ class TestStageExpiredVoterIds:
             file_timestamps={"file1.tab": "2026-01-15T10:00:00+00:00"},
         )
 
-        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
+        merge_sql = next(c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0])
         assert "2026-01-15T10:00:00+00:00" in merge_sql
         # source_file_keys stores composite "filename|mtime" for idempotency
         assert "file1.tab|2026-01-15T10:00:00+00:00" in merge_sql
@@ -222,7 +222,7 @@ class TestStageExpiredVoterIds:
             dag_run_id="run_123",
         )
 
-        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
+        merge_sql = next(c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0])
         assert "NULL" in merge_sql
 
     def test_dag_run_id_escaped(self, mock_connection):
@@ -243,7 +243,7 @@ class TestStageExpiredVoterIds:
         assert len(delete_calls) == 1
         assert "run_with\\'quote" in delete_calls[0]
         # MERGE also has escaped dag_run_id
-        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
+        merge_sql = next(c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0])
         assert "run_with\\'quote" in merge_sql
 
     def test_loads_record_is_last_execute(self, mock_connection):
@@ -330,9 +330,9 @@ class TestGetDatabricksConnection:
         with (
             patch.object(databricks_utils.databricks_sql, "connect", side_effect=auth_error) as mock_connect,
             patch.object(databricks_utils.time, "sleep") as mock_sleep,
+            pytest.raises(Exception, match="invalid_client"),
         ):
-            with pytest.raises(Exception, match="invalid_client"):
-                get_databricks_connection(**self._kwargs(max_retries=20))
+            get_databricks_connection(**self._kwargs(max_retries=20))
 
         assert mock_connect.call_count == 1
         mock_sleep.assert_not_called()
@@ -363,8 +363,8 @@ class TestGetDatabricksConnection:
                 side_effect=Exception("warehouse may be starting"),
             ) as mock_connect,
             patch.object(databricks_utils.time, "sleep"),
+            pytest.raises(Exception, match="warehouse"),
         ):
-            with pytest.raises(Exception, match="warehouse"):
-                get_databricks_connection(**self._kwargs(max_retries=3))
+            get_databricks_connection(**self._kwargs(max_retries=3))
 
         assert mock_connect.call_count == 3

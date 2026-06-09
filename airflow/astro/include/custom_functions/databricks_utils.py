@@ -1,20 +1,19 @@
 import logging
 import re
 import time
-from typing import Dict, Generator, List, Tuple
+from collections.abc import Generator
 
+from airflow.sdk import BaseHook, Variable
 from databricks import sql as databricks_sql
 from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sql.client import Connection
-
-from airflow.sdk import BaseHook, Variable
 
 LALVOTERID_PATTERN = re.compile(r"^LAL[A-Z]{2}\d+$")
 
 logger = logging.getLogger("airflow.task")
 
 
-def _validate_lalvoterids(values: List[str]) -> None:
+def _validate_lalvoterids(values: list[str]) -> None:
     """Raise ValueError if any value doesn't match the expected LALVOTERID format."""
     bad = [v for v in values if not LALVOTERID_PATTERN.match(v)]
     if bad:
@@ -140,10 +139,10 @@ def stage_expired_voter_ids(
     connection: Connection,
     catalog: str,
     schema: str,
-    lalvoterids: List[str],
-    source_files: List[str],
+    lalvoterids: list[str],
+    source_files: list[str],
     dag_run_id: str,
-    file_timestamps: Dict[str, str] | None = None,
+    file_timestamps: dict[str, str] | None = None,
     batch_size: int = 10_000,  # 100k caused OOM on Astro worker; keep MERGE statements small
 ) -> int:
     """
@@ -259,7 +258,7 @@ def read_databricks_table(
     databricks_conn_id_var: str = "databricks_conn_id",
     batch_size: int = 5_000,
     use_cloud_fetch: bool = False,
-) -> Tuple[List[str], Generator[List[tuple], None, None]]:
+) -> tuple[list[str], Generator[list[tuple], None, None]]:
     """Stream batches of rows from Databricks for memory-bounded reads.
 
     Args:
