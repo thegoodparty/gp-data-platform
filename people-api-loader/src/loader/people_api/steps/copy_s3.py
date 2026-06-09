@@ -124,7 +124,7 @@ def _load_state(
             try:
                 fut.result()
                 log.info("copy.file_done", state=state, key=key)
-            except Exception as e:  # aggregate and re-raise below
+            except Exception as e:  # broad by design: aggregate worker failures, re-raise below
                 log.error("copy.file_failed", state=state, key=key, error=str(e))
                 errors.append((key, e))
         if errors:
