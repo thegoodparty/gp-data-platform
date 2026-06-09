@@ -136,6 +136,11 @@ def _marker_indices(records: list[dict]) -> dict:
     return found
 
 
+def _first_of(*vals: int | None, default: int) -> int:
+    """Return the first non-None value among vals, else default."""
+    return next((v for v in vals if v is not None), default)
+
+
 def _first_human_after(records: list[dict], start: int) -> int:
     """Index of the first human message strictly after `start`, else len(records)."""
     for i in range(start + 1, len(records)):
@@ -169,7 +174,11 @@ def _reviewer_result_end_index(records: list[dict]) -> int | None:
 
 
 def segment_stages(records: list[dict]) -> tuple[dict, str]:
-    """Return ({stage: (start_idx, end_idx)}, confidence)."""
+    """Return ({stage: (start_idx, end_idx)}, confidence).
+
+    end_idx is exclusive (Python-slice style): records[start:end] yields the
+    stage's records.
+    """
     idx = _marker_indices(records)
     n = len(records)
     skill = idx.get("skill_load", 0)
@@ -181,19 +190,16 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
     confidence = "ok" if ("skill_load" in idx and brief is not None) else "low"
 
     # framing
-    framing_end = (
-        brief
-        if brief is not None
-        else (reviewer if reviewer is not None else (calib if calib is not None else n))
-    )
+    framing_end = _first_of(brief, reviewer, calib, default=n)
     framing = (skill, framing_end)
     # execution
     exec_start = brief if brief is not None else framing_end
-    exec_end = reviewer if reviewer is not None else (calib if calib is not None else n)
+    exec_end = _first_of(reviewer, calib, default=n)
     execution = (exec_start, max(exec_start, exec_end))
     # review
     if reviewer is not None:
-        rev_end = (review_end + 1) if review_end is not None else (calib if calib is not None else n)
+        # +1 because review_end is the index of the last reviewer-result record and the range end is exclusive
+        rev_end = (review_end + 1) if review_end is not None else _first_of(calib, default=n)
         review = (reviewer, max(reviewer, rev_end))
     else:
         review = (exec_end, exec_end)  # empty

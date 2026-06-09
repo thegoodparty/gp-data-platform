@@ -216,7 +216,29 @@ def test_segment_stages_calibration_ends_before_trailing_human():
         },  # 4 trailing
     ]
     spans, confidence = pp.segment_stages(records)
-    assert spans["calibration"] == (2, 4)  # excludes the trailing human message at index 4
+    # calibration ends at the next human message; later off-topic work is excluded
+    assert spans["calibration"] == (2, 4)
+
+
+def test_segment_stages_empty_review_when_no_reviewer():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 1
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "built"}},  # 2
+        _tool_use_rec("2026-06-08T19:03:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),  # 3
+        {"type": "assistant", "timestamp": "2026-06-08T19:03:30Z", "message": {"content": "done"}},  # 4
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "ok"
+    assert spans["framing"] == (0, 1)
+    assert spans["execution"] == (1, 3)  # brief .. calibration (no reviewer)
+    assert spans["review"][0] == spans["review"][1]  # empty review span
+    assert spans["calibration"] == (3, 5)  # calib .. len (no trailing human)
+
+
+def test_first_of_returns_first_non_none_else_default():
+    assert pp._first_of(None, 2, 3, default=9) == 2
+    assert pp._first_of(None, None, default=9) == 9
 
 
 def test_segment_stages_low_confidence_without_brief():
