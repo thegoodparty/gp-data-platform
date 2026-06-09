@@ -51,6 +51,6 @@ For the per-directory test hooks to pass on push, set up the environment of each
 ## Never
 
 - Don't add a root-level command that assumes one venv. State which subproject to `cd` into.
-- Don't invoke `dbt` via `poetry`. dbt Cloud CLI is system-installed.
+- Don't invoke `dbt` via `uv`. dbt Cloud CLI is system-installed.
 - Don't disable pre-commit hooks to make a commit go through. CI runs `pre-commit run --all-files` and will catch a skipped lint/format hook.
 - Don't commit secrets. `.env.example` is the only env file in git.

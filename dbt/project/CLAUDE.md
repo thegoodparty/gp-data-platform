@@ -4,10 +4,10 @@ Use the `gh` cli to make pull-requests and interact with GitHub.
 
 - We use the dbt *cloud* cli, not the dbt-core cli.
 - You do not need to specify `--defer` or the location of a state file in dbt cloud.
-- Do not invoke dbt via `poetry`. dbt cloud cli is installed at the system level.
-- When running `git commit`, use `poetry run` from the `dbt/` directory so the
-  pre-commit pytest hook can find `pyspark` and `airflow`:
-  `cd dbt && poetry run git commit ...`
+- Do not invoke dbt via `uv`. dbt cloud cli is installed at the system level.
+- Each pre-commit hook runs in its own environment via `uv run`, so plain
+  `git commit` works from the `dbt/` directory without any venv wrapper:
+  `cd dbt && git commit ...`
 - When adding or modifying models and/or tests, run `dbt build` on the modified
 objects to ensure they build as expected.
 - **Do not use the `+` (upstream) selector prefix during development.** dbt Cloud
@@ -26,7 +26,7 @@ When building multiple models, use quotes around the models in the `--select` ar
 
 - **Branch names:** `data-XXXX/short-slug` (lowercase `data`, slash separator, kebab-case slug). `XXXX` is the ClickUp ticket number.
 - **PR titles:** `[DATA-XXXX] Short title` (uppercase prefix, square brackets).
-- **Commits:** Always run `git` via `poetry run git` from the `dbt/` directory so pre-commit hooks find their dependencies.
+- **Commits:** Run `git commit` from the `dbt/` directory. Pre-commit hooks invoke `uv run` automatically to find their dependencies.
 - **Do not use real people's names** in PR descriptions, commit messages, code comments, model descriptions, or any other written artifact in this repo. Refer to roles or teams instead (e.g. "the analytics owner", "the data team", "an analyst"). If a generic illustrative example genuinely needs named actors, use Alice, Bob, Charlie, etc.
 
 **IMPORTANT** - When working on dbt models, inspect existing sources/models in
