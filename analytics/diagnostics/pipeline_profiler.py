@@ -30,6 +30,23 @@ win-analytics-process skill's references/pipeline.md, which is the authority):
 
 from __future__ import annotations
 
+from datetime import datetime
+
 STAGES = ["framing", "execution", "review", "calibration"]
 SKILL_NAMES = {"win-analytics-process", "win-analytics-knowledge"}
 REVIEWER_TYPES = {"product-data-scientist", "product-manager"}
+
+
+def _parse_ts(ts: str) -> datetime:
+    """Parse an ISO 8601 transcript timestamp to a datetime."""
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _is_human_message(record: dict) -> bool:
+    """True when the record is a real human turn (text), not a tool result or meta."""
+    if record.get("type") != "user" or record.get("isMeta"):
+        return False
+    message = record.get("message")
+    if not isinstance(message, dict):
+        return False
+    return isinstance(message.get("content"), str)
