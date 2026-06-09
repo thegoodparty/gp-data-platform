@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
@@ -846,7 +846,7 @@ def _execute_sql_query(
     password: str,
     database: str,
     return_results: bool = False,
-) -> List[Tuple[Any, ...]]:
+) -> list[tuple[Any, ...]]:
     """
     Execute a SQL query and return the results. Not that the results should be None if no results are returned.
     """
@@ -854,10 +854,7 @@ def _execute_sql_query(
         conn = psycopg2.connect(dbname=database, user=user, password=password, host=host, port=port)
         cursor = conn.cursor()
         cursor.execute(query)
-        if return_results:
-            results = cursor.fetchall() if cursor.rowcount > 0 else []
-        else:
-            results = []
+        results = (cursor.fetchall() if cursor.rowcount > 0 else []) if return_results else []
         conn.commit()
     except Exception as e:
         logging.error(f"Error executing query: {query}")
@@ -1025,7 +1022,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     state_list = [row.state_id for row in loaded_to_databricks.select("state_id").distinct().collect()]
 
     # initialize list to capture metadata about data loads
-    load_details: List[Dict[str, Any]] = []
+    load_details: list[dict[str, Any]] = []
 
     # Create a staging schema if it doesn't exist
     _execute_sql_query(
