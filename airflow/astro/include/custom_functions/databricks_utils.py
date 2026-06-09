@@ -275,6 +275,11 @@ def read_databricks_table(
     db_conn_id = Variable.get(databricks_conn_id_var)
     db_conn = BaseHook.get_connection(db_conn_id)
 
+    if not (db_conn.host and db_conn.login and db_conn.password):
+        raise ValueError(
+            f"Databricks connection '{db_conn_id}' is missing a required " "host, login, or password field"
+        )
+
     connection = get_databricks_connection(
         host=db_conn.host,
         http_path=db_conn.extra_dejson.get("http_path", ""),
@@ -307,6 +312,8 @@ def read_databricks_table(
                     retry_delay,
                 )
                 time.sleep(retry_delay)
+        if cursor.description is None:
+            raise RuntimeError("Databricks cursor returned no description after execute")
         column_names = [desc[0] for desc in cursor.description]
     except Exception:
         connection.close()
