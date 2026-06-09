@@ -123,3 +123,38 @@ def _classify_marker(name: str, tool_input: dict) -> str | None:
         if _CALIBRATION_RE.search(base):
             return "calibration_write"
     return None
+
+
+def _marker_indices(records: list[dict]) -> dict:
+    """Return {marker_type: first_index} for each marker found."""
+    found = {}
+    for i, rec in enumerate(records):
+        for name, tool_input, _tid in _iter_tool_uses(rec):
+            marker = _classify_marker(name, tool_input)
+            if marker and marker not in found:
+                found[marker] = i
+    return found
+
+
+def _reviewer_result_end_index(records: list[dict]) -> int | None:
+    """Index of the last tool_result matching any reviewer dispatch id (max-span end)."""
+    reviewer_ids = set()
+    for rec in records:
+        for name, tool_input, tid in _iter_tool_uses(rec):
+            if _classify_marker(name, tool_input) == "reviewer_dispatch":
+                reviewer_ids.add(tid)
+    if not reviewer_ids:
+        return None
+    last = None
+    for i, rec in enumerate(records):
+        message = rec.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, list):
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and block.get("tool_use_id") in reviewer_ids
+                ):
+                    last = i
+    return last

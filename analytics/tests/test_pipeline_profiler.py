@@ -135,3 +135,46 @@ def test_split_time_attributes_idle_before_human_and_active_otherwise():
 def test_split_time_single_record_is_zero():
     rec = [{"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "x"}}]
     assert pp._split_time(rec) == (0.0, 0.0)
+
+
+def _tool_use_rec(ts, name, tid, **inp):
+    return {
+        "type": "assistant",
+        "timestamp": ts,
+        "message": {"content": [{"type": "tool_use", "name": name, "id": tid, "input": inp}]},
+    }
+
+
+def _tool_result_rec(ts, tid):
+    return {
+        "type": "user",
+        "timestamp": ts,
+        "message": {"content": [{"type": "tool_result", "tool_use_id": tid}]},
+    }
+
+
+def test_marker_indices_finds_first_of_each():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        _tool_use_rec("2026-06-08T19:06:00Z", "Agent", "a1", subagent_type="product-data-scientist"),
+        _tool_use_rec("2026-06-08T19:09:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),
+    ]
+    idx = pp._marker_indices(records)
+    assert idx == {"skill_load": 0, "brief_write": 1, "reviewer_dispatch": 2, "calibration_write": 3}
+
+
+def test_reviewer_result_end_index_uses_last_matching_result():
+    records = [
+        _tool_use_rec("2026-06-08T19:06:00Z", "Agent", "a1", subagent_type="product-data-scientist"),
+        _tool_use_rec("2026-06-08T19:06:05Z", "Agent", "a2", subagent_type="product-manager"),
+        _tool_result_rec("2026-06-08T19:07:00Z", "a1"),
+        _tool_result_rec("2026-06-08T19:08:00Z", "a2"),  # later result -> max-span end
+        {"type": "assistant", "timestamp": "2026-06-08T19:08:30Z", "message": {"content": "ok"}},
+    ]
+    assert pp._reviewer_result_end_index(records) == 3
+
+
+def test_reviewer_result_end_index_none_when_no_reviewers():
+    records = [{"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "x"}}]
+    assert pp._reviewer_result_end_index(records) is None
