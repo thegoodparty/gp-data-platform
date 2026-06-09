@@ -35,3 +35,42 @@ def test_is_human_message_false_for_meta():
 def test_is_human_message_false_for_assistant():
     rec = {"type": "assistant", "message": {"content": "hi"}}
     assert pp._is_human_message(rec) is False
+
+
+def test_iter_tool_uses_returns_name_input_id():
+    rec = {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "text", "text": "..."},
+                {"type": "tool_use", "name": "Write", "id": "t1", "input": {"file_path": "/a/b_brief.yaml"}},
+            ]
+        },
+    }
+    assert pp._iter_tool_uses(rec) == [("Write", {"file_path": "/a/b_brief.yaml"}, "t1")]
+
+
+def test_iter_tool_uses_empty_for_non_assistant():
+    assert pp._iter_tool_uses({"type": "user", "message": {"content": "hi"}}) == []
+
+
+def test_classify_marker_skill_load():
+    assert pp._classify_marker("Skill", {"skill": "win-analytics-process"}) == "skill_load"
+
+
+def test_classify_marker_brief_write():
+    assert pp._classify_marker("Write", {"file_path": "/x/2026-06-09_q_brief.yaml"}) == "brief_write"
+
+
+def test_classify_marker_reviewer_dispatch():
+    assert pp._classify_marker("Agent", {"subagent_type": "product-data-scientist"}) == "reviewer_dispatch"
+
+
+def test_classify_marker_calibration_write():
+    assert pp._classify_marker("Write", {"file_path": "/r/CALIBRATION_2026-06-09.md"}) == "calibration_write"
+
+
+def test_classify_marker_none_for_unrelated():
+    assert pp._classify_marker("Bash", {"command": "ls"}) is None
+    assert pp._classify_marker("Write", {"file_path": "/x/notes.md"}) is None
+    assert pp._classify_marker("Agent", {"subagent_type": "Explore"}) is None

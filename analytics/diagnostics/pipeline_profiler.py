@@ -30,6 +30,8 @@ win-analytics-process skill's references/pipeline.md, which is the authority):
 
 from __future__ import annotations
 
+import os
+import re
 from datetime import datetime
 
 STAGES = ["framing", "execution", "review", "calibration"]
@@ -50,3 +52,37 @@ def _is_human_message(record: dict) -> bool:
     if not isinstance(message, dict):
         return False
     return isinstance(message.get("content"), str)
+
+
+_CALIBRATION_RE = re.compile(r"CALIBRATION_.*\.md$")
+
+
+def _iter_tool_uses(record: dict) -> list[tuple[str, dict, str]]:
+    """Return (name, input, id) for each tool_use block in an assistant record."""
+    if record.get("type") != "assistant":
+        return []
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, list):
+        return []
+    out = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            out.append((block.get("name", ""), block.get("input") or {}, block.get("id", "")))
+    return out
+
+
+def _classify_marker(name: str, tool_input: dict) -> str | None:
+    """Map a tool_use to a stage-boundary marker, or None."""
+    if name == "Skill" and tool_input.get("skill") in SKILL_NAMES:
+        return "skill_load"
+    if name in ("Agent", "Task") and tool_input.get("subagent_type") in REVIEWER_TYPES:
+        return "reviewer_dispatch"
+    if name in ("Write", "Edit"):
+        path = str(tool_input.get("file_path", ""))
+        base = os.path.basename(path)
+        if base.endswith("_brief.yaml"):
+            return "brief_write"
+        if _CALIBRATION_RE.search(base):
+            return "calibration_write"
+    return None
