@@ -5,7 +5,8 @@ Databricks Genie API Client for conversational interactions
 import logging
 import re
 import time
-from typing import Any, Callable, Dict, Optional, Set, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 from databricks.sdk import WorkspaceClient
 
@@ -33,7 +34,7 @@ class DatabricksGenieClient:
         return f"{self.host}/genie/rooms/{self.space_id}"
 
     @staticmethod
-    def _extract_status_code(error: Exception) -> Optional[int]:
+    def _extract_status_code(error: Exception) -> int | None:
         for attr in ("status_code", "http_status_code", "error_code"):
             value = getattr(error, attr, None)
             if isinstance(value, int):
@@ -54,11 +55,11 @@ class DatabricksGenieClient:
         return None
 
     @staticmethod
-    def _is_retryable_error(status_code: Optional[int], error: Exception) -> bool:
+    def _is_retryable_error(status_code: int | None, error: Exception) -> bool:
         if status_code in RETRYABLE_STATUS_CODES:
             return True
 
-        if isinstance(error, (ConnectionError, TimeoutError)):
+        if isinstance(error, ConnectionError | TimeoutError):
             return True
 
         message = str(error).lower()
@@ -79,11 +80,11 @@ class DatabricksGenieClient:
         self,
         method: str,
         path: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
         max_retries: int = 3,
-        suppress_status_codes: Optional[Set[int]] = None,
+        suppress_status_codes: set[int] | None = None,
         allow_empty_response: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Make an authenticated API request using the SDK's HTTP client."""
         for attempt in range(max_retries):
             try:
@@ -92,7 +93,7 @@ class DatabricksGenieClient:
                     if allow_empty_response:
                         return {}
                     return None
-                return cast(Dict[str, Any], result)
+                return cast(dict[str, Any], result)
             except Exception as error:
                 status_code = self._extract_status_code(error)
                 is_retryable = self._is_retryable_error(status_code, error)
@@ -133,7 +134,7 @@ class DatabricksGenieClient:
                 return None
         return None
 
-    def send_message(self, conversation_id: Optional[str], message: str) -> Optional[Dict[str, Any]]:
+    def send_message(self, conversation_id: str | None, message: str) -> dict[str, Any] | None:
         """
         Send a message to the Genie space
 
@@ -181,7 +182,7 @@ class DatabricksGenieClient:
             "raw_response": result,
         }
 
-    def get_message_status(self, conversation_id: str, message_id: str) -> Optional[Dict[str, Any]]:
+    def get_message_status(self, conversation_id: str, message_id: str) -> dict[str, Any] | None:
         """
         Get the status and response of a message
 
@@ -212,7 +213,7 @@ class DatabricksGenieClient:
         poll_interval: int = 2,
         max_poll_interval: int = 5,
         max_empty_polls: int = 3,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Poll for a message response until it's complete or timeout
 
@@ -267,7 +268,7 @@ class DatabricksGenieClient:
 
     def get_message_attachment_query_result(
         self, conversation_id: str, message_id: str, attachment_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get query result data for a Genie message attachment."""
         paths = [
             (
@@ -302,9 +303,9 @@ class DatabricksGenieClient:
     def ask_question(
         self,
         question: str,
-        conversation_id: Optional[str] = None,
-        on_message_sent: Optional[Callable[[str, str], None]] = None,
-    ) -> Dict[str, Any]:
+        conversation_id: str | None = None,
+        on_message_sent: Callable[[str, str], None] | None = None,
+    ) -> dict[str, Any]:
         """
         High-level method to ask a question and get the response
 
@@ -451,7 +452,7 @@ class DatabricksGenieClient:
         conversation_id: str,
         message_id: str,
         rating: str,
-        feedback_text: Optional[str] = None,
+        feedback_text: str | None = None,
     ) -> bool:
         """
         Send feedback for a message

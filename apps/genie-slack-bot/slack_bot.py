@@ -7,12 +7,13 @@ import re
 from collections import OrderedDict
 from threading import RLock
 from time import monotonic
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from databricks_genie_client import DatabricksGenieClient
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
+
+from databricks_genie_client import DatabricksGenieClient
 
 logger = logging.getLogger(__name__)
 SLACK_TEXT_LIMIT = 3900
@@ -49,7 +50,7 @@ class SlackGenieBot:
         self.conversation_map: OrderedDict[str, str] = OrderedDict()
 
         # message_ts -> (conversation_id, message_id) for feedback routing
-        self.message_feedback_map: OrderedDict[str, Tuple[str, str]] = OrderedDict()
+        self.message_feedback_map: OrderedDict[str, tuple[str, str]] = OrderedDict()
 
         # conversation_scope -> latest SQL text for SQL-on-request
         self.sql_cache: OrderedDict[str, str] = OrderedDict()
@@ -87,12 +88,12 @@ class SlackGenieBot:
     # Core message handling
     # ------------------------------------------------------------------
 
-    def _handle_message(self, event: Dict[str, Any], say, client):
+    def _handle_message(self, event: dict[str, Any], say, client):
         """Handle an inbound Slack message event."""
         # Replies carry the parent thread root; new top-level messages use their own ts.
         thread_ts_value = event.get("thread_ts") or event.get("ts")
         channel_value = event.get("channel")
-        thinking_ts: Optional[str] = None
+        thinking_ts: str | None = None
         try:
             text = event.get("text") or ""
 
@@ -354,7 +355,7 @@ class SlackGenieBot:
         return text[: SLACK_TEXT_LIMIT - len("\n\n_(truncated)_")] + "\n\n_(truncated)_"
 
     @staticmethod
-    def _extract_row_count(data: Dict[str, Any]) -> int:
+    def _extract_row_count(data: dict[str, Any]) -> int:
         """Extract total row count from a query result data dict."""
         raw = data.get("row_count")
         if isinstance(raw, int):
@@ -368,10 +369,10 @@ class SlackGenieBot:
         client,
         channel: str,
         text: str,
-        thread_ts: Optional[str] = None,
-        blocks: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+        thread_ts: str | None = None,
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "channel": channel,
             "text": self._truncate_for_slack(text),
         }
@@ -387,9 +388,9 @@ class SlackGenieBot:
         channel: str,
         ts: str,
         text: str,
-        blocks: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "channel": channel,
             "ts": ts,
             "text": self._truncate_for_slack(text),
@@ -398,23 +399,21 @@ class SlackGenieBot:
             payload["blocks"] = blocks
         return client.chat_update(**payload)
 
-    def _should_handle_message_event(self, event: Dict[str, Any]) -> bool:
+    def _should_handle_message_event(self, event: dict[str, Any]) -> bool:
         if event.get("subtype") or event.get("bot_id"):
             return False
-        if event.get("channel_type") == "im":
-            return True
         # Non-DM messages (channels, groups, MPIMs) are handled exclusively
         # by the app_mention handler.  Returning False here prevents the bot
         # from replying to every message in a channel thread after a single
         # @mention creates a conversation mapping.
-        return False
+        return event.get("channel_type") == "im"
 
     @staticmethod
     def _get_conversation_key(channel: str, thread_ts: str) -> str:
         """Map each Slack thread root to a stable conversation scope."""
         return f"{channel}:{thread_ts}"
 
-    def _get_mapping(self, mapping: OrderedDict[str, Any], key: str) -> Optional[Any]:
+    def _get_mapping(self, mapping: OrderedDict[str, Any], key: str) -> Any | None:
         with self.state_lock:
             return mapping.get(key)
 
@@ -444,7 +443,7 @@ class SlackGenieBot:
                 mapping.popitem(last=False)
 
     @staticmethod
-    def _format_response(result: Dict[str, Any]) -> str:
+    def _format_response(result: dict[str, Any]) -> str:
         if not result.get("success"):
             error = result.get("error", "Unknown error")
             return f"❌ {error}"
@@ -497,9 +496,9 @@ class SlackGenieBot:
         except Exception as error:
             logger.error("Error sending suggested questions: %s", error)
 
-    def _send_feedback_buttons(self, channel: str, thread_ts: str, client) -> Optional[dict]:
+    def _send_feedback_buttons(self, channel: str, thread_ts: str, client) -> dict | None:
         try:
-            blocks: List[Dict[str, Any]] = [
+            blocks: list[dict[str, Any]] = [
                 {
                     "type": "section",
                     "text": {
@@ -546,7 +545,7 @@ class SlackGenieBot:
     # Feedback handling
     # ------------------------------------------------------------------
 
-    def _handle_feedback(self, body: Dict[str, Any], rating: str, client):
+    def _handle_feedback(self, body: dict[str, Any], rating: str, client):
         """Route Slack feedback button clicks back to Genie."""
         try:
             message = body.get("message", {})
@@ -567,7 +566,7 @@ class SlackGenieBot:
 
             if not feedback_info:
                 logger.warning("No feedback info found for message %s", msg_ts)
-                missing_feedback_blocks: List[Dict[str, Any]] = [
+                missing_feedback_blocks: list[dict[str, Any]] = [
                     {
                         "type": "section",
                         "text": {
@@ -611,7 +610,7 @@ class SlackGenieBot:
                 feedback_text = "❌ _Failed to submit feedback. Please try again._"
                 logger.error("Failed to send feedback to Genie API")
 
-            feedback_blocks: List[Dict[str, Any]] = [
+            feedback_blocks: list[dict[str, Any]] = [
                 {
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": feedback_text},
@@ -632,7 +631,7 @@ class SlackGenieBot:
     # Table formatting
     # ------------------------------------------------------------------
 
-    def _format_data_array(self, column_names: List[str], data_array: List[list]) -> str:
+    def _format_data_array(self, column_names: list[str], data_array: list[list]) -> str:
         if not data_array:
             return "No data"
 
@@ -653,13 +652,13 @@ class SlackGenieBot:
 
         lines = []
 
-        header_parts = [name[:w].strip().center(w) for name, w in zip(column_names, col_widths)]
+        header_parts = [name[:w].strip().center(w) for name, w in zip(column_names, col_widths, strict=False)]
         lines.append("│".join(header_parts))
         lines.append("┼".join("─" * w for w in col_widths))
 
         for row in data_array:
             parts = []
-            for i, (w, num) in enumerate(zip(col_widths, col_types)):
+            for i, (w, num) in enumerate(zip(col_widths, col_types, strict=False)):
                 val = row[i] if i < len(row) else None
                 s = str(val)[:w].strip() if val is not None else ""
                 parts.append(s.rjust(w) if num and self._is_numeric(val) else s.ljust(w))

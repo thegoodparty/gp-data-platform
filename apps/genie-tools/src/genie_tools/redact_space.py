@@ -134,9 +134,12 @@ def _placeholder_for_key(key_hint: str | None, value: Any, context: _RedactionCo
         return "<URL>"
     if key.endswith("_host"):
         return "<DATABRICKS_HOST>"
-    if key.endswith("_path") or key == "path":
-        if isinstance(value, str) and _looks_like_absolute_path(value):
-            return "<ABSOLUTE_PATH>"
+    if (
+        (key.endswith("_path") or key == "path")
+        and isinstance(value, str)
+        and _looks_like_absolute_path(value)
+    ):
+        return "<ABSOLUTE_PATH>"
     if key.endswith("warehouse_id"):
         return "<WAREHOUSE_ID>"
     if key.endswith("workspace_id"):
@@ -176,7 +179,7 @@ def redact_obj(
         context = _RedactionContext()
 
     placeholder = _placeholder_for_key(key_hint, obj, context)
-    if placeholder is not None and isinstance(obj, (str, int, float)):
+    if placeholder is not None and isinstance(obj, str | int | float):
         return placeholder
 
     if isinstance(obj, dict):

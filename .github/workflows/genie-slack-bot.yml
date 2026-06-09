@@ -13,12 +13,13 @@ jobs:
         working-directory: apps/genie-slack-bot
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: apps/genie-slack-bot/requirements.txt
+          enable-cache: true
+          cache-dependency-glob: apps/genie-slack-bot/uv.lock
       - name: Install
-        run: pip install -r requirements.txt pytest
+        run: uv sync --frozen
       - name: Pytest
-        run: pytest
+        run: uv run pytest -ra
+      - name: Type check
+        run: uv run mypy app.py config.py databricks_genie_client.py slack_bot.py tests

@@ -25,7 +25,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|apps/genie-tools|dbt)/
+        exclude: ^(people-api-loader|matcha|apps/genie-tools|apps/genie-slack-bot|dbt)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -86,14 +86,14 @@ repos:
         stages: [pre-push]
     -   id: pytest-genie-tools
         name: genie-tools tests (pre-push)
-        entry: bash -c 'cd apps/genie-tools && pytest'
+        entry: bash -c 'cd apps/genie-tools && uv run pytest'
         language: system
         files: ^apps/genie-tools/
         pass_filenames: false
         stages: [pre-push]
     -   id: pytest-genie-slack-bot
         name: genie-slack-bot tests (pre-push)
-        entry: bash -c 'cd apps/genie-slack-bot && pytest'
+        entry: bash -c 'cd apps/genie-slack-bot && uv run pytest'
         language: system
         files: ^apps/genie-slack-bot/
         pass_filenames: false
