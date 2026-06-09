@@ -11,6 +11,7 @@ Tail check: `l2Type` coverage — every distinct `l2Type` in prod
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
@@ -124,7 +125,7 @@ def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> 
     return sorted(v for v in distinct_l2types if v not in new_cols)
 
 
-def _order_key(counts: dict[str, int]):
+def _order_key(counts: dict[str, int]) -> Callable[[str], int]:
     return lambda table_name: -counts.get(table_name.removeprefix("Voter"), 0)
 
 
