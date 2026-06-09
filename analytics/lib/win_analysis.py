@@ -10,8 +10,8 @@ split is retired in favor of that single date cutoff -- run with a different
 cutoff for a sensitivity check.
 
 This module is connection-agnostic: callers inject a ``run_query(sql) -> DataFrame``
-callable, so it works equally with the gp-ai-projects ``DatabricksClient`` or an
-inline ``databricks.sql.connect`` cursor.
+callable. The repo-standard one is ``databricks_conn.run_query`` (profile auth via
+``~/.databrickscfg``); any ``run_query(sql) -> DataFrame`` callable works.
 """
 
 from __future__ import annotations
