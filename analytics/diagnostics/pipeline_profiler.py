@@ -72,6 +72,23 @@ def _iter_tool_uses(record: dict) -> list[tuple[str, dict, str]]:
     return out
 
 
+_TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def _token_totals(records: list[dict]) -> dict:
+    """Sum usage token counts across assistant records in the slice."""
+    totals = {k: 0 for k in _TOKEN_KEYS}
+    for rec in records:
+        if rec.get("type") != "assistant":
+            continue
+        usage = rec.get("message", {}).get("usage") if isinstance(rec.get("message"), dict) else None
+        if not isinstance(usage, dict):
+            continue
+        for k in _TOKEN_KEYS:
+            totals[k] += usage.get(k, 0) or 0
+    return totals
+
+
 def _classify_marker(name: str, tool_input: dict) -> str | None:
     """Map a tool_use to a stage-boundary marker, or None."""
     if name == "Skill" and tool_input.get("skill") in SKILL_NAMES:

@@ -74,3 +74,46 @@ def test_classify_marker_none_for_unrelated():
     assert pp._classify_marker("Bash", {"command": "ls"}) is None
     assert pp._classify_marker("Write", {"file_path": "/x/notes.md"}) is None
     assert pp._classify_marker("Agent", {"subagent_type": "Explore"}) is None
+
+
+def test_token_totals_sums_usage():
+    records = [
+        {
+            "type": "assistant",
+            "message": {
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 10,
+                    "cache_creation_input_tokens": 5,
+                    "cache_read_input_tokens": 1,
+                }
+            },
+        },
+        {"type": "user", "message": {"content": "hi"}},
+        {
+            "type": "assistant",
+            "message": {
+                "usage": {
+                    "input_tokens": 200,
+                    "output_tokens": 20,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 50,
+                }
+            },
+        },
+    ]
+    assert pp._token_totals(records) == {
+        "input_tokens": 300,
+        "output_tokens": 30,
+        "cache_creation_input_tokens": 5,
+        "cache_read_input_tokens": 51,
+    }
+
+
+def test_token_totals_empty_slice_is_zeros():
+    assert pp._token_totals([]) == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+    }
