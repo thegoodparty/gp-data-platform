@@ -1,5 +1,6 @@
 """Tests for analytics/diagnostics/pipeline_profiler.py."""
 
+import json as _json
 from datetime import datetime
 
 import pipeline_profiler as pp
@@ -248,3 +249,51 @@ def test_segment_stages_low_confidence_without_brief():
     ]
     spans, confidence = pp.segment_stages(records)
     assert confidence == "low"
+
+
+def test_load_records_skips_malformed(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text('{"type": "user", "message": {"content": "hi"}}\nNOT JSON\n{"type": "assistant"}\n')
+    recs = pp.load_records(str(f))
+    assert len(recs) == 2
+
+
+def test_profile_run_produces_per_stage_metrics(tmp_path):
+    # skill_load at 0 and brief_write at 2 -> confidence "ok"; the index-3
+    # assistant turn (200 input tokens) falls in the execution span [2, 4).
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        {
+            "type": "assistant",
+            "timestamp": "2026-06-08T19:00:30Z",
+            "message": {
+                "usage": {
+                    "input_tokens": 50,
+                    "output_tokens": 5,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+                "content": "x",
+            },
+        },
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        {
+            "type": "assistant",
+            "timestamp": "2026-06-08T19:06:00Z",
+            "message": {
+                "usage": {
+                    "input_tokens": 200,
+                    "output_tokens": 20,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+                "content": "y",
+            },
+        },
+    ]
+    f = tmp_path / "run.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    profile = pp.profile_run(str(f))
+    assert profile.confidence == "ok"
+    assert profile.stages["execution"].input_tokens == 200
+    assert profile.stages["framing"].input_tokens == 50

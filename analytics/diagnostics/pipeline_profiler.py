@@ -30,8 +30,10 @@ win-analytics-process skill's references/pipeline.md, which is the authority):
 
 from __future__ import annotations
 
+import json
 import os
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 
 STAGES = ["framing", "execution", "review", "calibration"]
@@ -215,3 +217,48 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
         "review": review,
         "calibration": calibration,
     }, confidence
+
+
+@dataclass
+class StageMetrics:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    model_active_seconds: float = 0.0
+    human_idle_seconds: float = 0.0
+
+
+@dataclass
+class RunProfile:
+    path: str
+    confidence: str
+    stages: dict = field(default_factory=dict)
+
+
+def load_records(path: str) -> list[dict]:
+    """Read a transcript JSONL, skipping malformed lines."""
+    records = []
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return records
+
+
+def profile_run(path: str) -> RunProfile:
+    """Profile one transcript into per-stage token + time metrics."""
+    records = load_records(path)
+    spans, confidence = segment_stages(records)
+    stages = {}
+    for stage, (start, end) in spans.items():
+        sl = records[start:end]
+        tokens = _token_totals(sl)
+        active, idle = _split_time(sl)
+        stages[stage] = StageMetrics(model_active_seconds=active, human_idle_seconds=idle, **tokens)
+    return RunProfile(path=path, confidence=confidence, stages=stages)
