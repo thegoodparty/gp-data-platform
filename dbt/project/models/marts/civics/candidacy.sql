@@ -128,9 +128,15 @@ with
             -- TS wins for is_incumbent (TS: 51k populated, BR: 0); gp_api/DDHQ
             -- excluded.
             coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
-            -- office_type: gp_api > BR > DDHQ (TS doesn't carry it at this grain).
+            -- office_type: BR > gp_api > DDHQ. BR derives office_type from
+            -- BallotReady's normalized position name (low Other rate); gp_api
+            -- derives it from raw onboarding free-text (high Other rate), so
+            -- prefer BR when a matched BR row exists. TS carries none at this grain.
+            -- DATA-1972: PR2 supersedes this for positioned rows via the
+            -- int__civics_position_office_type crosswalk; this ordering remains
+            -- the fallback when br_position_database_id is null.
             coalesce(
-                gp_api.office_type, br.office_type, ddhq.office_type
+                br.office_type, gp_api.office_type, ddhq.office_type
             ) as office_type,
             -- br_position_database_id: gp_api > BR > TS. DDHQ doesn't carry it.
             coalesce(
