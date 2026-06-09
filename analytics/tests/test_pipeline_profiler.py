@@ -178,3 +178,51 @@ def test_reviewer_result_end_index_uses_last_matching_result():
 def test_reviewer_result_end_index_none_when_no_reviewers():
     records = [{"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "x"}}]
     assert pp._reviewer_result_end_index(records) is None
+
+
+def test_segment_stages_full_run():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0 framing
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answers"}},  # 1
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 2 execution
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "built"}},  # 3
+        _tool_use_rec(
+            "2026-06-08T19:06:30Z", "Agent", "a1", subagent_type="product-data-scientist"
+        ),  # 4 review
+        _tool_result_rec("2026-06-08T19:08:00Z", "a1"),  # 5
+        _tool_use_rec(
+            "2026-06-08T19:08:30Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"
+        ),  # 6 calib
+        {"type": "assistant", "timestamp": "2026-06-08T19:09:00Z", "message": {"content": "done"}},  # 7
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "ok"
+    assert spans["framing"] == (0, 2)
+    assert spans["execution"] == (2, 4)
+    assert spans["review"] == (4, 6)
+    assert spans["calibration"] == (6, 8)
+
+
+def test_segment_stages_calibration_ends_before_trailing_human():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 1
+        _tool_use_rec("2026-06-08T19:02:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),  # 2
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:30Z", "message": {"content": "done"}},  # 3
+        {
+            "type": "user",
+            "timestamp": "2026-06-08T19:40:00Z",
+            "message": {"content": "new topic"},
+        },  # 4 trailing
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert spans["calibration"] == (2, 4)  # excludes the trailing human message at index 4
+
+
+def test_segment_stages_low_confidence_without_brief():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:01:00Z", "message": {"content": "x"}},
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "low"

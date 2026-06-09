@@ -136,6 +136,14 @@ def _marker_indices(records: list[dict]) -> dict:
     return found
 
 
+def _first_human_after(records: list[dict], start: int) -> int:
+    """Index of the first human message strictly after `start`, else len(records)."""
+    for i in range(start + 1, len(records)):
+        if _is_human_message(records[i]):
+            return i
+    return len(records)
+
+
 def _reviewer_result_end_index(records: list[dict]) -> int | None:
     """Index of the last tool_result matching any reviewer dispatch id (max-span end)."""
     reviewer_ids = set()
@@ -158,3 +166,46 @@ def _reviewer_result_end_index(records: list[dict]) -> int | None:
                 ):
                     last = i
     return last
+
+
+def segment_stages(records: list[dict]) -> tuple[dict, str]:
+    """Return ({stage: (start_idx, end_idx)}, confidence)."""
+    idx = _marker_indices(records)
+    n = len(records)
+    skill = idx.get("skill_load", 0)
+    brief = idx.get("brief_write")
+    reviewer = idx.get("reviewer_dispatch")
+    calib = idx.get("calibration_write")
+    review_end = _reviewer_result_end_index(records)
+
+    confidence = "ok" if ("skill_load" in idx and brief is not None) else "low"
+
+    # framing
+    framing_end = (
+        brief
+        if brief is not None
+        else (reviewer if reviewer is not None else (calib if calib is not None else n))
+    )
+    framing = (skill, framing_end)
+    # execution
+    exec_start = brief if brief is not None else framing_end
+    exec_end = reviewer if reviewer is not None else (calib if calib is not None else n)
+    execution = (exec_start, max(exec_start, exec_end))
+    # review
+    if reviewer is not None:
+        rev_end = (review_end + 1) if review_end is not None else (calib if calib is not None else n)
+        review = (reviewer, max(reviewer, rev_end))
+    else:
+        review = (exec_end, exec_end)  # empty
+    # calibration
+    if calib is not None:
+        calibration = (calib, _first_human_after(records, calib))
+    else:
+        calibration = (n, n)  # empty
+
+    return {
+        "framing": framing,
+        "execution": execution,
+        "review": review,
+        "calibration": calibration,
+    }, confidence
