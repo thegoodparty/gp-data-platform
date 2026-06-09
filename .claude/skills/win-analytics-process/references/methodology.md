@@ -68,6 +68,17 @@ analytics/ad_hoc/
 
 Date-prefixed filenames are required (chronological sortability). No INVENTORY.md / SESSION_NOTES.md scaffolding. The brief sits alongside the notebook so the framing is retrievable after the fact.
 
+## Choosing the save location
+
+Decide ad-hoc vs project at framing time (the framing routine surfaces this; see [framing.md](framing.md)):
+
+- **`analytics/ad_hoc/`** when the work is a single one-off question, one notebook, no reusable inventory, not expected to be revisited.
+- **`analytics/projects/<name>/`** when the work is multi-week, carries reusable inventory, spans multiple notebooks, or will be revisited under different scopes.
+
+When unsure, default to `ad_hoc/`: promoting an ad-hoc analysis into a project later is cheap, the reverse is not.
+
+**If the chosen directory does not exist in the repo, do not silently scaffold it.** Creating `analytics/ad_hoc/` or a new `analytics/projects/<name>/` establishes repo structure, so surface it and confirm with the user before creating it.
+
 ## Reusable building blocks — build the working set once, slice it
 
 Don't rebuild cohort + engagement logic from scratch each analysis. The committed package `analytics/lib/win_analysis.py` holds the canonical Win event-family allowlist (`win_event_predicate`), a `build_win_working_set(run_query, cohorts, ...)` that returns one consolidated per-user `cohort × engagement` DataFrame carrying the standard slicing dimensions from the knowledge skill's [segmentation.md](../../win-analytics-knowledge/references/segmentation.md), and `wilson`. **Default executor step:** build that one working set first, then slice every cut from it in pandas (codifies the build-once-slice-many rule). Carrying the slice dimensions up front makes re-cuts (e.g. ICP vs not) free — see the amend path in [brief-schema.md](brief-schema.md). The event classification is sourced from `int__amplitude_event_taxonomy` (see the knowledge skill's [engagement.md](../../win-analytics-knowledge/references/engagement.md) — no separate hand-maintained allowlist to keep in sync).
