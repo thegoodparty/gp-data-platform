@@ -32,7 +32,25 @@ shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
 ## Usage from a notebook
 
 This module is connection-agnostic: you inject a `run_query(sql) -> DataFrame`
-callable. With the gp-ai-projects shared client:
+callable.
+
+If you authenticate with the Databricks CLI (`databricks auth login`, OAuth profiles
+in `~/.databrickscfg`) rather than the `DATABRICKS_*` env vars, build `run_query` with
+the helper in `databricks_conn.py`:
+
+```python
+import sys; sys.path.insert(0, "analytics/lib")   # adjust to repo-relative path
+from databricks_conn import make_run_query
+import win_analysis as wa
+
+run_query = make_run_query()   # DEFAULT profile, Serverless Starter warehouse
+df = wa.build_win_working_set(run_query, cohorts)
+```
+
+If the cached OAuth token has expired, refresh it with
+`databricks auth login --host https://dbc-3d8ca484-79f3.cloud.databricks.com` and retry.
+
+With the gp-ai-projects shared client:
 
 ```python
 import sys; sys.path.insert(0, "analytics/lib")   # adjust to repo-relative path
