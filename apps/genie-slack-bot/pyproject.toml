@@ -1,0 +1,35 @@
+[project]
+name = "genie-slack-bot"
+version = "0.1.0"
+description = "Slack bot for Databricks Genie (civics)"
+requires-python = ">=3.14"
+dependencies = [
+    "slack-bolt>=1.18.0,<2.0.0",
+    "slack-sdk>=3.27.0,<4.0.0",
+    "databricks-sdk>=0.30.0,<1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.15",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "RUF002"]

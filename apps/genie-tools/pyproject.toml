@@ -3,7 +3,7 @@ name = "genie-tools"
 version = "0.1.0"
 description = "Export-only Databricks Genie config utilities"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "databricks-sdk>=0.30.0,<1.0.0",
 ]
@@ -20,6 +20,24 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.15",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "RUF002"]
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
