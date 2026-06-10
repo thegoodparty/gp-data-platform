@@ -335,11 +335,20 @@ def format_report(profiles: list[RunProfile]) -> str:
     lines = ["# Pipeline run profile", ""]
     header = (
         "| stage | model_active_min | human_idle_min | wall_clock_min | "
-        "%_of_active | input_tok | output_tok | cache_tok |"
+        "%_of_active | input_tok | output_tok | cache_tok | %_of_tokens |"
     )
-    sep = "|---|---|---|---|---|---|---|---|"
+    sep = "|---|---|---|---|---|---|---|---|---|"
     for prof in profiles:
         total_active = sum(prof.stages.get(s, StageMetrics()).model_active_seconds for s in STAGES)
+        run_total_tokens = sum(
+            (
+                prof.stages.get(s, StageMetrics()).input_tokens
+                + prof.stages.get(s, StageMetrics()).output_tokens
+                + prof.stages.get(s, StageMetrics()).cache_creation_input_tokens
+                + prof.stages.get(s, StageMetrics()).cache_read_input_tokens
+            )
+            for s in STAGES
+        )
         lines += [f"## {os.path.basename(prof.path)} (confidence: {prof.confidence})", "", header, sep]
         tot = StageMetrics()
         tot_cache = 0
@@ -347,10 +356,12 @@ def format_report(profiles: list[RunProfile]) -> str:
             m = prof.stages.get(stage, StageMetrics())
             cache = m.cache_creation_input_tokens + m.cache_read_input_tokens
             wall = m.model_active_seconds + m.human_idle_seconds
+            stage_total_tokens = m.input_tokens + m.output_tokens + cache
             lines.append(
                 f"| {stage} | {_min(m.model_active_seconds)} | {_min(m.human_idle_seconds)} | "
                 f"{_min(wall)} | {_pct(m.model_active_seconds, total_active)} | "
-                f"{m.input_tokens} | {m.output_tokens} | {cache} |"
+                f"{m.input_tokens} | {m.output_tokens} | {cache} | "
+                f"{_pct(stage_total_tokens, run_total_tokens)} |"
             )
             tot.model_active_seconds += m.model_active_seconds
             tot.human_idle_seconds += m.human_idle_seconds
@@ -358,14 +369,17 @@ def format_report(profiles: list[RunProfile]) -> str:
             tot.output_tokens += m.output_tokens
             tot_cache += cache
         tot_wall = tot.model_active_seconds + tot.human_idle_seconds
+        tot_token_pct = 100 if run_total_tokens else 0
         lines.append(
             f"| **total** | {_min(tot.model_active_seconds)} | {_min(tot.human_idle_seconds)} | "
-            f"{_min(tot_wall)} | {_pct(tot.model_active_seconds, total_active)} | {tot.input_tokens} | {tot.output_tokens} | {tot_cache} |"
+            f"{_min(tot_wall)} | {_pct(tot.model_active_seconds, total_active)} | {tot.input_tokens} | "
+            f"{tot.output_tokens} | {tot_cache} | {tot_token_pct} |"
         )
         d = prof.decisions
         if d is not None:
             revs = ", ".join(f"{k}×{v}" for k, v in sorted(d.reviewer_counts.items())) or "none"
             proc = ", ".join(sorted(set(d.process_design_edits))) or "none"
+            lines.append("")
             lines.append(
                 f"**Decisions:** deliverable — notebook ×{d.notebook_writes} · "
                 f"analysis-script ×{d.analysis_script_writes} · nb-build ×{d.notebook_build_writes}  |  "
@@ -416,19 +430,22 @@ def _resolve_paths(patterns: list[str]) -> list[str]:
 
 
 def _write_log(report: str, paths: list[str], logs_dir: Path, now: datetime) -> Path:
-    """Write the report to a timestamped Markdown log under logs_dir; return its path."""
+    """Append this run's report to a single Markdown log under logs_dir; return its path."""
     logs_dir.mkdir(parents=True, exist_ok=True)
-    log_path = logs_dir / f"profile_{now.strftime('%Y%m%d-%H%M%S')}.md"
-    header = [
-        f"# Pipeline profile run {now.strftime('%Y-%m-%d %H:%M:%S')}",
+    log_path = logs_dir / "profile_log.md"
+    entry = [
+        "",
+        f"## Run {now.strftime('%Y-%m-%d %H:%M:%S')}",
         "",
         "Profiled transcripts:",
         *[f"- {p}" for p in paths],
         "",
-        "---",
+        report,
         "",
+        "---",
     ]
-    log_path.write_text("\n".join(header) + report + "\n", encoding="utf-8")
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write("\n".join(entry) + "\n")
     return log_path
 
 

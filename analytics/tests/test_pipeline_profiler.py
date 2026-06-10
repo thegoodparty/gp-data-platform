@@ -440,6 +440,22 @@ def test_collect_decisions_excludes_calibration_log_from_process_edits():
     assert "CALIBRATION_2026-06-08.md" not in d.process_design_edits  # the log artifact is not
 
 
+def test_format_report_has_token_share_column():
+    prof = pp.RunProfile(
+        path="/x/r.jsonl",
+        confidence="ok",
+        stages={
+            "framing": pp.StageMetrics(input_tokens=100, cache_read_input_tokens=900),  # 1000
+            "execution": pp.StageMetrics(input_tokens=200, cache_read_input_tokens=2800),  # 3000
+            "review": pp.StageMetrics(),
+            "calibration": pp.StageMetrics(),
+        },
+    )
+    report = pp.format_report([prof])
+    assert "%_of_tokens" in report
+    assert "25" in report and "75" in report  # framing 1000/4000=25%, execution 3000/4000=75%
+
+
 def test_format_report_renders_decisions_line():
     prof = pp.RunProfile(
         path="/x/r.jsonl",
@@ -461,18 +477,19 @@ def test_format_report_renders_decisions_line():
     assert report.count("pipeline.md") == 1  # process edits deduped in render
 
 
-def test_write_log_creates_timestamped_file(tmp_path):
-    p = pp._write_log("REPORT BODY", ["/x/a.jsonl"], tmp_path, datetime(2026, 6, 10, 14, 30, 5))
-    assert p.name == "profile_20260610-143005.md"
-    assert p.parent == tmp_path
-    text = p.read_text(encoding="utf-8")
-    assert "REPORT BODY" in text
-    assert "/x/a.jsonl" in text
-    assert "2026-06-10 14:30:05" in text
+def test_write_log_appends_to_single_file(tmp_path):
+    p1 = pp._write_log("REPORT ONE", ["/x/a.jsonl"], tmp_path, datetime(2026, 6, 10, 14, 30, 5))
+    p2 = pp._write_log("REPORT TWO", ["/x/b.jsonl"], tmp_path, datetime(2026, 6, 11, 9, 0, 0))
+    assert p1 == p2 == tmp_path / "profile_log.md"
+    text = p1.read_text(encoding="utf-8")
+    assert "REPORT ONE" in text and "REPORT TWO" in text
+    assert "2026-06-10 14:30:05" in text and "2026-06-11 09:00:00" in text
+    assert "/x/a.jsonl" in text and "/x/b.jsonl" in text
+    assert text.count("## Run ") == 2
 
 
 def test_write_log_creates_missing_dir(tmp_path):
     target = tmp_path / "logs"
     p = pp._write_log("BODY", [], target, datetime(2026, 1, 2, 3, 4, 5))
-    assert p.parent == target
+    assert p == target / "profile_log.md"
     assert target.is_dir()
