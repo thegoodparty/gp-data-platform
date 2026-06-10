@@ -2520,6 +2520,23 @@ models:
                   - Statewide/Governor
                   - Town Council
                   - Other
+      - name: is_office_type_fallback
+        description: >
+          True when no candidate_office could be derived for the position (no
+          normalized position name available and no position-name pattern
+          matched), making office_type the NULL-input fallback 'Other' rather
+          than a real classification. True rows mean the incremental
+          normalized-position model is lagging the position universe; the mart
+          coalesce already prevents fallback 'Other' from overriding per-source
+          values.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - false
+              config:
+                severity: warn
 
   - name: int__civics_candidate_gp_api
     description: >

@@ -35,6 +35,14 @@ with
             on position.normalized_position.databaseid = normalized_position.database_id
     )
 
-select br_position_database_id, {{ map_office_type("candidate_office") }} as office_type
+select
+    br_position_database_id,
+    {{ map_office_type("candidate_office") }} as office_type,
+    -- True when no candidate_office could be derived for the position (the
+    -- normalized-position model has no row for it and no position-name pattern
+    -- matched), making office_type the NULL-input fallback 'Other' rather than
+    -- a real classification. Expected all-false; true rows mean the incremental
+    -- normalized-position model is lagging the position universe.
+    candidate_office is null as is_office_type_fallback
 from with_candidate_office
 where br_position_database_id is not null
