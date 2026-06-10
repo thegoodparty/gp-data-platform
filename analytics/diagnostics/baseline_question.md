@@ -78,3 +78,7 @@ each run actually took its intended branch (e.g. notebook arm shows `notebook ×
 or `nb-build ×N`; review-skipped arm shows `reviewers — none`). A run flagged
 `confidence: low` had out-of-order or missing markers (e.g. a contaminated /
 cross-session run); treat its numbers with caution.
+
+Every run also auto-saves its full output (stage tables + the decisions line) to a
+timestamped `analytics/diagnostics/logs/profile_<YYYYMMDD-HHMMSS>.md` (gitignored),
+so you can review and compare past arms later without re-running.
