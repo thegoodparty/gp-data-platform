@@ -22,8 +22,8 @@ predictably across all three schemas.
 """
 
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence, Tuple
 
 import psycopg2.extras
 from include.custom_functions.databricks_utils import read_databricks_table
@@ -38,12 +38,12 @@ class TableSyncSpec:
     target_table: str
     target_schema: str = "public"
     staging_schema: str = "staging"
-    pk_constraint_name: Optional[str] = None
+    pk_constraint_name: str | None = None
     # Canonical (post-swap) index names — used to rename during the swap.
     # Do NOT include the PK constraint here; it's tracked separately.
-    indexes: Tuple[str, ...] = field(default_factory=tuple)
+    indexes: tuple[str, ...] = field(default_factory=tuple)
     # Canonical (post-swap) foreign-key constraint names.
-    fkeys: Tuple[str, ...] = field(default_factory=tuple)
+    fkeys: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def new_table(self) -> str:
@@ -95,7 +95,7 @@ def bulk_insert_from_databricks(
     spec: TableSyncSpec,
     source_query: str,
     target_columns: Sequence[str],
-    transform_row: Optional[Callable[[tuple], tuple]] = None,
+    transform_row: Callable[[tuple], tuple] | None = None,
     batch_size: int = 5000,
 ) -> int:
     """Stream `source_query` from Databricks into `staging.<table>_new` in batches.
@@ -162,7 +162,7 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
         )
         target_exists = cur.fetchone() is not None
 
-        statements: List[str] = []
+        statements: list[str] = []
         if target_exists:
             statements.append(
                 f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" ' f'RENAME TO "{spec.old_table}"'

@@ -25,7 +25,7 @@ repos:
     rev: v1.15.0
     hooks:
     -   id: mypy
-        exclude: ^(people-api-loader|matcha|apps/genie-tools|apps/genie-slack-bot|dbt)/
+        exclude: ^(people-api-loader|matcha|analytics|airflow|dbt|apps/genie-tools|apps/genie-slack-bot)/
         additional_dependencies: [
             'types-requests',  # Add specific type stubs as needed
             'types-psycopg2',
@@ -66,7 +66,7 @@ repos:
         stages: [pre-push]
     -   id: pytest-airflow
         name: airflow tests (pre-push)
-        entry: bash -c 'cd airflow && poetry run pytest'
+        entry: bash -c 'cd airflow && uv run pytest'
         language: system
         files: ^airflow/
         pass_filenames: false
@@ -80,7 +80,7 @@ repos:
         stages: [pre-push]
     -   id: pytest-analytics
         name: analytics tests (pre-push)
-        entry: bash -c 'cd analytics && pytest'
+        entry: bash -c 'cd analytics && uv run pytest'
         language: system
         files: ^analytics/
         pass_filenames: false

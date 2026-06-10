@@ -9,6 +9,7 @@ from include.custom_functions.databricks_utils import (
     _validate_lalvoterids,
     get_databricks_connection,
     get_processed_files,
+    read_databricks_table,
     stage_expired_voter_ids,
 )
 
@@ -203,7 +204,7 @@ class TestStageExpiredVoterIds:
             file_timestamps={"file1.tab": "2026-01-15T10:00:00+00:00"},
         )
 
-        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
+        merge_sql = next(c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0])
         assert "2026-01-15T10:00:00+00:00" in merge_sql
         # source_file_keys stores composite "filename|mtime" for idempotency
         assert "file1.tab|2026-01-15T10:00:00+00:00" in merge_sql
@@ -222,7 +223,7 @@ class TestStageExpiredVoterIds:
             dag_run_id="run_123",
         )
 
-        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
+        merge_sql = next(c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0])
         assert "NULL" in merge_sql
 
     def test_dag_run_id_escaped(self, mock_connection):
@@ -243,7 +244,7 @@ class TestStageExpiredVoterIds:
         assert len(delete_calls) == 1
         assert "run_with\\'quote" in delete_calls[0]
         # MERGE also has escaped dag_run_id
-        merge_sql = [c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0]][0]
+        merge_sql = next(c[0][0] for c in cursor.execute.call_args_list if "MERGE INTO" in c[0][0])
         assert "run_with\\'quote" in merge_sql
 
     def test_loads_record_is_last_execute(self, mock_connection):
@@ -330,9 +331,9 @@ class TestGetDatabricksConnection:
         with (
             patch.object(databricks_utils.databricks_sql, "connect", side_effect=auth_error) as mock_connect,
             patch.object(databricks_utils.time, "sleep") as mock_sleep,
+            pytest.raises(Exception, match="invalid_client"),
         ):
-            with pytest.raises(Exception, match="invalid_client"):
-                get_databricks_connection(**self._kwargs(max_retries=20))
+            get_databricks_connection(**self._kwargs(max_retries=20))
 
         assert mock_connect.call_count == 1
         mock_sleep.assert_not_called()
@@ -363,8 +364,84 @@ class TestGetDatabricksConnection:
                 side_effect=Exception("warehouse may be starting"),
             ) as mock_connect,
             patch.object(databricks_utils.time, "sleep"),
+            pytest.raises(Exception, match="warehouse"),
         ):
-            with pytest.raises(Exception, match="warehouse"):
-                get_databricks_connection(**self._kwargs(max_retries=3))
+            get_databricks_connection(**self._kwargs(max_retries=3))
 
         assert mock_connect.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# read_databricks_table
+# ---------------------------------------------------------------------------
+
+
+class TestReadDatabricksTable:
+    """Validation, error handling, and happy path of read_databricks_table."""
+
+    def _db_conn(
+        self,
+        host="https://example.cloud.databricks.com",
+        login="cid",
+        password="secret",
+        http_path="/sql/1.0/warehouses/abc",
+    ):
+        """A mock Airflow Connection with Databricks fields."""
+        db_conn = MagicMock()
+        db_conn.host = host
+        db_conn.login = login
+        db_conn.password = password
+        db_conn.extra_dejson = {"http_path": http_path} if http_path else {}
+        return db_conn
+
+    @pytest.mark.parametrize("missing", ["host", "login", "password", "http_path"])
+    def test_missing_required_field_raises_value_error(self, missing):
+        """A connection missing host/login/password/http_path fails fast with a clear error."""
+        fields = {"host": "h", "login": "lg", "password": "pw", "http_path": "/sql/p"}
+        fields[missing] = "" if missing == "http_path" else None
+        with (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=self._db_conn(**fields)),
+            pytest.raises(ValueError, match="missing a required"),
+        ):
+            read_databricks_table("SELECT 1")
+
+    def test_none_cursor_description_raises_runtime_error_and_closes(self):
+        """A cursor with no description after execute raises and closes the connection."""
+        cursor = MagicMock()
+        cursor.description = None
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        with (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=self._db_conn()),
+            patch.object(databricks_utils, "get_databricks_connection", return_value=connection),
+            pytest.raises(RuntimeError, match="no description"),
+        ):
+            read_databricks_table("SELECT 1")
+
+        connection.close.assert_called_once()
+
+    def test_happy_path_returns_columns_and_streams_batches(self):
+        """Valid credentials yield column names eagerly and stream row batches lazily."""
+        cursor = MagicMock()
+        cursor.description = [("col_a",), ("col_b",)]
+        cursor.fetchmany.side_effect = [[(1, 2)], []]  # one batch, then exhausted
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        with (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=self._db_conn()),
+            patch.object(
+                databricks_utils, "get_databricks_connection", return_value=connection
+            ) as mock_get_conn,
+        ):
+            column_names, batches = read_databricks_table("SELECT 1")
+            assert column_names == ["col_a", "col_b"]  # available before iterating
+            rows = list(batches)
+
+        assert rows == [[(1, 2)]]
+        # http_path is extracted from the connection's extra and forwarded
+        assert mock_get_conn.call_args.kwargs["http_path"] == "/sql/1.0/warehouses/abc"
+        cursor.close.assert_called_once()
+        connection.close.assert_called_once()
