@@ -39,6 +39,7 @@ repos:
     -   id: sqlfmt
         language_version: python
         additional_dependencies: ['.[jinjafmt]']
+        exclude: ^people-api-loader/src/loader/people_api/schema/data/
 
 -   repo: local
     hooks:
