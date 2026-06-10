@@ -204,9 +204,12 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
         log.info("validate.check", name=c.name, passed=c.passed)
 
     all_passed = all(c.passed for c in checks)
+    # Write "failed" (not "complete") on a failed gate so the skip-guard does not
+    # short-circuit a retry: an operator can re-run validate after fixing the data
+    # without manually deleting the S3 manifest.
     manifest = ValidateManifest(
         run_date=run_date,
-        status="complete",
+        status="complete" if all_passed else "failed",
         started_at=started,
         finished_at=datetime.now(UTC),
         checks=checks,

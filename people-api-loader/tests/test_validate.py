@@ -57,4 +57,30 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
     manifest = step.run(_CFG, "20260609")
     assert isinstance(manifest, ValidateManifest)
     assert manifest.all_passed is False
+    # A failed gate must NOT write status="complete", or the skip-guard would
+    # short-circuit any retry and return the cached failure.
+    assert manifest.status == "failed"
     assert "Validation" in captured["md"]
+
+
+def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
+    ok = step.ValidationCheck(name="x", passed=True, details={})
+    for name in (
+        "_check_row_counts",
+        "_check_schema_diff",
+        "_check_indexes",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
+        monkeypatch.setattr(step, name, lambda *a: ok)
+    manifest = step.run(_CFG, "20260609")
+    assert manifest.all_passed is True
+    assert manifest.status == "complete"
