@@ -1,0 +1,14 @@
+models:
+  - name: metricflow_time_spine
+    description: >
+      Daily time spine for the dbt semantic layer (MetricFlow). One row per
+      calendar day. Required by any project that defines metrics.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: Calendar day at day granularity.
+        granularity: day
+        data_tests:
+          - unique
+          - not_null
