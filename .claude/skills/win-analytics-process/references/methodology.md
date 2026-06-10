@@ -108,7 +108,7 @@ dbt show --inline "SELECT ... FROM goodparty_data_catalog.<schema>.<table> WHERE
 
 Per project memory: hit `goodparty_data_catalog.*` directly. `ref()` can resolve to stale dev artifacts. Prod schemas: `dbt` (staging + intermediates; the legacy `dbt_staging` schema is being retired, everything is consolidating into `dbt`), `mart_analytics` / `mart_civics` (marts), `model_predictions` (MLflow outputs).
 
-For larger query results that exceed `dbt show` truncation, use the `databricks-sql-connector` Python client via the global env vars (see user-level CLAUDE.md). Pattern in `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
+For larger query results that exceed `dbt show` truncation, run SQL through the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query(sql) -> DataFrame`, authenticates via the `~/.databrickscfg` profile, set up with `databricks auth login`). Pull-script pattern in `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`.
 
 ## Binning conventions
 

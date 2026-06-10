@@ -32,14 +32,16 @@ shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
 ## Usage from a notebook
 
 This module is connection-agnostic: you inject a `run_query(sql) -> DataFrame`
-callable. With the gp-ai-projects shared client:
+callable. The repo-standard connection is the profile-auth helper
+`databricks_conn.py`, which authenticates via the `~/.databrickscfg` profile
+(`databricks auth login`) with no PAT and no cross-repo dependency:
 
 ```python
 import sys; sys.path.insert(0, "analytics/lib")   # adjust to repo-relative path
-from shared.databricks_client import DatabricksClient   # via uv run --project ../gp-ai-projects
+import databricks_conn as dbc
 import win_analysis as wa
 
-run_query = DatabricksClient().execute_query
+run_query = dbc.run_query
 cohorts = {
     "nov2025_general": {
         "filter": "general_election_date BETWEEN '2025-11-01' AND '2025-11-30'",

@@ -11,7 +11,7 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 | `people-api-loader/` | uv | 3.14 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
 | `dbt/` | uv | 3.14 | `cd dbt && uv sync`, `uv run ...`. `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via uv. |
 | `airflow/` | uv | 3.14 | Local DAG dev outside Astronomer (`cd airflow && uv sync`, `uv run pytest`). Deploy is Astro Runtime via `astro/Dockerfile` + `astro/requirements.txt` (not uv). To run Airflow itself: `cd airflow/astro && astro dev start`. |
-| `analytics/` | pip + root `requirements_test.txt` | 3.12 | No own deps file; its tests rely on the root test deps. |
+| `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
 | `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
 | `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
 | `apps/genie-slack-bot/` | uv | 3.14 | `cd apps/genie-slack-bot && uv sync`, `uv run ...`. |
@@ -46,7 +46,7 @@ pre-commit install
 
 If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
-For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `apps/genie-tools/`, and `apps/genie-slack-bot/`, and the root `requirements_test.txt` for `analytics/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run` / `pytest`), so you do not need to wrap `git` in any venv.
+For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `analytics/`, `apps/genie-tools/`, and `apps/genie-slack-bot/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
 
 ## Never
 
