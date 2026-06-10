@@ -307,3 +307,24 @@ def test_profile_run_produces_per_stage_metrics(tmp_path):
     assert profile.stages["framing"].input_tokens == 50
     assert profile.stages["review"].input_tokens == 0
     assert profile.stages["calibration"].input_tokens == 0
+
+
+def test_format_report_includes_totals_share_and_blind_spot_note():
+    prof = pp.RunProfile(
+        path="/tmp/run.jsonl",
+        confidence="ok",
+        stages={
+            "framing": pp.StageMetrics(input_tokens=1000, model_active_seconds=30, human_idle_seconds=600),
+            "execution": pp.StageMetrics(input_tokens=2000, model_active_seconds=180, human_idle_seconds=0),
+            "review": pp.StageMetrics(input_tokens=500, model_active_seconds=120, human_idle_seconds=0),
+            "calibration": pp.StageMetrics(input_tokens=300, model_active_seconds=60, human_idle_seconds=0),
+        },
+    )
+    report = pp.format_report([prof])
+    assert "run.jsonl" in report
+    assert "framing" in report and "execution" in report
+    assert "10.0" in report  # framing human-idle 600s -> 10.0 min
+    assert "**total**" in report  # per-run total row
+    assert "16.5" in report  # total wall-clock 990s -> 16.5 min
+    assert "46" in report  # execution share of model-active (180/390 -> 46%)
+    assert "reviewer internal tokens" in report.lower()  # blind-spot label

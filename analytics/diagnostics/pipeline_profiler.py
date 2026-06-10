@@ -255,6 +255,69 @@ def load_records(path: str) -> list[dict]:
     return records
 
 
+def _min(seconds: float) -> float:
+    return round(seconds / 60.0, 1)
+
+
+def _pct(part: float, whole: float) -> int:
+    return round(100.0 * part / whole) if whole else 0
+
+
+def format_report(profiles: list[RunProfile]) -> str:
+    """Render per-run tables (with a total row + share of model-active) plus a
+    combined per-stage mean summary as Markdown."""
+    lines = ["# Pipeline run profile", ""]
+    header = (
+        "| stage | model_active_min | human_idle_min | wall_clock_min | "
+        "%_of_active | input_tok | output_tok | cache_tok |"
+    )
+    sep = "|---|---|---|---|---|---|---|---|"
+    for prof in profiles:
+        total_active = sum(prof.stages.get(s, StageMetrics()).model_active_seconds for s in STAGES)
+        lines += [f"## {os.path.basename(prof.path)} (confidence: {prof.confidence})", "", header, sep]
+        tot = StageMetrics()
+        tot_cache = 0
+        for stage in STAGES:
+            m = prof.stages.get(stage, StageMetrics())
+            cache = m.cache_creation_input_tokens + m.cache_read_input_tokens
+            wall = m.model_active_seconds + m.human_idle_seconds
+            lines.append(
+                f"| {stage} | {_min(m.model_active_seconds)} | {_min(m.human_idle_seconds)} | "
+                f"{_min(wall)} | {_pct(m.model_active_seconds, total_active)} | "
+                f"{m.input_tokens} | {m.output_tokens} | {cache} |"
+            )
+            tot.model_active_seconds += m.model_active_seconds
+            tot.human_idle_seconds += m.human_idle_seconds
+            tot.input_tokens += m.input_tokens
+            tot.output_tokens += m.output_tokens
+            tot_cache += cache
+        tot_wall = tot.model_active_seconds + tot.human_idle_seconds
+        lines.append(
+            f"| **total** | {_min(tot.model_active_seconds)} | {_min(tot.human_idle_seconds)} | "
+            f"{_min(tot_wall)} | 100 | {tot.input_tokens} | {tot.output_tokens} | {tot_cache} |"
+        )
+        lines.append("")
+    # combined summary
+    n = len(profiles) or 1
+    lines += [
+        "## Combined (mean across runs)",
+        "",
+        "| stage | mean_model_active_min | mean_human_idle_min | mean_wall_clock_min |",
+        "|---|---|---|---|",
+    ]
+    for stage in STAGES:
+        active = sum(p.stages.get(stage, StageMetrics()).model_active_seconds for p in profiles) / n
+        idle = sum(p.stages.get(stage, StageMetrics()).human_idle_seconds for p in profiles) / n
+        lines.append(f"| {stage} | {_min(active)} | {_min(idle)} | {_min(active + idle)} |")
+    lines += [
+        "",
+        "> Note: reviewer internal tokens are not in the transcript (sub-agent sidechains "
+        "are not recorded), so review-stage token counts reflect only the parent context. "
+        "Review wall-clock is the parallel max-span (dispatch to last reviewer result).",
+    ]
+    return "\n".join(lines)
+
+
 def profile_run(path: str) -> RunProfile:
     """Profile one transcript into per-stage token + time metrics."""
     records = load_records(path)
