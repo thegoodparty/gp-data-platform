@@ -16,7 +16,7 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 | `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
 | `apps/genie-slack-bot/` | uv | 3.14 | `cd apps/genie-slack-bot && uv sync`, `uv run ...`. |
 
-Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (3.12 for most; `matcha` on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
+Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (all on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
 ## ai-rules submodule
 
