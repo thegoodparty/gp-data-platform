@@ -371,3 +371,49 @@ def test_format_report_multiple_profiles_combined_mean():
     report = pp.format_report([p1, p2])
     assert "Combined (mean across runs)" in report
     assert "3.0" in report  # framing mean model-active (120+240)/2 = 180s -> 3.0 min
+
+
+def test_collect_decisions_counts_reviewers_and_artifacts():
+    records = [
+        _tool_use_rec("t", "Write", "w1", file_path="/x/ad_hoc/q.py"),
+        _tool_use_rec("t", "Write", "w2", file_path="/x/ad_hoc/q.ipynb"),
+        _tool_use_rec("t", "Write", "w3", file_path="/x/ad_hoc/build_q_nb.py"),
+        _tool_use_rec("t", "Agent", "a1", subagent_type="product-data-scientist"),
+        _tool_use_rec("t", "Agent", "a2", subagent_type="product-manager"),
+        _tool_use_rec("t", "Agent", "a3", subagent_type="product-data-scientist"),
+    ]
+    d = pp._collect_decisions(records)
+    assert d.notebook_writes == 1
+    assert d.analysis_script_writes == 1
+    assert d.notebook_build_writes == 1
+    assert d.reviewer_counts == {"product-data-scientist": 2, "product-manager": 1}
+    assert d.process_design_edits == []  # no calibration marker -> no process window
+
+
+def test_collect_decisions_process_edits_after_calibration_only():
+    records = [
+        _tool_use_rec(
+            "t", "Edit", "e0", file_path="/repo/analytics/lib/win_analysis.py"
+        ),  # pre-calib: ignored
+        _tool_use_rec("t", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),  # calib marker idx 1
+        _tool_use_rec(
+            "t", "Edit", "e1", file_path="/repo/.claude/skills/win-analytics-process/references/pipeline.md"
+        ),
+        _tool_use_rec("t", "Edit", "e2", file_path="/repo/analytics/lib/win_analysis.py"),
+    ]
+    d = pp._collect_decisions(records)
+    assert "pipeline.md" in d.process_design_edits
+    assert d.process_design_edits.count("win_analysis.py") == 1  # only the post-calib edit
+
+
+def test_profile_run_attaches_decisions(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/ad_hoc/q.ipynb"),
+        _tool_use_rec("2026-06-08T19:02:00Z", "Agent", "a1", subagent_type="product-data-scientist"),
+    ]
+    f = tmp_path / "r.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.decisions.notebook_writes == 1
+    assert prof.decisions.reviewer_counts == {"product-data-scientist": 1}

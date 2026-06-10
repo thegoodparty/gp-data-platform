@@ -242,10 +242,60 @@ class StageMetrics:
 
 
 @dataclass
+class RunDecisions:
+    notebook_writes: int = 0
+    analysis_script_writes: int = 0
+    notebook_build_writes: int = 0
+    reviewer_counts: dict = field(default_factory=dict)
+    process_design_edits: list = field(default_factory=list)
+
+
+_PROCESS_OWNING_BASENAMES = {"product-data-scientist.md", "product-manager.md", "run-product-analysis.md"}
+
+
+def _is_process_owning(path: str) -> bool:
+    return (
+        "/win-analytics-process/" in path
+        or "/analytics/lib/" in path
+        or "/analytics/runbook/" in path
+        or os.path.basename(path) in _PROCESS_OWNING_BASENAMES
+    )
+
+
+def _collect_decisions(records: list[dict]) -> RunDecisions:
+    """Observational per-run flags: deliverable artifacts, reviewer counts, and
+    process-owning edits at/after the calibration marker (the process-design
+    calibration track; noisy on contaminated runs)."""
+    d = RunDecisions(reviewer_counts={})
+    calib_idx = _marker_indices(records).get("calibration_write")
+    for i, rec in enumerate(records):
+        for name, tool_input, _tid in _iter_tool_uses(rec):
+            if name in ("Agent", "Task"):
+                st = tool_input.get("subagent_type")
+                if st in REVIEWER_TYPES:
+                    d.reviewer_counts[st] = d.reviewer_counts.get(st, 0) + 1
+            elif name in ("Write", "Edit"):
+                path = str(tool_input.get("file_path", ""))
+                base = os.path.basename(path)
+                if path.endswith(".ipynb"):
+                    d.notebook_writes += 1
+                elif base.startswith("build_") and base.endswith(".py"):
+                    d.notebook_build_writes += 1
+                elif path.endswith(".py") and any(
+                    seg in path for seg in ("/ad_hoc/", "/projects/", "/notebooks/")
+                ):
+                    d.analysis_script_writes += 1
+                if calib_idx is not None and i >= calib_idx and _is_process_owning(path):
+                    d.process_design_edits.append(base)
+    return d
+
+
+@dataclass
 class RunProfile:
     path: str
     confidence: str
     stages: dict[str, StageMetrics] = field(default_factory=dict)
+    decisions: RunDecisions | None = None
 
 
 def load_records(path: str) -> list[dict]:
@@ -338,7 +388,7 @@ def profile_run(path: str) -> RunProfile:
         tokens = _token_totals(sl)
         active, idle = _split_time(sl)
         stages[stage] = StageMetrics(model_active_seconds=active, human_idle_seconds=idle, **tokens)
-    return RunProfile(path=path, confidence=confidence, stages=stages)
+    return RunProfile(path=path, confidence=confidence, stages=stages, decisions=_collect_decisions(records))
 
 
 def _resolve_paths(patterns: list[str]) -> list[str]:
