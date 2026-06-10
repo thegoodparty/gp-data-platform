@@ -356,6 +356,15 @@ def format_report(profiles: list[RunProfile]) -> str:
             f"| **total** | {_min(tot.model_active_seconds)} | {_min(tot.human_idle_seconds)} | "
             f"{_min(tot_wall)} | {_pct(tot.model_active_seconds, total_active)} | {tot.input_tokens} | {tot.output_tokens} | {tot_cache} |"
         )
+        d = prof.decisions
+        if d is not None:
+            revs = ", ".join(f"{k}×{v}" for k, v in sorted(d.reviewer_counts.items())) or "none"
+            proc = ", ".join(sorted(set(d.process_design_edits))) or "none"
+            lines.append(
+                f"**Decisions:** deliverable — notebook ×{d.notebook_writes} · "
+                f"analysis-script ×{d.analysis_script_writes} · nb-build ×{d.notebook_build_writes}  |  "
+                f"reviewers — {revs}  |  process-design edits — {proc}"
+            )
         lines.append("")
     # combined summary
     n = len(profiles) or 1

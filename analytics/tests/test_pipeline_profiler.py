@@ -417,3 +417,24 @@ def test_profile_run_attaches_decisions(tmp_path):
     prof = pp.profile_run(str(f))
     assert prof.decisions.notebook_writes == 1
     assert prof.decisions.reviewer_counts == {"product-data-scientist": 1}
+
+
+def test_format_report_renders_decisions_line():
+    prof = pp.RunProfile(
+        path="/x/r.jsonl",
+        confidence="ok",
+        stages={s: pp.StageMetrics() for s in pp.STAGES},
+        decisions=pp.RunDecisions(
+            notebook_writes=0,
+            analysis_script_writes=3,
+            notebook_build_writes=1,
+            reviewer_counts={"product-data-scientist": 1, "product-manager": 1},
+            process_design_edits=["pipeline.md", "pipeline.md", "framing.md"],
+        ),
+    )
+    report = pp.format_report([prof])
+    assert "Decisions" in report
+    assert "analysis-script ×3" in report
+    assert "nb-build ×1" in report
+    assert "framing.md" in report
+    assert report.count("pipeline.md") == 1  # process edits deduped in render
