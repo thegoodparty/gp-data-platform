@@ -1,9 +1,10 @@
-"""Committed static snapshot of the prod schema.
+"""Committed static snapshot of the prod schema (pg_dump --schema-only).
 
-`inspect-prod` (DATA-1907) is out of scope, so `create-schema` and
-`build-indexes` read the prod `pg_dump` from a versioned snapshot committed
-under `schema/data/` instead of from S3. Override with `LOADER_PROD_DUMP_PATH`
-(used by tests and ad-hoc runs).
+`create-schema` and `build-indexes` read the prod schema DDL from this
+versioned file under `schema/data/` rather than generating it live. Override
+the path with `LOADER_PROD_DUMP_PATH` (used by tests and ad-hoc runs). A
+dedicated Prisma-to-DDL emitter (DATA-1904) would eventually replace this
+committed snapshot.
 """
 
 from __future__ import annotations
