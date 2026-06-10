@@ -74,6 +74,8 @@ def _iter_tool_uses(record: dict) -> list[tuple[str, dict, str]]:
     return out
 
 
+# These names must match the token fields on StageMetrics exactly: profile_run
+# calls StageMetrics(**tokens) where tokens is built by _token_totals using these keys.
 _TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
 
@@ -233,21 +235,23 @@ class StageMetrics:
 class RunProfile:
     path: str
     confidence: str
-    stages: dict = field(default_factory=dict)
+    stages: dict[str, StageMetrics] = field(default_factory=dict)
 
 
 def load_records(path: str) -> list[dict]:
-    """Read a transcript JSONL, skipping malformed lines."""
+    """Read a transcript JSONL, skipping blank, malformed, or non-object lines."""
     records = []
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
                 continue
             try:
-                records.append(json.loads(line))
+                obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if isinstance(obj, dict):
+                records.append(obj)
     return records
 
 

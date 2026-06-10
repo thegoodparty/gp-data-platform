@@ -258,6 +258,14 @@ def test_load_records_skips_malformed(tmp_path):
     assert len(recs) == 2
 
 
+def test_load_records_skips_non_object_lines(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text('{"type": "user"}\n"just a string"\n42\n{"type": "assistant"}\n')
+    recs = pp.load_records(str(f))
+    assert len(recs) == 2
+    assert all(isinstance(r, dict) for r in recs)
+
+
 def test_profile_run_produces_per_stage_metrics(tmp_path):
     # skill_load at 0 and brief_write at 2 -> confidence "ok"; the index-3
     # assistant turn (200 input tokens) falls in the execution span [2, 4).
@@ -297,3 +305,5 @@ def test_profile_run_produces_per_stage_metrics(tmp_path):
     assert profile.confidence == "ok"
     assert profile.stages["execution"].input_tokens == 200
     assert profile.stages["framing"].input_tokens == 50
+    assert profile.stages["review"].input_tokens == 0
+    assert profile.stages["calibration"].input_tokens == 0
