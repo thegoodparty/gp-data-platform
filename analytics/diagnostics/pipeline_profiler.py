@@ -37,6 +37,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 STAGES = ["framing", "execution", "review", "calibration"]
 SKILL_NAMES = {"win-analytics-process", "win-analytics-knowledge"}
@@ -414,13 +415,33 @@ def _resolve_paths(patterns: list[str]) -> list[str]:
     return out
 
 
+def _write_log(report: str, paths: list[str], logs_dir: Path, now: datetime) -> Path:
+    """Write the report to a timestamped Markdown log under logs_dir; return its path."""
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = logs_dir / f"profile_{now.strftime('%Y%m%d-%H%M%S')}.md"
+    header = [
+        f"# Pipeline profile run {now.strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "Profiled transcripts:",
+        *[f"- {p}" for p in paths],
+        "",
+        "---",
+        "",
+    ]
+    log_path.write_text("\n".join(header) + report + "\n", encoding="utf-8")
+    return log_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Profile Win-analytics pipeline runs from transcripts.")
     parser.add_argument("paths", nargs="+", help="Transcript JSONL paths or glob patterns.")
     args = parser.parse_args(argv)
     paths = _resolve_paths(args.paths)
     profiles = [profile_run(p) for p in paths]
-    print(format_report(profiles))
+    report = format_report(profiles)
+    print(report)
+    log_path = _write_log(report, paths, Path(__file__).resolve().parent / "logs", datetime.now())
+    print(f"\n[saved profile log to {log_path}]")
     return 0
 
 

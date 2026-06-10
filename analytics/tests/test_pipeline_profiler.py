@@ -459,3 +459,20 @@ def test_format_report_renders_decisions_line():
     assert "nb-build ×1" in report
     assert "framing.md" in report
     assert report.count("pipeline.md") == 1  # process edits deduped in render
+
+
+def test_write_log_creates_timestamped_file(tmp_path):
+    p = pp._write_log("REPORT BODY", ["/x/a.jsonl"], tmp_path, datetime(2026, 6, 10, 14, 30, 5))
+    assert p.name == "profile_20260610-143005.md"
+    assert p.parent == tmp_path
+    text = p.read_text(encoding="utf-8")
+    assert "REPORT BODY" in text
+    assert "/x/a.jsonl" in text
+    assert "2026-06-10 14:30:05" in text
+
+
+def test_write_log_creates_missing_dir(tmp_path):
+    target = tmp_path / "logs"
+    p = pp._write_log("BODY", [], target, datetime(2026, 1, 2, 3, 4, 5))
+    assert p.parent == target
+    assert target.is_dir()
