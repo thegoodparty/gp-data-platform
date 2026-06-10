@@ -510,9 +510,11 @@ models:
       - name: office_type
         description: >
           Standardized office classification (map_office_type buckets).
-          Reconciled across sources with BallotReady preferred over gp_api over
-          DDHQ; BallotReady derives it from the normalized position name, while
-          gp_api derives it from raw onboarding free-text (DATA-1972).
+          Positioned rows inherit the canonical value from
+          int__civics_position_office_type (one office_type per BallotReady
+          position, derived from the normalized position name) whenever the
+          crosswalk classifies the position; otherwise the per-source value
+          (BallotReady preferred, then gp_api, then DDHQ) is kept (DATA-1972).
 
       - name: candidacy_result
         description: >
@@ -1167,7 +1169,13 @@ models:
           may have a subset of these values.
 
       - name: office_type
-        description: Type of office (executive, legislative, judicial, etc.)
+        description: >
+          Standardized office classification (map_office_type buckets).
+          Positioned rows inherit the canonical value from
+          int__civics_position_office_type (one office_type per BallotReady
+          position, derived from the normalized position name) whenever the
+          crosswalk classifies the position; otherwise the per-source value
+          (BallotReady preferred, then gp_api, then DDHQ) is kept (DATA-1972).
 
       - name: state
         description: U.S. state for the election

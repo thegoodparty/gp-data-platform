@@ -2486,6 +2486,41 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_position_office_type
+    description: >
+      One row per BallotReady position with the canonical office_type, derived
+      from the normalized position name (DATA-1972). Source of office_type for
+      positioned candidacies in the civics marts.
+    columns:
+      - name: br_position_database_id
+        description: BallotReady position database id (grain).
+        data_tests:
+          - not_null
+          - unique
+      - name: office_type
+        description: Canonical office_type for the position (map_office_type output).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Alderman
+                  - Attorney
+                  - City Council
+                  - Clerk/Treasurer
+                  - Congressional
+                  - County Supervisor
+                  - Judge
+                  - Mayor
+                  - President
+                  - School Board
+                  - Sheriff
+                  - State House
+                  - State Senate
+                  - Statewide/Governor
+                  - Town Council
+                  - Other
+
   - name: int__civics_candidate_gp_api
     description: >
       Product Database (gp_api_db) users transformed into the civics mart
