@@ -595,8 +595,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # Extract state from LALVOTERID (substring starting at position 4 with length 2)
     df = df.withColumn("state_from_lalvoterid", col("LALVOTERID").substr(4, 2))
 
-    if dbt.is_incremental:
-        if df.count() == 0:
-            return session.createDataFrame(data=[], schema=df.schema)
+    if dbt.is_incremental and df.count() == 0:
+        return session.createDataFrame(data=[], schema=df.schema)
 
     return df

@@ -2,7 +2,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -28,12 +29,12 @@ def _base64_encode_id(filing_period_id: int) -> str:
 
 
 def _get_filing_periods_batch(
-    filing_period_ids: List[int],
+    filing_period_ids: list[int],
     ce_api_token: str,
     base_sleep: float = 0.05,
     jitter_factor: float = 0.05,
     timeout: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetches filing periods for a batch of filing period IDs using the CivicEngine API."""
     url = "https://bpi.civicengine.com/graphql"
 
@@ -80,15 +81,15 @@ def _get_filing_periods_batch(
         response.raise_for_status()
 
         data = response.json()
-        filing_periods: List[Dict[str, Any]] = data.get("data", {}).get("nodes", [])
+        filing_periods: list[dict[str, Any]] = data.get("data", {}).get("nodes", [])
         return filing_periods
 
     except (KeyError, TypeError) as e:
-        logging.error(f"Error processing filing periods batch: {str(e)}")
-        raise ValueError(f"Failed to parse filing period data from API response: {str(e)}")
+        logging.error(f"Error processing filing periods batch: {e!s}")
+        raise ValueError(f"Failed to parse filing period data from API response: {e!s}") from e
     except requests.exceptions.RequestException as e:
-        logging.error(f"API request failed for filing periods batch: {str(e)}")
-        raise RuntimeError(f"Failed to fetch filing period data from API: {str(e)}")
+        logging.error(f"API request failed for filing periods batch: {e!s}")
+        raise RuntimeError(f"Failed to fetch filing period data from API: {e!s}") from e
 
 
 filing_period_schema = StructType(
@@ -120,7 +121,7 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
         if not ce_api_token:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
-        filing_periods_by_filing_period_id: Dict[int, Dict[str, Any] | None] = {}
+        filing_periods_by_filing_period_id: dict[int, dict[str, Any] | None] = {}
 
         batch_size = 200
 
@@ -144,10 +145,10 @@ def _get_filing_period_token(ce_api_token: str) -> Callable:
                     filing_period_id = filing_period["databaseId"]
                     filing_periods_by_filing_period_id[filing_period_id] = filing_period
             except Exception as e:
-                logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
+                logging.error(f"Error processing batch {i//batch_size}: {e!s}")
 
         # create a list of dictionaries for each filing period in order of input
-        result_data: List[Dict[str, Any]] = []
+        result_data: list[dict[str, Any]] = []
         for filing_period_id in filing_period_ids:
             filing_period = filing_periods_by_filing_period_id.get(int(filing_period_id), {})  # type: ignore
             if filing_period:

@@ -30,8 +30,9 @@ stages them to a Databricks table for downstream dbt modelling.
 import logging
 import os
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, List
+from typing import Any
 
+from airflow.sdk import BaseHook, Variable, dag, task
 from include.custom_functions.databricks_utils import (
     get_databricks_connection,
     get_processed_files,
@@ -45,8 +46,6 @@ from include.custom_functions.l2_sftp import (
     download_expired_voter_files as download_files,
 )
 from pendulum import datetime, duration
-
-from airflow.sdk import BaseHook, Variable, dag, task
 
 t_log = logging.getLogger("airflow.task")
 
@@ -70,7 +69,7 @@ DATABRICKS_CATALOG = "goodparty_data_catalog"
 )
 def l2_expired_voters():
     @task
-    def fetch_processed_files() -> List[str]:
+    def fetch_processed_files() -> list[str]:
         """
         Query the loads metadata table for files that have been fully loaded
         so the ingest task can skip them (idempotency).
@@ -94,8 +93,8 @@ def l2_expired_voters():
 
     @task
     def ingest_expired_voter_files(
-        processed_files: List[str],
-    ) -> Dict[str, Any]:
+        processed_files: list[str],
+    ) -> dict[str, Any]:
         """
         Connect to L2 SFTP, download expired voter files, parse LALVOTERIDs,
         and write them to Databricks.
@@ -125,7 +124,7 @@ def l2_expired_voters():
             )
 
             with TemporaryDirectory(prefix="l2_expired_") as temp_dir:
-                file_timestamps: Dict[str, str] = {}
+                file_timestamps: dict[str, str] = {}
                 extracted_paths = download_files(
                     sftp_client=sftp_client,
                     remote_dir=expired_dir,

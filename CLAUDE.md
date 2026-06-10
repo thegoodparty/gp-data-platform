@@ -8,15 +8,15 @@ There is no single root venv. Each subproject manages its own deps. `cd` into th
 
 | Subproject | Tool | Python | Notes |
 |---|---|---|---|
-| `people-api-loader/` | uv | 3.12 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
-| `dbt/` | poetry | 3.12 | `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via poetry. |
-| `airflow/` | poetry | 3.12 | Local DAG dev outside Astronomer. To run Airflow itself: `cd airflow/astro && astro dev start`. |
-| `analytics/` | pip + root `requirements_test.txt` | 3.12 | No own deps file; its tests rely on the root test deps. |
+| `people-api-loader/` | uv | 3.14 | Astral toolchain (ruff + ty). `uv sync`, `uv run ...`. |
+| `dbt/` | uv | 3.14 | `cd dbt && uv sync`, `uv run ...`. `dbt` itself is the system-installed dbt Cloud CLI; do not invoke it via uv. |
+| `airflow/` | uv | 3.14 | Local DAG dev outside Astronomer (`cd airflow && uv sync`, `uv run pytest`). Deploy is Astro Runtime via `astro/Dockerfile` + `astro/requirements.txt` (not uv). To run Airflow itself: `cd airflow/astro && astro dev start`. |
+| `analytics/` | uv | 3.14 | `cd analytics && uv sync`, `uv run ...`. |
 | `matcha/` | uv | 3.14 | Splink entity-resolution pipeline. `cd matcha && uv sync`. Builds a container via `.github/workflows/matcha-container.yml`. |
 | `apps/genie-tools/` | uv | 3.14 | `cd apps/genie-tools && uv sync`, `uv run ...`. |
 | `apps/genie-slack-bot/` | uv | 3.14 | `cd apps/genie-slack-bot && uv sync`, `uv run ...`. |
 
-Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (3.12 for most; `matcha` on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
+Each subproject has its own CI workflow at `.github/workflows/<name>.yml`, path-filtered to its directory and running on its own Python (all on 3.14). There is no single root `pytest` job; tests are colocated under each directory (e.g. `airflow/astro/tests`, `dbt/tests`, `analytics/tests`).
 
 ## ai-rules submodule
 
@@ -46,18 +46,11 @@ pre-commit install
 
 If `pre-commit` is not on your PATH, install it once with `pipx install pre-commit` (or `brew install pre-commit`).
 
-For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `poetry install` in `dbt/` and `airflow/`, `uv sync` in `people-api-loader/`, `apps/genie-tools/`, and `apps/genie-slack-bot/`, and the root `requirements_test.txt` for `analytics/`. Each hook `cd`s into its directory and runs the suite via that env (`poetry run` / `uv run` / `pytest`), so you do not need to wrap `git` in any venv.
-
-`poetry install` in `dbt/` builds `psycopg2` from source and needs `pg_config` on PATH. On macOS:
-
-```bash
-brew install libpq
-echo 'export PATH="/opt/homebrew/opt/libpq/bin:$PATH"' >> ~/.zshrc
-```
+For the per-directory test hooks to pass on push, set up the environment of each directory you touch: `uv sync` in `people-api-loader/`, `dbt/`, `airflow/`, `analytics/`, `apps/genie-tools/`, and `apps/genie-slack-bot/`. Each hook `cd`s into its directory and runs the suite via that env (`uv run`), so you do not need to wrap `git` in any venv.
 
 ## Never
 
 - Don't add a root-level command that assumes one venv. State which subproject to `cd` into.
-- Don't invoke `dbt` via `poetry`. dbt Cloud CLI is system-installed.
+- Don't invoke `dbt` via `uv`. dbt Cloud CLI is system-installed.
 - Don't disable pre-commit hooks to make a commit go through. CI runs `pre-commit run --all-files` and will catch a skipped lint/format hook.
 - Don't commit secrets. `.env.example` is the only env file in git.

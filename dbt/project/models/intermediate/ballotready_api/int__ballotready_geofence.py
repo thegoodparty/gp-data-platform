@@ -2,7 +2,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -36,12 +37,12 @@ def _base64_encode_id(geofence_id: str) -> str:
 
 
 def _get_geofences_batch(
-    geofence_ids: List[str],
+    geofence_ids: list[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches geofences for a batch of geo IDs using the CivicEngine API.
 
@@ -121,15 +122,15 @@ def _get_geofences_batch(
         }
         """
         data = response.json()
-        geofences: List[Dict[str, Any]] = data.get("data", {}).get("nodes", [])
+        geofences: list[dict[str, Any]] = data.get("data", {}).get("nodes", [])
         return geofences
 
     except (KeyError, TypeError) as e:
-        logging.error(f"Error processing geofences batch: {str(e)}")
-        raise ValueError(f"Failed to parse geofence data from API response: {str(e)}")
+        logging.error(f"Error processing geofences batch: {e!s}")
+        raise ValueError(f"Failed to parse geofence data from API response: {e!s}") from e
     except requests.exceptions.RequestException as e:
-        logging.error(f"API request failed for geofences batch: {str(e)}")
-        raise RuntimeError(f"Failed to fetch geofence data from API: {str(e)}")
+        logging.error(f"API request failed for geofences batch: {e!s}")
+        raise RuntimeError(f"Failed to fetch geofence data from API: {e!s}") from e
 
 
 def _get_geofence_token(ce_api_token: str) -> Callable:
@@ -151,7 +152,7 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        geofences_by_geofence_id: Dict[int, Dict[str, Any] | None] = {}
+        geofences_by_geofence_id: dict[int, dict[str, Any] | None] = {}
 
         # Set batch size for API calls
         batch_size = 100
@@ -185,10 +186,10 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
                     geofence_id = int(geofence["databaseId"])
                     geofences_by_geofence_id[geofence_id] = geofence
             except Exception as e:
-                logging.error(f"Error processing batch {i//batch_size}: {str(e)}")
+                logging.error(f"Error processing batch {i//batch_size}: {e!s}")
 
         # Create a list of dictionaries for each geofence in order of input
-        result_data: List[Dict[str, Any]] = []
+        result_data: list[dict[str, Any]] = []
         for geofence_id in geofence_ids:
             try:
                 geofence = geofences_by_geofence_id.get(int(geofence_id), {})  # type: ignore
@@ -220,7 +221,7 @@ def _get_geofence_token(ce_api_token: str) -> Callable:
             except Exception as e:
                 encoded_id = _base64_encode_id(str(geofence_id))
                 logging.error(
-                    f"Failed to process geofence_id: {geofence_id}, encoded_id: {encoded_id}. Error: {str(e)}"
+                    f"Failed to process geofence_id: {geofence_id}, encoded_id: {encoded_id}. Error: {e!s}"
                 )
                 # Append a row with nulls instead of raising an error
                 result_data.append(

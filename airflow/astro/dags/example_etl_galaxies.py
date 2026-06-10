@@ -13,13 +13,13 @@ import os
 import duckdb
 import pandas as pd
 
+# This DAG uses the TaskFlow API. See: https://www.astronomer.io/docs/learn/airflow-decorators
+from airflow.sdk import Asset, Param, chain, dag, task
+
 # modularize code by importing functions from the include folder
 from include.custom_functions.galaxy_functions import get_galaxy_data
 from pendulum import datetime, duration
 from tabulate import tabulate
-
-# This DAG uses the TaskFlow API. See: https://www.astronomer.io/docs/learn/airflow-decorators
-from airflow.sdk import Asset, Param, chain, dag, task
 
 # use the Airflow task logger to log information to the task logs (or use print())
 t_log = logging.getLogger("airflow.task")

@@ -66,6 +66,10 @@ analytics/ad_hoc/
 # itself. See the win-analytics-process skill's references/calibration.md for the convention.
 analytics/runbook/CALIBRATION_*.md
 
+# Per-ticket working notes (plans, prompts, validation outputs) — personal
+# local scratch, never tracked.
+.tickets/
+
 # Entity resolution local data and results
 entity_resolution/data/
 entity_resolution/results/*.csv

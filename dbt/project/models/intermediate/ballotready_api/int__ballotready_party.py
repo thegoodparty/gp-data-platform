@@ -2,8 +2,9 @@ import logging
 import random
 import time
 from base64 import b64encode
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pandas as pd
 import requests
@@ -37,12 +38,12 @@ def _base64_encode_id(candidacy_id: str) -> str:
 
 
 def _get_parties_batch(
-    candidacy_ids: List[str],
+    candidacy_ids: list[str],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches parties for a batch of candidacy IDs from the CivicEngine GraphQL API.
 
@@ -200,7 +201,7 @@ def _get_candidacy_parties_token(ce_api_token: str) -> Callable:
             Series of party data
         """
         batch_size = 50  # Adjust batch size based on API limits
-        parties_by_candidacy: Dict[int, List[Dict[str, Any]]] = {}
+        parties_by_candidacy: dict[int, list[dict[str, Any]]] = {}
 
         # Process in batches
         for i in range(0, len(candidacy_ids), batch_size):
@@ -314,7 +315,7 @@ def model(dbt, session) -> DataFrame:
     logging.info(f"INFO: Processed {party.count()} candidacies with pandas UDF")
 
     # Add timestamp metadata
-    current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    current_time_utc = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
     if dbt.is_incremental:
         # Prepare a lookup DataFrame with existing candidacy_ids and their original created_at values

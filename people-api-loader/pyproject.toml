@@ -2,7 +2,7 @@
 name = "people-api-loader"
 version = "0.1.0"
 description = "GoodParty.org data loader: generic Databricks -> S3 -> RDS pipeline harness, plus the people-API consumer as its first concrete pipeline."
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "boto3>=1.35",
     "psycopg[binary,pool]>=3.2",
@@ -35,7 +35,7 @@ packages = ["src/loader"]
 
 [tool.ruff]
 line-length = 110
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
@@ -44,7 +44,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501", "RUF002"]
 
 [tool.ty.environment]
-python-version = "3.12"
+python-version = "3.14"
 
 [tool.ty.src]
 include = ["src", "tests"]
