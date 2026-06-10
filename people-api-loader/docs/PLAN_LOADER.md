@@ -1,5 +1,16 @@
 # Voter Data Loader — Refresh + Redesign Plan
 
+> **Superseded — read this first.** This plan predates the current design. The
+> loader now builds the **unified, partitioned `public."Voter"` table** that prod
+> actually uses: a single table `PARTITION BY LIST ("State")` with per-state child
+> partitions (`Voter_TX`, …), **not** the 51 standalone `Voter{ST}` tables
+> described below. The per-state-table model here is stale; see the implemented
+> loader steps and PR #477 for the current design. Also note: `people-api` and
+> `gp-api` are no longer standalone repos — they now live in the **omni monorepo**
+> at `omni/packages/people-api` and `omni/packages/gp-api` (the old standalone
+> repos are archived). Paths below that read `people-api/...` mean
+> `omni/packages/people-api/...`.
+
 ## Context
 
 GoodParty.org exports US voter data to political-candidate users. Current pipeline:
@@ -24,11 +35,11 @@ GoodParty.org exports US voter data to political-candidate users. Current pipeli
 
 - **Legacy loader code:** `gp-data-platform/dbt/project/models/write/write__l2_databricks_to_gp_api.py`. Current dbt Python model copying from Databricks to PostgreSQL. Contains the canonical `VOTER_COLUMN_LIST` (348 columns), `REMOVED_COLUMNS` (15 columns L2 stopped delivering — kept as NULL placeholders for schema compatibility), `INTEGER_COLUMNS` (6 columns cast to `INT`), and the full `UPSERT_QUERY` template. **Note:** L2 has added ~470 more columns on the Databricks side since this list was frozen (807 total), but most of those are consumer-enrichment data no app reads. The new loader scopes by *referenced columns* (see "Column Scoping" below), not by source schema.
 - **Current app-side query construction:** `gp-api/src/voters/voterFile/util/voterFile.util.ts` (NOTE: file is `voterFile.util.ts`, not `voterFile.utils.ts`). Builds raw SQL against `public."Voter{STATE}"` tables — this is the serving layer we're refreshing.
-- **Forward-looking app-side query construction:** `people-api/` (sibling of `gp-api/`). The `voterFile.util.ts` file has a standing TODO pointing at ticket ENG-5032 that says the gp-api should stop hitting the raw voter DB and delegate to the people-api instead. The people-api has its own Voter table (in schema `green`, not `public`) and its own dedicated DB, populated by its own loader — so a gp-voter-db refresh does not touch it directly. *But* the people-api's Voter schema and filter builder are the authoritative answer to "what columns might be referenced by any current or near-term consumer." Key files:
-  - `people-api/prisma/schema/Voter.prisma` — 115-column model (names are a rename layer over L2-native; see mapping table in "Column Scoping" below).
-  - `people-api/src/people/schemas/filters.schema.ts` — the enum of exposed filter keys.
-  - `people-api/src/people/utils/filters.sql.utils.ts` — maps filter keys to L2-native column names + value mappers.
-  - `people-api/src/people/people.select.ts` — default `SELECT` column list for list/download endpoints.
+- **Forward-looking app-side query construction:** `omni/packages/people-api` (alongside `omni/packages/gp-api` in the omni monorepo). The `voterFile.util.ts` file has a standing TODO pointing at ticket ENG-5032 that says the gp-api should stop hitting the raw voter DB and delegate to the people-api instead. The people-api has its own Voter table (in schema `green`, not `public`) and its own dedicated DB, populated by its own loader — so a gp-voter-db refresh does not touch it directly. *But* the people-api's Voter schema and filter builder are the authoritative answer to "what columns might be referenced by any current or near-term consumer." Key files (under `omni/packages/people-api/`):
+  - `prisma/schema/Voter.prisma` — the Voter model (names are a rename layer over L2-native; see mapping table in "Column Scoping" below).
+  - `src/people/schemas/filters.schema.ts` — the enum of exposed filter keys.
+  - `src/people/utils/filters.sql.utils.ts` — maps filter keys to L2-native column names + value mappers.
+  - `src/people/people.select.ts` — default `SELECT` column list for list/download endpoints.
 - **Source dbt model:** `int__l2_nationwide_uniform` at `gp-data-platform/dbt/project/models/intermediate/l2/int__l2_nationwide_uniform.py`. This is the table to unload from — it's the union of all per-state staging tables. Inspected row count: **218,278,803** (51 states incl. DC; see per-state counts in "Data Volume" below).
 - **CLI access available:**
   - `aws` — authenticated to account `333022194791`, default region should be set to `us-west-2` for all loader operations.
