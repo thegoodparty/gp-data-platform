@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import re
 
-# Matches one `CREATE TABLE public."X" ( ... );` block. The body is non-greedy
-# up to the first `)` that begins the closing line; a `)` inside the body (e.g.
-# `timestamp(3)`) is never followed by `;` so it cannot terminate the match.
+# Matches one `CREATE TABLE public."X" ( ... );` block, body non-greedy up to
+# the closing `)` + `;`. Safe for pg_dump --schema-only output: the table's
+# closing `);` sits on its own line, and interior column lines (e.g.
+# `timestamp(3) without time zone`) never end a line with `);`, so no interior
+# paren terminates the match. This relies on that pg_dump formatting, not on a
+# universal SQL invariant.
 _CREATE_TABLE_RE = re.compile(
     r'CREATE\s+TABLE\s+(?:(?:public|"public")\.)?"(?P<name>[^"]+)"\s*' r"\(.*?\)\s*;",
     re.IGNORECASE | re.DOTALL,
