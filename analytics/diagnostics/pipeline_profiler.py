@@ -30,6 +30,8 @@ win-analytics-process skill's references/pipeline.md, which is the authority):
 
 from __future__ import annotations
 
+import argparse
+import glob as _glob
 import json
 import os
 import re
@@ -329,3 +331,26 @@ def profile_run(path: str) -> RunProfile:
         active, idle = _split_time(sl)
         stages[stage] = StageMetrics(model_active_seconds=active, human_idle_seconds=idle, **tokens)
     return RunProfile(path=path, confidence=confidence, stages=stages)
+
+
+def _resolve_paths(patterns: list[str]) -> list[str]:
+    """Expand each pattern as a glob; pass through literal paths."""
+    out = []
+    for pat in patterns:
+        matches = _glob.glob(pat)
+        out.extend(sorted(matches) if matches else [pat])
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Profile Win-analytics pipeline runs from transcripts.")
+    parser.add_argument("paths", nargs="+", help="Transcript JSONL paths or glob patterns.")
+    args = parser.parse_args(argv)
+    paths = _resolve_paths(args.paths)
+    profiles = [profile_run(p) for p in paths]
+    print(format_report(profiles))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

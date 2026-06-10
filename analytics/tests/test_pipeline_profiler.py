@@ -328,3 +328,10 @@ def test_format_report_includes_totals_share_and_blind_spot_note():
     assert "16.5" in report  # total wall-clock 990s -> 16.5 min
     assert "46" in report  # execution share of model-active (180/390 -> 46%)
     assert "reviewer internal tokens" in report.lower()  # blind-spot label
+
+
+def test_resolve_paths_expands_globs(tmp_path):
+    (tmp_path / "a.jsonl").write_text("{}")
+    (tmp_path / "b.jsonl").write_text("{}")
+    paths = pp._resolve_paths([str(tmp_path / "*.jsonl")])
+    assert len(paths) == 2 and all(p.endswith(".jsonl") for p in paths)
