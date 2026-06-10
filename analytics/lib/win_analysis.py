@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Callable, Mapping
+from collections.abc import Callable, Mapping
 
 import pandas as pd
 
