@@ -157,7 +157,16 @@ select
     deduplicated.official_office_name,
     deduplicated.candidate_office,
     deduplicated.office_level,
-    deduplicated.office_type,
+    -- DATA-1972: positioned elections inherit the canonical office_type from
+    -- the position crosswalk whenever it classifies the position (non-Other),
+    -- keeping candidacy and election marts consistent; per-source values
+    -- survive when the crosswalk can only say 'Other'; rows without a
+    -- position keep the per-source value.
+    coalesce(
+        nullif(pos_ot.office_type, 'Other'),
+        deduplicated.office_type,
+        pos_ot.office_type
+    ) as office_type,
     deduplicated.state,
     deduplicated.city,
     deduplicated.district,
@@ -218,5 +227,8 @@ from deduplicated
 left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
+left join
+    {{ ref("int__civics_position_office_type") }} as pos_ot
+    on deduplicated.br_position_database_id = pos_ot.br_position_database_id
 left join stage_dates on deduplicated.gp_election_id = stage_dates.gp_election_id
 left join gp_api_membership as gp on deduplicated.gp_election_id = gp.gp_election_id
