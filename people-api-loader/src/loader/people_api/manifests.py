@@ -98,6 +98,7 @@ class SchemaManifest(ManifestBase):
 
 class CopyTableResult(BaseModel):
     table: str
+    state: str
     expected_rows: int
     actual_rows: int
     files_loaded: int
