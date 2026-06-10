@@ -8,6 +8,7 @@ CONCURRENTLY) since the cluster is idle. No FKs exist in this schema.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
@@ -51,10 +52,12 @@ def _apply_session(cur: psycopg.Cursor) -> None:
 
 def _rewrite_index_sql(sql: str) -> str:
     """Inject IF NOT EXISTS so reruns are idempotent."""
-    if "CREATE INDEX " in sql and "IF NOT EXISTS" not in sql.upper():
-        sql = sql.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ", 1)
-    if "CREATE UNIQUE INDEX " in sql and "IF NOT EXISTS" not in sql.upper():
-        sql = sql.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ", 1)
+    if "IF NOT EXISTS" in sql.upper():
+        return sql
+    if "CREATE UNIQUE INDEX " in sql:
+        return sql.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ", 1)
+    if "CREATE INDEX " in sql:
+        return sql.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ", 1)
     return sql
 
 
@@ -121,19 +124,16 @@ def run(cfg: LoaderConfig, run_date: str) -> IndexManifest:
     idxs = [i for i in parse_indexes(dump) if i.table == _TARGET_TABLE]
     log.info("indexes.parsed", primary_keys=len(pks), indexes=len(idxs))
 
-    # 1. Primary key(s).
-    with ThreadPoolExecutor(max_workers=_INDEX_BUILDERS) as executor:
-        for fut in as_completed(
-            [executor.submit(_add_primary_key, cfg, run_date, writer_endpoint, pk) for pk in pks]
-        ):
-            fut.result()
+    def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
+        """Run `fn(cfg, run_date, writer_endpoint, item)` across items, fail-fast."""
+        with ThreadPoolExecutor(max_workers=_INDEX_BUILDERS) as executor:
+            futures = [executor.submit(fn, cfg, run_date, writer_endpoint, item) for item in items]
+            for fut in as_completed(futures):
+                fut.result()
 
-    # 2. Indexes (unique + plain), parallel on the single table.
-    with ThreadPoolExecutor(max_workers=_INDEX_BUILDERS) as executor:
-        for fut in as_completed(
-            [executor.submit(_create_index, cfg, run_date, writer_endpoint, idx) for idx in idxs]
-        ):
-            fut.result()
+    # 1. Primary key(s), then 2. indexes (unique + plain) — parallel on the single table.
+    _build_in_parallel(_add_primary_key, pks)
+    _build_in_parallel(_create_index, idxs)
 
     # 3. ANALYZE.
     _analyze(cfg, run_date, writer_endpoint)

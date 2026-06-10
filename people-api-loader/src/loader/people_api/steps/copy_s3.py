@@ -104,7 +104,8 @@ def _load_state(
                 files_loaded=0,
                 seconds_elapsed=0.0,
             )
-        if actual > 0 and actual != expected_rows:
+        if actual > 0:
+            # Partial load (an exact match already returned above) — reset and reload.
             log.info("copy.partial_reload", state=state, existing_rows=actual, expected=expected_rows)
             _delete_state(conn, state)
 
