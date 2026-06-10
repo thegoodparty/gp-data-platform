@@ -24,7 +24,18 @@ def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.Monke
     step._copy_one_file(_CFG, "20260609", "wh", "voter_export_20260609/state_id=TX/part-0.csv")
     sql = executed_sql(conn)
     assert any("aws_s3.table_import_from_s3" in s for s in sql)
-    assert any("SET synchronous_commit = off" in s for s in sql)
+    # all five session SETs run before the import
+    for setting in (
+        "synchronous_commit",
+        "maintenance_work_mem",
+        "work_mem",
+        "statement_timeout",
+        "idle_in_transaction_session_timeout",
+    ):
+        assert any(f"SET {setting}" in s for s in sql), f"missing SET {setting}"
+    # the import targets the single unified table, not a per-state table
+    import_params = next(p for s, p in conn.executed if "table_import_from_s3" in s)
+    assert import_params["table"] == 'public."Voter"'
 
 
 def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) -> None:
