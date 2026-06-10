@@ -158,7 +158,14 @@ def run(cfg: LoaderConfig, run_date: str) -> IndexManifest:
         started_at=started,
         finished_at=datetime.now(UTC),
         indexes=[
-            IndexSpec(table=i.table, index_name=i.name, columns=i.columns, unique=i.unique, where=i.where)
+            IndexSpec(
+                table=i.table,
+                index_name=i.name,
+                # Unique indexes get the partition key appended (as built above).
+                columns=[*i.columns, "State"] if i.unique else i.columns,
+                unique=i.unique,
+                where=i.where,
+            )
             for i in idxs
         ],
         constraints_added=[p.constraint for p in pks],
