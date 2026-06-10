@@ -74,7 +74,11 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk:
 
 
 def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: IndexDef) -> None:
-    sql = _rewrite_index_sql(idx.sql)
+    if idx.unique:
+        cols = ", ".join(f'"{c}"' for c in [*idx.columns, "State"])
+        sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols})'
+    else:
+        sql = _rewrite_index_sql(idx.sql)
     with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
         _apply_session(cur)
         cur.execute(sql)  # ty: ignore[no-matching-overload]
@@ -123,6 +127,9 @@ def run(cfg: LoaderConfig, run_date: str) -> IndexManifest:
     pks = [p for p in parse_primary_keys(dump) if p.table == _TARGET_TABLE]
     idxs = [i for i in parse_indexes(dump) if i.table == _TARGET_TABLE]
     log.info("indexes.parsed", primary_keys=len(pks), indexes=len(idxs))
+
+    # Partition key "State" must be part of every PK/unique on the partitioned table.
+    pks = [PrimaryKey(table=p.table, constraint=p.constraint, columns=[*p.columns, "State"]) for p in pks]
 
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
         """Run `fn(cfg, run_date, writer_endpoint, item)` across items, fail-fast."""

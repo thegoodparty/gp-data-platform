@@ -3,14 +3,14 @@
 pg_dump emits these as stand-alone statements after the CREATE TABLE
 blocks:
 
-    ALTER TABLE ONLY public."VoterTX"
-        ADD CONSTRAINT "VoterTX_pkey" PRIMARY KEY ("LALVOTERID");
+    ALTER TABLE ONLY public."Voter"
+        ADD CONSTRAINT "Voter_pkey" PRIMARY KEY ("id", "State");
 
-    CREATE INDEX "VoterTX_Voters_LastName_idx"
-        ON public."VoterTX" USING btree ("Voters_LastName");
+    CREATE INDEX "Voter_LastName_idx"
+        ON public."Voter" USING btree ("Voters_LastName");
 
-    CREATE INDEX "VoterTX_family_idx"
-        ON public."VoterTX" USING btree ("Mailing_Families_FamilyID")
+    CREATE INDEX "Voter_family_idx"
+        ON public."Voter" USING btree ("Mailing_Families_FamilyID")
         WHERE ("Mailing_Families_FamilyID" IS NOT NULL);
 
 We parse them into simple records so step 5 can re-issue them in order:

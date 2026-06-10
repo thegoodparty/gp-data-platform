@@ -1,4 +1,4 @@
-"""build-indexes: applies PK + indexes to public."Voter", then ANALYZE."""
+"""build-indexes: applies PK + indexes (with State partition key) to public."Voter", then ANALYZE."""
 
 from __future__ import annotations
 
@@ -41,9 +41,17 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
 
     manifest = step.run(_CFG, "20260609")
     sql = executed_sql(conn)
-    assert any("ADD CONSTRAINT" in s and "PRIMARY KEY" in s for s in sql)
-    assert any("CREATE UNIQUE INDEX IF NOT EXISTS" in s for s in sql)
-    assert any("CREATE INDEX IF NOT EXISTS" in s for s in sql)
+
+    # PK must include "State"
+    assert any("ADD CONSTRAINT" in s and 'PRIMARY KEY ("id", "State")' in s for s in sql)
+    # Unique index must include "State"
+    assert any(
+        'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_LALVOTERID_key" ON public."Voter" ("LALVOTERID", "State")'
+        in s
+        for s in sql
+    )
+    # Plain index should be rewritten with IF NOT EXISTS but NOT have "State" appended
+    assert any("CREATE INDEX IF NOT EXISTS" in s and "Voter_Active_idx" in s for s in sql)
     assert any('ANALYZE public."Voter"' in s for s in sql)
     assert manifest.status == "complete"
     assert manifest.analyzed_tables == ["Voter"]

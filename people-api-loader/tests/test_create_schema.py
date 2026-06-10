@@ -1,4 +1,4 @@
-"""create-schema: extracts CREATE TABLE Voter, installs extensions, applies it."""
+"""create-schema: extracts CREATE TABLE Voter, installs extensions, applies partitioned DDL."""
 
 from __future__ import annotations
 
@@ -29,18 +29,26 @@ def _patch(monkeypatch: pytest.MonkeyPatch, conn: FakeConn) -> dict:
     return captured
 
 
-def test_applies_table_and_extensions_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn()
     _patch(monkeypatch, conn)
     manifest = step.run(_CFG, "20260609")
     sql = executed_sql(conn)
     assert any("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE" in s for s in sql)
     assert any("CREATE EXTENSION IF NOT EXISTS aws_commons" in s for s in sql)
-    assert any('CREATE TABLE public."Voter"' in s for s in sql)
+    # parent table has PARTITION BY LIST
+    assert any('PARTITION BY LIST ("State")' in s for s in sql)
+    # one child partition for TX
+    assert any(
+        'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\')' in s
+        for s in sql
+    )
     # indexes are NOT applied by create-schema
     assert not any("CREATE INDEX" in s for s in sql)
     assert manifest.status == "complete"
-    assert manifest.tables_created == ["Voter"]
+    assert "Voter" in manifest.tables_created
+    assert "Voter_TX" in manifest.tables_created
+    assert len(manifest.tables_created) == 52
 
 
 def test_skips_when_complete(monkeypatch: pytest.MonkeyPatch) -> None:
