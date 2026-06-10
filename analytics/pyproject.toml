@@ -17,7 +17,7 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-pythonpath = ["lib"]
+pythonpath = ["lib", "diagnostics"]
 testpaths = ["tests"]
 
 [tool.ruff]
