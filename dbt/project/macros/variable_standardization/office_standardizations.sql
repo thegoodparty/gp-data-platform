@@ -6,7 +6,10 @@
     - BR: generate_candidate_office_from_position (ballotready_standardizations.sql)
     - DDHQ: parse_ddhq_candidate_office (ddhq_standardizations.sql)
     - TS: pre-populated in upstream model
-    - GP API: generate_candidate_office_from_position via campaigns mart
+    - GP API: candidate_office is the product DB campaign_office (raw onboarding
+      free-text), mapped here by map_office_type. NOTE: this free-text input is
+      why gp_api office_type is mostly 'Other'; DATA-1972 routes positioned rows
+      through int__civics_position_office_type instead.
 
   This macro normalizes those values into a consistent office_type.
   All comparisons use lower() so casing differences (e.g. from initcap

@@ -509,11 +509,10 @@ models:
 
       - name: office_type
         description: >
-          Standardized type of office sourced from HubSpot properties.
-          Common values include School Board, City Council, Town Council,
-          Mayor, Judge, State House, State Senate, Congressional,
-          Statewide/Governor, Sheriff, Alderman, Attorney, Clerk/Treasurer,
-          County Supervisor, President, and Other.
+          Standardized office classification (map_office_type buckets).
+          Reconciled across sources with BallotReady preferred over gp_api over
+          DDHQ; BallotReady derives it from the normalized position name, while
+          gp_api derives it from raw onboarding free-text (DATA-1972).
 
       - name: candidacy_result
         description: >
