@@ -285,7 +285,12 @@ def _collect_decisions(records: list[dict]) -> RunDecisions:
                     seg in path for seg in ("/ad_hoc/", "/projects/", "/notebooks/")
                 ):
                     d.analysis_script_writes += 1
-                if calib_idx is not None and i >= calib_idx and _is_process_owning(path):
+                if (
+                    calib_idx is not None
+                    and i >= calib_idx
+                    and _is_process_owning(path)
+                    and not _CALIBRATION_RE.search(base)
+                ):
                     d.process_design_edits.append(base)
     return d
 

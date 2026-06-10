@@ -419,6 +419,27 @@ def test_profile_run_attaches_decisions(tmp_path):
     assert prof.decisions.reviewer_counts == {"product-data-scientist": 1}
 
 
+def test_collect_decisions_excludes_calibration_log_from_process_edits():
+    records = [
+        _tool_use_rec(
+            "t", "Write", "c1", file_path="/repo/analytics/runbook/CALIBRATION_2026-06-08.md"
+        ),  # marker
+        _tool_use_rec(
+            "t", "Edit", "e1", file_path="/repo/.claude/skills/win-analytics-process/references/pipeline.md"
+        ),
+        _tool_use_rec(
+            "t",
+            "Edit",
+            "e2",
+            file_path="/repo/.claude/skills/win-analytics-process/references/calibration.md",
+        ),
+    ]
+    d = pp._collect_decisions(records)
+    assert "pipeline.md" in d.process_design_edits
+    assert "calibration.md" in d.process_design_edits  # the skill doc is legit
+    assert "CALIBRATION_2026-06-08.md" not in d.process_design_edits  # the log artifact is not
+
+
 def test_format_report_renders_decisions_line():
     prof = pp.RunProfile(
         path="/x/r.jsonl",
