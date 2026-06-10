@@ -2486,6 +2486,58 @@ models:
         data_tests:
           - not_null
 
+  - name: int__civics_position_office_type
+    description: >
+      One row per BallotReady position with the canonical office_type, derived
+      from the normalized position name (DATA-1972). Source of office_type for
+      positioned candidacies in the civics marts.
+    columns:
+      - name: br_position_database_id
+        description: BallotReady position database id (grain).
+        data_tests:
+          - not_null
+          - unique
+      - name: office_type
+        description: Canonical office_type for the position (map_office_type output).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Alderman
+                  - Attorney
+                  - City Council
+                  - Clerk/Treasurer
+                  - Congressional
+                  - County Supervisor
+                  - Judge
+                  - Mayor
+                  - President
+                  - School Board
+                  - Sheriff
+                  - State House
+                  - State Senate
+                  - Statewide/Governor
+                  - Town Council
+                  - Other
+      - name: is_office_type_fallback
+        description: >
+          True when no candidate_office could be derived for the position (no
+          normalized position name available and no position-name pattern
+          matched), making office_type the NULL-input fallback 'Other' rather
+          than a real classification. True rows mean the incremental
+          normalized-position model is lagging the position universe; the mart
+          coalesce already prevents fallback 'Other' from overriding per-source
+          values.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - false
+              config:
+                severity: warn
+
   - name: int__civics_candidate_gp_api
     description: >
       Product Database (gp_api_db) users transformed into the civics mart

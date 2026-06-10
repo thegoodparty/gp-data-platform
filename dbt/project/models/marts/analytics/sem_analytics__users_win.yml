@@ -1,0 +1,53 @@
+semantic_models:
+  - name: users_win
+    description: >
+      Semantic model over the users_win_base mart. One row per Win-product
+      user (the mart already filters to is_win_user). Surfaces the governed
+      engagement flags as dimensions so any user-grain metric can be sliced
+      or filtered by them. The flag *definitions* are owned by
+      users_win_base; this model only exposes the columns.
+    model: ref('users_win_base')
+    defaults:
+      agg_time_dimension: registered_at
+    entities:
+      - name: user
+        type: primary
+        expr: user_id
+    dimensions:
+      - name: registered_at
+        description: When the user account was created.
+        type: time
+        type_params:
+          time_granularity: day
+      # Governed flags surfaced straight from the mart (definition lives there).
+      - name: is_active_candidate_30d
+        description: Viewed the candidate dashboard in the trailing 30 days (Active Candidates OKR).
+        type: categorical
+      - name: is_activated
+        description: Has sent at least one voter outreach campaign.
+        type: categorical
+      - name: is_pro
+        description: Has at least one pro campaign.
+        type: categorical
+      # Derived "not one-and-done" flag. dashboard_view_count comes from a
+      # left join and can be null, so coalesce before the comparison.
+      - name: has_viewed_dashboard
+        description: Has viewed the candidate dashboard at least once (lifetime).
+        type: categorical
+        expr: coalesce(dashboard_view_count, 0) > 0
+    measures:
+      - name: win_user_count
+        description: Count of Win-product users (sum of one per user row).
+        agg: sum
+        expr: "1"
+
+metrics:
+  - name: win_users
+    label: Win Users
+    description: >
+      Count of Win-product users. Slice or filter by the engagement
+      dimensions (has_viewed_dashboard, is_active_candidate_30d, etc.) at
+      query time.
+    type: simple
+    type_params:
+      measure: win_user_count

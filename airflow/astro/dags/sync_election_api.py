@@ -53,8 +53,9 @@ sync reads the production-quality version of the marts in both dev and prod.
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
     TableSyncSpec,
     apply_ddl,
@@ -66,8 +67,6 @@ from include.custom_functions.election_api_utils import (
 from include.custom_functions.postgres_utils import get_postgres_via_ssh
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
-
-from airflow.sdk import Variable, dag, task, task_group
 
 t_log = logging.getLogger("airflow.task")
 
@@ -146,7 +145,7 @@ def _ztp_transform_row(row: tuple) -> tuple:
     )
     return (
         str(row_id),
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
         position_id,
         name,
         br_database_id,

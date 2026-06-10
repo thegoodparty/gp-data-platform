@@ -128,9 +128,15 @@ with
             -- TS wins for is_incumbent (TS: 51k populated, BR: 0); gp_api/DDHQ
             -- excluded.
             coalesce(ts.is_incumbent, br.is_incumbent) as is_incumbent,
-            -- office_type: gp_api > BR > DDHQ (TS doesn't carry it at this grain).
+            -- office_type: BR > gp_api > DDHQ. BR derives office_type from
+            -- BallotReady's normalized position name (low Other rate); gp_api
+            -- derives it from raw onboarding free-text (high Other rate), so
+            -- prefer BR when a matched BR row exists. TS carries none at this grain.
+            -- DATA-1972: PR2 supersedes this for positioned rows via the
+            -- int__civics_position_office_type crosswalk; this ordering remains
+            -- the fallback when br_position_database_id is null.
             coalesce(
-                gp_api.office_type, br.office_type, ddhq.office_type
+                br.office_type, gp_api.office_type, ddhq.office_type
             ) as office_type,
             -- br_position_database_id: gp_api > BR > TS. DDHQ doesn't carry it.
             coalesce(
@@ -324,7 +330,17 @@ select
     deduplicated.candidate_office,
     deduplicated.official_office_name,
     deduplicated.office_level,
-    deduplicated.office_type,
+    -- DATA-1972: positioned rows inherit the canonical office_type from the
+    -- position crosswalk whenever it classifies the position (non-Other).
+    -- A per-source value survives when the crosswalk can only say 'Other',
+    -- so a clean source value is never downgraded; rows without a position
+    -- (e.g. 2025 HubSpot archive, TS-without-position) keep the per-source
+    -- value; remaining blanks fill with the crosswalk's 'Other'.
+    coalesce(
+        nullif(pos_ot.office_type, 'Other'),
+        deduplicated.office_type,
+        pos_ot.office_type
+    ) as office_type,
     deduplicated.candidacy_result,
     case
         when
@@ -377,6 +393,9 @@ from deduplicated
 left join
     {{ ref("int__icp_offices") }} as icp
     on deduplicated.br_position_database_id = icp.br_database_position_id
+left join
+    {{ ref("int__civics_position_office_type") }} as pos_ot
+    on deduplicated.br_position_database_id = pos_ot.br_position_database_id
 left join
     latest_stage_per_candidacy as latest
     on deduplicated.gp_candidacy_id = latest.gp_candidacy_id

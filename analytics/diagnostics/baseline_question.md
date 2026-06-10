@@ -67,7 +67,7 @@ For signal above run-to-run latency noise, do about two reps per arm.
 
 ```bash
 cd analytics
-uv run --python 3.12 python diagnostics/pipeline_profiler.py \
+uv run python diagnostics/pipeline_profiler.py \
   ~/.claude/projects/-Users-tristan-Documents-0-goodparty-0-repos-gp-data-platform/<session-id>*.jsonl \
   [<more session ids> ...]
 ```
