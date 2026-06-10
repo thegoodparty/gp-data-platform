@@ -246,8 +246,8 @@ class RunDecisions:
     notebook_writes: int = 0
     analysis_script_writes: int = 0
     notebook_build_writes: int = 0
-    reviewer_counts: dict = field(default_factory=dict)
-    process_design_edits: list = field(default_factory=list)
+    reviewer_counts: dict[str, int] = field(default_factory=dict)
+    process_design_edits: list[str] = field(default_factory=list)
 
 
 _PROCESS_OWNING_BASENAMES = {"product-data-scientist.md", "product-manager.md", "run-product-analysis.md"}
@@ -266,7 +266,7 @@ def _collect_decisions(records: list[dict]) -> RunDecisions:
     """Observational per-run flags: deliverable artifacts, reviewer counts, and
     process-owning edits at/after the calibration marker (the process-design
     calibration track; noisy on contaminated runs)."""
-    d = RunDecisions(reviewer_counts={})
+    d = RunDecisions()
     calib_idx = _marker_indices(records).get("calibration_write")
     for i, rec in enumerate(records):
         for name, tool_input, _tid in _iter_tool_uses(rec):
