@@ -335,3 +335,39 @@ def test_resolve_paths_expands_globs(tmp_path):
     (tmp_path / "b.jsonl").write_text("{}")
     paths = pp._resolve_paths([str(tmp_path / "*.jsonl")])
     assert len(paths) == 2 and all(p.endswith(".jsonl") for p in paths)
+
+
+def test_segment_stages_flags_low_confidence_on_out_of_order_markers():
+    # calibration file written BEFORE reviewers dispatch (contaminated/re-entered run)
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 1
+        _tool_use_rec(
+            "2026-06-08T19:02:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"
+        ),  # 2 early
+        _tool_use_rec("2026-06-08T19:03:00Z", "Agent", "a1", subagent_type="product-data-scientist"),  # 3
+        _tool_result_rec("2026-06-08T19:04:00Z", "a1"),  # 4
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "low"
+
+
+def test_segment_stages_low_confidence_without_skill_load():
+    records = [
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "x"}},
+    ]
+    _spans, confidence = pp.segment_stages(records)
+    assert confidence == "low"
+
+
+def test_format_report_multiple_profiles_combined_mean():
+    p1 = pp.RunProfile(
+        path="/a.jsonl", confidence="ok", stages={"framing": pp.StageMetrics(model_active_seconds=120)}
+    )
+    p2 = pp.RunProfile(
+        path="/b.jsonl", confidence="ok", stages={"framing": pp.StageMetrics(model_active_seconds=240)}
+    )
+    report = pp.format_report([p1, p2])
+    assert "Combined (mean across runs)" in report
+    assert "3.0" in report  # framing mean model-active (120+240)/2 = 180s -> 3.0 min

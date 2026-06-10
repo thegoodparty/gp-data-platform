@@ -31,7 +31,7 @@ win-analytics-process skill's references/pipeline.md, which is the authority):
 from __future__ import annotations
 
 import argparse
-import glob as _glob
+import glob
 import json
 import os
 import re
@@ -215,12 +215,20 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
     else:
         calibration = (n, n)  # empty
 
-    return {
-        "framing": framing,
-        "execution": execution,
-        "review": review,
-        "calibration": calibration,
-    }, confidence
+    spans = {"framing": framing, "execution": execution, "review": review, "calibration": calibration}
+    # Markers are assumed to occur in pipeline order. If they don't (e.g. a
+    # contaminated or re-entered run writes a calibration file before reviewers
+    # dispatch), the non-empty spans overlap and tokens/time would be
+    # double-counted, so downgrade confidence rather than report a misleading "ok".
+    prev_end = 0
+    for stage in STAGES:
+        start, end = spans[stage]
+        if start >= end:
+            continue  # empty stage
+        if start < prev_end:
+            confidence = "low"
+        prev_end = max(prev_end, end)
+    return spans, confidence
 
 
 @dataclass
@@ -296,7 +304,7 @@ def format_report(profiles: list[RunProfile]) -> str:
         tot_wall = tot.model_active_seconds + tot.human_idle_seconds
         lines.append(
             f"| **total** | {_min(tot.model_active_seconds)} | {_min(tot.human_idle_seconds)} | "
-            f"{_min(tot_wall)} | 100 | {tot.input_tokens} | {tot.output_tokens} | {tot_cache} |"
+            f"{_min(tot_wall)} | {_pct(tot.model_active_seconds, total_active)} | {tot.input_tokens} | {tot.output_tokens} | {tot_cache} |"
         )
         lines.append("")
     # combined summary
@@ -337,7 +345,7 @@ def _resolve_paths(patterns: list[str]) -> list[str]:
     """Expand each pattern as a glob; pass through literal paths."""
     out = []
     for pat in patterns:
-        matches = _glob.glob(pat)
+        matches = glob.glob(pat)
         out.extend(sorted(matches) if matches else [pat])
     return out
 
