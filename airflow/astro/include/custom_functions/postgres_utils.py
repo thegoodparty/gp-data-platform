@@ -5,9 +5,9 @@ DistrictStats, District, DistrictVoter, Voter.
 """
 
 import logging
+from collections.abc import Sequence
 from contextlib import contextmanager
 from io import StringIO
-from typing import List, Optional, Sequence
 
 import paramiko
 import psycopg2
@@ -24,16 +24,15 @@ if not hasattr(paramiko, "DSSKey"):
 
     paramiko.DSSKey = _DSSKeyStub  # type: ignore[attr-defined]
 
-from sshtunnel import SSHTunnelForwarder
-
 from airflow.sdk import BaseHook
+from sshtunnel import SSHTunnelForwarder
 
 logger = logging.getLogger("airflow.task")
 
 
 @contextmanager
 def get_postgres_via_ssh(
-    bastion_conn_id: Optional[str] = "gp_bastion_host",
+    bastion_conn_id: str | None = "gp_bastion_host",
     pg_conn_id: str = "people_api_db",
 ):
     """Open a psycopg2 connection to PostgreSQL, optionally via SSH bastion.
@@ -110,7 +109,7 @@ def get_postgres_via_ssh(
         remote_bind_address=(pg.host, pg.port or 5432),
         set_keepalive=30,
     )
-    tunneled_conn: Optional[psycopg2.extensions.connection] = None
+    tunneled_conn: psycopg2.extensions.connection | None = None
     try:
         tunnel.start()
         logger.info(
@@ -135,7 +134,7 @@ def get_postgres_via_ssh(
         logger.info("SSH tunnel closed")
 
 
-def get_max_updated_at(conn, schema: str, table: str) -> Optional[str]:
+def get_max_updated_at(conn, schema: str, table: str) -> str | None:
     """Return the MAX(updated_at) from a PostgreSQL table as an ISO string.
 
     Returns None if the table is empty.
@@ -155,8 +154,8 @@ def upsert_rows(
     conn,
     schema: str,
     table: str,
-    columns: List[str],
-    conflict_columns: List[str],
+    columns: list[str],
+    conflict_columns: list[str],
     rows: Sequence[tuple],
     batch_size: int = 5000,
 ) -> int:

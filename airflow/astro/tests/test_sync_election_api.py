@@ -61,7 +61,7 @@ def test_ztp_transform_row_field_positions():
     out = _ztp_transform_row(row)
 
     assert len(out) == len(ZTP_TARGET_COLUMNS)
-    out_by_name = dict(zip(ZTP_TARGET_COLUMNS, out))
+    out_by_name = dict(zip(ZTP_TARGET_COLUMNS, out, strict=False))
 
     # Generated fields
     assert isinstance(out_by_name["id"], str) and len(out_by_name["id"]) == 36

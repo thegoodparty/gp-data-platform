@@ -214,9 +214,8 @@ class TestGetPostgresViaSsh:
         pg_connection = MagicMock()
         mock_pg_connect.return_value = pg_connection
 
-        with pytest.raises(RuntimeError, match="task failed"):
-            with get_postgres_via_ssh() as _conn:  # noqa: F841
-                raise RuntimeError("task failed")
+        with pytest.raises(RuntimeError, match="task failed"), get_postgres_via_ssh() as _conn:
+            raise RuntimeError("task failed")
 
         pg_connection.close.assert_called_once()
         tunnel_instance.stop.assert_called_once()

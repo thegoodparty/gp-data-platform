@@ -2,8 +2,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import UTC, datetime
 from zipfile import ZipFile
 
 import pandas as pd
@@ -52,8 +51,8 @@ def download_expired_voter_files(
     remote_dir: str,
     file_pattern: str,
     local_dir: str,
-    file_timestamps: Dict[str, str] | None = None,
-) -> List[str]:
+    file_timestamps: dict[str, str] | None = None,
+) -> list[str]:
     """
     Lists files in remote_dir matching file_pattern, downloads them locally.
     ZIP files are extracted; plain files (.tab, .csv) are kept as-is.
@@ -75,7 +74,7 @@ def download_expired_voter_files(
 
     logger.info(f"Found {len(matching_files)} expired voter file(s): {matching_files}")
 
-    downloaded_paths: List[str] = []
+    downloaded_paths: list[str] = []
     for filename in matching_files:
         remote_path = f"{remote_dir}/{filename}"
         local_path = os.path.join(local_dir, filename)
@@ -84,9 +83,7 @@ def download_expired_voter_files(
         mtime_iso: str | None = None
         if file_timestamps is not None:
             stat = sftp_client.stat(remote_path)
-            mtime_iso = (
-                datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat() if stat.st_mtime else None
-            )
+            mtime_iso = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat() if stat.st_mtime else None
 
         logger.info(f"Downloading {remote_path}" + (f" (modified: {mtime_iso})" if mtime_iso else ""))
         sftp_client.get(
@@ -118,8 +115,8 @@ def download_expired_voter_files(
 
 
 def parse_expired_voter_ids(
-    file_paths: List[str],
-) -> List[str]:
+    file_paths: list[str],
+) -> list[str]:
     """
     Reads extracted file(s) and returns a deduplicated list of LALVOTERID strings.
 
@@ -129,7 +126,7 @@ def parse_expired_voter_ids(
     Args:
         file_paths: List of local file paths to parse.
     """
-    all_ids: List[str] = []
+    all_ids: list[str] = []
 
     for file_path in file_paths:
         if not os.path.isfile(file_path):

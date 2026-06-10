@@ -27,6 +27,7 @@ PostgreSQL database via an SSH tunnel through the bastion host.
 import json
 import logging
 
+from airflow.sdk import Param, Variable, dag, get_current_context, task
 from include.custom_functions.databricks_utils import read_databricks_table
 from include.custom_functions.postgres_utils import (
     get_max_updated_at,
@@ -35,8 +36,6 @@ from include.custom_functions.postgres_utils import (
 )
 from pendulum import datetime, duration
 from psycopg2.extras import Json
-
-from airflow.sdk import Param, Variable, dag, get_current_context, task
 
 t_log = logging.getLogger("airflow.task")
 
