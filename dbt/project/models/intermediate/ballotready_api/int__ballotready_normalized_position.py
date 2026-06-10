@@ -2,7 +2,8 @@ import logging
 import random
 import time
 from base64 import b64encode
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -41,12 +42,12 @@ def _base64encode_id_udf(position_ids: pd.Series) -> pd.Series:
 
 
 def _get_normalized_positions_batch(
-    position_ids: List[int],
+    position_ids: list[int],
     ce_api_token: str,
     base_sleep: float = 0.1,
     jitter_factor: float = 0.1,
     timeout: int = 30,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Fetches normalized positions for a batch of position IDs from the CivicEngine API.
 
@@ -102,12 +103,12 @@ def _get_normalized_positions_batch(
 
         response.raise_for_status()
         data = response.json()
-        positions: List[Dict[str, Any]] = data.get("data", {}).get("nodes", [])
+        positions: list[dict[str, Any]] = data.get("data", {}).get("nodes", [])
         return positions
 
     except (KeyError, TypeError) as e:
-        logging.error(f"Error processing positions batch: {str(e)}")
-        raise ValueError(f"Failed to parse position data from API response: {str(e)}")
+        logging.error(f"Error processing positions batch: {e!s}")
+        raise ValueError(f"Failed to parse position data from API response: {e!s}") from e
 
 
 normalized_position_schema = StructType(
@@ -152,7 +153,7 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
             raise ValueError("Missing required environment variable: CE_API_TOKEN")
 
         # Create a map to store stances by candidacy ID
-        normalized_positions_by_database_id: Dict[int, Dict[str, Any] | None] = {}
+        normalized_positions_by_database_id: dict[int, dict[str, Any] | None] = {}
 
         # Set batch size for API calls
         batch_size = 100
@@ -192,7 +193,7 @@ def _get_normalized_position_token(ce_api_token: str) -> Callable:
                 raise e
 
         # Create a list of dictionaries for each normalized_position in order of input
-        result_data: List[Dict[str, Any]] = []
+        result_data: list[dict[str, Any]] = []
         for database_id in normalized_position_ids:
             try:
                 normalized_position = normalized_positions_by_database_id.get(database_id, {})  # type: ignore

@@ -3,9 +3,10 @@ import os
 import re
 import time
 import traceback
+from collections.abc import Callable
 from datetime import datetime
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+from typing import Any, Literal
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -37,7 +38,7 @@ def _create_sftp_connection(
     password: str,
     max_retries: int = 3,
     retry_delay: int = 5,
-) -> Tuple[Transport, SFTPClient]:
+) -> tuple[Transport, SFTPClient]:
     for attempt in range(max_retries):
         try:
             transport = Transport((host, port))
@@ -48,7 +49,7 @@ def _create_sftp_connection(
                 raise ValueError("Failed to create SFTP client")
             return transport, sftp_client
         except Exception as e:
-            logging.error(f"SFTP connection attempt {attempt + 1} failed: {str(e)}")
+            logging.error(f"SFTP connection attempt {attempt + 1} failed: {e!s}")
             if attempt == max_retries - 1:
                 raise
             logging.warning(f"Waiting {retry_delay} seconds before next attempt...")
@@ -56,11 +57,11 @@ def _create_sftp_connection(
     raise Exception("Failed to establish SFTP connection after all retries")
 
 
-def _select_latest_zip_file(file_list: List[str], file_pattern: re.Pattern) -> Optional[str]:
+def _select_latest_zip_file(file_list: list[str], file_pattern: re.Pattern) -> str | None:
     """
     Select the latest zip file from a list using a regex with a single (YYYYMMDD) capture group.
     """
-    matches: List[Tuple[str, str]] = []
+    matches: list[tuple[str, str]] = []
     for file_name in file_list:
         match = re.match(file_pattern, file_name)
         if match:
@@ -86,13 +87,13 @@ def _extract_and_load_w_params(
     databricks_volume_directory: str,
     remote_dir: str,
     haystaq_kind: Literal["flags", "scores"],
-) -> Callable[[str], Dict[str, Any]]:
+) -> Callable[[str], dict[str, Any]]:
     """
     Creates a function that downloads a single state's Haystaq zip from SFTP, extracts the `.tab`,
     and uploads it to S3.
     """
 
-    def _extract_and_load(state_id: str) -> Dict[str, Any]:
+    def _extract_and_load(state_id: str) -> dict[str, Any]:
         logging.info(f"Processing state: {state_id} ({haystaq_kind})")
         transport = None
         sftp_client = None
@@ -165,7 +166,7 @@ def _extract_and_load_w_params(
                         max_concurrent_prefetch_requests=64,
                     )
                 except OSError as e:
-                    logging.error(f"Source zip {full_zip_path} locked: {str(e)}. Skipping for now.")
+                    logging.error(f"Source zip {full_zip_path} locked: {e!s}. Skipping for now.")
                     return EMPTY_LOAD_DETAILS
 
                 try:
@@ -217,12 +218,12 @@ def _extract_and_load_w_params(
             }
 
         except Exception as e:
-            logging.error(f"Error processing state {state_id} ({haystaq_kind}): {str(e)}")
+            logging.error(f"Error processing state {state_id} ({haystaq_kind}): {e!s}")
             error_details = traceback.format_exc()
             logging.error(f"Full exception details:\n{error_details}")
             raise Exception(
-                f"Error processing state {state_id} ({haystaq_kind}): {str(e)}\nFull traceback:\n{error_details}"
-            )
+                f"Error processing state {state_id} ({haystaq_kind}): {e!s}\nFull traceback:\n{error_details}"
+            ) from e
         finally:
             if sftp_client is not None:
                 sftp_client.close()
@@ -313,7 +314,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
         haystaq_kind="scores",
     )
 
-    all_load_details: List[Dict[str, Any]] = []
+    all_load_details: list[dict[str, Any]] = []
     for state_id in state_list:
         flags_result = extract_flags(state_id)
         if flags_result["state_id"] is not None:

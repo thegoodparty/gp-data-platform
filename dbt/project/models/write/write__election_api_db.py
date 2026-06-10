@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
@@ -602,6 +601,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 district_df,
                 projected_turnout_df,
             ],
+            strict=False,
         )
         for table, df in to_load:
             query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
@@ -634,7 +634,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   Stance -> Issue, Candidacy
     #   ProjectedTurnout -> District
     # so referenced parents must load before their children.
-    table_load_counts: Dict[str, int] = {}
+    table_load_counts: dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [
             "Place",
@@ -666,6 +666,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             STANCE_UPSERT_QUERY,
             PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
+        strict=False,
     ):
         table_load_counts[table_name] = _load_data_to_postgres(
             df=df,

@@ -219,7 +219,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     ]
 
     # Convert to pandas for ML model scoring
-    df_toscore = df_hs.select(["id", "techspeed_candidate_code"] + all_features).toPandas()
+    df_toscore = df_hs.select(["id", "techspeed_candidate_code", *all_features]).toPandas()
     df_toscore[all_features] = df_toscore[all_features].astype(float)
 
     # Score using MLflow model
@@ -227,7 +227,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     models_to_run = ["ViabilityWithOpponentData"]
     score_names = ["y_score0a"]
 
-    for modelname, score_col in zip(models_to_run, score_names):
+    for modelname, score_col in zip(models_to_run, score_names, strict=False):
         df_toscore = _score_using_model(df_toscore, modelname, score_col)
 
     # Convert back to Spark DataFrame and calculate viability metrics

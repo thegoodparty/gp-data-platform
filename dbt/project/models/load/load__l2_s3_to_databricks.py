@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Literal
+from typing import Literal
 from uuid import uuid4
 
 from pyspark.sql import DataFrame
@@ -70,10 +70,7 @@ def _extract_table_name(source_file_name: str, state_id: str) -> str:
 
     # Remove the date from the file type. Uniform files are handled separately.
     if "uniform" in source_file_name.lower():
-        if "datadictionary" in source_file_name.lower():
-            file_type = "uniform_data_dictionary"
-        else:
-            file_type = "uniform"
+        file_type = "uniform_data_dictionary" if "datadictionary" in source_file_name.lower() else "uniform"
     else:
         file_type = file_type.split("-")[-1]
 
@@ -128,8 +125,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 file.source_file_name for file in this_table_latest_files.toLocalIterator()
             ]
 
-            files_to_load_list: List[
-                Dict[
+            files_to_load_list: list[
+                dict[
                     Literal["source_file_name", "source_file_type", "s3_state_prefix"],
                     str,
                 ]

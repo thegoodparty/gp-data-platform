@@ -1,5 +1,4 @@
 import re
-from typing import Optional, Set
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
@@ -7,7 +6,7 @@ from pyspark.sql.functions import max as spark_max
 from pyspark.sql.types import StringType
 
 
-def _parse_state_allowlist(raw: Optional[str]) -> Optional[Set[str]]:
+def _parse_state_allowlist(raw: str | None) -> set[str] | None:
     if raw is None:
         return None
     normalized = raw.strip().upper()
@@ -18,7 +17,7 @@ def _parse_state_allowlist(raw: Optional[str]) -> Optional[Set[str]]:
     return allowlist or None
 
 
-def _apply_state_allowlist(df: DataFrame, allowlist: Optional[Set[str]]) -> DataFrame:
+def _apply_state_allowlist(df: DataFrame, allowlist: set[str] | None) -> DataFrame:
     if allowlist is None:
         return df
     return df.filter(col("state_postal_code").isin(sorted(allowlist)))
