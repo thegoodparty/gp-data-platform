@@ -1,0 +1,65 @@
+semantic_models:
+  - name: candidacy_stage
+    description: >
+      Semantic model over the civics candidacy_stage mart. One row per
+      candidacy stage. Exposes the win flag, source-system membership, and
+      the election stage date so metrics can slice candidacy-stage outcomes.
+    model: ref('candidacy_stage')
+    defaults:
+      agg_time_dimension: election_stage_date
+    entities:
+      - name: candidacy_stage
+        type: primary
+        expr: gp_candidacy_stage_id
+      - name: candidacy
+        type: foreign
+        expr: gp_candidacy_id
+    dimensions:
+      - name: election_stage_date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: is_winner
+        description: Whether the candidate won this election stage.
+        type: categorical
+      - name: has_gp_api_source
+        description: Whether 'gp_api' is one of this stage's source systems.
+        type: categorical
+        expr: array_contains(source_systems, 'gp_api')
+    measures:
+      - name: candidacy_stage_count
+        description: Count of candidacy stage rows (sum of one per row).
+        agg: sum
+        expr: "1"
+
+metrics:
+  - name: goodparty_win_rate
+    label: GoodParty Win Rate
+    description: >
+      Count of gp_api-sourced candidacy stages flagged as won for 2026
+      elections whose stage date has already passed.
+    type: simple
+    type_params:
+      measure: candidacy_stage_count
+    filter: |
+      {{ Dimension('candidacy_stage__is_winner') }}
+      and {{ Dimension('candidacy_stage__has_gp_api_source') }}
+      and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} >= '2026-01-01'
+      and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < '2027-01-01'
+      and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < current_date()
+
+  - name: goodparty_cumulative_wins
+    label: GoodParty Cumulative Wins
+    description: >
+      Running total of gp_api-sourced candidacy stages flagged as won for
+      2026 elections whose stage date has already passed. Accumulates all
+      time, so each period shows the cumulative win count to date.
+    type: cumulative
+    type_params:
+      measure: candidacy_stage_count
+    filter: |
+      {{ Dimension('candidacy_stage__is_winner') }}
+      and {{ Dimension('candidacy_stage__has_gp_api_source') }}
+      and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} >= '2026-01-01'
+      and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < '2027-01-01'
+      and {{ TimeDimension('candidacy_stage__election_stage_date', 'day') }} < current_date()
