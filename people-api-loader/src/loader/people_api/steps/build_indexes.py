@@ -34,7 +34,11 @@ from loader.people_api.schema.snapshot import load_prod_dump
 
 log = get_logger(__name__)
 
-_INDEX_BUILDERS = 32
+# Default concurrent CREATE INDEX builds. Peak memory is roughly parallelism *
+# maintenance_work_mem (8GB, set below), so 32 is about 256 GB -- sized for the
+# default db.r7g.16xlarge load instance (512 GiB). Lower it via the CLI
+# --parallelism flag for a smaller load instance to avoid OOM.
+_DEFAULT_BUILDERS = 32
 _TARGET_TABLE = "Voter"
 
 _BUILD_SESSION_SQL: tuple[str, ...] = (
@@ -110,7 +114,7 @@ def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> 
     return sorted(v for v in distinct_l2types if v not in new_cols)
 
 
-def run(cfg: LoaderConfig, run_date: str) -> IndexManifest:
+def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDERS) -> IndexManifest:
     bind(run_date=run_date, step="indexes")
     existing = read_manifest(cfg, run_date, "indexes", IndexManifest)
     if existing and existing.status == "complete":
@@ -133,7 +137,7 @@ def run(cfg: LoaderConfig, run_date: str) -> IndexManifest:
 
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
         """Run `fn(cfg, run_date, writer_endpoint, item)` across items, fail-fast."""
-        with ThreadPoolExecutor(max_workers=_INDEX_BUILDERS) as executor:
+        with ThreadPoolExecutor(max_workers=parallelism) as executor:
             futures = [executor.submit(fn, cfg, run_date, writer_endpoint, item) for item in items]
             for fut in as_completed(futures):
                 fut.result()
