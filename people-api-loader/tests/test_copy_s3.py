@@ -296,3 +296,6 @@ def test_load_state_acquires_advisory_lock(monkeypatch: pytest.MonkeyPatch) -> N
     lock_idx = next(i for i, s in enumerate(sql) if "pg_advisory_lock" in s)
     count_idx = next(i for i, s in enumerate(sql) if "count(*)" in s)
     assert lock_idx < count_idx, "advisory lock must be acquired before the row count"
+    # The int4 cast is required for the (int4, int4) overload — a regression that drops
+    # it picks the nonexistent (bigint, int4) overload and fails only against real PG.
+    assert "::int4" in sql[lock_idx]

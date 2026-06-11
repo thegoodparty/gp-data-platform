@@ -91,6 +91,15 @@ def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: I
                 "partition key — this index needs manual handling"
             )
         # dict.fromkeys dedupes in case a future dump's unique already includes "State".
+        # NOTE (cutover): appending "State" turns Voter_LALVOTERID_key into
+        # UNIQUE("LALVOTERID", "State"). The dbt write models upsert with
+        # ON CONFLICT ("LALVOTERID") against the single-column constraint, so at cutover
+        # they must change to ON CONFLICT ("LALVOTERID", "State") to match this index:
+        #   dbt/project/models/write/write__l2_databricks_to_gp_api.py:774
+        #   dbt/project/models/write/write__people_api_db.py:399
+        # Do NOT land those edits before the partitioned schema is the serving DB — the
+        # current DB still has the single-column unique and the composite target would
+        # break live upserts. See the PR body's cutover note.
         cols = ", ".join(f'"{c}"' for c in dict.fromkeys([*idx.columns, "State"]))
         # Preserve a partial-index predicate so we don't rebuild a broader unique than prod.
         where_clause = f" WHERE {idx.where}" if idx.where else ""
