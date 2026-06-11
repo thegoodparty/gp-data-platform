@@ -169,6 +169,11 @@ def run(
         files_by_state.setdefault(f.state, []).append(f.s3_key)
 
     states_to_load = [state_filter] if state_filter else sorted(files_by_state.keys())
+    if state_filter and state_filter not in files_by_state:
+        raise RuntimeError(
+            f"--state {state_filter!r} requested but the unload manifest has no loadable "
+            "files for it (all zero-size or absent)."
+        )
 
     # No manifest carry-forward: resume is DB-driven — `_load_state` re-counts each
     # state and skips those already fully loaded. A partial manifest is never

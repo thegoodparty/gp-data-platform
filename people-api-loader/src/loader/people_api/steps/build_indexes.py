@@ -81,7 +81,9 @@ def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: I
     if idx.unique:
         # dict.fromkeys dedupes in case a future dump's unique already includes "State".
         cols = ", ".join(f'"{c}"' for c in dict.fromkeys([*idx.columns, "State"]))
-        sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols})'
+        # Preserve a partial-index predicate so we don't rebuild a broader unique than prod.
+        where_clause = f" WHERE {idx.where}" if idx.where else ""
+        sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols}){where_clause}'
     else:
         sql = _rewrite_index_sql(idx.sql)
     with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
@@ -177,8 +179,8 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
             IndexSpec(
                 table=i.table,
                 index_name=i.name,
-                # Unique indexes get the partition key appended (as built above).
-                columns=[*i.columns, "State"] if i.unique else i.columns,
+                # Unique indexes get the partition key appended (deduped, as built above).
+                columns=list(dict.fromkeys([*i.columns, "State"])) if i.unique else i.columns,
                 unique=i.unique,
                 where=i.where,
             )

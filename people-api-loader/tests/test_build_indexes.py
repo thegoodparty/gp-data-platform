@@ -57,3 +57,22 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     assert manifest.analyzed_tables == ["Voter"]
     assert "Voter_pkey" in manifest.constraints_added
     assert {i.index_name for i in manifest.indexes} == {"Voter_LALVOTERID_key", "Voter_Active_idx"}
+
+
+def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A partial unique index keeps its WHERE predicate (and gets State appended).
+    conn = FakeConn()
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    idx = step.IndexDef(
+        table="Voter",
+        name="Voter_u_idx",
+        sql="(verbatim unused for unique)",
+        unique=True,
+        columns=["LALVOTERID"],
+        where='"x" IS NOT NULL',
+    )
+    step._create_index(_CFG, "20260609", "wh", idx)
+    sql = " ".join(executed_sql(conn))
+    assert 'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_u_idx"' in sql
+    assert '("LALVOTERID", "State")' in sql
+    assert 'WHERE "x" IS NOT NULL' in sql

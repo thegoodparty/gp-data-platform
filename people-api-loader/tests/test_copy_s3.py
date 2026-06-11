@@ -238,3 +238,16 @@ def test_state_filter_reloads_fully_loaded_state(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(step, "_load_state", _ls)
     step.run(_CFG, "20260609", state_filter="TX")
     assert called.get("state") == "TX"
+
+
+def test_state_filter_no_loadable_files_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    # --state TX but every TX file is zero-byte (filtered out) -> must raise, not silently no-op.
+    files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=0)]
+    unload = _unload(files, {"TX": 100})
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    with pytest.raises(RuntimeError, match="no loadable"):
+        step.run(_CFG, "20260609", state_filter="TX")

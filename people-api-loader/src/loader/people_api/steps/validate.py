@@ -79,6 +79,7 @@ def _check_schema_diff(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -
         with connect_prod(cfg) as prod_conn:
             prod_cols = _voter_columns(prod_conn)
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
+        log.error("validate.prod_unreachable", check="schema_diff_clean", error=str(e))
         return ValidationCheck(name="schema_diff_clean", passed=False, details={"error_reading_prod": str(e)})
     with connect_new(cfg, run_date, writer_endpoint) as conn:
         new_cols = _voter_columns(conn)
@@ -105,6 +106,7 @@ def _check_indexes(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> Va
             cur.execute(query)
             prod_idx = {r[0] for r in cur.fetchall()}
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
+        log.error("validate.prod_unreachable", check="index_constraint_diff_clean", error=str(e))
         return ValidationCheck(
             name="index_constraint_diff_clean", passed=False, details={"error_reading_prod": str(e)}
         )
@@ -152,6 +154,7 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: st
             cur.execute('SELECT DISTINCT "l2Type" FROM public.org_districts WHERE "l2Type" IS NOT NULL')
             distinct_l2types = [r[0] for r in cur.fetchall() if r[0]]
     except Exception as e:  # broad by design: org_districts is in the app DB, not always reachable
+        log.error("validate.prod_unreachable", check="l2Type_coverage", error=str(e))
         return ValidationCheck(
             name="l2Type_coverage", passed=False, details={"error_reading_org_districts": str(e)}
         )
