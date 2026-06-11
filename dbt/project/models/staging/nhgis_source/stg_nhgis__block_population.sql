@@ -7,10 +7,10 @@
 with
     pop_a as (
         select
-            -- the inner bigint cast pins decimal string output even if a
-            -- re-staged source lands with a float-inferred geocode
+            -- the inner bigint casts pin decimal string output even if a
+            -- re-staged source lands with float-inferred numeric columns
             lpad(cast(cast(geocode as bigint) as string), 15, '0') as block_geoid,
-            lpad(cast(statea as string), 2, '0') as state_fips,
+            lpad(cast(cast(statea as bigint) as string), 2, '0') as state_fips,
             cast(u7h001 as bigint) as population
         from {{ source("nhgis", "blocks_to_pop_a") }}
         -- this table is all-string and embeds a descriptive header as its
@@ -21,7 +21,7 @@ with
     pop_b as (
         select
             lpad(cast(cast(geocode as bigint) as string), 15, '0') as block_geoid,
-            lpad(cast(statea as string), 2, '0') as state_fips,
+            lpad(cast(cast(statea as bigint) as string), 2, '0') as state_fips,
             cast(u7h001 as bigint) as population
         from {{ source("nhgis", "blocks_to_pop_b") }}
     ),
