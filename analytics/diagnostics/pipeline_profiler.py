@@ -211,10 +211,7 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
     else:
         review = (exec_end, exec_end)  # empty
     # calibration
-    if calib is not None:
-        calibration = (calib, _first_human_after(records, calib))
-    else:
-        calibration = (n, n)  # empty
+    calibration = (calib, _first_human_after(records, calib)) if calib is not None else (n, n)
 
     spans = {"framing": framing, "execution": execution, "review": review, "calibration": calibration}
     # Markers are assumed to occur in pipeline order. If they don't (e.g. a

@@ -1,25 +1,13 @@
 name: genie-slack-bot
 on:
   pull_request:
-    paths: ['apps/genie-slack-bot/**', '.github/workflows/genie-slack-bot.yml']
+    paths: ['apps/genie-slack-bot/**', '.github/workflows/genie-slack-bot.yml', '.github/workflows/uv-subproject.yml']
   push:
     branches: [main]
-    paths: ['apps/genie-slack-bot/**', '.github/workflows/genie-slack-bot.yml']
+    paths: ['apps/genie-slack-bot/**', '.github/workflows/genie-slack-bot.yml', '.github/workflows/uv-subproject.yml']
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/genie-slack-bot
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: apps/genie-slack-bot/uv.lock
-      - name: Install
-        run: uv sync --frozen
-      - name: Pytest
-        run: uv run pytest -ra
-      - name: Type check
-        run: uv run mypy app.py config.py databricks_genie_client.py slack_bot.py tests
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: apps/genie-slack-bot
+      mypy-targets: app.py config.py databricks_genie_client.py slack_bot.py tests

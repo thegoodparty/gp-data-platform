@@ -1,25 +1,13 @@
 name: dbt
 on:
   pull_request:
-    paths: ['dbt/**', '.github/workflows/dbt.yml']
+    paths: ['dbt/**', '.github/workflows/dbt.yml', '.github/workflows/uv-subproject.yml']
   push:
     branches: [main]
-    paths: ['dbt/**', '.github/workflows/dbt.yml']
+    paths: ['dbt/**', '.github/workflows/dbt.yml', '.github/workflows/uv-subproject.yml']
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: dbt
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: dbt/uv.lock
-      - name: Install
-        run: uv sync --frozen
-      - name: Pytest
-        run: uv run pytest -ra
-      - name: Type check
-        run: uv run mypy tests
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: dbt
+      mypy-targets: tests
