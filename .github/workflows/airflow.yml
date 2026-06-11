@@ -1,25 +1,13 @@
 name: airflow
 on:
   pull_request:
-    paths: ['airflow/**', '.github/workflows/airflow.yml']
+    paths: ['airflow/**', '.github/workflows/airflow.yml', '.github/workflows/uv-subproject.yml']
   push:
     branches: [main]
-    paths: ['airflow/**', '.github/workflows/airflow.yml']
+    paths: ['airflow/**', '.github/workflows/airflow.yml', '.github/workflows/uv-subproject.yml']
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: airflow
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: airflow/uv.lock
-      - name: Install
-        run: uv sync --frozen
-      - name: Pytest
-        run: uv run pytest -ra
-      - name: Type check
-        run: uv run mypy astro/dags astro/tests astro/include/custom_functions
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: airflow
+      mypy-targets: astro/dags astro/tests astro/include/custom_functions

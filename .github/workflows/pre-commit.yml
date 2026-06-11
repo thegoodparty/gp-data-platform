@@ -5,6 +5,13 @@ on:
   push:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
@@ -14,7 +21,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'  # must match version in prod airflow
+          # Repo-wide Python standard. Only affects version-independent hooks
+          # here (ruff, sqlfmt); mypy runs in its own isolated hook env.
+          python-version: '3.14'
 
       - name: Install pre-commit
         run: |
