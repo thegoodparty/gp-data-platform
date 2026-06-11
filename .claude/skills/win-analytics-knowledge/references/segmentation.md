@@ -36,6 +36,18 @@ Part of the **win-analytics-knowledge** skill. Slicing the Win population.
 - `is_open_seat` (BR > TS > DDHQ; NULL on BR-only)
 - `is_partisan` (boolean)
 
+## Upcoming / live election base
+
+The standard "Win users with an election on or after date D" population. Resolve it one way:
+take per-user `MAX(election_date)` over `is_latest_version AND NOT is_demo` candidacies,
+**bounded to `[2020-01-01, 2050-01-01]`** (drops corrupt far-future dates — see
+[gotchas.md](gotchas.md)), and keep users whose bounded max is `>= D`. Use `election_date`
+(the most-populated per-stage field, ~41.5k of 59.8k users), not `users_win_base.election_date`
+(the leaky coalesce). Users with no in-range `election_date` (~29%) are excluded by construction;
+note that exclusion in the brief. This is the open-ended definition (any live/upcoming election,
+including future cycles); a "current-cycle only" cut would instead cap the upper bound at the
+cycle end.
+
 ## ICP as dimension, not filter
 
 `icp_office_win` flags candidacies for offices Win supports. Originally proposed as a population filter; resolved scope (DATA-1935, 2026-05-27) says **slice, don't filter** because:
