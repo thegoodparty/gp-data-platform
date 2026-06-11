@@ -93,3 +93,120 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
     manifest = step.run(_CFG, "20260609")
     assert manifest.all_passed is True
     assert manifest.status == "complete"
+
+
+def _boom(*args: object, **kwargs: object):
+    raise RuntimeError("prod unreachable")
+
+
+class _RaisingConn:
+    """A connection whose cursor().execute always raises (for query-failure paths)."""
+
+    def __enter__(self) -> _RaisingConn:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def cursor(self) -> _RaisingConn:
+        return self
+
+    def execute(self, *args: object, **kwargs: object) -> None:
+        raise RuntimeError("query boom")
+
+    def fetchone(self) -> object:
+        return None
+
+
+# --- _check_schema_diff ---
+
+
+def test_check_schema_diff_clean_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("col_a",), ("col_b",)])))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("col_a",), ("col_b",)])))
+    check = step._check_schema_diff(_CFG, "20260609", "wh")
+    assert check.passed is True
+    assert check.details["missing_from_new"] == [] and check.details["extra_in_new"] == []
+
+
+def test_check_schema_diff_missing_column_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("col_a",), ("col_b",)])))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("col_a",)])))
+    check = step._check_schema_diff(_CFG, "20260609", "wh")
+    assert check.passed is False
+    assert "col_b" in check.details["missing_from_new"]
+
+
+def test_check_schema_diff_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", _boom)
+    check = step._check_schema_diff(_CFG, "20260609", "wh")
+    assert check.passed is False and "error_reading_prod" in check.details
+
+
+# --- _check_indexes ---
+
+
+def test_check_indexes_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("Voter_pkey",)])))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Voter_pkey",)])))
+    assert step._check_indexes(_CFG, "20260609", "wh").passed is True
+
+
+def test_check_indexes_missing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        step, "connect_prod", fake_connect(FakeConn().queue_result([("Voter_pkey",), ("Voter_x_idx",)]))
+    )
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Voter_pkey",)])))
+    check = step._check_indexes(_CFG, "20260609", "wh")
+    assert check.passed is False
+    assert "Voter_x_idx" in check.details["missing_from_new"]
+
+
+def test_check_indexes_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", _boom)
+    check = step._check_indexes(_CFG, "20260609", "wh")
+    assert check.passed is False and "error_reading_prod" in check.details
+
+
+# --- _check_sample_queries ---
+
+
+def test_check_sample_queries_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = FakeConn()
+    for _ in step._SAMPLE_QUERIES:
+        conn.queue_result((1,))  # each query's fetchone returns a row
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_sample_queries(_CFG, "20260609", "wh")
+    assert check.passed is True and not check.details["fail"]
+
+
+def test_check_sample_queries_failure_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_new", lambda *a, **k: _RaisingConn())
+    check = step._check_sample_queries(_CFG, "20260609", "wh")
+    assert check.passed is False
+    assert len(check.details["fail"]) == len(step._SAMPLE_QUERIES)
+
+
+# --- _check_l2type_coverage ---
+
+
+def test_check_l2type_coverage_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("Type_A",)])))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Type_A",)])))
+    assert step._check_l2type_coverage(_CFG, "20260609", "wh").passed is True
+
+
+def test_check_l2type_coverage_missing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        step, "connect_prod", fake_connect(FakeConn().queue_result([("Type_A",), ("Type_B",)]))
+    )
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Type_A",)])))
+    check = step._check_l2type_coverage(_CFG, "20260609", "wh")
+    assert check.passed is False
+    assert "Type_B" in check.details["missing_columns"]
+
+
+def test_check_l2type_coverage_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_prod", _boom)
+    check = step._check_l2type_coverage(_CFG, "20260609", "wh")
+    assert check.passed is False and "error_reading_org_districts" in check.details
