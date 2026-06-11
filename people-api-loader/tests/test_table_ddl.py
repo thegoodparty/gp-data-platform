@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from loader.people_api.schema.table_ddl import extract_create_tables
+from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 
 _DUMP = """
 CREATE TABLE public."Voter" (
@@ -30,3 +30,9 @@ def test_extracts_voter_table_only() -> None:
     assert "timestamp(3)" in stmt  # a ')' inside the body must not terminate the match
     assert "CREATE INDEX" not in stmt
     assert "ADD CONSTRAINT" not in stmt
+
+
+def test_extract_column_names_in_ddl_order() -> None:
+    # Quoted and bare (Prisma) columns, in physical order; constraint lines excluded.
+    cols = extract_column_names(extract_create_tables(_DUMP)["Voter"])
+    assert cols == ["LALVOTERID", "State", "created_at", "id"]

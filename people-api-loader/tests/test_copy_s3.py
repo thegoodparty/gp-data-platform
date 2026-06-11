@@ -13,6 +13,17 @@ from tests._fakes import FakeConn, executed_sql, fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b", aws_region="us-west-2"))
 
+# Minimal Voter DDL with a mid-table lowercase Prisma column, so column extraction
+# (and ordering) is exercised by the run() tests without the full prod snapshot.
+_DDL = (
+    'CREATE TABLE public."Voter" (\n'
+    '    "LALVOTERID" text NOT NULL,\n'
+    '    "State" text NOT NULL,\n'
+    "    id uuid NOT NULL\n"
+    ");"
+)
+_COLS = '"LALVOTERID", "State", "id"'
+
 
 def _unload(files, counts):
     return SimpleNamespace(status="complete", files=files, per_state_row_counts=counts)
@@ -21,7 +32,7 @@ def _unload(files, counts):
 def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    step._copy_one_file(_CFG, "20260609", "wh", "voter_export_20260609/state_id=TX/part-0.csv")
+    step._copy_one_file(_CFG, "20260609", "wh", "voter_export_20260609/state_id=TX/part-0.csv", _COLS)
     sql = executed_sql(conn)
     assert any("aws_s3.table_import_from_s3" in s for s in sql)
     # all five session SETs run before the import
@@ -33,9 +44,11 @@ def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.Monke
         "idle_in_transaction_session_timeout",
     ):
         assert any(f"SET {setting}" in s for s in sql), f"missing SET {setting}"
-    # the import targets the single unified table, not a per-state table
+    # the import targets the single unified table, not a per-state table, and passes the
+    # explicit column list (not '') so the load isn't a bare positional map.
     import_params = next(p for s, p in conn.executed if "table_import_from_s3" in s)
     assert import_params["table"] == 'public."Voter"'
+    assert import_params["columns"] == _COLS
 
 
 def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,6 +62,7 @@ def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) ->
         expected_rows=100,
         s3_keys=["k"],
         parallelism=1,
+        column_list=_COLS,
     )
     assert r.files_loaded == 0 and r.state == "TX" and r.table == "Voter"
 
@@ -58,6 +72,7 @@ def test_run_completes_and_records_state(monkeypatch: pytest.MonkeyPatch) -> Non
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -97,6 +112,7 @@ def test_full_run_raises_and_writes_no_manifest_when_incomplete(monkeypatch: pyt
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100, "CA": 200})
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -114,6 +130,7 @@ def test_state_filter_partial_writes_no_manifest(monkeypatch: pytest.MonkeyPatch
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100, "CA": 200})
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -136,6 +153,7 @@ def test_load_state_partial_reload_deletes_then_loads(monkeypatch: pytest.Monkey
         expected_rows=100,
         s3_keys=["k"],
         parallelism=1,
+        column_list=_COLS,
     )
     sql = executed_sql(conn)
     assert any('DELETE FROM public."Voter" WHERE "State"' in s for s in sql)
@@ -154,6 +172,7 @@ def test_load_state_skip_path_does_not_delete(monkeypatch: pytest.MonkeyPatch) -
         expected_rows=100,
         s3_keys=["k"],
         parallelism=1,
+        column_list=_COLS,
     )
     assert not any("DELETE FROM" in s for s in executed_sql(conn))
 
@@ -178,6 +197,7 @@ def test_state_filter_reloads_carried_partial_state(monkeypatch: pytest.MonkeyPa
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
     )
@@ -219,6 +239,7 @@ def test_state_filter_reloads_fully_loaded_state(monkeypatch: pytest.MonkeyPatch
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
     )
@@ -245,6 +266,7 @@ def test_state_filter_no_loadable_files_raises(monkeypatch: pytest.MonkeyPatch) 
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=0)]
     unload = _unload(files, {"TX": 100})
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -266,6 +288,7 @@ def test_load_state_acquires_advisory_lock(monkeypatch: pytest.MonkeyPatch) -> N
         expected_rows=100,
         s3_keys=["k"],
         parallelism=1,
+        column_list=_COLS,
     )
     # Assert ordering, not just presence: the lock must precede the row count, else a
     # reordering regression (count first) would defeat the guard yet still pass.

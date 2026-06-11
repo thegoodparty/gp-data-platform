@@ -27,3 +27,30 @@ def extract_create_tables(sql: str) -> dict[str, str]:
     for m in _CREATE_TABLE_RE.finditer(sql):
         out[m.group("name")] = m.group(0)
     return out
+
+
+# A column line starts with either a "Quoted" identifier or a bare lowercase one
+# (Prisma columns like `id`, `created_at`). Table-level constraint lines start with
+# an uppercase keyword (PRIMARY, CONSTRAINT, ...) and are skipped by the
+# lowercase-only bare branch.
+_COLUMN_LINE_RE = re.compile(r'^\s*(?:"(?P<quoted>[^"]+)"|(?P<bare>[a-z_][a-zA-Z0-9_]*))\s')
+
+
+def extract_column_names(create_table_sql: str) -> list[str]:
+    """Ordered column names from a single CREATE TABLE block.
+
+    The order is the table's physical (DDL) column order, which is exactly what a
+    positional COPY maps against — so callers can turn it into an explicit column
+    list instead of relying on raw positional alignment.
+    """
+    open_idx = create_table_sql.find("(")
+    close_idx = create_table_sql.rfind(")")
+    if open_idx < 0 or close_idx <= open_idx:
+        return []
+    body = create_table_sql[open_idx + 1 : close_idx]
+    cols: list[str] = []
+    for line in body.splitlines():
+        m = _COLUMN_LINE_RE.match(line)
+        if m:
+            cols.append(m.group("quoted") or m.group("bare"))
+    return cols

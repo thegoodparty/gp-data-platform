@@ -4,6 +4,16 @@ A ThreadPoolExecutor issues one `aws_s3.table_import_from_s3` per file, all
 targeting `public."Voter"`; the `"State"` column comes from the data. PG's COPY
 is single-threaded per statement, so file-level parallelism is the lever.
 
+Column contract: we pass an EXPLICIT column list (derived from the committed prod
+DDL via `extract_column_names`) rather than an empty list. An empty list makes COPY
+map file columns positionally against the table's physical DDL order, which is a
+silent-corruption trap here — the Prisma-managed columns `created_at`, `id`, and
+`updated_at` sit MID-table (not at the end), so any unload whose layout differs
+would write data into the wrong columns. The explicit list pins the contract: the
+unload (DATA-1907/unload, still a stub) must emit exactly these columns, in this
+order. `id` (PK, no default) and `updated_at` (no default) must be present;
+`created_at` has a default but is included for a faithful full-table copy.
+
 Idempotency is per-state on the `"State"` column: count rows for the state vs
 the unload baseline. Equal → skip. Zero → load. Partial → DELETE that state's
 rows, then reload.
@@ -28,6 +38,8 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
+from loader.people_api.schema.snapshot import load_prod_dump
+from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 
 log = get_logger(__name__)
 
@@ -47,8 +59,14 @@ _SESSION_SQL: tuple[str, ...] = (
 )
 
 
-def _copy_one_file(cfg: LoaderConfig, run_date: str, writer_endpoint: str, s3_key: str) -> None:
-    """Import one S3 file into public."Voter" on its own backend."""
+def _copy_one_file(
+    cfg: LoaderConfig, run_date: str, writer_endpoint: str, s3_key: str, column_list: str
+) -> None:
+    """Import one S3 file into public."Voter" on its own backend.
+
+    `column_list` is the explicit, DDL-ordered column list (see module docstring);
+    it must name exactly the columns the unload file contains, in file order.
+    """
     with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
         for stmt in _SESSION_SQL:
             cur.execute(stmt)  # ty: ignore[no-matching-overload]
@@ -56,13 +74,14 @@ def _copy_one_file(cfg: LoaderConfig, run_date: str, writer_endpoint: str, s3_ke
             """
             SELECT aws_s3.table_import_from_s3(
                 %(table)s,
-                '',
+                %(columns)s,
                 %(options)s,
                 aws_commons.create_s3_uri(%(bucket)s, %(key)s, %(region)s)
             )
             """,
             {
                 "table": f'public."{_TARGET_TABLE}"',
+                "columns": column_list,
                 "options": "(FORMAT text, DELIMITER E'\\t', NULL '\\N', ENCODING 'UTF8')",
                 "bucket": cfg.s3_bucket,
                 "key": s3_key,
@@ -92,6 +111,7 @@ def _load_state(
     expected_rows: int,
     s3_keys: list[str],
     parallelism: int,
+    column_list: str,
 ) -> CopyTableResult:
     bind(state=state)
     started = time.time()
@@ -124,7 +144,8 @@ def _load_state(
 
         with ThreadPoolExecutor(max_workers=parallelism) as executor:
             futures = {
-                executor.submit(_copy_one_file, cfg, run_date, writer_endpoint, key): key for key in s3_keys
+                executor.submit(_copy_one_file, cfg, run_date, writer_endpoint, key, column_list): key
+                for key in s3_keys
             }
             errors: list[tuple[str, Exception]] = []
             for fut in as_completed(futures):
@@ -169,9 +190,24 @@ def run(
         raise RuntimeError("Step 4 requires a completed unload manifest.")
 
     writer_endpoint = resolve_writer_endpoint(cfg, run_date)
+
+    # Explicit column list (DDL order) so COPY maps by a pinned contract, not raw
+    # position — see module docstring. Quote every name uniformly; "id" == id in PG.
+    tables = extract_create_tables(load_prod_dump(cfg, run_date))
+    if _TARGET_TABLE not in tables:
+        raise RuntimeError(f'snapshot has no CREATE TABLE public."{_TARGET_TABLE}"')
+    columns = extract_column_names(tables[_TARGET_TABLE])
+    if not columns:
+        raise RuntimeError(f'could not parse any columns from the "{_TARGET_TABLE}" DDL')
+    column_list = ", ".join(f'"{c}"' for c in columns)
+
     started = datetime.now(UTC)
     log.info(
-        "copy.start", state_filter=state_filter, parallelism=parallelism, writer_endpoint=writer_endpoint
+        "copy.start",
+        state_filter=state_filter,
+        parallelism=parallelism,
+        writer_endpoint=writer_endpoint,
+        columns=len(columns),
     )
 
     files_by_state: dict[str, list[str]] = {}
@@ -200,6 +236,7 @@ def run(
             expected_rows=unload.per_state_row_counts.get(state, 0),
             s3_keys=files_by_state.get(state, []),
             parallelism=parallelism,
+            column_list=column_list,
         )
         for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0))
     ]

@@ -93,3 +93,21 @@ def test_create_index_unique_functional_raises(monkeypatch: pytest.MonkeyPatch) 
     )
     with pytest.raises(RuntimeError, match="expression column"):
         step._create_index(_CFG, "20260609", "wh", idx)
+
+
+def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    # prod has Type_A + Type_B; new table only has a Type_A column -> Type_B missing.
+    prod_conn = FakeConn().queue_result([("Type_A",), ("Type_B",)])
+    new_conn = FakeConn().queue_result([("Type_A",)])
+    monkeypatch.setattr(step, "connect_prod", fake_connect(prod_conn))
+    monkeypatch.setattr(step, "connect_new", fake_connect(new_conn))
+    assert step._l2type_coverage(_CFG, "20260609", "wh") == ["Type_B"]
+
+
+def test_l2type_coverage_returns_none_when_prod_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The None return (vs []) marks the check as skipped; it's load-bearing, so cover it.
+    def _boom(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("org_districts unreachable")
+
+    monkeypatch.setattr(step, "connect_prod", _boom)
+    assert step._l2type_coverage(_CFG, "20260609", "wh") is None
