@@ -152,3 +152,44 @@ def test_state_filter_reloads_carried_partial_state(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(step, "_load_state", _ls)
     step.run(_CFG, "20260609", state_filter="TX")
     assert called.get("state") == "TX"
+
+
+def test_state_filter_reloads_fully_loaded_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    # TX was fully loaded (100/100) in a prior in-progress run. `--state TX` must
+    # still reload it — the carry-forward must not skip an explicitly-targeted state.
+    called: dict = {}
+    existing = SimpleNamespace(
+        status="in_progress",
+        results=[
+            step.CopyTableResult(
+                table="Voter",
+                state="TX",
+                expected_rows=100,
+                actual_rows=100,
+                files_loaded=3,
+                seconds_elapsed=1.0,
+            )
+        ],
+    )
+    files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
+    unload = _unload(files, {"TX": 100})
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+
+    def _ls(**kw):
+        called["state"] = kw["state"]
+        return step.CopyTableResult(
+            table="Voter",
+            state=kw["state"],
+            expected_rows=kw["expected_rows"],
+            actual_rows=kw["expected_rows"],
+            files_loaded=1,
+            seconds_elapsed=1.0,
+        )
+
+    monkeypatch.setattr(step, "_load_state", _ls)
+    step.run(_CFG, "20260609", state_filter="TX")
+    assert called.get("state") == "TX"

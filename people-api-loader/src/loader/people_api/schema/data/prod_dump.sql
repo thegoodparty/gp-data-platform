@@ -2,7 +2,6 @@
 -- PostgreSQL database dump
 --
 
-\restrict I4lMoRgQ89kzdgTRa50SQ4huxA4nGpbNqdJWSfqSilBITY6gXW5pimbw22QMDvg
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 17.10 (Homebrew)
@@ -2258,5 +2257,3 @@ CREATE INDEX "Voter_Weed_District_idx" ON public."Voter" USING btree ("Weed_Dist
 --
 -- PostgreSQL database dump complete
 --
-
-\unrestrict I4lMoRgQ89kzdgTRa50SQ4huxA4nGpbNqdJWSfqSilBITY6gXW5pimbw22QMDvg

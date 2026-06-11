@@ -174,7 +174,11 @@ def run(
     if existing is not None and existing.results:
         # Carry forward only states that fully matched their expected count — a
         # partially-loaded state (actual < expected) must be reloaded, not skipped.
-        results.extend(r for r in existing.results if r.actual_rows >= r.expected_rows > 0)
+        # Never carry the explicitly-targeted state: `--state X` always reloads X,
+        # even if a prior run loaded it fully.
+        results.extend(
+            r for r in existing.results if r.actual_rows >= r.expected_rows > 0 and r.state != state_filter
+        )
     already_done = {r.state for r in results}
 
     for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0)):
