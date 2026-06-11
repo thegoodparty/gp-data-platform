@@ -477,6 +477,105 @@ def test_format_report_renders_decisions_line():
     assert report.count("pipeline.md") == 1  # process edits deduped in render
 
 
+def test_segment_stages_uses_deliverable_boundary_without_brief():
+    # express run skips the brief file but writes a .py deliverable; framing should
+    # end at the deliverable write rather than swallowing the whole run.
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answers"}},  # 1
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/ad_hoc/q.py"),  # 2 deliverable
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "ran"}},  # 3
+        _tool_use_rec("2026-06-08T19:06:30Z", "Agent", "a1", subagent_type="product-data-scientist"),  # 4
+        _tool_result_rec("2026-06-08T19:08:00Z", "a1"),  # 5
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert spans["framing"] == (0, 2)  # framing ends at the deliverable write
+    assert spans["execution"] == (2, 4)  # deliverable .. reviewer
+    assert confidence == "low"  # no brief -> approximate split, still flagged
+
+
+def test_segment_stages_merges_framing_execution_when_no_brief_or_deliverable():
+    # fully-inline headline arm: no brief, no artifact, no reviewer, no calibration.
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answers"}},  # 1
+        {"type": "assistant", "timestamp": "2026-06-08T19:05:00Z", "message": {"content": "computed"}},  # 2
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "answer"}},  # 3
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert spans["framing"] == (0, 4)  # spans the whole run (merged)
+    assert spans["execution"][0] == spans["execution"][1]  # empty execution
+    assert confidence == "low"
+
+
+def test_profile_run_flags_framing_merged_for_inline_run(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:05:00Z", "message": {"content": "answer"}},
+    ]
+    f = tmp_path / "inline.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.framing_merged is True
+
+
+def test_profile_run_not_merged_with_brief(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "y"}},
+    ]
+    f = tmp_path / "brief.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.framing_merged is False
+
+
+def test_profile_run_not_merged_with_deliverable_only(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/ad_hoc/q.py"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "y"}},
+    ]
+    f = tmp_path / "deliv.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.framing_merged is False
+
+
+def test_format_report_labels_merged_framing_execution():
+    prof = pp.RunProfile(
+        path="/tmp/inline.jsonl",
+        confidence="low",
+        framing_merged=True,
+        stages={
+            "framing": pp.StageMetrics(input_tokens=1000, model_active_seconds=300),
+            "execution": pp.StageMetrics(),  # empty / folded in
+            "review": pp.StageMetrics(),
+            "calibration": pp.StageMetrics(),
+        },
+    )
+    report = pp.format_report([prof])
+    assert "framing+execution" in report
+
+
+def test_format_report_combined_drops_wall_clock_and_excludes_idle():
+    p1 = pp.RunProfile(
+        path="/a.jsonl",
+        confidence="ok",
+        stages={"framing": pp.StageMetrics(model_active_seconds=120, human_idle_seconds=600)},
+    )
+    p2 = pp.RunProfile(
+        path="/b.jsonl",
+        confidence="ok",
+        stages={"framing": pp.StageMetrics(model_active_seconds=240, human_idle_seconds=0)},
+    )
+    report = pp.format_report([p1, p2])
+    assert "mean_wall_clock_min" not in report  # misleading wall-clock mean dropped
+    assert "human-idle" in report.lower()
+    assert "excluded" in report.lower()  # idle surfaced as excluded from the active comparison
+
+
 def test_write_log_appends_to_single_file(tmp_path):
     p1 = pp._write_log("REPORT ONE", ["/x/a.jsonl"], tmp_path, datetime(2026, 6, 10, 14, 30, 5))
     p2 = pp._write_log("REPORT TWO", ["/x/b.jsonl"], tmp_path, datetime(2026, 6, 11, 9, 0, 0))
