@@ -79,6 +79,51 @@ def test_run_completes_and_records_state(monkeypatch: pytest.MonkeyPatch) -> Non
     assert manifest.results[0].state == "TX"
 
 
+def _passthrough_load_state(**kw):
+    return step.CopyTableResult(
+        table="Voter",
+        state=kw["state"],
+        expected_rows=kw["expected_rows"],
+        actual_rows=kw["expected_rows"],
+        files_loaded=1,
+        seconds_elapsed=1.0,
+    )
+
+
+def test_full_run_raises_and_writes_no_manifest_when_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CA is expected (count>0) but has no loadable files -> a full run can't cover it.
+    # It must raise (surface the anomaly) and NOT persist an in_progress manifest.
+    wrote: dict = {}
+    files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
+    unload = _unload(files, {"TX": 100, "CA": 200})
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "_load_state", _passthrough_load_state)
+    with pytest.raises(RuntimeError, match="copy incomplete"):
+        step.run(_CFG, "20260609")
+    assert "m" not in wrote  # no manifest persisted on incomplete full run
+
+
+def test_state_filter_partial_writes_no_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `--state TX` against a 2-state table loads TX only; the table isn't complete,
+    # so no manifest is persisted and it does not raise.
+    wrote: dict = {}
+    files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
+    unload = _unload(files, {"TX": 100, "CA": 200})
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "_load_state", _passthrough_load_state)
+    manifest = step.run(_CFG, "20260609", state_filter="TX")
+    assert "m" not in wrote  # not persisted
+    assert manifest.status == "in_progress"
+
+
 def test_load_state_partial_reload_deletes_then_loads(monkeypatch: pytest.MonkeyPatch) -> None:
     # pre-count 50 of expected 100 (partial) -> DELETE that state, reload; post-count 100.
     conn = FakeConn().queue_result((50,)).queue_result((100,))

@@ -116,7 +116,9 @@ def _check_indexes(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> Va
 
 _SAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     ("party_filter", 'SELECT count(*) FROM public."Voter" WHERE "Parties_Description" = \'Democratic\''),
-    ("age_cast_filter", 'SELECT count(*) FROM public."Voter" WHERE "Age"::integer BETWEEN 18 AND 35'),
+    # Use the materialized integer column, not "Age"::integer — a non-numeric
+    # "Age" text value would error the whole query and fail the check on good data.
+    ("age_filter", 'SELECT count(*) FROM public."Voter" WHERE "Age_Int" BETWEEN 18 AND 35'),
     ("state_filter", 'SELECT count(*) FROM public."Voter" WHERE "State" = \'TX\''),
     ("lalvoterid_lookup", 'SELECT count(*) FROM public."Voter" WHERE "LALVOTERID" IS NOT NULL'),
 )

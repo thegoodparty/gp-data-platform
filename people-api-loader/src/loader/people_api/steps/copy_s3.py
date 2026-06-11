@@ -170,22 +170,12 @@ def run(
 
     states_to_load = [state_filter] if state_filter else sorted(files_by_state.keys())
 
-    results: list[CopyTableResult] = []
-    if existing is not None and existing.results:
-        # Carry forward only states that fully matched their expected count — a
-        # partially-loaded state (actual < expected) must be reloaded, not skipped.
-        # Never carry the explicitly-targeted state: `--state X` always reloads X,
-        # even if a prior run loaded it fully.
-        results.extend(
-            r for r in existing.results if r.actual_rows >= r.expected_rows > 0 and r.state != state_filter
-        )
-    already_done = {r.state for r in results}
-
-    for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0)):
-        if state in already_done:
-            log.info("copy.state_carried", state=state)
-            continue
-        result = _load_state(
+    # No manifest carry-forward: resume is DB-driven — `_load_state` re-counts each
+    # state and skips those already fully loaded. A partial manifest is never
+    # persisted (below), so `existing` is only ever a complete manifest (returned
+    # above) or absent.
+    results: list[CopyTableResult] = [
+        _load_state(
             cfg=cfg,
             run_date=run_date,
             writer_endpoint=writer_endpoint,
@@ -194,12 +184,10 @@ def run(
             s3_keys=files_by_state.get(state, []),
             parallelism=parallelism,
         )
-        results = [r for r in results if r.state != state] + [result]
+        for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0))
+    ]
 
     covered = {r.state for r in results}
-    # Expect every state the unload says has rows. A state with rows but no
-    # (non-zero) files never gets covered, so the run stays in_progress and
-    # surfaces the missing-data anomaly rather than silently completing.
     expected_states = {s for s, count in unload.per_state_row_counts.items() if count > 0}
     all_loaded = covered >= expected_states
 
@@ -210,8 +198,19 @@ def run(
         finished_at=datetime.now(UTC) if all_loaded else None,
         results=results,
     )
-    uri = write_manifest(cfg, manifest)
-    log.info(
-        "copy.complete", uri=uri, all_loaded=all_loaded, covered=len(covered), expected=len(expected_states)
-    )
+    if all_loaded:
+        # Persist ONLY when the whole table is loaded — manifest existence is the
+        # orchestration "step complete" signal (people-api-loader CLAUDE.md). We
+        # never write an in_progress manifest, so a poller can't advance on partial data.
+        uri = write_manifest(cfg, manifest)
+        log.info("copy.complete", uri=uri, covered=len(covered), expected=len(expected_states))
+    elif state_filter is None:
+        # A full run that didn't cover every expected state is an anomaly (a state
+        # with rows but no loadable files). Surface it; write no manifest.
+        missing = sorted(expected_states - covered)
+        raise RuntimeError(f"copy incomplete: {len(missing)} state(s) not loaded: {missing[:10]}")
+    else:
+        # Intentional single-state (--state) load: the whole table isn't done, so no
+        # manifest is written; a later full run completes it.
+        log.info("copy.state_loaded", state=state_filter, covered=sorted(covered))
     return manifest
