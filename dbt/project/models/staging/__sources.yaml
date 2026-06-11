@@ -1583,3 +1583,22 @@ sources:
           after post-prediction filters. Each row is a pair of election-stage records with
           match weights, match probabilities, and per-comparison gamma levels. For auditing
           election-stage match quality.
+
+  - name: nhgis
+    schema: sandbox
+    description: >
+      NHGIS extracts of the 2020 decennial census, staged by the research team. The 2020
+      frame is static: these tables are a one-time load, not a refreshing feed, so
+      downstream tests pin exact totals.
+    tables:
+      - name: blocks_to_pop_a
+        description: >
+          First of the two files of the 2020 census block population extract. The a/b
+          split is by row count, not state boundary (Missouri spans both files), so both
+          tables are required for a complete national frame. All columns are strings, and
+          the first data row is an embedded descriptive header that must be filtered out.
+      - name: blocks_to_pop_b
+        description: >
+          Second of the two files of the 2020 census block population extract. Columns
+          are typed; GEOCODE is stored as a number, which drops leading zeros, so always
+          zero-pad to the 15-character block GEOID on read.
