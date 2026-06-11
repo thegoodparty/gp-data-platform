@@ -90,6 +90,15 @@ def _copy_one_file(
         )
 
 
+def _acquire_state_lock(cur: psycopg.Cursor, state: str) -> None:
+    """Take the session advisory lock for `state` (released when the conn closes).
+
+    ::int4 cast is required: psycopg3 binds the Python int as bigint, and PG has no
+    pg_advisory_lock(bigint, int4) overload — only (bigint) or (int4, int4).
+    """
+    cur.execute("SELECT pg_advisory_lock(%s::int4, hashtext(%s))", (_COPY_LOCK_NAMESPACE, state))
+
+
 def _count_state_rows(conn: psycopg.Connection, state: str) -> int:
     with conn.cursor() as cur:
         cur.execute('SELECT count(*) FROM public."Voter" WHERE "State" = %s', (state,))
@@ -124,9 +133,7 @@ def _load_state(
     # The lock releases automatically when lock_conn closes.
     with connect_new(cfg, run_date, writer_endpoint) as lock_conn:
         with lock_conn.cursor() as cur:
-            # ::int4 cast is required: psycopg3 binds the Python int as bigint, and PG has
-            # no pg_advisory_lock(bigint, int4) overload — only (bigint) or (int4, int4).
-            cur.execute("SELECT pg_advisory_lock(%s::int4, hashtext(%s))", (_COPY_LOCK_NAMESPACE, state))
+            _acquire_state_lock(cur, state)
 
         actual = _count_state_rows(lock_conn, state)
         if actual == expected_rows and expected_rows > 0:

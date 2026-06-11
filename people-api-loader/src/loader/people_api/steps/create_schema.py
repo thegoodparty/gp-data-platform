@@ -8,6 +8,7 @@ extensions. One child partition per USState is created.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from loader.core.log import bind, get_logger
@@ -27,6 +28,27 @@ from loader.people_api.schema.table_ddl import extract_create_tables
 log = get_logger(__name__)
 
 _TARGET_TABLE = "Voter"
+
+
+def build_partitioned_ddl(create_sql: str, table: str, states: Sequence[str]) -> tuple[str, list[str]]:
+    """Turn a plain CREATE TABLE into a LIST-partitioned parent + per-state children.
+
+    Returns (parent_ddl, [child_ddl, ...]). Both parent and children use
+    IF NOT EXISTS so a retry after partial creation doesn't fail.
+    """
+    parent = create_sql.rstrip()
+    if not parent.endswith(");"):
+        raise RuntimeError("unexpected CREATE TABLE shape; cannot add PARTITION BY")
+    parent = parent[:-1].rstrip() + ' PARTITION BY LIST ("State");'
+    parent = parent.replace(
+        f'CREATE TABLE public."{table}"', f'CREATE TABLE IF NOT EXISTS public."{table}"', 1
+    )
+    children = [
+        f'CREATE TABLE IF NOT EXISTS public."{table}_{s}" PARTITION OF public."{table}" '
+        f"FOR VALUES IN ('{s}');"
+        for s in states
+    ]
+    return parent, children
 
 
 def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
@@ -51,17 +73,7 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
     create_sql = tables[_TARGET_TABLE]
 
     # Build the partitioned parent DDL and per-state child partitions.
-    parent = create_sql.rstrip()
-    if not parent.endswith(");"):
-        raise RuntimeError("unexpected CREATE TABLE shape; cannot add PARTITION BY")
-    parent = parent[:-1].rstrip() + ' PARTITION BY LIST ("State");'
-    # IF NOT EXISTS so a retry after the parent was created (but before the manifest
-    # was written) doesn't fail with "relation already exists" — matches the children.
-    parent = parent.replace('CREATE TABLE public."Voter"', 'CREATE TABLE IF NOT EXISTS public."Voter"', 1)
-    child_stmts = [
-        f'CREATE TABLE IF NOT EXISTS public."Voter_{s}" PARTITION OF public."Voter" FOR VALUES IN (\'{s}\');'
-        for s in STATES
-    ]
+    parent, child_stmts = build_partitioned_ddl(create_sql, _TARGET_TABLE, STATES)
     full_ddl = "\n".join([parent, *child_stmts])
 
     ddl_uri = put_artifact(cfg, run_date, "schema/target_schema.sql", full_ddl)

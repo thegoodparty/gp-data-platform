@@ -57,3 +57,17 @@ def test_skips_when_complete(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: done)
     monkeypatch.setattr(step, "manifest_uri", lambda cfg, rd, name: "s3://b/x")
     assert step.run(_CFG, "20260609") is done
+
+
+def test_build_partitioned_ddl_shape() -> None:
+    parent, children = step.build_partitioned_ddl(
+        'CREATE TABLE public."Voter" ("id" uuid NOT NULL, "State" text NOT NULL);',
+        "Voter",
+        ["TX", "CA"],
+    )
+    assert 'CREATE TABLE IF NOT EXISTS public."Voter"' in parent
+    assert parent.rstrip().endswith('PARTITION BY LIST ("State");')
+    assert children == [
+        'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\');',
+        'CREATE TABLE IF NOT EXISTS public."Voter_CA" PARTITION OF public."Voter" FOR VALUES IN (\'CA\');',
+    ]
