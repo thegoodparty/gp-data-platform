@@ -139,7 +139,11 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     log.info("indexes.parsed", primary_keys=len(pks), indexes=len(idxs))
 
     # Partition key "State" must be part of every PK/unique on the partitioned table.
-    pks = [PrimaryKey(table=p.table, constraint=p.constraint, columns=[*p.columns, "State"]) for p in pks]
+    # dict.fromkeys dedupes in case a future dump's PK already includes "State".
+    pks = [
+        PrimaryKey(table=p.table, constraint=p.constraint, columns=list(dict.fromkeys([*p.columns, "State"])))
+        for p in pks
+    ]
 
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
         """Run `fn(cfg, run_date, writer_endpoint, item)` across items, fail-fast."""

@@ -36,6 +36,15 @@ def test_row_counts_expected_zero_requires_zero(monkeypatch: pytest.MonkeyPatch)
     assert step._check_row_counts(_CFG, "20260609", "wh", {"TX": 0}).passed is False
 
 
+def test_row_counts_flags_unexpected_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A state present in the table but not in the baseline must not pass silently.
+    conn = FakeConn().queue_result([("TX", 100), ("ZZ", 5)])
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_row_counts(_CFG, "20260609", "wh", {"TX": 100})
+    assert check.passed is False
+    assert "ZZ" in check.details["mismatches"]
+
+
 def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")

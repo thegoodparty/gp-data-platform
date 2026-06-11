@@ -48,6 +48,11 @@ def _check_row_counts(
         high = expected_count * (1 + _ROW_COUNT_TOLERANCE)
         if not (low <= actual <= high):
             mismatches[state] = {"expected": expected_count, "actual": actual}
+    # Rows under a state the baseline doesn't expect (stray/unexpected code) are a
+    # mismatch too — don't let them pass silently.
+    for state, actual_count in actual_by_state.items():
+        if state not in expected:
+            mismatches[state] = {"expected": 0, "actual": actual_count}
     return ValidationCheck(
         name="row_counts_match_databricks",
         passed=not mismatches,

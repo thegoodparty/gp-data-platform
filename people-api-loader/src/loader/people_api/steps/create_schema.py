@@ -55,6 +55,9 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
     if not parent.endswith(");"):
         raise RuntimeError("unexpected CREATE TABLE shape; cannot add PARTITION BY")
     parent = parent[:-1].rstrip() + ' PARTITION BY LIST ("State");'
+    # IF NOT EXISTS so a retry after the parent was created (but before the manifest
+    # was written) doesn't fail with "relation already exists" — matches the children.
+    parent = parent.replace('CREATE TABLE public."Voter"', 'CREATE TABLE IF NOT EXISTS public."Voter"', 1)
     child_stmts = [
         f'CREATE TABLE IF NOT EXISTS public."Voter_{s}" PARTITION OF public."Voter" FOR VALUES IN (\'{s}\');'
         for s in STATES

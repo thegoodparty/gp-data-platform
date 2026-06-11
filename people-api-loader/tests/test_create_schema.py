@@ -36,8 +36,9 @@ def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatc
     sql = executed_sql(conn)
     assert any("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE" in s for s in sql)
     assert any("CREATE EXTENSION IF NOT EXISTS aws_commons" in s for s in sql)
-    # parent table has PARTITION BY LIST
+    # parent table has PARTITION BY LIST and is retry-safe (IF NOT EXISTS)
     assert any('PARTITION BY LIST ("State")' in s for s in sql)
+    assert any('CREATE TABLE IF NOT EXISTS public."Voter" (' in s for s in sql)
     # one child partition for TX
     assert any(
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\')' in s
