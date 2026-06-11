@@ -9,15 +9,21 @@ See analytics/planning/2026-06-09-pipeline-profiler-design.md.
 Stage definitions (these four map 1:1 to the pipeline stages in the
 win-analytics-process skill's references/pipeline.md, which is the authority):
 
-  framing      Pipeline stage 1 (Frame). From the win-analytics skill load to
-               the `_brief.yaml` write. Includes the scoping conversation and the
-               framing-approval gate: the human-idle here is largely you
-               answering scoping questions and approving the brief.
+  framing      Pipeline stage 1 (Frame). From the win-analytics skill load to the
+               framing->execution boundary: the `_brief.yaml` write, or, when an
+               express run skips the brief file, the first deliverable artifact
+               write. Includes the scoping conversation and the framing-approval
+               gate: the human-idle here is largely you answering scoping
+               questions and approving the brief. When neither a brief nor a
+               deliverable exists (a fully-inline run) framing and execution
+               cannot be separated and are reported as one `framing+execution`
+               span (RunProfile.framing_merged; flagged confidence: low).
   execution    Pipeline stage 2 (Execute) plus the stage-G results checkpoint.
-               From the brief write to the first reviewer dispatch. Includes
-               building the analysis artifact AND the results-checkpoint gate,
-               which has no artifact marker, so the idle spent waiting for
-               results approval is attributed here, not to a separate stage.
+               From the framing->execution boundary to the first reviewer
+               dispatch. Includes building the analysis artifact AND the
+               results-checkpoint gate, which has no artifact marker, so the idle
+               spent waiting for results approval is attributed here, not to a
+               separate stage.
   review       Pipeline stages 3 and + (the product-data-scientist and
                product-manager reviewers). From the first reviewer dispatch to
                the last reviewer result. Reviewers run in parallel, so this is a
@@ -148,6 +154,27 @@ def _first_of(*vals: int | None, default: int) -> int:
     return next((v for v in vals if v is not None), default)
 
 
+def _is_deliverable_path(path: str) -> bool:
+    """True when a written/edited file is an analysis deliverable artifact
+    (notebook, headless notebook-build script, or an ad-hoc/projects/notebooks .py)."""
+    base = os.path.basename(path)
+    if path.endswith(".ipynb"):
+        return True
+    if base.startswith("build_") and base.endswith(".py"):
+        return True
+    return path.endswith(".py") and any(seg in path for seg in ("/ad_hoc/", "/projects/", "/notebooks/"))
+
+
+def _first_deliverable_index(records: list[dict]) -> int | None:
+    """Index of the first Write/Edit of a deliverable artifact, else None.
+    Used as the framing->execution boundary when an express run skips the brief file."""
+    for i, rec in enumerate(records):
+        for name, tool_input, _tid in _iter_tool_uses(rec):
+            if name in ("Write", "Edit") and _is_deliverable_path(str(tool_input.get("file_path", ""))):
+                return i
+    return None
+
+
 def _first_human_after(records: list[dict], start: int) -> int:
     """Index of the first human message strictly after `start`, else len(records)."""
     for i in range(start + 1, len(records)):
@@ -196,11 +223,16 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
 
     confidence = "ok" if ("skill_load" in idx and brief is not None) else "low"
 
+    # framing->execution boundary: the brief file (the clean handoff), or, when an
+    # express run skips it, the first deliverable artifact write. When neither
+    # exists (a fully-inline run), framing and execution cannot be separated and
+    # are reported as one merged span (see RunProfile.framing_merged).
+    handoff = brief if brief is not None else _first_deliverable_index(records)
     # framing
-    framing_end = _first_of(brief, reviewer, calib, default=n)
+    framing_end = _first_of(handoff, reviewer, calib, default=n)
     framing = (skill, framing_end)
     # execution
-    exec_start = brief if brief is not None else framing_end
+    exec_start = handoff if handoff is not None else framing_end
     exec_end = _first_of(reviewer, calib, default=n)
     execution = (exec_start, max(exec_start, exec_end))
     # review
@@ -210,7 +242,7 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
         review = (reviewer, max(reviewer, rev_end))
     else:
         review = (exec_end, exec_end)  # empty
-    # calibration
+    # calibration (empty span when no calibration file was written)
     calibration = (calib, _first_human_after(records, calib)) if calib is not None else (n, n)
 
     spans = {"framing": framing, "execution": execution, "review": review, "calibration": calibration}
@@ -299,6 +331,9 @@ class RunProfile:
     confidence: str
     stages: dict[str, StageMetrics] = field(default_factory=dict)
     decisions: RunDecisions | None = None
+    # True when neither a brief nor a deliverable artifact exists, so framing and
+    # execution could not be separated and are reported as one merged span.
+    framing_merged: bool = False
 
 
 def load_records(path: str) -> list[dict]:
@@ -354,17 +389,23 @@ def format_report(profiles: list[RunProfile]) -> str:
             cache = m.cache_creation_input_tokens + m.cache_read_input_tokens
             wall = m.model_active_seconds + m.human_idle_seconds
             stage_total_tokens = m.input_tokens + m.output_tokens + cache
-            lines.append(
-                f"| {stage} | {_min(m.model_active_seconds)} | {_min(m.human_idle_seconds)} | "
-                f"{_min(wall)} | {_pct(m.model_active_seconds, total_active)} | "
-                f"{m.input_tokens} | {m.output_tokens} | {cache} | "
-                f"{_pct(stage_total_tokens, run_total_tokens)} |"
-            )
+            # totals always accumulate, even for a row we fold away below
             tot.model_active_seconds += m.model_active_seconds
             tot.human_idle_seconds += m.human_idle_seconds
             tot.input_tokens += m.input_tokens
             tot.output_tokens += m.output_tokens
             tot_cache += cache
+            # when framing and execution could not be separated, fold the empty
+            # execution row into a single "framing+execution" row.
+            if prof.framing_merged and stage == "execution":
+                continue
+            label = "framing+execution" if (prof.framing_merged and stage == "framing") else stage
+            lines.append(
+                f"| {label} | {_min(m.model_active_seconds)} | {_min(m.human_idle_seconds)} | "
+                f"{_min(wall)} | {_pct(m.model_active_seconds, total_active)} | "
+                f"{m.input_tokens} | {m.output_tokens} | {cache} | "
+                f"{_pct(stage_total_tokens, run_total_tokens)} |"
+            )
         tot_wall = tot.model_active_seconds + tot.human_idle_seconds
         tot_token_pct = 100 if run_total_tokens else 0
         lines.append(
@@ -383,23 +424,30 @@ def format_report(profiles: list[RunProfile]) -> str:
                 f"reviewers — {revs}  |  process-design edits — {proc}"
             )
         lines.append("")
-    # combined summary
+    # combined summary — model-active is the comparison metric; wall-clock is
+    # dropped here because human-idle (time the human stepped away) dominates it
+    # and is not pipeline cost.
     n = len(profiles) or 1
     lines += [
         "## Combined (mean across runs)",
         "",
-        "| stage | mean_model_active_min | mean_human_idle_min | mean_wall_clock_min |",
-        "|---|---|---|---|",
+        "| stage | mean_model_active_min |",
+        "|---|---|",
     ]
     for stage in STAGES:
         active = sum(p.stages.get(stage, StageMetrics()).model_active_seconds for p in profiles) / n
-        idle = sum(p.stages.get(stage, StageMetrics()).human_idle_seconds for p in profiles) / n
-        lines.append(f"| {stage} | {_min(active)} | {_min(idle)} | {_min(active + idle)} |")
+        lines.append(f"| {stage} | {_min(active)} |")
+    mean_active_total = sum(s.model_active_seconds for p in profiles for s in p.stages.values()) / n
+    mean_idle_total = sum(s.human_idle_seconds for p in profiles for s in p.stages.values()) / n
     lines += [
         "",
-        "> Note: reviewer internal tokens are not in the transcript (sub-agent sidechains "
-        "are not recorded), so review-stage token counts reflect only the parent context. "
-        "Review wall-clock is the parallel max-span (dispatch to last reviewer result).",
+        f"> Model-active is the comparison metric: mean total {_min(mean_active_total)} min/run. "
+        f"Mean human-idle is {_min(mean_idle_total)} min/run, **excluded** from the active "
+        "columns above — it is mostly time the human stepped away between turns, not pipeline "
+        "cost, and it swamps wall-clock, so wall-clock is not meaned here.",
+        "> Reviewer internal tokens are not in the transcript (sub-agent sidechains are not "
+        "recorded), so review-stage token counts reflect only the parent context. Review "
+        "wall-clock is the parallel max-span (dispatch to last reviewer result).",
     ]
     return "\n".join(lines)
 
@@ -414,7 +462,14 @@ def profile_run(path: str) -> RunProfile:
         tokens = _token_totals(sl)
         active, idle = _split_time(sl)
         stages[stage] = StageMetrics(model_active_seconds=active, human_idle_seconds=idle, **tokens)
-    return RunProfile(path=path, confidence=confidence, stages=stages, decisions=_collect_decisions(records))
+    merged = ("brief_write" not in _marker_indices(records)) and (_first_deliverable_index(records) is None)
+    return RunProfile(
+        path=path,
+        confidence=confidence,
+        stages=stages,
+        decisions=_collect_decisions(records),
+        framing_merged=merged,
+    )
 
 
 def _resolve_paths(patterns: list[str]) -> list[str]:

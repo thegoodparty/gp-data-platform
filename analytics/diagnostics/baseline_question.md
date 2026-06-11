@@ -30,12 +30,27 @@ held constant and the arms stay comparable.
 
 - **"total users" (the percentage denominator):** per month, does it mean Win
   users who signed up that month, who were active that month, or cumulative as
-  of that month? (resolved by first full run: _____)
-- **"activated users":** the governed activation definition. (resolved: _____)
+  of that month? (resolved by first full run: **cumulative** registered Win users
+  as of each month-end, restricted to an upcoming/live election: per-user
+  `MAX(election_date)` **bounded to `[2020-01-01, 2050-01-01]`** `>= the measured
+  month's start`, using `users_win_candidacy.election_date` (the per-stage field,
+  NOT the leaky `users_win_base.election_date`), deduped to distinct `user_id`
+  (MIN `user_created_at`), `is_latest_version AND NOT is_demo`. The bound removes
+  corrupt far-future dates (e.g. year 20021) that would otherwise read as
+  perpetually upcoming — see win-analytics-knowledge `gotchas.md`. Reproducible
+  base: Jan 9,877 / Feb 10,690 / Mar 11,207 / Apr 11,259 / May 10,853. The filter
+  drops past-election candidates whose candidacy is over.)
+- **"activated users":** the governed activation definition. (resolved: anchored
+  point-in-time via `first_campaign_sent_at <= month-end`, NOT the lifetime
+  `is_activated` flag, so post-month activations don't leak into earlier months.)
 - **"completed onboarding":** spans the May-2026 onboarding-flow cutover
   (`onboarding_complete` vs `Onboarding - Candidate Pledge Completed`); needs the
-  unified definition. (resolved: _____)
-- **"viewed dashboard":** the dashboard-view event. (resolved: _____)
+  unified definition. (resolved: the version-agnostic raw event
+  `Onboarding - Candidate Pledge Completed` fired within 14 days of signup, with
+  `event_time <= month-end`.)
+- **"viewed dashboard":** the dashboard-view event. (resolved: the raw event
+  `Dashboard - Candidate Dashboard Viewed` fired within 14 days of signup, with
+  `event_time <= month-end`.)
 
 ## Runnable arms
 
