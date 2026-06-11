@@ -20,6 +20,7 @@ import psycopg
 
 from loader.core.db import open_conn, password_from_secret
 from loader.people_api.config import LoaderConfig
+from loader.people_api.manifests import ProvisionManifest, read_manifest
 
 if TYPE_CHECKING:
     from psycopg import Connection
@@ -66,3 +67,24 @@ def connect_new(
         autocommit=autocommit,
     ) as conn:
         yield conn
+
+
+def resolve_writer_endpoint(cfg: LoaderConfig, run_date: str) -> str:
+    """Resolve the new cluster's writer endpoint.
+
+    `provision` (DATA-1909) is out of scope for this PR. Resolution order:
+    1. `LOADER_NEW_WRITER_ENDPOINT` env override (point at an existing cluster).
+    2. A completed `provision` manifest, if one exists for this run.
+    3. Otherwise raise.
+    """
+    override = os.environ.get("LOADER_NEW_WRITER_ENDPOINT")
+    if override:
+        return override
+    prov = read_manifest(cfg, run_date, "provision", ProvisionManifest)
+    if prov is not None and prov.status == "complete":
+        return prov.writer_endpoint
+    raise RuntimeError(
+        "No new-cluster writer endpoint available. Set "
+        "$LOADER_NEW_WRITER_ENDPOINT to the target cluster, or run "
+        "`loader provision --date <run_date>` first."
+    )

@@ -471,8 +471,8 @@ def test_format_report_renders_decisions_line():
     )
     report = pp.format_report([prof])
     assert "Decisions" in report
-    assert "analysis-script ×3" in report
-    assert "nb-build ×1" in report
+    assert "analysis-script ×3" in report  # noqa: RUF001
+    assert "nb-build ×1" in report  # noqa: RUF001
     assert "framing.md" in report
     assert report.count("pipeline.md") == 1  # process edits deduped in render
 
