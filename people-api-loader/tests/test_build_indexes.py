@@ -76,3 +76,20 @@ def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) ->
     assert 'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_u_idx"' in sql
     assert '("LALVOTERID", "State")' in sql
     assert 'WHERE "x" IS NOT NULL' in sql
+
+
+def test_create_index_unique_functional_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A functional unique index can't be safely requoted from parsed columns with the
+    # partition key — fail loudly instead of emitting invalid DDL.
+    conn = FakeConn()
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    idx = step.IndexDef(
+        table="Voter",
+        name="Voter_fn_uniq",
+        sql="(unused)",
+        unique=True,
+        columns=['lower("Email")'],
+        where=None,
+    )
+    with pytest.raises(RuntimeError, match="expression column"):
+        step._create_index(_CFG, "20260609", "wh", idx)

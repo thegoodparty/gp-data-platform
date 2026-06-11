@@ -47,3 +47,18 @@ def test_parse_foreign_keys() -> None:
     assert fks[0].table == "DistrictVoterTX"
     assert fks[0].constraint == "dv_fk"
     assert fks[0].sql.strip().endswith(";")
+
+
+def test_parse_indexes_functional_and_top_level_split() -> None:
+    # A functional index must capture the whole expression (not truncate at the
+    # first ')'), a partial index's WHERE (...) must not be read as a column, and a
+    # nested comma (inside a function call) must not split the column list.
+    fixture = (
+        'CREATE INDEX "v_lower_idx" ON public."Voter" USING btree (lower("Email")) '
+        'WHERE ("Email" IS NOT NULL);\n'
+        'CREATE INDEX "v_multi_idx" ON public."Voter" USING btree ("A", coalesce("B", \'x\'));\n'
+    )
+    idxs = {i.name: i for i in parse_indexes(fixture)}
+    assert idxs["v_lower_idx"].columns == ['lower("Email")']
+    assert idxs["v_lower_idx"].where is not None and "IS NOT NULL" in idxs["v_lower_idx"].where
+    assert idxs["v_multi_idx"].columns == ["A", "coalesce(\"B\", 'x')"]

@@ -251,3 +251,20 @@ def test_state_filter_no_loadable_files_raises(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
     with pytest.raises(RuntimeError, match="no loadable"):
         step.run(_CFG, "20260609", state_filter="TX")
+
+
+def test_load_state_acquires_advisory_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The per-state advisory lock must be taken (before the count) so a concurrent
+    # invocation can't read 0 and double-load.
+    conn = FakeConn().queue_result((100,))  # already complete -> skip, after the lock
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    step._load_state(
+        cfg=_CFG,
+        run_date="20260609",
+        writer_endpoint="wh",
+        state="TX",
+        expected_rows=100,
+        s3_keys=["k"],
+        parallelism=1,
+    )
+    assert any("pg_advisory_lock" in s for s in executed_sql(conn))

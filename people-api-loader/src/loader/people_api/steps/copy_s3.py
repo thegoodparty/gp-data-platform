@@ -34,6 +34,10 @@ log = get_logger(__name__)
 _DEFAULT_PARALLELISM = 128
 _TARGET_TABLE = "Voter"
 
+# Arbitrary namespace for the per-state pg_advisory_lock so it can't collide with
+# any other advisory lock taken on the cluster.
+_COPY_LOCK_NAMESPACE = 0x564F  # "VO"
+
 _SESSION_SQL: tuple[str, ...] = (
     "SET synchronous_commit = off",
     "SET maintenance_work_mem = '4GB'",
@@ -92,8 +96,17 @@ def _load_state(
     bind(state=state)
     started = time.time()
 
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
-        actual = _count_state_rows(conn, state)
+    # Hold a session advisory lock on the state for the whole count→delete→load
+    # sequence. Without it, two concurrent invocations could both read count=0 and
+    # both load — silently doubling the state's rows, since the PK/unique that would
+    # reject dupes is not built until build-indexes runs later. hashtext() is computed
+    # server-side, so the key is stable across processes (Python's hash() is not).
+    # The lock releases automatically when lock_conn closes.
+    with connect_new(cfg, run_date, writer_endpoint) as lock_conn:
+        with lock_conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s, hashtext(%s))", (_COPY_LOCK_NAMESPACE, state))
+
+        actual = _count_state_rows(lock_conn, state)
         if actual == expected_rows and expected_rows > 0:
             log.info("copy.skip", state=state, rows=actual)
             return CopyTableResult(
@@ -107,26 +120,25 @@ def _load_state(
         if actual > 0:
             # Partial load (an exact match already returned above) — reset and reload.
             log.info("copy.partial_reload", state=state, existing_rows=actual, expected=expected_rows)
-            _delete_state(conn, state)
+            _delete_state(lock_conn, state)
 
-    with ThreadPoolExecutor(max_workers=parallelism) as executor:
-        futures = {
-            executor.submit(_copy_one_file, cfg, run_date, writer_endpoint, key): key for key in s3_keys
-        }
-        errors: list[tuple[str, Exception]] = []
-        for fut in as_completed(futures):
-            key = futures[fut]
-            try:
-                fut.result()
-                log.info("copy.file_done", state=state, key=key)
-            except Exception as e:  # broad by design: aggregate worker failures, re-raise below
-                log.error("copy.file_failed", state=state, key=key, error=str(e))
-                errors.append((key, e))
-        if errors:
-            raise RuntimeError(f"{state}: {len(errors)} files failed — first: {errors[0][1]!r}")
+        with ThreadPoolExecutor(max_workers=parallelism) as executor:
+            futures = {
+                executor.submit(_copy_one_file, cfg, run_date, writer_endpoint, key): key for key in s3_keys
+            }
+            errors: list[tuple[str, Exception]] = []
+            for fut in as_completed(futures):
+                key = futures[fut]
+                try:
+                    fut.result()
+                    log.info("copy.file_done", state=state, key=key)
+                except Exception as e:  # broad by design: aggregate worker failures, re-raise below
+                    log.error("copy.file_failed", state=state, key=key, error=str(e))
+                    errors.append((key, e))
+            if errors:
+                raise RuntimeError(f"{state}: {len(errors)} files failed — first: {errors[0][1]!r}")
 
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
-        actual = _count_state_rows(conn, state)
+        actual = _count_state_rows(lock_conn, state)
     elapsed = time.time() - started
     log.info("copy.state_done", state=state, rows=actual, files=len(s3_keys), seconds=round(elapsed, 1))
     return CopyTableResult(

@@ -79,6 +79,17 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk:
 
 def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: IndexDef) -> None:
     if idx.unique:
+        # We rebuild a unique index from its parsed columns (to append the partition
+        # key), requoting each as an identifier. That's only valid for plain columns:
+        # an expression index (e.g. lower("c")) would become invalid DDL. The current
+        # snapshot has none; fail loudly rather than emit broken SQL if one appears.
+        expr_cols = [c for c in idx.columns if "(" in c]
+        if expr_cols:
+            raise RuntimeError(
+                f'cannot rebuild unique index "{idx.name}" from parsed columns: expression '
+                f"column(s) {expr_cols} would produce invalid DDL when requoted with the "
+                "partition key — this index needs manual handling"
+            )
         # dict.fromkeys dedupes in case a future dump's unique already includes "State".
         cols = ", ".join(f'"{c}"' for c in dict.fromkeys([*idx.columns, "State"]))
         # Preserve a partial-index predicate so we don't rebuild a broader unique than prod.

@@ -67,17 +67,58 @@ _IDX_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-_IDX_COLS_RE = re.compile(r"\(([^)]+)\)")
+_IDX_USING_RE = re.compile(r"\bUSING\s+\w+\s*\(", re.IGNORECASE)
 _IDX_WHERE_RE = re.compile(r"\bWHERE\s+(.+?)(?:;|$)", re.IGNORECASE | re.DOTALL)
 
 
+def _extract_balanced(text: str, open_pos: int) -> str:
+    """Contents of the parenthesised group opening at ``text[open_pos]``.
+
+    Tracks nesting so a functional column like ``lower("c")`` is captured whole
+    and a trailing ``WHERE (...)`` predicate is not swallowed.
+    """
+    depth = 0
+    for i in range(open_pos, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_pos + 1 : i]
+    return text[open_pos + 1 :]  # unbalanced input; best effort
+
+
+def _split_top_level(cols: str) -> list[str]:
+    """Split a column list on commas that are not nested inside parentheses."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, c in enumerate(cols):
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "," and depth == 0:
+            parts.append(cols[start:i])
+            start = i + 1
+    parts.append(cols[start:])
+    return parts
+
+
 def _parse_index_columns(body: str) -> list[str]:
-    m = _IDX_COLS_RE.search(body)
-    if not m:
+    """Best-effort column list from an index body (manifest metadata only).
+
+    Anchors on the ``USING <method> (...)`` clause and captures its full balanced
+    paren group, so functional expressions (``lower("c")``) are kept intact and a
+    partial-index ``WHERE (...)`` is not mistaken for a column. Falls back to the
+    first ``(`` when there is no explicit ``USING``.
+    """
+    m = _IDX_USING_RE.search(body)
+    open_pos = (m.end() - 1) if m else body.find("(")
+    if open_pos < 0:
         return []
-    raw = m.group(1)
-    parts = [p.strip().strip('"') for p in raw.split(",")]
-    return [p for p in parts if p]
+    raw = _extract_balanced(body, open_pos)
+    return [p.strip().strip('"') for p in _split_top_level(raw) if p.strip()]
 
 
 def _parse_where(body: str) -> str | None:
