@@ -2323,3 +2323,161 @@ models:
           name: person_mart_source_systems_known_values
           config:
             severity: error
+
+  - name: positions
+    description: >
+      Every BallotReady position (office) we know about, with its L2 district
+      match, voter count, and ICP eligibility flags. Mostly pass-through over
+      int__icp_offices, with standardized office_type joined from
+      int__civics_position_office_type on br_position_database_id.
+
+      Grain: One row per BallotReady position (br_position_database_id).
+
+      ICP flags (is_win_icp, is_serve_icp, is_win_supersize_icp) are
+      position-level and NOT date-gated: they reflect whether the office type
+      and district size qualify for the Win / Serve / Supersize ICP. The
+      election and candidacy marts apply an additional effective-date gate on
+      top of the win flags; this model does not, because a position has no
+      election dates. The flags are NULL when the position has no matched L2
+      district (icp_voter_count is NULL), since size eligibility is unknown.
+
+    columns:
+      - name: br_position_database_id
+        description: >
+          Primary key. The numeric identifier for the position (office) in
+          BallotReady's database. Joins to election.br_position_database_id and
+          stg_airbyte_source__ballotready_api_position.database_id.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: br_position_id
+        description: BallotReady's GraphQL (base64-encoded) position identifier.
+        data_tests:
+          - not_null
+
+      - name: state
+        description: U.S. state for the position.
+        data_tests:
+          - is_state_abbreviation
+
+      - name: position_name
+        description: BallotReady's position name (e.g. "Apple Valley City Council").
+
+      - name: office_type
+        description: >
+          Standardized office classification (map_office_type buckets),
+          inherited from int__civics_position_office_type so positions,
+          election, and candidacy marts share one office_type per BallotReady
+          position. 'Other' when no classification could be derived.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - City Council
+                  - Other
+                  - School Board
+                  - Clerk/Treasurer
+                  - Judge
+                  - County Supervisor
+                  - Mayor
+                  - Town Council
+                  - Sheriff
+                  - State House
+                  - Attorney
+                  - State Senate
+                  - Congressional
+                  - Statewide/Governor
+
+      - name: br_normalized_position_type
+        description: >
+          BallotReady's standardized position category (e.g. "City Council",
+          "Mayor", "School Board"). Used for cross-office comparison and ICP
+          classification regardless of how individual jurisdictions name the
+          office.
+
+      - name: is_judicial
+        description: Whether the office is a judicial position (from BallotReady).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_appointed
+        description: Whether the office is an appointed position (from BallotReady).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: l2_district_name
+        description: >
+          Name of the matched L2 voter-file district. NULL when no L2 district
+          matched this position.
+
+      - name: l2_district_type
+        description: >
+          Type of the matched L2 voter-file district (e.g. City, City_Ward,
+          County_Commissioner_District). NULL when no L2 district matched.
+
+      - name: is_l2_matched
+        description: >
+          Whether this position matched an L2 voter-file district. NULL when
+          the position has no L2 match record.
+
+      - name: icp_voter_count
+        description: >
+          L2 voter count for the matched district, used to determine ICP
+          eligibility. Thresholds are defined in int__icp_offices and may change
+          over time. NULL for positions without a matched L2 district.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                where: "icp_voter_count is not null"
+
+      - name: is_win_icp
+        description: >
+          Whether this position meets the Win ICP criteria (office type and
+          voter count). Position-level, not date-gated. NULL when the position
+          has no matched L2 district (size eligibility unknown).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_serve_icp
+        description: >
+          Whether this position meets the Serve ICP criteria (office type and
+          voter count). Position-level. NULL when the position has no matched
+          L2 district.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: is_win_supersize_icp
+        description: >
+          Whether this position exceeds the upper voter-count threshold for the
+          standard Win process, requiring separate consideration. Position-level.
+          NULL when the position has no matched L2 district.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: icp_win_effective_date
+        description: >
+          Date from which the Win ICP designation is effective for this
+          position's normalized type. Used by the election/candidacy marts to
+          date-gate the win flag. NULL when the normalized type has no effective
+          date configured.
+
+      - name: updated_at
+        description: Timestamp when the BallotReady position record was last updated.
+        data_tests:
+          - not_null

@@ -15,6 +15,7 @@ All models materialize as tables in the `mart_civics` schema.
 | `candidate` | gp_candidate_id | Unique persons, deduped across BallotReady and HubSpot |
 | `candidacy_stage` | gp_candidacy_stage_id | Per-stage election results (primary, general, runoff) |
 | `election` | gp_election_id | Full election cycles with pivoted stage dates |
+| `positions` | br_position_database_id | Every BallotReady position (office) with L2 district match and ICP flags |
 | `election_stage` | gp_election_stage_id | Individual election stages with vendor IDs |
 | `elected_officials` | gp_elected_official_id | Person-grain merge of BR + TS + gp-api elected officials |
 | `elected_official_terms` | gp_elected_official_term_id | Term-grain BR fact table with TS provenance and gp-api bridge |
@@ -36,6 +37,7 @@ What are you looking for?
 +-- What office they ran for, election dates     --> candidacy
 +-- Did they win or lose? Vote counts?           --> candidacy_stage
 +-- Election details (office, district, dates)   --> election / election_stage
++-- An office/position and its ICP eligibility    --> positions
 +-- Officeholder (current/past)                  --> elected_officials
 +-- A specific term served                       --> elected_official_terms
 +-- GP app user data (signup, Win/Serve status)  --> users
