@@ -210,3 +210,30 @@ def test_check_l2type_coverage_prod_unreachable_fails(monkeypatch: pytest.Monkey
     monkeypatch.setattr(step, "connect_prod", _boom)
     check = step._check_l2type_coverage(_CFG, "20260609", "wh")
     assert check.passed is False and "error_reading_org_districts" in check.details
+
+
+def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A 'failed' validate manifest must NOT be skipped: the skip-guard short-circuits
+    # only on 'complete', so a retry must re-execute every check and rewrite the manifest.
+    # Pins the contract documented in run() (write 'failed', not 'complete', on a failure).
+    captured: dict = {}
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    failed = SimpleNamespace(status="failed")
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: failed if name == "validate" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
+    ok = step.ValidationCheck(name="x", passed=True, details={})
+    for name in (
+        "_check_row_counts",
+        "_check_schema_diff",
+        "_check_indexes",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
+        monkeypatch.setattr(step, name, lambda *a: ok)
+    manifest = step.run(_CFG, "20260609")
+    assert "m" in captured, "checks must re-run (manifest written), not skip"
+    assert manifest.status == "complete"
