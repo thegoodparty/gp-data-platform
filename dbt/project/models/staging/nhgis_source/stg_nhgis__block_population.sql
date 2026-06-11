@@ -7,7 +7,9 @@
 with
     pop_a as (
         select
-            lpad(cast(geocode as string), 15, '0') as block_geoid,
+            -- the inner bigint cast pins decimal string output even if a
+            -- re-staged source lands with a float-inferred geocode
+            lpad(cast(cast(geocode as bigint) as string), 15, '0') as block_geoid,
             lpad(cast(statea as string), 2, '0') as state_fips,
             cast(u7h001 as bigint) as population
         from {{ source("nhgis", "blocks_to_pop_a") }}
@@ -18,7 +20,7 @@ with
 
     pop_b as (
         select
-            lpad(cast(geocode as string), 15, '0') as block_geoid,
+            lpad(cast(cast(geocode as bigint) as string), 15, '0') as block_geoid,
             lpad(cast(statea as string), 2, '0') as state_fips,
             cast(u7h001 as bigint) as population
         from {{ source("nhgis", "blocks_to_pop_b") }}
