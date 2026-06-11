@@ -70,8 +70,11 @@ def _voter_columns(conn) -> set[str]:
 
 
 def _check_schema_diff(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> ValidationCheck:
-    with connect_prod(cfg) as prod_conn:
-        prod_cols = _voter_columns(prod_conn)
+    try:
+        with connect_prod(cfg) as prod_conn:
+            prod_cols = _voter_columns(prod_conn)
+    except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
+        return ValidationCheck(name="schema_diff_clean", passed=False, details={"error_reading_prod": str(e)})
     with connect_new(cfg, run_date, writer_endpoint) as conn:
         new_cols = _voter_columns(conn)
     missing_from_new = prod_cols - new_cols

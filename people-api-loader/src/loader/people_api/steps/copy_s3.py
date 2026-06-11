@@ -172,7 +172,9 @@ def run(
 
     results: list[CopyTableResult] = []
     if existing is not None and existing.results:
-        results.extend(r for r in existing.results if r.actual_rows > 0)
+        # Carry forward only states that fully matched their expected count — a
+        # partially-loaded state (actual < expected) must be reloaded, not skipped.
+        results.extend(r for r in existing.results if r.actual_rows >= r.expected_rows > 0)
     already_done = {r.state for r in results}
 
     for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0)):
@@ -191,7 +193,10 @@ def run(
         results = [r for r in results if r.state != state] + [result]
 
     covered = {r.state for r in results}
-    expected_states = set(unload.per_state_row_counts)
+    # Expect every state the unload says has rows. A state with rows but no
+    # (non-zero) files never gets covered, so the run stays in_progress and
+    # surfaces the missing-data anomaly rather than silently completing.
+    expected_states = {s for s, count in unload.per_state_row_counts.items() if count > 0}
     all_loaded = covered >= expected_states
 
     manifest = CopyManifest(

@@ -123,7 +123,9 @@ class IndexManifest(ManifestBase):
     indexes: list[IndexSpec]
     constraints_added: list[str]
     analyzed_tables: list[str]
-    l2type_coverage_missing: list[str] = Field(default_factory=list)
+    # None means the coverage check was skipped (org_districts unreachable);
+    # [] means it ran and found full coverage.
+    l2type_coverage_missing: list[str] | None = None
 
 
 class ResizeManifest(ManifestBase):

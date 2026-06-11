@@ -79,7 +79,8 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk:
 
 def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: IndexDef) -> None:
     if idx.unique:
-        cols = ", ".join(f'"{c}"' for c in [*idx.columns, "State"])
+        # dict.fromkeys dedupes in case a future dump's unique already includes "State".
+        cols = ", ".join(f'"{c}"' for c in dict.fromkeys([*idx.columns, "State"]))
         sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols})'
     else:
         sql = _rewrite_index_sql(idx.sql)
@@ -95,15 +96,20 @@ def _analyze(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> None:
         log.info("indexes.analyzed", table=_TARGET_TABLE)
 
 
-def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> list[str]:
-    """l2Type values in prod org_districts not present as columns on Voter."""
+def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> list[str] | None:
+    """l2Type values in prod org_districts not present as columns on Voter.
+
+    Returns the missing list, or `None` when the check was skipped because
+    `org_districts` was unreachable — distinct from `[]` ("all covered") so the
+    manifest doesn't read as clean coverage when the check never ran.
+    """
     try:
         with connect_prod(cfg) as prod_conn, prod_conn.cursor() as cur:
             cur.execute('SELECT DISTINCT "l2Type" FROM public.org_districts WHERE "l2Type" IS NOT NULL')
             distinct_l2types = [r[0] for r in cur.fetchall() if r[0]]
     except Exception as e:  # broad by design: org_districts lives in the app DB, not always reachable
         log.warning("indexes.l2type.skip", error=str(e))
-        return []
+        return None
 
     with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
         cur.execute(
@@ -151,7 +157,9 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
 
     # 4. l2Type coverage.
     missing = _l2type_coverage(cfg, run_date, writer_endpoint)
-    if missing:
+    if missing is None:
+        log.warning("indexes.l2type.skipped", reason="org_districts unreachable")
+    elif missing:
         log.warning("indexes.l2type.missing", count=len(missing), examples=missing[:5])
     else:
         log.info("indexes.l2type.coverage_complete")

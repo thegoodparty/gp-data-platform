@@ -77,3 +77,78 @@ def test_run_completes_and_records_state(monkeypatch: pytest.MonkeyPatch) -> Non
     manifest = step.run(_CFG, "20260609")
     assert manifest.status == "complete"
     assert manifest.results[0].state == "TX"
+
+
+def test_load_state_partial_reload_deletes_then_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    # pre-count 50 of expected 100 (partial) -> DELETE that state, reload; post-count 100.
+    conn = FakeConn().queue_result((50,)).queue_result((100,))
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    r = step._load_state(
+        cfg=_CFG,
+        run_date="20260609",
+        writer_endpoint="wh",
+        state="TX",
+        expected_rows=100,
+        s3_keys=["k"],
+        parallelism=1,
+    )
+    sql = executed_sql(conn)
+    assert any('DELETE FROM public."Voter" WHERE "State"' in s for s in sql)
+    assert r.files_loaded == 1 and r.actual_rows == 100
+
+
+def test_load_state_skip_path_does_not_delete(monkeypatch: pytest.MonkeyPatch) -> None:
+    # exact match -> skip, and crucially no destructive DELETE fires.
+    conn = FakeConn().queue_result((100,))
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    step._load_state(
+        cfg=_CFG,
+        run_date="20260609",
+        writer_endpoint="wh",
+        state="TX",
+        expected_rows=100,
+        s3_keys=["k"],
+        parallelism=1,
+    )
+    assert not any("DELETE FROM" in s for s in executed_sql(conn))
+
+
+def test_state_filter_reloads_carried_partial_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An in-progress manifest carried TX at 50/100. `--state TX` must reload it,
+    # not silently skip it via the carry-forward.
+    called: dict = {}
+    existing = SimpleNamespace(
+        status="in_progress",
+        results=[
+            step.CopyTableResult(
+                table="Voter",
+                state="TX",
+                expected_rows=100,
+                actual_rows=50,
+                files_loaded=2,
+                seconds_elapsed=1.0,
+            )
+        ],
+    )
+    files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
+    unload = _unload(files, {"TX": 100})
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+
+    def _ls(**kw):
+        called["state"] = kw["state"]
+        return step.CopyTableResult(
+            table="Voter",
+            state=kw["state"],
+            expected_rows=kw["expected_rows"],
+            actual_rows=kw["expected_rows"],
+            files_loaded=1,
+            seconds_elapsed=1.0,
+        )
+
+    monkeypatch.setattr(step, "_load_state", _ls)
+    step.run(_CFG, "20260609", state_filter="TX")
+    assert called.get("state") == "TX"
