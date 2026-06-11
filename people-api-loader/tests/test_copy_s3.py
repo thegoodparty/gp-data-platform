@@ -267,4 +267,9 @@ def test_load_state_acquires_advisory_lock(monkeypatch: pytest.MonkeyPatch) -> N
         s3_keys=["k"],
         parallelism=1,
     )
-    assert any("pg_advisory_lock" in s for s in executed_sql(conn))
+    # Assert ordering, not just presence: the lock must precede the row count, else a
+    # reordering regression (count first) would defeat the guard yet still pass.
+    sql = executed_sql(conn)
+    lock_idx = next(i for i, s in enumerate(sql) if "pg_advisory_lock" in s)
+    count_idx = next(i for i, s in enumerate(sql) if "count(*)" in s)
+    assert lock_idx < count_idx, "advisory lock must be acquired before the row count"
