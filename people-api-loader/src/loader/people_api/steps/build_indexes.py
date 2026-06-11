@@ -73,7 +73,10 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk:
         try:
             cur.execute(sql)  # ty: ignore[no-matching-overload]
             log.info("indexes.pk_added", table=pk.table, constraint=pk.constraint)
-        except (psycopg.errors.DuplicateObject, psycopg.errors.InvalidTableDefinition):
+        except psycopg.errors.DuplicateObject:
+            # Only "constraint already exists" (42710) is idempotency. We deliberately do
+            # NOT catch InvalidTableDefinition (42P16) — that means PG rejected the DDL
+            # (e.g. a column doesn't exist), so it must propagate, not be recorded as added.
             log.info("indexes.pk_exists", table=pk.table, constraint=pk.constraint)
 
 

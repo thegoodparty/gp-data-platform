@@ -111,3 +111,52 @@ def test_l2type_coverage_returns_none_when_prod_unreachable(monkeypatch: pytest.
 
     monkeypatch.setattr(step, "connect_prod", _boom)
     assert step._l2type_coverage(_CFG, "20260609", "wh") is None
+
+
+class _PKRaisingConn:
+    """Connection whose ALTER TABLE ... ADD CONSTRAINT raises a given psycopg error.
+
+    Session SETs (non-ALTER) pass through, so only the PK statement triggers it.
+    """
+
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    def __enter__(self) -> _PKRaisingConn:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def cursor(self) -> _PKRaisingConn:
+        return self
+
+    def execute(self, sql: str, params: object = None) -> None:
+        if sql.strip().startswith("ALTER TABLE"):
+            raise self._exc
+
+
+def test_add_primary_key_swallows_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+    # "constraint already exists" (DuplicateObject/42710) is the idempotency case.
+    import psycopg
+
+    monkeypatch.setattr(
+        step, "connect_new", lambda *a, **k: _PKRaisingConn(psycopg.errors.DuplicateObject("exists"))
+    )
+    pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
+    step._add_primary_key(_CFG, "20260609", "wh", pk)  # must not raise
+
+
+def test_add_primary_key_propagates_invalid_definition(monkeypatch: pytest.MonkeyPatch) -> None:
+    # InvalidTableDefinition (42P16) is a structural rejection, not idempotency — it must
+    # propagate so we never record an un-created PK as added.
+    import psycopg
+
+    monkeypatch.setattr(
+        step,
+        "connect_new",
+        lambda *a, **k: _PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl")),
+    )
+    pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
+    with pytest.raises(psycopg.errors.InvalidTableDefinition):
+        step._add_primary_key(_CFG, "20260609", "wh", pk)
