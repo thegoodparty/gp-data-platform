@@ -15,6 +15,8 @@
     "election_date",
     "election_name",
     "race_name",
+    "office_level",
+    "office_type",
     "is_primary",
     "is_runoff",
     "is_retention",
@@ -35,6 +37,10 @@ with
             ddhq_election_stage_date as election_date,
             cast(null as string) as election_name,
             ddhq_race_name as race_name,
+            -- 2025 archive carries no office taxonomy; null to match
+            -- merged_since_2026 column order (br_wins_cols loop).
+            cast(null as string) as office_level,
+            cast(null as string) as office_type,
             election_stage in (
                 'primary', 'primary runoff', 'primary special', 'primary special runoff'
             ) as is_primary,
@@ -138,6 +144,19 @@ with
         select distinct gp_election_stage_id
         from {{ ref("int__civics_candidacy_stage_gp_api") }}
         where gp_election_stage_id is not null
+    ),
+
+    -- BR candidacies per race (BR-side candidate count). Sourced from the
+    -- race-grain S3 candidacies so every stage's br_race_id gets its own count;
+    -- the rolled-up candidacy model collapses stages onto one any_value
+    -- br_race_id and would zero-out the non-selected stages.
+    br_candidacy_counts as (
+        select
+            cast(br_race_id as string) as br_race_id,
+            count(distinct cast(br_candidate_id as string)) as br_candidate_count
+        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
+        where br_race_id is not null
+        group by br_race_id
     )
 
 select
@@ -151,11 +170,14 @@ select
     deduplicated.election_date,
     deduplicated.election_name,
     deduplicated.race_name,
+    deduplicated.office_level,
+    deduplicated.office_type,
     deduplicated.is_primary,
     deduplicated.is_runoff,
     deduplicated.is_retention,
     deduplicated.number_of_seats,
     deduplicated.total_votes_cast,
+    coalesce(bcc.br_candidate_count, 0) as br_candidate_count,
     deduplicated.partisan_type,
     deduplicated.filing_period_start_on,
     deduplicated.filing_period_end_on,
@@ -199,3 +221,4 @@ left join
 left join
     gp_api_membership as gp
     on deduplicated.gp_election_stage_id = gp.gp_election_stage_id
+left join br_candidacy_counts as bcc on deduplicated.br_race_id = bcc.br_race_id
