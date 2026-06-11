@@ -1522,6 +1522,16 @@ models:
           fields (e.g. "IL Franklin County Board - Full Term"). Not directly
           comparable across eras due to the format difference.
 
+      - name: office_level
+        description: >
+          Office level (City, County, Township, Local, Regional, State,
+          Federal). BR-first precedence, then TechSpeed, then DDHQ. NULL for
+          2025 archive records.
+      - name: office_type
+        description: >
+          Office type. BR-first precedence, then TechSpeed, then DDHQ. NULL for
+          2025 archive records.
+
       - name: is_primary
         description: Whether this stage is a primary election
         data_tests:
@@ -1552,6 +1562,12 @@ models:
           column because it may contain the value "uncontested" for races
           without competitive vote tallies, not just numeric values. Cast
           to integer only after filtering out non-numeric entries.
+
+      - name: br_candidate_count
+        description: >
+          Count of BallotReady candidacies on the race, from the race-grain S3
+          candidacies source. 0 when BR has no candidacies (e.g. DDHQ/TS-only
+          rows, or uncontested / future races with no filed candidates).
 
       - name: partisan_type
         description: >
