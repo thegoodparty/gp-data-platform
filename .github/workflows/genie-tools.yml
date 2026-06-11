@@ -1,25 +1,13 @@
 name: genie-tools
 on:
   pull_request:
-    paths: ['apps/genie-tools/**', '.github/workflows/genie-tools.yml']
+    paths: ['apps/genie-tools/**', '.github/workflows/genie-tools.yml', '.github/workflows/uv-subproject.yml']
   push:
     branches: [main]
-    paths: ['apps/genie-tools/**', '.github/workflows/genie-tools.yml']
+    paths: ['apps/genie-tools/**', '.github/workflows/genie-tools.yml', '.github/workflows/uv-subproject.yml']
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/genie-tools
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: apps/genie-tools/uv.lock
-      - name: Install
-        run: uv sync --frozen
-      - name: Pytest
-        run: uv run pytest -ra
-      - name: Type check
-        run: uv run mypy src
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: apps/genie-tools
+      mypy-targets: src

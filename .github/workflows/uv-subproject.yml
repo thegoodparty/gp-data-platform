@@ -1,0 +1,49 @@
+name: uv-subproject
+
+# Reusable CI body for a uv-managed subproject: install from the lockfile, run
+# pytest, and (optionally) mypy. Callers supply the directory and type-check
+# targets; triggers and path filters stay in each caller workflow.
+on:
+  workflow_call:
+    inputs:
+      directory:
+        description: Subproject directory (also used as the cache key and working dir).
+        required: true
+        type: string
+      mypy-targets:
+        description: Paths to type-check with mypy. Empty skips the mypy step.
+        required: false
+        type: string
+        default: ''
+      pytest-args:
+        description: Arguments passed to pytest.
+        required: false
+        type: string
+        default: '-ra'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: ${{ inputs.directory }}/uv.lock
+      - name: Install
+        run: uv sync --frozen
+      - name: Pytest
+        run: uv run pytest ${{ inputs.pytest-args }}
+      - name: Type check
+        if: inputs.mypy-targets != ''
+        run: uv run mypy ${{ inputs.mypy-targets }}

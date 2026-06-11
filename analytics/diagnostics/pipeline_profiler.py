@@ -210,11 +210,8 @@ def segment_stages(records: list[dict]) -> tuple[dict, str]:
         review = (reviewer, max(reviewer, rev_end))
     else:
         review = (exec_end, exec_end)  # empty
-    # calibration  (kept as an if/else to parallel the `review` block above)
-    if calib is not None:  # noqa: SIM108
-        calibration = (calib, _first_human_after(records, calib))
-    else:
-        calibration = (n, n)  # empty
+    # calibration
+    calibration = (calib, _first_human_after(records, calib)) if calib is not None else (n, n)
 
     spans = {"framing": framing, "execution": execution, "review": review, "calibration": calibration}
     # Markers are assumed to occur in pipeline order. If they don't (e.g. a
@@ -377,12 +374,12 @@ def format_report(profiles: list[RunProfile]) -> str:
         )
         d = prof.decisions
         if d is not None:
-            revs = ", ".join(f"{k}×{v}" for k, v in sorted(d.reviewer_counts.items())) or "none"  # noqa: RUF001
+            revs = ", ".join(f"{k}×{v}" for k, v in sorted(d.reviewer_counts.items())) or "none"
             proc = ", ".join(sorted(set(d.process_design_edits))) or "none"
             lines.append("")
             lines.append(
-                f"**Decisions:** deliverable — notebook ×{d.notebook_writes} · "  # noqa: RUF001
-                f"analysis-script ×{d.analysis_script_writes} · nb-build ×{d.notebook_build_writes}  |  "  # noqa: RUF001
+                f"**Decisions:** deliverable — notebook ×{d.notebook_writes} · "
+                f"analysis-script ×{d.analysis_script_writes} · nb-build ×{d.notebook_build_writes}  |  "
                 f"reviewers — {revs}  |  process-design edits — {proc}"
             )
         lines.append("")
