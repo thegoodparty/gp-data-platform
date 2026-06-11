@@ -1,15 +1,3 @@
--- Civics mart positions table.
--- Mostly pass-through over int__icp_offices: every BallotReady position we know
--- about, with its L2 district match, voter count, and ICP eligibility flags.
--- Standardized office_type is joined from int__civics_position_office_type,
--- keyed on the same br_position_database_id, so positions, election, and
--- candidacy marts share one office classification.
---
--- ICP flags here are position-level (un-gated): they reflect whether the office
--- type and district size qualify for the Win / Serve / Supersize ICP. The
--- election and candidacy marts apply an additional effective-date gate on top
--- of is_win_icp / is_win_supersize_icp; this model does not, since a position
--- has no election dates.
 with
     icp as (select * from {{ ref("int__icp_offices") }}),
 
