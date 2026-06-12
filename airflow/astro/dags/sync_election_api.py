@@ -76,10 +76,14 @@ DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
 
 # load_staging streams a Databricks mart into Postgres in the task's own pod;
 # the deployment's 0.5 GiB default task pod OOMs on the larger marts. Give just
-# these two tasks a bigger pod (2 vCPU / 4 GiB, matching the deployment's 1:2
-# CPU:memory ratio) via the Kubernetes executor, rather than raising the
-# deployment-wide default for the many lightweight tasks. Sized for the largest
-# mart (district_top_issues, ~5.1M rows); bump if the marts keep growing.
+# these two tasks 4 GiB (sized for the largest mart, district_top_issues
+# ~5.1M rows) via the Kubernetes executor, rather than raising the
+# deployment-wide default for the many lightweight tasks.
+#
+# The work is I/O-bound (it streams Databricks -> Postgres), so request minimal
+# CPU and let it burst to 1 vCPU — a large CPU request is what kept the pod
+# unschedulable ("stuck in queued"). The deployment's 1:2 CPU:memory rule
+# applies to the quota/defaults, not to per-task pod overrides.
 _LOAD_STAGING_EXECUTOR_CONFIG = {
     "pod_override": k8s.V1Pod(
         spec=k8s.V1PodSpec(
@@ -87,8 +91,8 @@ _LOAD_STAGING_EXECUTOR_CONFIG = {
                 k8s.V1Container(
                     name="base",
                     resources=k8s.V1ResourceRequirements(
-                        requests={"cpu": "2", "memory": "4Gi"},
-                        limits={"cpu": "2", "memory": "4Gi"},
+                        requests={"cpu": "500m", "memory": "4Gi"},
+                        limits={"cpu": "1", "memory": "4Gi"},
                     ),
                 )
             ]
