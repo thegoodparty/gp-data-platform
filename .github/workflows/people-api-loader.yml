@@ -27,6 +27,22 @@ jobs:
     defaults:
       run:
         working-directory: people-api-loader
+    # A throwaway Postgres so the integration test (tests/test_integration_pg.py) runs
+    # against a real engine — it covers partitioning / composite constraints / SQL
+    # overloads the FakeConn unit tests can't. Vanilla PG has no aws_s3, which is why
+    # that test loads via plain INSERT; see its module docstring.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -38,4 +54,6 @@ jobs:
       - name: Type check (ty)
         run: uv run ty check
       - name: Pytest
+        env:
+          LOADER_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
         run: uv run pytest -ra
