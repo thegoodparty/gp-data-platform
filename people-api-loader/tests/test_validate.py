@@ -284,3 +284,24 @@ def test_new_voter_counts_by_state_drops_null_state(monkeypatch: pytest.MonkeyPa
     conn = FakeConn().queue_result([("TX", 100), (None, 3)])  # NULL-State group must be dropped
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     assert step._new_voter_counts_by_state(_CFG, "20260609", "wh") == {"TX": 100}
+
+
+def test_run_writes_failed_manifest_when_new_cluster_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A naked pre-check failure must still leave a `failed` manifest (retryable), not
+    # propagate out of run() with nothing written.
+    captured: dict = {}
+    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
+    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    monkeypatch.setattr(
+        step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
+    )
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+
+    def _boom(*a: object) -> dict:
+        raise RuntimeError("new cluster unreachable")
+
+    monkeypatch.setattr(step, "_new_voter_counts_by_state", _boom)
+    with pytest.raises(RuntimeError, match="new cluster unreachable"):
+        step.run(_CFG, "20260609")
+    assert captured["m"].status == "failed"
+    assert captured["m"].all_passed is False

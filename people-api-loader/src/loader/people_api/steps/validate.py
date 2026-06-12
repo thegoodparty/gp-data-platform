@@ -259,16 +259,35 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     started = datetime.now(UTC)
     log.info("validate.start")
 
-    # Query the new cluster's per-state Voter counts once; both count gates reuse it.
-    new_counts = _new_voter_counts_by_state(cfg, run_date, writer_endpoint)
-    checks: list[ValidationCheck] = [
-        _compare_counts("row_counts_match_databricks", new_counts, unload.per_state_row_counts),
-        _check_prod_row_counts(cfg, run_date, new_counts),
-        _check_schema_diff(cfg, run_date, writer_endpoint),
-        _check_indexes(cfg, run_date, writer_endpoint),
-        _check_sample_queries(cfg, run_date, writer_endpoint),
-        _check_l2type_coverage(cfg, run_date, writer_endpoint),
-    ]
+    # Run all checks. An unexpected exception (new cluster unreachable, Secrets Manager
+    # timeout, an unguarded connect_new inside a check) must still leave a `failed` manifest
+    # behind so a retry sees a known state — never propagate out of run() with nothing
+    # written. The per-check functions capture their own expected failures; this catches
+    # everything else.
+    try:
+        # Query the new cluster's per-state Voter counts once; both count gates reuse it.
+        new_counts = _new_voter_counts_by_state(cfg, run_date, writer_endpoint)
+        checks: list[ValidationCheck] = [
+            _compare_counts("row_counts_match_databricks", new_counts, unload.per_state_row_counts),
+            _check_prod_row_counts(cfg, run_date, new_counts),
+            _check_schema_diff(cfg, run_date, writer_endpoint),
+            _check_indexes(cfg, run_date, writer_endpoint),
+            _check_sample_queries(cfg, run_date, writer_endpoint),
+            _check_l2type_coverage(cfg, run_date, writer_endpoint),
+        ]
+    except Exception as e:  # broad by design: persist a failed manifest, then re-raise
+        log.error("validate.errored", error=str(e))
+        errored = ValidateManifest(
+            run_date=run_date,
+            status="failed",
+            started_at=started,
+            finished_at=datetime.now(UTC),
+            checks=[ValidationCheck(name="validate_errored", passed=False, details={"error": str(e)})],
+            all_passed=False,
+        )
+        write_manifest(cfg, errored)
+        raise
+
     for c in checks:
         log.info("validate.check", name=c.name, passed=c.passed)
 

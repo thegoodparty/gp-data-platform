@@ -100,6 +100,15 @@ def run(cfg: LoaderConfig, run_date: str) -> InspectManifest:
             total=voter.total_row_count,
             states=len(voter.per_state_row_counts),
         )
+        # No per-state baseline = no usable validate input. Fail before writing a
+        # "complete" manifest, else inspect's skip-guard + validate's missing-baseline
+        # failure wedge the pipeline (both need a manual S3 delete to recover).
+        if not voter.per_state_row_counts:
+            raise RuntimeError(
+                f"Voter has no per-state row counts (total={voter.total_row_count}); inspect "
+                'cannot produce a validate baseline — check the "State" column exists on the '
+                "prod cluster and the table is non-empty."
+            )
         # The District family is best-effort: a table absent on this cluster is skipped,
         # not fatal. connect_prod is autocommit, so a failed query doesn't poison the rest.
         for table in _OPTIONAL_TABLES:

@@ -71,7 +71,10 @@ def test_run_optional_table_failure_is_skipped(monkeypatch: pytest.MonkeyPatch) 
     def _fake_inspect(cur: object, table: str) -> step.TableInspection:
         if table == "DistrictStats":
             raise RuntimeError("relation does not exist")
-        return step.TableInspection(table=table, total_row_count=1)
+        # Voter needs a non-empty per-state baseline or run() fails by design.
+        return step.TableInspection(
+            table=table, total_row_count=1, per_state_row_counts={"TX": 1} if table == "Voter" else {}
+        )
 
     monkeypatch.setattr(step, "_inspect_table", _fake_inspect)
     manifest = step.run(_CFG, "20260609")
@@ -84,3 +87,20 @@ def test_run_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: done)
     monkeypatch.setattr(step, "manifest_uri", lambda cfg, rd, name: "uri")
     assert step.run(_CFG, "20260609") is done
+
+
+def test_run_raises_when_voter_has_no_per_state_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Empty Voter baseline must NOT write a "complete" manifest (would wedge the pipeline:
+    # validate fails forever, inspect skip-guard blocks re-running). Fail before writing.
+    wrote: dict = {}
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn()))
+    monkeypatch.setattr(
+        step,
+        "_inspect_table",
+        lambda cur, table: step.TableInspection(table=table, total_row_count=0, per_state_row_counts={}),
+    )
+    with pytest.raises(RuntimeError, match="no per-state row counts"):
+        step.run(_CFG, "20260609")
+    assert "m" not in wrote  # no manifest persisted
