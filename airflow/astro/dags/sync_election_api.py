@@ -358,6 +358,12 @@ def sync_election_api():
                     DTI,
                     source_query=query,
                     target_columns=DTI_COLUMNS,
+                    # ~5.1M rows; this load runs concurrently with
+                    # zip_to_position on the same worker, so read one issue at a
+                    # time (~68 partitions, <=~96k rows each) to keep the
+                    # combined peak memory bounded and avoid OOM (the zip-only
+                    # partition in #493 left this load unbounded).
+                    partition_column="issue",
                 )
 
         @task
