@@ -2,12 +2,14 @@
 
 Part of the **win-analytics-process** skill. The closing step that makes the pipeline self-correct.
 
-After a substantive analysis run, write findings that should update the docs or agents into a
+After a substantive analysis run, write findings that pass the promotion test (below) into a
 dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`, then handle each finding
 per its track (below). This is a **required closing step** of every substantive analysis (see the
 verification protocol in [methodology.md](methodology.md)): either produce the log and process it,
-or explicitly record that no calibration was needed. It's what makes the process self-correct
-rather than relying on someone remembering.
+or explicitly record that no calibration was needed. **"No calibration needed" is the expected,
+healthy outcome of most runs** — a finding is the exception, not a deliverable, and a run that
+produces none has not underperformed. What's required is the closing step itself; it's what makes
+the process self-correct rather than relying on someone remembering.
 
 Calibration logs are personal working documents: they are gitignored
 (`analytics/runbook/CALIBRATION_*.md`) so each analyst's working tree can carry them without
@@ -27,6 +29,17 @@ metrics list. These land in the owning doc of the **win-analytics-knowledge** sk
 (`.claude/skills/win-analytics-knowledge/references/`). Runs on every substantive analysis.
 Propose the exact edit; apply **only after explicit human approval**.
 
+**Promotion test.** A candidate finding may enter the calibration log only if all three hold:
+
+- (a) it would have changed this run's outcome, or saved meaningful time, had it been known in
+  advance;
+- (b) it is not already stated in or derivable from the existing knowledge docs;
+- (c) it is likely to recur in future analyses — not specific to this run's question or cut.
+
+The log entry for each finding must answer (a), (b), and (c) explicitly, one line each. A finding
+that cannot answer all three is not logged as a finding (it may still be recorded as a candidate
+observation).
+
 ### Track 2: process calibration (default, OFF)
 
 Findings that change the **process itself**: the framing routine ([framing.md](framing.md)), the
@@ -41,6 +54,13 @@ process-design mode** this session.
 |---|---|
 | Data facts, joins, gotchas, metric definitions, coverage, canonical-list additions | Track 1 (data) |
 | How framing scopes / verifies; how the executor builds; how a reviewer agent reviews; process-skill wording | Track 2 (process) |
+
+Things that **never qualify** as findings, on either track:
+
+- parameter or filter variations of an already-documented query or metric;
+- one-off cohort or date-range choices made for this run's question;
+- restatements of how this run was performed ("this analysis used X") with no forward-looking rule;
+- anything already covered by an existing rule, unless the proposal sharpens or generalizes it.
 
 Tag each finding **universal** (codify freely) vs **data-state** (hedge, or wait 2-3 cycles),
 and prefer sharpening an existing rule over adding a new one, per the cautions below.
