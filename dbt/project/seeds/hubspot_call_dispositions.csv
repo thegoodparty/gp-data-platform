@@ -56,3 +56,7 @@ f5008477-ecab-4fde-9eef-f799465187d6,Step Up - Meeting Booked,inferred_from_titl
 3809b0d1-d023-4ca6-abfb-afd2223508b3,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
 22be21ee-fb58-4161-968d-c9271f0aa037,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
 56125b6e-c95e-4f99-acc7-dba83a97b1fb,,unknown,TODO: fill from HubSpot Settings > Objects > Activities > Calls > Call and meeting outcomes,unmapped
+546b672d-909f-4028-9985-c22d2ebd20f8,Connected - Pledged + Offer Accepted,inferred_from_title,confirmed against HubSpot call outcomes; the "Verbal Pledge - EO Waitlist" title also seen on this GUID belongs to GUID bbdca77e so this GUID is the "Offer Accepted" outcome,connected_pledge
+5d083c6b-e673-403c-a966-f6b62c450e8d,Connected - No Pledge,inferred_from_title,confirmed against HubSpot call outcomes list,connected_other
+6782cb6c-bf8f-4412-aaff-b43961c1e777,"Connected - Pledge, No Offer Accepted",inferred_from_title,confirmed against HubSpot call outcomes list,connected_pledge
+8a9d9833-e631-42a8-a5be-16273d5558b0,,unknown,no title/body signal (manually-logged calls); resolve via HubSpot API property options for hs_call_disposition,unmapped
