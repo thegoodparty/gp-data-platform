@@ -1,25 +1,13 @@
 name: analytics
 on:
   pull_request:
-    paths: ['analytics/**', '.github/workflows/analytics.yml']
+    paths: ['analytics/**', '.github/workflows/analytics.yml', '.github/workflows/uv-subproject.yml']
   push:
     branches: [main]
-    paths: ['analytics/**', '.github/workflows/analytics.yml']
+    paths: ['analytics/**', '.github/workflows/analytics.yml', '.github/workflows/uv-subproject.yml']
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: analytics
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: analytics/uv.lock
-      - name: Install
-        run: uv sync --frozen
-      - name: Pytest
-        run: uv run pytest -ra
-      - name: Type check
-        run: uv run mypy lib tests
+    uses: ./.github/workflows/uv-subproject.yml
+    with:
+      directory: analytics
+      mypy-targets: lib tests

@@ -224,6 +224,24 @@ models:
                   - REGIONAL
                   - STATE
                   - TOWNSHIP
+      - name: is_win_icp
+        description: >
+          ICP-Office-Win flag from int__icp_offices (icp_office_win). True when
+          the office is Win-ICP eligible, false when ineligible, null when the
+          office's voter_count is unknown. Ungated office-level flag.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: is_serve_icp
+        description: >
+          ICP-Office-Serve flag from int__icp_offices (icp_office_serve). True
+          when the office is Serve-ICP eligible, false when ineligible, null
+          when the office's voter_count is unknown.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
 
   - name: m_election_api__projected_turnout
     description: Turnout projections data load from model predictions

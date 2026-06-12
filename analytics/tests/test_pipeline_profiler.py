@@ -1,0 +1,594 @@
+"""Tests for analytics/diagnostics/pipeline_profiler.py."""
+
+import json as _json
+from datetime import datetime
+
+import pipeline_profiler as pp
+
+
+def test_module_exposes_stage_names():
+    assert pp.STAGES == ["framing", "execution", "review", "calibration"]
+
+
+def test_parse_ts_handles_z_suffix():
+    assert pp._parse_ts("2026-06-08T19:45:47Z") == datetime.fromisoformat("2026-06-08T19:45:47+00:00")
+
+
+def test_parse_ts_handles_offset():
+    assert pp._parse_ts("2026-06-08T19:45:47.123+00:00").year == 2026
+
+
+def test_is_human_message_true_for_string_content():
+    rec = {"type": "user", "message": {"content": "hello"}}
+    assert pp._is_human_message(rec) is True
+
+
+def test_is_human_message_false_for_tool_result():
+    rec = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "x"}]}}
+    assert pp._is_human_message(rec) is False
+
+
+def test_is_human_message_false_for_meta():
+    rec = {"type": "user", "isMeta": True, "message": {"content": "system reminder"}}
+    assert pp._is_human_message(rec) is False
+
+
+def test_is_human_message_false_for_assistant():
+    rec = {"type": "assistant", "message": {"content": "hi"}}
+    assert pp._is_human_message(rec) is False
+
+
+def test_iter_tool_uses_returns_name_input_id():
+    rec = {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "text", "text": "..."},
+                {"type": "tool_use", "name": "Write", "id": "t1", "input": {"file_path": "/a/b_brief.yaml"}},
+            ]
+        },
+    }
+    assert pp._iter_tool_uses(rec) == [("Write", {"file_path": "/a/b_brief.yaml"}, "t1")]
+
+
+def test_iter_tool_uses_empty_for_non_assistant():
+    assert pp._iter_tool_uses({"type": "user", "message": {"content": "hi"}}) == []
+
+
+def test_classify_marker_skill_load():
+    assert pp._classify_marker("Skill", {"skill": "win-analytics-process"}) == "skill_load"
+
+
+def test_classify_marker_brief_write():
+    assert pp._classify_marker("Write", {"file_path": "/x/2026-06-09_q_brief.yaml"}) == "brief_write"
+
+
+def test_classify_marker_reviewer_dispatch():
+    assert pp._classify_marker("Agent", {"subagent_type": "product-data-scientist"}) == "reviewer_dispatch"
+
+
+def test_classify_marker_calibration_write():
+    assert pp._classify_marker("Write", {"file_path": "/r/CALIBRATION_2026-06-09.md"}) == "calibration_write"
+
+
+def test_classify_marker_none_for_unrelated():
+    assert pp._classify_marker("Bash", {"command": "ls"}) is None
+    assert pp._classify_marker("Write", {"file_path": "/x/notes.md"}) is None
+    assert pp._classify_marker("Agent", {"subagent_type": "Explore"}) is None
+
+
+def test_token_totals_sums_usage():
+    records = [
+        {
+            "type": "assistant",
+            "message": {
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 10,
+                    "cache_creation_input_tokens": 5,
+                    "cache_read_input_tokens": 1,
+                }
+            },
+        },
+        {"type": "user", "message": {"content": "hi"}},
+        {
+            "type": "assistant",
+            "message": {
+                "usage": {
+                    "input_tokens": 200,
+                    "output_tokens": 20,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 50,
+                }
+            },
+        },
+    ]
+    assert pp._token_totals(records) == {
+        "input_tokens": 300,
+        "output_tokens": 30,
+        "cache_creation_input_tokens": 5,
+        "cache_read_input_tokens": 51,
+    }
+
+
+def test_token_totals_empty_slice_is_zeros():
+    assert pp._token_totals([]) == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+    }
+
+
+def test_split_time_attributes_idle_before_human_and_active_otherwise():
+    records = [
+        {"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "q?"}},
+        # 120s waiting on the human -> human_idle
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answer"}},
+        # 30s of model/tool work -> model_active
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:30Z", "message": {"content": "done"}},
+    ]
+    active, idle = pp._split_time(records)
+    assert idle == 120.0
+    assert active == 30.0
+
+
+def test_split_time_single_record_is_zero():
+    rec = [{"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "x"}}]
+    assert pp._split_time(rec) == (0.0, 0.0)
+
+
+def _tool_use_rec(ts, name, tid, **inp):
+    return {
+        "type": "assistant",
+        "timestamp": ts,
+        "message": {"content": [{"type": "tool_use", "name": name, "id": tid, "input": inp}]},
+    }
+
+
+def _tool_result_rec(ts, tid):
+    return {
+        "type": "user",
+        "timestamp": ts,
+        "message": {"content": [{"type": "tool_result", "tool_use_id": tid}]},
+    }
+
+
+def test_marker_indices_finds_first_of_each():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        _tool_use_rec("2026-06-08T19:06:00Z", "Agent", "a1", subagent_type="product-data-scientist"),
+        _tool_use_rec("2026-06-08T19:09:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),
+    ]
+    idx = pp._marker_indices(records)
+    assert idx == {"skill_load": 0, "brief_write": 1, "reviewer_dispatch": 2, "calibration_write": 3}
+
+
+def test_reviewer_result_end_index_uses_last_matching_result():
+    records = [
+        _tool_use_rec("2026-06-08T19:06:00Z", "Agent", "a1", subagent_type="product-data-scientist"),
+        _tool_use_rec("2026-06-08T19:06:05Z", "Agent", "a2", subagent_type="product-manager"),
+        _tool_result_rec("2026-06-08T19:07:00Z", "a1"),
+        _tool_result_rec("2026-06-08T19:08:00Z", "a2"),  # later result -> max-span end
+        {"type": "assistant", "timestamp": "2026-06-08T19:08:30Z", "message": {"content": "ok"}},
+    ]
+    assert pp._reviewer_result_end_index(records) == 3
+
+
+def test_reviewer_result_end_index_none_when_no_reviewers():
+    records = [{"type": "assistant", "timestamp": "2026-06-08T19:00:00Z", "message": {"content": "x"}}]
+    assert pp._reviewer_result_end_index(records) is None
+
+
+def test_segment_stages_full_run():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0 framing
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answers"}},  # 1
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 2 execution
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "built"}},  # 3
+        _tool_use_rec(
+            "2026-06-08T19:06:30Z", "Agent", "a1", subagent_type="product-data-scientist"
+        ),  # 4 review
+        _tool_result_rec("2026-06-08T19:08:00Z", "a1"),  # 5
+        _tool_use_rec(
+            "2026-06-08T19:08:30Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"
+        ),  # 6 calib
+        {"type": "assistant", "timestamp": "2026-06-08T19:09:00Z", "message": {"content": "done"}},  # 7
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "ok"
+    assert spans["framing"] == (0, 2)
+    assert spans["execution"] == (2, 4)
+    assert spans["review"] == (4, 6)
+    assert spans["calibration"] == (6, 8)
+
+
+def test_segment_stages_calibration_ends_before_trailing_human():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 1
+        _tool_use_rec("2026-06-08T19:02:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),  # 2
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:30Z", "message": {"content": "done"}},  # 3
+        {
+            "type": "user",
+            "timestamp": "2026-06-08T19:40:00Z",
+            "message": {"content": "new topic"},
+        },  # 4 trailing
+    ]
+    spans, confidence = pp.segment_stages(records)
+    # calibration ends at the next human message; later off-topic work is excluded
+    assert spans["calibration"] == (2, 4)
+
+
+def test_segment_stages_empty_review_when_no_reviewer():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 1
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "built"}},  # 2
+        _tool_use_rec("2026-06-08T19:03:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),  # 3
+        {"type": "assistant", "timestamp": "2026-06-08T19:03:30Z", "message": {"content": "done"}},  # 4
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "ok"
+    assert spans["framing"] == (0, 1)
+    assert spans["execution"] == (1, 3)  # brief .. calibration (no reviewer)
+    assert spans["review"][0] == spans["review"][1]  # empty review span
+    assert spans["calibration"] == (3, 5)  # calib .. len (no trailing human)
+
+
+def test_first_of_returns_first_non_none_else_default():
+    assert pp._first_of(None, 2, 3, default=9) == 2
+    assert pp._first_of(None, None, default=9) == 9
+
+
+def test_segment_stages_low_confidence_without_brief():
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:01:00Z", "message": {"content": "x"}},
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "low"
+
+
+def test_load_records_skips_malformed(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text('{"type": "user", "message": {"content": "hi"}}\nNOT JSON\n{"type": "assistant"}\n')
+    recs = pp.load_records(str(f))
+    assert len(recs) == 2
+
+
+def test_load_records_skips_non_object_lines(tmp_path):
+    f = tmp_path / "t.jsonl"
+    f.write_text('{"type": "user"}\n"just a string"\n42\n{"type": "assistant"}\n')
+    recs = pp.load_records(str(f))
+    assert len(recs) == 2
+    assert all(isinstance(r, dict) for r in recs)
+
+
+def test_profile_run_produces_per_stage_metrics(tmp_path):
+    # skill_load at 0 and brief_write at 2 -> confidence "ok"; the index-3
+    # assistant turn (200 input tokens) falls in the execution span [2, 4).
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        {
+            "type": "assistant",
+            "timestamp": "2026-06-08T19:00:30Z",
+            "message": {
+                "usage": {
+                    "input_tokens": 50,
+                    "output_tokens": 5,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+                "content": "x",
+            },
+        },
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        {
+            "type": "assistant",
+            "timestamp": "2026-06-08T19:06:00Z",
+            "message": {
+                "usage": {
+                    "input_tokens": 200,
+                    "output_tokens": 20,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+                "content": "y",
+            },
+        },
+    ]
+    f = tmp_path / "run.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    profile = pp.profile_run(str(f))
+    assert profile.confidence == "ok"
+    assert profile.stages["execution"].input_tokens == 200
+    assert profile.stages["framing"].input_tokens == 50
+    assert profile.stages["review"].input_tokens == 0
+    assert profile.stages["calibration"].input_tokens == 0
+
+
+def test_format_report_includes_totals_share_and_blind_spot_note():
+    prof = pp.RunProfile(
+        path="/tmp/run.jsonl",
+        confidence="ok",
+        stages={
+            "framing": pp.StageMetrics(input_tokens=1000, model_active_seconds=30, human_idle_seconds=600),
+            "execution": pp.StageMetrics(input_tokens=2000, model_active_seconds=180, human_idle_seconds=0),
+            "review": pp.StageMetrics(input_tokens=500, model_active_seconds=120, human_idle_seconds=0),
+            "calibration": pp.StageMetrics(input_tokens=300, model_active_seconds=60, human_idle_seconds=0),
+        },
+    )
+    report = pp.format_report([prof])
+    assert "run.jsonl" in report
+    assert "framing" in report and "execution" in report
+    assert "10.0" in report  # framing human-idle 600s -> 10.0 min
+    assert "**total**" in report  # per-run total row
+    assert "16.5" in report  # total wall-clock 990s -> 16.5 min
+    assert "46" in report  # execution share of model-active (180/390 -> 46%)
+    assert "reviewer internal tokens" in report.lower()  # blind-spot label
+
+
+def test_resolve_paths_expands_globs(tmp_path):
+    (tmp_path / "a.jsonl").write_text("{}")
+    (tmp_path / "b.jsonl").write_text("{}")
+    paths = pp._resolve_paths([str(tmp_path / "*.jsonl")])
+    assert len(paths) == 2 and all(p.endswith(".jsonl") for p in paths)
+
+
+def test_segment_stages_flags_low_confidence_on_out_of_order_markers():
+    # calibration file written BEFORE reviewers dispatch (contaminated/re-entered run)
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),  # 1
+        _tool_use_rec(
+            "2026-06-08T19:02:00Z", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"
+        ),  # 2 early
+        _tool_use_rec("2026-06-08T19:03:00Z", "Agent", "a1", subagent_type="product-data-scientist"),  # 3
+        _tool_result_rec("2026-06-08T19:04:00Z", "a1"),  # 4
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert confidence == "low"
+
+
+def test_segment_stages_low_confidence_without_skill_load():
+    records = [
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "x"}},
+    ]
+    _spans, confidence = pp.segment_stages(records)
+    assert confidence == "low"
+
+
+def test_format_report_multiple_profiles_combined_mean():
+    p1 = pp.RunProfile(
+        path="/a.jsonl", confidence="ok", stages={"framing": pp.StageMetrics(model_active_seconds=120)}
+    )
+    p2 = pp.RunProfile(
+        path="/b.jsonl", confidence="ok", stages={"framing": pp.StageMetrics(model_active_seconds=240)}
+    )
+    report = pp.format_report([p1, p2])
+    assert "Combined (mean across runs)" in report
+    assert "3.0" in report  # framing mean model-active (120+240)/2 = 180s -> 3.0 min
+
+
+def test_collect_decisions_counts_reviewers_and_artifacts():
+    records = [
+        _tool_use_rec("t", "Write", "w1", file_path="/x/ad_hoc/q.py"),
+        _tool_use_rec("t", "Write", "w2", file_path="/x/ad_hoc/q.ipynb"),
+        _tool_use_rec("t", "Write", "w3", file_path="/x/ad_hoc/build_q_nb.py"),
+        _tool_use_rec("t", "Agent", "a1", subagent_type="product-data-scientist"),
+        _tool_use_rec("t", "Agent", "a2", subagent_type="product-manager"),
+        _tool_use_rec("t", "Agent", "a3", subagent_type="product-data-scientist"),
+    ]
+    d = pp._collect_decisions(records)
+    assert d.notebook_writes == 1
+    assert d.analysis_script_writes == 1
+    assert d.notebook_build_writes == 1
+    assert d.reviewer_counts == {"product-data-scientist": 2, "product-manager": 1}
+    assert d.process_design_edits == []  # no calibration marker -> no process window
+
+
+def test_collect_decisions_process_edits_after_calibration_only():
+    records = [
+        _tool_use_rec(
+            "t", "Edit", "e0", file_path="/repo/analytics/lib/win_analysis.py"
+        ),  # pre-calib: ignored
+        _tool_use_rec("t", "Write", "c1", file_path="/r/CALIBRATION_2026-06-08.md"),  # calib marker idx 1
+        _tool_use_rec(
+            "t", "Edit", "e1", file_path="/repo/.claude/skills/win-analytics-process/references/pipeline.md"
+        ),
+        _tool_use_rec("t", "Edit", "e2", file_path="/repo/analytics/lib/win_analysis.py"),
+    ]
+    d = pp._collect_decisions(records)
+    assert "pipeline.md" in d.process_design_edits
+    assert d.process_design_edits.count("win_analysis.py") == 1  # only the post-calib edit
+
+
+def test_profile_run_attaches_decisions(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:01:00Z", "Write", "w1", file_path="/x/ad_hoc/q.ipynb"),
+        _tool_use_rec("2026-06-08T19:02:00Z", "Agent", "a1", subagent_type="product-data-scientist"),
+    ]
+    f = tmp_path / "r.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.decisions.notebook_writes == 1
+    assert prof.decisions.reviewer_counts == {"product-data-scientist": 1}
+
+
+def test_collect_decisions_excludes_calibration_log_from_process_edits():
+    records = [
+        _tool_use_rec(
+            "t", "Write", "c1", file_path="/repo/analytics/runbook/CALIBRATION_2026-06-08.md"
+        ),  # marker
+        _tool_use_rec(
+            "t", "Edit", "e1", file_path="/repo/.claude/skills/win-analytics-process/references/pipeline.md"
+        ),
+        _tool_use_rec(
+            "t",
+            "Edit",
+            "e2",
+            file_path="/repo/.claude/skills/win-analytics-process/references/calibration.md",
+        ),
+    ]
+    d = pp._collect_decisions(records)
+    assert "pipeline.md" in d.process_design_edits
+    assert "calibration.md" in d.process_design_edits  # the skill doc is legit
+    assert "CALIBRATION_2026-06-08.md" not in d.process_design_edits  # the log artifact is not
+
+
+def test_format_report_has_token_share_column():
+    prof = pp.RunProfile(
+        path="/x/r.jsonl",
+        confidence="ok",
+        stages={
+            "framing": pp.StageMetrics(input_tokens=100, cache_read_input_tokens=900),  # 1000
+            "execution": pp.StageMetrics(input_tokens=200, cache_read_input_tokens=2800),  # 3000
+            "review": pp.StageMetrics(),
+            "calibration": pp.StageMetrics(),
+        },
+    )
+    report = pp.format_report([prof])
+    assert "%_of_tokens" in report
+    assert "25" in report and "75" in report  # framing 1000/4000=25%, execution 3000/4000=75%
+
+
+def test_format_report_renders_decisions_line():
+    prof = pp.RunProfile(
+        path="/x/r.jsonl",
+        confidence="ok",
+        stages={s: pp.StageMetrics() for s in pp.STAGES},
+        decisions=pp.RunDecisions(
+            notebook_writes=0,
+            analysis_script_writes=3,
+            notebook_build_writes=1,
+            reviewer_counts={"product-data-scientist": 1, "product-manager": 1},
+            process_design_edits=["pipeline.md", "pipeline.md", "framing.md"],
+        ),
+    )
+    report = pp.format_report([prof])
+    assert "Decisions" in report
+    assert "analysis-script ×3" in report
+    assert "nb-build ×1" in report
+    assert "framing.md" in report
+    assert report.count("pipeline.md") == 1  # process edits deduped in render
+
+
+def test_segment_stages_uses_deliverable_boundary_without_brief():
+    # express run skips the brief file but writes a .py deliverable; framing should
+    # end at the deliverable write rather than swallowing the whole run.
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answers"}},  # 1
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/ad_hoc/q.py"),  # 2 deliverable
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "ran"}},  # 3
+        _tool_use_rec("2026-06-08T19:06:30Z", "Agent", "a1", subagent_type="product-data-scientist"),  # 4
+        _tool_result_rec("2026-06-08T19:08:00Z", "a1"),  # 5
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert spans["framing"] == (0, 2)  # framing ends at the deliverable write
+    assert spans["execution"] == (2, 4)  # deliverable .. reviewer
+    assert confidence == "low"  # no brief -> approximate split, still flagged
+
+
+def test_segment_stages_merges_framing_execution_when_no_brief_or_deliverable():
+    # fully-inline headline arm: no brief, no artifact, no reviewer, no calibration.
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),  # 0
+        {"type": "user", "timestamp": "2026-06-08T19:02:00Z", "message": {"content": "answers"}},  # 1
+        {"type": "assistant", "timestamp": "2026-06-08T19:05:00Z", "message": {"content": "computed"}},  # 2
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "answer"}},  # 3
+    ]
+    spans, confidence = pp.segment_stages(records)
+    assert spans["framing"] == (0, 4)  # spans the whole run (merged)
+    assert spans["execution"][0] == spans["execution"][1]  # empty execution
+    assert confidence == "low"
+
+
+def test_profile_run_flags_framing_merged_for_inline_run(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:05:00Z", "message": {"content": "answer"}},
+    ]
+    f = tmp_path / "inline.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.framing_merged is True
+
+
+def test_profile_run_not_merged_with_brief(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/q_brief.yaml"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "y"}},
+    ]
+    f = tmp_path / "brief.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.framing_merged is False
+
+
+def test_profile_run_not_merged_with_deliverable_only(tmp_path):
+    records = [
+        _tool_use_rec("2026-06-08T19:00:00Z", "Skill", "s1", skill="win-analytics-process"),
+        _tool_use_rec("2026-06-08T19:05:00Z", "Write", "w1", file_path="/x/ad_hoc/q.py"),
+        {"type": "assistant", "timestamp": "2026-06-08T19:06:00Z", "message": {"content": "y"}},
+    ]
+    f = tmp_path / "deliv.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in records))
+    prof = pp.profile_run(str(f))
+    assert prof.framing_merged is False
+
+
+def test_format_report_labels_merged_framing_execution():
+    prof = pp.RunProfile(
+        path="/tmp/inline.jsonl",
+        confidence="low",
+        framing_merged=True,
+        stages={
+            "framing": pp.StageMetrics(input_tokens=1000, model_active_seconds=300),
+            "execution": pp.StageMetrics(),  # empty / folded in
+            "review": pp.StageMetrics(),
+            "calibration": pp.StageMetrics(),
+        },
+    )
+    report = pp.format_report([prof])
+    assert "framing+execution" in report
+
+
+def test_format_report_combined_drops_wall_clock_and_excludes_idle():
+    p1 = pp.RunProfile(
+        path="/a.jsonl",
+        confidence="ok",
+        stages={"framing": pp.StageMetrics(model_active_seconds=120, human_idle_seconds=600)},
+    )
+    p2 = pp.RunProfile(
+        path="/b.jsonl",
+        confidence="ok",
+        stages={"framing": pp.StageMetrics(model_active_seconds=240, human_idle_seconds=0)},
+    )
+    report = pp.format_report([p1, p2])
+    assert "mean_wall_clock_min" not in report  # misleading wall-clock mean dropped
+    assert "human-idle" in report.lower()
+    assert "excluded" in report.lower()  # idle surfaced as excluded from the active comparison
+
+
+def test_write_log_appends_to_single_file(tmp_path):
+    p1 = pp._write_log("REPORT ONE", ["/x/a.jsonl"], tmp_path, datetime(2026, 6, 10, 14, 30, 5))
+    p2 = pp._write_log("REPORT TWO", ["/x/b.jsonl"], tmp_path, datetime(2026, 6, 11, 9, 0, 0))
+    assert p1 == p2 == tmp_path / "profile_log.md"
+    text = p1.read_text(encoding="utf-8")
+    assert "REPORT ONE" in text and "REPORT TWO" in text
+    assert "2026-06-10 14:30:05" in text and "2026-06-11 09:00:00" in text
+    assert "/x/a.jsonl" in text and "/x/b.jsonl" in text
+    assert text.count("## Run ") == 2
+
+
+def test_write_log_creates_missing_dir(tmp_path):
+    target = tmp_path / "logs"
+    p = pp._write_log("BODY", [], target, datetime(2026, 1, 2, 3, 4, 5))
+    assert p == target / "profile_log.md"
+    assert target.is_dir()
