@@ -43,11 +43,21 @@ def _new_voter_counts_by_state(cfg: LoaderConfig, run_date: str, writer_endpoint
     """Per-state Voter row counts on the new cluster (queried once, reused by both gates)."""
     with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
         cur.execute('SELECT "State", count(*) FROM public."Voter" GROUP BY "State"')
-        return {row[0]: int(row[1]) for row in cur.fetchall()}
+        # Drop a NULL-State group (the partition key is NOT NULL, so this is defensive,
+        # matching inspect_prod): a None key would break JSON-keyed manifest output.
+        return {row[0]: int(row[1]) for row in cur.fetchall() if row[0] is not None}
 
 
-def _compare_counts(name: str, actual_by_state: dict[str, int], expected: dict[str, int]) -> ValidationCheck:
-    """Build a ±tolerance per-state count check from already-fetched actuals."""
+def _compare_counts(
+    name: str, actual_by_state: dict[str, int], expected: dict[str, int], *, flag_unexpected: bool = True
+) -> ValidationCheck:
+    """Build a ±tolerance per-state count check from already-fetched actuals.
+
+    `flag_unexpected` treats a state present in the table but not the baseline as a
+    mismatch. True for the unload gate (a state never unloaded shouldn't appear); False
+    for the prod gate, where a state added by a geographic expansion is legitimately
+    present in the new cluster but absent from the older prod snapshot.
+    """
     mismatches: dict[str, dict[str, int]] = {}
     for state, expected_count in expected.items():
         actual = actual_by_state.get(state, 0)
@@ -55,11 +65,10 @@ def _compare_counts(name: str, actual_by_state: dict[str, int], expected: dict[s
         high = expected_count * (1 + _ROW_COUNT_TOLERANCE)
         if not (low <= actual <= high):
             mismatches[state] = {"expected": expected_count, "actual": actual}
-    # Rows under a state the baseline doesn't expect (stray/unexpected code) are a
-    # mismatch too — don't let them pass silently.
-    for state, actual_count in actual_by_state.items():
-        if state not in expected:
-            mismatches[state] = {"expected": 0, "actual": actual_count}
+    if flag_unexpected:
+        for state, actual_count in actual_by_state.items():
+            if state not in expected:
+                mismatches[state] = {"expected": 0, "actual": actual_count}
     return ValidationCheck(
         name=name,
         passed=not mismatches,
@@ -78,25 +87,35 @@ def _check_prod_row_counts(
     """New-vs-prod ±10% gate on Voter, using inspect-prod's Voter per-state baseline.
 
     Distinct from the unload gate (load integrity): this checks the refresh is roughly
-    the same magnitude as the current Present cluster. Skips gracefully (passes, with a
-    `skipped` note) when no completed inspect manifest is present, so validate stays
-    runnable when inspect-prod hasn't been run.
+    the same magnitude as the current Present cluster. Fails closed (like the other
+    prod-dependent checks) when the inspect baseline is missing — returning passed=True
+    there would let an all-pass run cache a `complete` manifest that permanently bypasses
+    this gate on retry. The fix is to run inspect-prod for the same run_date.
     """
     inspect = read_manifest(cfg, run_date, "inspect", InspectManifest)
     if inspect is None or inspect.status != "complete":
-        log.warning("validate.prod_baseline_skip", reason="no completed inspect manifest")
+        log.error("validate.prod_baseline_missing", reason="no completed inspect manifest")
         return ValidationCheck(
-            name="prod_row_counts_within_tolerance", passed=True, details={"skipped": "no inspect manifest"}
+            name="prod_row_counts_within_tolerance",
+            passed=False,
+            details={"error": "no completed inspect manifest for this run_date"},
         )
     voter = next((t for t in inspect.tables if t.table == "Voter"), None)
     if voter is None or not voter.per_state_row_counts:
-        log.warning("validate.prod_baseline_skip", reason="no Voter per-state baseline")
+        log.error("validate.prod_baseline_missing", reason="no Voter per-state baseline")
         return ValidationCheck(
             name="prod_row_counts_within_tolerance",
-            passed=True,
-            details={"skipped": "no Voter prod baseline"},
+            passed=False,
+            details={"error": "inspect manifest has no Voter per-state baseline"},
         )
-    return _compare_counts("prod_row_counts_within_tolerance", actual_by_state, voter.per_state_row_counts)
+    # Don't flag states new to the cluster but absent from the prod snapshot — that's a
+    # legitimate geographic expansion, not drift (the unload gate already covers integrity).
+    return _compare_counts(
+        "prod_row_counts_within_tolerance",
+        actual_by_state,
+        voter.per_state_row_counts,
+        flag_unexpected=False,
+    )
 
 
 def _voter_columns(conn) -> set[str]:

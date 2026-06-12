@@ -246,12 +246,13 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
 # --- _check_prod_row_counts (inspect-prod baseline) ---
 
 
-def test_check_prod_row_counts_skips_without_inspect_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
-    # No completed inspect manifest -> the gate passes with a 'skipped' note, not a failure.
+def test_check_prod_row_counts_fails_without_inspect_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Fail closed (not a silent pass): a passing skip would cache a `complete` manifest
+    # that permanently bypasses this gate. Absent baseline -> failed (retryable).
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     check = step._check_prod_row_counts(_CFG, "20260609", {"TX": 100})
-    assert check.passed is True
-    assert "skipped" in check.details
+    assert check.passed is False
+    assert "error" in check.details
 
 
 def test_check_prod_row_counts_compares_against_voter_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -262,3 +263,24 @@ def test_check_prod_row_counts_compares_against_voter_baseline(monkeypatch: pyte
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: inspect)
     assert step._check_prod_row_counts(_CFG, "20260609", {"TX": 105}).passed is True  # within ±10%
     assert step._check_prod_row_counts(_CFG, "20260609", {"TX": 50}).passed is False  # outside ±10%
+
+
+def test_check_prod_row_counts_allows_new_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A state present in the new cluster but absent from the older prod snapshot is a
+    # legitimate expansion, not drift — the prod gate must not flag it.
+    inspect = SimpleNamespace(
+        status="complete",
+        tables=[SimpleNamespace(table="Voter", per_state_row_counts={"TX": 100})],
+    )
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: inspect)
+    assert step._check_prod_row_counts(_CFG, "20260609", {"TX": 100, "PR": 5}).passed is True
+
+
+def test_compare_counts_flag_unexpected_false_ignores_new_state() -> None:
+    assert step._compare_counts("x", {"TX": 100, "ZZ": 5}, {"TX": 100}, flag_unexpected=False).passed is True
+
+
+def test_new_voter_counts_by_state_drops_null_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = FakeConn().queue_result([("TX", 100), (None, 3)])  # NULL-State group must be dropped
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    assert step._new_voter_counts_by_state(_CFG, "20260609", "wh") == {"TX": 100}
