@@ -332,6 +332,14 @@ class ValidateManifest(ManifestBase):
 
 ## Step 0 — Inspect Existing Environment
 
+> **Implemented scope (DATA-1907):** the `inspect-prod` CLI step is narrower than this
+> section's original plan. It captures per-state row counts + L2 snapshot dates
+> (`max(updated_at)`) for `Voter` (+ best-effort `DistrictVoter`/`District`/`DistrictStats`)
+> into `InspectManifest`, which `validate` diffs the new cluster against. It does NOT
+> produce the schema dump / extension / role inventory — the committed
+> `schema/data/prod_dump.sql` is the schema source of truth, and the AWS-side inventory
+> is the "Inspected Prod Environment" block above.
+
 **Goal:** capture the config of `gp-voter-db-20250728` so the new cluster mimics what the app already expects, without surprises at cutover.
 
 **Status:** AWS-side inspection is already done and lives in the "Inspected Prod Environment" section above. The inside-the-database inspection still needs to run on first loader invocation (requires credentials this plan doesn't want to hardcode).

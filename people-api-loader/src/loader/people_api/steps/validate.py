@@ -1,11 +1,15 @@
 """Step 7 — validate the new cluster before handoff (ClickUp DATA-1911).
 
-Five checks against the unified public."Voter" table (all must pass):
-1. row_counts_match_databricks — per-state count (GROUP BY "State") within ±10%.
-2. schema_diff_clean — new Voter columns equal prod Voter columns.
-3. index_constraint_diff_clean — every prod index present on new.
-4. sample_queries_pass — voterFile.util.ts-shaped queries return without error.
-5. l2Type_coverage — every distinct org_districts l2Type maps to a column.
+Six checks against the unified public."Voter" table (all must pass):
+1. row_counts_match_databricks — per-state count (GROUP BY "State") within ±10% of
+   the unload baseline (load integrity: did COPY load everything that was unloaded).
+2. prod_row_counts_within_tolerance — per-state count within ±10% of the inspect-prod
+   baseline (sanity: refresh magnitude vs the current Present cluster). Skips gracefully
+   if inspect-prod hasn't run.
+3. schema_diff_clean — new Voter columns equal prod Voter columns.
+4. index_constraint_diff_clean — every prod index present on new.
+5. sample_queries_pass — voterFile.util.ts-shaped queries return without error.
+6. l2Type_coverage — every distinct org_districts l2Type maps to a column.
 
 Writes validate.json + a Markdown companion. all_passed=False blocks handoff
 (cli.py exits non-zero).
@@ -19,6 +23,7 @@ from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new, connect_prod, resolve_writer_endpoint
 from loader.people_api.manifests import (
+    InspectManifest,
     UnloadManifest,
     ValidateManifest,
     ValidationCheck,
@@ -30,17 +35,19 @@ from loader.people_api.manifests import (
 
 log = get_logger(__name__)
 
-# Per-state row-count gate: within ±10% of the unload baseline (decided 2026-06-09).
+# Per-state row-count gate: within ±10% of a baseline (decided 2026-06-09).
 _ROW_COUNT_TOLERANCE = 0.10
 
 
-def _check_row_counts(
-    cfg: LoaderConfig, run_date: str, writer_endpoint: str, expected: dict[str, int]
-) -> ValidationCheck:
+def _new_voter_counts_by_state(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> dict[str, int]:
+    """Per-state Voter row counts on the new cluster (queried once, reused by both gates)."""
     with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
         cur.execute('SELECT "State", count(*) FROM public."Voter" GROUP BY "State"')
-        actual_by_state = {row[0]: int(row[1]) for row in cur.fetchall()}
+        return {row[0]: int(row[1]) for row in cur.fetchall()}
 
+
+def _compare_counts(name: str, actual_by_state: dict[str, int], expected: dict[str, int]) -> ValidationCheck:
+    """Build a ±tolerance per-state count check from already-fetched actuals."""
     mismatches: dict[str, dict[str, int]] = {}
     for state, expected_count in expected.items():
         actual = actual_by_state.get(state, 0)
@@ -54,7 +61,7 @@ def _check_row_counts(
         if state not in expected:
             mismatches[state] = {"expected": 0, "actual": actual_count}
     return ValidationCheck(
-        name="row_counts_match_databricks",
+        name=name,
         passed=not mismatches,
         details={
             "states": len(expected),
@@ -63,6 +70,33 @@ def _check_row_counts(
             "mismatches": dict(list(mismatches.items())[:10]),
         },
     )
+
+
+def _check_prod_row_counts(
+    cfg: LoaderConfig, run_date: str, actual_by_state: dict[str, int]
+) -> ValidationCheck:
+    """New-vs-prod ±10% gate on Voter, using inspect-prod's Voter per-state baseline.
+
+    Distinct from the unload gate (load integrity): this checks the refresh is roughly
+    the same magnitude as the current Present cluster. Skips gracefully (passes, with a
+    `skipped` note) when no completed inspect manifest is present, so validate stays
+    runnable when inspect-prod hasn't been run.
+    """
+    inspect = read_manifest(cfg, run_date, "inspect", InspectManifest)
+    if inspect is None or inspect.status != "complete":
+        log.warning("validate.prod_baseline_skip", reason="no completed inspect manifest")
+        return ValidationCheck(
+            name="prod_row_counts_within_tolerance", passed=True, details={"skipped": "no inspect manifest"}
+        )
+    voter = next((t for t in inspect.tables if t.table == "Voter"), None)
+    if voter is None or not voter.per_state_row_counts:
+        log.warning("validate.prod_baseline_skip", reason="no Voter per-state baseline")
+        return ValidationCheck(
+            name="prod_row_counts_within_tolerance",
+            passed=True,
+            details={"skipped": "no Voter prod baseline"},
+        )
+    return _compare_counts("prod_row_counts_within_tolerance", actual_by_state, voter.per_state_row_counts)
 
 
 def _voter_columns(conn) -> set[str]:
@@ -206,8 +240,11 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     started = datetime.now(UTC)
     log.info("validate.start")
 
+    # Query the new cluster's per-state Voter counts once; both count gates reuse it.
+    new_counts = _new_voter_counts_by_state(cfg, run_date, writer_endpoint)
     checks: list[ValidationCheck] = [
-        _check_row_counts(cfg, run_date, writer_endpoint, unload.per_state_row_counts),
+        _compare_counts("row_counts_match_databricks", new_counts, unload.per_state_row_counts),
+        _check_prod_row_counts(cfg, run_date, new_counts),
         _check_schema_diff(cfg, run_date, writer_endpoint),
         _check_indexes(cfg, run_date, writer_endpoint),
         _check_sample_queries(cfg, run_date, writer_endpoint),
