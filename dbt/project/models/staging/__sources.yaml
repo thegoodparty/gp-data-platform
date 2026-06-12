@@ -264,10 +264,11 @@ sources:
                     values: ["", "No", "Yes"]
       - name: techspeed_gdrive_marketing_data_enrichment
         description: raw data load from Techspeed Google Drive
+        # Last loaded 2025-12-02; the feed is no longer syncing and has no
+        # downstream consumers, so freshness is disabled to stop the source
+        # from going STALE. Source is retained in dbt for now.
         config:
-          freshness:
-            warn_after: {count: 90, period: day}
-            error_after: {count: 180, period: day}
+          freshness: null
 
   - name: dbt_source
     schema: dbt_source

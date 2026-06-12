@@ -20,7 +20,11 @@ with
         select
             c.*,
             s.disposition_label,
-            s.source as disposition_label_source,
+            case
+                when c.hs_call_disposition is null
+                then null
+                else coalesce(s.source, 'unknown')
+            end as disposition_label_source,
             coalesce(
                 s.outcome_family,
                 case
