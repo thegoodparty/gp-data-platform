@@ -45,6 +45,8 @@ select
     as has_verbal_pro,
     {{ cast_to_boolean("get_json_object(properties, '$.verbal_serve')") }}
     as has_verbal_serve,
+    {{ cast_to_boolean("get_json_object(properties, '$.serve_waitlist')") }}
+    as is_on_serve_waitlist,
     properties_verified_candidate_status as verified_candidate_status,
     properties_type as type,
     properties_product_user as product_user,
