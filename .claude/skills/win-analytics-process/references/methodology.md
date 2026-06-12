@@ -127,7 +127,7 @@ A scout / analysis is "done" when:
 2. Cycle / scope parameters are parameterized so the work re-runs under a different scope.
 3. Open scoping questions are RESOLVED (not deferred to the reader).
 4. The reference docs are updated with any reusable insights (joins, gotchas, source-system precedence rules) that emerged.
-5. **Calibration pass done.** Findings that should update the agents or docs are triaged into a dated `CALIBRATION_<date>.md` (see [calibration.md](calibration.md)), OR you have explicitly recorded that none were needed. This is a required closing step, not optional — it's how the process self-corrects across runs.
+5. **Calibration pass done.** Findings that pass the promotion test are triaged into a dated `CALIBRATION_<date>.md`, observations below that bar are appended to the shared `analytics/runbook/CANDIDATES.md` ledger, OR you have explicitly recorded that none were needed — the expected outcome of most runs (see [calibration.md](calibration.md)). The closing step is required, not optional — it's how the process self-corrects across runs.
 
 ## Source pointers & references
 
