@@ -144,6 +144,46 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
         district_dataframes.append(district_df)
 
+    # Synthetic statewide district (DATA-1986). 'State' is excluded from the
+    # per-column loop above (EXCLUDED_DISTRICT_TYPES) because it is not a real
+    # L2 district column, but statewide BR positions (Governor, U.S. Senate,
+    # etc.) are matched to l2_district_type='State', l2_district_name=<state>
+    # by the LLM BR Office <-> L2 District matcher, the override seed, and
+    # int__l2_district_aggregations.
+    # Without these bridge rows those positions get zero zip coverage and never
+    # appear in the zip-scoped officepicker. Every voter in a zip is in the
+    # state, so the state is the district and voters_in_zip_district equals
+    # voters_in_zip (pct_districtzip_to_zip == 1.0 downstream).
+    state_df = l2_uniform_data.select(
+        col("state_postal_code"),
+        col("Residence_Addresses_Zip").alias("zip_code"),
+    ).filter(col("Residence_Addresses_Zip").isNotNull())
+
+    state_df = state_df.withColumn(
+        "zip_code",
+        when(length(col("zip_code")) == 4, concat(lit("0"), col("zip_code"))).otherwise(col("zip_code")),
+    )
+
+    state_df = (
+        state_df.groupBy("state_postal_code", "zip_code")
+        .agg(count("*").alias("voters_in_zip_district"))
+        .withColumn("voters_in_zip", spark_sum("voters_in_zip_district").over(zip_window))
+        .withColumn("district_name", col("state_postal_code"))
+        .withColumn("district_type", lit("State"))
+        # Match the column order of the per-district frames above so the
+        # positional union below aligns correctly.
+        .select(
+            "state_postal_code",
+            "zip_code",
+            "district_name",
+            "voters_in_zip_district",
+            "voters_in_zip",
+            "district_type",
+        )
+    )
+
+    district_dataframes.append(state_df)
+
     if district_dataframes:
         zip_code_to_l2_district = district_dataframes[0]
         for df in district_dataframes[1:]:

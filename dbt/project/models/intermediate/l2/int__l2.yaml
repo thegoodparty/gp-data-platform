@@ -238,7 +238,10 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
       - name: district_type
-        description: "L2 district column name (e.g. City, US_Congressional_District)"
+        description: >
+          L2 district column name (e.g. City, US_Congressional_District), plus
+          the synthetic value 'State' (one row per in-state zip, district_name =
+          state_postal_code) used to give statewide positions zip coverage.
         tests:
           - not_null
       - name: district_name
