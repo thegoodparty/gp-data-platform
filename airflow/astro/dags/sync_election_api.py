@@ -74,16 +74,16 @@ t_log = logging.getLogger("airflow.task")
 PG_CONN_ID = "election_api_db"
 DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
 
-# load_staging streams a Databricks mart into Postgres in the task's own pod;
-# the deployment's 0.5 GiB default task pod OOMs on the larger marts. Give just
-# these two tasks 4 GiB (sized for the largest mart, district_top_issues
-# ~5.1M rows) via the Kubernetes executor, rather than raising the
-# deployment-wide default for the many lightweight tasks.
+# load_staging streams a Databricks mart into Postgres in the task's own pod.
+# bulk_insert_from_databricks reads one partition at a time over a single
+# connection, so peak memory is bounded (~one partition, tens of MB) regardless
+# of mart size. A modest 1 GiB pod is plenty and schedules on dev's small
+# (Development Mode) capacity; the deployment's 0.5 GiB default is too tight
+# once the base task-runner + Arrow buffers are accounted for.
 #
-# The work is I/O-bound (it streams Databricks -> Postgres), so request minimal
-# CPU and let it burst to 1 vCPU — a large CPU request is what kept the pod
-# unschedulable ("stuck in queued"). The deployment's 1:2 CPU:memory rule
-# applies to the quota/defaults, not to per-task pod overrides.
+# The work is I/O-bound, so request minimal CPU and burst to 1 vCPU — a large
+# CPU request kept the pod unschedulable ("stuck in queued"). The deployment's
+# 1:2 CPU:memory rule applies to the quota/defaults, not per-task overrides.
 _LOAD_STAGING_EXECUTOR_CONFIG = {
     "pod_override": k8s.V1Pod(
         spec=k8s.V1PodSpec(
@@ -91,8 +91,8 @@ _LOAD_STAGING_EXECUTOR_CONFIG = {
                 k8s.V1Container(
                     name="base",
                     resources=k8s.V1ResourceRequirements(
-                        requests={"cpu": "500m", "memory": "4Gi"},
-                        limits={"cpu": "1", "memory": "4Gi"},
+                        requests={"cpu": "500m", "memory": "1Gi"},
+                        limits={"cpu": "1", "memory": "1Gi"},
                     ),
                 )
             ]

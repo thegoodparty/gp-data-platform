@@ -9,6 +9,7 @@ from include.custom_functions.databricks_utils import (
     _validate_lalvoterids,
     get_databricks_connection,
     get_processed_files,
+    read_databricks_partitioned,
     read_databricks_table,
     stage_expired_voter_ids,
 )
@@ -445,3 +446,102 @@ class TestReadDatabricksTable:
         assert mock_get_conn.call_args.kwargs["http_path"] == "/sql/1.0/warehouses/abc"
         cursor.close.assert_called_once()
         connection.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# read_databricks_partitioned
+# ---------------------------------------------------------------------------
+
+
+class TestReadDatabricksPartitioned:
+    """One Databricks connection for the whole read; one distinct value at a time."""
+
+    def _db_conn(
+        self,
+        host="https://example.cloud.databricks.com",
+        login="cid",
+        password="secret",
+        http_path="/sql/1.0/warehouses/abc",
+    ):
+        db_conn = MagicMock()
+        db_conn.host = host
+        db_conn.login = login
+        db_conn.password = password
+        db_conn.extra_dejson = {"http_path": http_path} if http_path else {}
+        return db_conn
+
+    def _patches(self, connection):
+        return (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=self._db_conn()),
+            patch.object(databricks_utils, "get_databricks_connection", return_value=connection),
+        )
+
+    def test_streams_partitions_over_a_single_connection(self):
+        """Distinct values drive one filtered query each; all over one connection."""
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [("CA",), ("OR",)]
+        cursor.fetchmany.side_effect = [[(1,)], [], [(2,), (3,)], []]
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        p_var, p_hook, p_conn = self._patches(connection)
+        with p_var, p_hook, p_conn as mock_get_conn:
+            batches = list(read_databricks_partitioned("SELECT a, state FROM t", "state"))
+
+        assert batches == [[(1,)], [(2,), (3,)]]
+        assert mock_get_conn.call_count == 1  # one connection for all partitions
+        executed = [c.args[0] for c in cursor.execute.call_args_list]
+        assert sum("DISTINCT" in q for q in executed) == 1
+        assert any("'CA'" in q for q in executed)
+        assert any("'OR'" in q for q in executed)
+        connection.close.assert_called_once()
+
+    def test_null_partition_value_uses_is_null(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [(None,)]
+        cursor.fetchmany.side_effect = [[(9,)], []]
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        p_var, p_hook, p_conn = self._patches(connection)
+        with p_var, p_hook, p_conn:
+            list(read_databricks_partitioned("SELECT a, state FROM t", "state"))
+
+        executed = [c.args[0] for c in cursor.execute.call_args_list]
+        assert any("IS NULL" in q for q in executed)
+
+    def test_escapes_single_quotes_in_partition_value(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [("O'Brien",)]
+        cursor.fetchmany.side_effect = [[(1,)], []]
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        p_var, p_hook, p_conn = self._patches(connection)
+        with p_var, p_hook, p_conn:
+            list(read_databricks_partitioned("SELECT a, county FROM t", "county"))
+
+        executed = [c.args[0] for c in cursor.execute.call_args_list]
+        assert any("O''Brien" in q for q in executed)
+
+    def test_connection_closed_when_consumer_stops_early(self):
+        """Abandoning the generator mid-iteration still closes the connection."""
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [("CA",), ("OR",)]
+        cursor.fetchmany.side_effect = [[(1,)], [], [(2,)], []]
+        connection = MagicMock()
+        connection.cursor.return_value = cursor
+        p_var, p_hook, p_conn = self._patches(connection)
+        with p_var, p_hook, p_conn:
+            gen = read_databricks_partitioned("SELECT a, state FROM t", "state")
+            next(gen)
+            gen.close()
+
+        connection.close.assert_called_once()
+
+    def test_missing_required_field_raises_eagerly(self):
+        db_conn = self._db_conn(http_path="")
+        with (
+            patch.object(databricks_utils.Variable, "get", return_value="conn-id"),
+            patch.object(databricks_utils.BaseHook, "get_connection", return_value=db_conn),
+            pytest.raises(ValueError, match="missing a required"),
+        ):
+            read_databricks_partitioned("SELECT a, state FROM t", "state")
