@@ -2380,6 +2380,12 @@ models:
           per distinct office held.
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('elected_officials')
+                field: gp_elected_official_id
+              config:
+                severity: warn
 
       - name: br_position_id
         description: >
@@ -2461,12 +2467,6 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [gp_elected_official_id, br_position_id]
-      - relationships:
-          arguments:
-            to: ref('elected_officials')
-            field: gp_elected_official_id
-          config:
-            severity: warn
       # Regression guard: the model's where clause already enforces
       # votes_received <= total_votes_cast, so this cannot fail on current
       # logic. It exists to catch a future change that drops that filter.
