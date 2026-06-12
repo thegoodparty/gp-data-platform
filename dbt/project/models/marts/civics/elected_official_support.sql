@@ -5,10 +5,11 @@
 -- general, general special, general runoff, and general special runoff. A person
 -- with multiple offices gets one row per office; same-office re-elections collapse
 -- to the most recent win.
--- Population: every column is populated, so only contested wins with a coherent
--- vote tally and an L2 voter count survive. Uncontested winners, rows where votes
--- exceed the reported total (unreliable partial loads), and rows with no L2 match
--- are excluded. Coherent-but-low recent tallies are kept and may show low fractions.
+-- Population: every column is populated and positive. Only contested wins with a
+-- coherent vote tally and an L2 voter count survive, and rows are dropped when
+-- votes, the L2 voter count, or the projected support would be zero. Uncontested
+-- winners, rows where votes exceed the reported total (unreliable partial loads),
+-- and rows with no L2 match are also excluded.
 -- Sources: votes_received is DDHQ via candidacy_stage; total_votes_cast is
 -- BallotReady-first via election_stage; icp_voter_count is the L2 district voter
 -- count from the positions mart. number_of_seats flags multi-seat races (~47%),
@@ -67,8 +68,34 @@ with
         left join
             {{ ref("positions") }} as pos
             on lw.br_position_id = pos.br_position_database_id
+    ),
+
+    scored as (
+        select
+            gp_elected_official_id,
+            br_position_id,
+            number_of_seats,
+            votes_received,
+            total_votes_cast,
+            icp_voter_count,
+            cast(
+                round(
+                    icp_voter_count * votes_received / cast(total_votes_cast as double)
+                ) as bigint
+            ) as projected_registered_supporters
+        from joined
+        where
+            votes_received > 0
+            and total_votes_cast > 0
+            and votes_received <= total_votes_cast
+            and icp_voter_count > 0
+            and number_of_seats is not null
     )
 
+-- Drop rows whose projected support rounds to zero (a tiny district with a low
+-- share); a zero support number is not meaningful for the banner. Combined with
+-- the votes_received > 0 and icp_voter_count > 0 guards above, every column is
+-- guaranteed positive.
 select
     gp_elected_official_id,
     br_position_id,
@@ -76,16 +103,6 @@ select
     votes_received,
     total_votes_cast,
     icp_voter_count,
-    cast(
-        round(
-            icp_voter_count * votes_received / cast(total_votes_cast as double)
-        ) as bigint
-    ) as projected_registered_supporters
-from joined
-where
-    votes_received is not null
-    and total_votes_cast is not null
-    and total_votes_cast > 0
-    and votes_received <= total_votes_cast
-    and icp_voter_count is not null
-    and number_of_seats is not null
+    projected_registered_supporters
+from scored
+where projected_registered_supporters > 0
