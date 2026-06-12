@@ -10,6 +10,13 @@
 > at `omni/packages/people-api` and `omni/packages/gp-api` (the old standalone
 > repos are archived). Paths below that read `people-api/...` mean
 > `omni/packages/people-api/...`.
+>
+> **Cluster identity:** the Present (prod) cluster is **`gp-people-db-prod`**, the
+> renamed `gp-voter-db-20250728` (same physical cluster — shared
+> `cluster-cmb1uukjsfbe` endpoint hash). It holds the unified `public."Voter"` shape
+> (single Prisma-managed table), not the legacy per-state `Voter{ST}` tables or the
+> separate "schema `green`" people-api DB some prose below describes. New clusters the
+> loader provisions are `gp-people-db-{date}`.
 
 ## Context
 
@@ -35,7 +42,7 @@ GoodParty.org exports US voter data to political-candidate users. Current pipeli
 
 - **Legacy loader code:** `gp-data-platform/dbt/project/models/write/write__l2_databricks_to_gp_api.py`. Current dbt Python model copying from Databricks to PostgreSQL. Contains the canonical `VOTER_COLUMN_LIST` (348 columns), `REMOVED_COLUMNS` (15 columns L2 stopped delivering — kept as NULL placeholders for schema compatibility), `INTEGER_COLUMNS` (6 columns cast to `INT`), and the full `UPSERT_QUERY` template. **Note:** L2 has added ~470 more columns on the Databricks side since this list was frozen (807 total), but most of those are consumer-enrichment data no app reads. The new loader scopes by *referenced columns* (see "Column Scoping" below), not by source schema.
 - **Current app-side query construction:** `gp-api/src/voters/voterFile/util/voterFile.util.ts` (NOTE: file is `voterFile.util.ts`, not `voterFile.utils.ts`). Builds raw SQL against `public."Voter{STATE}"` tables — this is the serving layer we're refreshing.
-- **Forward-looking app-side query construction:** `omni/packages/people-api` (alongside `omni/packages/gp-api` in the omni monorepo). The `voterFile.util.ts` file has a standing TODO pointing at ticket ENG-5032 that says the gp-api should stop hitting the raw voter DB and delegate to the people-api instead. The people-api has its own Voter table (in schema `green`, not `public`) and its own dedicated DB, populated by its own loader — so a gp-voter-db refresh does not touch it directly. *But* the people-api's Voter schema and filter builder are the authoritative answer to "what columns might be referenced by any current or near-term consumer." Key files (under `omni/packages/people-api/`):
+- **Forward-looking app-side query construction:** `omni/packages/people-api` (alongside `omni/packages/gp-api` in the omni monorepo). The `voterFile.util.ts` file has a standing TODO pointing at ticket ENG-5032 that says the gp-api should stop hitting the raw voter DB and delegate to the people-api instead. The people-api has its own Voter table (in schema `green`, not `public`) and its own dedicated DB, populated by its own loader — so a gp-people-db refresh does not touch it directly. *But* the people-api's Voter schema and filter builder are the authoritative answer to "what columns might be referenced by any current or near-term consumer." Key files (under `omni/packages/people-api/`):
   - `prisma/schema/Voter.prisma` — the Voter model (names are a rename layer over L2-native; see mapping table in "Column Scoping" below).
   - `src/people/schemas/filters.schema.ts` — the enum of exposed filter keys.
   - `src/people/utils/filters.sql.utils.ts` — maps filter keys to L2-native column names + value mappers.
@@ -51,7 +58,7 @@ GoodParty.org exports US voter data to political-candidate users. Current pipeli
 
 ## Inspected Prod Environment (2026-04-16)
 
-Captured from the live `gp-voter-db-20250728` cluster and Databricks source. Use these as the concrete defaults driving the new cluster's config.
+Captured from the live `gp-people-db-prod` cluster and Databricks source. Use these as the concrete defaults driving the new cluster's config.
 
 ### Cluster
 - **Engine:** `aurora-postgresql` **16.8**.
@@ -60,7 +67,7 @@ Captured from the live `gp-voter-db-20250728` cluster and Databricks source. Use
 - **Backup retention:** 14 days. **Deletion protection:** on. **Storage encrypted:** yes.
 - **KMS key:** `arn:aws:kms:us-west-2:333022194791:key/a728ea20-f375-4039-b7c1-ef9ff192abcc` (reuse for new cluster).
 - **Tags:** `Project=gp-api`, `Environment=prod` — match on the new cluster so the app team's IaC filters work.
-- **Writer endpoint:** `gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com:5432`. The app's connection string will change on cutover — flag in manifest.
+- **Writer endpoint:** `gp-people-db-prod.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com:5432`. The app's connection string will change on cutover — flag in manifest.
 
 ### Network
 - **VPC:** `vpc-0763fa52c32ebcf6a` (us-west-2). Use the same for the new cluster.
@@ -281,7 +288,7 @@ class UnloadManifest(ManifestBase):
     files: list[UnloadFile]
 
 class ProvisionManifest(ManifestBase):
-    cluster_id: str                  # "gp-voter-db-20260417"
+    cluster_id: str                  # "gp-people-db-20260417"
     writer_instance_id: str
     writer_endpoint: str
     iam_role_arn: str                # the rds-s3-import role attached
@@ -326,7 +333,7 @@ class ValidateManifest(ManifestBase):
 ### 6. Date-stamped artifact versioning
 **Decision:** a single date stamp (e.g. `20260416`) flows through everything: S3 prefix, RDS cluster identifier, parameter group names, manifest paths.
 
-**Rationale:** rollback and retry become trivial — just bump the date. No mutable state anywhere. Matches the existing convention (`gp-voter-db-20250728`).
+**Rationale:** rollback and retry become trivial — just bump the date. No mutable state anywhere. Matches the existing convention (`gp-people-db-prod`).
 
 ---
 
@@ -340,7 +347,7 @@ class ValidateManifest(ManifestBase):
 > `schema/data/prod_dump.sql` is the schema source of truth, and the AWS-side inventory
 > is the "Inspected Prod Environment" block above.
 
-**Goal:** capture the config of `gp-voter-db-20250728` so the new cluster mimics what the app already expects, without surprises at cutover.
+**Goal:** capture the config of `gp-people-db-prod` so the new cluster mimics what the app already expects, without surprises at cutover.
 
 **Status:** AWS-side inspection is already done and lives in the "Inspected Prod Environment" section above. The inside-the-database inspection still needs to run on first loader invocation (requires credentials this plan doesn't want to hardcode).
 
@@ -357,7 +364,7 @@ Key values to reuse (full table in the top-of-doc "Inspected Prod Environment" b
 - **No `rds-s3-import` IAM role yet** — must be created as part of step 2.
 
 ### Inside-the-database (connect and query) — TODO on first loader run
-Run these against `postgres@gp-voter-db-20250728...voters` and write results into `target_environment.json`:
+Run these against `postgres@gp-people-db-prod...voters` and write results into `target_environment.json`:
 - `SELECT extname, extversion FROM pg_extension` — minimum expected: `plpgsql`, `pg_stat_statements`. The new cluster also needs `aws_s3` + `aws_commons` for `table_import_from_s3`.
 - `SELECT rolname FROM pg_roles` + grants on `public."Voter*"` tables — the app connects as a specific role; reuse credentials on the new cluster.
 - Per-table DDL: `pg_dump --schema-only --no-owner --no-acl --dbname=... -t 'public."Voter*"'`. Split into (a) CREATE TABLE + PK, (b) non-unique indexes, (c) FKs — steps 3 and 5 consume each subset.
@@ -367,7 +374,7 @@ Run these against `postgres@gp-voter-db-20250728...voters` and write results int
 
 **Rationale:** doing this up front turns "what does prod look like" from tribal knowledge into a versioned artifact. One surprise discovered at cutover can cost a day.
 
-**Gotcha:** the app's connection string will change (new cluster → new endpoint, e.g. `gp-voter-db-{date}.cluster-<suffix>.us-west-2.rds.amazonaws.com`). Flag in the manifest so the cutover task isn't forgotten.
+**Gotcha:** the app's connection string will change (new cluster → new endpoint, e.g. `gp-people-db-{date}.cluster-<suffix>.us-west-2.rds.amazonaws.com`). Flag in the manifest so the cutover task isn't forgotten.
 
 **Done when:**
 - `target_environment.json` exists in the loader repo with: engine version, `pg_extension` list, `pg_roles` list + grants on `public."Voter*"`, `prod_row_counts` dict, writer endpoint, SG/VPC/subnet/KMS IDs.
@@ -442,10 +449,10 @@ Use `coalesce`/`repartition` to hit the ~2 GB file target per state (see "Chunk 
 
 **Architecture:** Terraform or boto3 script that creates:
 - Aurora PostgreSQL cluster: engine `aurora-postgresql`, version `16.8` (matches prod).
-- Cluster identifier: `gp-voter-db-{YYYYMMDD}`.
+- Cluster identifier: `gp-people-db-{YYYYMMDD}`.
 - Database name `voters`, master user `postgres` (match prod so app secrets carry over).
 - Single writer instance, **provisioned `db.r7g.16xlarge`** for the load/index phase.
-- Custom cluster + instance parameter groups tuned for bulk load (`gp-voter-db-{date}-load`), values in step 4/5. Serving group (`gp-voter-db-{date}-serve`) kept separate.
+- Custom cluster + instance parameter groups tuned for bulk load (`gp-people-db-{date}-load`), values in step 4/5. Serving group (`gp-people-db-{date}-serve`) kept separate.
 - IAM role (new — none exists today) with `s3:GetObject` + `s3:ListBucket` on the loader bucket (enables `aws_s3`); attach via `aws rds add-role-to-db-cluster --feature-name s3Import`.
 - **VPC endpoint for S3** in `vpc-0763fa52c32ebcf6a` — **does not exist today**, create it (Gateway endpoint type, attach to both route tables for subnet-053357b931f0524d4 and subnet-0bb591861f72dcb7f).
 - VPC: `vpc-0763fa52c32ebcf6a`. Subnet group: `api-master-rds-subnet-group` (reuse). Security group: start by reusing `sg-03783e4adbbee87dc` so the app's existing SG allowlist carries over at cutover.
@@ -465,12 +472,12 @@ Use `coalesce`/`repartition` to hit the ~2 GB file target per state (see "Chunk 
 **Idempotency:** script checks for existing cluster with the date-stamped identifier; skips creation if present.
 
 **Done when:**
-- `aws rds describe-db-clusters --db-cluster-identifier gp-voter-db-{date}` returns `Status=available` and `EngineVersion=16.8`.
+- `aws rds describe-db-clusters --db-cluster-identifier gp-people-db-{date}` returns `Status=available` and `EngineVersion=16.8`.
 - Writer instance `DBInstanceClass=db.r7g.16xlarge`, `DBInstanceStatus=available`.
 - Cluster has the `rds-s3-import` IAM role attached with `FeatureName=s3Import` (check `AssociatedRoles` on the cluster, not the instance).
 - S3 gateway VPC endpoint exists in `vpc-0763fa52c32ebcf6a` and is attached to both private route tables.
 - `CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE` succeeds; `SELECT aws_s3.table_import_from_s3('pg_catalog.pg_class', '', '(FORMAT text)', aws_commons.create_s3_uri('bucket','missing-key','us-west-2'))` returns an "object not found" error (not a permissions error) — proves the role is working.
-- Load parameter group `gp-voter-db-{date}-load` attached to the cluster; serving group `gp-voter-db-{date}-serve` exists but NOT attached yet.
+- Load parameter group `gp-people-db-{date}-load` attached to the cluster; serving group `gp-people-db-{date}-serve` exists but NOT attached yet.
 - `ProvisionManifest` at `_manifest/provision.json` with cluster/instance IDs, writer endpoint, IAM role ARN, VPCE ID, param group names. `status=complete`.
 
 ---
@@ -484,7 +491,7 @@ Use `coalesce`/`repartition` to hit the ~2 GB file target per state (see "Chunk 
 pg_dump --schema-only --no-owner --no-acl \
         --schema=public \
         -t 'public."Voter*"' -t 'public."VoterFile"' \
-        "host=gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com \
+        "host=gp-people-db-prod.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com \
          port=5432 dbname=voters user=postgres" > schema/prod_dump.sql
 
 # (b) Emit the merged DDL. Loader code reads prod_dump.sql, merges with the
@@ -656,7 +663,7 @@ A missing index only surfaces as a slow serve-time query. Confirm every index fr
 
 **Done when:**
 - Writer instance class = `db.serverless`. `ServerlessV2ScalingConfiguration` = `{MinCapacity: 0.5, MaxCapacity: 128}` (matching prod).
-- Serving parameter group `gp-voter-db-{date}-serve` attached; `SHOW synchronous_commit` returns `on`; `SHOW autovacuum` returns `on`.
+- Serving parameter group `gp-people-db-{date}-serve` attached; `SHOW synchronous_commit` returns `on`; `SHOW autovacuum` returns `on`.
 - Backup retention = 14 days.
 - Deletion protection = enabled.
 - Cluster still has the `rds-s3-import` IAM role attached (don't detach — future incremental loads may reuse).
@@ -666,7 +673,7 @@ A missing index only surfaces as a slow serve-time query. Confirm every index fr
 
 ## Step 7 — Validation
 
-**Architecture:** a read-only validator that compares new cluster vs old (`gp-voter-db-20250728`) and against the Databricks source.
+**Architecture:** a read-only validator that compares new cluster vs old (`gp-people-db-prod`) and against the Databricks source.
 
 **Checks:**
 1. **Row counts per state** — new cluster vs Databricks manifest. Must match exactly. (Old RDS is stale, so it's not the source of truth for counts.)
@@ -816,8 +823,8 @@ VOTER_DB_MASTER_USER=postgres
 ```
 
 **4. Secrets strategy:**
-- **RDS master password** for the new cluster: generated at provision time via `secrets.token_urlsafe(32)`, immediately stored in AWS Secrets Manager under `gp-voter-db/{date}/master`, then referenced from there for the load. The master password is NEVER written to disk, env, or manifest.
-- **RDS master password for prod** (step 0 inspection, step 7 validation): already in Secrets Manager — check `gp-voter-db-20250728/master` or the equivalent. If absent, ask the person doing the refresh for a short-lived credential rather than baking one in.
+- **RDS master password** for the new cluster: generated at provision time via `secrets.token_urlsafe(32)`, immediately stored in AWS Secrets Manager under `gp-people-db/{date}/master`, then referenced from there for the load. The master password is NEVER written to disk, env, or manifest.
+- **RDS master password for prod** (step 0 inspection, step 7 validation): already in Secrets Manager — check `gp-people-db-prod/master` or the equivalent. If absent, ask the person doing the refresh for a short-lived credential rather than baking one in.
 - **Databricks token:** use `databricks auth login` (already done — user's CLI is authenticated). SDK picks up `~/.databrickscfg` automatically.
 - **AWS:** use SSO / profile (`AWS_PROFILE=goodparty-prod`). Don't bake access keys into `.env`.
 - **Enforcement:** the loader's config loader (`loader/config.py`) should error hard if `VOTER_DB_MASTER_PASSWORD` appears in the process env — forces everyone through Secrets Manager.
@@ -877,8 +884,8 @@ Generalize *after* the single-state path works. Building the full pipeline befor
 ## Environment Summary
 
 - **AWS account:** `333022194791`. **Region:** `us-west-2` (everything).
-- **Prod RDS:** `gp-voter-db-20250728`. Aurora PG 16.8, Serverless v2 (0.5–128 ACU), default param group, DB name `voters`, master user `postgres`. Writer endpoint `gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com:5432`. Tables: `public."Voter{STATE}"` (51 of them) + `public."VoterFile"` tracking table. Use for inspection (step 0) and validation (step 7). Do not mutate.
-- **New RDS:** `gp-voter-db-{YYYYMMDD}`. Same VPC (`vpc-0763fa52c32ebcf6a`), subnet group (`api-master-rds-subnet-group`), SG (`sg-03783e4adbbee87dc`), KMS key (`arn:aws:kms:us-west-2:333022194791:key/a728ea20-f375-4039-b7c1-ef9ff192abcc`). Starts provisioned `db.r7g.16xlarge`, ends serverless v2 (0.5–128 ACU matching prod). Requires an S3 gateway VPC endpoint and a new `rds-s3-import` IAM role — neither exists today.
+- **Prod RDS:** `gp-people-db-prod`. Aurora PG 16.8, Serverless v2 (0.5–128 ACU), default param group, DB name `voters`, master user `postgres`. Writer endpoint `gp-people-db-prod.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com:5432`. Tables: `public."Voter{STATE}"` (51 of them) + `public."VoterFile"` tracking table. Use for inspection (step 0) and validation (step 7). Do not mutate.
+- **New RDS:** `gp-people-db-{YYYYMMDD}`. Same VPC (`vpc-0763fa52c32ebcf6a`), subnet group (`api-master-rds-subnet-group`), SG (`sg-03783e4adbbee87dc`), KMS key (`arn:aws:kms:us-west-2:333022194791:key/a728ea20-f375-4039-b7c1-ef9ff192abcc`). Starts provisioned `db.r7g.16xlarge`, ends serverless v2 (0.5–128 ACU matching prod). Requires an S3 gateway VPC endpoint and a new `rds-s3-import` IAM role — neither exists today.
 - **S3:** loader output at `s3://gp-voter-loader-us-west-2/voter_export_{YYYYMMDD}/` (bucket to be created). Existing `s3://normalized-voter-files/` holds raw L2 `VM2Uniform--XX--*.tab` inputs, unrelated to loader output.
 - **Source data:** `int__l2_nationwide_uniform` (Databricks, catalog `goodparty_data_catalog`, schema `dbt`, ~218 M rows as of 2026-04-16, 807 columns in the source, keyed on `LALVOTERID`). State comes from the source column `state_postal_code`. Canonical target-column list for the *new* loader: `loader/schema/voter_columns.py` — a curated ~375-column superset of the legacy 348, scoped to gp-api + people-api references **including every L2-native district column that could appear in `org_districts.l2Type` (closes the `Judicial_Justice_of_the_Peace`-class bugs)**. See "Column Scoping".
 - **Consumer:** app code in `gp-api/src/voters/voterFile/util/voterFile.util.ts` constructs per-user export SQL — `SELECT ... FROM public."Voter{state}" WHERE ...` — dynamically built from campaign metadata. Serving-side indexes must cover district filters, contact-method NOT NULL filters, and `Mailing_Families_FamilyID` for direct-mail de-dup.
@@ -906,7 +913,7 @@ modules with a Typer CLI. Deps pinned via `uv sync`; lint clean.
    Warehouse. No `loader/spark/` module remains.
 
 2. **Prod auth via `pg_service`, not Secrets Manager.** The team reaches
-   `gp-voter-db-20250728` passwordless through a `~/.pg_service.conf [voters]`
+   `gp-people-db-prod` passwordless through a `~/.pg_service.conf [voters]`
    entry. `connect_prod` and `inspect_prod._pg_dump_schema` both use
    `service=voters`. Secrets Manager is still the path for the *new* cluster's
    master password.
@@ -1002,10 +1009,10 @@ uv run --env-file .env loader teardown --date 20260417 --confirm
 # add --delete-vpce to retire the S3 gateway endpoint (default keeps it).
 ```
 
-Deletion order: writer instance → `gp-voter-db-{date}` cluster (auto
+Deletion order: writer instance → `gp-people-db-{date}` cluster (auto
 disables deletion-protection first) → `-load`/`-serve` param groups →
 `rds-s3-import-{date}` IAM role (inline policies + role) →
-`gp-voter-db/{date}/master` secret → (opt-in) `voter_export_{date}/`
+`gp-people-db/{date}/master` secret → (opt-in) `voter_export_{date}/`
 S3 prefix → (opt-in, only when the VPCE carries the loader's full tag
 signature) the S3 VPC endpoint.
 
@@ -1126,7 +1133,7 @@ Run the dry-run before `--confirm` regardless.
 
 17. **KMS key is prod-tagged but unblocked by RequestTag.** The cluster uses
     `arn:aws:kms:us-west-2:...:key/a728ea20-...` (the single account-wide
-    RDS KMS key). It has no Environment tag; `gp-voter-db-develop` already
+    RDS KMS key). It has no Environment tag; `gp-people-db-develop` already
     uses the same key, which proves IAM authz passes for CreateDBCluster
     when the cluster request carries `Environment=dev`. No action needed,
     but flagged because the "dev-tagged everything" mental model of the SSO
@@ -1155,10 +1162,10 @@ Run the dry-run before `--confirm` regardless.
     }
     ```
     Optional tightening: add `StringLike: iam:AssociatedResourceARN =
-    arn:aws:rds:us-west-2:333022194791:cluster:gp-voter-db-*` to pin the
+    arn:aws:rds:us-west-2:333022194791:cluster:gp-people-db-*` to pin the
     target cluster prefix. For the FL milestone specifically, a one-shot
     admin-run `aws rds add-role-to-db-cluster --db-cluster-identifier
-    gp-voter-db-20260417 --role-arn
+    gp-people-db-20260417 --role-arn
     arn:aws:iam::333022194791:role/rds-s3-import-20260417 --feature-name
     s3Import` unblocks without a policy edit. Document either path as a
     prerequisite for future refreshes.
@@ -1217,10 +1224,10 @@ the first nationwide refresh (or any refresh, FL or otherwise). Assumes
    sudo route add -net 10.0.12.0/22 10.8.0.9
    ```
    Verify with `nc -zvw 5
-   gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com
+   gp-people-db-prod.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com
    5432` — should say `succeeded`.
 3. **`pg_service.conf` [voters] entry**: host =
-   `gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com`,
+   `gp-people-db-prod.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com`,
    SSL required, no password (IAM auth or passwordless pre-arranged).
 4. **Postgres client binaries on PATH** (for `pg_dump` during
    `inspect-prod`). Local dev uses
@@ -1387,7 +1394,7 @@ Optional tightening (defer unless audit asks):
 ```json
 "StringLike": {
   "iam:AssociatedResourceARN":
-    "arn:aws:rds:us-west-2:333022194791:cluster:gp-voter-db-*"
+    "arn:aws:rds:us-west-2:333022194791:cluster:gp-people-db-*"
 }
 ```
 
@@ -1414,7 +1421,7 @@ If you want to make the loader's IAM asks legible as one cohesive block
     "rds:AddRoleToDBCluster",
     "rds:RemoveRoleFromDBCluster"
   ],
-  "Resource": "arn:aws:rds:us-west-2:333022194791:cluster:gp-voter-db-*",
+  "Resource": "arn:aws:rds:us-west-2:333022194791:cluster:gp-people-db-*",
   "Condition": {
     "StringEquals": {
       "aws:ResourceTag/Environment": "dev"
@@ -1536,7 +1543,7 @@ need boils down to these action families:
 |---|---|
 | `rds:*` (on voter-db resources) | Create/Modify/Delete cluster + instance + param group; AddRoleToDBCluster |
 | `iam:*` (on rds-s3-import-* roles) | CreateRole, PutRolePolicy, DeleteRole, DeleteRolePolicy, GetRole, ListRolePolicies, ListRoleTags |
-| `secretsmanager:*` (on gp-voter-db/* secrets) | CreateSecret, GetSecretValue, DescribeSecret, DeleteSecret, PutSecretValue |
+| `secretsmanager:*` (on gp-people-db/* secrets) | CreateSecret, GetSecretValue, DescribeSecret, DeleteSecret, PutSecretValue |
 | `kms:*` (on the RDS KMS key) | GenerateDataKey, Decrypt, DescribeKey, CreateGrant |
 | `ec2:Describe*` | VPC/subnet/SG/VPCE lookups during provision |
 | `s3:*` (on the loader bucket + prefixes) | already covered by the unconditional `s3:*` statement |

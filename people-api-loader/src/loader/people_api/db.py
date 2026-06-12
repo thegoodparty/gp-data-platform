@@ -1,8 +1,8 @@
 """Postgres connection helpers for the people-API loader.
 
 Two clusters exist in the loader's life:
-- `connect_prod(cfg)`: the existing `gp-voter-db-20250728`, read-only use for
-  step 0 (inspect) and step 7 (validate). Auth via `~/.pg_service.conf`
+- `connect_prod(cfg)`: the existing `gp-people-db-prod` Present cluster (read-only)
+  for step 0 (inspect) and step 7 (validate). Auth via `~/.pg_service.conf`
   entry named by `LOADER_PROD_PG_SERVICE` (default `voters`) —
   passwordless because that's how the team reaches this cluster today.
 - `connect_new(cfg, run_date, endpoint)`: the cluster provisioned by step 2.

@@ -21,9 +21,12 @@ DEFAULT_AWS_REGION = "us-west-2"
 DEFAULT_S3_BUCKET = "gp-voter-loader"
 DEFAULT_DATABRICKS_TABLE = "goodparty_data_catalog.dbt.int__l2_nationwide_uniform"
 
-DEFAULT_PROD_CLUSTER_ID = "gp-voter-db-20250728"
-DEFAULT_PROD_WRITER_ENDPOINT = "gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com"
-DEFAULT_PROD_SECRET_ID = "gp-voter-db-20250728/master"
+# The live Present cluster. Renamed from gp-voter-db-20250728 — same physical cluster
+# (note the shared cluster-cmb1uukjsfbe endpoint hash, which is stable across an RDS
+# identifier rename). Override with LOADER_PROD_* env vars.
+DEFAULT_PROD_CLUSTER_ID = "gp-people-db-prod"
+DEFAULT_PROD_WRITER_ENDPOINT = "gp-people-db-prod.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com"
+DEFAULT_PROD_SECRET_ID = "gp-people-db-prod/master"
 
 DEFAULT_VPC_ID = "vpc-0763fa52c32ebcf6a"
 DEFAULT_DB_SUBNET_GROUP = "api-master-rds-subnet-group"
@@ -124,22 +127,22 @@ class LoaderConfig(BaseLoaderConfig):
         return f"voter_export_{run_date}"
 
     def new_cluster_id(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}"
+        return f"gp-people-db-{run_date}"
 
     def new_writer_instance_id(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}-writer"
+        return f"gp-people-db-{run_date}-writer"
 
     def new_master_secret_id(self, run_date: str) -> str:
-        return f"gp-voter-db/{run_date}/master"
+        return f"gp-people-db/{run_date}/master"
 
     def new_iam_role_name(self, run_date: str) -> str:
         return f"rds-s3-import-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}-load"
+        return f"gp-people-db-{run_date}-load"
 
     def new_serve_param_group(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}-serve"
+        return f"gp-people-db-{run_date}-serve"
 
 
 def require_run_date(run_date: str) -> str:
