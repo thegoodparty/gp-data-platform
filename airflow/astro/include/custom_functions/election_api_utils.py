@@ -90,6 +90,40 @@ def create_staging_table(conn, spec: TableSyncSpec) -> None:
         cur.close()
 
 
+def _partition_queries(
+    source_query: str,
+    partition_column: str | None,
+    batch_size: int,
+) -> list[str]:
+    """Split `source_query` into one query per distinct `partition_column` value.
+
+    Each partition's result set is read independently, so the worker's peak
+    memory is bounded by a single partition rather than the whole mart (the
+    Databricks connector buffers a result set client-side, so an ever-growing
+    mart eventually OOMs the worker). Without a `partition_column`, the source
+    query is returned unchanged.
+    """
+    if partition_column is None:
+        return [source_query]
+
+    distinct_query = f"SELECT DISTINCT {partition_column} AS _pv FROM ({source_query}) AS _src"
+    _cols, batches = read_databricks_table(distinct_query, batch_size=batch_size)
+    try:
+        values = [row[0] for batch in batches for row in batch]
+    finally:
+        batches.close()
+
+    queries = []
+    for value in values:
+        if value is None:
+            predicate = f"_src.{partition_column} IS NULL"
+        else:
+            escaped = str(value).replace("'", "''")
+            predicate = f"_src.{partition_column} = '{escaped}'"
+        queries.append(f"SELECT * FROM ({source_query}) AS _src WHERE {predicate}")
+    return queries
+
+
 def bulk_insert_from_databricks(
     conn,
     spec: TableSyncSpec,
@@ -97,36 +131,50 @@ def bulk_insert_from_databricks(
     target_columns: Sequence[str],
     transform_row: Callable[[tuple], tuple] | None = None,
     batch_size: int = 5000,
+    partition_column: str | None = None,
 ) -> int:
     """Stream `source_query` from Databricks into `staging.<table>_new` in batches.
 
     `transform_row` runs once per source row; if provided, the returned tuple
     must align with `target_columns`. If absent, source rows pass through
     unchanged (must already match `target_columns`).
-    """
-    logger.info("Reading from Databricks: %s", source_query)
-    _col_names, batches = read_databricks_table(source_query, batch_size=batch_size)
 
+    `partition_column`, if set, splits the read into one Databricks query per
+    distinct value so peak worker memory stays bounded to a single partition
+    instead of the whole result set (see `_partition_queries`). The single
+    commit still lands after all partitions, so a mid-load failure rolls the
+    whole staging load back and a retry starts from a clean `<table>_new`.
+    """
     col_list = ", ".join(f'"{c}"' for c in target_columns)
     insert_sql = f'INSERT INTO "{spec.staging_schema}"."{spec.new_table}" ' f"({col_list}) VALUES %s"
 
+    queries = _partition_queries(source_query, partition_column, batch_size)
+
     total = 0
+    cur = conn.cursor()
     try:
-        cur = conn.cursor()
-        try:
-            for batch in batches:
-                rows = [transform_row(r) if transform_row else tuple(r) for r in batch]
-                if not rows:
-                    continue
-                psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)
-                total += len(rows)
-                if total % 50_000 < batch_size:
-                    logger.info("Inserted %d rows so far", total)
-            conn.commit()
-        finally:
-            cur.close()
+        for query in queries:
+            logger.info("Reading from Databricks: %s", query)
+            _col_names, batches = read_databricks_table(query, batch_size=batch_size)
+            try:
+                for batch in batches:
+                    rows = [transform_row(r) if transform_row else tuple(r) for r in batch]
+                    if not rows:
+                        continue
+                    psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)
+                    total += len(rows)
+                    if total % 50_000 < batch_size:
+                        logger.info("Inserted %d rows so far", total)
+            finally:
+                batches.close()
+        conn.commit()
+    except Exception:
+        # Discard partial inserts so a retry starts from a clean <table>_new
+        # (and the connection isn't left in an aborted-transaction state).
+        conn.rollback()
+        raise
     finally:
-        batches.close()
+        cur.close()
 
     logger.info("Loaded %d rows into %s.%s", total, spec.staging_schema, spec.new_table)
     return total

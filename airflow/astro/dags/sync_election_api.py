@@ -279,6 +279,10 @@ def sync_election_api():
                     source_query=query,
                     target_columns=ZTP_TARGET_COLUMNS,
                     transform_row=_ztp_transform_row,
+                    # Statewide coverage (DATA-1986) added ~260k rows; read one
+                    # state at a time so the worker's peak memory stays bounded
+                    # as the mart grows, instead of buffering the full result.
+                    partition_column="state",
                 )
 
         @task
