@@ -1,6 +1,6 @@
 -- Civics mart elected_official_support table.
--- Grain: one row per (elected official, office) — gp_elected_official_id keyed
--- with br_position_id — from that office's most recent GENERAL election win.
+-- Grain: one row per (elected official, office), keyed by gp_elected_official_id
+-- with br_position_id, from that office's most recent GENERAL election win.
 -- Primaries are excluded; a primary win does not confer office. 'general' covers
 -- general, general special, general runoff, and general special runoff stages. An
 -- official who holds more than one distinct office gets one row per office;
@@ -8,7 +8,7 @@
 -- Population: every column is populated. Only contested wins with a coherent vote
 -- tally and an L2 registered-voter count survive. Uncontested winners (no numeric
 -- total) are excluded, as are rows where votes exceed the reported total (a
--- BallotReady partial load on a very recent election — treated as unreliable and
+-- BallotReady partial load on a very recent election, treated as unreliable and
 -- dropped whole) and rows with no L2 district match.
 -- votes_received is DDHQ-canonical via candidacy_stage; total_votes_cast is
 -- BallotReady-first (DDHQ fallback) via election_stage. Where both vendors carry a
@@ -19,7 +19,7 @@
 -- share to that registered-voter base. It is an INTERIM PLACEHOLDER for a future
 -- constituents-based support figure: when a real constituents count exists, the
 -- same vote share will be applied to it instead. The estimate assumes non-voters
--- would split the same way as voters — fine for a display figure, not for analysis.
+-- would split the same way as voters. Fine for a display figure, not for analysis.
 -- number_of_seats flags multi-seat / at-large races (about 47% of rows). In those,
 -- one winner's votes over the race total is a structurally low share because the
 -- electorate is split across several winners, so the support fraction is not

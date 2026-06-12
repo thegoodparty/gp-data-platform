@@ -2367,7 +2367,7 @@ models:
 
       - name: br_position_id
         description: >
-          BallotReady position (office) identifier — Position.databaseId. Part
+          BallotReady position (office) identifier (Position.databaseId). Part
           of the composite primary key (with gp_elected_official_id) and the
           join key to int__icp_offices.
         data_tests:
@@ -2433,7 +2433,7 @@ models:
           official's general-election vote share to the full registered-voter
           base. INTERIM PLACEHOLDER: when a real constituents count exists, the
           same vote share will be applied to it instead. Assumes non-voters
-          would split at the same rate as voters — fine for a display figure,
+          would split at the same rate as voters. Fine for a display figure,
           not for analysis. Always populated.
         data_tests:
           - not_null
