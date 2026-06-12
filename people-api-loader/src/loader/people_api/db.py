@@ -3,7 +3,7 @@
 Two clusters exist in the loader's life:
 - `connect_prod(cfg)`: the existing `gp-people-db-prod` Present cluster (read-only)
   for step 0 (inspect) and step 7 (validate). Auth via `~/.pg_service.conf`
-  entry named by `LOADER_PROD_PG_SERVICE` (default `voters`) —
+  entry named by `LOADER_PROD_PG_SERVICE` (default `people`) —
   passwordless because that's how the team reaches this cluster today.
 - `connect_new(cfg, run_date, endpoint)`: the cluster provisioned by step 2.
   Auth via the master password stored in Secrets Manager at provision time.
@@ -27,14 +27,14 @@ if TYPE_CHECKING:
 
 
 def _prod_service_name() -> str:
-    return os.environ.get("LOADER_PROD_PG_SERVICE", "voters")
+    return os.environ.get("LOADER_PROD_PG_SERVICE", "people")
 
 
 @contextmanager
 def connect_prod(cfg: LoaderConfig, *, autocommit: bool = True) -> Iterator[Connection]:
     """Connect to the existing prod cluster via pg_service (passwordless).
 
-    Uses libpq's `service=<name>` lookup — the `[voters]` section of
+    Uses libpq's `service=<name>` lookup — the `[people]` section of
     `~/.pg_service.conf` provides host, port, dbname, user, sslmode, and
     the cert bundle. The `cfg` parameter is still accepted so callers don't
     need to care which auth path is in play.
