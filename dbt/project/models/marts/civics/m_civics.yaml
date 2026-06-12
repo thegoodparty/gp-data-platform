@@ -2366,10 +2366,10 @@ models:
 
       Source note: votes_received is DDHQ-canonical via candidacy_stage;
       total_votes_cast is BallotReady-first (DDHQ fallback) via election_stage,
-      and where both vendors carry a total they are identical;
-      registered_voter_count is the L2 district registered-voter count via
-      int__icp_offices. projected_registered_supporters is an interim
-      placeholder for a future constituents-based support figure.
+      and where both vendors carry a total they are identical; icp_voter_count
+      is the L2 district voter count, sourced from the positions mart (same
+      name and value positions and election use). projected_registered_supporters
+      is an interim placeholder for a future constituents-based support figure.
 
     columns:
       - name: gp_elected_official_id
@@ -2391,7 +2391,7 @@ models:
         description: >
           BallotReady position (office) identifier (Position.databaseId). Part
           of the composite primary key (with gp_elected_official_id) and the
-          join key to int__icp_offices.
+          join key to the positions mart (positions.br_position_database_id).
         data_tests:
           - not_null
 
@@ -2431,16 +2431,16 @@ models:
               arguments:
                 min_value: 1
 
-      - name: registered_voter_count
+      - name: icp_voter_count
         description: >
-          Registered voters in the official's district from the L2 voter file,
-          via int__icp_offices, joined on br_position_id. Always populated (rows
-          without an L2 count are excluded). Rides on an upstream LLM
-          position-to-L2-district match. Because that match is excluded when it
-          fails, this table under-covers offices the match struggles with:
-          school boards and special districts, and the states Texas and Missouri.
-          A consumer should not read this table as a complete roster of elected
-          officials.
+          L2 district voter count (registered voters in the official's district),
+          from the positions mart, joined on br_position_database_id. Same column
+          positions and election expose. Always populated here (rows without an L2
+          count are excluded). Rides on an upstream LLM position-to-L2-district
+          match. Because that match is excluded when it fails, this table
+          under-covers offices the match struggles with: school boards and special
+          districts, and the states Texas and Missouri. A consumer should not read
+          this table as a complete roster of elected officials.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -2450,7 +2450,7 @@ models:
       - name: projected_registered_supporters
         description: >
           Estimated registered voters in the district who support this official,
-          computed as registered_voter_count * (votes_received /
+          computed as icp_voter_count * (votes_received /
           total_votes_cast) and rounded to a whole number. Applies the
           official's general-election vote share to the full registered-voter
           base. INTERIM PLACEHOLDER: when a real constituents count exists, the
@@ -2479,7 +2479,7 @@ models:
       # Regression guard: guaranteed by construction (share <= 1), same purpose.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "projected_registered_supporters <= registered_voter_count"
+            expression: "projected_registered_supporters <= icp_voter_count"
           name: projected_supporters_never_exceeds_registered_voters
           config:
             severity: warn
@@ -2488,7 +2488,7 @@ models:
       # L2 position-to-district match that resolved to too small a district.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "votes_received <= registered_voter_count"
+            expression: "votes_received <= icp_voter_count"
           name: votes_received_never_exceeds_registered_voters
           config:
             severity: warn
