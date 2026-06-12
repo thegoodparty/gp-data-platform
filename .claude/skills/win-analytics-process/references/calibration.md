@@ -49,8 +49,8 @@ executor instructions / `analytics/lib`, the reviewer agents (e.g.
 `.claude/agents/product-data-scientist.md`), or the process skill. On a standard run, do **not**
 propose or apply these. Park them as `process`-track lines in the candidates ledger (below), so
 OFF does not silently become never, and in the closing summary state plainly that process
-calibration was **OFF (not run)** and offer to rerun in process-design mode. Act on Track 2 only if the user has **explicitly opted into
-process-design mode** this session.
+calibration was **OFF (not run)** and offer to rerun in process-design mode. Act on Track 2 only
+if the user has **explicitly opted into process-design mode** this session.
 
 | Finding | Track |
 |---|---|
@@ -100,6 +100,9 @@ Once edits are approved, the orchestrator lands them without the user having to 
   observations and no promotable findings gets a small ledger-only PR on a `calib/data` branch
   with slug suffix `-candidates`. These PRs are append-only and should be quick to approve, but
   approval is still required and merging stays a human action.
+- **Consolidation batches** (below) land one PR per batch, titled
+  `calib(<track>): consolidation-<date>`, on a `calib/data` branch (or `calib/process` if agent
+  or process files are touched).
 - The orchestrator creates the branch, commits, and opens the PR automatically when edits are
   approved. **Merging stays a human action.** This convention is the standing authorization to
   open the PR, not to merge it.
@@ -111,17 +114,34 @@ general principles. When promoting findings into doc or agent edits, distinguish
 universal hygiene (data-existence checks, CIs, documentation) can be codified freely;
 data-state-dependent defaults (cohort filters, metric choices, funnel decompositions) should
 carry hedges noting current state, or sit in the candidates ledger until they reach the
-data-state promotion threshold before being treated as settled rules. Tightening a rule "so this exact failure can't
-happen again" often encodes the failure mode rather than the underlying principle.
+data-state promotion threshold before being treated as settled rules. Tightening a rule "so this
+exact failure can't happen again" often encodes the failure mode rather than the underlying
+principle.
 
-## Beware doc bloat
+## Beware doc bloat — consolidation mode
 
 Even genuinely general principles compete for the reader's attention budget. A reference doc
 is useful only if a framer can hold the relevant subset in working memory; past some point,
 adding rules makes following the doc harder, not better — the analog of an over-parameterized
 model losing generalization. When applying a calibration finding, prefer sharpening or
-generalizing an existing rule over adding a new one. If a doc starts to feel exhaustive rather
-than usable, that's a signal to consolidate, not extend.
+generalizing an existing rule over adding a new one. The pruning mechanism is **consolidation
+mode**: a manually fired mode of this skill, never automatic. When the user invokes it:
+
+- Review the owning docs in the win-analytics-knowledge skill plus the candidates ledger, and
+  propose a consolidation batch: rules that are stale, redundant, duplicative, or data-state
+  claims that never reached confirmation in the ledger. Prefer merges and generalizations over
+  plain deletions where an underlying principle survives.
+- Present every proposed removal or merge as an explicit diff with a one-line rationale; the
+  human approves or rejects **each item individually** — nothing is deleted on bulk approval.
+  The human may have context the ledger does not (a rule that looks unused but guards a known
+  landmine).
+- Land approved edits per the branch/PR convention above, one PR per consolidation batch, and
+  record the date of the pass at the top of `CANDIDATES.md`.
+
+**Soft nudge, not automation:** at the end of a calibration batch, if the last consolidation
+pass (dated in `CANDIDATES.md`) is more than **2 weeks** old, or the owning docs have grown
+materially since then, suggest running consolidation mode in the closing summary. It never runs
+without the user firing it.
 
 ## Cross-references
 

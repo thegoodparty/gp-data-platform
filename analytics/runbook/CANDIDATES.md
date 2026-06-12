@@ -1,5 +1,7 @@
 # Calibration candidates ledger
 
+Last consolidation pass: **none yet**
+
 Shared, committed, append-only. Decouples observing something from proposing a doc edit: a run
 appends a line here instead of proposing an edit when an observation is below the promotion bar,
 a data-state finding awaits confirmation, or a Track 2 process-design candidate is parked. When
