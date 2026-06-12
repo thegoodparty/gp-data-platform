@@ -14,6 +14,19 @@ models:
           - unique
       - name: hs_call_disposition
         description: "HubSpot internal GUID for the call outcome"
+        data_tests:
+          # Surfaces disposition GUIDs that have appeared in the calls data but
+          # are not yet mapped in the hubspot_call_dispositions seed. Warn-only:
+          # the model coalesces unmapped GUIDs to 'unknown'/'unmapped', so a
+          # missing seed row should not break the build — it just needs a
+          # follow-up seed entry (see the seed's maintenance notes).
+          - relationships:
+              name: warn_unmapped_hs_call_disposition_guid
+              arguments:
+                to: ref('hubspot_call_dispositions')
+                field: guid
+              config:
+                severity: warn
       - name: disposition_label
         description: >
           Human-readable outcome label resolved from

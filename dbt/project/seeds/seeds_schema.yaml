@@ -188,6 +188,27 @@ seeds:
           the Nooks Call title pattern `[Nooks Call] - <label> - <name> - by <rep>`.
         - `unknown`: GUID is present in the data but its label could not be
           inferred. Fill manually from HubSpot Settings.
+
+      Maintaining this seed (updating or adding labels):
+        - The authoritative GUID -> label binding is NOT in the warehouse, and
+          the HubSpot Settings "Edit call outcomes" panel lists labels but not
+          their GUIDs. Only the HubSpot API property options for
+          `hs_call_disposition` expose the GUID behind each label:
+          `GET /crm/v3/properties/calls/hs_call_disposition` (option `value` is
+          the GUID, `label` is the human-readable outcome).
+        - `inferred_from_title` labels are a best-effort proxy and CAN be wrong.
+          The disposition GUID (a dropdown the rep selects) and the free-text
+          call title are set independently, so a single GUID may carry more than
+          one title. Treat the dominant title as a hint only, confirm the label
+          against HubSpot's call outcomes, and fall back to `unknown` when the
+          titles for a GUID disagree.
+        - New disposition GUIDs that appear in the calls data are flagged by the
+          warn-severity `relationships` test
+          (`warn_unmapped_hs_call_disposition_guid`) on
+          `int__hubspot_calls.hs_call_disposition`. When it warns, add the new
+          GUID here. `int__hubspot_calls` coalesces any GUID missing from this
+          seed to `disposition_label_source = 'unknown'` /
+          `outcome_family = 'unmapped'`, so a missing row never breaks the build.
     columns:
       - name: guid
         description: "HubSpot internal GUID for the call disposition (hs_call_disposition)"

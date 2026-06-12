@@ -20,6 +20,11 @@ with
         select
             c.*,
             s.disposition_label,
+            -- Safety net: a disposition GUID not yet in the hubspot_call_dispositions
+            -- seed resolves to 'unknown'/'unmapped' rather than null, so a missing
+            -- seed row never breaks the build. New GUIDs are surfaced by the
+            -- warn-only relationships test on hs_call_disposition; add them to the
+            -- seed (see its maintenance notes) to give them a real label.
             case
                 when c.hs_call_disposition is null
                 then null
