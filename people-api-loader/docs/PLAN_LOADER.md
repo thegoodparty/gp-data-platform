@@ -490,9 +490,8 @@ Use `coalesce`/`repartition` to hit the ~2 GB file target per state (see "Chunk 
 # (a) Starting point: current prod schema.
 pg_dump --schema-only --no-owner --no-acl \
         --schema=public \
-        -t 'public."Voter*"' -t 'public."VoterFile"' \
-        "host=gp-people-db-prod.cluster-<hash>.us-west-2.rds.amazonaws.com \
-         port=5432 dbname=voters user=postgres" > schema/prod_dump.sql
+        -t 'public."Voter"' \
+        "service=people" > schema/prod_dump.sql  # host/db/user from ~/.pg_service.conf
 
 # (b) Emit the merged DDL. Loader code reads prod_dump.sql, merges with the
 # curated VOTER_TARGET_COLUMNS list (gp-api + people-api referenced), and
@@ -1244,8 +1243,8 @@ the first nationwide refresh (or any refresh, FL or otherwise). Assumes
 AWS_REGION=us-west-2
 LOADER_S3_BUCKET=goodparty-warehouse-databricks
 LOADER_DATABRICKS_TABLE=goodparty_data_catalog.dbt.int__l2_nationwide_uniform
-DATABRICKS_WAREHOUSE_ID=466d83d2fa307198
-LOADER_PROD_PG_SERVICE=voters
+DATABRICKS_WAREHOUSE_ID=<databricks-warehouse-id>
+LOADER_PROD_PG_SERVICE=people
 LOADER_TAG_PROJECT=gp-api
 LOADER_TAG_ENVIRONMENT=dev
 

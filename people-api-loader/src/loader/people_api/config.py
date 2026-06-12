@@ -47,8 +47,8 @@ def _fetch_prod_config_secret(region: str, profile: str | None, secret_id: str) 
     Keeps infra identifiers out of this public repo. Recognized keys (all optional; a
     per-field LOADER_* env var overrides the secret, which overrides the placeholder):
     aws_account_id, prod_cluster_id, prod_writer_endpoint, prod_secret_id, prod_db_name,
-    prod_db_user, vpc_id, db_subnet_group, security_group_id, kms_key_arn. Returns the
-    parsed dict; callers apply env-var overrides on top.
+    prod_db_user, prod_db_port, vpc_id, db_subnet_group, security_group_id, kms_key_arn.
+    Returns the parsed dict; callers apply env-var overrides on top.
     """
     import json
 
@@ -153,7 +153,9 @@ class LoaderConfig(BaseLoaderConfig):
             ),
             prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", s.get("prod_db_name", DEFAULT_PROD_DB_NAME)),
             prod_db_user=os.environ.get("LOADER_PROD_DB_USER", s.get("prod_db_user", DEFAULT_PROD_DB_USER)),
-            prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)),
+            prod_db_port=int(
+                os.environ.get("LOADER_PROD_DB_PORT", s.get("prod_db_port", DEFAULT_PROD_DB_PORT))
+            ),
             vpc_id=os.environ.get("LOADER_VPC_ID", s.get("vpc_id", DEFAULT_VPC_ID)),
             db_subnet_group=os.environ.get(
                 "LOADER_DB_SUBNET_GROUP", s.get("db_subnet_group", DEFAULT_DB_SUBNET_GROUP)
