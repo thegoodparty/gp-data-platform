@@ -335,6 +335,7 @@ def sync_election_api():
         sw = swap()
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
+        return do
 
     @task_group(group_id="district_top_issues")
     def district_top_issues():
@@ -493,9 +494,15 @@ def sync_election_api():
         sw = swap()
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
+        return s
 
-    zip_to_position()
-    district_top_issues()
+    # Run the two pipelines sequentially, not concurrently: each load_staging
+    # buffers a Databricks partition in worker memory, so overlapping the two
+    # load_staging tasks doubles peak usage and OOMs the worker (DATA-1986 sync
+    # follow-up). Chaining the groups keeps only one load_staging in flight.
+    zip_done = zip_to_position()
+    dti_start = district_top_issues()
+    zip_done >> dti_start
 
 
 sync_election_api()
