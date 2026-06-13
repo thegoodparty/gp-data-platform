@@ -70,7 +70,9 @@ def test_run_optional_table_failure_is_skipped(monkeypatch: pytest.MonkeyPatch) 
 
     def _fake_inspect(cur: object, table: str) -> step.TableInspection:
         if table == "DistrictStats":
-            raise RuntimeError("relation does not exist")
+            import psycopg
+
+            raise psycopg.errors.UndefinedTable("relation does not exist")
         # Voter needs a non-empty per-state baseline or run() fails by design.
         return step.TableInspection(
             table=table, total_row_count=1, per_state_row_counts={"TX": 1} if table == "Voter" else {}

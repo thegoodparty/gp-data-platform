@@ -116,7 +116,10 @@ def run(cfg: LoaderConfig, run_date: str) -> InspectManifest:
                 ti = _inspect_table(cur, table)
                 tables.append(ti)
                 log.info("inspect.table", table=table, total=ti.total_row_count)
-            except Exception as e:  # broad by design: optional tables may be absent on a cluster
+            except psycopg.DatabaseError as e:
+                # Only a DB-side error (e.g. relation-not-found on a cluster lacking this
+                # optional table) is a legitimate skip. Programming errors propagate so we
+                # don't write a silently-incomplete manifest.
                 log.warning("inspect.table_skip", table=table, error=str(e))
 
     manifest = InspectManifest(
