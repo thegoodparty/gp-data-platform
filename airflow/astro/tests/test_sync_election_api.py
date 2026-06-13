@@ -15,8 +15,6 @@ _STUBS = (
     "airflow",
     "airflow.decorators",
     "airflow.sdk",
-    "kubernetes",
-    "kubernetes.client",
     "databricks",
     "databricks.sql",
     "databricks.sql.client",

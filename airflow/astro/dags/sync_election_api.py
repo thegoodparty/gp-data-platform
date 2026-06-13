@@ -65,7 +65,6 @@ from include.custom_functions.election_api_utils import (
     swap_staging_into_target,
 )
 from include.custom_functions.postgres_utils import get_postgres_via_ssh
-from kubernetes.client import models as k8s
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -74,29 +73,13 @@ t_log = logging.getLogger("airflow.task")
 PG_CONN_ID = "election_api_db"
 DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
 
+# Memory note: load_staging streams a mart into Postgres, but
 # bulk_insert_from_databricks reads one partition at a time over a single
-# connection, so peak memory is bounded to ~base + one partition. Measured: the
-# 0.5 GiB default pod OOMs (the base task-runner + pyarrow + databricks +
-# SSH-tunnel footprint is ~400 MB, leaving too little for a partition), so give
-# load_staging a 2 GiB pod. The work is I/O-bound, so request minimal CPU and
-# burst to 1 vCPU (a large CPU request kept the pod unschedulable). NOTE: this
-# requires a deployment whose worker capacity can place a >0.5 GiB pod — prod
-# can; the dev deployment cannot while Development Mode is on.
-_LOAD_STAGING_EXECUTOR_CONFIG = {
-    "pod_override": k8s.V1Pod(
-        spec=k8s.V1PodSpec(
-            containers=[
-                k8s.V1Container(
-                    name="base",
-                    resources=k8s.V1ResourceRequirements(
-                        requests={"cpu": "500m", "memory": "2Gi"},
-                        limits={"cpu": "1", "memory": "2Gi"},
-                    ),
-                )
-            ]
-        )
-    )
-}
+# connection, so each task's peak memory is bounded to ~one partition (tens of
+# MB on top of the worker's shared base). Under the Astro executor, tasks run as
+# subprocesses on shared worker nodes sized via the deployment's worker queue
+# (see astro.tf), so no per-task pod override (executor_config) is needed —
+# pod_override is a Kubernetes-executor feature and is ignored here anyway.
 
 
 def _open_pg():
@@ -288,7 +271,7 @@ def sync_election_api():
             with _open_pg() as conn:
                 create_staging_table(conn, ZTP)
 
-        @task(executor_config=_LOAD_STAGING_EXECUTOR_CONFIG)
+        @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(ZTP_SOURCE_COLUMNS)
@@ -368,7 +351,7 @@ def sync_election_api():
             with _open_pg() as conn:
                 create_staging_table(conn, DTI)
 
-        @task(executor_config=_LOAD_STAGING_EXECUTOR_CONFIG)
+        @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(DTI_COLUMNS)
