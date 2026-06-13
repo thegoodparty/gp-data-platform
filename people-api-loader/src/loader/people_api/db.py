@@ -1,9 +1,9 @@
 """Postgres connection helpers for the people-API loader.
 
 Two clusters exist in the loader's life:
-- `connect_prod(cfg)`: the existing `gp-voter-db-20250728`, read-only use for
-  step 0 (inspect) and step 7 (validate). Auth via `~/.pg_service.conf`
-  entry named by `LOADER_PROD_PG_SERVICE` (default `voters`) —
+- `connect_prod(cfg)`: the existing `gp-people-db-prod` Present cluster (read-only)
+  for step 0 (inspect) and step 7 (validate). Auth via `~/.pg_service.conf`
+  entry named by `LOADER_PROD_PG_SERVICE` (default `people`) —
   passwordless because that's how the team reaches this cluster today.
 - `connect_new(cfg, run_date, endpoint)`: the cluster provisioned by step 2.
   Auth via the master password stored in Secrets Manager at provision time.
@@ -27,14 +27,14 @@ if TYPE_CHECKING:
 
 
 def _prod_service_name() -> str:
-    return os.environ.get("LOADER_PROD_PG_SERVICE", "voters")
+    return os.environ.get("LOADER_PROD_PG_SERVICE", "people")
 
 
 @contextmanager
 def connect_prod(cfg: LoaderConfig, *, autocommit: bool = True) -> Iterator[Connection]:
     """Connect to the existing prod cluster via pg_service (passwordless).
 
-    Uses libpq's `service=<name>` lookup — the `[voters]` section of
+    Uses libpq's `service=<name>` lookup — the `[people]` section of
     `~/.pg_service.conf` provides host, port, dbname, user, sslmode, and
     the cert bundle. The `cfg` parameter is still accepted so callers don't
     need to care which auth path is in play.
@@ -57,12 +57,26 @@ def connect_new(
     dbname: str | None = None,
     autocommit: bool = True,
 ) -> Iterator[Connection]:
+    # The new cluster mirrors prod's user/dbname. With no config secret or env vars these
+    # are empty placeholders — fail with an actionable error rather than an opaque libpq
+    # `role "" does not exist`. Checked before the Secrets Manager call so misconfig is fast.
+    effective_dbname = dbname or cfg.prod_db_name
+    if not cfg.prod_db_user:
+        raise RuntimeError(
+            "prod_db_user is not configured — set LOADER_PROD_DB_USER or supply "
+            "LOADER_PROD_CONFIG_SECRET_ID with a 'prod_db_user' key."
+        )
+    if not effective_dbname:
+        raise RuntimeError(
+            "prod_db_name is not configured — set LOADER_PROD_DB_NAME or supply "
+            "LOADER_PROD_CONFIG_SECRET_ID with a 'prod_db_name' key."
+        )
     password = password_from_secret(cfg, cfg.new_master_secret_id(run_date))
     with open_conn(
         writer_endpoint,
         user=cfg.prod_db_user,
         password=password,
-        dbname=dbname or cfg.prod_db_name,
+        dbname=effective_dbname,
         port=cfg.prod_db_port,
         autocommit=autocommit,
     ) as conn:
