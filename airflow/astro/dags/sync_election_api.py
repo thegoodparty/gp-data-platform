@@ -65,7 +65,6 @@ from include.custom_functions.election_api_utils import (
     swap_staging_into_target,
 )
 from include.custom_functions.postgres_utils import get_postgres_via_ssh
-from kubernetes.client import models as k8s
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -74,31 +73,12 @@ t_log = logging.getLogger("airflow.task")
 PG_CONN_ID = "election_api_db"
 DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
 
-# load_staging streams a Databricks mart into Postgres in the task's own pod.
+# Pod sizing note: load_staging streams a mart into Postgres, but
 # bulk_insert_from_databricks reads one partition at a time over a single
-# connection, so peak memory is bounded (~one partition, tens of MB) regardless
-# of mart size. A modest 1 GiB pod is plenty and schedules on dev's small
-# (Development Mode) capacity; the deployment's 0.5 GiB default is too tight
-# once the base task-runner + Arrow buffers are accounted for.
-#
-# The work is I/O-bound, so request minimal CPU and burst to 1 vCPU — a large
-# CPU request kept the pod unschedulable ("stuck in queued"). The deployment's
-# 1:2 CPU:memory rule applies to the quota/defaults, not per-task overrides.
-_LOAD_STAGING_EXECUTOR_CONFIG = {
-    "pod_override": k8s.V1Pod(
-        spec=k8s.V1PodSpec(
-            containers=[
-                k8s.V1Container(
-                    name="base",
-                    resources=k8s.V1ResourceRequirements(
-                        requests={"cpu": "500m", "memory": "1Gi"},
-                        limits={"cpu": "1", "memory": "1Gi"},
-                    ),
-                )
-            ]
-        )
-    )
-}
+# connection, so peak memory is bounded to ~one partition (tens of MB)
+# regardless of mart size. That fits the deployment's default task pod, so we
+# don't set a per-task executor_config override — a larger request would also
+# fail to schedule on the dev deployment's small (Development Mode) footprint.
 
 
 def _open_pg():
@@ -290,7 +270,7 @@ def sync_election_api():
             with _open_pg() as conn:
                 create_staging_table(conn, ZTP)
 
-        @task(executor_config=_LOAD_STAGING_EXECUTOR_CONFIG)
+        @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(ZTP_SOURCE_COLUMNS)
@@ -370,7 +350,7 @@ def sync_election_api():
             with _open_pg() as conn:
                 create_staging_table(conn, DTI)
 
-        @task(executor_config=_LOAD_STAGING_EXECUTOR_CONFIG)
+        @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
             col_list = ", ".join(DTI_COLUMNS)
@@ -521,9 +501,9 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
-    # The two pipelines run in parallel; under the Kubernetes executor each
-    # load_staging task gets its own right-sized pod (_LOAD_STAGING_EXECUTOR_CONFIG),
-    # so they don't contend for memory.
+    # The two pipelines run in parallel; under the Kubernetes executor each task
+    # is its own pod, and each load_staging reads one partition at a time, so
+    # they don't contend for memory.
     zip_to_position()
     district_top_issues()
 
