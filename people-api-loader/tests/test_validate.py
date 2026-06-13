@@ -305,3 +305,12 @@ def test_run_writes_failed_manifest_when_new_cluster_unreachable(monkeypatch: py
         step.run(_CFG, "20260609")
     assert captured["m"].status == "failed"
     assert captured["m"].all_passed is False
+
+
+def test_check_prod_row_counts_fails_with_failed_inspect_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A non-complete (e.g. failed) inspect manifest must also fail closed — the guard is
+    # `inspect is None or inspect.status != "complete"`, not just `inspect is None`.
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: SimpleNamespace(status="failed"))
+    check = step._check_prod_row_counts(_CFG, "20260609", {"TX": 100})
+    assert check.passed is False
+    assert "error" in check.details

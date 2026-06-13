@@ -57,12 +57,26 @@ def connect_new(
     dbname: str | None = None,
     autocommit: bool = True,
 ) -> Iterator[Connection]:
+    # The new cluster mirrors prod's user/dbname. With no config secret or env vars these
+    # are empty placeholders — fail with an actionable error rather than an opaque libpq
+    # `role "" does not exist`. Checked before the Secrets Manager call so misconfig is fast.
+    effective_dbname = dbname or cfg.prod_db_name
+    if not cfg.prod_db_user:
+        raise RuntimeError(
+            "prod_db_user is not configured — set LOADER_PROD_DB_USER or supply "
+            "LOADER_PROD_CONFIG_SECRET_ID with a 'prod_db_user' key."
+        )
+    if not effective_dbname:
+        raise RuntimeError(
+            "prod_db_name is not configured — set LOADER_PROD_DB_NAME or supply "
+            "LOADER_PROD_CONFIG_SECRET_ID with a 'prod_db_name' key."
+        )
     password = password_from_secret(cfg, cfg.new_master_secret_id(run_date))
     with open_conn(
         writer_endpoint,
         user=cfg.prod_db_user,
         password=password,
-        dbname=dbname or cfg.prod_db_name,
+        dbname=effective_dbname,
         port=cfg.prod_db_port,
         autocommit=autocommit,
     ) as conn:

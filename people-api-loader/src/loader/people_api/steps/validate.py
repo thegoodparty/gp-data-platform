@@ -4,8 +4,8 @@ Six checks against the unified public."Voter" table (all must pass):
 1. row_counts_match_databricks — per-state count (GROUP BY "State") within ±10% of
    the unload baseline (load integrity: did COPY load everything that was unloaded).
 2. prod_row_counts_within_tolerance — per-state count within ±10% of the inspect-prod
-   baseline (sanity: refresh magnitude vs the current Present cluster). Skips gracefully
-   if inspect-prod hasn't run.
+   baseline (sanity: refresh magnitude vs the current Present cluster). Fails closed if
+   inspect-prod hasn't run for this run_date — run it first.
 3. schema_diff_clean — new Voter columns equal prod Voter columns.
 4. index_constraint_diff_clean — every prod index present on new.
 5. sample_queries_pass — voterFile.util.ts-shaped queries return without error.
