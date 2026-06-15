@@ -1,10 +1,10 @@
 """Postgres connection helpers for the people-API loader.
 
 Two clusters exist in the loader's life:
-- `connect_prod(cfg)`: the existing `gp-people-db-prod` Present cluster (read-only)
-  for step 0 (inspect) and step 7 (validate). Auth via `~/.pg_service.conf`
-  entry named by `LOADER_PROD_PG_SERVICE` (default `people`) —
-  passwordless because that's how the team reaches this cluster today.
+- `connect_prod(cfg)`: the existing Present cluster (read-only) for step 0 (inspect)
+  and step 7 (validate). The full connection string is an SSM Parameter Store
+  SecureString (`cfg.db_conn_param`, e.g. `people-db-connection-string-{env}`), fetched
+  and decrypted at connect time — nothing connection-related lives in this repo.
 - `connect_new(cfg, run_date, endpoint)`: the cluster provisioned by step 2.
   Auth via the master password stored in Secrets Manager at provision time.
 """
@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import psycopg
 
+from loader.core.aws import get_ssm_parameter
 from loader.core.db import open_conn, password_from_secret
 from loader.people_api.config import LoaderConfig
 from loader.people_api.manifests import ProvisionManifest, read_manifest
@@ -26,25 +27,16 @@ if TYPE_CHECKING:
     from psycopg import Connection
 
 
-def _prod_service_name() -> str:
-    return os.environ.get("LOADER_PROD_PG_SERVICE", "people")
-
-
 @contextmanager
 def connect_prod(cfg: LoaderConfig, *, autocommit: bool = True) -> Iterator[Connection]:
-    """Connect to the existing prod cluster via pg_service (passwordless).
+    """Connect to the existing Present cluster using the SSM connection string.
 
-    Uses libpq's `service=<name>` lookup — the `[people]` section of
-    `~/.pg_service.conf` provides host, port, dbname, user, sslmode, and
-    the cert bundle. The `cfg` parameter is still accepted so callers don't
-    need to care which auth path is in play.
+    `cfg.db_conn_param` names the SecureString parameter (e.g.
+    `people-db-connection-string-{env}`); its decrypted value is a full libpq
+    connection string (or `postgresql://` URL) handed straight to psycopg.
     """
-    del cfg  # reserved for future use; pg_service carries all connection info
-    with psycopg.connect(
-        service=_prod_service_name(),
-        autocommit=autocommit,
-        connect_timeout=30,
-    ) as conn:
+    conninfo = get_ssm_parameter(cfg, cfg.db_conn_param)
+    with psycopg.connect(conninfo, autocommit=autocommit, connect_timeout=30) as conn:
         yield conn
 
 
@@ -57,20 +49,14 @@ def connect_new(
     dbname: str | None = None,
     autocommit: bool = True,
 ) -> Iterator[Connection]:
-    # The new cluster mirrors prod's user/dbname. With no config secret or env vars these
-    # are empty placeholders — fail with an actionable error rather than an opaque libpq
+    # The new cluster mirrors prod's user/dbname. With no env vars set these are empty
+    # placeholders — fail with an actionable error rather than an opaque libpq
     # `role "" does not exist`. Checked before the Secrets Manager call so misconfig is fast.
     effective_dbname = dbname or cfg.prod_db_name
     if not cfg.prod_db_user:
-        raise RuntimeError(
-            "prod_db_user is not configured — set LOADER_PROD_DB_USER or supply "
-            "LOADER_PROD_CONFIG_SECRET_ID with a 'prod_db_user' key."
-        )
+        raise RuntimeError("prod_db_user is not configured — set LOADER_PROD_DB_USER.")
     if not effective_dbname:
-        raise RuntimeError(
-            "prod_db_name is not configured — set LOADER_PROD_DB_NAME or supply "
-            "LOADER_PROD_CONFIG_SECRET_ID with a 'prod_db_name' key."
-        )
+        raise RuntimeError("prod_db_name is not configured — set LOADER_PROD_DB_NAME.")
     password = password_from_secret(cfg, cfg.new_master_secret_id(run_date))
     with open_conn(
         writer_endpoint,

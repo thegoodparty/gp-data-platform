@@ -17,6 +17,13 @@
 > (single Prisma-managed table), not the legacy per-state `Voter{ST}` tables or the
 > separate "schema `green`" people-api DB some prose below describes. New clusters the
 > loader provisions are `gp-people-db-{date}`.
+>
+> **Connection method:** `connect_prod` reads the Present cluster's connection string
+> from an SSM Parameter Store SecureString, `people-db-connection-string-{env}` (env from
+> `LOADER_ENV`, dev/qa/prod; dev and qa share a value, prod is separate). Mentions of
+> `~/.pg_service.conf [people]` / `service=people` / `LOADER_PROD_CONFIG_SECRET_ID` below
+> are superseded by this. The new (provisioned) cluster still uses its Secrets Manager
+> master password.
 
 ## Context
 
@@ -491,7 +498,9 @@ Use `coalesce`/`repartition` to hit the ~2 GB file target per state (see "Chunk 
 pg_dump --schema-only --no-owner --no-acl \
         --schema=public \
         -t 'public."Voter"' \
-        "service=people" > schema/prod_dump.sql  # host/db/user from ~/.pg_service.conf
+        "$(aws ssm get-parameter --name people-db-connection-string-prod \
+            --with-decryption --query Parameter.Value --output text)" \
+        > schema/prod_dump.sql
 
 # (b) Emit the merged DDL. Loader code reads prod_dump.sql, merges with the
 # curated VOTER_TARGET_COLUMNS list (gp-api + people-api referenced), and
@@ -911,11 +920,11 @@ modules with a Typer CLI. Deps pinned via `uv sync`; lint clean.
    per state, submitted via `databricks-sdk`'s StatementExecutionAPI to a SQL
    Warehouse. No `loader/spark/` module remains.
 
-2. **Prod auth via `pg_service`, not Secrets Manager.** The team reaches
-   `gp-people-db-prod` passwordless through a `~/.pg_service.conf [people]`
-   entry. `connect_prod` and `inspect_prod._pg_dump_schema` both use
-   `service=people`. Secrets Manager is still the path for the *new* cluster's
-   master password.
+2. **Prod connection via SSM Parameter Store.** `connect_prod` reads the connection
+   string from the SecureString `people-db-connection-string-{env}` (`LOADER_ENV`
+   selects dev/qa/prod; dev and qa share a value, prod is separate) and hands it to
+   psycopg. Secrets Manager is still the path for the *new* cluster's master password.
+   The loader role needs `ssm:GetParameter` + `kms:Decrypt` on that parameter's key.
 
 3. **Loader-created resources tagged `Environment=dev`, not `prod`.** The
    engineer's SSO role has an `aws:ResourceTag/Environment=dev` conditional
@@ -1244,7 +1253,7 @@ AWS_REGION=us-west-2
 LOADER_S3_BUCKET=goodparty-warehouse-databricks
 LOADER_DATABRICKS_TABLE=goodparty_data_catalog.dbt.int__l2_nationwide_uniform
 DATABRICKS_WAREHOUSE_ID=<databricks-warehouse-id>
-LOADER_PROD_PG_SERVICE=people
+LOADER_ENV=dev
 LOADER_TAG_PROJECT=gp-api
 LOADER_TAG_ENVIRONMENT=dev
 

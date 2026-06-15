@@ -18,10 +18,10 @@ def test_from_env_rejects_forbidden_password_env_var(monkeypatch: pytest.MonkeyP
         LoaderConfig.from_env()
 
 
-def test_from_env_placeholders_when_no_config_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Public repo: no infra identifiers are hardcoded. Absent the config secret + env
-    # overrides, prod fields resolve to empty placeholders (no AWS call).
-    for var in ("LOADER_PROD_CONFIG_SECRET_ID", "LOADER_PROD_CLUSTER_ID", "LOADER_AWS_ACCOUNT_ID"):
+def test_from_env_placeholders_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Public repo: no infra identifiers are hardcoded. Absent env overrides, the
+    # provision-only infra fields resolve to empty placeholders (no AWS call).
+    for var in ("LOADER_PROD_CLUSTER_ID", "LOADER_AWS_ACCOUNT_ID", "LOADER_VPC_ID"):
         monkeypatch.delenv(var, raising=False)
     cfg = LoaderConfig.from_env()
     assert cfg.prod_cluster_id == ""
@@ -29,29 +29,19 @@ def test_from_env_placeholders_when_no_config_secret(monkeypatch: pytest.MonkeyP
     assert cfg.vpc_id == ""
 
 
-def test_from_env_loads_infra_from_config_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LOADER_PROD_CONFIG_SECRET_ID", "some/loader-config")
-    monkeypatch.setattr(
-        "loader.people_api.config._fetch_prod_config_secret",
-        lambda region, profile, secret_id: {
-            "prod_cluster_id": "cluster-from-secret",
-            "aws_account_id": "000000000000",
-            "prod_db_user": "user-from-secret",
-            "vpc_id": "vpc-from-secret",
-        },
-    )
-    cfg = LoaderConfig.from_env()
-    assert cfg.prod_cluster_id == "cluster-from-secret"
-    assert cfg.account_id == "000000000000"
-    assert cfg.prod_db_user == "user-from-secret"
-    assert cfg.vpc_id == "vpc-from-secret"
+def test_from_env_db_conn_param_defaults_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LOADER_DB_CONN_PARAM", raising=False)
+    monkeypatch.setenv("LOADER_ENV", "qa")
+    assert LoaderConfig.from_env().db_conn_param == "people-db-connection-string-qa"
 
 
-def test_from_env_env_var_overrides_config_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LOADER_PROD_CONFIG_SECRET_ID", "some/loader-config")
-    monkeypatch.setenv("LOADER_PROD_CLUSTER_ID", "from-env")
-    monkeypatch.setattr(
-        "loader.people_api.config._fetch_prod_config_secret",
-        lambda *a: {"prod_cluster_id": "from-secret"},
-    )
-    assert LoaderConfig.from_env().prod_cluster_id == "from-env"
+def test_from_env_db_conn_param_defaults_to_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    for var in ("LOADER_DB_CONN_PARAM", "LOADER_ENV"):
+        monkeypatch.delenv(var, raising=False)
+    assert LoaderConfig.from_env().db_conn_param == "people-db-connection-string-dev"
+
+
+def test_from_env_db_conn_param_full_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOADER_ENV", "prod")
+    monkeypatch.setenv("LOADER_DB_CONN_PARAM", "custom/param/name")
+    assert LoaderConfig.from_env().db_conn_param == "custom/param/name"

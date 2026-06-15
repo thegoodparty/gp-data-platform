@@ -64,3 +64,31 @@ def test_connect_new_raises_on_unconfigured_prod_db_name() -> None:
         connect_new(cfg, "20260609", "ep"),
     ):
         pass
+
+
+def test_connect_prod_uses_ssm_connection_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    # connect_prod fetches the SSM SecureString named by cfg.db_conn_param and hands the
+    # decrypted connection string straight to psycopg.connect.
+    from contextlib import contextmanager
+
+    from loader.people_api import db
+
+    captured: dict = {}
+
+    def _fake_ssm(cfg: object, name: str, **k: object) -> str:
+        captured["name"] = name
+        return "host=h dbname=d user=u"
+
+    monkeypatch.setattr(db, "get_ssm_parameter", _fake_ssm)
+
+    @contextmanager
+    def _fake_connect(conninfo: str, **k: object):
+        captured["conninfo"] = conninfo
+        yield "CONN"
+
+    monkeypatch.setattr(db.psycopg, "connect", _fake_connect)
+    cfg = cast(LoaderConfig, SimpleNamespace(db_conn_param="people-db-connection-string-dev"))
+    with db.connect_prod(cfg) as conn:
+        assert conn == "CONN"
+    assert captured["name"] == "people-db-connection-string-dev"
+    assert captured["conninfo"] == "host=h dbname=d user=u"
