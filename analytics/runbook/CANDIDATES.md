@@ -1,6 +1,6 @@
 # Calibration candidates ledger
 
-Last consolidation pass: **none yet** (treat as past the nudge threshold once the ledger has entries)
+Last consolidation pass: **2026-06-15** (engagement.md dedup)
 
 Shared and committed, unlike the personal, gitignored `CALIBRATION_*.md` logs. Decouples observing
 something from proposing a doc edit: a run appends a line here instead of proposing an edit when an
