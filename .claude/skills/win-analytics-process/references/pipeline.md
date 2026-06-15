@@ -31,11 +31,13 @@ doc documents the flow; a human (or the process skill stepping through it) drive
 
 Every substantive run ends with a calibration pass ([calibration.md](calibration.md)), which has
 **two tracks**. Data calibration (reusable data facts, routed to the owning knowledge-skill doc)
-runs by default: findings are proposed as edits to their owning doc and applied only after human
-approval. Process calibration (changes to framing, the executor / `analytics/lib`, the reviewer
-agents, or the process skill itself) is **off by default**: on a standard run its findings are
-parked in the log under "Process-design candidates" rather than routed into any doc, and are acted
-on only when the user opts into process-design mode. The log itself is disposable; the durable
+runs by default: findings that pass the promotion test are proposed as edits to their owning doc
+and applied only after human approval — most runs correctly produce none. Observations below that
+bar land in the shared `analytics/runbook/CANDIDATES.md` ledger until they recur. Process
+calibration (changes to framing, the executor / `analytics/lib`, the reviewer agents, or the
+process skill itself) is **off by default**: on a standard run its findings are parked as
+`process`-track lines in the candidates ledger rather than routed into any doc, and are acted on
+only when the user opts into process-design mode. The log itself is disposable; the durable
 output is the doc and agent edits, landed via the calibration branch/PR convention in
 [calibration.md](calibration.md).
 
