@@ -1,4 +1,4 @@
-# Calibration logs
+# Calibration
 
 Part of the **win-analytics-process** skill. The closing step that makes the pipeline self-correct.
 
@@ -35,7 +35,8 @@ Propose the exact edit; apply **only after explicit human approval**.
 
 - (a) it would have changed this run's outcome, or saved meaningful time, had it been known in
   advance;
-- (b) it is not already stated in or derivable from the existing knowledge docs;
+- (b) it is not already stated in or derivable from the existing knowledge docs (or, for a Track 2
+  finding in process-design mode, the process docs);
 - (c) it is likely to recur in future analyses — not specific to this run's question or cut.
 
 The log entry for each finding must answer (a), (b), and (c) explicitly, one line each. A finding
@@ -101,8 +102,8 @@ Once edits are approved, the orchestrator lands them without the user having to 
   with slug suffix `-candidates`. These PRs are append-only and should be quick to approve, but
   approval is still required and merging stays a human action.
 - **Consolidation batches** (below) land one PR per batch, titled
-  `calib(<track>): consolidation-<date>`, on a `calib/data` branch (or `calib/process` if agent
-  or process files are touched).
+  `calib(<track>): consolidation-<date>`, on a `calib/<track>/<YYYY-MM-DD>-consolidation` branch
+  (`<track>` is `data`, or `process` if agent or process files are touched).
 - The orchestrator creates the branch, commits, and opens the PR automatically when edits are
   approved. **Merging stays a human action.** This convention is the standing authorization to
   open the PR, not to merge it.

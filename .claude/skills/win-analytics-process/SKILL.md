@@ -16,7 +16,7 @@ skill — this skill is about *how to work*, not *what is true about the data*.
 3. **Produce the brief.** The output of the framing step (step 1) is a structured brief — not a separate invocation; the format is the framing→execution contract in [`references/brief-schema.md`](references/brief-schema.md).
 4. **Execute.** Build the working set once with `analytics/lib/win_analysis.py`, then slice every cut from it in pandas (build-once-slice-many; see `methodology.md`). Anchor features point-in-time so post-anchor activity doesn't leak. Note the helper's `onboarded` column is the new-flow-blind `onboarding_complete` flag, **not** the canonical Onboarded cohort — see the column caveat in `methodology.md` before using it.
 5. **Review.** Route the executed analysis through the adversarial reviewers — `product-data-scientist` (methodology + interpretation) and `product-manager` (usefulness). Keep the reviewers on the strong model.
-6. **Close the loop.** Run the calibration pass ([`references/calibration.md`](references/calibration.md)): triage findings into the file that owns them, or record that none were needed. Required closing step.
+6. **Close the loop.** Run the calibration pass ([`references/calibration.md`](references/calibration.md)): findings that pass the promotion test go to the file that owns them, observations below that bar are appended to the shared `analytics/runbook/CANDIDATES.md` ledger, or you record that none were needed (the expected outcome of most runs). Required closing step. Pruning happens via **consolidation mode** — a manually fired mode of this skill, detailed in the same doc.
 
 The ordered stages, who does what, and what artifact passes between them are in
 [`references/pipeline.md`](references/pipeline.md) — the single description of the pipeline flow.
@@ -37,4 +37,4 @@ Common work that should not be reinvented each run:
 - [`references/pipeline.md`](references/pipeline.md) — stages, agents, handoff contracts (descriptive, not active).
 - [`references/methodology.md`](references/methodology.md) — scoping, default cohorts, query patterns, verification protocol, source pointers.
 - [`references/brief-schema.md`](references/brief-schema.md) — the analysis-brief YAML contract + amend-vs-reframe rule.
-- [`references/calibration.md`](references/calibration.md) — the calibration-log convention and the over-calibration / bloat cautions.
+- [`references/calibration.md`](references/calibration.md) — the calibration-log convention, the candidates ledger, consolidation mode, and the over-calibration / bloat cautions.

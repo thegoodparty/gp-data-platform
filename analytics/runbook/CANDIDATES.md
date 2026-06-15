@@ -1,24 +1,19 @@
 # Calibration candidates ledger
 
-Last consolidation pass: **none yet**
+Last consolidation pass: **none yet** (treat as past the nudge threshold once the ledger has entries)
 
-Shared, committed, append-only. Decouples observing something from proposing a doc edit: a run
-appends a line here instead of proposing an edit when an observation is below the promotion bar,
-a data-state finding awaits confirmation, or a Track 2 process-design candidate is parked. When
-to append and how promotion works is defined in the calibration step of the win-analytics-process
-skill (`.claude/skills/win-analytics-process/references/calibration.md`).
+Shared and committed, unlike the personal, gitignored `CALIBRATION_*.md` logs. Decouples observing
+something from proposing a doc edit: a run appends a line here instead of proposing an edit when an
+observation is below the promotion bar, a data-state finding awaits confirmation, or a Track 2
+process-design candidate is parked. Rows are never deleted; only the `status` column and the
+last-consolidation date above are ever updated.
+
+When to append, the promotion thresholds, and the branch/PR mechanics are owned by the calibration
+step of the win-analytics-process skill
+(`.claude/skills/win-analytics-process/references/calibration.md`) — this file does not restate them.
 
 - **Entry format** (one table row per observation): date | track (`data`/`process`) | tag
   (`universal`/`data-state`) | one-line observation | run reference (branch or ticket) | status.
-- **Promotion:** essentially the same observation appearing in **2 separate runs** (**3** for
-  `data-state`-tagged items) becomes eligible for the next calibration batch as a real proposal,
-  subject to the promotion test and the human approval gate. When promoted, set the status of the
-  matching lines to `promoted: <PR>` — never delete lines.
-- **Repo mechanics:** appends follow the standard branch/PR convention, no exemptions. If a run
-  produces a calibration batch PR, appends ride in that PR; a run with only candidate
-  observations gets a small ledger-only PR on a `calib/data` branch with slug suffix
-  `-candidates`. Append-only PRs should be quick to approve, but approval is still required and
-  merging stays a human action.
 
 ## Ledger
 
