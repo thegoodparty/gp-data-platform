@@ -19,7 +19,7 @@ dependencies = [
     "google-genai>=1.75.0,<2.0.0",
     "tqdm>=4.68.1,<5.0.0",
     "databricks-sql-connector>=4.2.6,<5.0.0",
-    "databricks-sdk>=0.94.0,<0.95.0",
+    "databricks-sdk>=0.94.0,<0.118.0",
 ]
 
 [dependency-groups]
