@@ -3159,3 +3159,146 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_name, gp_election_stage_id]
+
+  - name: int__serve_cohort_district
+    description: >
+      Cohort->district resolution for the Constituents Served pipeline
+      (DATA-1988, epic DATA-1359). One row per serve org (organizations mart,
+      organization_type = 'serve'), resolved to the L2 district the official
+      serves: override-first through the org's election-api district record
+      (coalesce(override_district_id, district_id), which bakes in the manual
+      override corrections), with the LLM position->district crosswalk as
+      fallback. Carries the snapshot-stable normalized district join key (L2
+      names drift between snapshots), the resolution path, and guardrail
+      flags: requires_review (deterministic container-mismatch rules),
+      is_geo_seat (the jurisdiction-vs-electoral-seat semantics question),
+      is_statewide (reported separately downstream), and is_internal_email.
+      Rows are never excluded here; pending cohort decisions are var-driven
+      filters plus flags, and flagged rows flow through for downstream review.
+    columns:
+      - name: organization_slug
+        description: Serve org identifier (primary key)
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Owning user of the serve org
+        data_tests:
+          - not_null
+      - name: elected_office_id
+        description: >
+          The org's elected office record (its existence is what makes the
+          org a serve org)
+        data_tests:
+          - not_null
+      - name: ballotready_position_id
+        description: BallotReady position id, when the org has a linked position
+      - name: position_name
+        description: Position title from the linked election-api position
+      - name: custom_position_name
+        description: Free-text position title entered in the product
+      - name: district_id
+        description: >
+          The election-api district id the org resolves through
+          (override_district_id when present, else the position's district)
+      - name: resolution_path
+        description: Which leg resolved the org to a district
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["district_mart", "crosswalk", "unresolved"]
+      - name: state
+        description: >
+          Two-letter state code of the resolved district. Sourced from the
+          district row (or crosswalk row), never from the org's
+          position_state, which is null for override-only orgs.
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: l2_district_type
+        description: >
+          L2 district-type column name. 'State' is a synthetic type for
+          statewide offices; every other value, including 'Other', is a real
+          L2 column.
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: l2_district_name
+        description: Raw L2 district name as carried by the resolving source
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: normalized_district_name
+        description: >
+          Snapshot-stable district join key (normalize_l2_district_name
+          macro: collapse whitespace, strip the drifting " (EST.)" suffix,
+          upper-case). Downstream joins to L2-derived tables must use this
+          key, normalized on both sides.
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: is_statewide
+        description: >
+          Resolved to the synthetic statewide district; statewide orgs are
+          reported separately downstream, never mixed into the local headline
+        data_tests:
+          - not_null
+      - name: review_rule_statewide_container
+        description: >
+          Deterministic rule (a) - matched to the synthetic statewide
+          district but the title is not a statewide office
+        data_tests:
+          - not_null
+      - name: review_rule_county_container
+        description: >
+          Deterministic rule (b) - matched to a whole county but the title
+          carries no county/borough/parish term (county-equivalent
+          independent cities, stored by L2 in the County column with a
+          ' CITY' suffix, are excluded as correct matches)
+        data_tests:
+          - not_null
+      - name: review_rule_subscope_marker
+        description: >
+          Deterministic rule (c) - title names a sub-jurisdiction (subarea
+          seat, community education council) while the match is a whole
+          county, city, or school district
+        data_tests:
+          - not_null
+      - name: requires_review
+        description: >
+          Any container-mismatch rule fired: the resolved district likely
+          contains, but is larger than, the office's real jurisdiction.
+          Flagged rows still flow through; the review queue consumes them.
+        data_tests:
+          - not_null
+      - name: review_reason
+        description: Human-readable list of the rules that fired; null when none
+      - name: is_geo_seat
+        description: >
+          Title carries a geographic seat designation (Ward 3, District F,
+          Zone 1) while the matched district is the whole jurisdiction.
+          Correct under whole-jurisdiction semantics (the v1 default),
+          overcounts under electoral-district semantics. Flag only - the
+          semantics decision is pending.
+        data_tests:
+          - not_null
+      - name: is_internal_email
+        description: >
+          Owner email matches the internal/test pattern. Whether these orgs
+          count toward the public metric is a pending product decision, so
+          flag, never exclude (the serve_cohort_exclude_internal_email_orgs
+          var flips the filter).
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: serve_cohort_review_reason_consistency
+          arguments:
+            expression: >
+              (requires_review and review_reason is not null)
+              or (not requires_review and review_reason is null)
