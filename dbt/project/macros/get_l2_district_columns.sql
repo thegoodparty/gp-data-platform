@@ -1,4 +1,6 @@
-{% macro get_l2_district_columns(use_backticks=true, cast_to_string=false) %}
+{% macro get_l2_district_columns(
+    use_backticks=true, cast_to_string=false, major_only=false
+) %}
     {#-
     Returns a comma-separated list of L2 district columns for use in SELECT statements or UNPIVOT clauses.
     This macro provides all district-related columns from the L2 nationwide uniform dataset.
@@ -8,6 +10,9 @@
                              Set to false for UNPIVOT clauses.
         cast_to_string (bool): Whether to cast columns to STRING. Useful for UNPIVOT when columns have mixed types.
                               Defaults to false.
+        major_only (bool): When true, restrict to the v1 major office-bearing subset (DATA-1992) instead of
+                              the full ~225-column list. Default false preserves the full list for existing
+                              callers. Applies the same backtick/cast formatting as the full list.
 
     Usage:
         SELECT
@@ -259,6 +264,38 @@
         "`Water_SubDistrict`",
         "`Weed_District`",
     ] -%}
+
+    {%- if major_only -%}
+        {#- v1 major office-bearing subset (DATA-1992): general-purpose govt,
+            municipal, county/city subdivisions, schools, and fire. Excludes
+            synthetic State/Country, non-offices (DMA/Hamlet/Other), and the
+            sparse special-district long tail (a sized fast-follow). Backticked
+            like the full list above; the branches below format both modes. -#}
+        {%- set district_columns = [
+            "`County`",
+            "`US_Congressional_District`",
+            "`State_Senate_District`",
+            "`State_House_District`",
+            "`State_Legislative_District`",
+            "`City`",
+            "`Township`",
+            "`Town_District`",
+            "`Village`",
+            "`Borough`",
+            "`City_Council_Commissioner_District`",
+            "`City_Ward`",
+            "`County_Commissioner_District`",
+            "`County_Supervisorial_District`",
+            "`School_District`",
+            "`Unified_School_District`",
+            "`School_Board_District`",
+            "`Board_of_Education_District`",
+            "`City_School_District`",
+            "`Elementary_School_District`",
+            "`High_School_District`",
+            "`Fire_District`",
+        ] -%}
+    {%- endif -%}
 
     {%- if use_backticks -%}
         {#- For SELECT statements -#}
