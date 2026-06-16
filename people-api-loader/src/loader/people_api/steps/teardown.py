@@ -12,25 +12,11 @@ is a documented no-op — we reference a shared endpoint, never our own.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from botocore.exceptions import ClientError
-
-from loader.core.aws import rds, s3, secrets
+from loader.core.aws import ignore_client_errors, rds, s3, secrets
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 
 log = get_logger(__name__)
-
-
-def _safe(fn: Callable[[], object], *, ignore: tuple[str, ...]) -> None:
-    """Run an AWS call, swallowing the given ClientError codes (idempotent teardown)."""
-    try:
-        fn()
-    except ClientError as e:
-        if e.response["Error"]["Code"] in ignore:
-            return
-        raise
 
 
 def _delete_s3_prefix(cfg: LoaderConfig, run_date: str) -> None:
@@ -69,54 +55,41 @@ def run(
     ]
     if delete_s3:
         plan.append(f"s3:{cfg.export_prefix(run_date)}/")
+    # --delete-vpce is always a no-op: the S3 VPC endpoint is shared/durable platform infra.
+    if delete_vpce:
+        log.warning("teardown.vpce_noop", reason="S3 VPC endpoint is shared/durable; not loader-owned")
 
     if not confirm:
         log.info("teardown.dry_run", would_delete=plan)
-        if delete_vpce:
-            log.info(
-                "teardown.vpce_noop", reason="S3 VPC endpoint is shared/durable; loader never deletes it"
-            )
         return
 
     rds_client = rds(cfg)
 
     # 1. Writer instance, then wait for it to be gone (cluster can't delete with instances).
-    _safe(
-        lambda: rds_client.delete_db_instance(DBInstanceIdentifier=instance_id, SkipFinalSnapshot=True),
-        ignore=("DBInstanceNotFound",),
-    )
+    with ignore_client_errors("DBInstanceNotFound"):
+        rds_client.delete_db_instance(DBInstanceIdentifier=instance_id, SkipFinalSnapshot=True)
     rds_client.get_waiter("db_instance_deleted").wait(DBInstanceIdentifier=instance_id)
 
     # 2. Cluster — disable deletion protection (resize enabled it) before deleting.
-    _safe(
-        lambda: rds_client.modify_db_cluster(
+    with ignore_client_errors("DBClusterNotFoundFault"):
+        rds_client.modify_db_cluster(
             DBClusterIdentifier=cluster_id, DeletionProtection=False, ApplyImmediately=True
-        ),
-        ignore=("DBClusterNotFoundFault",),
-    )
-    _safe(
-        lambda: rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True),
-        ignore=("DBClusterNotFoundFault",),
-    )
+        )
+    with ignore_client_errors("DBClusterNotFoundFault"):
+        rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
     rds_client.get_waiter("db_cluster_deleted").wait(DBClusterIdentifier=cluster_id)
 
     # 3. Parameter groups (only deletable once no cluster references them).
     for pg in (load_pg, serve_pg):
-        _safe(
-            lambda pg=pg: rds_client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=pg),
-            ignore=("DBParameterGroupNotFound",),
-        )
+        with ignore_client_errors("DBParameterGroupNotFound"):
+            rds_client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=pg)
 
     # 4. Master password secret (per-run; recoverable for a week).
-    _safe(
-        lambda: secrets(cfg).delete_secret(SecretId=secret_id, RecoveryWindowInDays=7),
-        ignore=("ResourceNotFoundException",),
-    )
+    with ignore_client_errors("ResourceNotFoundException"):
+        secrets(cfg).delete_secret(SecretId=secret_id, RecoveryWindowInDays=7)
 
     # 5. Opt-in: the run's S3 artifacts (kept by default for forensics).
     if delete_s3:
         _delete_s3_prefix(cfg, run_date)
-    if delete_vpce:
-        log.warning("teardown.vpce_noop", reason="S3 VPC endpoint is shared/durable; not loader-owned")
 
     log.info("teardown.complete", cluster=cluster_id)

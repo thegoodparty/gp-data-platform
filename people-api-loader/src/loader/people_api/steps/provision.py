@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 
 from botocore.exceptions import ClientError
 
-from loader.core.aws import ec2, put_secret, rds
+from loader.core.aws import ec2, ignore_client_errors, put_secret, rds
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new
@@ -44,11 +44,6 @@ _ENGINE = "aurora-postgresql"
 _STORAGE_TYPE = "aurora-iopt1"
 
 
-def _param_group_family(engine_version: str) -> str:
-    """e.g. '16.8' -> 'aurora-postgresql16'."""
-    return f"aurora-postgresql{engine_version.split('.')[0]}"
-
-
 def _cluster_exists(client: object, cluster_id: str) -> bool:
     try:
         client.describe_db_clusters(DBClusterIdentifier=cluster_id)  # ty: ignore[unresolved-attribute]
@@ -60,7 +55,7 @@ def _cluster_exists(client: object, cluster_id: str) -> bool:
 
 
 def _ensure_cluster_param_group(client: object, name: str, family: str, tags: list[dict[str, str]]) -> None:
-    try:
+    with ignore_client_errors("DBParameterGroupAlreadyExists"):
         client.create_db_cluster_parameter_group(  # ty: ignore[unresolved-attribute]
             DBClusterParameterGroupName=name,
             DBParameterGroupFamily=family,
@@ -68,24 +63,18 @@ def _ensure_cluster_param_group(client: object, name: str, family: str, tags: li
             Tags=tags,
         )
         log.info("provision.param_group_created", name=name, family=family)
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "DBParameterGroupAlreadyExists":
-            log.info("provision.param_group_exists", name=name)
-            return
-        raise
+        return
+    log.info("provision.param_group_exists", name=name)
 
 
 def _attach_s3_import_role(client: object, cluster_id: str, role_arn: str) -> None:
-    try:
+    with ignore_client_errors("DBClusterRoleAlreadyExists"):
         client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
             DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
         )
         log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "DBClusterRoleAlreadyExists":
-            log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
-            return
-        raise
+        return
+    log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
 
 
 def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
@@ -118,7 +107,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     load_pg = cfg.new_load_param_group(run_date)
     serve_pg = cfg.new_serve_param_group(run_date)
     secret_id = cfg.new_master_secret_id(run_date)
-    family = _param_group_family(cfg.engine_version)
+    family = f"{_ENGINE}{cfg.engine_version.split('.')[0]}"  # e.g. 16.8 -> aurora-postgresql16
 
     started = datetime.now(UTC)
     log.info("provision.start", cluster=cluster_id, instance=instance_id)

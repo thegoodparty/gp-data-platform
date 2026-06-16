@@ -2,15 +2,34 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import cache
 from typing import TYPE_CHECKING, Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
     from botocore.client import BaseClient
 
 from loader.core.config import BaseLoaderConfig
+
+
+@contextmanager
+def ignore_client_errors(*codes: str) -> Iterator[None]:
+    """Swallow the given AWS error codes, re-raising anything else.
+
+    The idempotency primitive for create/delete steps: e.g. wrap a create call with
+    `ignore_client_errors("DBParameterGroupAlreadyExists")`, or a delete with the
+    matching not-found code. To branch on whether the call was swallowed, put a `return`
+    after the call inside the `with` block — code below the block runs only on swallow.
+    """
+    try:
+        yield
+    except ClientError as e:
+        if e.response["Error"]["Code"] not in codes:
+            raise
 
 
 @cache
