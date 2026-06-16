@@ -299,7 +299,12 @@ models:
         tests:
           - not_null
       - name: state_postal_code
-        description: "Uppercase two-letter state postal code."
+        description: >
+          Uppercase two-letter state postal code, derived from the block's
+          geoid FIPS prefix (block_geoid[:2]) via the fips_codes seed -- NOT
+          L2's per-voter state (which is mislabeled for voters geocoded across
+          a state line). not_null confirms every block FIPS mapped; the
+          state-set test confirms the FIPS->postal mapping is correct.
         tests:
           - not_null
           - dbt_expectations.expect_column_distinct_values_to_equal_set:
