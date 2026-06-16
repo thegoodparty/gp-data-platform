@@ -35,7 +35,14 @@ with
             -- split fraction = within-(block, district_type) voter share. At
             -- block grain this is the fraction of the block allocated here.
             m.voters_in_block_district * 1.0 / m.voters_in_block as pct_of_geo,
-            -- the block is split across >1 district of this type
+            -- is_non_exact: the block's L2 voters report >1 district of this
+            -- type. This is the voter-OBSERVED split at block grain -- it
+            -- includes L2 geocoding noise and misses geographic splits no
+            -- observed voter falls on both sides of, so it is an indicator, not
+            -- a precise geographic-overlap measure. The validated per-district
+            -- non-exact-assignment SHARE (the accuracy story) is computed at
+            -- block-group grain in the demographic layer (phase 2), where
+            -- splitting is real; at block grain it is mostly noise (TDD App B.2).
             count(*) over (partition by m.block_geoid, m.district_type)
             > 1 as is_non_exact,
             m.loaded_at

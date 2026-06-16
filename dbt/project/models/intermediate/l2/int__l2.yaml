@@ -371,3 +371,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "length(block_geoid) = 15"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "length(trim(district_name)) > 0"

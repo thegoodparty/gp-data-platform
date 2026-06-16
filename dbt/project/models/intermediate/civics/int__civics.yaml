@@ -3382,8 +3382,14 @@ models:
           - not_null
       - name: is_non_exact
         description: >
-          True when the block is split across >1 district of this type
-          (pct_of_geo < 1)
+          The block's L2 voters report >1 district of this type (pct_of_geo <
+          1). A voter-OBSERVED split indicator at block grain: it includes L2
+          geocoding noise and misses geographic splits no observed voter falls
+          on both sides of, so it is an indicator, not a precise
+          geographic-overlap measure. The validated per-district
+          non-exact-assignment share (the accuracy story) is computed at
+          block-group grain in the demographic layer (phase 2); at block grain
+          splitting is mostly noise (TDD App B.2).
         data_tests:
           - not_null
       - name: loaded_at
@@ -3398,7 +3404,9 @@ models:
       - dbt_utils.expression_is_true:
           name: district_census_allocation_allocated_le_population
           arguments:
-            expression: "allocated_population <= block_population"
+            # +1e-6 tolerance guards against any binary-float overshoot near
+            # pct_of_geo = 1.0 (sub-microperson; mass-conservation is the exact check)
+            expression: "allocated_population <= block_population + 1e-6"
       - dbt_utils.expression_is_true:
           name: district_census_allocation_geoid_lengths
           arguments:

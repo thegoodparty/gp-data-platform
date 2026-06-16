@@ -53,7 +53,12 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_district_columns(use_backticks=false, major_only=true) }})
             )
-        where district_value is not null and trim(district_value) != ''
+        where
+            district_value is not null
+            and trim(district_value) != ''
+            -- drop values that normalize to empty (e.g. a bare "(EST.)"), which
+            -- would otherwise pass not_null as an empty district_name
+            and trim({{ normalize_l2_district_name("district_value") }}) != ''
     ),
 
     block_district as (
@@ -74,9 +79,12 @@ select
     district_type,
     district_name,
     voters_in_block_district,
-    -- per-(block, district_type) denominator for the substrate's split fraction
+    -- per-(block, state, district_type) denominator for the split fraction.
+    -- state is in the partition though block->state is 1:1 (block_geoid[:2] =
+    -- state FIPS): a no-op on clean data, but it makes a cross-state blend
+    -- structurally impossible rather than relying on the guard test alone.
     sum(voters_in_block_district) over (
-        partition by block_geoid, district_type
+        partition by block_geoid, state_postal_code, district_type
     ) as voters_in_block,
     loaded_at
 from block_district
