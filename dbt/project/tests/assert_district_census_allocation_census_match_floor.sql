@@ -14,6 +14,9 @@ with
         select count(distinct block_geoid) as n
         from {{ ref("int__district_census_allocation") }}
     )
+-- WHERE (not HAVING): map_blocks/matched are scalar single-row CTEs, so the
+-- cross join is one row and the ratio filter is a row predicate, not a group
+-- filter (HAVING without GROUP BY raises MISSING_GROUP_BY on Databricks).
 select map_blocks.n as map_blocks, matched.n as matched_blocks
 from map_blocks, matched
-having matched.n * 1.0 / nullif(map_blocks.n, 0) < 0.99
+where matched.n * 1.0 / nullif(map_blocks.n, 0) < 0.99
