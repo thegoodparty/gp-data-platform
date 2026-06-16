@@ -21,19 +21,26 @@ DEFAULT_AWS_REGION = "us-west-2"
 DEFAULT_S3_BUCKET = "gp-voter-loader"
 DEFAULT_DATABRICKS_TABLE = "goodparty_data_catalog.dbt.int__l2_nationwide_uniform"
 
-DEFAULT_PROD_CLUSTER_ID = "gp-voter-db-20250728"
-DEFAULT_PROD_WRITER_ENDPOINT = "gp-voter-db-20250728.cluster-cmb1uukjsfbe.us-west-2.rds.amazonaws.com"
-DEFAULT_PROD_SECRET_ID = "gp-voter-db-20250728/master"
+# The Present-cluster connection string lives in SSM Parameter Store as a SecureString,
+# `people-db-connection-string-{env}` (env from LOADER_ENV, dev/qa/prod). connect_prod
+# fetches and decrypts it at connect time — nothing connection-related is committed here.
+DEFAULT_DB_ENV = "dev"
 
-DEFAULT_VPC_ID = "vpc-0763fa52c32ebcf6a"
-DEFAULT_DB_SUBNET_GROUP = "api-master-rds-subnet-group"
-DEFAULT_SECURITY_GROUP_ID = "sg-03783e4adbbee87dc"
-DEFAULT_KMS_KEY_ARN = "arn:aws:kms:us-west-2:333022194791:key/a728ea20-f375-4039-b7c1-ef9ff192abcc"
-DEFAULT_AWS_ACCOUNT_ID = "333022194791"
+# Infrastructure identifiers (AWS account ID, VPC / subnet group / security group / KMS
+# key, plus the new cluster's DB name/user/port) are intentionally NOT hardcoded — this
+# repo is public. They come from per-field LOADER_* env vars (provision consumes them;
+# provision is still a stub). Empty placeholders are the out-of-the-box default.
+_PLACEHOLDER = ""
+DEFAULT_PROD_CLUSTER_ID = _PLACEHOLDER
+DEFAULT_PROD_DB_NAME = _PLACEHOLDER
+DEFAULT_PROD_DB_USER = _PLACEHOLDER
+DEFAULT_PROD_DB_PORT = 5432
+DEFAULT_VPC_ID = _PLACEHOLDER
+DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
+DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
+DEFAULT_KMS_KEY_ARN = _PLACEHOLDER
+DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
 
-DEFAULT_VOTER_DB_NAME = "voters"
-DEFAULT_VOTER_DB_USER = "postgres"
-DEFAULT_VOTER_DB_PORT = 5432
 
 # Load-phase instance. Prod is serverless, but we use provisioned for load
 # (see PLAN_LOADER.md "Provisioned-vs-Serverless"). Resize step flips this.
@@ -58,10 +65,11 @@ class LoaderConfig(BaseLoaderConfig):
 
     databricks_table: str
 
+    # SSM Parameter Store name holding the Present-cluster connection string (SecureString).
+    db_conn_param: str
+
     # Prod (inspected / validated against)
     prod_cluster_id: str
-    prod_writer_endpoint: str
-    prod_secret_id: str
     prod_db_name: str
     prod_db_user: str
     prod_db_port: int
@@ -97,18 +105,23 @@ class LoaderConfig(BaseLoaderConfig):
             "Environment": os.environ.get("LOADER_TAG_ENVIRONMENT", "dev"),
         }
 
+        # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
+        # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
+        env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
+        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"people-db-connection-string-{env}")
+        # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
+        # else empty placeholders — nothing infra-identifying is committed to this public repo.
         return cls(
             aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
             databricks_table=os.environ.get("LOADER_DATABRICKS_TABLE", DEFAULT_DATABRICKS_TABLE),
+            db_conn_param=db_conn_param,
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
-            prod_writer_endpoint=os.environ.get("LOADER_PROD_WRITER_ENDPOINT", DEFAULT_PROD_WRITER_ENDPOINT),
-            prod_secret_id=os.environ.get("LOADER_PROD_SECRET_ID", DEFAULT_PROD_SECRET_ID),
-            prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_VOTER_DB_NAME),
-            prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_VOTER_DB_USER),
-            prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_VOTER_DB_PORT)),
+            prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
+            prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
+            prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)),
             vpc_id=os.environ.get("LOADER_VPC_ID", DEFAULT_VPC_ID),
             db_subnet_group=os.environ.get("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
             security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
@@ -124,22 +137,22 @@ class LoaderConfig(BaseLoaderConfig):
         return f"voter_export_{run_date}"
 
     def new_cluster_id(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}"
+        return f"gp-people-db-{run_date}"
 
     def new_writer_instance_id(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}-writer"
+        return f"gp-people-db-{run_date}-writer"
 
     def new_master_secret_id(self, run_date: str) -> str:
-        return f"gp-voter-db/{run_date}/master"
+        return f"gp-people-db/{run_date}/master"
 
     def new_iam_role_name(self, run_date: str) -> str:
         return f"rds-s3-import-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}-load"
+        return f"gp-people-db-{run_date}-load"
 
     def new_serve_param_group(self, run_date: str) -> str:
-        return f"gp-voter-db-{run_date}-serve"
+        return f"gp-people-db-{run_date}-serve"
 
 
 def require_run_date(run_date: str) -> str:

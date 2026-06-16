@@ -34,7 +34,7 @@ import pytest
 from loader.people_api.config import LoaderConfig
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
-from loader.people_api.steps import build_indexes, copy_s3, validate
+from loader.people_api.steps import build_indexes, copy_s3, inspect_prod, validate
 from loader.people_api.steps.create_schema import build_partitioned_ddl
 from tests._fakes import fake_connect
 
@@ -197,5 +197,22 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
 
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
     monkeypatch.setattr(validate, "connect_new", fc)
-    check = validate._check_row_counts(_CFG, "20260609", "wh", {"TX": 5, "CA": 4})
-    assert check.passed is True  # TX=5, CA=4 (3 + the cross-state row added in 3b)
+    counts = validate._new_voter_counts_by_state(_CFG, "20260609", "wh")
+    assert counts == {"TX": 5, "CA": 4}  # TX=5, CA=4 (3 + the cross-state row added in 3b)
+    assert validate._compare_counts("prod_row_counts", counts, {"TX": 5, "CA": 4}).passed is True
+
+    # 6. inspect-prod: real information_schema column detection + per-state GROUP BY.
+    #    Voter has "State" + "updated_at" -> per-state counts and snapshot dates.
+    with pg_conn.cursor() as cur:
+        voter_ti = inspect_prod._inspect_table(cur, "Voter")
+    assert voter_ti.total_row_count == 9  # 5 TX + 4 CA
+    assert voter_ti.per_state_row_counts == {"TX": 5, "CA": 4}
+    assert set(voter_ti.per_state_snapshot_dates) == {"TX", "CA"}
+
+    #    A table without a "State" column -> total count only, no per-state breakdown.
+    with pg_conn.cursor() as cur:
+        _exec(cur, 'CREATE TABLE public."NoStateTbl" (k int)')
+        _exec(cur, 'INSERT INTO public."NoStateTbl" (k) VALUES (1), (2)')
+        nostate_ti = inspect_prod._inspect_table(cur, "NoStateTbl")
+    assert nostate_ti.total_row_count == 2
+    assert nostate_ti.per_state_row_counts == {}
