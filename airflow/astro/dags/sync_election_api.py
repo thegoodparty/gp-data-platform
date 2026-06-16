@@ -73,6 +73,14 @@ t_log = logging.getLogger("airflow.task")
 PG_CONN_ID = "election_api_db"
 DATABRICKS_SCHEMA = "dbt"  # canonical mart location (not dbt_staging)
 
+# Memory note: load_staging streams a mart into Postgres, but
+# bulk_insert_from_databricks reads one partition at a time over a single
+# connection, so each task's peak memory is bounded to ~one partition (tens of
+# MB on top of the worker's shared base). Under the Astro executor, tasks run as
+# subprocesses on shared worker nodes sized via the deployment's worker queue
+# (see astro.tf), so no per-task pod override (executor_config) is needed —
+# pod_override is a Kubernetes-executor feature and is ignored here anyway.
+
 
 def _open_pg():
     """Open a Postgres connection — tunneled in cloud, direct on VPN locally.
@@ -358,6 +366,12 @@ def sync_election_api():
                     DTI,
                     source_query=query,
                     target_columns=DTI_COLUMNS,
+                    # ~5.1M rows; this load runs concurrently with
+                    # zip_to_position on the same worker, so read one issue at a
+                    # time (~68 partitions, <=~96k rows each) to keep the
+                    # combined peak memory bounded and avoid OOM (the zip-only
+                    # partition in #493 left this load unbounded).
+                    partition_column="issue",
                 )
 
         @task
@@ -488,6 +502,9 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
+    # The two pipelines run in parallel; under the Kubernetes executor each task
+    # is its own pod, and each load_staging reads one partition at a time, so
+    # they don't contend for memory.
     zip_to_position()
     district_top_issues()
 
