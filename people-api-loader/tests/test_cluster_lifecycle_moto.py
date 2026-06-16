@@ -81,9 +81,11 @@ def test_provision_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert rds.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"]
     assert rds.describe_db_instances(DBInstanceIdentifier=cfg.new_writer_instance_id(_DATE))["DBInstances"]
-    boto3.client("secretsmanager", region_name=_REGION).get_secret_value(
-        SecretId=cfg.new_master_secret_id(_DATE)
-    )
+    # the connection string was written to SSM as a postgresql:// URL (password embedded)
+    conninfo = boto3.client("ssm", region_name=_REGION).get_parameter(
+        Name=cfg.new_conn_param(_DATE), WithDecryption=True
+    )["Parameter"]["Value"]
+    assert conninfo.startswith("postgresql://people_admin:")
     # the s3Import role attached with the right FeatureName + ARN (moto stores any
     # FeatureName, so this catches a typo that would only fail in real AWS)
     roles = rds.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]["AssociatedRoles"]
@@ -119,3 +121,5 @@ def test_teardown_deletes_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
         rds.describe_db_clusters(DBClusterIdentifier=cluster_id)
     with pytest.raises(ClientError):
         rds.describe_db_instances(DBInstanceIdentifier=cfg.new_writer_instance_id(_DATE))
+    with pytest.raises(ClientError):
+        boto3.client("ssm", region_name=_REGION).get_parameter(Name=cfg.new_conn_param(_DATE))

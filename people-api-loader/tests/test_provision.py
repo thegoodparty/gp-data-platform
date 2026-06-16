@@ -20,6 +20,7 @@ _CFG = cast(
         security_group_id="sg-x",
         prod_db_user="people_admin",
         prod_db_name="people_prod",
+        prod_db_port=5432,
         kms_key_arn="arn:kms",
         load_instance_class="db.r7g.16xlarge",
         s3_import_role_arn="arn:aws:iam::1:role/rds-s3-import",
@@ -29,7 +30,7 @@ _CFG = cast(
         new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-writer",
         new_load_param_group=lambda rd: f"gp-people-db-{rd}-load",
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
-        new_master_secret_id=lambda rd: f"gp-people-db/{rd}/master",
+        new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
         tags_as_aws=lambda: [{"Key": "Project", "Value": "gp-api"}],
     ),
 )
@@ -65,9 +66,11 @@ class FakeRds:
     def create_db_cluster_parameter_group(self, **kw: Any) -> None:
         self.calls.append(("param_group", kw))
 
-    def create_db_cluster(self, **kw: Any) -> None:
+    def create_db_cluster(self, **kw: Any) -> dict:
         self.calls.append(("cluster", kw))
-        self.clusters[kw["DBClusterIdentifier"]] = {"Endpoint": f"{kw['DBClusterIdentifier']}.rds.aws"}
+        endpoint = f"{kw['DBClusterIdentifier']}.rds.aws"
+        self.clusters[kw["DBClusterIdentifier"]] = {"Endpoint": endpoint}
+        return {"DBCluster": {"Endpoint": endpoint}}
 
     def create_db_instance(self, **kw: Any) -> None:
         self.calls.append(("instance", kw))
@@ -96,7 +99,7 @@ def _patch(monkeypatch: pytest.MonkeyPatch, rds_client: FakeRds, ec2_client: Fak
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "ec2", lambda cfg: ec2_client)
     monkeypatch.setattr(
-        step, "put_secret", lambda cfg, sid, val, description="": captured.setdefault("secret", sid)
+        step, "put_ssm_parameter", lambda cfg, name, value, **k: captured.update(param=name, conninfo=value)
     )
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn()))
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
@@ -114,13 +117,16 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
     assert manifest.cluster_id == "gp-people-db-20260616"
     assert manifest.writer_endpoint == "gp-people-db-20260616.rds.aws"
     assert manifest.vpc_endpoint_id == "vpce-abc"
-    assert manifest.master_secret_id == "gp-people-db/20260616/master"
+    assert manifest.conn_param == "people-db-connection-string-dev-20260616"
     # both param groups, the cluster, the instance, and the role attach happened
     assert rds_client.names().count("param_group") == 2
     assert (
         "cluster" in rds_client.names() and "instance" in rds_client.names() and "role" in rds_client.names()
     )
-    assert captured["secret"] == "gp-people-db/20260616/master"
+    # the connection string was stored in SSM with the endpoint + master password embedded
+    assert captured["param"] == "people-db-connection-string-dev-20260616"
+    assert captured["conninfo"].startswith("postgresql://people_admin:")
+    assert "@gp-people-db-20260616.rds.aws:5432/people_prod" in captured["conninfo"]
 
 
 def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,7 +143,7 @@ def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.Monkey
     assert manifest.writer_endpoint == "existing.rds.aws"
     assert "cluster" not in rds_client.names()  # not re-created
     assert "instance" not in rds_client.names()  # not re-created
-    assert "secret" not in captured  # no new password stored
+    assert "param" not in captured  # no new connection string stored (password unknown on reuse)
     assert "role" in rds_client.names()  # role attach is still idempotently ensured
 
 
@@ -152,7 +158,7 @@ def test_provision_recovers_missing_instance(monkeypatch: pytest.MonkeyPatch) ->
 
     assert "cluster" not in rds_client.names()  # cluster reused
     assert "instance" in rds_client.names()  # missing instance created
-    assert "secret" not in captured  # no new password (cluster's master is unchanged)
+    assert "param" not in captured  # no new connection string (cluster's master is unchanged)
 
 
 def test_provision_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

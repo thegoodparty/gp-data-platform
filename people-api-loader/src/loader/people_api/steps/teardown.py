@@ -4,7 +4,7 @@ Safety model is name-scoping, not a tag guard: it walks only cfg-derived, date-s
 names (gp-people-db-{date}*), which by construction can never match the serving cluster
 (gp-people-db-prod) or shared infra. Describe-first and idempotent. Deletion order:
   writer instance -> cluster (deletion-protection disabled first) -> load/serve param
-  groups -> master secret -> (opt-in) the voter_export_{date}/ S3 prefix.
+  groups -> connection-string SSM parameter -> (opt-in) the voter_export_{date}/ S3 prefix.
 
 Durable infra is never deleted: the rds-s3-import role, the loader SG / DB subnet group,
 the KMS key, and the S3 gateway VPC endpoint are platform-owned (DATA-1856). `--delete-vpce`
@@ -13,7 +13,7 @@ is a documented no-op — we reference a shared endpoint, never our own.
 
 from __future__ import annotations
 
-from loader.core.aws import ignore_client_errors, rds, s3, secrets
+from loader.core.aws import ignore_client_errors, rds, s3, ssm
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 
@@ -49,13 +49,13 @@ def run(
     instance_id = cfg.new_writer_instance_id(run_date)
     load_pg = cfg.new_load_param_group(run_date)
     serve_pg = cfg.new_serve_param_group(run_date)
-    secret_id = cfg.new_master_secret_id(run_date)
+    conn_param = cfg.new_conn_param(run_date)
 
     plan = [
         f"instance:{instance_id}",
         f"cluster:{cluster_id}",
         f"param-groups:{load_pg},{serve_pg}",
-        f"secret:{secret_id}",
+        f"ssm-param:{conn_param}",
     ]
     if delete_s3:
         plan.append(f"s3:{cfg.export_prefix(run_date)}/")
@@ -88,9 +88,9 @@ def run(
         with ignore_client_errors("DBParameterGroupNotFound"):
             rds_client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=pg)
 
-    # 4. Master password secret (per-run; recoverable for a week).
-    with ignore_client_errors("ResourceNotFoundException"):
-        secrets(cfg).delete_secret(SecretId=secret_id, RecoveryWindowInDays=7)
+    # 4. Connection-string SSM parameter (per-run; holds the embedded master password).
+    with ignore_client_errors("ParameterNotFound"):
+        ssm(cfg).delete_parameter(Name=conn_param)
 
     # 5. Opt-in: the run's S3 artifacts (kept by default for forensics).
     if delete_s3:

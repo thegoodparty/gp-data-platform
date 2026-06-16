@@ -29,7 +29,7 @@ import psycopg
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, resolve_writer_endpoint
+from loader.people_api.db import connect_new
 from loader.people_api.manifests import (
     CopyManifest,
     CopyTableResult,
@@ -59,15 +59,13 @@ _SESSION_SQL: tuple[str, ...] = (
 )
 
 
-def _copy_one_file(
-    cfg: LoaderConfig, run_date: str, writer_endpoint: str, s3_key: str, column_list: str
-) -> None:
+def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: str) -> None:
     """Import one S3 file into public."Voter" on its own backend.
 
     `column_list` is the explicit, DDL-ordered column list (see module docstring);
     it must name exactly the columns the unload file contains, in file order.
     """
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         for stmt in _SESSION_SQL:
             cur.execute(stmt)  # ty: ignore[no-matching-overload]
         cur.execute(
@@ -115,7 +113,6 @@ def _load_state(
     *,
     cfg: LoaderConfig,
     run_date: str,
-    writer_endpoint: str,
     state: str,
     expected_rows: int,
     s3_keys: list[str],
@@ -131,7 +128,7 @@ def _load_state(
     # reject dupes is not built until build-indexes runs later. hashtext() is computed
     # server-side, so the key is stable across processes (Python's hash() is not).
     # The lock releases automatically when lock_conn closes.
-    with connect_new(cfg, run_date, writer_endpoint) as lock_conn:
+    with connect_new(cfg, run_date) as lock_conn:
         with lock_conn.cursor() as cur:
             _acquire_state_lock(cur, state)
 
@@ -153,8 +150,7 @@ def _load_state(
 
         with ThreadPoolExecutor(max_workers=parallelism) as executor:
             futures = {
-                executor.submit(_copy_one_file, cfg, run_date, writer_endpoint, key, column_list): key
-                for key in s3_keys
+                executor.submit(_copy_one_file, cfg, run_date, key, column_list): key for key in s3_keys
             }
             errors: list[tuple[str, Exception]] = []
             for fut in as_completed(futures):
@@ -198,8 +194,6 @@ def run(
     if unload is None or unload.status != "complete":
         raise RuntimeError("Step 4 requires a completed unload manifest.")
 
-    writer_endpoint = resolve_writer_endpoint(cfg, run_date)
-
     # Explicit column list (DDL order) so COPY maps by a pinned contract, not raw
     # position — see module docstring. Quote every name uniformly; "id" == id in PG.
     tables = extract_create_tables(load_prod_dump(cfg, run_date))
@@ -215,7 +209,6 @@ def run(
         "copy.start",
         state_filter=state_filter,
         parallelism=parallelism,
-        writer_endpoint=writer_endpoint,
         columns=len(columns),
     )
 
@@ -240,7 +233,6 @@ def run(
         _load_state(
             cfg=cfg,
             run_date=run_date,
-            writer_endpoint=writer_endpoint,
             state=state,
             expected_rows=unload.per_state_row_counts.get(state, 0),
             s3_keys=files_by_state.get(state, []),

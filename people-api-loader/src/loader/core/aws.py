@@ -57,10 +57,6 @@ def ec2(cfg: BaseLoaderConfig) -> BaseClient:
     return session(cfg).client("ec2")
 
 
-def secrets(cfg: BaseLoaderConfig) -> BaseClient:
-    return session(cfg).client("secretsmanager")
-
-
 def ssm(cfg: BaseLoaderConfig) -> BaseClient:
     return session(cfg).client("ssm")
 
@@ -71,40 +67,15 @@ def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True)
     return resp["Parameter"]["Value"]
 
 
+def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> None:
+    """Write (overwrite) an SSM Parameter Store value; SecureString by default."""
+    ssm(cfg).put_parameter(
+        Name=name, Value=value, Type="SecureString" if secure else "String", Overwrite=True
+    )
+
+
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
     return session(cfg).client("sts")
-
-
-def get_secret(cfg: BaseLoaderConfig, secret_id: str) -> str:
-    """Fetch a secret string. Raises if the secret is missing/non-string."""
-    resp = secrets(cfg).get_secret_value(SecretId=secret_id)
-    if "SecretString" not in resp:
-        raise RuntimeError(f"Secret {secret_id!r} has no SecretString")
-    return resp["SecretString"]
-
-
-def put_secret(cfg: BaseLoaderConfig, secret_id: str, value: str, description: str = "") -> None:
-    """Create a secret or overwrite its value idempotently.
-
-    Tags are applied at create time so that IAM policies scoped by
-    `aws:ResourceTag/Environment` (the pattern on this workspace's SSO
-    role) allow subsequent Get/Describe on the secret.
-    """
-    client = secrets(cfg)
-    try:
-        client.create_secret(
-            Name=secret_id,
-            Description=description,
-            SecretString=value,
-            Tags=cfg.tags_as_aws(),
-        )
-    except client.exceptions.ResourceExistsException:
-        # Re-tag first: a pre-existing secret (manual, older loader version, or
-        # one whose tag was removed) may be untagged, and the value update below
-        # is pointless if `aws:ResourceTag/Environment` IAM conditions then deny
-        # GetSecretValue. tag_resource is idempotent on an already-tagged secret.
-        client.tag_resource(SecretId=secret_id, Tags=cfg.tags_as_aws())
-        client.put_secret_value(SecretId=secret_id, SecretString=value)
 
 
 def verify_caller(cfg: BaseLoaderConfig) -> dict[str, Any]:

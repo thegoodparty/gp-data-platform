@@ -1,9 +1,10 @@
 """Step 2 — provision a fresh Aurora PostgreSQL cluster for the load (DATA-1909).
 
 Creates, per run_date, the date-stamped cluster + writer instance + the load/serve
-cluster parameter groups, stores the generated master password in Secrets Manager,
-attaches the pre-existing rds-s3-import role (for aws_s3 imports), polls to ready and
-runs SELECT 1, and records everything in a ProvisionManifest.
+cluster parameter groups, writes the connection string (generated master password
+embedded) to an SSM SecureString, attaches the pre-existing rds-s3-import role (for
+aws_s3 imports), polls to ready and runs SELECT 1, recording everything in a
+ProvisionManifest.
 
 Durable infra is NOT created here — the rds-s3-import IAM role, the S3 gateway VPC
 endpoint, the loader-owned security group, and the DB subnet group are one-time
@@ -23,10 +24,11 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime
+from urllib.parse import quote
 
 from botocore.exceptions import ClientError
 
-from loader.core.aws import ec2, ignore_client_errors, put_secret, rds
+from loader.core.aws import ec2, ignore_client_errors, put_ssm_parameter, rds
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new
@@ -116,7 +118,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     instance_id = cfg.new_writer_instance_id(run_date)
     load_pg = cfg.new_load_param_group(run_date)
     serve_pg = cfg.new_serve_param_group(run_date)
-    secret_id = cfg.new_master_secret_id(run_date)
+    conn_param = cfg.new_conn_param(run_date)
     family = f"{_ENGINE}{cfg.engine_version.split('.')[0]}"  # e.g. 16.8 -> aurora-postgresql16
 
     started = datetime.now(UTC)
@@ -131,12 +133,13 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     _ensure_cluster_param_group(rds_client, serve_pg, family, tags)
 
     # Cluster, then writer instance — each guarded independently so a partial prior run
-    # (cluster created but instance not) self-heals on re-run. An existing cluster is
-    # reused with its already-stored master password (no regenerate).
+    # (cluster created but instance not) self-heals on re-run. An existing cluster is reused
+    # with its already-stored connection string (no regenerate): the generated password
+    # exists only on the run that creates the cluster, so on reuse we skip straight past the
+    # SSM write (the param was written on the first run).
     if not _cluster_exists(rds_client, cluster_id):
         password = secrets.token_urlsafe(32)
-        put_secret(cfg, secret_id, password, description=f"RDS master password for {cluster_id}")
-        rds_client.create_db_cluster(
+        created = rds_client.create_db_cluster(
             DBClusterIdentifier=cluster_id,
             Engine=_ENGINE,
             EngineVersion=cfg.engine_version,
@@ -154,6 +157,16 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             Tags=tags,
         )
         log.info("provision.cluster_created", cluster=cluster_id)
+        # Persist the connection string immediately — the cluster writer endpoint is assigned
+        # at creation. Writing it now (not after the availability wait) keeps the window where
+        # the password could be lost to a crash near zero: a re-run then reuses the param.
+        endpoint = created["DBCluster"]["Endpoint"]
+        conninfo = (
+            f"postgresql://{cfg.prod_db_user}:{quote(password, safe='')}"
+            f"@{endpoint}:{cfg.prod_db_port}/{cfg.prod_db_name}"
+        )
+        put_ssm_parameter(cfg, conn_param, conninfo)
+        log.info("provision.conn_param_written", name=conn_param)
     else:
         log.info("provision.cluster_exists", cluster=cluster_id)
 
@@ -176,7 +189,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
     )
     endpoint = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]["Endpoint"]
-    with connect_new(cfg, run_date, endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute("SELECT 1")
     log.info("provision.ready", endpoint=endpoint)
 
@@ -196,7 +209,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         vpc_endpoint_id=vpce_id,
         load_parameter_group=load_pg,
         serve_parameter_group=serve_pg,
-        master_secret_id=secret_id,
+        conn_param=conn_param,
     )
     uri = write_manifest(cfg, manifest)
     log.info("provision.complete", uri=uri, cluster=cluster_id, endpoint=endpoint)

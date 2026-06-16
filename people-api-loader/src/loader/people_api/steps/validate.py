@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, connect_prod, resolve_writer_endpoint
+from loader.people_api.db import connect_new, connect_prod
 from loader.people_api.manifests import (
     InspectManifest,
     UnloadManifest,
@@ -39,9 +39,9 @@ log = get_logger(__name__)
 _ROW_COUNT_TOLERANCE = 0.10
 
 
-def _new_voter_counts_by_state(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> dict[str, int]:
+def _new_voter_counts_by_state(cfg: LoaderConfig, run_date: str) -> dict[str, int]:
     """Per-state Voter row counts on the new cluster (queried once, reused by both gates)."""
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute('SELECT "State", count(*) FROM public."Voter" GROUP BY "State"')
         # Drop a NULL-State group (the partition key is NOT NULL, so this is defensive,
         # matching inspect_prod): a None key would break JSON-keyed manifest output.
@@ -127,14 +127,14 @@ def _voter_columns(conn) -> set[str]:
         return {r[0] for r in cur.fetchall()}
 
 
-def _check_schema_diff(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> ValidationCheck:
+def _check_schema_diff(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     try:
         with connect_prod(cfg) as prod_conn:
             prod_cols = _voter_columns(prod_conn)
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
         log.error("validate.prod_unreachable", check="schema_diff_clean", error=str(e))
         return ValidationCheck(name="schema_diff_clean", passed=False, details={"error_reading_prod": str(e)})
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
+    with connect_new(cfg, run_date) as conn:
         new_cols = _voter_columns(conn)
     missing_from_new = prod_cols - new_cols
     extra_in_new = new_cols - prod_cols
@@ -150,7 +150,7 @@ def _check_schema_diff(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -
     )
 
 
-def _check_indexes(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> ValidationCheck:
+def _check_indexes(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     query = (
         "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='Voter' ORDER BY indexname"
     )
@@ -163,7 +163,7 @@ def _check_indexes(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> Va
         return ValidationCheck(
             name="index_constraint_diff_clean", passed=False, details={"error_reading_prod": str(e)}
         )
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute(query)
         new_idx = {r[0] for r in cur.fetchall()}
     missing = sorted(prod_idx - new_idx)
@@ -184,10 +184,10 @@ _SAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
 )
 
 
-def _check_sample_queries(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> ValidationCheck:
+def _check_sample_queries(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     results: dict[str, str] = {}
     failures: dict[str, str] = {}
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
+    with connect_new(cfg, run_date) as conn:
         for label, sql in _SAMPLE_QUERIES:
             try:
                 with conn.cursor() as cur:
@@ -201,7 +201,7 @@ def _check_sample_queries(cfg: LoaderConfig, run_date: str, writer_endpoint: str
     )
 
 
-def _check_l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> ValidationCheck:
+def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     try:
         with connect_prod(cfg) as prod_conn, prod_conn.cursor() as cur:
             cur.execute('SELECT DISTINCT "l2Type" FROM public.org_districts WHERE "l2Type" IS NOT NULL')
@@ -219,7 +219,7 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: st
             passed=True,
             details={"skipped": "org_districts unreachable", "error": str(e)},
         )
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
+    with connect_new(cfg, run_date) as conn:
         new_cols = _voter_columns(conn)
     missing = sorted(v for v in distinct_l2types if v not in new_cols)
     return ValidationCheck(
@@ -263,7 +263,6 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     if unload is None or unload.status != "complete":
         raise RuntimeError("Step 7 requires a completed unload manifest (per-state baseline).")
 
-    writer_endpoint = resolve_writer_endpoint(cfg, run_date)
     started = datetime.now(UTC)
     log.info("validate.start")
 
@@ -274,14 +273,14 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     # everything else.
     try:
         # Query the new cluster's per-state Voter counts once; both count gates reuse it.
-        new_counts = _new_voter_counts_by_state(cfg, run_date, writer_endpoint)
+        new_counts = _new_voter_counts_by_state(cfg, run_date)
         checks: list[ValidationCheck] = [
             _compare_counts("row_counts_match_databricks", new_counts, unload.per_state_row_counts),
             _check_prod_row_counts(cfg, run_date, new_counts),
-            _check_schema_diff(cfg, run_date, writer_endpoint),
-            _check_indexes(cfg, run_date, writer_endpoint),
-            _check_sample_queries(cfg, run_date, writer_endpoint),
-            _check_l2type_coverage(cfg, run_date, writer_endpoint),
+            _check_schema_diff(cfg, run_date),
+            _check_indexes(cfg, run_date),
+            _check_sample_queries(cfg, run_date),
+            _check_l2type_coverage(cfg, run_date),
         ]
     except Exception as e:  # broad by design: persist a failed manifest, then re-raise
         log.error("validate.errored", error=str(e))

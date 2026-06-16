@@ -32,10 +32,9 @@ def test_rewrite_injects_if_not_exists() -> None:
 def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     conn = FakeConn()
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DUMP)
-    monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd, we: [])
+    monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd: [])
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
 
@@ -71,7 +70,7 @@ def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) ->
         columns=["LALVOTERID"],
         where='"x" IS NOT NULL',
     )
-    step._create_index(_CFG, "20260609", "wh", idx)
+    step._create_index(_CFG, "20260609", idx)
     sql = " ".join(executed_sql(conn))
     assert 'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_u_idx"' in sql
     assert '("LALVOTERID", "State")' in sql
@@ -92,7 +91,7 @@ def test_create_index_unique_functional_raises(monkeypatch: pytest.MonkeyPatch) 
         where=None,
     )
     with pytest.raises(RuntimeError, match="expression column"):
-        step._create_index(_CFG, "20260609", "wh", idx)
+        step._create_index(_CFG, "20260609", idx)
 
 
 def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -101,7 +100,7 @@ def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> Non
     new_conn = FakeConn().queue_result([("Type_A",)])
     monkeypatch.setattr(step, "connect_prod", fake_connect(prod_conn))
     monkeypatch.setattr(step, "connect_new", fake_connect(new_conn))
-    assert step._l2type_coverage(_CFG, "20260609", "wh") == ["Type_B"]
+    assert step._l2type_coverage(_CFG, "20260609") == ["Type_B"]
 
 
 def test_l2type_coverage_returns_none_when_prod_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,7 +109,7 @@ def test_l2type_coverage_returns_none_when_prod_unreachable(monkeypatch: pytest.
         raise RuntimeError("org_districts unreachable")
 
     monkeypatch.setattr(step, "connect_prod", _boom)
-    assert step._l2type_coverage(_CFG, "20260609", "wh") is None
+    assert step._l2type_coverage(_CFG, "20260609") is None
 
 
 class _PKRaisingConn:
@@ -144,7 +143,7 @@ def test_add_primary_key_swallows_duplicate(monkeypatch: pytest.MonkeyPatch) -> 
         step, "connect_new", lambda *a, **k: _PKRaisingConn(psycopg.errors.DuplicateObject("exists"))
     )
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
-    step._add_primary_key(_CFG, "20260609", "wh", pk)  # must not raise
+    step._add_primary_key(_CFG, "20260609", pk)  # must not raise
 
 
 def test_add_primary_key_propagates_invalid_definition(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,4 +158,4 @@ def test_add_primary_key_propagates_invalid_definition(monkeypatch: pytest.Monke
     )
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
     with pytest.raises(psycopg.errors.InvalidTableDefinition):
-        step._add_primary_key(_CFG, "20260609", "wh", pk)
+        step._add_primary_key(_CFG, "20260609", pk)

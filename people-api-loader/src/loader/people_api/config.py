@@ -3,8 +3,10 @@
 `LoaderConfig.from_env()` is the one entrypoint. Every step accepts a
 `LoaderConfig` and a `run_date` — no step reaches into `os.environ` directly.
 
-The one secret we can't avoid (the RDS master password) is fetched lazily
-from AWS Secrets Manager — never read from the process environment. This
+Connections are never assembled from a process-env password. Both clusters
+are reached through SSM SecureString connection strings: the Present cluster
+via `db_conn_param`, and the freshly-provisioned cluster via `new_conn_param`
+(provision writes that one, embedding the generated master password). This
 module hard-fails if `VOTER_DB_MASTER_PASSWORD` is set, so nobody can paper
 over that contract by exporting it.
 """
@@ -21,9 +23,11 @@ DEFAULT_AWS_REGION = "us-west-2"
 DEFAULT_S3_BUCKET = "gp-voter-loader"
 DEFAULT_DATABRICKS_TABLE = "goodparty_data_catalog.dbt.int__l2_nationwide_uniform"
 
-# The Present-cluster connection string lives in SSM Parameter Store as a SecureString,
-# `people-db-connection-string-{env}` (env from LOADER_ENV, dev/qa/prod). connect_prod
-# fetches and decrypts it at connect time — nothing connection-related is committed here.
+# Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
+# (LOADER_ENV, dev/qa/prod). The Present cluster is `people-db-connection-string-{env}`;
+# each provisioned cluster is `people-db-connection-string-{env}-{run_date}` (unique per
+# run, no collision with the serving cluster). connect_prod/connect_new fetch and decrypt
+# at connect time — nothing connection-related is committed here.
 DEFAULT_DB_ENV = "dev"
 
 # Infrastructure identifiers (AWS account ID, VPC / subnet group / security group / KMS
@@ -68,6 +72,8 @@ class LoaderConfig(BaseLoaderConfig):
 
     databricks_table: str
 
+    # Deployment env (dev/qa/prod) — keys the SSM connection-string parameter names.
+    db_env: str
     # SSM Parameter Store name holding the Present-cluster connection string (SecureString).
     db_conn_param: str
 
@@ -121,6 +127,7 @@ class LoaderConfig(BaseLoaderConfig):
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
             databricks_table=os.environ.get("LOADER_DATABRICKS_TABLE", DEFAULT_DATABRICKS_TABLE),
+            db_env=env,
             db_conn_param=db_conn_param,
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
             prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
@@ -147,8 +154,9 @@ class LoaderConfig(BaseLoaderConfig):
     def new_writer_instance_id(self, run_date: str) -> str:
         return f"gp-people-db-{run_date}-writer"
 
-    def new_master_secret_id(self, run_date: str) -> str:
-        return f"gp-people-db/{run_date}/master"
+    def new_conn_param(self, run_date: str) -> str:
+        """SSM SecureString name for the provisioned cluster's connection string."""
+        return f"people-db-connection-string-{self.db_env}-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
         return f"gp-people-db-{run_date}-load"

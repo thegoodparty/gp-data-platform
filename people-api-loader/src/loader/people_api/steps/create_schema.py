@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, resolve_writer_endpoint
+from loader.people_api.db import connect_new
 from loader.people_api.manifests import (
     SchemaManifest,
     manifest_uri,
@@ -62,7 +62,6 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
         )
         return existing
 
-    writer_endpoint = resolve_writer_endpoint(cfg, run_date)
     started = datetime.now(UTC)
     log.info("schema.start")
 
@@ -79,7 +78,7 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
     ddl_uri = put_artifact(cfg, run_date, "schema/target_schema.sql", full_ddl)
     log.info("schema.ddl_emitted", uri=ddl_uri, bytes=len(full_ddl))
 
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
+    with connect_new(cfg, run_date) as conn:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE")
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_commons")

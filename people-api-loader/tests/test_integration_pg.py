@@ -156,12 +156,11 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     fc = fake_connect(pg_conn)  # ty: ignore[invalid-argument-type]
     monkeypatch.setattr(build_indexes, "connect_new", fc)
     build_indexes._add_primary_key(
-        _CFG, "20260609", "wh", PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
+        _CFG, "20260609", PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
     )
     build_indexes._create_index(
         _CFG,
         "20260609",
-        "wh",
         IndexDef(
             table="Voter",
             name="Voter_LALVOTERID_key",
@@ -197,7 +196,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
 
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
     monkeypatch.setattr(validate, "connect_new", fc)
-    counts = validate._new_voter_counts_by_state(_CFG, "20260609", "wh")
+    counts = validate._new_voter_counts_by_state(_CFG, "20260609")
     assert counts == {"TX": 5, "CA": 4}  # TX=5, CA=4 (3 + the cross-state row added in 3b)
     assert validate._compare_counts("prod_row_counts", counts, {"TX": 5, "CA": 4}).passed is True
 

@@ -18,7 +18,7 @@ _CFG = cast(
         new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-writer",
         new_load_param_group=lambda rd: f"gp-people-db-{rd}-load",
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
-        new_master_secret_id=lambda rd: f"gp-people-db/{rd}/master",
+        new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
     ),
 )
 
@@ -55,12 +55,12 @@ class FakeRds:
         return _FakeWaiter()
 
 
-class FakeSecrets:
+class FakeSsm:
     def __init__(self) -> None:
         self.deleted: list[str] = []
 
-    def delete_secret(self, **kw: Any) -> None:
-        self.deleted.append(kw["SecretId"])
+    def delete_parameter(self, **kw: Any) -> None:
+        self.deleted.append(kw["Name"])
 
 
 def test_teardown_dry_run_makes_no_aws_calls(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,14 +68,14 @@ def test_teardown_dry_run_makes_no_aws_calls(monkeypatch: pytest.MonkeyPatch) ->
         raise AssertionError("dry-run must not touch AWS")
 
     monkeypatch.setattr(step, "rds", _boom)
-    monkeypatch.setattr(step, "secrets", _boom)
+    monkeypatch.setattr(step, "ssm", _boom)
     step.run(_CFG, "20260616")  # confirm=False -> returns before any client
 
 
 def test_teardown_confirm_deletes_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    rds_client, sm = FakeRds(), FakeSecrets()
+    rds_client, ssm_client = FakeRds(), FakeSsm()
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
-    monkeypatch.setattr(step, "secrets", lambda cfg: sm)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)
     assert rds_client.calls == [
         "delete_instance",
@@ -84,13 +84,13 @@ def test_teardown_confirm_deletes_in_order(monkeypatch: pytest.MonkeyPatch) -> N
         "delete_pg",
         "delete_pg",
     ]
-    assert sm.deleted == ["gp-people-db/20260616/master"]
+    assert ssm_client.deleted == ["people-db-connection-string-dev-20260616"]
 
 
 def test_teardown_idempotent_on_missing_resources(monkeypatch: pytest.MonkeyPatch) -> None:
     # A NotFound on a partially-torn-down run must be swallowed, not raise.
-    rds_client, sm = FakeRds(missing={"instance"}), FakeSecrets()
+    rds_client, ssm_client = FakeRds(missing={"instance"}), FakeSsm()
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
-    monkeypatch.setattr(step, "secrets", lambda cfg: sm)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert "delete_cluster" in rds_client.calls

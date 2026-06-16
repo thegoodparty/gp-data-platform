@@ -20,7 +20,6 @@ _DUMP = (
 
 def _patch(monkeypatch: pytest.MonkeyPatch, conn: FakeConn) -> dict:
     captured: dict = {}
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DUMP)
     monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: f"s3://b/{sub}")

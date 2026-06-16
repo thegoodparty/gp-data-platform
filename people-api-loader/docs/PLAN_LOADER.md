@@ -22,8 +22,12 @@
 > from an SSM Parameter Store SecureString, `people-db-connection-string-{env}` (env from
 > `LOADER_ENV`, dev/qa/prod; dev and qa share a value, prod is separate). Mentions of
 > `~/.pg_service.conf [people]` / `service=people` / `LOADER_PROD_CONFIG_SECRET_ID` below
-> are superseded by this. The new (provisioned) cluster still uses its Secrets Manager
-> master password.
+> are superseded by this. The new (provisioned) cluster is reached the same way:
+> `connect_new` reads `people-db-connection-string-{env}-{date}`, an SSM SecureString that
+> `provision` writes with the generated master password embedded in the `postgresql://`
+> URL. The loader no longer uses AWS Secrets Manager at all; prose below mentioning
+> `gp-people-db/{date}/master` secrets, `_ensure_master_secret`, or `secretsmanager:*`
+> grants is superseded.
 
 ## Context
 

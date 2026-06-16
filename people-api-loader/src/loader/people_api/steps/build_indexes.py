@@ -16,7 +16,7 @@ import psycopg
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, connect_prod, resolve_writer_endpoint
+from loader.people_api.db import connect_new, connect_prod
 from loader.people_api.manifests import (
     IndexManifest,
     IndexSpec,
@@ -65,10 +65,10 @@ def _rewrite_index_sql(sql: str) -> str:
     return sql
 
 
-def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk: PrimaryKey) -> None:
+def _add_primary_key(cfg: LoaderConfig, run_date: str, pk: PrimaryKey) -> None:
     cols = ", ".join(f'"{c}"' for c in pk.columns)
     sql = f'ALTER TABLE public."{pk.table}" ADD CONSTRAINT "{pk.constraint}" PRIMARY KEY ({cols})'
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         _apply_session(cur)
         try:
             cur.execute(sql)  # ty: ignore[no-matching-overload]
@@ -80,7 +80,7 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk:
             log.info("indexes.pk_exists", table=pk.table, constraint=pk.constraint)
 
 
-def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: IndexDef) -> None:
+def _create_index(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
     if idx.unique:
         # We rebuild a unique index from its parsed columns (to append the partition
         # key), requoting each as an identifier. That's only valid for plain columns:
@@ -109,19 +109,19 @@ def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: I
         sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols}){where_clause}'
     else:
         sql = _rewrite_index_sql(idx.sql)
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         _apply_session(cur)
         cur.execute(sql)  # ty: ignore[no-matching-overload]
         log.info("indexes.built", table=idx.table, name=idx.name, unique=idx.unique)
 
 
-def _analyze(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> None:
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+def _analyze(cfg: LoaderConfig, run_date: str) -> None:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute('ANALYZE public."Voter"')
         log.info("indexes.analyzed", table=_TARGET_TABLE)
 
 
-def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> list[str] | None:
+def _l2type_coverage(cfg: LoaderConfig, run_date: str) -> list[str] | None:
     """l2Type values in prod org_districts not present as columns on Voter.
 
     Returns the missing list, or `None` when the check was skipped because
@@ -136,7 +136,7 @@ def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> 
         log.warning("indexes.l2type.skip", error=str(e))
         return None
 
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema='public' AND table_name='Voter'"
@@ -154,7 +154,6 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
         )
         return existing
 
-    writer_endpoint = resolve_writer_endpoint(cfg, run_date)
     started = datetime.now(UTC)
     log.info("indexes.start")
 
@@ -171,9 +170,9 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     ]
 
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
-        """Run `fn(cfg, run_date, writer_endpoint, item)` across items, fail-fast."""
+        """Run `fn(cfg, run_date, item)` across items, fail-fast."""
         with ThreadPoolExecutor(max_workers=parallelism) as executor:
-            futures = [executor.submit(fn, cfg, run_date, writer_endpoint, item) for item in items]
+            futures = [executor.submit(fn, cfg, run_date, item) for item in items]
             for fut in as_completed(futures):
                 fut.result()
 
@@ -182,10 +181,10 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     _build_in_parallel(_create_index, idxs)
 
     # 3. ANALYZE.
-    _analyze(cfg, run_date, writer_endpoint)
+    _analyze(cfg, run_date)
 
     # 4. l2Type coverage.
-    missing = _l2type_coverage(cfg, run_date, writer_endpoint)
+    missing = _l2type_coverage(cfg, run_date)
     if missing is None:
         log.warning("indexes.l2type.skipped", reason="org_districts unreachable")
     elif missing:
