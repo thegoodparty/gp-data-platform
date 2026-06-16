@@ -43,6 +43,11 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     log.info("resize.start", cluster=cluster_id, instance=instance_id)
 
     rds_client = rds(cfg)
+    waiter = rds_client.get_waiter("db_instance_available")
+
+    def _wait() -> None:
+        waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+
     # Serve param group + Serverless v2 scaling (cluster-level) + lock-down, applied now.
     rds_client.modify_db_cluster(
         DBClusterIdentifier=cluster_id,
@@ -52,6 +57,10 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
         DeletionProtection=True,
         ApplyImmediately=True,
     )
+    # Let the cluster-level modify settle before the instance-class change, so the two
+    # don't overlap (an in-progress modify would reject the next one). Returns immediately
+    # if the instance isn't affected.
+    _wait()
     # Flip the writer instance to serverless (instance-level class).
     rds_client.modify_db_instance(
         DBInstanceIdentifier=instance_id, DBInstanceClass=_SERVERLESS_CLASS, ApplyImmediately=True
@@ -59,10 +68,9 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     # The class change leaves the instance 'modifying' for minutes; a reboot now would be
     # rejected (InvalidDBInstanceStateFault). Wait for available, reboot to apply the serve
     # parameter group, then wait for available again.
-    waiter = rds_client.get_waiter("db_instance_available")
-    waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+    _wait()
     rds_client.reboot_db_instance(DBInstanceIdentifier=instance_id)
-    waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+    _wait()
     log.info(
         "resize.applied",
         instance_class=_SERVERLESS_CLASS,

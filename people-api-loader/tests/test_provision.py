@@ -45,14 +45,22 @@ class _FakeWaiter:
 
 
 class FakeRds:
-    def __init__(self, existing: dict[str, dict] | None = None) -> None:
+    def __init__(self, existing: dict[str, dict] | None = None, instances: set[str] | None = None) -> None:
         self.clusters: dict[str, dict] = dict(existing or {})
+        self.instances: set[str] = set(instances or set())
         self.calls: list[tuple[str, dict]] = []
 
     def describe_db_clusters(self, DBClusterIdentifier: str) -> dict:
         if DBClusterIdentifier not in self.clusters:
             raise _not_found("DescribeDBClusters")
         return {"DBClusters": [{"Endpoint": self.clusters[DBClusterIdentifier]["Endpoint"]}]}
+
+    def describe_db_instances(self, DBInstanceIdentifier: str) -> dict:
+        if DBInstanceIdentifier not in self.instances:
+            raise ClientError(
+                {"Error": {"Code": "DBInstanceNotFound", "Message": "nf"}}, "DescribeDBInstances"
+            )
+        return {"DBInstances": [{"DBInstanceIdentifier": DBInstanceIdentifier}]}
 
     def create_db_cluster_parameter_group(self, **kw: Any) -> None:
         self.calls.append(("param_group", kw))
@@ -63,6 +71,7 @@ class FakeRds:
 
     def create_db_instance(self, **kw: Any) -> None:
         self.calls.append(("instance", kw))
+        self.instances.add(kw["DBInstanceIdentifier"])
 
     def add_role_to_db_cluster(self, **kw: Any) -> None:
         self.calls.append(("role", kw))
@@ -115,8 +124,11 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
 
 
 def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Cluster already exists -> no create, no new master password; still attaches role + manifests.
-    rds_client = FakeRds(existing={"gp-people-db-20260616": {"Endpoint": "existing.rds.aws"}})
+    # Cluster + instance already exist -> no create, no new master password; still attaches role.
+    rds_client = FakeRds(
+        existing={"gp-people-db-20260616": {"Endpoint": "existing.rds.aws"}},
+        instances={"gp-people-db-20260616-writer"},
+    )
     captured = _patch(monkeypatch, rds_client, FakeEc2())
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
 
@@ -124,8 +136,23 @@ def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.Monkey
 
     assert manifest.writer_endpoint == "existing.rds.aws"
     assert "cluster" not in rds_client.names()  # not re-created
+    assert "instance" not in rds_client.names()  # not re-created
     assert "secret" not in captured  # no new password stored
     assert "role" in rds_client.names()  # role attach is still idempotently ensured
+
+
+def test_provision_recovers_missing_instance(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Partial prior run: cluster exists but its writer instance does not. Re-run must create
+    # the instance (not skip it and then fail the availability waiter) without a new password.
+    rds_client = FakeRds(existing={"gp-people-db-20260616": {"Endpoint": "existing.rds.aws"}})
+    captured = _patch(monkeypatch, rds_client, FakeEc2())
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616")
+
+    assert "cluster" not in rds_client.names()  # cluster reused
+    assert "instance" in rds_client.names()  # missing instance created
+    assert "secret" not in captured  # no new password (cluster's master is unchanged)
 
 
 def test_provision_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

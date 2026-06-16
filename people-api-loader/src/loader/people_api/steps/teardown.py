@@ -1,7 +1,8 @@
 """Delete loader-created resources for a run_date (DATA-1912). Dry-run by default.
 
-Describe-first and idempotent: walks only cfg-derived (date-stamped) resource names, so
-it can't touch the serving cluster or shared infra. Deletion order:
+Safety model is name-scoping, not a tag guard: it walks only cfg-derived, date-stamped
+names (gp-people-db-{date}*), which by construction can never match the serving cluster
+(gp-people-db-prod) or shared infra. Describe-first and idempotent. Deletion order:
   writer instance -> cluster (deletion-protection disabled first) -> load/serve param
   groups -> master secret -> (opt-in) the voter_export_{date}/ S3 prefix.
 

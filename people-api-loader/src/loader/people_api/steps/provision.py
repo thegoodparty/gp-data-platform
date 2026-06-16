@@ -54,6 +54,16 @@ def _cluster_exists(client: object, cluster_id: str) -> bool:
     return True
 
 
+def _instance_exists(client: object, instance_id: str) -> bool:
+    try:
+        client.describe_db_instances(DBInstanceIdentifier=instance_id)  # ty: ignore[unresolved-attribute]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "DBInstanceNotFound":
+            return False
+        raise
+    return True
+
+
 def _ensure_cluster_param_group(client: object, name: str, family: str, tags: list[dict[str, str]]) -> None:
     with ignore_client_errors("DBParameterGroupAlreadyExists"):
         client.create_db_cluster_parameter_group(  # ty: ignore[unresolved-attribute]
@@ -120,8 +130,9 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     _ensure_cluster_param_group(rds_client, load_pg, family, tags)
     _ensure_cluster_param_group(rds_client, serve_pg, family, tags)
 
-    # Create the cluster + writer instance only if absent. On a re-run we reuse the
-    # existing cluster (and its already-stored master password) rather than regenerate.
+    # Cluster, then writer instance — each guarded independently so a partial prior run
+    # (cluster created but instance not) self-heals on re-run. An existing cluster is
+    # reused with its already-stored master password (no regenerate).
     if not _cluster_exists(rds_client, cluster_id):
         password = secrets.token_urlsafe(32)
         put_secret(cfg, secret_id, password, description=f"RDS master password for {cluster_id}")
@@ -142,6 +153,11 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             StorageType=_STORAGE_TYPE,
             Tags=tags,
         )
+        log.info("provision.cluster_created", cluster=cluster_id)
+    else:
+        log.info("provision.cluster_exists", cluster=cluster_id)
+
+    if not _instance_exists(rds_client, instance_id):
         rds_client.create_db_instance(
             DBInstanceIdentifier=instance_id,
             DBClusterIdentifier=cluster_id,
@@ -149,9 +165,9 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             DBInstanceClass=cfg.load_instance_class,
             Tags=tags,
         )
-        log.info("provision.cluster_created", cluster=cluster_id, instance=instance_id)
+        log.info("provision.instance_created", instance=instance_id)
     else:
-        log.info("provision.cluster_exists", cluster=cluster_id)
+        log.info("provision.instance_exists", instance=instance_id)
 
     _attach_s3_import_role(rds_client, cluster_id, cfg.s3_import_role_arn)
 
