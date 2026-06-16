@@ -40,6 +40,8 @@ from loader.people_api.manifests import (
 log = get_logger(__name__)
 
 _ENGINE = "aurora-postgresql"
+# IO-optimized storage for the one-shot bulk-load + heavy-index-build workload.
+_STORAGE_TYPE = "aurora-iopt1"
 
 
 def _param_group_family(engine_version: str) -> str:
@@ -67,7 +69,7 @@ def _ensure_cluster_param_group(client: object, name: str, family: str, tags: li
         )
         log.info("provision.param_group_created", name=name, family=family)
     except ClientError as e:
-        if e.response["Error"]["Code"] == "DBParameterGroupAlreadyExistsFault":
+        if e.response["Error"]["Code"] == "DBParameterGroupAlreadyExists":
             log.info("provision.param_group_exists", name=name)
             return
         raise
@@ -148,7 +150,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             DBClusterParameterGroupName=load_pg,
             BackupRetentionPeriod=1,
             DeletionProtection=False,
-            StorageType="aurora-iopt1",
+            StorageType=_STORAGE_TYPE,
             Tags=tags,
         )
         rds_client.create_db_instance(
