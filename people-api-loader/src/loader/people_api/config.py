@@ -32,8 +32,6 @@ DEFAULT_DB_ENV = "dev"
 # provision is still a stub). Empty placeholders are the out-of-the-box default.
 _PLACEHOLDER = ""
 DEFAULT_PROD_CLUSTER_ID = _PLACEHOLDER
-DEFAULT_PROD_WRITER_ENDPOINT = _PLACEHOLDER
-DEFAULT_PROD_SECRET_ID = _PLACEHOLDER
 DEFAULT_PROD_DB_NAME = _PLACEHOLDER
 DEFAULT_PROD_DB_USER = _PLACEHOLDER
 DEFAULT_PROD_DB_PORT = 5432
@@ -72,8 +70,6 @@ class LoaderConfig(BaseLoaderConfig):
 
     # Prod (inspected / validated against)
     prod_cluster_id: str
-    prod_writer_endpoint: str
-    prod_secret_id: str
     prod_db_name: str
     prod_db_user: str
     prod_db_port: int
@@ -123,8 +119,6 @@ class LoaderConfig(BaseLoaderConfig):
             databricks_table=os.environ.get("LOADER_DATABRICKS_TABLE", DEFAULT_DATABRICKS_TABLE),
             db_conn_param=db_conn_param,
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
-            prod_writer_endpoint=os.environ.get("LOADER_PROD_WRITER_ENDPOINT", DEFAULT_PROD_WRITER_ENDPOINT),
-            prod_secret_id=os.environ.get("LOADER_PROD_SECRET_ID", DEFAULT_PROD_SECRET_ID),
             prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
             prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
             prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)),
