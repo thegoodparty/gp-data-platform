@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_nhgis__block_population
+    description: >
+      2020 decennial census population per census block, unioned from the two
+      research-staged NHGIS extracts. The file split is by row count, not state,
+      so both tables are required for a complete national frame (Missouri spans
+      both). Covers all states, DC, and Puerto Rico. The 2020 frame is static, so
+      singular tests pin the exact national totals and Missouri's block count as
+      union regressions.
+    columns:
+      - name: block_geoid
+        description: >
+          Census block GEOID, zero-padded to the canonical 15 characters
+          (state + county + tract + block). Numeric upstream storage drops
+          leading zeros, so consumers should always join on this padded form.
+        data_tests:
+          - not_null
+          - unique
+      - name: state_fips
+        description: Two-character zero-padded state FIPS code (includes DC and Puerto Rico).
+        data_tests:
+          - not_null
+      - name: population
+        description: Total 2020 decennial census population of the block (NHGIS variable U7H001).
+        data_tests:
+          - not_null
+      - name: tract_geoid
+        description: Census tract GEOID, the first 11 characters of block_geoid.
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "length(block_geoid) = 15 and length(state_fips) = 2 and length(tract_geoid) = 11"
