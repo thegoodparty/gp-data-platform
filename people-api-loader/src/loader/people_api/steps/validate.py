@@ -207,9 +207,17 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: st
             cur.execute('SELECT DISTINCT "l2Type" FROM public.org_districts WHERE "l2Type" IS NOT NULL')
             distinct_l2types = [r[0] for r in cur.fetchall() if r[0]]
     except Exception as e:  # broad by design: org_districts is in the app DB, not always reachable
-        log.error("validate.prod_unreachable", check="l2Type_coverage", error=str(e))
+        # Skip (don't hard-fail) to match build_indexes._l2type_coverage, which returns None
+        # and still completes. org_districts is an environmental dependency in a different DB
+        # that may be persistently unreachable (separate VPC); failing closed here would wedge
+        # the pipeline (step 5 completes, step 7 never passes). Distinct from the required
+        # inspect baseline in _check_prod_row_counts, which DOES fail closed. The skip is
+        # surfaced in details + a warning, not silently green.
+        log.warning("validate.l2type.skip", check="l2Type_coverage", error=str(e))
         return ValidationCheck(
-            name="l2Type_coverage", passed=False, details={"error_reading_org_districts": str(e)}
+            name="l2Type_coverage",
+            passed=True,
+            details={"skipped": "org_districts unreachable", "error": str(e)},
         )
     with connect_new(cfg, run_date, writer_endpoint) as conn:
         new_cols = _voter_columns(conn)

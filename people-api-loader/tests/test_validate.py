@@ -208,10 +208,13 @@ def test_check_l2type_coverage_missing_fails(monkeypatch: pytest.MonkeyPatch) ->
     assert "Type_B" in check.details["missing_columns"]
 
 
-def test_check_l2type_coverage_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_l2type_coverage_skips_when_org_districts_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # org_districts is an environmental dependency build_indexes already skips; validate
+    # must skip too (passed=True, visibly recorded), not hard-fail and wedge the pipeline.
     monkeypatch.setattr(step, "connect_prod", _boom)
     check = step._check_l2type_coverage(_CFG, "20260609", "wh")
-    assert check.passed is False and "error_reading_org_districts" in check.details
+    assert check.passed is True
+    assert "skipped" in check.details
 
 
 def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> None:
