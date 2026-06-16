@@ -1,13 +1,196 @@
-"""Step 2 — provision Aurora cluster, IAM role, VPCE, parameter groups.
+"""Step 2 — provision a fresh Aurora PostgreSQL cluster for the load (DATA-1909).
 
-Stub: scaffolding only. Per-step implementation tracked under ClickUp DATA-1909.
+Creates, per run_date, the date-stamped cluster + writer instance + the load/serve
+cluster parameter groups, stores the generated master password in Secrets Manager,
+attaches the pre-existing rds-s3-import role (for aws_s3 imports), polls to ready and
+runs SELECT 1, and records everything in a ProvisionManifest.
+
+Durable infra is NOT created here — the rds-s3-import IAM role, the S3 gateway VPC
+endpoint, the loader-owned security group, and the DB subnet group are one-time
+platform resources (DATA-1856, in gp-terraform-dataplatform). provision references them
+(IDs come from LOADER_* env / config) and verifies the S3 VPC endpoint exists.
+
+Parameter groups are created empty (defaults): the heavy load tuning is applied
+per-session by copy/build_indexes (synchronous_commit=off, maintenance_work_mem, ...),
+so nothing durability-hazardous is baked into the load group. The groups exist so resize
+(step 6) can swap load -> serve on the cluster.
+
+Idempotent: a completed manifest short-circuits; an existing same-named cluster is
+reused (no re-create, no new password).
 """
 
 from __future__ import annotations
 
+import secrets
+from datetime import UTC, datetime
+
+from botocore.exceptions import ClientError
+
+from loader.core.aws import ec2, put_secret, rds
+from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.manifests import ProvisionManifest
+from loader.people_api.db import connect_new
+from loader.people_api.manifests import (
+    ProvisionManifest,
+    manifest_uri,
+    read_manifest,
+    write_manifest,
+)
+
+log = get_logger(__name__)
+
+_ENGINE = "aurora-postgresql"
+
+
+def _param_group_family(engine_version: str) -> str:
+    """e.g. '16.8' -> 'aurora-postgresql16'."""
+    return f"aurora-postgresql{engine_version.split('.')[0]}"
+
+
+def _cluster_exists(client: object, cluster_id: str) -> bool:
+    try:
+        client.describe_db_clusters(DBClusterIdentifier=cluster_id)  # ty: ignore[unresolved-attribute]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "DBClusterNotFoundFault":
+            return False
+        raise
+    return True
+
+
+def _ensure_cluster_param_group(client: object, name: str, family: str, tags: list[dict[str, str]]) -> None:
+    try:
+        client.create_db_cluster_parameter_group(  # ty: ignore[unresolved-attribute]
+            DBClusterParameterGroupName=name,
+            DBParameterGroupFamily=family,
+            Description=f"people-api-loader {name}",
+            Tags=tags,
+        )
+        log.info("provision.param_group_created", name=name, family=family)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "DBParameterGroupAlreadyExistsFault":
+            log.info("provision.param_group_exists", name=name)
+            return
+        raise
+
+
+def _attach_s3_import_role(client: object, cluster_id: str, role_arn: str) -> None:
+    try:
+        client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
+            DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
+        )
+        log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "DBClusterRoleAlreadyExists":
+            log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
+            return
+        raise
+
+
+def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
+    """Return the S3 gateway VPC endpoint id in the VPC, or "" if absent.
+
+    provision does not create it (it's durable platform infra); this verifies it exists
+    and records its id. Absence is a warning, not a hard failure.
+    """
+    resp = client.describe_vpc_endpoints(  # ty: ignore[unresolved-attribute]
+        Filters=[
+            {"Name": "vpc-id", "Values": [vpc_id]},
+            {"Name": "service-name", "Values": [f"com.amazonaws.{region}.s3"]},
+        ]
+    )
+    endpoints = resp.get("VpcEndpoints", [])
+    return endpoints[0]["VpcEndpointId"] if endpoints else ""
 
 
 def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
-    raise NotImplementedError("loader.people_api.steps.provision is a stub; implement per ClickUp DATA-1909.")
+    bind(run_date=run_date, step="provision")
+    existing = read_manifest(cfg, run_date, "provision", ProvisionManifest)
+    if existing and existing.status == "complete":
+        log.info(
+            "provision.skip", reason="manifest already complete", uri=manifest_uri(cfg, run_date, "provision")
+        )
+        return existing
+
+    cluster_id = cfg.new_cluster_id(run_date)
+    instance_id = cfg.new_writer_instance_id(run_date)
+    load_pg = cfg.new_load_param_group(run_date)
+    serve_pg = cfg.new_serve_param_group(run_date)
+    secret_id = cfg.new_master_secret_id(run_date)
+    family = _param_group_family(cfg.engine_version)
+
+    started = datetime.now(UTC)
+    log.info("provision.start", cluster=cluster_id, instance=instance_id)
+
+    rds_client = rds(cfg)
+    ec2_client = ec2(cfg)
+    tags = cfg.tags_as_aws()
+
+    # Param groups first (the cluster references the load group at create time).
+    _ensure_cluster_param_group(rds_client, load_pg, family, tags)
+    _ensure_cluster_param_group(rds_client, serve_pg, family, tags)
+
+    # Create the cluster + writer instance only if absent. On a re-run we reuse the
+    # existing cluster (and its already-stored master password) rather than regenerate.
+    if not _cluster_exists(rds_client, cluster_id):
+        password = secrets.token_urlsafe(32)
+        put_secret(cfg, secret_id, password, description=f"RDS master password for {cluster_id}")
+        rds_client.create_db_cluster(
+            DBClusterIdentifier=cluster_id,
+            Engine=_ENGINE,
+            EngineVersion=cfg.engine_version,
+            DBSubnetGroupName=cfg.db_subnet_group,
+            VpcSecurityGroupIds=[cfg.security_group_id],
+            MasterUsername=cfg.prod_db_user,
+            MasterUserPassword=password,
+            DatabaseName=cfg.prod_db_name,
+            StorageEncrypted=True,
+            KmsKeyId=cfg.kms_key_arn,
+            DBClusterParameterGroupName=load_pg,
+            BackupRetentionPeriod=1,
+            DeletionProtection=False,
+            StorageType="aurora-iopt1",
+            Tags=tags,
+        )
+        rds_client.create_db_instance(
+            DBInstanceIdentifier=instance_id,
+            DBClusterIdentifier=cluster_id,
+            Engine=_ENGINE,
+            DBInstanceClass=cfg.load_instance_class,
+            Tags=tags,
+        )
+        log.info("provision.cluster_created", cluster=cluster_id, instance=instance_id)
+    else:
+        log.info("provision.cluster_exists", cluster=cluster_id)
+
+    _attach_s3_import_role(rds_client, cluster_id, cfg.s3_import_role_arn)
+
+    # "Available" via the API, then prove the DB actually accepts connections.
+    rds_client.get_waiter("db_instance_available").wait(
+        DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
+    )
+    endpoint = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]["Endpoint"]
+    with connect_new(cfg, run_date, endpoint) as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1")
+    log.info("provision.ready", endpoint=endpoint)
+
+    vpce_id = _find_s3_vpc_endpoint(ec2_client, cfg.aws_region, cfg.vpc_id)
+    if not vpce_id:
+        log.warning("provision.s3_vpce_missing", vpc=cfg.vpc_id)
+
+    manifest = ProvisionManifest(
+        run_date=run_date,
+        status="complete",
+        started_at=started,
+        finished_at=datetime.now(UTC),
+        cluster_id=cluster_id,
+        writer_instance_id=instance_id,
+        writer_endpoint=endpoint,
+        iam_role_arn=cfg.s3_import_role_arn,
+        vpc_endpoint_id=vpce_id,
+        load_parameter_group=load_pg,
+        serve_parameter_group=serve_pg,
+        master_secret_id=secret_id,
+    )
+    uri = write_manifest(cfg, manifest)
+    log.info("provision.complete", uri=uri, cluster=cluster_id, endpoint=endpoint)
+    return manifest

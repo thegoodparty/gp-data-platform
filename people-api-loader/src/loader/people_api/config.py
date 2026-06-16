@@ -40,6 +40,9 @@ DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
 DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
 DEFAULT_KMS_KEY_ARN = _PLACEHOLDER
 DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
+# Durable rds-s3-import role (created once by platform/DATA-1856, not per run). provision
+# references and attaches it via PassRole; it does not create it.
+DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 
 # Load-phase instance. Prod is serverless, but we use provisioned for load
@@ -79,6 +82,7 @@ class LoaderConfig(BaseLoaderConfig):
     db_subnet_group: str
     security_group_id: str
     kms_key_arn: str
+    s3_import_role_arn: str
 
     # New cluster defaults
     engine_version: str
@@ -126,6 +130,7 @@ class LoaderConfig(BaseLoaderConfig):
             db_subnet_group=os.environ.get("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
             security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
             kms_key_arn=os.environ.get("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
+            s3_import_role_arn=os.environ.get("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
             engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
@@ -144,9 +149,6 @@ class LoaderConfig(BaseLoaderConfig):
 
     def new_master_secret_id(self, run_date: str) -> str:
         return f"gp-people-db/{run_date}/master"
-
-    def new_iam_role_name(self, run_date: str) -> str:
-        return f"rds-s3-import-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
         return f"gp-people-db-{run_date}-load"
