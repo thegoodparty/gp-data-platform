@@ -24,11 +24,12 @@ DEFAULT_S3_BUCKET = "gp-voter-loader"
 DEFAULT_DATABRICKS_TABLE = "goodparty_data_catalog.dbt.int__l2_nationwide_uniform"
 
 # Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
-# (LOADER_ENV, dev/qa/prod). The Present cluster is `people-db-connection-string-{env}`;
-# each provisioned cluster is `people-db-connection-string-{env}-{run_date}` (unique per
-# run, no collision with the serving cluster). connect_prod/connect_new fetch and decrypt
-# at connect time — nothing connection-related is committed here.
+# (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
+# provisioned cluster is `{CONN_PARAM_PREFIX}-{env}-{run_date}` (unique per run, no collision
+# with the serving cluster). connect_prod/connect_new fetch and decrypt at connect time —
+# nothing connection-related is committed here.
 DEFAULT_DB_ENV = "dev"
+CONN_PARAM_PREFIX = "people-db-connection-string"
 
 # Infrastructure identifiers (AWS account ID, VPC / subnet group / security group / KMS
 # key, plus the new cluster's DB name/user/port) are intentionally NOT hardcoded — this
@@ -100,9 +101,9 @@ class LoaderConfig(BaseLoaderConfig):
     def from_env(cls) -> LoaderConfig:
         if _FORBIDDEN_ENV_VAR in os.environ:
             raise RuntimeError(
-                f"${_FORBIDDEN_ENV_VAR} is set in the process environment. The "
-                "loader fetches the RDS master password from AWS Secrets Manager "
-                "at runtime; env-var passwords are not allowed. Unset it and re-run."
+                f"${_FORBIDDEN_ENV_VAR} is set in the process environment. The loader "
+                "builds connections from SSM SecureString connection strings at runtime; "
+                "env-var passwords are not allowed. Unset it and re-run."
             )
 
         # Tagging for loader-created resources. The IAM role this loader runs
@@ -118,7 +119,7 @@ class LoaderConfig(BaseLoaderConfig):
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
         # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
         env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
-        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"people-db-connection-string-{env}")
+        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
         return cls(
@@ -156,7 +157,7 @@ class LoaderConfig(BaseLoaderConfig):
 
     def new_conn_param(self, run_date: str) -> str:
         """SSM SecureString name for the provisioned cluster's connection string."""
-        return f"people-db-connection-string-{self.db_env}-{run_date}"
+        return f"{CONN_PARAM_PREFIX}-{self.db_env}-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
         return f"gp-people-db-{run_date}-load"

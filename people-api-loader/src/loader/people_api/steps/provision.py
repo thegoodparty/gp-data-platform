@@ -168,6 +168,11 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         put_ssm_parameter(cfg, conn_param, conninfo)
         log.info("provision.conn_param_written", name=conn_param)
     else:
+        # Reuse: the create response (and the generated password) aren't in hand, so read the
+        # writer endpoint back. The create branch already has it from the create response.
+        endpoint = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0][
+            "Endpoint"
+        ]
         log.info("provision.cluster_exists", cluster=cluster_id)
 
     if not _instance_exists(rds_client, instance_id):
@@ -188,7 +193,6 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     rds_client.get_waiter("db_instance_available").wait(
         DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
     )
-    endpoint = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]["Endpoint"]
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute("SELECT 1")
     log.info("provision.ready", endpoint=endpoint)
