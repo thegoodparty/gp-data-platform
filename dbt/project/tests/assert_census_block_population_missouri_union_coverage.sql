@@ -8,7 +8,7 @@
 with
     missouri as (
         select count(*) as mo_blocks
-        from {{ ref("stg_nhgis__block_population") }}
+        from {{ ref("stg_census__block_population") }}
         where state_fips = '29'
     )
 select *

@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: stg_nhgis__block_population
+  - name: stg_census__block_population
     description: >
       2020 decennial census population per census block, unioned from the two
       research-staged NHGIS extracts. The file split is by row count, not state,
