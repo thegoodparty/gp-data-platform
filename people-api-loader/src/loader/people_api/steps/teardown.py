@@ -27,7 +27,10 @@ def _delete_s3_prefix(cfg: LoaderConfig, run_date: str) -> None:
     for page in paginator.paginate(Bucket=cfg.s3_bucket, Prefix=prefix):
         keys = [{"Key": o["Key"]} for o in page.get("Contents", [])]
         if keys:
-            client.delete_objects(Bucket=cfg.s3_bucket, Delete={"Objects": keys})
+            resp = client.delete_objects(Bucket=cfg.s3_bucket, Delete={"Objects": keys})
+            if errors := resp.get("Errors", []):
+                # delete_objects reports per-key failures here without raising.
+                raise RuntimeError(f"S3 delete_objects partial failure in {cfg.s3_bucket}/{prefix}: {errors}")
             deleted += len(keys)
     log.info("teardown.s3_deleted", prefix=prefix, objects=deleted)
 

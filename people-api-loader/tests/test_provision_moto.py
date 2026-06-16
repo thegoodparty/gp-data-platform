@@ -72,6 +72,12 @@ def test_provision_end_to_end_against_moto(monkeypatch: pytest.MonkeyPatch) -> N
     boto3.client("secretsmanager", region_name=_REGION).get_secret_value(
         SecretId="gp-people-db/20260616/master"
     )
+    # the s3Import role was attached with the correct FeatureName and ARN (catches a
+    # FeatureName typo that moto would otherwise store without complaint)
+    roles = rds.describe_db_clusters(DBClusterIdentifier="gp-people-db-20260616")["DBClusters"][0][
+        "AssociatedRoles"
+    ]
+    assert any(r["RoleArn"] == cfg.s3_import_role_arn and r["FeatureName"] == "s3Import" for r in roles)
 
     # idempotent re-run reuses the existing cluster without error
     manifest2 = step.run(cfg, "20260616")

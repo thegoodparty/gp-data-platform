@@ -56,11 +56,13 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     rds_client.modify_db_instance(
         DBInstanceIdentifier=instance_id, DBInstanceClass=_SERVERLESS_CLASS, ApplyImmediately=True
     )
-    # Reboot so the serve parameter group takes effect, then wait for available.
+    # The class change leaves the instance 'modifying' for minutes; a reboot now would be
+    # rejected (InvalidDBInstanceStateFault). Wait for available, reboot to apply the serve
+    # parameter group, then wait for available again.
+    waiter = rds_client.get_waiter("db_instance_available")
+    waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
     rds_client.reboot_db_instance(DBInstanceIdentifier=instance_id)
-    rds_client.get_waiter("db_instance_available").wait(
-        DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40}
-    )
+    waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
     log.info(
         "resize.applied",
         instance_class=_SERVERLESS_CLASS,
