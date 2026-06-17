@@ -8,7 +8,7 @@
 with
     totals as (
         select count(*) as total_blocks, sum(population) as total_population
-        from {{ ref("stg_nhgis__block_population") }}
+        from {{ ref("stg_census__block_population") }}
     )
 select *
 from totals

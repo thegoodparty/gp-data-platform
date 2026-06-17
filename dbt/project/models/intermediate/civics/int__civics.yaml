@@ -3305,3 +3305,111 @@ models:
             expression: >
               (requires_review and review_reason is not null)
               or (not requires_review and review_reason is null)
+
+  - name: int__district_census_allocation
+    description: >
+      THE SUBSTRATE (DATA-1992, epic DATA-1359). One row per (census block,
+      district_type, normalized district_name) with the 2020 decennial
+      population allocated to that district in that block: allocated_population
+      = pct_of_geo * block_population, where pct_of_geo is the within-(block,
+      district_type) L2 voter share and the magnitude is census block
+      population (never voter counts). Block grain only; block_group_geoid
+      (LEFT 12) and tract_geoid (LEFT 11) are carried for GROUP BY rollups
+      (coarser grains are never stored as rows, so no cross-grain
+      double-count). Counts only, PII-free. Depends on L2 + census only (no
+      election-api edge). Consumed by people_served, official_constituents, and
+      district_census_stats.
+    columns:
+      - name: block_geoid
+        description: 15-char zero-padded 2020 census block GEOID
+        data_tests:
+          - not_null
+      - name: block_group_geoid
+        description: Block group GEOID (LEFT 12 of block_geoid); rollup key
+        data_tests:
+          - not_null
+      - name: tract_geoid
+        description: Tract GEOID (LEFT 11 of block_geoid); rollup key
+        data_tests:
+          - not_null
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: L2 district column name (v1 major office-bearing subset)
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name (the join key to the serve resolver)
+        data_tests:
+          - not_null
+      - name: voters_in_block_district
+        description: Distinct L2 voters in this (block, district_type, district_name)
+        data_tests:
+          - not_null
+      - name: voters_in_block
+        description: >
+          Distinct L2 voters in this block across all district_names of this
+          district_type (the split denominator)
+        data_tests:
+          - not_null
+      - name: block_population
+        description: 2020 decennial census population of the block
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: pct_of_geo
+        description: >
+          Share of the block allocated to this district =
+          voters_in_block_district / voters_in_block. At block grain this is the
+          fraction of the block in this district.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+      - name: allocated_population
+        description: >
+          pct_of_geo * block_population (fractional by design; sums to
+          block_population per (block, district_type))
+        data_tests:
+          - not_null
+      - name: is_non_exact
+        description: >
+          The block's L2 voters report >1 district of this type (pct_of_geo <
+          1). A voter-OBSERVED split indicator at block grain: it includes L2
+          geocoding noise and misses geographic splits no observed voter falls
+          on both sides of, so it is an indicator, not a precise
+          geographic-overlap measure. The validated per-district
+          non-exact-assignment share (the accuracy story) is computed at
+          block-group grain in the demographic layer (phase 2); at block grain
+          splitting is mostly noise (TDD App B.2).
+        data_tests:
+          - not_null
+      - name: loaded_at
+        description: Max loaded_at of the contributing L2 rows
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_census_allocation_unique_key
+          arguments:
+            combination_of_columns: [block_geoid, district_type, district_name]
+      - dbt_utils.expression_is_true:
+          name: district_census_allocation_allocated_le_population
+          arguments:
+            # +1e-6 tolerance guards against any binary-float overshoot near
+            # pct_of_geo = 1.0 (sub-microperson; mass-conservation is the exact check)
+            expression: "allocated_population <= block_population + 1e-6"
+      - dbt_utils.expression_is_true:
+          name: district_census_allocation_geoid_lengths
+          arguments:
+            expression: >
+              length(block_geoid) = 15 and length(block_group_geoid) = 12
+              and length(tract_geoid) = 11

@@ -1,3 +1,9 @@
+-- Named for the census *concept* (decennial block population), not its current
+-- ingestion path: v1 still reads the research-staged NHGIS extract via
+-- source('nhgis', ...). A documented fast-follow swaps the source to a direct
+-- Census decennial pull (byte-identical output), and a census-concept model
+-- name keeps that swap from churning every downstream ref(). Deliberate, not a smell.
+--
 -- 2020 decennial census population per census block, unioned from the two
 -- research-staged NHGIS extracts. The a/b file split is by row count, not
 -- state (Missouri spans both files), so both sources are required for a
