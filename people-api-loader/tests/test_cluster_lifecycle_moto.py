@@ -82,10 +82,14 @@ def test_provision_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rds.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"]
     assert rds.describe_db_instances(DBInstanceIdentifier=cfg.new_writer_instance_id(_DATE))["DBInstances"]
     # the connection string was written to SSM as a postgresql:// URL (password embedded)
-    conninfo = boto3.client("ssm", region_name=_REGION).get_parameter(
-        Name=cfg.new_conn_param(_DATE), WithDecryption=True
-    )["Parameter"]["Value"]
+    ssm = boto3.client("ssm", region_name=_REGION)
+    conninfo = ssm.get_parameter(Name=cfg.new_conn_param(_DATE), WithDecryption=True)["Parameter"]["Value"]
     assert conninfo.startswith("postgresql://people_admin:")
+    # tagged with Environment so the loader's IAM permissions boundary allows Get/Describe
+    tags = ssm.list_tags_for_resource(ResourceType="Parameter", ResourceId=cfg.new_conn_param(_DATE))[
+        "TagList"
+    ]
+    assert {"Key": "Environment", "Value": "dev"} in tags
     # the s3Import role attached with the right FeatureName + ARN (moto stores any
     # FeatureName, so this catches a typo that would only fail in real AWS)
     roles = rds.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]["AssociatedRoles"]

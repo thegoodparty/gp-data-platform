@@ -68,10 +68,20 @@ def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True)
 
 
 def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> None:
-    """Write (overwrite) an SSM Parameter Store value; SecureString by default."""
-    ssm(cfg).put_parameter(
-        Name=name, Value=value, Type="SecureString" if secure else "String", Overwrite=True
-    )
+    """Write (create or overwrite) an SSM Parameter Store value; SecureString by default.
+
+    The parameter is tagged with the loader's Environment tags so IAM policies scoped by
+    `aws:ResourceTag/Environment` (the loader's permissions boundary) allow subsequent
+    Get/Describe. SSM forbids combining `Tags` with `Overwrite` in one call, so we
+    create-with-tags first and fall back to overwrite + re-tag if it already exists.
+    """
+    client = ssm(cfg)
+    param_type = "SecureString" if secure else "String"
+    try:
+        client.put_parameter(Name=name, Value=value, Type=param_type, Tags=cfg.tags_as_aws())
+    except client.exceptions.ParameterAlreadyExists:
+        client.put_parameter(Name=name, Value=value, Type=param_type, Overwrite=True)
+        client.add_tags_to_resource(ResourceType="Parameter", ResourceId=name, Tags=cfg.tags_as_aws())
 
 
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
