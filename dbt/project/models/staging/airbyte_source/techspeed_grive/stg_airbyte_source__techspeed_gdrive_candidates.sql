@@ -45,10 +45,12 @@ with
             nullif(trim(email), '') as email,
             {{ clean_phone_number("phone") }} as phone,
             date_of_birth_mmddyyyy as birth_date,
+            -- Same non-zero-padded handling as the election dates above: TechSpeed
+            -- is the same source, so birth dates can arrive as 6-2-1985.
             coalesce(
                 try_cast(date_of_birth_mmddyyyy as date),
-                try_to_date(date_of_birth_mmddyyyy, 'MM-dd-yyyy'),
-                try_to_date(date_of_birth_mmddyyyy, 'MM/dd/yyyy'),
+                try_to_date(date_of_birth_mmddyyyy, 'M-d-yyyy'),
+                try_to_date(date_of_birth_mmddyyyy, 'M/d/yyyy'),
                 try_to_date(date_of_birth_mmddyyyy, 'yyyy-MM-dd')
             ) as birth_date_parsed,
             nullif(trim(street_address), '') as street_address,
