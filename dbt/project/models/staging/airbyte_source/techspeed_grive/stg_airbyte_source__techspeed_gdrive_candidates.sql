@@ -45,11 +45,14 @@ with
             nullif(trim(email), '') as email,
             {{ clean_phone_number("phone") }} as phone,
             date_of_birth_mmddyyyy as birth_date,
+            -- Same slash-normalize + non-zero-padded handling as the election
+            -- dates above: TechSpeed is the same source, so birth dates arrive both
+            -- as 6-2-1985 and as yyyy/MM/dd (1953/02/01). Normalize slashes to
+            -- dashes, then parse ISO (try_cast) and month-first M-d-yyyy / M-d-yy.
             coalesce(
-                try_cast(date_of_birth_mmddyyyy as date),
-                try_to_date(date_of_birth_mmddyyyy, 'MM-dd-yyyy'),
-                try_to_date(date_of_birth_mmddyyyy, 'MM/dd/yyyy'),
-                try_to_date(date_of_birth_mmddyyyy, 'yyyy-MM-dd')
+                try_cast(replace(date_of_birth_mmddyyyy, '/', '-') as date),
+                try_to_date(replace(date_of_birth_mmddyyyy, '/', '-'), 'M-d-yyyy'),
+                try_to_date(replace(date_of_birth_mmddyyyy, '/', '-'), 'M-d-yy')
             ) as birth_date_parsed,
             nullif(trim(street_address), '') as street_address,
             postal_code,
@@ -67,42 +70,47 @@ with
             replace(primary_election_date, '/', '-') as primary_election_date,
             replace(general_election_date, '/', '-') as general_election_date,
             replace(filing_deadline, '/', '-') as filing_deadline,
-            -- Parsed DATE columns
+            -- Parsed DATE columns. TechSpeed delivers some dates without
+            -- zero-padding (for example 6-2-2026), so the patterns use the
+            -- single-letter tokens M and d, which accept one or two digits and
+            -- therefore parse both padded (06-02-2026) and non-padded values.
+            -- The earlier MM-dd patterns required two digits and silently
+            -- dropped the non-padded dates to NULL.
             coalesce(
                 try_cast(replace(primary_election_date, '/', '-') as date),
-                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yyyy'),
-                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yy')
+                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yyyy'),
+                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yy')
             ) as primary_election_date_parsed,
             coalesce(
                 try_cast(replace(general_election_date, '/', '-') as date),
-                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yyyy'),
-                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yy')
+                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yyyy'),
+                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yy')
             ) as general_election_date_parsed,
             case
                 when
                     year(
                         coalesce(
                             try_cast(replace(filing_deadline, '/', '-') as date),
-                            try_to_date(
-                                replace(filing_deadline, '/', '-'), 'MM-dd-yyyy'
-                            )
+                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy'),
+                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yy')
                         )
                     )
                     between 1900 and 2050
                 then
                     coalesce(
                         try_cast(replace(filing_deadline, '/', '-') as date),
-                        try_to_date(replace(filing_deadline, '/', '-'), 'MM-dd-yyyy')
+                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy'),
+                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yy')
                     )
             end as filing_deadline_parsed,
             -- Coalesced election date (general preferred, fallback to primary)
             coalesce(
                 try_cast(replace(general_election_date, '/', '-') as date),
-                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yyyy'),
-                try_to_date(replace(general_election_date, '/', '-'), 'MM-dd-yy'),
+                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yyyy'),
+                try_to_date(replace(general_election_date, '/', '-'), 'M-d-yy'),
                 try_cast(replace(primary_election_date, '/', '-') as date),
-                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yyyy'),
-                try_to_date(replace(primary_election_date, '/', '-'), 'MM-dd-yy')
+                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yyyy'),
+                try_to_date(replace(primary_election_date, '/', '-'), 'M-d-yy')
             ) as election_date,
             election_result,
 
