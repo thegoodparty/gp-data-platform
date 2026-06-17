@@ -8,19 +8,23 @@ Stable pseudonymous voter key: SHA-256 hash of L2's LALVOTERID. Uniquely identif
 {% enddocs %}
 
 {% docs sav_Residence_Addresses_City %}
-Residence Addresses City
+City of the voter's residence address.
+{% enddocs %}
+
+{% docs sav_Residence_Addresses_State %}
+Two-letter US state of the voter's residence address.
 {% enddocs %}
 
 {% docs sav_Residence_Addresses_Zip %}
-Residence Addresses Zip
+5-digit ZIP code of the voter's residence address.
 {% enddocs %}
 
 {% docs sav_Residence_Addresses_CensusTract %}
-6 digit census tract number
+2020 Census tract of the voter's residence (geographic aggregation unit, not a street address).
 {% enddocs %}
 
 {% docs sav_Residence_Addresses_CensusBlockGroup %}
-Single digit number
+2020 Census block group of the voter's residence (geographic aggregation unit, not a street address).
 {% enddocs %}
 
 {% docs sav_Voters_Gender %}
@@ -304,11 +308,11 @@ Residence Families HHVotersCount
 {% enddocs %}
 
 {% docs sav_County %}
-County
+County of the voter's residence.
 {% enddocs %}
 
 {% docs sav_Voters_FIPS %}
-County FIPS Code
+County FIPS code of the voter's residence.
 {% enddocs %}
 
 {% docs sav_County_Commissioner_District %}
@@ -320,7 +324,7 @@ County Supervisorial District
 {% enddocs %}
 
 {% docs sav_Precinct %}
-Precinct
+Voting precinct of the voter's residence.
 {% enddocs %}
 
 {% docs sav_US_Congressional_District %}
@@ -1312,7 +1316,7 @@ Length of residence at this address in years. Modeled determined by the first ye
 {% enddocs %}
 
 {% docs sav_Residence_Addresses_Density %}
-The estimated number of adults per square mile calculated for all adults living within the census block.
+Population-density code for the voter's residence area.
 {% enddocs %}
 
 {% docs sav_Designated_Market_Area_DMA %}
@@ -2048,7 +2052,7 @@ Haystaq issue flag: likely presidential voter
 {% enddocs %}
 
 {% docs sav_hf_likely_presidential_voter_and_likely_ev %}
-Combination Flags: High Turnout and Likely Early Voters (flag=1 means condition met)
+Haystaq modeled flag - Likely Presidential Voter And Likely Ev; Combination Flags: High Turnout and Likely Early Voters; flag=1 means condition met.
 {% enddocs %}
 
 {% docs sav_hf_likely_presidential_voter_and_likely_vbm %}
@@ -2056,7 +2060,7 @@ Haystaq issue flag: likely presidential voter and likely vbm
 {% enddocs %}
 
 {% docs sav_hf_likely_presidential_voter_and_unlikely_ev %}
-Combination Flags: Low Turnout and Unlikely Early Voters (flag=1 means condition met)
+Haystaq modeled flag - Likely Presidential Voter And Unlikely Ev; Combination Flags: Low Turnout and Unlikely Early Voters; flag=1 means condition met.
 {% enddocs %}
 
 {% docs sav_hf_likely_presidential_voter_and_unlikely_vbm %}
@@ -2160,15 +2164,15 @@ Haystaq issue flag: wealth acquired
 {% enddocs %}
 
 {% docs sav_hs_activism %}
-Political Activism: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Activism; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_attends_church_frequently %}
-Church Attendance: Respondents who said almost every week,at least once a week vs. those who said rarely,never (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Attends Church Frequently; survey question: "How often do you attend church, synagogue or mosque?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_attends_church_never %}
-Church Attendance: Respondents who said never vs. those who said at least once a week, rarely, almost every week, about once a month (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Attends Church Never; survey question: "How often do you attend church, synagogue or mosque?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_mail_readership_do_not_read %}
@@ -2180,23 +2184,23 @@ Haystaq issue score (0-100): candidate mail readership read carefully
 {% enddocs %}
 
 {% docs sav_hs_charity_giving_enviro_cause %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Charity Giving Enviro Cause; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_charity_giving_international_aid %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Charity Giving International Aid; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_charity_giving_performing_arts %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Charity Giving Performing Arts; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_charity_giving_relig_cause %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Charity Giving Relig Cause; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_charity_giving_vet_cause %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Charity Giving Vet Cause; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_community_not_integrated %}
@@ -2216,151 +2220,151 @@ Haystaq issue score (0-100): dating pessimistic
 {% enddocs %}
 
 {% docs sav_hs_dropoff_fill_entire_ballot %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Dropoff Fill Entire Ballot; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_dropoff_fill_only_top %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Dropoff Fill Only Top; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_most_important_policy_item_economics %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Most Important Policy Item Economics; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_most_important_policy_item_environment %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Most Important Policy Item Environment; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_most_important_policy_item_help_people %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Most Important Policy Item Help People; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_most_important_policy_item_religious_values %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Most Important Policy Item Religious Values; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_most_important_policy_keep_safe %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Most Important Policy Keep Safe; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_political_donations_likely %}
-Political Donations: Respondents who said very likely vs. those who said very unlikely (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Political Donations Likely; survey question: "How likely are you to donate to a political campaign in the coming year?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_political_donations_unlikely %}
-Political Donations: This DV is the inverse of the support score above (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Political Donations Unlikely; survey question: "How likely are you to donate to a political campaign in the coming year?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_religion_important %}
-Importance of Religion: Respondents who said ‘extremely important vs. those who said not important at all (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Religion Important; survey question: "How important would you say religion is in your own life?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_religion_not_important %}
-Importance of Religion: Respondents who said not important at all vs. those who said extremely important, somewhat important, moderately important (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Religion Not Important; survey question: "How important would you say religion is in your own life?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_responsiveness_email %}
-Responsiveness: Respondents via email to the survet vs. those who we attempted to reach but who did not respond to the survey via email (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Responsiveness Email; Responsiveness: Respondents via email to the survet vs. those who we attempted to reach but who did not respond to the survey via email; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_responsiveness_live %}
-Responsiveness: Respondents via live calling to the survey vs. those who we attempted to reach but who did not respond to the survey via live calling (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Responsiveness Live; Responsiveness: Respondents via live calling to the survey vs. those who we attempted to reach but who did not respond to the survey via live calling; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_responsiveness_sms %}
-Responsiveness: Respondents via texting to the surve vs. those who we attempted to reach but who did not respond to the survey via texting (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Responsiveness Sms; Responsiveness: Respondents via texting to the surve vs. those who we attempted to reach but who did not respond to the survey via texting; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_age_limit_oppose %}
-Age Limit (elected officials): field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Age Limit Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_age_limit_support %}
-Age Limit (elected officials): field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Age Limit Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_female_do_not_prefer %}
-Female Candidates: Inverse of the score above (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Candidate Female Do Not Prefer; survey question: "Thinking of candidates for political office, with all other factors being equal, do you prefer to support a woman over an equally-qualified man?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_female_prefer %}
-Female Candidates: Respondents who said prefer vs. those who said do not favor, do not consider (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Candidate Female Prefer; survey question: "Thinking of candidates for political office, with all other factors being equal, do you prefer to support a woman over an equally-qualified man?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_minority_do_not_prefer %}
-Minority Candidates: Respondents who said prefer vs. those who said do not favor inversed (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Candidate Minority Do Not Prefer; survey question: "Thinking of candidates for political office, with all other factors being equal, do you prefer to support a non-white candidate over an equally-qualified white candidate?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_minority_prefer %}
-Minority Candidates: Respondents who said prefer vs. those who said do not favor, ‘Do Not Consider Race’ (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Candidate Minority Prefer; survey question: "Thinking of candidates for political office, with all other factors being equal, do you prefer to support a non-white candidate over an equally-qualified white candidate?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_consumer_value_brand_savings %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Consumer Value Brand Savings; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_consumer_value_environment %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Consumer Value Environment; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_consumer_value_low_cost %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Consumer Value Low Cost; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_electric_vehicle_likely_buyer %}
-Electric Vehicle Ownership: Respondents who answered ‘already own’, ‘extremely likely’ vs those who answered ‘unlikely’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Electric Vehicle Likely Buyer; survey question: "How likely are you to own or buy a fully electric vehicle in the next three years?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_electric_vehicle_not_likely %}
-Electric Vehicle Ownership: Respondents who answered ‘unlikely’ vs those who answered all other responses (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Electric Vehicle Not Likely; survey question: "How likely are you to own or buy a fully electric vehicle in the next three years?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_any_home_buyer %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Any Home Buyer; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_new_home_buyer %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - New Home Buyer; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_rideshare_user %}
-Rideshare User: Respondents who said ‘yes’ vs. those who said ‘no’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Rideshare User; survey question: "Do you often use a ride-sharing service like Uber or Lyft?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_rideshare_user_no %}
-Rideshare User: Inverse of Consumer_Focus_Rideshare_Use_Rideshare_User (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Rideshare User No; survey question: "Do you often use a ride-sharing service like Uber or Lyft?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_solar_panel_buyer_no %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Solar Panel Buyer No; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_solar_panel_buyer_yes %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Solar Panel Buyer Yes; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_tv_viewer_free_streaming %}
-TV Viewing: Respondents who said free platforms vs. those who said traditional tv,paid streaming,do not watch (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Tv Viewer Free Streaming; survey question: "broadcast, cable and satellite TV or Paid streaming services such as Netflix, Hulu, and Disney+ or free platforms like Youtube, TikTok and Twitch or do you typically not watch TV?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_tv_viewer_not_viewer %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Tv Viewer Not Viewer; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_tv_viewer_watch_any_tv %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Tv Viewer Watch Any Tv; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_tv_viewer_watch_paid_streaming %}
-TV Viewing: Respondents who said paid streaming’ vs. those who said traditional tv,free platforms,do not watch (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Tv Viewer Watch Paid Streaming; survey question: "broadcast, cable and satellite TV or Paid streaming services such as Netflix, Hulu, and Disney+ or free platforms like Youtube, TikTok and Twitch or do you typically not watch TV?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_vaping_user_no %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Vaping User No; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_vaping_user_yes %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Vaping User Yes; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_affordability_changed_what_you_buy_no %}
@@ -2372,63 +2376,63 @@ Haystaq issue score (0-100): affordability changed what you buy yes
 {% enddocs %}
 
 {% docs sav_hs_affordable_housing_gov_has_role %}
-Affordable Housing: Respondents who said government role vs those who said market forces (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Affordable Housing Gov Has Role; survey question: "Thinking about the cost of housing, which comes closest to your view? Government officials should work to ensure that there is enough affordable housing, or the market alone should determine housing prices?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_affordable_housing_gov_no_role %}
-Affordable Housing: Respondents who said market forces vs those who said government role,undecided (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Affordable Housing Gov No Role; survey question: "Thinking about the cost of housing, which comes closest to your view? Government officials should work to ensure that there is enough affordable housing, or the market alone should determine housing prices?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_amazon_exploitative %}
-Amazon: Respondents who said exploitive vs. those who said good jobs,unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Amazon Exploitative; survey question: "Do you believe Amazon treats its warehouse workers and delivery drivers fairly? Do you think these are good jobs that pay well or that Amazon is exploitive with the demands it places on workers?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_amazon_good_jobs %}
-Amazon: Respondents who said good jobs vs. those who said exploitive (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Amazon Good Jobs; survey question: "Do you believe Amazon treats its warehouse workers and delivery drivers fairly? Do you think these are good jobs that pay well or that Amazon is exploitive with the demands it places on workers?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_unions_beneficial %}
-Unions: Respondents who said mostly beneficial’ vs. those who said mostly harmful (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Unions Beneficial; survey question: "Do you believe labor unions are mostly beneficial or mostly harmful?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_unions_not_beneficial %}
-Unions: Respondents who said mostly harmful vs. those who said mostly beneficial’,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Unions Not Beneficial; survey question: "Do you believe labor unions are mostly beneficial or mostly harmful?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_capitalism_believe_flawed %}
-View On Capitalism: Respondents who said fundamentally flawed,major flaws vs. those who said fundamentally sound or minor flaws (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Capitalism Believe Flawed; survey question: "Do you believe that our current capitalist economic system is thriving or failing? Do you believe: that the US economic system is fundamentally sound, that our system has minor flaws that can easily be fixed, that our economic system has major flaws that need large remedies, or that our economic system is fundamentally flawed and needs to be replaced?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_capitalism_believe_sound %}
-View On Capitalism: Respondents who said fundamentally sound,minor flaws vs. those who said fundamentally flawed, major flaws, or unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Capitalism Believe Sound; survey question: "Do you believe that our current capitalist economic system is thriving or failing? Do you believe: that the US economic system is fundamentally sound, that our system has minor flaws that can easily be fixed, that our economic system has major flaws that need large remedies, or that our economic system is fundamentally flawed and needs to be replaced?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_crypto_buyer_no %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Crypto Buyer No; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_crypto_buyer_yes %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Crypto Buyer Yes; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_crypto_increase_restrictions %}
-Crypto Currency: Respondents who said protect more,severe restrictions vs. those who said no role,unsure,current rules ok (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Crypto Increase Restrictions; survey question: "How do you feel about the government’s role in regulating crypto currencies like Bitcoin? Should the government have NO role in regulating crypto currency? Do you believe the current rules and regulations are generally sufficient? Do you believe the government should do more to protect the public? Or do you believe crypto currencies should be severely restricted or banned?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_crypto_reduce_leave_as_is %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Crypto Reduce Leave As Is; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_crypto_reduce_restrictions %}
-Crypto Currency: Respondents who said no role vs. those who said protect more, severe restrictions, current rules ok, or unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Crypto Reduce Restrictions; survey question: "How do you feel about the government’s role in regulating crypto currencies like Bitcoin? Should the government have NO role in regulating crypto currency? Do you believe the current rules and regulations are generally sufficient? Do you believe the government should do more to protect the public? Or do you believe crypto currencies should be severely restricted or banned?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_econ_anxiety_not_worried %}
-Economic Anxiety: Respondents who said (not worried) vs. those who said (very worried, somewhat worried, unsure) (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Econ Anxiety Not Worried; survey question: "How worried are you about things like your job security, having enough money for your retirement, or your childrens economic prospects?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_econ_anxiety_very_worried %}
-Economic Anxiety: Respondents who said (very worried) vs. those who said (not worried) (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Econ Anxiety Very Worried; survey question: "How worried are you about things like your job security, having enough money for your retirement, or your childrens economic prospects?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_economic_despondency_ahead %}
@@ -2440,191 +2444,191 @@ Haystaq issue score (0-100): economic despondency far behind
 {% enddocs %}
 
 {% docs sav_hs_gentrification_oppose %}
-Gentrification: Respondents who said mostly harmful vs. those who said mostly positive or unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Gentrification Oppose; survey question: "What is your opinion on gentrification, the process where cities and neighborhoods change as wealthier people move into poorer neighborhoods?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_gentrification_support %}
-Gentrification: Respondents who said mostly positive vs. those who said mostly harmful or unsure (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Gentrification Support; survey question: "What is your opinion on gentrification, the process where cities and neighborhoods change as wealthier people move into poorer neighborhoods?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_gig_work_keep_contractor %}
-Gig Opinion: Respondents who said independent contractors vs. those who said employees (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Gig Work Keep Contractor; survey question: "Should “gig economy” companies like Uber, Lyft and Instacart be allowed to continue to treat their workers as independent contractors or should they be required to treat them as employees with access to benefits. Independent Contractors, Employees with Benefits, Unsure"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_gig_work_make_employees %}
-Gig Opinion: Respondents who said employees vs. those who said independent contractors,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Gig Work Make Employees; survey question: "Should “gig economy” companies like Uber, Lyft and Instacart be allowed to continue to treat their workers as independent contractors or should they be required to treat them as employees with access to benefits. Independent Contractors, Employees with Benefits, Unsure"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_gig_worker_ever %}
-Gig Worker: Respondents who said part-time,full-time,did in the past,consider vs. those who said never (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Gig Worker Ever; survey question: "Have you ever worked for a “gig economy” company?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_gig_worker_now %}
-Gig Worker: Respondents who said ‘part-time,full-time vs. those who said never (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Gig Worker Now; survey question: "Have you ever worked for a “gig economy” company?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_gig_worker_unlikely %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Gig Worker Unlikely; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_income_inequality_no_issue %}
-Income Inequality: Respondents who said not much of a problem, not a problem vs. those who said big problem,somewhat of a problem,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Income Inequality No Issue; survey question: "How big a problem do you think income inequality is in the United States? Do you think income inequality is a big problem, somewhat of a problem, or not a problem at all?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_income_inequality_serious %}
-Income Inequality: Respondents who said big problem vs. those who said somewhat of a problem,not much of a problem, not a problem,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Income Inequality Serious; survey question: "How big a problem do you think income inequality is in the United States? Do you think income inequality is a big problem, somewhat of a problem, or not a problem at all?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_inflation_fault_biden %}
-Inflation Fault: Respondents who said biden administration vs. those who said corporate america, external events, higher wages, or unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Inflation Fault Biden; survey question: "What is most responsible for recent price increases and inflation? Is it the policies of the Biden Administration, actions by Corporate America, External Events like Covid-19 or is it recent increases to employee wages?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_inflation_fault_corporate_america %}
-Inflation Fault: Respondents who said corporate america vs. those who said biden administration, external events, higher wages, or unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Inflation Fault Corporate America; survey question: "What is most responsible for recent price increases and inflation? Is it the policies of the Biden Administration, actions by Corporate America, External Events like Covid-19 or is it recent increases to employee wages?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_inflation_fault_external_events %}
-Inflation Fault: Respondents who said external events vs. those who said biden administration, corporate america, higher wages, or unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Inflation Fault External Events; survey question: "What is most responsible for recent price increases and inflation? Is it the policies of the Biden Administration, actions by Corporate America, External Events like Covid-19 or is it recent increases to employee wages?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_infrastructure_funding_enough_spent %}
-Infrastructure Spending (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Infrastructure Funding Enough Spent; survey question: "Would you support increasing funding for infrastructure projects like bridges and roads even if it meant your taxes would be slightly higher, or do you think that enough money is already spent on infrastructure projects?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_infrastructure_funding_fund_more %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Infrastructure Funding Fund More; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_job_seeker_does_not_work %}
-Job Seeker: Respondents who answered ‘I am Retired or Do Not Work’ vs those who answered ‘Unlikely’, ‘Likely’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Job Seeker Does Not Work; survey question: "Are you likely to look for a new job in the next six months?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_job_seeker_likely %}
-Job Seeker: Respondents who answered ‘Likely’ vs those who answered ‘I am Retired or Do Not Work’, ‘Unlikely’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Job Seeker Likely; survey question: "Are you likely to look for a new job in the next six months?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_job_seeker_unlikely %}
-Job Seeker: Respondents who answered ‘Unlikely’ vs those who answered ‘I am Retired or Do Not Work’, ‘Likely’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Job Seeker Unlikely; survey question: "Are you likely to look for a new job in the next six months?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_tax_cuts_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Tax Cuts Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_tax_cuts_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Tax Cuts Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_charter_schools_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Charter Schools Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_charter_schools_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Charter Schools Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_critical_race_theory_books_ban %}
-Critical Race Theory: Respondents who said ban all vs. those who said ban none (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Critical Race Theory Books Ban; survey question: "Do you think it is ok to remove books from public school libraries based on content such as discussions of slavery or racial inequality, discussions of homosexual or transexual issues or criticisms of US history or historical figures?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_critical_race_theory_books_do_not_ban %}
-Critical Race Theory: Respondents who said ban none vs. those who said ban all, ban some, or unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Critical Race Theory Books Do Not Ban; survey question: "Do you think it is ok to remove books from public school libraries based on content such as discussions of slavery or racial inequality, discussions of homosexual or transexual issues or criticisms of US history or historical figures?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_school_choice_oppose %}
-School Choice: This DV is the inverse of the school choice support score below (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - School Choice Oppose; survey question: "School choice allows parents to use the tax dollars associated with their child’s education to enroll them in the school of their choice, whether public or private. Do you agree more with supporters who say this gives parents the flexibility to choose the right schools for their children or with opponents who say that school choice subsidizes the wealthy while starving the schools that need funding the most. Support School Choice, Oppose School Choice, Unsure"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_school_choice_support %}
-School Choice: Respondents who said school choice vs. those who said no school choice (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - School Choice Support; survey question: "School choice allows parents to use the tax dollars associated with their child’s education to enroll them in the school of their choice, whether public or private. Do you agree more with supporters who say this gives parents the flexibility to choose the right schools for their children or with opponents who say that school choice subsidizes the wealthy while starving the schools that need funding the most. Support School Choice, Oppose School Choice, Unsure"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_school_funding_less %}
-School Spending: This DV is the inverse of the support school funding score above (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - School Funding Less; survey question: "Would you support increasing funding for public education in your state or community even if it meant your taxes would be higher, or do you think that enough money is already spent on education and that schools need to spend better not more?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_school_funding_more %}
-School Spending: Respondents who said more funding for schools vs. those who said less funding for schools (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - School Funding More; survey question: "Would you support increasing funding for public education in your state or community even if it meant your taxes would be higher, or do you think that enough money is already spent on education and that schools need to spend better not more?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_teachers_union_negative %}
-Teachers Unions: Respondents who said ‘negative’ vs. those who said ‘positive’ , ‘neutral’,’unsure’ (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Teachers Union Negative; survey question: "Do you think Teacher Unions have a positive impact on schools or a negative impact?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_teachers_union_positive %}
-Teachers Unions: Respondents who said ‘positive’ vs. those who said ‘negative’ (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Teachers Union Positive; survey question: "Do you think Teacher Unions have a positive impact on schools or a negative impact?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_climate_change_believer %}
-Environment- Climate Change: Respondents who said yes vs. those who said no, ‘unsure’ (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Climate Change Believer; survey question: "From what youve read and heard, is there solid evidence that the average temperature on earth has been getting warmer over the past few decades as a result of human activity?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_climate_change_nonbeliever %}
-Environment- Climate Change: Respondents who said no vs. those who said yes, ‘unsure’ (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Climate Change Nonbeliever; survey question: "From what youve read and heard, is there solid evidence that the average temperature on earth has been getting warmer over the past few decades as a result of human activity?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_gas_tax_oppose %}
-Gas Tax: Respondents who said strongly opposed, somewhat opposed vs. those who said strongly support, somewhat support,neutral/unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Gas Tax Oppose; survey question: "In general, would you support or oppose increased taxes on gas to fund road repairs?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_gas_tax_support %}
-Gas Tax: Respondents who said strongly support,somewhat support vs. those who said strongly opposed, somewhat opposed (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Gas Tax Support; survey question: "In general, would you support or oppose increased taxes on gas to fund road repairs?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_green_new_deal_oppose %}
-Green New Deal: Respondents who said strongly oppose, somewhat oppose vs. those who said strongly support, somewhat support, unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Green New Deal Oppose; survey question: "From what you know now do you support or oppose the Green New Deal?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_green_new_deal_support %}
-Green New Deal: Respondents who said strongly support, somewhat support vs. those who said strongly oppose, somewhat oppose or unsure (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Green New Deal Support; survey question: "From what you know now do you support or oppose the Green New Deal?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_pipeline_fracking_oppose %}
-oil Gas or Oil Pipelines: This DV is the inverse of the support fossil fuel infrastructure score (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Pipeline Fracking Oppose; survey question: "Are you likely to support or oppose new fossil fuel infrastructure, including fracking wells and oil and natural gas pipelines?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_pipeline_fracking_support %}
-oil Gas or Oil Pipelines: Respondents who said support new infrastructure vs. those who said oppose new infrastructure (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Pipeline Fracking Support; survey question: "Are you likely to support or oppose new fossil fuel infrastructure, including fracking wells and oil and natural gas pipelines?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_abortion_pro_choice %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Abortion Pro Choice; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_abortion_pro_life %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Abortion Pro Life; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_general_anti_vax_pro_vax %}
-General Vaccines: Respondents who answered ‘required’ vs those who answered family choice,discouraged,unsure,encouraged (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - General Anti Vax Pro Vax; survey question: "Separate from Covid-19, how do you feel about mandating childhood vaccinations such as Measles, Mumps and Rubella for all children who have fully functional immune systems? Do you believe: 1. childhood vaccinations should be required, 2. vaccinations should be heavily encouraged, but not required, 3. families should make their own choices, or 4. vaccinations should be discouraged?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_medicaid_expansion_oppose %}
-Medicaid Expansion: Respondents who said against vs. those who said, ‘unsure’, for expansion (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Medicaid Expansion Oppose; survey question: "Some states have expanded Medicaid coverage to low-income residents while other states have not. Those in favor contend that federal funding, which comes from taxpayers in all 50 states, covers the majority of expenses for a program giving healthcare access to many who would otherwise be uninsured. Those opposed argue that the program could lead to unexpected costs for the state. Are you in favor of Medicaid Expansion in your own state?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_medicaid_expansion_support %}
-Medicaid Expansion: Respondents who said for expansion vs. those who said against, ‘unsure’ (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Medicaid Expansion Support; survey question: "Some states have expanded Medicaid coverage to low-income residents while other states have not. Those in favor contend that federal funding, which comes from taxpayers in all 50 states, covers the majority of expenses for a program giving healthcare access to many who would otherwise be uninsured. Those opposed argue that the program could lead to unexpected costs for the state. Are you in favor of Medicaid Expansion in your own state?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_medicare_for_all_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Medicare For All Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_medicare_for_all_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Medicare For All Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_obamacare_aca_expand %}
-Affordable Care Act/Obamacare: Respondents who said not far enough vs. those who said repeal,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Obamacare Aca Expand; survey question: "Which comes closest to your opinion on the Affordable Care Act or Obamacare: that it is beneficial but doesn’t go far enough, that it is about right, or that it goes too far and should be repealed or reformed?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_obamacare_aca_oppose %}
-Affordable Care Act/Obamacare: Respondents who said repeal vs. those who said ‘not far enough,good as is,unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Obamacare Aca Oppose; survey question: "Which comes closest to your opinion on the Affordable Care Act or Obamacare: that it is beneficial but doesn’t go far enough, that it is about right, or that it goes too far and should be repealed or reformed?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_obamacare_aca_protect %}
-Affordable Care Act/Obamacare: Respondents who said ‘good as is’ vs. those who said repeal,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Obamacare Aca Protect; survey question: "Which comes closest to your opinion on the Affordable Care Act or Obamacare: that it is beneficial but doesn’t go far enough, that it is about right, or that it goes too far and should be repealed or reformed?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_area_identity_rural %}
@@ -2680,11 +2684,11 @@ Haystaq issue score (0-100): news mainstream
 {% enddocs %}
 
 {% docs sav_hs_podcast_listener_no %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Podcast Listener No; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_podcast_listener_yes %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Podcast Listener Yes; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_social_media_user_frequent %}
@@ -2692,7 +2696,7 @@ Haystaq issue score (0-100): social media user frequent
 {% enddocs %}
 
 {% docs sav_hs_social_media_user_no_or_infrequent %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Social Media User No Or Infrequent; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_tv_news_source_most_trusted_cnn %}
@@ -2712,19 +2716,19 @@ Haystaq issue score (0-100): tv news source most trusted newsmax
 {% enddocs %}
 
 {% docs sav_hs_china_foreign_policy_advesarial %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - China Foreign Policy Advesarial; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_china_foreign_policy_work_with %}
-China Foreign Policy: Respondents who answered ‘Work With China’ vs those who answered ‘Hardline Approach’, ‘Unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - China Foreign Policy Work With; survey question: "What comes closest to your opinion on China? That China is an important trade partner and we should find ways to work with them. Or that China represents an economic and military threat to the United States requiring a hardline approach?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_defense_spending_increase %}
-Defense Spending: Respondents who said greatly increased vs. those who said greatly reduced,slightly reduced,no opinion, ok (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Defense Spending Increase; survey question: "What do you think of the US Defense Department’s budget? Should the DoD budget be: greatly reduced, slightly reduced, left where it is, slightly increased, or greatly increased?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_defense_spending_reduce %}
-Defense Spending: Respondents who said greatly reduced vs. those who said greatly increased (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Defense Spending Reduce; survey question: "What do you think of the US Defense Department’s budget? Should the DoD budget be: greatly reduced, slightly reduced, left where it is, slightly increased, or greatly increased?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_illegal_imm_process_unfair %}
@@ -2732,7 +2736,7 @@ Haystaq issue score (0-100): illegal imm process unfair
 {% enddocs %}
 
 {% docs sav_hs_illegal_imm_undesirable %}
-View of Immigration: Respondents who said undesirable people vs. those who said ‘unfair to immigrants,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Illegal Imm Undesirable; survey question: "When it comes to immigration, is your bigger concern that too many undesirable people are coming into our country or that we are being unfair or even inhumane to immigrants and their families?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_israel_committing_genocide_no %}
@@ -2744,11 +2748,11 @@ Haystaq issue score (0-100): israel committing genocide yes
 {% enddocs %}
 
 {% docs sav_hs_israel_military_actions_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Israel Military Actions Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_israel_military_actions_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Israel Military Actions Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_mass_deportations_oppose %}
@@ -2760,19 +2764,19 @@ Haystaq issue score (0-100): mass deportations support
 {% enddocs %}
 
 {% docs sav_hs_mexican_wall_oppose %}
-Mexican Wall: Respondents who said strongly oppose vs. those who said neutral or unsure, strongly support, somewhat support (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Mexican Wall Oppose; survey question: "Do you support building a wall between the US and Mexico?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_mexican_wall_support %}
-Mexican Wall: Respondents who said strongly support vs. those who said strongly oppose (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Mexican Wall Support; survey question: "Do you support building a wall between the US and Mexico?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_military_family_relationship_no %}
-Military Family Relationship: This DV is the inverse of the Yes- military family relationship score above (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Military Family Relationship No; survey question: "Have you or any immediate family members served in the US Military?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_military_family_relationship_yes %}
-Military Family Relationship: Respondents who said self, immediate family vs. those who said none (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Military Family Relationship Yes; survey question: "Have you or any immediate family members served in the US Military?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_military_family_self %}
@@ -2788,7 +2792,7 @@ Haystaq issue score (0-100): super power policy support
 {% enddocs %}
 
 {% docs sav_hs_artificial_intelligence_excited %}
-AI: Respondents who answered excited vs those who answered unsure,equal,concerned (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Artificial Intelligence Excited; survey question: "Does the increased use of artificial intelligence in daily life make you feel more excited or more concerned?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_christian_values_not_positive %}
@@ -2800,11 +2804,11 @@ Haystaq issue score (0-100): christian values positive
 {% enddocs %}
 
 {% docs sav_hs_college_admissions_consider_race %}
-Race College Admissions: Respondents who answered consider race vs those who answered do not consider race,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - College Admissions Consider Race; survey question: "Recently, the U.S. Supreme Court decided colleges and universities can no longer take race or ethnicity into consideration during the admissions process. Should colleges and universities be allowed to consider race during admissions?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_college_admissions_do_not_consider_race %}
-Race College Admissions: Respondents who answered do not consider race vs those who answered consider race,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - College Admissions Do Not Consider Race; survey question: "Recently, the U.S. Supreme Court decided colleges and universities can no longer take race or ethnicity into consideration during the admissions process. Should colleges and universities be allowed to consider race during admissions?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_concerned_job_loss_due_to_ai_no %}
@@ -2824,19 +2828,19 @@ Haystaq issue score (0-100): right wing conspiracy nonbeliever
 {% enddocs %}
 
 {% docs sav_hs_dei_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Dei Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_dei_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Dei Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_doge_oppose %}
-DOGE (Dept of Gov Efficiency): field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Doge Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_doge_support %}
-DOGE (Dept of Gov Efficiency): field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Doge Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_domestic_deployment_of_troops_oppose %}
@@ -2864,19 +2868,19 @@ Haystaq issue score (0-100): ice actions support
 {% enddocs %}
 
 {% docs sav_hs_jan_6th_pardons_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Jan 6Th Pardons Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_jan_6th_pardons_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Jan 6Th Pardons Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_police_trust_no %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Police Trust No; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_police_trust_yes %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Police Trust Yes; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_political_troll_entertaining %}
@@ -2888,11 +2892,11 @@ Haystaq issue score (0-100): political troll negative
 {% enddocs %}
 
 {% docs sav_hs_same_sex_marriage_oppose %}
-Same Sex Marriage (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Same Sex Marriage Oppose; survey question: "Do you support or oppose same-sex marriage?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_same_sex_marriage_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Same Sex Marriage Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_snap_not_important %}
@@ -2912,15 +2916,15 @@ Haystaq issue score (0-100): traditional gender roles positive
 {% enddocs %}
 
 {% docs sav_hs_trans_athlete_no %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Trans Athlete No; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_trans_athlete_yes %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Trans Athlete Yes; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_violent_crime_not_worried %}
-Violent Crime Anxiety: Respondents who said not at all worried vs. those who said, very worried,’somewhat worried’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Violent Crime Not Worried; survey question: "How much do you worry about violent crime affecting you or your family? Are you very worried, somewhat worried, not very worried or not at all worried about violent crime affecting you or your family?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_violent_crime_worried %}
@@ -2932,7 +2936,7 @@ Haystaq issue score (0-100): voting fraud concern barriers
 {% enddocs %}
 
 {% docs sav_hs_voting_fraud_concern_fraud %}
-Voting Fraud: Respondents who said voter fraud vs. voter barriers,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Voting Fraud Concern Fraud; survey question: "Which is the greater concern for you around voting - that there are too many people fraudulently casting votes or that there are barriers that make it difficult for people to vote?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_campaign_finance_reform_high_priority %}
@@ -2944,309 +2948,309 @@ Haystaq issue score (0-100): campaign finance reform less important
 {% enddocs %}
 
 {% docs sav_hs_casino_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Casino Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_casino_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Casino Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_death_penalty_oppose %}
-Death Penalty: Respondents who said strongly oppose vs. those who said strongly favor,somewhat favor, or unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Death Penalty Oppose; survey question: "Do you favor or oppose the death penalty?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_death_penalty_support %}
-Death Penalty: Respondents who said strongly favor vs. those who said strongly oppose, somewhat oppose, or unsure (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Death Penalty Support; survey question: "Do you favor or oppose the death penalty?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_gun_control_oppose %}
-Gun Control: Respondents who said stronger vs. those who said weaker, kept as they are (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Gun Control Oppose; survey question: "Do you believe that the laws covering the sale and ownership of guns should be made stronger, made weaker or kept as they are now?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_gun_control_support %}
-Gun Control: Respondents who said stronger vs. those who said weaker, kept as they are (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Gun Control Support; survey question: "Do you believe that the laws covering the sale and ownership of guns should be made stronger, made weaker or kept as they are now?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_marijuana_legal_oppose %}
-Marijuana Legalization: Respondents who said oppose marijuana vs. those who said medical marijuana or full legalization of marijuana (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Marijuana Legal Oppose; survey question: "Thinking about marijuana laws in the US, do you support the full legalization of marijuana; or, do you support laws permitting the use of medical marijuana; or, do you oppose any laws permitting the use of marijuana?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_marijuana_legal_support %}
-Marijuana Legalization: Respondents who said full legalization of marijuana vs. those who said oppose marijuana or medical marijuana (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Marijuana Legal Support; survey question: "Thinking about marijuana laws in the US, do you support the full legalization of marijuana; or, do you support laws permitting the use of medical marijuana; or, do you oppose any laws permitting the use of marijuana?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_online_gambling_less_legal %}
-Online Gaming: Respondents who said remain largely illegal,more enforcement vs. those who said fully legalized,some restrictions eased,unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Online Gambling Less Legal; survey question: "Do you believe that internet gaming like online poker, daily fantasy, and internet sports betting should be legal and regulated?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_online_gambling_more_legal %}
-Online Gaming: Respondents who said fully legalized vs. those who said remain largely illegal,remain illegal and more enforcement (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Online Gambling More Legal; survey question: "Do you believe that internet gaming like online poker, daily fantasy, and internet sports betting should be legal and regulated?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_public_transit_oppose %}
-Public Transit Funding: This DV is the inverse of the support transit funding score above (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Public Transit Oppose; survey question: "Would you support expanded funding for public transportation such as buses, subways and commuter rail in your state or community even if it meant your taxes could go up?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_public_transit_support %}
-Public Transit Funding: Respondents who said support funding vs. those who said oppose funding (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Public Transit Support; survey question: "Would you support expanded funding for public transportation such as buses, subways and commuter rail in your state or community even if it meant your taxes could go up?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_regulations_good %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Regulations Good; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_regulations_too_harsh %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Regulations Too Harsh; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_stadium_public_financing_approve %}
-Stadium Financing: Respondents who answered ‘strongly approve’ or ‘somewhat approve’ vs those who answered ‘somewhat disapprove’ or ‘strongly disapprove’ or ‘unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Stadium Public Financing Approve; survey question: "Generally, would you approve of the use of your local taxes to fund the building or enhancement of a professional sports stadium to attract or retain a team?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_stadium_public_financing_disapprove %}
-Stadium Financing: Respondents who answered ‘strongly disapprove’ or ‘somewhat disapprove’ vs those who answered ‘strongly approve’ or ‘somewhat approve’ or ‘unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Stadium Public Financing Disapprove; survey question: "Generally, would you approve of the use of your local taxes to fund the building or enhancement of a professional sports stadium to attract or retain a team?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_likely_ev %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Likely Ev; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_likely_mid_term_voter %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Likely Mid Term Voter; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_likely_presidential_voter %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Likely Presidential Voter; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_likely_vbm %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Likely Vbm; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_felon_voting_oppose %}
-Felons Voting: Respondents who said not allowed vs. those who said allowed, unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Felon Voting Oppose; survey question: "Right now, some people who have been convicted of a felony and have served their sentence are not allowed to vote. Do you think that a felon who has paid their debt to society should be allowed the opportunity to vote, or do you think felons forfeited their right to vote?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_felon_voting_support %}
-Felons Voting: Respondents who said allowed vs. those who said not allowed, unsure (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Felon Voting Support; survey question: "Right now, some people who have been convicted of a felony and have served their sentence are not allowed to vote. Do you think that a felon who has paid their debt to society should be allowed the opportunity to vote, or do you think felons forfeited their right to vote?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_rank_choice_voting_oppose %}
-Rank Choice Voting: Respondents who said strongly oppose,somewhat oppose vs. those who said strongly support,somewhat support,unfamiliar (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Rank Choice Voting Oppose; survey question: "Do you support electoral systems that allow voters to rank candidates in order of preference, widely known as Ranked Choice Voting?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_rank_choice_voting_support %}
-Rank Choice Voting: Respondents who said strongly support vs. those who said strongly oppose,somewhat oppose, unfamiliar (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Rank Choice Voting Support; survey question: "Do you support electoral systems that allow voters to rank candidates in order of preference, widely known as Ranked Choice Voting?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_redistricting_indep_com %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Redistricting Indep Com; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_redistricting_state_leg %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Redistricting State Leg; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_conspiracy_nonbeliever %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Conspiracy Nonbeliever; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_conspiracy_believer %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Conspiracy Believer; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_likely_polling_turnout %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Likely Polling Turnout; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_wealth_acquired_hardwork %}
-Wealth Acquisition: Respondents who said hard work vs. those who said advantages (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Wealth Acquired Hardwork; survey question: "Do you think that most people in the top 1% acquired their wealth because they worked hard or because of advantages they were handed?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_wealth_acquired_advantages %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Wealth Acquired Advantages; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_voting_fraud_concern_oppression %}
-Voting Fraud: Respondents who said voter barriers vs.voter fraud,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Voting Fraud Concern Oppression; survey question: "Which is the greater concern for you around voting - that there are too many people fraudulently casting votes or that there are barriers that make it difficult for people to vote?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_violent_crime_very_worried %}
-Violent Crime Anxiety: Respondents who said very worried,’somewhat worried’ vs. those who said not at all worried, not very worried (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Violent Crime Very Worried; survey question: "How much do you worry about violent crime affecting you or your family? Are you very worried, somewhat worried, not very worried or not at all worried about violent crime affecting you or your family?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_united_healthcare_no_fault %}
-United Healthcare: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - United Healthcare No Fault; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_united_healthcare_at_fault %}
-United Healthcare: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - United Healthcare At Fault; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_tv_most_trusted_news_msnbc %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Tv Most Trusted News Msnbc; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_tv_most_trusted_news_fox %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Tv Most Trusted News Fox; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_tv_most_trusted_news_cnn %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Tv Most Trusted News Cnn; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_trust_science_always %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Trust Science Always; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_trust_science_rarely %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Trust Science Rarely; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_tribalism_open_minded %}
-Tribalism: Respondents who said same policy,unsure vs ‘biden better’ or ‘trump better’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Tribalism Open Minded; survey question: "When it comes to attempts to modernize the US Military, who do you think has or had a better policy, Trump or Biden? And When it comes to allowing states to import cheaper prescription drugs from Canada, who do you think has or had a better policy, Trump or Biden?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_social_security_tax_increase_support %}
-Social Security Tax Increase: Respondents who said yes tax increase vs. those who said no tax increase (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Social Security Tax Increase Support; survey question: "To preserve Social Security, would you support a small payroll tax increase and/or raising the cap that exempts income above $118,000?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_social_security_tax_increase_oppose %}
-Social Security Tax Increase: This DV is the inverse of the support tax increase score above (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Social Security Tax Increase Oppose; survey question: "To preserve Social Security, would you support a small payroll tax increase and/or raising the cap that exempts income above $118,000?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_social_media_user %}
-Social Media Use: Respondents who said daily vs. those who said monthly or less,never (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Social Media User; survey question: "How often do you use social media such as Facebook, Twitter, Snapchat or Instagram?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_social_media_truth_vs_speech_truth %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Social Media Truth Vs Speech Truth; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_social_media_truth_vs_speech_free_speech %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Social Media Truth Vs Speech Free Speech; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_sell_federal_lands_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Sell Federal Lands Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_sell_federal_lands_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Sell Federal Lands Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_opioid_crisis_treat %}
-Opioid Crisis Response: Respondents who said treatment vs. those who said tougher,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Opioid Crisis Treat; survey question: "What do you think the best strategy is for dealing with the opioid crisis, tougher enforcement of our laws for drug dealers and users or increased treatment programs?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_opioid_crisis_enforce %}
-Opioid Crisis Response: Respondents who said tougher vs. those who said treatment,’unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Opioid Crisis Enforce; survey question: "What do you think the best strategy is for dealing with the opioid crisis, tougher enforcement of our laws for drug dealers and users or increased treatment programs?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_min_wage_15_increase_support %}
-Fifteen Dollar Minimum Wage: Respondents who answered ‘support’ vs those who answered ‘oppose’ or ‘unsure’ (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Min Wage 15 Increase Support; survey question: "Do you support proposals to make the national minimum wage $15 per hour?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_min_wage_15_increase_oppose %}
-Fifteen Dollar Minimum Wage: Respondents who answered ‘oppose’ vs those who answered ‘support’ or ‘unsure’ (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Min Wage 15 Increase Oppose; survey question: "Do you support proposals to make the national minimum wage $15 per hour?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_mass_deporations_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Mass Deporations Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_mass_deporations_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Mass Deporations Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_jobs_guarantee_support %}
-Jobs Guarantee: Respondents who said support vs. those who said oppose (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Jobs Guarantee Support; survey question: "Do you support or oppose the idea of a Federal Jobs Guarantee, which would create a publically funded job for any American who wants one. Support A Jobs Guarantee, Oppose A Jobs Guarantee, Unsure"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_jobs_guarantee_oppose %}
-Jobs Guarantee: This DV is the inverse of the Jobs Guarantee support score above (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Jobs Guarantee Oppose; survey question: "Do you support or oppose the idea of a Federal Jobs Guarantee, which would create a publically funded job for any American who wants one. Support A Jobs Guarantee, Oppose A Jobs Guarantee, Unsure"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_insurance_of_last_resort_government_should_not_provide %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Insurance Of Last Resort Government Should Not Provide; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_insurance_of_last_resort_government_should_provide %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Insurance Of Last Resort Government Should Provide; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_immigration_undesirable %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Immigration Undesirable; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_immigration_process_unfair %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Immigration Process Unfair; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_family_medical_leave_support %}
-Family Medical Leave: Respondents who said strongly support vs. those who said strongly opposed,somewhat opposed, neutral/unsure (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Family Medical Leave Support; survey question: "Do you support or oppose paid family and medical leave for all US workers?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_family_medical_leave_oppose %}
-Family Medical Leave: Respondents who said strongly opposed,somewhat opposed vs. those who said strongly support,somewhat support,neutral/unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Family Medical Leave Oppose; survey question: "Do you support or oppose paid family and medical leave for all US workers?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_state_level_fema_support %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - State Level Fema Support; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_state_level_fema_oppose %}
-Unknown: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - State Level Fema Oppose; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_despondency_on_pace %}
-Despondency: Respondents who answered on pace vs those who answered far ahead,a little ahead,a little behind,far behind (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Despondency On Pace; survey question: "How close are you to where you thought you would be at this stage of your life?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_despondency_far_behind %}
-Despondency: Respondents who answered far behind vs those who answered far ahead,a little ahead,on pace (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Despondency Far Behind; survey question: "How close are you to where you thought you would be at this stage of your life?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_despondency_ahead %}
-Despondency: Respondents who answered ‘far ahead’ vs those who answered on pace,a little behind,far behind (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Despondency Ahead; survey question: "How close are you to where you thought you would be at this stage of your life?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_community_college_free_support %}
-Free Community College: Respondents who said yes free vs. those who said no (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Community College Free Support; survey question: "Should Community College be free of charge to enrolled students?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_community_college_free_oppose %}
-Free Community College: Respondents who said no vs. those who said yes free or unsure (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Community College Free Oppose; survey question: "Should Community College be free of charge to enrolled students?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_civil_liberties_support %}
-Civil Liberties: Respondents who said too restricted vs. those who said not enough (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Civil Liberties Support; survey question: "What concerns you more about the governments anti-terrorism policies – that they have gone too far and are restricting the average persons civil liberties, or that they have not gone far enough and are not adequately protecting us?"; higher score = more likely to hold the stated/positive position.
 {% enddocs %}
 
 {% docs sav_hs_civil_liberties_oppose %}
-Civil Liberties: This DV is the inverse of the support score above (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Civil Liberties Oppose; survey question: "What concerns you more about the governments anti-terrorism policies – that they have gone too far and are restricting the average persons civil liberties, or that they have not gone far enough and are not adequately protecting us?"; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_mail_read_carefully %}
-Candidate Mail: Respondents who answered read it carefully’ vs those who answered glance at it,no (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Candidate Mail Read Carefully; survey question: "Do you read mail sent by candidates running for office?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_candidate_mail_do_not_read %}
-Candidate Mail: Respondents who answered no vs those who answered read it carefully (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Candidate Mail Do Not Read; survey question: "Do you read mail sent by candidates running for office?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_autonomous_vehicles_do_not_allow %}
-Autonomous Vehicles: Respondents who said not allowed vs. those who said allowed,unsure (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Autonomous Vehicles Do Not Allow; survey question: "In your opinion, should self-driving or autonomous vehicles be allowed on the road?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_autonomous_vehicles_allow %}
-Autonomous Vehicles: Respondents who said allowed vs. those who said not allowed or ‘unsure’ (higher score = more aligned with dependent variable position)
+Haystaq modeled score (0-100) - Autonomous Vehicles Allow; survey question: "In your opinion, should self-driving or autonomous vehicles be allowed on the road?"; higher score = more aligned with the modeled position.
 {% enddocs %}
 
 {% docs sav_hs_aliens_governenment_hiding_much %}
-Government Transparency / Aliens: field added after 2024 PDF — no guide entry (higher score = more likely to hold the opposing/negative position)
+Haystaq modeled score (0-100) - Aliens Governenment Hiding Much; higher score = more likely to hold the opposing/negative position.
 {% enddocs %}
 
 {% docs sav_hs_aliens_governenment_disclosed_all %}
-Government Transparency / Aliens: field added after 2024 PDF — no guide entry (higher score = more likely to hold the stated/positive position)
+Haystaq modeled score (0-100) - Aliens Governenment Disclosed All; higher score = more likely to hold the stated/positive position.
 {% enddocs %}

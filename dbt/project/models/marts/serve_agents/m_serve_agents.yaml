@@ -30,6 +30,8 @@ models:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
       - name: "Residence_Addresses_City"
         description: '{{ doc("sav_Residence_Addresses_City") }}'
+      - name: "Residence_Addresses_State"
+        description: '{{ doc("sav_Residence_Addresses_State") }}'
       - name: "Residence_Addresses_Zip"
         description: '{{ doc("sav_Residence_Addresses_Zip") }}'
       - name: "Residence_Addresses_CensusTract"
