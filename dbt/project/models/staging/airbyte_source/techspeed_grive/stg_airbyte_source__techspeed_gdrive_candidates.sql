@@ -91,14 +91,16 @@ with
                     year(
                         coalesce(
                             try_cast(replace(filing_deadline, '/', '-') as date),
-                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy')
+                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy'),
+                            try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yy')
                         )
                     )
                     between 1900 and 2050
                 then
                     coalesce(
                         try_cast(replace(filing_deadline, '/', '-') as date),
-                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy')
+                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yyyy'),
+                        try_to_date(replace(filing_deadline, '/', '-'), 'M-d-yy')
                     )
             end as filing_deadline_parsed,
             -- Coalesced election date (general preferred, fallback to primary)
