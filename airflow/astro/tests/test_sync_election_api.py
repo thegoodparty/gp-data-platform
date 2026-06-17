@@ -31,6 +31,7 @@ for _mod in _STUBS:
 
 from dags.sync_election_api import (  # noqa: E402
     DTI_COLUMNS,
+    EOS_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
     _ztp_transform_row,
@@ -126,4 +127,26 @@ def test_dti_columns_pinned():
         "is_state",
         "is_federal",
         "issue_rank",
+    ]
+
+
+def test_eos_columns_pinned():
+    """Pin EOS_COLUMNS to catch silent column reorderings.
+
+    ElectedOfficialSupport loads with no row transform: EOS_COLUMNS drives both
+    the Databricks SELECT order and the positional Postgres insert, so a
+    reordering would land values in the wrong columns without an insert-time
+    error. The mart's column order must match this list.
+    """
+    assert EOS_COLUMNS == [
+        "id",
+        "created_at",
+        "updated_at",
+        "position_id",
+        "br_position_id",
+        "number_of_seats",
+        "votes_received",
+        "total_votes_cast",
+        "icp_voter_count",
+        "projected_registered_supporters",
     ]

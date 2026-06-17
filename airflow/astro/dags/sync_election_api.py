@@ -248,6 +248,52 @@ def _ztp_constraint_ddl() -> list[str]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# ElectedOfficialSupport
+# ---------------------------------------------------------------------------
+
+EOS = TableSyncSpec(
+    target_table="ElectedOfficialSupport",
+    indexes=("ElectedOfficialSupport_position_id_key",),
+    fkeys=("ElectedOfficialSupport_position_id_fkey",),
+)
+
+# The mart already emits id/created_at/updated_at, so rows pass through with no
+# transform (source order must match this list).
+EOS_COLUMNS = [
+    "id",
+    "created_at",
+    "updated_at",
+    "position_id",
+    "br_position_id",
+    "number_of_seats",
+    "votes_received",
+    "total_votes_cast",
+    "icp_voter_count",
+    "projected_registered_supporters",
+]
+
+
+def _eos_constraint_ddl() -> list[str]:
+    sn, nt = EOS.staging_schema, EOS.new_table
+    target_schema = EOS.target_schema
+    return [
+        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{EOS.stage_name(EOS.pk_name)}" PRIMARY KEY (id)'),
+        (
+            f"CREATE UNIQUE INDEX "
+            f'"{EOS.stage_name("ElectedOfficialSupport_position_id_key")}" '
+            f'ON "{sn}"."{nt}" (position_id)'
+        ),
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{EOS.stage_name("ElectedOfficialSupport_position_id_fkey")}" '
+            f"FOREIGN KEY (position_id) "
+            f'REFERENCES "{target_schema}"."Position"(id) '
+            f"ON UPDATE CASCADE ON DELETE RESTRICT"
+        ),
+    ]
+
+
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
     schedule="@daily",
@@ -502,11 +548,92 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
-    # The two pipelines run in parallel; under the Kubernetes executor each task
+    @task_group(group_id="elected_official_support")
+    def elected_official_support():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, EOS)
+
+        @task
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            col_list = ", ".join(EOS_COLUMNS)
+            query = (
+                f"SELECT {col_list} "
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"`m_election_api__elected_official_support`"
+            )
+            # ~1.1k rows; no partitioning needed (one small result fits easily).
+            with _open_pg() as conn:
+                return bulk_insert_from_databricks(
+                    conn,
+                    EOS,
+                    source_query=query,
+                    target_columns=EOS_COLUMNS,
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                apply_ddl(conn, _eos_constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            # Coverage is intentionally low: the support score needs an election
+            # vote tally, which exists for only a small share of offices (see the
+            # model docs / DATA-2000 PR). This floor guards against a
+            # catastrophic partial load, not the known coverage ceiling.
+            if loaded_count < 500:
+                raise ValueError(f"Only {loaded_count} rows loaded (<500) — refusing to swap")
+            with _open_pg() as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        f"SELECT COUNT(*), COUNT(DISTINCT position_id), "
+                        f"COUNT(*) FILTER (WHERE position_id IS NULL) "
+                        f'FROM "{EOS.staging_schema}"."{EOS.new_table}"'
+                    )
+                    n, distinct_pos, null_pos = cur.fetchone()
+                    if null_pos > 0:
+                        raise ValueError(
+                            f"{null_pos} staging rows have a NULL position_id — refusing to swap"
+                        )
+                    if distinct_pos != n:
+                        raise ValueError(
+                            f"position_id not unique ({distinct_pos} distinct of {n}) — refusing to swap"
+                        )
+                    t_log.info(
+                        "Quality checks passed: %d rows, position_id unique and non-null",
+                        n,
+                    )
+                finally:
+                    cur.close()
+
+        @task
+        def swap() -> None:
+            with _open_pg() as conn:
+                swap_staging_into_target(conn, EOS)
+
+        @task
+        def drop_old() -> None:
+            with _open_pg() as conn:
+                drop_old_table(conn, EOS)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        sw = swap()
+        do = drop_old()
+        s >> loaded >> idx >> qc >> sw >> do
+
+    # The pipelines run in parallel; under the Kubernetes executor each task
     # is its own pod, and each load_staging reads one partition at a time, so
     # they don't contend for memory.
     zip_to_position()
     district_top_issues()
+    elected_official_support()
 
 
 sync_election_api()
