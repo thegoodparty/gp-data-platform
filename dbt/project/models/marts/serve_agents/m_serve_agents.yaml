@@ -1672,12 +1672,3 @@ seeds:
         description: "Whether the column is exposed to the Serve agent (true/false)."
       - name: reasoning
         description: "Why the column is included or excluded."
-  - name: haystaq_data_dictionary
-    description: >
-      Snapshot of L2 Haystaq National Models codebook (from sandbox.haystaq_data_dictionary):
-      per-field description, survey question, response options, model type, score
-      interpretation, and aggregation guidance. Source of the hf_/hs_ column documentation in
-      this mart.
-    columns:
-      - name: column_name
-        description: "Haystaq field name (joins to hf_/hs_ columns by exact name)."
