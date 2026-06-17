@@ -24,51 +24,46 @@
 -- when votes, the L2 voter count, or the projected support would be zero.
 -- Uncontested winners, rows where votes exceed the reported total (unreliable
 -- partial loads), and rows with no L2 match are also excluded.
--- Sources: votes_received is DDHQ via candidacy_stage; total_votes_cast is
--- BallotReady-first via election_stage; icp_voter_count is the L2 district voter
--- count from the positions mart. number_of_seats flags multi-seat races, where
--- one winner's share of the race total is structurally low.
+-- Sources: votes_received is DDHQ via candidacy_stage; the office (br_position_id),
+-- number_of_seats, and total_votes_cast come from election_stage (BallotReady-first
+-- for the total); icp_voter_count is the L2 district voter count from the positions
+-- mart. The office is read from election_stage, not the elected-officials roster
+-- (elected_official_terms), so every general winner is covered, not only those
+-- resolved into an elected-official record. number_of_seats flags multi-seat races,
+-- where one winner's share of the race total is structurally low.
 -- projected_registered_supporters applies the vote share to icp_voter_count. It is
 -- an INTERIM PLACEHOLDER for a future constituents-based figure; it assumes
 -- non-voters split like voters, so it is for display, not analysis.
 with
     general_winning_stages as (
-        select
-            br_candidacy_id, gp_election_stage_id, votes_received, election_stage_date
+        select gp_election_stage_id, votes_received, election_stage_date
         from {{ ref("candidacy_stage") }}
         where is_winner and lower(election_stage) like '%general%'
     ),
 
-    official_office_wins as (
-        select
-            eot.br_position_id,
-            ws.votes_received,
-            ws.gp_election_stage_id,
-            ws.election_stage_date
-        from {{ ref("elected_official_terms") }} as eot
-        inner join
-            general_winning_stages as ws
-            on cast(eot.br_candidacy_id as string) = ws.br_candidacy_id
-    ),
-
+    -- Resolve the office straight from election_stage (which carries
+    -- br_position_id, number_of_seats, and total_votes_cast for the race),
+    -- rather than routing the winner through elected_official_terms. The roster
+    -- join only kept winners that were entity-resolved into an elected-official
+    -- record, dropping otherwise-valid general winners; this covers them all.
     joined as (
         select
-            ow.br_position_id,
-            ow.gp_election_stage_id,
-            ow.election_stage_date,
+            es.br_position_id,
+            ws.gp_election_stage_id,
+            ws.election_stage_date,
             es.number_of_seats,
-            try_cast(ow.votes_received as bigint) as votes_received,
+            try_cast(ws.votes_received as bigint) as votes_received,
             try_cast(
                 nullif(es.total_votes_cast, 'uncontested') as bigint
             ) as total_votes_cast,
             pos.icp_voter_count
-        from official_office_wins as ow
+        from general_winning_stages as ws
         inner join
             {{ ref("election_stage") }} as es
-            on ow.gp_election_stage_id = es.gp_election_stage_id
+            on ws.gp_election_stage_id = es.gp_election_stage_id
         left join
             {{ ref("positions") }} as pos
-            on ow.br_position_id = pos.br_position_database_id
+            on es.br_position_id = pos.br_position_database_id
     ),
 
     scored as (
