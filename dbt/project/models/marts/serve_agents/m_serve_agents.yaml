@@ -1,0 +1,1681 @@
+version: 2
+
+models:
+  - name: serve_agent_voters
+    description: >
+      De-identified voter dataset for the Serve product's AI agents (DATA-2003, TDD DATA-1977).
+      One row per voter (a proxy for a constituent), sourced from
+      int__l2_nationwide_uniform_w_haystaq (L2 national voter file + Haystaq issue models).
+      Curated for analytical, aggregate queries by an AI agent serving an elected official's
+      chief of staff. All direct identifiers and PII (names, street addresses, phone numbers,
+      exact geocode, date of birth, device IDs) are removed; all partisanship (party
+      registration, partisan modeled scores, political-donor and candidate/ideology Haystaq
+      models) is removed; commercial / consumer-lifestyle attributes are excluded. Only
+      non-partisan civic, geographic/district, demographic, household, turnout, and non-partisan
+      Haystaq issue-model fields are exposed. The exposed column set is governed by the
+      serve_agent_voters_columns seed (is_available flag) and selected dynamically at build
+      time.
+    columns:
+      - name: voter_key
+        description: '{{ doc("sav_voter_key") }}'
+        data_tests:
+          - not_null
+          - unique
+      - name: state_postal_code
+        description: '{{ doc("sav_state_postal_code") }}'
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_be_in_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: "Residence_Addresses_City"
+        description: '{{ doc("sav_Residence_Addresses_City") }}'
+      - name: "Residence_Addresses_Zip"
+        description: '{{ doc("sav_Residence_Addresses_Zip") }}'
+      - name: "Residence_Addresses_CensusTract"
+        description: '{{ doc("sav_Residence_Addresses_CensusTract") }}'
+      - name: "Residence_Addresses_CensusBlockGroup"
+        description: '{{ doc("sav_Residence_Addresses_CensusBlockGroup") }}'
+      - name: "Voters_Gender"
+        description: '{{ doc("sav_Voters_Gender") }}'
+      - name: "Voters_Age"
+        description: '{{ doc("sav_Voters_Age") }}'
+      - name: "ConsumerData_Education_of_Person"
+        description: '{{ doc("sav_ConsumerData_Education_of_Person") }}'
+      - name: "CountyEthnic_Description"
+        description: '{{ doc("sav_CountyEthnic_Description") }}'
+      - name: "CountyEthnic_LALEthnicCode"
+        description: '{{ doc("sav_CountyEthnic_LALEthnicCode") }}'
+      - name: "Ethnic_Description"
+        description: '{{ doc("sav_Ethnic_Description") }}'
+      - name: "EthnicGroups_EthnicGroup1Desc"
+        description: '{{ doc("sav_EthnicGroups_EthnicGroup1Desc") }}'
+      - name: "ConsumerData_Hispanic_Country_Code"
+        description: '{{ doc("sav_ConsumerData_Hispanic_Country_Code") }}'
+      - name: "ConsumerData_Inferred_HH_Rank"
+        description: '{{ doc("sav_ConsumerData_Inferred_HH_Rank") }}'
+      - name: "ConsumerData_Language_Code"
+        description: '{{ doc("sav_ConsumerData_Language_Code") }}'
+      - name: "ConsumerData_Marital_Status"
+        description: '{{ doc("sav_ConsumerData_Marital_Status") }}'
+      - name: "ConsumerData_Single_Parent_in_Household"
+        description: '{{ doc("sav_ConsumerData_Single_Parent_in_Household") }}'
+      - name: "ConsumerDataLL_Veteran"
+        description: '{{ doc("sav_ConsumerDataLL_Veteran") }}'
+      - name: "Voters_PlaceOfBirth"
+        description: '{{ doc("sav_Voters_PlaceOfBirth") }}'
+      - name: "Voters_Active"
+        description: '{{ doc("sav_Voters_Active") }}'
+      - name: "Voters_CalculatedRegDate"
+        description: '{{ doc("sav_Voters_CalculatedRegDate") }}'
+      - name: "Voters_OfficialRegDate"
+        description: '{{ doc("sav_Voters_OfficialRegDate") }}'
+      - name: "AbsenteeTypes_Description"
+        description: '{{ doc("sav_AbsenteeTypes_Description") }}'
+      - name: "ConsumerData_Females_in_HH_18_24"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_18_24") }}'
+      - name: "ConsumerData_Females_in_HH_25_34"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_25_34") }}'
+      - name: "ConsumerData_Females_in_HH_35_44"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_35_44") }}'
+      - name: "ConsumerData_Females_in_HH_45_54"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_45_54") }}'
+      - name: "ConsumerData_Females_in_HH_55_64"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_55_64") }}'
+      - name: "ConsumerData_Females_in_HH_65_74"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_65_74") }}'
+      - name: "ConsumerData_Females_in_HH_75_Plus"
+        description: '{{ doc("sav_ConsumerData_Females_in_HH_75_Plus") }}'
+      - name: "ConsumerData_Males_in_HH_18_24"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_18_24") }}'
+      - name: "ConsumerData_Males_in_HH_25_34"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_25_34") }}'
+      - name: "ConsumerData_Males_in_HH_35_44"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_35_44") }}'
+      - name: "ConsumerData_Males_in_HH_45_54"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_45_54") }}'
+      - name: "ConsumerData_Males_in_HH_55_64"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_55_64") }}'
+      - name: "ConsumerData_Males_in_HH_65_74"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_65_74") }}'
+      - name: "ConsumerData_Males_in_HH_75_Plus"
+        description: '{{ doc("sav_ConsumerData_Males_in_HH_75_Plus") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_18_24"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_18_24") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_25_34"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_25_34") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_35_44"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_35_44") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_45_54"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_45_54") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_55_64"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_55_64") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_65_74"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_65_74") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_75_Plus"
+        description: '{{ doc("sav_ConsumerData_Unknown_Gender_in_HH_75_Plus") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_00_02") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02_Female"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_00_02_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02_Male"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_00_02_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02_Unknown"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_00_02_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_11_15") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15_Female"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_11_15_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15_Male"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_11_15_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15_Unknown"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_11_15_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_16_17") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17_Female"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_16_17_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17_Male"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_16_17_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17_Unknown"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_16_17_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_03_05") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05_Female"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_03_05_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05_Male"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_03_05_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05_Unknown"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_03_05_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_06_10") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10_Female"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_06_10_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10_Male"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_06_10_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10_Unknown"
+        description: '{{ doc("sav_ConsumerData_Children_in_HH_Age_06_10_Unknown") }}'
+      - name: "ConsumerData_Number_Of_Adults_in_HH"
+        description: '{{ doc("sav_ConsumerData_Number_Of_Adults_in_HH") }}'
+      - name: "ConsumerData_Number_Of_Children_in_HH"
+        description: '{{ doc("sav_ConsumerData_Number_Of_Children_in_HH") }}'
+      - name: "ConsumerData_Number_Of_Persons_in_HH"
+        description: '{{ doc("sav_ConsumerData_Number_Of_Persons_in_HH") }}'
+      - name: "ConsumerData_Disabled_In_HH"
+        description: '{{ doc("sav_ConsumerData_Disabled_In_HH") }}'
+      - name: "ConsumerData_Generations_In_HH"
+        description: '{{ doc("sav_ConsumerData_Generations_In_HH") }}'
+      - name: "ConsumerData_Presence_Of_Children_in_HH"
+        description: '{{ doc("sav_ConsumerData_Presence_Of_Children_in_HH") }}'
+      - name: "ConsumerData_Senior_Adult_In_HH"
+        description: '{{ doc("sav_ConsumerData_Senior_Adult_In_HH") }}'
+      - name: "ConsumerData_Veteran_In_HH"
+        description: '{{ doc("sav_ConsumerData_Veteran_In_HH") }}'
+      - name: "ConsumerData_Young_Adult_In_HH"
+        description: '{{ doc("sav_ConsumerData_Young_Adult_In_HH") }}'
+      - name: "Residence_HHGender_Description"
+        description: '{{ doc("sav_Residence_HHGender_Description") }}'
+      - name: "Residence_Families_HHVotersCount"
+        description: '{{ doc("sav_Residence_Families_HHVotersCount") }}'
+      - name: "County"
+        description: '{{ doc("sav_County") }}'
+      - name: "Voters_FIPS"
+        description: '{{ doc("sav_Voters_FIPS") }}'
+      - name: "County_Commissioner_District"
+        description: '{{ doc("sav_County_Commissioner_District") }}'
+      - name: "County_Supervisorial_District"
+        description: '{{ doc("sav_County_Supervisorial_District") }}'
+      - name: "Precinct"
+        description: '{{ doc("sav_Precinct") }}'
+      - name: "US_Congressional_District"
+        description: '{{ doc("sav_US_Congressional_District") }}'
+      - name: "State_Senate_District"
+        description: '{{ doc("sav_State_Senate_District") }}'
+      - name: "State_House_District"
+        description: '{{ doc("sav_State_House_District") }}'
+      - name: "State_Legislative_District"
+        description: '{{ doc("sav_State_Legislative_District") }}'
+      - name: "Borough"
+        description: '{{ doc("sav_Borough") }}'
+      - name: "Borough_Ward"
+        description: '{{ doc("sav_Borough_Ward") }}'
+      - name: "City"
+        description: '{{ doc("sav_City") }}'
+      - name: "City_Council_Commissioner_District"
+        description: '{{ doc("sav_City_Council_Commissioner_District") }}'
+      - name: "City_Mayoral_District"
+        description: '{{ doc("sav_City_Mayoral_District") }}'
+      - name: "City_Ward"
+        description: '{{ doc("sav_City_Ward") }}'
+      - name: "Hamlet_Community_Area"
+        description: '{{ doc("sav_Hamlet_Community_Area") }}'
+      - name: "Proposed_City"
+        description: '{{ doc("sav_Proposed_City") }}'
+      - name: "Proposed_City_Commissioner_District"
+        description: '{{ doc("sav_Proposed_City_Commissioner_District") }}'
+      - name: "Town_Council"
+        description: '{{ doc("sav_Town_Council") }}'
+      - name: "Town_District"
+        description: '{{ doc("sav_Town_District") }}'
+      - name: "Town_Ward"
+        description: '{{ doc("sav_Town_Ward") }}'
+      - name: "Township"
+        description: '{{ doc("sav_Township") }}'
+      - name: "Township_Ward"
+        description: '{{ doc("sav_Township_Ward") }}'
+      - name: "Village"
+        description: '{{ doc("sav_Village") }}'
+      - name: "Village_Ward"
+        description: '{{ doc("sav_Village_Ward") }}'
+      - name: "Judicial_Appellate_District"
+        description: '{{ doc("sav_Judicial_Appellate_District") }}'
+      - name: "Judicial_Chancery_Court"
+        description: '{{ doc("sav_Judicial_Chancery_Court") }}'
+      - name: "Judicial_Circuit_Court_District"
+        description: '{{ doc("sav_Judicial_Circuit_Court_District") }}'
+      - name: "Judicial_County_Board_of_Review_District"
+        description: '{{ doc("sav_Judicial_County_Board_of_Review_District") }}'
+      - name: "Judicial_County_Court_District"
+        description: '{{ doc("sav_Judicial_County_Court_District") }}'
+      - name: "Judicial_District"
+        description: '{{ doc("sav_Judicial_District") }}'
+      - name: "Judicial_District_Court_District"
+        description: '{{ doc("sav_Judicial_District_Court_District") }}'
+      - name: "Judicial_Family_Court_District"
+        description: '{{ doc("sav_Judicial_Family_Court_District") }}'
+      - name: "Judicial_Jury_District"
+        description: '{{ doc("sav_Judicial_Jury_District") }}'
+      - name: "Judicial_Justice_of_the_Peace"
+        description: '{{ doc("sav_Judicial_Justice_of_the_Peace") }}'
+      - name: "Judicial_Juvenile_Court_District"
+        description: '{{ doc("sav_Judicial_Juvenile_Court_District") }}'
+      - name: "Judicial_Magistrate_Division"
+        description: '{{ doc("sav_Judicial_Magistrate_Division") }}'
+      - name: "Judicial_Municipal_Court_District"
+        description: '{{ doc("sav_Judicial_Municipal_Court_District") }}'
+      - name: "Judicial_Sub_Circuit_District"
+        description: '{{ doc("sav_Judicial_Sub_Circuit_District") }}'
+      - name: "Judicial_Superior_Court_District"
+        description: '{{ doc("sav_Judicial_Superior_Court_District") }}'
+      - name: "Judicial_Supreme_Court_District"
+        description: '{{ doc("sav_Judicial_Supreme_Court_District") }}'
+      - name: "City_School_District"
+        description: '{{ doc("sav_City_School_District") }}'
+      - name: "College_Board_District"
+        description: '{{ doc("sav_College_Board_District") }}'
+      - name: "Community_College"
+        description: '{{ doc("sav_Community_College") }}'
+      - name: "Community_College_At_Large"
+        description: '{{ doc("sav_Community_College_At_Large") }}'
+      - name: "Community_College_Commissioner_District"
+        description: '{{ doc("sav_Community_College_Commissioner_District") }}'
+      - name: "Community_College_SubDistrict"
+        description: '{{ doc("sav_Community_College_SubDistrict") }}'
+      - name: "County_Board_of_Education_District"
+        description: '{{ doc("sav_County_Board_of_Education_District") }}'
+      - name: "County_Board_of_Education_SubDistrict"
+        description: '{{ doc("sav_County_Board_of_Education_SubDistrict") }}'
+      - name: "County_Community_College_District"
+        description: '{{ doc("sav_County_Community_College_District") }}'
+      - name: "County_Superintendent_of_Schools_District"
+        description: '{{ doc("sav_County_Superintendent_of_Schools_District") }}'
+      - name: "County_Unified_School_District"
+        description: '{{ doc("sav_County_Unified_School_District") }}'
+      - name: "Education_Commission_District"
+        description: '{{ doc("sav_Education_Commission_District") }}'
+      - name: "Educational_Service_District"
+        description: '{{ doc("sav_Educational_Service_District") }}'
+      - name: "Educational_Service_Subdistrict"
+        description: '{{ doc("sav_Educational_Service_Subdistrict") }}'
+      - name: "Elementary_School_District"
+        description: '{{ doc("sav_Elementary_School_District") }}'
+      - name: "Elementary_School_SubDistrict"
+        description: '{{ doc("sav_Elementary_School_SubDistrict") }}'
+      - name: "Exempted_Village_School_District"
+        description: '{{ doc("sav_Exempted_Village_School_District") }}'
+      - name: "High_School_District"
+        description: '{{ doc("sav_High_School_District") }}'
+      - name: "High_School_SubDistrict"
+        description: '{{ doc("sav_High_School_SubDistrict") }}'
+      - name: "Proposed_Community_College"
+        description: '{{ doc("sav_Proposed_Community_College") }}'
+      - name: "Proposed_Elementary_School_District"
+        description: '{{ doc("sav_Proposed_Elementary_School_District") }}'
+      - name: "Proposed_Unified_School_District"
+        description: '{{ doc("sav_Proposed_Unified_School_District") }}'
+      - name: "Regional_Office_of_Education_District"
+        description: '{{ doc("sav_Regional_Office_of_Education_District") }}'
+      - name: "School_Board_District"
+        description: '{{ doc("sav_School_Board_District") }}'
+      - name: "School_District"
+        description: '{{ doc("sav_School_District") }}'
+      - name: "School_District_Vocational"
+        description: '{{ doc("sav_School_District_Vocational") }}'
+      - name: "School_Facilities_Improvement_District"
+        description: '{{ doc("sav_School_Facilities_Improvement_District") }}'
+      - name: "School_Subdistrict"
+        description: '{{ doc("sav_School_Subdistrict") }}'
+      - name: "Superintendent_of_Schools_District"
+        description: '{{ doc("sav_Superintendent_of_Schools_District") }}'
+      - name: "Unified_School_District"
+        description: '{{ doc("sav_Unified_School_District") }}'
+      - name: "Unified_School_SubDistrict"
+        description: '{{ doc("sav_Unified_School_SubDistrict") }}'
+      - name: "2024_Proposed_Congressional_District"
+        description: '{{ doc("sav_2024_Proposed_Congressional_District") }}'
+      - name: "2024_Proposed_State_Senate_District"
+        description: '{{ doc("sav_2024_Proposed_State_Senate_District") }}'
+      - name: "2024_Proposed_State_House_District"
+        description: '{{ doc("sav_2024_Proposed_State_House_District") }}'
+      - name: "2024_Proposed_State_Legislative_District"
+        description: '{{ doc("sav_2024_Proposed_State_Legislative_District") }}'
+      - name: "2001_US_Congressional_District"
+        description: '{{ doc("sav_2001_US_Congressional_District") }}'
+      - name: "2001_State_House_District"
+        description: '{{ doc("sav_2001_State_House_District") }}'
+      - name: "2001_State_Legislative_District"
+        description: '{{ doc("sav_2001_State_Legislative_District") }}'
+      - name: "2001_State_Senate_District"
+        description: '{{ doc("sav_2001_State_Senate_District") }}'
+      - name: "2010_US_Congressional_District"
+        description: '{{ doc("sav_2010_US_Congressional_District") }}'
+      - name: "2010_State_House_District"
+        description: '{{ doc("sav_2010_State_House_District") }}'
+      - name: "2010_State_Legislative_District"
+        description: '{{ doc("sav_2010_State_Legislative_District") }}'
+      - name: "2010_State_Senate_District"
+        description: '{{ doc("sav_2010_State_Senate_District") }}'
+      - name: "4H_Livestock_District"
+        description: '{{ doc("sav_4H_Livestock_District") }}'
+      - name: "Airport_District"
+        description: '{{ doc("sav_Airport_District") }}'
+      - name: "Annexation_District"
+        description: '{{ doc("sav_Annexation_District") }}'
+      - name: "Aquatic_Center_District"
+        description: '{{ doc("sav_Aquatic_Center_District") }}'
+      - name: "Aquatic_District"
+        description: '{{ doc("sav_Aquatic_District") }}'
+      - name: "Assessment_District"
+        description: '{{ doc("sav_Assessment_District") }}'
+      - name: "Bay_Area_Rapid_Transit"
+        description: '{{ doc("sav_Bay_Area_Rapid_Transit") }}'
+      - name: "Board_of_Education_District"
+        description: '{{ doc("sav_Board_of_Education_District") }}'
+      - name: "Board_of_Education_SubDistrict"
+        description: '{{ doc("sav_Board_of_Education_SubDistrict") }}'
+      - name: "Bonds_District"
+        description: '{{ doc("sav_Bonds_District") }}'
+      - name: "Career_Center"
+        description: '{{ doc("sav_Career_Center") }}'
+      - name: "Cemetery_District"
+        description: '{{ doc("sav_Cemetery_District") }}'
+      - name: "Chemical_Control_District"
+        description: '{{ doc("sav_Chemical_Control_District") }}'
+      - name: "Coast_Water_District"
+        description: '{{ doc("sav_Coast_Water_District") }}'
+      - name: "Communications_District"
+        description: '{{ doc("sav_Communications_District") }}'
+      - name: "Community_Council_District"
+        description: '{{ doc("sav_Community_Council_District") }}'
+      - name: "Community_Council_SubDistrict"
+        description: '{{ doc("sav_Community_Council_SubDistrict") }}'
+      - name: "Community_Facilities_District"
+        description: '{{ doc("sav_Community_Facilities_District") }}'
+      - name: "Community_Facilities_SubDistrict"
+        description: '{{ doc("sav_Community_Facilities_SubDistrict") }}'
+      - name: "Community_Hospital_District"
+        description: '{{ doc("sav_Community_Hospital_District") }}'
+      - name: "Community_Planning_Area"
+        description: '{{ doc("sav_Community_Planning_Area") }}'
+      - name: "Community_Service_District"
+        description: '{{ doc("sav_Community_Service_District") }}'
+      - name: "Community_Service_SubDistrict"
+        description: '{{ doc("sav_Community_Service_SubDistrict") }}'
+      - name: "Congressional_Township"
+        description: '{{ doc("sav_Congressional_Township") }}'
+      - name: "Conservation_District"
+        description: '{{ doc("sav_Conservation_District") }}'
+      - name: "Conservation_SubDistrict"
+        description: '{{ doc("sav_Conservation_SubDistrict") }}'
+      - name: "Consolidated_Water_District"
+        description: '{{ doc("sav_Consolidated_Water_District") }}'
+      - name: "Control_Zone_District"
+        description: '{{ doc("sav_Control_Zone_District") }}'
+      - name: "Corrections_District"
+        description: '{{ doc("sav_Corrections_District") }}'
+      - name: "County_Fire_District"
+        description: '{{ doc("sav_County_Fire_District") }}'
+      - name: "County_Hospital_District"
+        description: '{{ doc("sav_County_Hospital_District") }}'
+      - name: "County_Legislative_District"
+        description: '{{ doc("sav_County_Legislative_District") }}'
+      - name: "County_Library_District"
+        description: '{{ doc("sav_County_Library_District") }}'
+      - name: "County_Memorial_District"
+        description: '{{ doc("sav_County_Memorial_District") }}'
+      - name: "County_Paramedic_District"
+        description: '{{ doc("sav_County_Paramedic_District") }}'
+      - name: "County_Service_Area"
+        description: '{{ doc("sav_County_Service_Area") }}'
+      - name: "County_Service_Area_SubDistrict"
+        description: '{{ doc("sav_County_Service_Area_SubDistrict") }}'
+      - name: "County_Sewer_District"
+        description: '{{ doc("sav_County_Sewer_District") }}'
+      - name: "County_Water_District"
+        description: '{{ doc("sav_County_Water_District") }}'
+      - name: "County_Water_Landowner_District"
+        description: '{{ doc("sav_County_Water_Landowner_District") }}'
+      - name: "County_Water_SubDistrict"
+        description: '{{ doc("sav_County_Water_SubDistrict") }}'
+      - name: "District_Attorney"
+        description: '{{ doc("sav_District_Attorney") }}'
+      - name: "Drainage_District"
+        description: '{{ doc("sav_Drainage_District") }}'
+      - name: "Election_Commissioner_District"
+        description: '{{ doc("sav_Election_Commissioner_District") }}'
+      - name: "Emergency_Communication_911_District"
+        description: '{{ doc("sav_Emergency_Communication_911_District") }}'
+      - name: "Emergency_Communication_911_SubDistrict"
+        description: '{{ doc("sav_Emergency_Communication_911_SubDistrict") }}'
+      - name: "Enterprise_Zone_District"
+        description: '{{ doc("sav_Enterprise_Zone_District") }}'
+      - name: "EXT_District"
+        description: '{{ doc("sav_EXT_District") }}'
+      - name: "Facilities_Improvement_District"
+        description: '{{ doc("sav_Facilities_Improvement_District") }}'
+      - name: "Fire_District"
+        description: '{{ doc("sav_Fire_District") }}'
+      - name: "Fire_Maintenance_District"
+        description: '{{ doc("sav_Fire_Maintenance_District") }}'
+      - name: "Fire_Protection_District"
+        description: '{{ doc("sav_Fire_Protection_District") }}'
+      - name: "Fire_Protection_SubDistrict"
+        description: '{{ doc("sav_Fire_Protection_SubDistrict") }}'
+      - name: "Fire_Protection_Tax_Measure_District"
+        description: '{{ doc("sav_Fire_Protection_Tax_Measure_District") }}'
+      - name: "Fire_Service_Area_District"
+        description: '{{ doc("sav_Fire_Service_Area_District") }}'
+      - name: "Fire_SubDistrict"
+        description: '{{ doc("sav_Fire_SubDistrict") }}'
+      - name: "Flood_Control_Zone"
+        description: '{{ doc("sav_Flood_Control_Zone") }}'
+      - name: "Forest_Preserve"
+        description: '{{ doc("sav_Forest_Preserve") }}'
+      - name: "Garbage_District"
+        description: '{{ doc("sav_Garbage_District") }}'
+      - name: "Geological_Hazard_Abatement_District"
+        description: '{{ doc("sav_Geological_Hazard_Abatement_District") }}'
+      - name: "Health_District"
+        description: '{{ doc("sav_Health_District") }}'
+      - name: "Hospital_District"
+        description: '{{ doc("sav_Hospital_District") }}'
+      - name: "Hospital_SubDistrict"
+        description: '{{ doc("sav_Hospital_SubDistrict") }}'
+      - name: "Improvement_Landowner_District"
+        description: '{{ doc("sav_Improvement_Landowner_District") }}'
+      - name: "Independent_Fire_District"
+        description: '{{ doc("sav_Independent_Fire_District") }}'
+      - name: "Irrigation_District"
+        description: '{{ doc("sav_Irrigation_District") }}'
+      - name: "Irrigation_SubDistrict"
+        description: '{{ doc("sav_Irrigation_SubDistrict") }}'
+      - name: "Island"
+        description: '{{ doc("sav_Island") }}'
+      - name: "Land_Commission"
+        description: '{{ doc("sav_Land_Commission") }}'
+      - name: "Landscaping_and_Lighting_Assessment_District"
+        description: '{{ doc("sav_Landscaping_and_Lighting_Assessment_District") }}'
+      - name: "Law_Enforcement_District"
+        description: '{{ doc("sav_Law_Enforcement_District") }}'
+      - name: "Learning_Community_Coordinating_Council_District"
+        description: '{{ doc("sav_Learning_Community_Coordinating_Council_District") }}'
+      - name: "Levee_District"
+        description: '{{ doc("sav_Levee_District") }}'
+      - name: "Levee_Reconstruction_Assesment_District"
+        description: '{{ doc("sav_Levee_Reconstruction_Assesment_District") }}'
+      - name: "Library_District"
+        description: '{{ doc("sav_Library_District") }}'
+      - name: "Library_Services_District"
+        description: '{{ doc("sav_Library_Services_District") }}'
+      - name: "Library_SubDistrict"
+        description: '{{ doc("sav_Library_SubDistrict") }}'
+      - name: "Lighting_District"
+        description: '{{ doc("sav_Lighting_District") }}'
+      - name: "Local_Hospital_District"
+        description: '{{ doc("sav_Local_Hospital_District") }}'
+      - name: "Local_Park_District"
+        description: '{{ doc("sav_Local_Park_District") }}'
+      - name: "Maintenance_District"
+        description: '{{ doc("sav_Maintenance_District") }}'
+      - name: "Master_Plan_District"
+        description: '{{ doc("sav_Master_Plan_District") }}'
+      - name: "Memorial_District"
+        description: '{{ doc("sav_Memorial_District") }}'
+      - name: "Metro_Service_District"
+        description: '{{ doc("sav_Metro_Service_District") }}'
+      - name: "Metro_Service_Subdistrict"
+        description: '{{ doc("sav_Metro_Service_Subdistrict") }}'
+      - name: "Metro_Transit_District"
+        description: '{{ doc("sav_Metro_Transit_District") }}'
+      - name: "Metropolitan_Water_District"
+        description: '{{ doc("sav_Metropolitan_Water_District") }}'
+      - name: "Middle_School_District"
+        description: '{{ doc("sav_Middle_School_District") }}'
+      - name: "Mosquito_Abatement_District"
+        description: '{{ doc("sav_Mosquito_Abatement_District") }}'
+      - name: "Mountain_Water_District"
+        description: '{{ doc("sav_Mountain_Water_District") }}'
+      - name: "Multi_township_Assessor"
+        description: '{{ doc("sav_Multi_township_Assessor") }}'
+      - name: "Municipal_Advisory_Council_District"
+        description: '{{ doc("sav_Municipal_Advisory_Council_District") }}'
+      - name: "Municipal_Utility_District"
+        description: '{{ doc("sav_Municipal_Utility_District") }}'
+      - name: "Municipal_Utility_SubDistrict"
+        description: '{{ doc("sav_Municipal_Utility_SubDistrict") }}'
+      - name: "Municipal_Water_District"
+        description: '{{ doc("sav_Municipal_Water_District") }}'
+      - name: "Municipal_Water_SubDistrict"
+        description: '{{ doc("sav_Municipal_Water_SubDistrict") }}'
+      - name: "Museum_District"
+        description: '{{ doc("sav_Museum_District") }}'
+      - name: "Northeast_Soil_and_Water_District"
+        description: '{{ doc("sav_Northeast_Soil_and_Water_District") }}'
+      - name: "Open_Space_District"
+        description: '{{ doc("sav_Open_Space_District") }}'
+      - name: "Open_Space_SubDistrict"
+        description: '{{ doc("sav_Open_Space_SubDistrict") }}'
+      - name: "Other"
+        description: '{{ doc("sav_Other") }}'
+      - name: "Paramedic_District"
+        description: '{{ doc("sav_Paramedic_District") }}'
+      - name: "Park_Commissioner_District"
+        description: '{{ doc("sav_Park_Commissioner_District") }}'
+      - name: "Park_District"
+        description: '{{ doc("sav_Park_District") }}'
+      - name: "Park_SubDistrict"
+        description: '{{ doc("sav_Park_SubDistrict") }}'
+      - name: "Planning_Area_District"
+        description: '{{ doc("sav_Planning_Area_District") }}'
+      - name: "Police_District"
+        description: '{{ doc("sav_Police_District") }}'
+      - name: "Port_District"
+        description: '{{ doc("sav_Port_District") }}'
+      - name: "Port_SubDistrict"
+        description: '{{ doc("sav_Port_SubDistrict") }}'
+      - name: "Power_District"
+        description: '{{ doc("sav_Power_District") }}'
+      - name: "Proposed_District"
+        description: '{{ doc("sav_Proposed_District") }}'
+      - name: "Proposed_Fire_District"
+        description: '{{ doc("sav_Proposed_Fire_District") }}'
+      - name: "Public_Airport_District"
+        description: '{{ doc("sav_Public_Airport_District") }}'
+      - name: "Public_Regulation_Commission"
+        description: '{{ doc("sav_Public_Regulation_Commission") }}'
+      - name: "Public_Service_Commission_District"
+        description: '{{ doc("sav_Public_Service_Commission_District") }}'
+      - name: "Public_Utility_District"
+        description: '{{ doc("sav_Public_Utility_District") }}'
+      - name: "Public_Utility_SubDistrict"
+        description: '{{ doc("sav_Public_Utility_SubDistrict") }}'
+      - name: "Rapid_Transit_District"
+        description: '{{ doc("sav_Rapid_Transit_District") }}'
+      - name: "Rapid_Transit_SubDistrict"
+        description: '{{ doc("sav_Rapid_Transit_SubDistrict") }}'
+      - name: "Reclamation_District"
+        description: '{{ doc("sav_Reclamation_District") }}'
+      - name: "Recreation_District"
+        description: '{{ doc("sav_Recreation_District") }}'
+      - name: "Recreational_SubDistrict"
+        description: '{{ doc("sav_Recreational_SubDistrict") }}'
+      - name: "Resort_Improvement_District"
+        description: '{{ doc("sav_Resort_Improvement_District") }}'
+      - name: "Resource_Conservation_District"
+        description: '{{ doc("sav_Resource_Conservation_District") }}'
+      - name: "River_Water_District"
+        description: '{{ doc("sav_River_Water_District") }}'
+      - name: "Road_Maintenance_District"
+        description: '{{ doc("sav_Road_Maintenance_District") }}'
+      - name: "Rural_Service_District"
+        description: '{{ doc("sav_Rural_Service_District") }}'
+      - name: "Sanitary_District"
+        description: '{{ doc("sav_Sanitary_District") }}'
+      - name: "Sanitary_SubDistrict"
+        description: '{{ doc("sav_Sanitary_SubDistrict") }}'
+      - name: "Service_Area_District"
+        description: '{{ doc("sav_Service_Area_District") }}'
+      - name: "Sewer_District"
+        description: '{{ doc("sav_Sewer_District") }}'
+      - name: "Sewer_Maintenance_District"
+        description: '{{ doc("sav_Sewer_Maintenance_District") }}'
+      - name: "Sewer_SubDistrict"
+        description: '{{ doc("sav_Sewer_SubDistrict") }}'
+      - name: "Snow_Removal_District"
+        description: '{{ doc("sav_Snow_Removal_District") }}'
+      - name: "Soil_and_Water_District"
+        description: '{{ doc("sav_Soil_and_Water_District") }}'
+      - name: "Soil_and_Water_District_At_Large"
+        description: '{{ doc("sav_Soil_and_Water_District_At_Large") }}'
+      - name: "Special_Reporting_District"
+        description: '{{ doc("sav_Special_Reporting_District") }}'
+      - name: "Special_Tax_District"
+        description: '{{ doc("sav_Special_Tax_District") }}'
+      - name: "State_Board_of_Equalization"
+        description: '{{ doc("sav_State_Board_of_Equalization") }}'
+      - name: "Storm_Water_District"
+        description: '{{ doc("sav_Storm_Water_District") }}'
+      - name: "Street_Lighting_District"
+        description: '{{ doc("sav_Street_Lighting_District") }}'
+      - name: "Transit_District"
+        description: '{{ doc("sav_Transit_District") }}'
+      - name: "Transit_SubDistrict"
+        description: '{{ doc("sav_Transit_SubDistrict") }}'
+      - name: "TriCity_Service_District"
+        description: '{{ doc("sav_TriCity_Service_District") }}'
+      - name: "TV_Translator_District"
+        description: '{{ doc("sav_TV_Translator_District") }}'
+      - name: "Unincorporated_District"
+        description: '{{ doc("sav_Unincorporated_District") }}'
+      - name: "Unincorporated_Park_District"
+        description: '{{ doc("sav_Unincorporated_Park_District") }}'
+      - name: "Unprotected_Fire_District"
+        description: '{{ doc("sav_Unprotected_Fire_District") }}'
+      - name: "Ute_Creek_Soil_District"
+        description: '{{ doc("sav_Ute_Creek_Soil_District") }}'
+      - name: "Vector_Control_District"
+        description: '{{ doc("sav_Vector_Control_District") }}'
+      - name: "Vote_By_Mail_Area"
+        description: '{{ doc("sav_Vote_By_Mail_Area") }}'
+      - name: "Wastewater_District"
+        description: '{{ doc("sav_Wastewater_District") }}'
+      - name: "Water_Agency"
+        description: '{{ doc("sav_Water_Agency") }}'
+      - name: "Water_Agency_SubDistrict"
+        description: '{{ doc("sav_Water_Agency_SubDistrict") }}'
+      - name: "Water_Conservation_District"
+        description: '{{ doc("sav_Water_Conservation_District") }}'
+      - name: "Water_Conservation_SubDistrict"
+        description: '{{ doc("sav_Water_Conservation_SubDistrict") }}'
+      - name: "Water_Control_Water_Conservation"
+        description: '{{ doc("sav_Water_Control_Water_Conservation") }}'
+      - name: "Water_Control_Water_Conservation_SubDistrict"
+        description: '{{ doc("sav_Water_Control_Water_Conservation_SubDistrict") }}'
+      - name: "Water_District"
+        description: '{{ doc("sav_Water_District") }}'
+      - name: "Water_Public_Utility_District"
+        description: '{{ doc("sav_Water_Public_Utility_District") }}'
+      - name: "Water_Public_Utility_Subdistrict"
+        description: '{{ doc("sav_Water_Public_Utility_Subdistrict") }}'
+      - name: "Water_Replacement_District"
+        description: '{{ doc("sav_Water_Replacement_District") }}'
+      - name: "Water_Replacement_SubDistrict"
+        description: '{{ doc("sav_Water_Replacement_SubDistrict") }}'
+      - name: "Water_SubDistrict"
+        description: '{{ doc("sav_Water_SubDistrict") }}'
+      - name: "Weed_District"
+        description: '{{ doc("sav_Weed_District") }}'
+      - name: "ConsumerData_Time_Zone"
+        description: '{{ doc("sav_ConsumerData_Time_Zone") }}'
+      - name: "ConsumerData_RUS_Code"
+        description: '{{ doc("sav_ConsumerData_RUS_Code") }}'
+      - name: "ConsumerData_Length_Of_Residence_Code"
+        description: '{{ doc("sav_ConsumerData_Length_Of_Residence_Code") }}'
+      - name: "Residence_Addresses_Density"
+        description: '{{ doc("sav_Residence_Addresses_Density") }}'
+      - name: "Designated_Market_Area_DMA"
+        description: '{{ doc("sav_Designated_Market_Area_DMA") }}'
+      - name: "Voters_VotingPerformanceEvenYearGeneral"
+        description: '{{ doc("sav_Voters_VotingPerformanceEvenYearGeneral") }}'
+      - name: "Voters_VotingPerformanceEvenYearPrimary"
+        description: '{{ doc("sav_Voters_VotingPerformanceEvenYearPrimary") }}'
+      - name: "Voters_VotingPerformanceEvenYearGeneralAndPrimary"
+        description: '{{ doc("sav_Voters_VotingPerformanceEvenYearGeneralAndPrimary") }}'
+      - name: "Voters_VotingPerformanceMinorElection"
+        description: '{{ doc("sav_Voters_VotingPerformanceMinorElection") }}'
+      - name: "General_2030"
+        description: '{{ doc("sav_General_2030") }}'
+      - name: "Primary_2030"
+        description: '{{ doc("sav_Primary_2030") }}'
+      - name: "OtherElection_2030"
+        description: '{{ doc("sav_OtherElection_2030") }}'
+      - name: "AnyElection_2029"
+        description: '{{ doc("sav_AnyElection_2029") }}'
+      - name: "General_2028"
+        description: '{{ doc("sav_General_2028") }}'
+      - name: "Primary_2028"
+        description: '{{ doc("sav_Primary_2028") }}'
+      - name: "PresidentialPrimary_2028"
+        description: '{{ doc("sav_PresidentialPrimary_2028") }}'
+      - name: "OtherElection_2028"
+        description: '{{ doc("sav_OtherElection_2028") }}'
+      - name: "AnyElection_2027"
+        description: '{{ doc("sav_AnyElection_2027") }}'
+      - name: "General_2026"
+        description: '{{ doc("sav_General_2026") }}'
+      - name: "Primary_2026"
+        description: '{{ doc("sav_Primary_2026") }}'
+      - name: "OtherElection_2026"
+        description: '{{ doc("sav_OtherElection_2026") }}'
+      - name: "AnyElection_2025"
+        description: '{{ doc("sav_AnyElection_2025") }}'
+      - name: "General_2024"
+        description: '{{ doc("sav_General_2024") }}'
+      - name: "Primary_2024"
+        description: '{{ doc("sav_Primary_2024") }}'
+      - name: "PresidentialPrimary_2024"
+        description: '{{ doc("sav_PresidentialPrimary_2024") }}'
+      - name: "OtherElection_2024"
+        description: '{{ doc("sav_OtherElection_2024") }}'
+      - name: "AnyElection_2023"
+        description: '{{ doc("sav_AnyElection_2023") }}'
+      - name: "General_2022"
+        description: '{{ doc("sav_General_2022") }}'
+      - name: "Primary_2022"
+        description: '{{ doc("sav_Primary_2022") }}'
+      - name: "OtherElection_2022"
+        description: '{{ doc("sav_OtherElection_2022") }}'
+      - name: "AnyElection_2021"
+        description: '{{ doc("sav_AnyElection_2021") }}'
+      - name: "General_2020"
+        description: '{{ doc("sav_General_2020") }}'
+      - name: "Primary_2020"
+        description: '{{ doc("sav_Primary_2020") }}'
+      - name: "PresidentialPrimary_2020"
+        description: '{{ doc("sav_PresidentialPrimary_2020") }}'
+      - name: "OtherElection_2020"
+        description: '{{ doc("sav_OtherElection_2020") }}'
+      - name: "AnyElection_2019"
+        description: '{{ doc("sav_AnyElection_2019") }}'
+      - name: "General_2018"
+        description: '{{ doc("sav_General_2018") }}'
+      - name: "Primary_2018"
+        description: '{{ doc("sav_Primary_2018") }}'
+      - name: "OtherElection_2018"
+        description: '{{ doc("sav_OtherElection_2018") }}'
+      - name: "AnyElection_2017"
+        description: '{{ doc("sav_AnyElection_2017") }}'
+      - name: "General_2016"
+        description: '{{ doc("sav_General_2016") }}'
+      - name: "Primary_2016"
+        description: '{{ doc("sav_Primary_2016") }}'
+      - name: "PresidentialPrimary_2016"
+        description: '{{ doc("sav_PresidentialPrimary_2016") }}'
+      - name: "OtherElection_2016"
+        description: '{{ doc("sav_OtherElection_2016") }}'
+      - name: "AnyElection_2015"
+        description: '{{ doc("sav_AnyElection_2015") }}'
+      - name: "General_2014"
+        description: '{{ doc("sav_General_2014") }}'
+      - name: "Primary_2014"
+        description: '{{ doc("sav_Primary_2014") }}'
+      - name: "OtherElection_2014"
+        description: '{{ doc("sav_OtherElection_2014") }}'
+      - name: "AnyElection_2013"
+        description: '{{ doc("sav_AnyElection_2013") }}'
+      - name: "General_2012"
+        description: '{{ doc("sav_General_2012") }}'
+      - name: "Primary_2012"
+        description: '{{ doc("sav_Primary_2012") }}'
+      - name: "PresidentialPrimary_2012"
+        description: '{{ doc("sav_PresidentialPrimary_2012") }}'
+      - name: "OtherElection_2012"
+        description: '{{ doc("sav_OtherElection_2012") }}'
+      - name: "AnyElection_2011"
+        description: '{{ doc("sav_AnyElection_2011") }}'
+      - name: "General_2010"
+        description: '{{ doc("sav_General_2010") }}'
+      - name: "Primary_2010"
+        description: '{{ doc("sav_Primary_2010") }}'
+      - name: "OtherElection_2010"
+        description: '{{ doc("sav_OtherElection_2010") }}'
+      - name: "AnyElection_2009"
+        description: '{{ doc("sav_AnyElection_2009") }}'
+      - name: "General_2008"
+        description: '{{ doc("sav_General_2008") }}'
+      - name: "Primary_2008"
+        description: '{{ doc("sav_Primary_2008") }}'
+      - name: "PresidentialPrimary_2008"
+        description: '{{ doc("sav_PresidentialPrimary_2008") }}'
+      - name: "OtherElection_2008"
+        description: '{{ doc("sav_OtherElection_2008") }}'
+      - name: "AnyElection_2007"
+        description: '{{ doc("sav_AnyElection_2007") }}'
+      - name: "General_2006"
+        description: '{{ doc("sav_General_2006") }}'
+      - name: "Primary_2006"
+        description: '{{ doc("sav_Primary_2006") }}'
+      - name: "OtherElection_2006"
+        description: '{{ doc("sav_OtherElection_2006") }}'
+      - name: "AnyElection_2005"
+        description: '{{ doc("sav_AnyElection_2005") }}'
+      - name: "General_2004"
+        description: '{{ doc("sav_General_2004") }}'
+      - name: "Primary_2004"
+        description: '{{ doc("sav_Primary_2004") }}'
+      - name: "PresidentialPrimary_2004"
+        description: '{{ doc("sav_PresidentialPrimary_2004") }}'
+      - name: "OtherElection_2004"
+        description: '{{ doc("sav_OtherElection_2004") }}'
+      - name: "AnyElection_2003"
+        description: '{{ doc("sav_AnyElection_2003") }}'
+      - name: "General_2002"
+        description: '{{ doc("sav_General_2002") }}'
+      - name: "Primary_2002"
+        description: '{{ doc("sav_Primary_2002") }}'
+      - name: "OtherElection_2002"
+        description: '{{ doc("sav_OtherElection_2002") }}'
+      - name: "AnyElection_2001"
+        description: '{{ doc("sav_AnyElection_2001") }}'
+      - name: "General_2000"
+        description: '{{ doc("sav_General_2000") }}'
+      - name: "Primary_2000"
+        description: '{{ doc("sav_Primary_2000") }}'
+      - name: "PresidentialPrimary_2000"
+        description: '{{ doc("sav_PresidentialPrimary_2000") }}'
+      - name: "OtherElection_2000"
+        description: '{{ doc("sav_OtherElection_2000") }}'
+      - name: "hf_activism"
+        description: '{{ doc("sav_hf_activism") }}'
+      - name: "hf_attends_church"
+        description: '{{ doc("sav_hf_attends_church") }}'
+      - name: "hf_candidate_mail"
+        description: '{{ doc("sav_hf_candidate_mail") }}'
+      - name: "hf_charity_giving"
+        description: '{{ doc("sav_hf_charity_giving") }}'
+      - name: "hf_community_integration"
+        description: '{{ doc("sav_hf_community_integration") }}'
+      - name: "hf_dating"
+        description: '{{ doc("sav_hf_dating") }}'
+      - name: "hf_dropoff_fill"
+        description: '{{ doc("sav_hf_dropoff_fill") }}'
+      - name: "hf_most_important_policy_item"
+        description: '{{ doc("sav_hf_most_important_policy_item") }}'
+      - name: "hf_political_donations"
+        description: '{{ doc("sav_hf_political_donations") }}'
+      - name: "hf_religion"
+        description: '{{ doc("sav_hf_religion") }}'
+      - name: "hf_responsiveness_email"
+        description: '{{ doc("sav_hf_responsiveness_email") }}'
+      - name: "hf_responsiveness_live"
+        description: '{{ doc("sav_hf_responsiveness_live") }}'
+      - name: "hf_responsiveness_sms"
+        description: '{{ doc("sav_hf_responsiveness_sms") }}'
+      - name: "hf_age_limit"
+        description: '{{ doc("sav_hf_age_limit") }}'
+      - name: "hf_candidate_female_prefer"
+        description: '{{ doc("sav_hf_candidate_female_prefer") }}'
+      - name: "hf_candidate_minority_prefer"
+        description: '{{ doc("sav_hf_candidate_minority_prefer") }}'
+      - name: "hf_consumer_value"
+        description: '{{ doc("sav_hf_consumer_value") }}'
+      - name: "hf_electric_vehicle_buyer"
+        description: '{{ doc("sav_hf_electric_vehicle_buyer") }}'
+      - name: "hf_home_buyer_any"
+        description: '{{ doc("sav_hf_home_buyer_any") }}'
+      - name: "hf_home_buyer_new"
+        description: '{{ doc("sav_hf_home_buyer_new") }}'
+      - name: "hf_rideshare_user"
+        description: '{{ doc("sav_hf_rideshare_user") }}'
+      - name: "hf_solar_panel_buyer"
+        description: '{{ doc("sav_hf_solar_panel_buyer") }}'
+      - name: "hf_tv_viewer"
+        description: '{{ doc("sav_hf_tv_viewer") }}'
+      - name: "hf_vaping_user"
+        description: '{{ doc("sav_hf_vaping_user") }}'
+      - name: "hf_affordability_changed_what_you_buy"
+        description: '{{ doc("sav_hf_affordability_changed_what_you_buy") }}'
+      - name: "hf_affordable_housing_gov"
+        description: '{{ doc("sav_hf_affordable_housing_gov") }}'
+      - name: "hf_amazon_worker_treatment"
+        description: '{{ doc("sav_hf_amazon_worker_treatment") }}'
+      - name: "hf_attitude_towards_unions"
+        description: '{{ doc("sav_hf_attitude_towards_unions") }}'
+      - name: "hf_capitalism_believe"
+        description: '{{ doc("sav_hf_capitalism_believe") }}'
+      - name: "hf_crypto_buyer"
+        description: '{{ doc("sav_hf_crypto_buyer") }}'
+      - name: "hf_crypto_restrictions"
+        description: '{{ doc("sav_hf_crypto_restrictions") }}'
+      - name: "hf_economic_anxiety"
+        description: '{{ doc("sav_hf_economic_anxiety") }}'
+      - name: "hf_economic_despondency"
+        description: '{{ doc("sav_hf_economic_despondency") }}'
+      - name: "hf_gentrification"
+        description: '{{ doc("sav_hf_gentrification") }}'
+      - name: "hf_gig_work_benefits"
+        description: '{{ doc("sav_hf_gig_work_benefits") }}'
+      - name: "hf_gig_worker"
+        description: '{{ doc("sav_hf_gig_worker") }}'
+      - name: "hf_gig_worker_historical"
+        description: '{{ doc("sav_hf_gig_worker_historical") }}'
+      - name: "hf_income_inequality"
+        description: '{{ doc("sav_hf_income_inequality") }}'
+      - name: "hf_inflation_fault"
+        description: '{{ doc("sav_hf_inflation_fault") }}'
+      - name: "hf_infrastructure_funding"
+        description: '{{ doc("sav_hf_infrastructure_funding") }}'
+      - name: "hf_job_seeker"
+        description: '{{ doc("sav_hf_job_seeker") }}'
+      - name: "hf_tax_cuts"
+        description: '{{ doc("sav_hf_tax_cuts") }}'
+      - name: "hf_charter_schools"
+        description: '{{ doc("sav_hf_charter_schools") }}'
+      - name: "hf_critical_race_theory_books"
+        description: '{{ doc("sav_hf_critical_race_theory_books") }}'
+      - name: "hf_school_choice"
+        description: '{{ doc("sav_hf_school_choice") }}'
+      - name: "hf_school_funding"
+        description: '{{ doc("sav_hf_school_funding") }}'
+      - name: "hf_teachers_union"
+        description: '{{ doc("sav_hf_teachers_union") }}'
+      - name: "hf_climate_change"
+        description: '{{ doc("sav_hf_climate_change") }}'
+      - name: "hf_gas_tax"
+        description: '{{ doc("sav_hf_gas_tax") }}'
+      - name: "hf_green_new_deal"
+        description: '{{ doc("sav_hf_green_new_deal") }}'
+      - name: "hf_pipeline_fracking"
+        description: '{{ doc("sav_hf_pipeline_fracking") }}'
+      - name: "hf_abortion_pro"
+        description: '{{ doc("sav_hf_abortion_pro") }}'
+      - name: "hf_general_anti_vax_pro_vax"
+        description: '{{ doc("sav_hf_general_anti_vax_pro_vax") }}'
+      - name: "hf_medicaid_expansion"
+        description: '{{ doc("sav_hf_medicaid_expansion") }}'
+      - name: "hf_medicare_for_all"
+        description: '{{ doc("sav_hf_medicare_for_all") }}'
+      - name: "hf_obamacare_aca"
+        description: '{{ doc("sav_hf_obamacare_aca") }}'
+      - name: "hf_area_identity"
+        description: '{{ doc("sav_hf_area_identity") }}'
+      - name: "hf_gamer"
+        description: '{{ doc("sav_hf_gamer") }}'
+      - name: "hf_listen_podcaster"
+        description: '{{ doc("sav_hf_listen_podcaster") }}'
+      - name: "hf_listen_podcaster_leaning"
+        description: '{{ doc("sav_hf_listen_podcaster_leaning") }}'
+      - name: "hf_news_source"
+        description: '{{ doc("sav_hf_news_source") }}'
+      - name: "hf_podcast_listener"
+        description: '{{ doc("sav_hf_podcast_listener") }}'
+      - name: "hf_social_media_user"
+        description: '{{ doc("sav_hf_social_media_user") }}'
+      - name: "hf_tv_news_source_most_trusted"
+        description: '{{ doc("sav_hf_tv_news_source_most_trusted") }}'
+      - name: "hf_china_foreign_policy"
+        description: '{{ doc("sav_hf_china_foreign_policy") }}'
+      - name: "hf_defense_spending"
+        description: '{{ doc("sav_hf_defense_spending") }}'
+      - name: "hf_immigration_illegal"
+        description: '{{ doc("sav_hf_immigration_illegal") }}'
+      - name: "hf_israel_committing_genocide"
+        description: '{{ doc("sav_hf_israel_committing_genocide") }}'
+      - name: "hf_israel_military_actions"
+        description: '{{ doc("sav_hf_israel_military_actions") }}'
+      - name: "hf_mass_deportations"
+        description: '{{ doc("sav_hf_mass_deportations") }}'
+      - name: "hf_mexican_wall"
+        description: '{{ doc("sav_hf_mexican_wall") }}'
+      - name: "hf_military_family_relationship"
+        description: '{{ doc("sav_hf_military_family_relationship") }}'
+      - name: "hf_military_family_self"
+        description: '{{ doc("sav_hf_military_family_self") }}'
+      - name: "hf_super_power_policy"
+        description: '{{ doc("sav_hf_super_power_policy") }}'
+      - name: "hf_2025_government_shutdown_fault"
+        description: '{{ doc("sav_hf_2025_government_shutdown_fault") }}'
+      - name: "hf_artificial_intelligence"
+        description: '{{ doc("sav_hf_artificial_intelligence") }}'
+      - name: "hf_christian_values"
+        description: '{{ doc("sav_hf_christian_values") }}'
+      - name: "hf_college_admissions_race"
+        description: '{{ doc("sav_hf_college_admissions_race") }}'
+      - name: "hf_concerned_job_loss_due_to_ai"
+        description: '{{ doc("sav_hf_concerned_job_loss_due_to_ai") }}'
+      - name: "hf_conspiracy"
+        description: '{{ doc("sav_hf_conspiracy") }}'
+      - name: "hf_dei"
+        description: '{{ doc("sav_hf_dei") }}'
+      - name: "hf_doge"
+        description: '{{ doc("sav_hf_doge") }}'
+      - name: "hf_domestic_deployment_of_troops"
+        description: '{{ doc("sav_hf_domestic_deployment_of_troops") }}'
+      - name: "hf_epstein_files"
+        description: '{{ doc("sav_hf_epstein_files") }}'
+      - name: "hf_ice_actions"
+        description: '{{ doc("sav_hf_ice_actions") }}'
+      - name: "hf_jan_6th_pardons"
+        description: '{{ doc("sav_hf_jan_6th_pardons") }}'
+      - name: "hf_police_trust"
+        description: '{{ doc("sav_hf_police_trust") }}'
+      - name: "hf_political_troll"
+        description: '{{ doc("sav_hf_political_troll") }}'
+      - name: "hf_same_sex_marriage"
+        description: '{{ doc("sav_hf_same_sex_marriage") }}'
+      - name: "hf_snap"
+        description: '{{ doc("sav_hf_snap") }}'
+      - name: "hf_traditional_gender_roles"
+        description: '{{ doc("sav_hf_traditional_gender_roles") }}'
+      - name: "hf_trans_athlete"
+        description: '{{ doc("sav_hf_trans_athlete") }}'
+      - name: "hf_violent_crime"
+        description: '{{ doc("sav_hf_violent_crime") }}'
+      - name: "hf_voting_fraud_concern"
+        description: '{{ doc("sav_hf_voting_fraud_concern") }}'
+      - name: "hf_campaign_finance_reform"
+        description: '{{ doc("sav_hf_campaign_finance_reform") }}'
+      - name: "hf_casino"
+        description: '{{ doc("sav_hf_casino") }}'
+      - name: "hf_death_penalty"
+        description: '{{ doc("sav_hf_death_penalty") }}'
+      - name: "hf_gun_control"
+        description: '{{ doc("sav_hf_gun_control") }}'
+      - name: "hf_marijuana_legal"
+        description: '{{ doc("sav_hf_marijuana_legal") }}'
+      - name: "hf_online_gambling"
+        description: '{{ doc("sav_hf_online_gambling") }}'
+      - name: "hf_public_transit"
+        description: '{{ doc("sav_hf_public_transit") }}'
+      - name: "hf_regulations"
+        description: '{{ doc("sav_hf_regulations") }}'
+      - name: "hf_stadium_public_financing"
+        description: '{{ doc("sav_hf_stadium_public_financing") }}'
+      - name: "hf_likely_ev"
+        description: '{{ doc("sav_hf_likely_ev") }}'
+      - name: "hf_likely_mid_term_voter"
+        description: '{{ doc("sav_hf_likely_mid_term_voter") }}'
+      - name: "hf_likely_presidential_voter"
+        description: '{{ doc("sav_hf_likely_presidential_voter") }}'
+      - name: "hf_likely_presidential_voter_and_likely_ev"
+        description: '{{ doc("sav_hf_likely_presidential_voter_and_likely_ev") }}'
+      - name: "hf_likely_presidential_voter_and_likely_vbm"
+        description: '{{ doc("sav_hf_likely_presidential_voter_and_likely_vbm") }}'
+      - name: "hf_likely_presidential_voter_and_unlikely_ev"
+        description: '{{ doc("sav_hf_likely_presidential_voter_and_unlikely_ev") }}'
+      - name: "hf_likely_presidential_voter_and_unlikely_vbm"
+        description: '{{ doc("sav_hf_likely_presidential_voter_and_unlikely_vbm") }}'
+      - name: "hf_likely_vbm"
+        description: '{{ doc("sav_hf_likely_vbm") }}'
+      - name: "hf_unlikely_presidential_voter_and_likely_vbm"
+        description: '{{ doc("sav_hf_unlikely_presidential_voter_and_likely_vbm") }}'
+      - name: "hf_felon_voting"
+        description: '{{ doc("sav_hf_felon_voting") }}'
+      - name: "hf_rank_choice_voting"
+        description: '{{ doc("sav_hf_rank_choice_voting") }}'
+      - name: "hf_redistricting"
+        description: '{{ doc("sav_hf_redistricting") }}'
+      - name: "hf_alien_disclosure_govt"
+        description: '{{ doc("sav_hf_alien_disclosure_govt") }}'
+      - name: "hf_autonomous_vehicles"
+        description: '{{ doc("sav_hf_autonomous_vehicles") }}'
+      - name: "hf_civil_liberties"
+        description: '{{ doc("sav_hf_civil_liberties") }}'
+      - name: "hf_despondency"
+        description: '{{ doc("sav_hf_despondency") }}'
+      - name: "hf_family_medical_leave"
+        description: '{{ doc("sav_hf_family_medical_leave") }}'
+      - name: "hf_free_community_college"
+        description: '{{ doc("sav_hf_free_community_college") }}'
+      - name: "hf_insurance_of_last_resort"
+        description: '{{ doc("sav_hf_insurance_of_last_resort") }}'
+      - name: "hf_jobs_guarantee"
+        description: '{{ doc("sav_hf_jobs_guarantee") }}'
+      - name: "hf_min_wage_15"
+        description: '{{ doc("sav_hf_min_wage_15") }}'
+      - name: "hf_opioid_crisis"
+        description: '{{ doc("sav_hf_opioid_crisis") }}'
+      - name: "hf_sell_federal_lands"
+        description: '{{ doc("sav_hf_sell_federal_lands") }}'
+      - name: "hf_social_media_truth_vs_speech"
+        description: '{{ doc("sav_hf_social_media_truth_vs_speech") }}'
+      - name: "hf_social_security_tax_increase"
+        description: '{{ doc("sav_hf_social_security_tax_increase") }}'
+      - name: "hf_state_level_fema"
+        description: '{{ doc("sav_hf_state_level_fema") }}'
+      - name: "hf_tribalism"
+        description: '{{ doc("sav_hf_tribalism") }}'
+      - name: "hf_trust_science"
+        description: '{{ doc("sav_hf_trust_science") }}'
+      - name: "hf_united_healthcare"
+        description: '{{ doc("sav_hf_united_healthcare") }}'
+      - name: "hf_voting_fraud"
+        description: '{{ doc("sav_hf_voting_fraud") }}'
+      - name: "hf_wealth_acquired"
+        description: '{{ doc("sav_hf_wealth_acquired") }}'
+      - name: "hs_activism"
+        description: '{{ doc("sav_hs_activism") }}'
+      - name: "hs_attends_church_frequently"
+        description: '{{ doc("sav_hs_attends_church_frequently") }}'
+      - name: "hs_attends_church_never"
+        description: '{{ doc("sav_hs_attends_church_never") }}'
+      - name: "hs_candidate_mail_readership_do_not_read"
+        description: '{{ doc("sav_hs_candidate_mail_readership_do_not_read") }}'
+      - name: "hs_candidate_mail_readership_read_carefully"
+        description: '{{ doc("sav_hs_candidate_mail_readership_read_carefully") }}'
+      - name: "hs_charity_giving_enviro_cause"
+        description: '{{ doc("sav_hs_charity_giving_enviro_cause") }}'
+      - name: "hs_charity_giving_international_aid"
+        description: '{{ doc("sav_hs_charity_giving_international_aid") }}'
+      - name: "hs_charity_giving_performing_arts"
+        description: '{{ doc("sav_hs_charity_giving_performing_arts") }}'
+      - name: "hs_charity_giving_relig_cause"
+        description: '{{ doc("sav_hs_charity_giving_relig_cause") }}'
+      - name: "hs_charity_giving_vet_cause"
+        description: '{{ doc("sav_hs_charity_giving_vet_cause") }}'
+      - name: "hs_community_not_integrated"
+        description: '{{ doc("sav_hs_community_not_integrated") }}'
+      - name: "hs_community_very_integrated"
+        description: '{{ doc("sav_hs_community_very_integrated") }}'
+      - name: "hs_dating_optimistic"
+        description: '{{ doc("sav_hs_dating_optimistic") }}'
+      - name: "hs_dating_pessimistic"
+        description: '{{ doc("sav_hs_dating_pessimistic") }}'
+      - name: "hs_dropoff_fill_entire_ballot"
+        description: '{{ doc("sav_hs_dropoff_fill_entire_ballot") }}'
+      - name: "hs_dropoff_fill_only_top"
+        description: '{{ doc("sav_hs_dropoff_fill_only_top") }}'
+      - name: "hs_most_important_policy_item_economics"
+        description: '{{ doc("sav_hs_most_important_policy_item_economics") }}'
+      - name: "hs_most_important_policy_item_environment"
+        description: '{{ doc("sav_hs_most_important_policy_item_environment") }}'
+      - name: "hs_most_important_policy_item_help_people"
+        description: '{{ doc("sav_hs_most_important_policy_item_help_people") }}'
+      - name: "hs_most_important_policy_item_religious_values"
+        description: '{{ doc("sav_hs_most_important_policy_item_religious_values") }}'
+      - name: "hs_most_important_policy_keep_safe"
+        description: '{{ doc("sav_hs_most_important_policy_keep_safe") }}'
+      - name: "hs_political_donations_likely"
+        description: '{{ doc("sav_hs_political_donations_likely") }}'
+      - name: "hs_political_donations_unlikely"
+        description: '{{ doc("sav_hs_political_donations_unlikely") }}'
+      - name: "hs_religion_important"
+        description: '{{ doc("sav_hs_religion_important") }}'
+      - name: "hs_religion_not_important"
+        description: '{{ doc("sav_hs_religion_not_important") }}'
+      - name: "hs_responsiveness_email"
+        description: '{{ doc("sav_hs_responsiveness_email") }}'
+      - name: "hs_responsiveness_live"
+        description: '{{ doc("sav_hs_responsiveness_live") }}'
+      - name: "hs_responsiveness_sms"
+        description: '{{ doc("sav_hs_responsiveness_sms") }}'
+      - name: "hs_age_limit_oppose"
+        description: '{{ doc("sav_hs_age_limit_oppose") }}'
+      - name: "hs_age_limit_support"
+        description: '{{ doc("sav_hs_age_limit_support") }}'
+      - name: "hs_candidate_female_do_not_prefer"
+        description: '{{ doc("sav_hs_candidate_female_do_not_prefer") }}'
+      - name: "hs_candidate_female_prefer"
+        description: '{{ doc("sav_hs_candidate_female_prefer") }}'
+      - name: "hs_candidate_minority_do_not_prefer"
+        description: '{{ doc("sav_hs_candidate_minority_do_not_prefer") }}'
+      - name: "hs_candidate_minority_prefer"
+        description: '{{ doc("sav_hs_candidate_minority_prefer") }}'
+      - name: "hs_consumer_value_brand_savings"
+        description: '{{ doc("sav_hs_consumer_value_brand_savings") }}'
+      - name: "hs_consumer_value_environment"
+        description: '{{ doc("sav_hs_consumer_value_environment") }}'
+      - name: "hs_consumer_value_low_cost"
+        description: '{{ doc("sav_hs_consumer_value_low_cost") }}'
+      - name: "hs_electric_vehicle_likely_buyer"
+        description: '{{ doc("sav_hs_electric_vehicle_likely_buyer") }}'
+      - name: "hs_electric_vehicle_not_likely"
+        description: '{{ doc("sav_hs_electric_vehicle_not_likely") }}'
+      - name: "hs_any_home_buyer"
+        description: '{{ doc("sav_hs_any_home_buyer") }}'
+      - name: "hs_new_home_buyer"
+        description: '{{ doc("sav_hs_new_home_buyer") }}'
+      - name: "hs_rideshare_user"
+        description: '{{ doc("sav_hs_rideshare_user") }}'
+      - name: "hs_rideshare_user_no"
+        description: '{{ doc("sav_hs_rideshare_user_no") }}'
+      - name: "hs_solar_panel_buyer_no"
+        description: '{{ doc("sav_hs_solar_panel_buyer_no") }}'
+      - name: "hs_solar_panel_buyer_yes"
+        description: '{{ doc("sav_hs_solar_panel_buyer_yes") }}'
+      - name: "hs_tv_viewer_free_streaming"
+        description: '{{ doc("sav_hs_tv_viewer_free_streaming") }}'
+      - name: "hs_tv_viewer_not_viewer"
+        description: '{{ doc("sav_hs_tv_viewer_not_viewer") }}'
+      - name: "hs_tv_viewer_watch_any_tv"
+        description: '{{ doc("sav_hs_tv_viewer_watch_any_tv") }}'
+      - name: "hs_tv_viewer_watch_paid_streaming"
+        description: '{{ doc("sav_hs_tv_viewer_watch_paid_streaming") }}'
+      - name: "hs_vaping_user_no"
+        description: '{{ doc("sav_hs_vaping_user_no") }}'
+      - name: "hs_vaping_user_yes"
+        description: '{{ doc("sav_hs_vaping_user_yes") }}'
+      - name: "hs_affordability_changed_what_you_buy_no"
+        description: '{{ doc("sav_hs_affordability_changed_what_you_buy_no") }}'
+      - name: "hs_affordability_changed_what_you_buy_yes"
+        description: '{{ doc("sav_hs_affordability_changed_what_you_buy_yes") }}'
+      - name: "hs_affordable_housing_gov_has_role"
+        description: '{{ doc("sav_hs_affordable_housing_gov_has_role") }}'
+      - name: "hs_affordable_housing_gov_no_role"
+        description: '{{ doc("sav_hs_affordable_housing_gov_no_role") }}'
+      - name: "hs_amazon_exploitative"
+        description: '{{ doc("sav_hs_amazon_exploitative") }}'
+      - name: "hs_amazon_good_jobs"
+        description: '{{ doc("sav_hs_amazon_good_jobs") }}'
+      - name: "hs_unions_beneficial"
+        description: '{{ doc("sav_hs_unions_beneficial") }}'
+      - name: "hs_unions_not_beneficial"
+        description: '{{ doc("sav_hs_unions_not_beneficial") }}'
+      - name: "hs_capitalism_believe_flawed"
+        description: '{{ doc("sav_hs_capitalism_believe_flawed") }}'
+      - name: "hs_capitalism_believe_sound"
+        description: '{{ doc("sav_hs_capitalism_believe_sound") }}'
+      - name: "hs_crypto_buyer_no"
+        description: '{{ doc("sav_hs_crypto_buyer_no") }}'
+      - name: "hs_crypto_buyer_yes"
+        description: '{{ doc("sav_hs_crypto_buyer_yes") }}'
+      - name: "hs_crypto_increase_restrictions"
+        description: '{{ doc("sav_hs_crypto_increase_restrictions") }}'
+      - name: "hs_crypto_reduce_leave_as_is"
+        description: '{{ doc("sav_hs_crypto_reduce_leave_as_is") }}'
+      - name: "hs_crypto_reduce_restrictions"
+        description: '{{ doc("sav_hs_crypto_reduce_restrictions") }}'
+      - name: "hs_econ_anxiety_not_worried"
+        description: '{{ doc("sav_hs_econ_anxiety_not_worried") }}'
+      - name: "hs_econ_anxiety_very_worried"
+        description: '{{ doc("sav_hs_econ_anxiety_very_worried") }}'
+      - name: "hs_economic_despondency_ahead"
+        description: '{{ doc("sav_hs_economic_despondency_ahead") }}'
+      - name: "hs_economic_despondency_far_behind"
+        description: '{{ doc("sav_hs_economic_despondency_far_behind") }}'
+      - name: "hs_gentrification_oppose"
+        description: '{{ doc("sav_hs_gentrification_oppose") }}'
+      - name: "hs_gentrification_support"
+        description: '{{ doc("sav_hs_gentrification_support") }}'
+      - name: "hs_gig_work_keep_contractor"
+        description: '{{ doc("sav_hs_gig_work_keep_contractor") }}'
+      - name: "hs_gig_work_make_employees"
+        description: '{{ doc("sav_hs_gig_work_make_employees") }}'
+      - name: "hs_gig_worker_ever"
+        description: '{{ doc("sav_hs_gig_worker_ever") }}'
+      - name: "hs_gig_worker_now"
+        description: '{{ doc("sav_hs_gig_worker_now") }}'
+      - name: "hs_gig_worker_unlikely"
+        description: '{{ doc("sav_hs_gig_worker_unlikely") }}'
+      - name: "hs_income_inequality_no_issue"
+        description: '{{ doc("sav_hs_income_inequality_no_issue") }}'
+      - name: "hs_income_inequality_serious"
+        description: '{{ doc("sav_hs_income_inequality_serious") }}'
+      - name: "hs_inflation_fault_biden"
+        description: '{{ doc("sav_hs_inflation_fault_biden") }}'
+      - name: "hs_inflation_fault_corporate_america"
+        description: '{{ doc("sav_hs_inflation_fault_corporate_america") }}'
+      - name: "hs_inflation_fault_external_events"
+        description: '{{ doc("sav_hs_inflation_fault_external_events") }}'
+      - name: "hs_infrastructure_funding_enough_spent"
+        description: '{{ doc("sav_hs_infrastructure_funding_enough_spent") }}'
+      - name: "hs_infrastructure_funding_fund_more"
+        description: '{{ doc("sav_hs_infrastructure_funding_fund_more") }}'
+      - name: "hs_job_seeker_does_not_work"
+        description: '{{ doc("sav_hs_job_seeker_does_not_work") }}'
+      - name: "hs_job_seeker_likely"
+        description: '{{ doc("sav_hs_job_seeker_likely") }}'
+      - name: "hs_job_seeker_unlikely"
+        description: '{{ doc("sav_hs_job_seeker_unlikely") }}'
+      - name: "hs_tax_cuts_oppose"
+        description: '{{ doc("sav_hs_tax_cuts_oppose") }}'
+      - name: "hs_tax_cuts_support"
+        description: '{{ doc("sav_hs_tax_cuts_support") }}'
+      - name: "hs_charter_schools_oppose"
+        description: '{{ doc("sav_hs_charter_schools_oppose") }}'
+      - name: "hs_charter_schools_support"
+        description: '{{ doc("sav_hs_charter_schools_support") }}'
+      - name: "hs_critical_race_theory_books_ban"
+        description: '{{ doc("sav_hs_critical_race_theory_books_ban") }}'
+      - name: "hs_critical_race_theory_books_do_not_ban"
+        description: '{{ doc("sav_hs_critical_race_theory_books_do_not_ban") }}'
+      - name: "hs_school_choice_oppose"
+        description: '{{ doc("sav_hs_school_choice_oppose") }}'
+      - name: "hs_school_choice_support"
+        description: '{{ doc("sav_hs_school_choice_support") }}'
+      - name: "hs_school_funding_less"
+        description: '{{ doc("sav_hs_school_funding_less") }}'
+      - name: "hs_school_funding_more"
+        description: '{{ doc("sav_hs_school_funding_more") }}'
+      - name: "hs_teachers_union_negative"
+        description: '{{ doc("sav_hs_teachers_union_negative") }}'
+      - name: "hs_teachers_union_positive"
+        description: '{{ doc("sav_hs_teachers_union_positive") }}'
+      - name: "hs_climate_change_believer"
+        description: '{{ doc("sav_hs_climate_change_believer") }}'
+      - name: "hs_climate_change_nonbeliever"
+        description: '{{ doc("sav_hs_climate_change_nonbeliever") }}'
+      - name: "hs_gas_tax_oppose"
+        description: '{{ doc("sav_hs_gas_tax_oppose") }}'
+      - name: "hs_gas_tax_support"
+        description: '{{ doc("sav_hs_gas_tax_support") }}'
+      - name: "hs_green_new_deal_oppose"
+        description: '{{ doc("sav_hs_green_new_deal_oppose") }}'
+      - name: "hs_green_new_deal_support"
+        description: '{{ doc("sav_hs_green_new_deal_support") }}'
+      - name: "hs_pipeline_fracking_oppose"
+        description: '{{ doc("sav_hs_pipeline_fracking_oppose") }}'
+      - name: "hs_pipeline_fracking_support"
+        description: '{{ doc("sav_hs_pipeline_fracking_support") }}'
+      - name: "hs_abortion_pro_choice"
+        description: '{{ doc("sav_hs_abortion_pro_choice") }}'
+      - name: "hs_abortion_pro_life"
+        description: '{{ doc("sav_hs_abortion_pro_life") }}'
+      - name: "hs_general_anti_vax_pro_vax"
+        description: '{{ doc("sav_hs_general_anti_vax_pro_vax") }}'
+      - name: "hs_medicaid_expansion_oppose"
+        description: '{{ doc("sav_hs_medicaid_expansion_oppose") }}'
+      - name: "hs_medicaid_expansion_support"
+        description: '{{ doc("sav_hs_medicaid_expansion_support") }}'
+      - name: "hs_medicare_for_all_oppose"
+        description: '{{ doc("sav_hs_medicare_for_all_oppose") }}'
+      - name: "hs_medicare_for_all_support"
+        description: '{{ doc("sav_hs_medicare_for_all_support") }}'
+      - name: "hs_obamacare_aca_expand"
+        description: '{{ doc("sav_hs_obamacare_aca_expand") }}'
+      - name: "hs_obamacare_aca_oppose"
+        description: '{{ doc("sav_hs_obamacare_aca_oppose") }}'
+      - name: "hs_obamacare_aca_protect"
+        description: '{{ doc("sav_hs_obamacare_aca_protect") }}'
+      - name: "hs_area_identity_rural"
+        description: '{{ doc("sav_hs_area_identity_rural") }}'
+      - name: "hs_area_identity_suburban"
+        description: '{{ doc("sav_hs_area_identity_suburban") }}'
+      - name: "hs_area_identity_urban"
+        description: '{{ doc("sav_hs_area_identity_urban") }}'
+      - name: "hs_gamer_no"
+        description: '{{ doc("sav_hs_gamer_no") }}'
+      - name: "hs_gamer_yes"
+        description: '{{ doc("sav_hs_gamer_yes") }}'
+      - name: "hs_listen_podcaster_carlson"
+        description: '{{ doc("sav_hs_listen_podcaster_carlson") }}'
+      - name: "hs_listen_podcaster_daily"
+        description: '{{ doc("sav_hs_listen_podcaster_daily") }}'
+      - name: "hs_listen_podcaster_meidas"
+        description: '{{ doc("sav_hs_listen_podcaster_meidas") }}'
+      - name: "hs_listen_podcaster_rogan"
+        description: '{{ doc("sav_hs_listen_podcaster_rogan") }}'
+      - name: "hs_listen_podcaster_left_leaning"
+        description: '{{ doc("sav_hs_listen_podcaster_left_leaning") }}'
+      - name: "hs_listen_podcaster_right_leaning"
+        description: '{{ doc("sav_hs_listen_podcaster_right_leaning") }}'
+      - name: "hs_news_independent"
+        description: '{{ doc("sav_hs_news_independent") }}'
+      - name: "hs_news_mainstream"
+        description: '{{ doc("sav_hs_news_mainstream") }}'
+      - name: "hs_podcast_listener_no"
+        description: '{{ doc("sav_hs_podcast_listener_no") }}'
+      - name: "hs_podcast_listener_yes"
+        description: '{{ doc("sav_hs_podcast_listener_yes") }}'
+      - name: "hs_social_media_user_frequent"
+        description: '{{ doc("sav_hs_social_media_user_frequent") }}'
+      - name: "hs_social_media_user_no_or_infrequent"
+        description: '{{ doc("sav_hs_social_media_user_no_or_infrequent") }}'
+      - name: "hs_tv_news_source_most_trusted_cnn"
+        description: '{{ doc("sav_hs_tv_news_source_most_trusted_cnn") }}'
+      - name: "hs_tv_news_source_most_trusted_fox"
+        description: '{{ doc("sav_hs_tv_news_source_most_trusted_fox") }}'
+      - name: "hs_tv_news_source_most_trusted_msnbc"
+        description: '{{ doc("sav_hs_tv_news_source_most_trusted_msnbc") }}'
+      - name: "hs_tv_news_source_most_trusted_newsmax"
+        description: '{{ doc("sav_hs_tv_news_source_most_trusted_newsmax") }}'
+      - name: "hs_china_foreign_policy_advesarial"
+        description: '{{ doc("sav_hs_china_foreign_policy_advesarial") }}'
+      - name: "hs_china_foreign_policy_work_with"
+        description: '{{ doc("sav_hs_china_foreign_policy_work_with") }}'
+      - name: "hs_defense_spending_increase"
+        description: '{{ doc("sav_hs_defense_spending_increase") }}'
+      - name: "hs_defense_spending_reduce"
+        description: '{{ doc("sav_hs_defense_spending_reduce") }}'
+      - name: "hs_illegal_imm_process_unfair"
+        description: '{{ doc("sav_hs_illegal_imm_process_unfair") }}'
+      - name: "hs_illegal_imm_undesirable"
+        description: '{{ doc("sav_hs_illegal_imm_undesirable") }}'
+      - name: "hs_israel_committing_genocide_no"
+        description: '{{ doc("sav_hs_israel_committing_genocide_no") }}'
+      - name: "hs_israel_committing_genocide_yes"
+        description: '{{ doc("sav_hs_israel_committing_genocide_yes") }}'
+      - name: "hs_israel_military_actions_oppose"
+        description: '{{ doc("sav_hs_israel_military_actions_oppose") }}'
+      - name: "hs_israel_military_actions_support"
+        description: '{{ doc("sav_hs_israel_military_actions_support") }}'
+      - name: "hs_mass_deportations_oppose"
+        description: '{{ doc("sav_hs_mass_deportations_oppose") }}'
+      - name: "hs_mass_deportations_support"
+        description: '{{ doc("sav_hs_mass_deportations_support") }}'
+      - name: "hs_mexican_wall_oppose"
+        description: '{{ doc("sav_hs_mexican_wall_oppose") }}'
+      - name: "hs_mexican_wall_support"
+        description: '{{ doc("sav_hs_mexican_wall_support") }}'
+      - name: "hs_military_family_relationship_no"
+        description: '{{ doc("sav_hs_military_family_relationship_no") }}'
+      - name: "hs_military_family_relationship_yes"
+        description: '{{ doc("sav_hs_military_family_relationship_yes") }}'
+      - name: "hs_military_family_self"
+        description: '{{ doc("sav_hs_military_family_self") }}'
+      - name: "hs_super_power_policy_oppose"
+        description: '{{ doc("sav_hs_super_power_policy_oppose") }}'
+      - name: "hs_super_power_policy_support"
+        description: '{{ doc("sav_hs_super_power_policy_support") }}'
+      - name: "hs_artificial_intelligence_excited"
+        description: '{{ doc("sav_hs_artificial_intelligence_excited") }}'
+      - name: "hs_christian_values_not_positive"
+        description: '{{ doc("sav_hs_christian_values_not_positive") }}'
+      - name: "hs_christian_values_positive"
+        description: '{{ doc("sav_hs_christian_values_positive") }}'
+      - name: "hs_college_admissions_consider_race"
+        description: '{{ doc("sav_hs_college_admissions_consider_race") }}'
+      - name: "hs_college_admissions_do_not_consider_race"
+        description: '{{ doc("sav_hs_college_admissions_do_not_consider_race") }}'
+      - name: "hs_concerned_job_loss_due_to_ai_no"
+        description: '{{ doc("sav_hs_concerned_job_loss_due_to_ai_no") }}'
+      - name: "hs_concerned_job_loss_due_to_ai_yes"
+        description: '{{ doc("sav_hs_concerned_job_loss_due_to_ai_yes") }}'
+      - name: "hs_right_wing_conspiracy_believer"
+        description: '{{ doc("sav_hs_right_wing_conspiracy_believer") }}'
+      - name: "hs_right_wing_conspiracy_nonbeliever"
+        description: '{{ doc("sav_hs_right_wing_conspiracy_nonbeliever") }}'
+      - name: "hs_dei_oppose"
+        description: '{{ doc("sav_hs_dei_oppose") }}'
+      - name: "hs_dei_support"
+        description: '{{ doc("sav_hs_dei_support") }}'
+      - name: "hs_doge_oppose"
+        description: '{{ doc("sav_hs_doge_oppose") }}'
+      - name: "hs_doge_support"
+        description: '{{ doc("sav_hs_doge_support") }}'
+      - name: "hs_domestic_deployment_of_troops_oppose"
+        description: '{{ doc("sav_hs_domestic_deployment_of_troops_oppose") }}'
+      - name: "hs_domestic_deployment_of_troops_support"
+        description: '{{ doc("sav_hs_domestic_deployment_of_troops_support") }}'
+      - name: "hs_epstein_files_important"
+        description: '{{ doc("sav_hs_epstein_files_important") }}'
+      - name: "hs_epstein_files_unimportant_or_hoax"
+        description: '{{ doc("sav_hs_epstein_files_unimportant_or_hoax") }}'
+      - name: "hs_ice_actions_oppose"
+        description: '{{ doc("sav_hs_ice_actions_oppose") }}'
+      - name: "hs_ice_actions_support"
+        description: '{{ doc("sav_hs_ice_actions_support") }}'
+      - name: "hs_jan_6th_pardons_oppose"
+        description: '{{ doc("sav_hs_jan_6th_pardons_oppose") }}'
+      - name: "hs_jan_6th_pardons_support"
+        description: '{{ doc("sav_hs_jan_6th_pardons_support") }}'
+      - name: "hs_police_trust_no"
+        description: '{{ doc("sav_hs_police_trust_no") }}'
+      - name: "hs_police_trust_yes"
+        description: '{{ doc("sav_hs_police_trust_yes") }}'
+      - name: "hs_political_troll_entertaining"
+        description: '{{ doc("sav_hs_political_troll_entertaining") }}'
+      - name: "hs_political_troll_negative"
+        description: '{{ doc("sav_hs_political_troll_negative") }}'
+      - name: "hs_same_sex_marriage_oppose"
+        description: '{{ doc("sav_hs_same_sex_marriage_oppose") }}'
+      - name: "hs_same_sex_marriage_support"
+        description: '{{ doc("sav_hs_same_sex_marriage_support") }}'
+      - name: "hs_snap_not_important"
+        description: '{{ doc("sav_hs_snap_not_important") }}'
+      - name: "hs_snap_protect"
+        description: '{{ doc("sav_hs_snap_protect") }}'
+      - name: "hs_traditional_gender_roles_negative"
+        description: '{{ doc("sav_hs_traditional_gender_roles_negative") }}'
+      - name: "hs_traditional_gender_roles_positive"
+        description: '{{ doc("sav_hs_traditional_gender_roles_positive") }}'
+      - name: "hs_trans_athlete_no"
+        description: '{{ doc("sav_hs_trans_athlete_no") }}'
+      - name: "hs_trans_athlete_yes"
+        description: '{{ doc("sav_hs_trans_athlete_yes") }}'
+      - name: "hs_violent_crime_not_worried"
+        description: '{{ doc("sav_hs_violent_crime_not_worried") }}'
+      - name: "hs_violent_crime_worried"
+        description: '{{ doc("sav_hs_violent_crime_worried") }}'
+      - name: "hs_voting_fraud_concern_barriers"
+        description: '{{ doc("sav_hs_voting_fraud_concern_barriers") }}'
+      - name: "hs_voting_fraud_concern_fraud"
+        description: '{{ doc("sav_hs_voting_fraud_concern_fraud") }}'
+      - name: "hs_campaign_finance_reform_high_priority"
+        description: '{{ doc("sav_hs_campaign_finance_reform_high_priority") }}'
+      - name: "hs_campaign_finance_reform_less_important"
+        description: '{{ doc("sav_hs_campaign_finance_reform_less_important") }}'
+      - name: "hs_casino_oppose"
+        description: '{{ doc("sav_hs_casino_oppose") }}'
+      - name: "hs_casino_support"
+        description: '{{ doc("sav_hs_casino_support") }}'
+      - name: "hs_death_penalty_oppose"
+        description: '{{ doc("sav_hs_death_penalty_oppose") }}'
+      - name: "hs_death_penalty_support"
+        description: '{{ doc("sav_hs_death_penalty_support") }}'
+      - name: "hs_gun_control_oppose"
+        description: '{{ doc("sav_hs_gun_control_oppose") }}'
+      - name: "hs_gun_control_support"
+        description: '{{ doc("sav_hs_gun_control_support") }}'
+      - name: "hs_marijuana_legal_oppose"
+        description: '{{ doc("sav_hs_marijuana_legal_oppose") }}'
+      - name: "hs_marijuana_legal_support"
+        description: '{{ doc("sav_hs_marijuana_legal_support") }}'
+      - name: "hs_online_gambling_less_legal"
+        description: '{{ doc("sav_hs_online_gambling_less_legal") }}'
+      - name: "hs_online_gambling_more_legal"
+        description: '{{ doc("sav_hs_online_gambling_more_legal") }}'
+      - name: "hs_public_transit_oppose"
+        description: '{{ doc("sav_hs_public_transit_oppose") }}'
+      - name: "hs_public_transit_support"
+        description: '{{ doc("sav_hs_public_transit_support") }}'
+      - name: "hs_regulations_good"
+        description: '{{ doc("sav_hs_regulations_good") }}'
+      - name: "hs_regulations_too_harsh"
+        description: '{{ doc("sav_hs_regulations_too_harsh") }}'
+      - name: "hs_stadium_public_financing_approve"
+        description: '{{ doc("sav_hs_stadium_public_financing_approve") }}'
+      - name: "hs_stadium_public_financing_disapprove"
+        description: '{{ doc("sav_hs_stadium_public_financing_disapprove") }}'
+      - name: "hs_likely_ev"
+        description: '{{ doc("sav_hs_likely_ev") }}'
+      - name: "hs_likely_mid_term_voter"
+        description: '{{ doc("sav_hs_likely_mid_term_voter") }}'
+      - name: "hs_likely_presidential_voter"
+        description: '{{ doc("sav_hs_likely_presidential_voter") }}'
+      - name: "hs_likely_vbm"
+        description: '{{ doc("sav_hs_likely_vbm") }}'
+      - name: "hs_felon_voting_oppose"
+        description: '{{ doc("sav_hs_felon_voting_oppose") }}'
+      - name: "hs_felon_voting_support"
+        description: '{{ doc("sav_hs_felon_voting_support") }}'
+      - name: "hs_rank_choice_voting_oppose"
+        description: '{{ doc("sav_hs_rank_choice_voting_oppose") }}'
+      - name: "hs_rank_choice_voting_support"
+        description: '{{ doc("sav_hs_rank_choice_voting_support") }}'
+      - name: "hs_redistricting_indep_com"
+        description: '{{ doc("sav_hs_redistricting_indep_com") }}'
+      - name: "hs_redistricting_state_leg"
+        description: '{{ doc("sav_hs_redistricting_state_leg") }}'
+      - name: "hs_conspiracy_nonbeliever"
+        description: '{{ doc("sav_hs_conspiracy_nonbeliever") }}'
+      - name: "hs_conspiracy_believer"
+        description: '{{ doc("sav_hs_conspiracy_believer") }}'
+      - name: "hs_likely_polling_turnout"
+        description: '{{ doc("sav_hs_likely_polling_turnout") }}'
+      - name: "hs_wealth_acquired_hardwork"
+        description: '{{ doc("sav_hs_wealth_acquired_hardwork") }}'
+      - name: "hs_wealth_acquired_advantages"
+        description: '{{ doc("sav_hs_wealth_acquired_advantages") }}'
+      - name: "hs_voting_fraud_concern_oppression"
+        description: '{{ doc("sav_hs_voting_fraud_concern_oppression") }}'
+      - name: "hs_violent_crime_very_worried"
+        description: '{{ doc("sav_hs_violent_crime_very_worried") }}'
+      - name: "hs_united_healthcare_no_fault"
+        description: '{{ doc("sav_hs_united_healthcare_no_fault") }}'
+      - name: "hs_united_healthcare_at_fault"
+        description: '{{ doc("sav_hs_united_healthcare_at_fault") }}'
+      - name: "hs_tv_most_trusted_news_msnbc"
+        description: '{{ doc("sav_hs_tv_most_trusted_news_msnbc") }}'
+      - name: "hs_tv_most_trusted_news_fox"
+        description: '{{ doc("sav_hs_tv_most_trusted_news_fox") }}'
+      - name: "hs_tv_most_trusted_news_cnn"
+        description: '{{ doc("sav_hs_tv_most_trusted_news_cnn") }}'
+      - name: "hs_trust_science_always"
+        description: '{{ doc("sav_hs_trust_science_always") }}'
+      - name: "hs_trust_science_rarely"
+        description: '{{ doc("sav_hs_trust_science_rarely") }}'
+      - name: "hs_tribalism_open_minded"
+        description: '{{ doc("sav_hs_tribalism_open_minded") }}'
+      - name: "hs_social_security_tax_increase_support"
+        description: '{{ doc("sav_hs_social_security_tax_increase_support") }}'
+      - name: "hs_social_security_tax_increase_oppose"
+        description: '{{ doc("sav_hs_social_security_tax_increase_oppose") }}'
+      - name: "hs_social_media_user"
+        description: '{{ doc("sav_hs_social_media_user") }}'
+      - name: "hs_social_media_truth_vs_speech_truth"
+        description: '{{ doc("sav_hs_social_media_truth_vs_speech_truth") }}'
+      - name: "hs_social_media_truth_vs_speech_free_speech"
+        description: '{{ doc("sav_hs_social_media_truth_vs_speech_free_speech") }}'
+      - name: "hs_sell_federal_lands_support"
+        description: '{{ doc("sav_hs_sell_federal_lands_support") }}'
+      - name: "hs_sell_federal_lands_oppose"
+        description: '{{ doc("sav_hs_sell_federal_lands_oppose") }}'
+      - name: "hs_opioid_crisis_treat"
+        description: '{{ doc("sav_hs_opioid_crisis_treat") }}'
+      - name: "hs_opioid_crisis_enforce"
+        description: '{{ doc("sav_hs_opioid_crisis_enforce") }}'
+      - name: "hs_min_wage_15_increase_support"
+        description: '{{ doc("sav_hs_min_wage_15_increase_support") }}'
+      - name: "hs_min_wage_15_increase_oppose"
+        description: '{{ doc("sav_hs_min_wage_15_increase_oppose") }}'
+      - name: "hs_mass_deporations_oppose"
+        description: '{{ doc("sav_hs_mass_deporations_oppose") }}'
+      - name: "hs_mass_deporations_support"
+        description: '{{ doc("sav_hs_mass_deporations_support") }}'
+      - name: "hs_jobs_guarantee_support"
+        description: '{{ doc("sav_hs_jobs_guarantee_support") }}'
+      - name: "hs_jobs_guarantee_oppose"
+        description: '{{ doc("sav_hs_jobs_guarantee_oppose") }}'
+      - name: "hs_insurance_of_last_resort_government_should_not_provide"
+        description: '{{ doc("sav_hs_insurance_of_last_resort_government_should_not_provide") }}'
+      - name: "hs_insurance_of_last_resort_government_should_provide"
+        description: '{{ doc("sav_hs_insurance_of_last_resort_government_should_provide") }}'
+      - name: "hs_immigration_undesirable"
+        description: '{{ doc("sav_hs_immigration_undesirable") }}'
+      - name: "hs_immigration_process_unfair"
+        description: '{{ doc("sav_hs_immigration_process_unfair") }}'
+      - name: "hs_family_medical_leave_support"
+        description: '{{ doc("sav_hs_family_medical_leave_support") }}'
+      - name: "hs_family_medical_leave_oppose"
+        description: '{{ doc("sav_hs_family_medical_leave_oppose") }}'
+      - name: "hs_state_level_fema_support"
+        description: '{{ doc("sav_hs_state_level_fema_support") }}'
+      - name: "hs_state_level_fema_oppose"
+        description: '{{ doc("sav_hs_state_level_fema_oppose") }}'
+      - name: "hs_despondency_on_pace"
+        description: '{{ doc("sav_hs_despondency_on_pace") }}'
+      - name: "hs_despondency_far_behind"
+        description: '{{ doc("sav_hs_despondency_far_behind") }}'
+      - name: "hs_despondency_ahead"
+        description: '{{ doc("sav_hs_despondency_ahead") }}'
+      - name: "hs_community_college_free_support"
+        description: '{{ doc("sav_hs_community_college_free_support") }}'
+      - name: "hs_community_college_free_oppose"
+        description: '{{ doc("sav_hs_community_college_free_oppose") }}'
+      - name: "hs_civil_liberties_support"
+        description: '{{ doc("sav_hs_civil_liberties_support") }}'
+      - name: "hs_civil_liberties_oppose"
+        description: '{{ doc("sav_hs_civil_liberties_oppose") }}'
+      - name: "hs_candidate_mail_read_carefully"
+        description: '{{ doc("sav_hs_candidate_mail_read_carefully") }}'
+      - name: "hs_candidate_mail_do_not_read"
+        description: '{{ doc("sav_hs_candidate_mail_do_not_read") }}'
+      - name: "hs_autonomous_vehicles_do_not_allow"
+        description: '{{ doc("sav_hs_autonomous_vehicles_do_not_allow") }}'
+      - name: "hs_autonomous_vehicles_allow"
+        description: '{{ doc("sav_hs_autonomous_vehicles_allow") }}'
+      - name: "hs_aliens_governenment_hiding_much"
+        description: '{{ doc("sav_hs_aliens_governenment_hiding_much") }}'
+      - name: "hs_aliens_governenment_disclosed_all"
+        description: '{{ doc("sav_hs_aliens_governenment_disclosed_all") }}'
+
+seeds:
+  - name: serve_agent_voters_columns
+    description: >
+      Column-access contract for serve_agent_voters: one row per column in
+      int__l2_nationwide_uniform_w_haystaq with its family, description, and an is_available
+      flag. serve_agent_voters reads this seed at build time and exposes exactly the columns
+      where is_available is true. To add or retract a field, flip is_available and rebuild; no
+      model SQL change is needed.
+    columns:
+      - name: column_name
+        description: "Source column name in int__l2_nationwide_uniform_w_haystaq."
+      - name: data_type
+        description: "Databricks data type of the source column."
+      - name: family
+        description: "Classification family (e.g. district, demographic, household, turnout, haystaq_issue, identity_pii, partisan, commercial)."
+      - name: description
+        description: "Human/agent-facing description, sourced from L2's data dictionaries."
+      - name: is_available
+        description: "Whether the column is exposed to the Serve agent (true/false)."
+      - name: reasoning
+        description: "Why the column is included or excluded."
+  - name: haystaq_data_dictionary
+    description: >
+      Snapshot of L2 Haystaq National Models codebook (from sandbox.haystaq_data_dictionary):
+      per-field description, survey question, response options, model type, score
+      interpretation, and aggregation guidance. Source of the hf_/hs_ column documentation in
+      this mart.
+    columns:
+      - name: column_name
+        description: "Haystaq field name (joins to hf_/hs_ columns by exact name)."
