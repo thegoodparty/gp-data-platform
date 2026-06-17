@@ -45,13 +45,14 @@ with
             nullif(trim(email), '') as email,
             {{ clean_phone_number("phone") }} as phone,
             date_of_birth_mmddyyyy as birth_date,
-            -- Same non-zero-padded handling as the election dates above: TechSpeed
-            -- is the same source, so birth dates can arrive as 6-2-1985.
+            -- Same slash-normalize + non-zero-padded handling as the election
+            -- dates above: TechSpeed is the same source, so birth dates arrive both
+            -- as 6-2-1985 and as yyyy/MM/dd (1953/02/01). Normalize slashes to
+            -- dashes, then parse ISO (try_cast) and month-first M-d-yyyy / M-d-yy.
             coalesce(
-                try_cast(date_of_birth_mmddyyyy as date),
-                try_to_date(date_of_birth_mmddyyyy, 'M-d-yyyy'),
-                try_to_date(date_of_birth_mmddyyyy, 'M/d/yyyy'),
-                try_to_date(date_of_birth_mmddyyyy, 'yyyy-MM-dd')
+                try_cast(replace(date_of_birth_mmddyyyy, '/', '-') as date),
+                try_to_date(replace(date_of_birth_mmddyyyy, '/', '-'), 'M-d-yyyy'),
+                try_to_date(replace(date_of_birth_mmddyyyy, '/', '-'), 'M-d-yy')
             ) as birth_date_parsed,
             nullif(trim(street_address), '') as street_address,
             postal_code,
