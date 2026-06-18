@@ -17,16 +17,22 @@ class TableSpec:
     pg_table: str
     partition_by: str | None  # column name for LIST partitioning, or None for a plain table
     type_overrides: dict[str, str] = field(default_factory=dict)
+    # App/Prisma-managed columns that exist in the serving table but not the mart, appended
+    # as (name, pg_type, nullable). The mart is the source for everything else.
+    extra_columns: list[tuple[str, str, bool]] = field(default_factory=list)
 
 
+# Scope: the loader bulk-loads only Voter. District/DistrictVoter are small, Prisma-defined,
+# and built by the dbt write path (write__people_api_db.py); DistrictStats isn't a serving
+# Postgres table at all. So generation is Voter-only. The single Prisma-layer column the mart
+# omits is Mailing_HHGender_Description (a REMOVED_COLUMNS NULL placeholder per PLAN_LOADER);
+# `id` is the mart's salted-uuid string, stored as UUID in Postgres.
 TABLE_SPECS: dict[str, TableSpec] = {
-    "Voter": TableSpec(pg_table="Voter", partition_by="State", type_overrides={"id": "UUID"}),
-    "District": TableSpec(pg_table="District", partition_by=None, type_overrides={"id": "UUID"}),
-    "DistrictStats": TableSpec(pg_table="DistrictStats", partition_by=None),
-    "DistrictVoter": TableSpec(
-        pg_table="DistrictVoter",
-        partition_by=None,
-        type_overrides={"voter_id": "UUID", "district_id": "UUID"},
+    "Voter": TableSpec(
+        pg_table="Voter",
+        partition_by="State",
+        type_overrides={"id": "UUID"},
+        extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
 }
 

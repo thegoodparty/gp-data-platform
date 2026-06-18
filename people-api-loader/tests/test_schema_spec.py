@@ -5,12 +5,15 @@ from __future__ import annotations
 from loader.people_api.schema.schema_spec import TABLE_SPECS, indexes_for, primary_key_for
 
 
-def test_specs_cover_four_tables_with_overrides_and_partition() -> None:
-    assert set(TABLE_SPECS) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
+def test_spec_is_voter_only_with_overrides_partition_and_prisma_column() -> None:
+    # Scope is Voter-only: the District family is built by the dbt write path and
+    # DistrictStats isn't a serving table.
+    assert set(TABLE_SPECS) == {"Voter"}
     voter = TABLE_SPECS["Voter"]
     assert voter.partition_by == "State"
     assert voter.type_overrides["id"] == "UUID"
-    assert TABLE_SPECS["District"].partition_by is None
+    # The one serving column the mart omits is declared as a Prisma-layer extra.
+    assert ("Mailing_HHGender_Description", "TEXT", True) in voter.extra_columns
 
 
 def test_lookup_helpers_filter_by_table() -> None:

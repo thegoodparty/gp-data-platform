@@ -22,6 +22,10 @@ def render_create_table(spec: TableSpec, columns: list[MartColumn]) -> str:
     for col in columns:
         nn = "" if col.nullable else " NOT NULL"
         rendered.append(f'    "{col.name}" {_column_type(spec, col)}{nn}')
+    # App/Prisma-managed columns the mart omits, appended verbatim from the spec.
+    for name, pg_type, nullable in spec.extra_columns:
+        nn = "" if nullable else " NOT NULL"
+        rendered.append(f'    "{name}" {pg_type}{nn}')
     return "\n".join([header, ",\n".join(rendered) + "\n);"])
 
 

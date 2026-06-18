@@ -24,6 +24,23 @@ def test_render_applies_types_and_overrides_and_quotes() -> None:
     )
 
 
+def test_render_appends_prisma_extra_columns() -> None:
+    cols = [MartColumn(name="id", spark_type="string", nullable=False)]
+    spec = TableSpec(
+        pg_table="Voter",
+        partition_by="State",
+        type_overrides={"id": "UUID"},
+        extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
+    )
+    ddl = render_create_table(spec, cols)
+    assert ddl == (
+        'CREATE TABLE public."Voter" (\n'
+        '    "id" UUID NOT NULL,\n'
+        '    "Mailing_HHGender_Description" TEXT\n'
+        ");"
+    )
+
+
 def test_render_round_trips_through_extract_create_tables() -> None:
     from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 
