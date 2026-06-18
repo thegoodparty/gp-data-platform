@@ -46,10 +46,17 @@ class _FakeWaiter:
 
 
 class FakeRds:
-    def __init__(self, existing: dict[str, dict] | None = None, instances: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        existing: dict[str, dict] | None = None,
+        instances: set[str] | None = None,
+        *,
+        delete_raises: bool = False,
+    ) -> None:
         self.clusters: dict[str, dict] = dict(existing or {})
         self.instances: set[str] = set(instances or set())
         self.calls: list[tuple[str, dict]] = []
+        self._delete_raises = delete_raises
 
     def describe_db_clusters(self, DBClusterIdentifier: str) -> dict:
         if DBClusterIdentifier not in self.clusters:
@@ -81,6 +88,11 @@ class FakeRds:
 
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append(("delete_cluster", kw))
+        if self._delete_raises:
+            # Aurora is still 'creating', so the rollback delete is rejected.
+            raise ClientError(
+                {"Error": {"Code": "InvalidDBClusterStateFault", "Message": "creating"}}, "DeleteDBCluster"
+            )
         self.clusters.pop(kw["DBClusterIdentifier"], None)
 
     def get_waiter(self, name: str) -> _FakeWaiter:
@@ -188,6 +200,27 @@ def test_provision_rolls_back_cluster_when_conn_param_write_fails(monkeypatch: p
     assert "cluster" in rds_client.names()  # cluster was created
     assert "delete_cluster" in rds_client.names()  # then rolled back
     assert "instance" not in rds_client.names()  # bailed before creating the instance
+
+
+def test_provision_reraises_write_error_even_if_rollback_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # When the cluster is still 'creating', the rollback delete is itself rejected. We must
+    # surface the original SSM write error (logging the orphaned cluster), not the delete error.
+    rds_client = FakeRds(delete_raises=True)
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ec2", lambda cfg: FakeEc2())
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn()))
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    def _boom(cfg: object, name: str, value: str, **k: object) -> None:
+        raise RuntimeError("ssm put denied")
+
+    monkeypatch.setattr(step, "put_ssm_parameter", _boom)
+
+    with pytest.raises(RuntimeError, match="ssm put denied"):  # original error, not the delete fault
+        step.run(_CFG, "20260616")
+
+    assert "delete_cluster" in rds_client.names()  # rollback was attempted despite failing
 
 
 def test_provision_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

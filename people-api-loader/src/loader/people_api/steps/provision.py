@@ -182,8 +182,21 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             put_ssm_parameter(cfg, conn_param, conninfo)
         except Exception:
             log.error("provision.conn_param_write_failed", cluster=cluster_id, name=conn_param)
-            with ignore_client_errors("InvalidDBClusterStateFault"):
+            # Best-effort rollback. The delete frequently fails with InvalidDBClusterStateFault
+            # because Aurora is still in 'creating' for minutes after create_db_cluster returns
+            # — that's exactly the case the operator must know about (the param was never
+            # written, so a re-run hits the reuse branch and loops on ParameterNotFound). Log
+            # the rollback failure with a manual-intervention hint rather than swallow it, then
+            # re-raise the original write error.
+            try:
                 rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+            except Exception as del_exc:
+                log.error(
+                    "provision.rollback_failed",
+                    cluster=cluster_id,
+                    hint="manually delete the cluster before re-running",
+                    error=str(del_exc),
+                )
             raise
         log.info("provision.conn_param_written", name=conn_param)
     else:
