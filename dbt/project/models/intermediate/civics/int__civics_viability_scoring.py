@@ -10,9 +10,7 @@ Waterfall (best available wins via COALESCE):
   2. ViabilityWithoutOpenSeat     — drops open_seat
   3. ViabilityNoOpponentData      — drops open_seat + log_n_losers
   4. ViabilityNoIncumbency        — drops open_seat + is_incumbent
-  5. ViabilityNoCandidateDataHS   — multi_seat, partisan_contest, is_unexpired, office_type_woe, state_woe, level_woe
-
-A candidacy must have seats_available (for multi_seat) to score on any model.
+  5. ViabilityNoCandidateDataHS   — most resilient to missingness: multi_seat, partisan_contest, is_unexpired, office_type_woe, state_woe, level_woe
 
 Output key: gp_candidacy_id
 Joins to mart output: mart_civics.candidacy.viability_score (via int__civics_candidacy_*)
