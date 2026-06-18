@@ -1456,3 +1456,137 @@ models:
         data_tests:
           - not_null
           - unique
+
+  - name: people_served
+    description: >
+      The People Served metrics (DATA-1993, epic DATA-1359): one row per
+      (metric_variant, office_type). count_once is the distinct-person union (from
+      int__serve_block_coverage); the count_multiple variants are sums off the substrate
+      via district_census_stats. Ordering holds within every office_type: count_once <=
+      count_multiple_per_district <= per_seat <= per_org. office_type is 'all' (the local
+      cohort-wide North Star headline) or one of the 22 L2 district types, PLUS 'State'
+      for statewide officials, which are read from the EXACT T5 'State' census totals and
+      reported SEPARATELY (TDD 4.5) -- never folded into 'all'. Filter office_type !=
+      'State' for the local reading, = 'State' for the statewide breakout. The live 'all'
+      numbers include population from a few known wrong-scope matches (requires_review,
+      pending the DATA-1989 upstream overrides) -- those officials are flagged on
+      official_constituents; the conservative reading excludes them. Thin by design;
+      variants may migrate to the dbt semantic layer.
+    columns:
+      - name: metric_variant
+        description: >
+          count_once (distinct people) or count_multiple_per_district / per_seat / per_org.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - count_once
+                  - count_multiple_per_district
+                  - count_multiple_per_seat
+                  - count_multiple_per_org
+      - name: office_type
+        description: >
+          'all' (local cohort-wide), an L2 district type, or 'State' (statewide officials,
+          reported separately).
+        data_tests:
+          - not_null
+      - name: people_served
+        description: The metric value (population; fractional, round for display).
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: n_cohort_districts
+        description: >
+          Count of cohort districts behind a count_multiple row; null for count_once.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: people_served_unique_key
+          arguments:
+            combination_of_columns: [metric_variant, office_type]
+      - dbt_utils.expression_is_true:
+          name: people_served_north_star_sanity_band
+          arguments:
+            expression: "people_served between 30000000 and 90000000"
+          config:
+            # wide catastrophic-breakage guard on the local North Star (currently ~56M);
+            # the ordering invariant (singular test) is the hard correctness check.
+            where: "metric_variant = 'count_once' and office_type = 'all'"
+            severity: warn
+
+  - name: official_constituents
+    description: >
+      The Serve per-official display surface (DATA-1993, epic DATA-1359): one row per
+      resolved serve official with the population of the jurisdiction they serve ("your
+      district has N constituents, M registered voters"). A clean read off
+      district_census_stats. Local officials join on (state, type, normalized name);
+      statewide officials (is_statewide) read the district_type='State' row by state.
+      Officials whose district is a deferred special-district type or whose name drifted
+      bind nothing -> has_census_match=false, null constituents (a documented v1-scope /
+      re-match gap, not a defect). requires_review is carried so the product can caveat
+      known wrong-scope matches (pending DATA-1989); flagged rows are never filtered. The
+      high-undercount flag is deferred to a follow-up; v1 ships constituents_minus_voters
+      (the honest raw gap).
+    columns:
+      - name: organization_slug
+        description: Serve org identifier (primary key; one row per official).
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Owning user of the serve org.
+      - name: state
+        description: Two-letter state code of the resolved district.
+      - name: l2_district_type
+        description: L2 district type the official resolves to.
+      - name: normalized_district_name
+        description: Normalized L2 district name (the join key to district_census_stats).
+      - name: is_statewide
+        description: Resolved to a statewide office (reads the exact T5 'State' row).
+        data_tests:
+          - not_null
+      - name: resolution_path
+        description: How the org resolved (district_mart or crosswalk).
+      - name: requires_review
+        description: >
+          Carried from the resolver: the resolved district likely contains, but is larger
+          than, the office's real jurisdiction. For the product to caveat; not filtered.
+        data_tests:
+          - not_null
+      - name: is_geo_seat
+        description: Carried from the resolver (the jurisdiction-vs-electoral-seat flag).
+      - name: constituents
+        description: >
+          The district population the official serves
+          (district_census_stats.district_population; fractional for local rows, round for
+          display). Null when has_census_match is false.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+              config:
+                where: "has_census_match"
+      - name: registered_voters
+        description: >
+          The district's L2 registered-voter count. Null when has_census_match is false.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+              config:
+                where: "has_census_match"
+      - name: constituents_minus_voters
+        description: >
+          constituents - registered_voters: the voters-vs-constituents gap that motivates
+          outreach. Null when has_census_match is false.
+      - name: has_census_match
+        description: >
+          Whether the official's district bound a district_census_stats row. False for
+          deferred special-district types or name-drifted districts (the v1-scope gap).
+        data_tests:
+          - not_null
