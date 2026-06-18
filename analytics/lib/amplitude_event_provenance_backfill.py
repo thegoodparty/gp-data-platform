@@ -637,8 +637,7 @@ def _ensure_columns(cursor: Any, table: str, schema: Sequence[tuple[str, str]]) 
 def fetch_event_universe(cursor: Any, taxonomy_table: str = TAXONOMY_TABLE) -> list[str]:
     """The authoritative ~408 distinct event_type values to attribute provenance for."""
     cursor.execute(
-        f"SELECT DISTINCT event_type FROM {taxonomy_table} "
-        f"WHERE event_type IS NOT NULL ORDER BY event_type"
+        f"SELECT DISTINCT event_type FROM {taxonomy_table} WHERE event_type IS NOT NULL ORDER BY event_type"
     )
     return [str(r[0]) for r in cursor.fetchall()]
 
@@ -674,6 +673,34 @@ def write_watermark(
         build_watermark_merge_sql(state_table),
         (JOB_NAME, last_processed_sha, head_ref, commit_count, last_run_at),
     )
+
+
+def read_watermark(
+    cursor: Any,
+    state_table: str = STATE_TABLE,
+    job_name: str = JOB_NAME,
+) -> dict | None:
+    """Read the SHA high-water mark for ``job_name``; None when there is no row yet.
+
+    Creates the state table if absent (idempotent, mirroring ``write_watermark``), so a
+    first run reads an empty table and gets None -> the caller does a full backfill.
+    """
+    cursor.execute(_CREATE_STATE_TABLE_SQL.format(table=state_table))
+    cursor.execute(
+        f"SELECT last_processed_sha, head_ref, commit_count, last_run_at "
+        f"FROM {state_table} WHERE job_name = ?",
+        (job_name,),
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return None
+    sha, head_ref, commit_count, last_run_at = rows[0]
+    return {
+        "last_processed_sha": sha,
+        "head_ref": head_ref,
+        "commit_count": commit_count,
+        "last_run_at": last_run_at,
+    }
 
 
 # --------------------------------------------------------------------------- #

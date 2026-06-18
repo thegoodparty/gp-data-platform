@@ -745,3 +745,51 @@ def test_default_constants_target_prod_source_schema():
     assert bf.DEFAULT_SOURCE_SCHEMA == "airflow_source"
     assert bf.PROVENANCE_TABLE == "goodparty_data_catalog.airflow_source.amplitude_event_provenance"
     assert bf.STATE_TABLE == "goodparty_data_catalog.airflow_source.amplitude_event_provenance_state"
+
+
+# --------------------------------------------------------------------------- #
+# read_watermark / refresh
+# --------------------------------------------------------------------------- #
+
+
+class RefreshCursor:
+    """Fake cursor for refresh wiring: serves the event universe, the watermark
+    row, and existing provenance rows depending on the SQL it is handed."""
+
+    def __init__(self, events, watermark_row=None, existing_rows=None):
+        self._events = events
+        self._watermark_row = watermark_row  # 4-tuple or None
+        self._existing = list(existing_rows or [])  # tuples in PROVENANCE_COLUMNS order
+        self.executed = []
+        self._fetch: list = []
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+        if "int__amplitude_event_taxonomy" in sql:
+            self._fetch = [(e,) for e in self._events]
+        elif sql.startswith("SELECT last_processed_sha"):
+            self._fetch = [self._watermark_row] if self._watermark_row else []
+        elif sql.startswith("SELECT event_type,"):
+            self._fetch = list(self._existing)
+        else:
+            self._fetch = []
+
+    def fetchall(self):
+        return self._fetch
+
+
+def test_read_watermark_returns_row_as_dict():
+    wm = ("oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
+    cur = RefreshCursor(["Event A"], watermark_row=wm)
+    result = bf.read_watermark(cur)
+    assert result == {
+        "last_processed_sha": "oldsha",
+        "head_ref": "origin/develop",
+        "commit_count": 42,
+        "last_run_at": "2026-06-01T00:00:00",
+    }
+
+
+def test_read_watermark_none_when_no_row():
+    cur = RefreshCursor(["Event A"], watermark_row=None)
+    assert bf.read_watermark(cur) is None
