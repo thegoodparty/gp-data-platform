@@ -5,11 +5,7 @@ Run once after this PR merges, before the new dbt model is executed.
 Safe to re-run: skips copy if @prod alias already points at a version
 copied from the same sandbox source URI.
 
-Usage (locally via uv):
-    UV="/c/Users/nigel/AppData/Local/Packages/PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0/LocalCache/local-packages/Python313/Scripts/uv.exe"
-    "$UV" run --with mlflow --with databricks-sdk python promote_viability_models.py
-
-Usage (Databricks notebook): paste and run directly — mlflow is pre-installed.
+Requires env vars: DATABRICKS_HOST, DATABRICKS_TOKEN
 """
 
 import mlflow
