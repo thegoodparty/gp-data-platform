@@ -6,11 +6,13 @@ waterfall. Produces a score for every candidacy that has enough data to
 run at least the most-permissive model.
 
 Waterfall (best available wins via COALESCE):
-  1. ViabilityWithOpponentData    — all 9 features present
-  2. ViabilityWithoutOpenSeat     — missing open_seat
-  3. ViabilityNoOpponentData      — missing log_n_losers / multi_seat
-  4. ViabilityNoIncumbency        — missing is_incumbent
-  5. ViabilityNoCandidateDataHS   — most permissive (office type + location only)
+  1. ViabilityWithOpponentData    — all 9 features
+  2. ViabilityWithoutOpenSeat     — drops open_seat
+  3. ViabilityNoOpponentData      — drops open_seat + log_n_losers
+  4. ViabilityNoIncumbency        — drops open_seat + is_incumbent
+  5. ViabilityNoCandidateDataHS   — multi_seat, partisan_contest, is_unexpired, office_type_woe, state_woe, level_woe
+
+A candidacy must have seats_available (for multi_seat) to score on any model.
 
 Output key: gp_candidacy_id
 Joins to mart output: mart_civics.candidacy.viability_score (via int__civics_candidacy_*)
@@ -30,7 +32,6 @@ from pyspark.sql.functions import (
     round,
     when,
 )
-from us import states
 
 
 def _score_using_model(df: pd.DataFrame, modelname: str, score_col: str) -> pd.DataFrame:
@@ -76,28 +77,19 @@ def model(dbt, session: SparkSession) -> DataFrame:
     candidacy = dbt.ref("m_civics__candidacy")
     election   = dbt.ref("m_civics__election")
 
-    # bring in seats_available and number_of_opponents from the election table
+    # bring in state, seats_available, number_of_opponents from the election table
+    # (state is not on the candidacy mart; election.state is already a 2-letter abbreviation)
     election_fields = election.select(
         col("gp_election_id"),
+        col("state"),
         col("seats_available"),
         col("number_of_opponents").alias("raw_n_opponents"),
     )
 
     df = candidacy.join(election_fields, on="gp_election_id", how="left")
 
-    # state normalisation — handles both full names and abbreviations
-    state_lookup = spark.createDataFrame(
-        pd.DataFrame(
-            [{"state_key": s.name.lower(), "state": s.abbr} for s in states.STATES]
-            + [{"state_key": s.abbr.lower(), "state": s.abbr} for s in states.STATES]
-        )
-    )
-
     df = (
         df
-        .withColumn("state_key", lower(col("state")))
-        .drop("state")
-        .join(state_lookup, on="state_key", how="left")
         .withColumn("level", lower(col("office_level")))
 
         # seats
