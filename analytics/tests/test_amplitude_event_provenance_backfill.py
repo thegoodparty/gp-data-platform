@@ -793,3 +793,64 @@ def test_read_watermark_returns_row_as_dict():
 def test_read_watermark_none_when_no_row():
     cur = RefreshCursor(["Event A"], watermark_row=None)
     assert bf.read_watermark(cur) is None
+
+
+# --------------------------------------------------------------------------- #
+# merge_provenance_entry -- existing row + new-window observation
+# --------------------------------------------------------------------------- #
+
+# A window commit that net-removes an event (newer than any watermarked commit).
+COMMIT_E = {
+    "commit": "eeee",
+    "short": "eeee",
+    "date": "2026-06-18",
+    "ts": "1781827200",
+    "subject": "feat: remove (#999)",
+    "pr": "999",
+}
+
+_EXISTING_B = {
+    "event_type": "Event B",
+    "event_type_slug": "event_b",
+    "instrumented_commit": "aaaa",
+    "instrumented_pr": None,
+    "instrumented_date": "2025-02-01",
+    "retired_commit": None,
+    "retired_pr": None,
+    "retired_date": None,
+    "code_status": "present",
+    "still_in_code": True,
+    "last_code_change_date": "2025-02-01",
+    "updated_at": "2026-01-01T00:00:00",
+}
+
+
+def test_merge_keeps_existing_instrumented_when_window_only_removes():
+    new_entry = {"instrumented": None, "retired": COMMIT_E, "last_change": COMMIT_E}
+    merged = bf.merge_provenance_entry(_EXISTING_B, new_entry)
+    assert merged["instrumented"]["commit"] == "aaaa"
+    assert merged["instrumented"]["date"] == "2025-02-01"
+    assert merged["retired"]["commit"] == "eeee"
+    assert merged["last_change"]["commit"] == "eeee"
+
+
+def test_merge_new_event_takes_window_instrumented():
+    new_entry = {"instrumented": COMMIT_E, "retired": None, "last_change": COMMIT_E}
+    merged = bf.merge_provenance_entry(None, new_entry)
+    assert merged["instrumented"]["commit"] == "eeee"
+    assert merged["retired"] is None
+
+
+def test_merge_readd_preserves_original_instrumented_and_advances_last_change():
+    existing = {
+        **_EXISTING_B,
+        "retired_commit": "bbbb",
+        "retired_pr": "222",
+        "retired_date": "2025-03-01",
+        "code_status": "removed",
+        "still_in_code": False,
+    }
+    new_entry = {"instrumented": COMMIT_E, "retired": None, "last_change": COMMIT_E}
+    merged = bf.merge_provenance_entry(existing, new_entry)
+    assert merged["instrumented"]["commit"] == "aaaa"  # original instrumentation kept
+    assert merged["last_change"]["commit"] == "eeee"  # window is the latest change

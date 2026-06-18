@@ -322,6 +322,47 @@ def build_provenance_row(
     return row
 
 
+def _pseudo_commit(commit: str | None, pr: str | None, date: str | None) -> dict:
+    """A minimal commit dict reconstructed from a stored row.
+
+    Carries only the keys ``build_provenance_row`` reads (commit, pr, date). It is never
+    fed to ``_record``, so the epoch ``ts`` ordering key is not needed: the windowed
+    commits are strictly newer than the watermark, so precedence is positional, not timed.
+    """
+    return {"commit": commit, "pr": pr, "date": date}
+
+
+def merge_provenance_entry(existing_row: dict | None, new_entry: dict) -> dict:
+    """Combine an event's existing table row with its new-window accumulator entry.
+
+    The window only contains commits newer than the watermark, so:
+      - instrumented: the existing (older) instrumentation wins; the window's add is used
+        only when the row had no instrumentation yet (genuinely new event).
+      - retired: the window's removal wins (it is the latest); else the existing retired is
+        carried forward. ``build_provenance_row`` still clears retired unless the event is
+        absent at HEAD, so a re-add naturally drops a stale retired.
+      - last_change: always the window's -- the event net-changed in the window.
+    """
+    if existing_row and existing_row.get("instrumented_commit"):
+        instrumented = _pseudo_commit(
+            existing_row["instrumented_commit"],
+            existing_row["instrumented_pr"],
+            existing_row["instrumented_date"],
+        )
+    else:
+        instrumented = new_entry["instrumented"]
+
+    retired = new_entry["retired"]
+    if retired is None and existing_row and existing_row.get("retired_commit"):
+        retired = _pseudo_commit(
+            existing_row["retired_commit"],
+            existing_row["retired_pr"],
+            existing_row["retired_date"],
+        )
+
+    return {"instrumented": instrumented, "retired": retired, "last_change": new_entry["last_change"]}
+
+
 def collect_provenance(
     events: Sequence[str],
     git_log_lines: Iterable[str],
