@@ -96,7 +96,6 @@ with
             and total_votes_cast > 0
             and votes_received <= total_votes_cast
             and icp_voter_count > 0
-            and number_of_seats is not null
     ),
 
     -- Collapse to one row per position from that office's most recent general
@@ -156,8 +155,11 @@ with
             max(state_postal_code) as state,
             max(official_office_name) as official_office_name,
             sum(try_cast(votes as bigint)) as total_votes_cast,
-            max(
-                case when is_winner then try_cast(votes as bigint) end
+            -- the winner's votes; fall back to the top vote-getter when DDHQ did
+            -- not flag a winner (the top vote-getter is the winner)
+            coalesce(
+                max(case when is_winner then try_cast(votes as bigint) end),
+                max(try_cast(votes as bigint))
             ) as votes_received,
             max(try_cast(number_of_seats_in_election as int)) as number_of_seats
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
@@ -240,7 +242,6 @@ with
             and total_votes_cast > 0
             and votes_received <= total_votes_cast
             and icp_voter_count > 0
-            and number_of_seats is not null
             -- the civics general-win path wins when an office is covered by both
             and br_position_id not in (
                 select br_position_id from per_position where br_position_id is not null

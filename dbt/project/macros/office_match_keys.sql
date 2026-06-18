@@ -3,15 +3,16 @@
   (e.g. DDHQ race name vs BallotReady position name). Use in a SELECT:
       {{ office_match_keys('pos.name') }}
   produces: locality_key (sorted array of distinctive place tokens),
-  office_category (council/school/commission/...), seat_designator
-  (atlarge | a seat/ward/district/post number | null).
+  office_category (school/council/mayor/...), seat_designator
+  (a seat/ward/district/post/zone number | atlarge | null).
 
   Two offices are the same when state + locality_key + office_category match and
-  seat_designator is null-safe equal. This captures the variant families an
-  LLM cross-reference surfaced (City of X / X City, Twp / Township,
-  Councilor / Council, numbered seats, at-large) while keeping different
-  localities (Logan vs North Logan) and office types (council vs school board)
-  apart.
+  seat_designator is null-safe equal (an unnumbered office is also compatible with
+  a DDHQ at-large race). This captures the variant families an LLM cross-reference
+  surfaced (City of X / X City, Twp / Township, Councilor / Council, Council /
+  Commission / Trustee board, numbered seats, at-large, descriptor words like
+  Municipal / Public / Committee) while keeping different localities (Logan vs
+  North Logan) and office types (council vs school board) apart.
 #}
 {% macro office_match_keys(col) %}
     array_sort(
@@ -32,6 +33,7 @@
                     'board',
                     'education',
                     'school',
+                    'schools',
                     'district',
                     'commission',
                     'commissioner',
@@ -43,6 +45,10 @@
                     'supervisor',
                     'member',
                     'members',
+                    'committee',
+                    'municipal',
+                    'public',
+                    'authority',
                     'at',
                     'large',
                     'seat',
@@ -51,6 +57,7 @@
                     'place',
                     'group',
                     'division',
+                    'zone',
                     'precinct',
                     'of',
                     'the',
@@ -66,6 +73,16 @@
                     'position',
                     'and',
                     'for',
+                    'i',
+                    'ii',
+                    'iii',
+                    'iv',
+                    'v',
+                    'vi',
+                    'vii',
+                    'viii',
+                    'ix',
+                    'x',
                     ''
                 )
             ),
@@ -75,12 +92,10 @@
     case
         when lower({{ col }}) rlike 'school|education'
         then 'school'
-        when lower({{ col }}) rlike 'council|councillor|councilor|alderman|selectman'
+        when
+            lower({{ col }})
+            rlike 'council|councillor|councilor|alderman|selectman|commission|trustee'
         then 'council'
-        when lower({{ col }}) rlike 'commission'
-        then 'commission'
-        when lower({{ col }}) rlike 'trustee'
-        then 'trustee'
         when lower({{ col }}) rlike 'mayor'
         then 'mayor'
         when lower({{ col }}) rlike 'clerk'
@@ -94,21 +109,22 @@
         else 'other'
     end as office_category,
     case
-        when lower({{ col }}) rlike 'at.?large'
-        then 'atlarge'
+        -- a numbered seat is more specific than "at-large", so check it first
         when
             regexp_extract(
                 lower({{ col }}),
-                '(ward|district|post|seat|place|group|division|precinct) *#? *([0-9]+)',
+                '(ward|seat|post|place|group|division|precinct|zone|district) *#? *([0-9]+)',
                 2
             )
             <> ''
         then
             regexp_extract(
                 lower({{ col }}),
-                '(ward|district|post|seat|place|group|division|precinct) *#? *([0-9]+)',
+                '(ward|seat|post|place|group|division|precinct|zone|district) *#? *([0-9]+)',
                 2
             )
+        when lower({{ col }}) rlike 'at.?large'
+        then 'atlarge'
         when regexp_extract(lower({{ col }}), '([0-9]+) *$', 1) <> ''
         then regexp_extract(lower({{ col }}), '([0-9]+) *$', 1)
     end as seat_designator
