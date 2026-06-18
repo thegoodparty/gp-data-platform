@@ -683,6 +683,16 @@ def fetch_event_universe(cursor: Any, taxonomy_table: str = TAXONOMY_TABLE) -> l
     return [str(r[0]) for r in cursor.fetchall()]
 
 
+def read_provenance_rows(cursor: Any, table: str = PROVENANCE_TABLE) -> dict[str, dict]:
+    """Existing provenance rows keyed by ``event_type`` (the table is ~400 rows).
+
+    Read whole rather than filtered: the table is tiny, so a single SELECT is simpler
+    and cheaper than binding an IN-list of affected events.
+    """
+    cursor.execute(f"SELECT {', '.join(PROVENANCE_COLUMNS)} FROM {table}")
+    return {row[0]: dict(zip(PROVENANCE_COLUMNS, row, strict=False)) for row in cursor.fetchall()}
+
+
 def write_provenance(cursor: Any, rows: Sequence[dict], table: str = PROVENANCE_TABLE) -> None:
     """Create the table if needed and MERGE rows in via a staging table (idempotent).
 

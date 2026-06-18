@@ -854,3 +854,46 @@ def test_merge_readd_preserves_original_instrumented_and_advances_last_change():
     merged = bf.merge_provenance_entry(existing, new_entry)
     assert merged["instrumented"]["commit"] == "aaaa"  # original instrumentation kept
     assert merged["last_change"]["commit"] == "eeee"  # window is the latest change
+
+
+# --------------------------------------------------------------------------- #
+# read_provenance_rows
+# --------------------------------------------------------------------------- #
+
+
+def test_read_provenance_rows_keys_by_event_type():
+    existing = [
+        (
+            "Event A",
+            "event_a",
+            "aaaa",
+            None,
+            "2025-02-01",
+            None,
+            None,
+            None,
+            "present",
+            True,
+            "2025-02-01",
+            "2026-01-01T00:00:00",
+        ),
+        (
+            "Event B",
+            "event_b",
+            "aaaa",
+            None,
+            "2025-02-01",
+            None,
+            None,
+            None,
+            "present",
+            True,
+            "2025-02-01",
+            "2026-01-01T00:00:00",
+        ),
+    ]
+    cur = RefreshCursor(["Event A", "Event B"], existing_rows=existing)
+    rows = bf.read_provenance_rows(cur)
+    assert set(rows) == {"Event A", "Event B"}
+    assert rows["Event A"]["instrumented_commit"] == "aaaa"
+    assert rows["Event B"]["code_status"] == "present"
