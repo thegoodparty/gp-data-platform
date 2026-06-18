@@ -62,6 +62,15 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "`Contact Owner` <> '' and `Owner Name` <> ''"
+      # Routing fields are coalesced to '' for the Title-Case import contract, so a not_null
+      # test is vacuous (blank passes). Assert not-blank instead so blank routing fields are
+      # visible. Severity warn (not error like the owner): blanks here are single-row upstream
+      # name-parsing edges, not a systemic misconfig, so they surface without blocking.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "trim(`First Name`) <> '' and trim(`Last Name`) <> '' and trim(`State/Region`) <> ''"
+          config:
+            severity: warn
     columns:
       - name: gp_candidacy_id
         description: GoodParty candidacy id; the model grain and internal match-back backstop.
@@ -69,17 +78,8 @@ models:
           - unique
           - not_null
       - name: First Name
-        quote: true
-        data_tests:
-          - not_null
       - name: Last Name
-        quote: true
-        data_tests:
-          - not_null
       - name: State/Region
-        quote: true
-        data_tests:
-          - not_null
       - name: candidate_code
         description: 4-part deterministic match-back slug (first/last/state/office_type); no city.
       - name: icp_win
