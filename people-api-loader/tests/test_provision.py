@@ -117,6 +117,8 @@ def _patch(monkeypatch: pytest.MonkeyPatch, rds_client: FakeRds, ec2_client: Fak
     monkeypatch.setattr(
         step, "put_ssm_parameter", lambda cfg, name, value, **k: captured.update(param=name, conninfo=value)
     )
+    # The reuse branch reads the param back to fail fast; default it present.
+    monkeypatch.setattr(step, "get_ssm_parameter", lambda cfg, name, **k: "postgresql://u:p@h:5432/d")
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn()))
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     return captured
@@ -221,6 +223,26 @@ def test_provision_reraises_write_error_even_if_rollback_fails(monkeypatch: pyte
         step.run(_CFG, "20260616")
 
     assert "delete_cluster" in rds_client.names()  # rollback was attempted despite failing
+
+
+def test_provision_fails_fast_when_conn_param_missing_on_reuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Orphaned cluster: it exists but its connection param was never written (prior run's SSM
+    # write and rollback both failed). The re-run must fail fast in the reuse branch, before
+    # the multi-minute instance waiter, rather than surfacing an opaque ParameterNotFound later.
+    rds_client = FakeRds(existing={"gp-people-db-20260616": {"Endpoint": "existing.rds.aws"}})
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ec2", lambda cfg: FakeEc2())
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    def _missing(cfg: object, name: str, **k: object) -> str:
+        raise ClientError({"Error": {"Code": "ParameterNotFound", "Message": "nf"}}, "GetParameter")
+
+    monkeypatch.setattr(step, "get_ssm_parameter", _missing)
+
+    with pytest.raises(ClientError):
+        step.run(_CFG, "20260616")
+
+    assert "instance" not in rds_client.names()  # bailed before the instance waiter
 
 
 def test_provision_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -28,7 +28,7 @@ from urllib.parse import quote
 
 from botocore.exceptions import ClientError
 
-from loader.core.aws import ec2, ignore_client_errors, put_ssm_parameter, rds
+from loader.core.aws import ec2, get_ssm_parameter, ignore_client_errors, put_ssm_parameter, rds
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new
@@ -80,23 +80,31 @@ def _ensure_cluster_param_group(client: object, name: str, family: str, tags: li
 
 
 def _attach_s3_import_role(client: object, cluster_id: str, role_arn: str) -> None:
-    """Attach the rds-s3-import role, describe-first.
+    """Attach the rds-s3-import role, describe-first, skipping only an ACTIVE association.
 
     `add_role_to_db_cluster` requires `iam:PassRole`, and AWS evaluates that BEFORE the
     already-attached check — so a caller lacking PassRole gets `AccessDenied` (not
     `DBClusterRoleAlreadyExists`) when the role is already attached, which `ignore_client_errors`
     can't swallow. Describing first (a read, no PassRole) lets a re-run continue when an admin
     pre-attached the role, the path PLAN_LOADER.md documents for a loader without PassRole.
+
+    Only an `ACTIVE` association is treated as done; a `PENDING`/`INVALID` role (e.g. from an
+    interrupted prior run) still gets a (re)attach so s3 imports aren't silently left broken.
+    The add is wrapped so a present-but-not-yet-ACTIVE role racing to ACTIVE doesn't hard-fail
+    on `DBClusterRoleAlreadyExists`; `AccessDenied` (no PassRole) still surfaces.
     """
     resp = client.describe_db_clusters(DBClusterIdentifier=cluster_id)  # ty: ignore[unresolved-attribute]
     attached = resp["DBClusters"][0].get("AssociatedRoles", [])
-    if any(r.get("RoleArn") == role_arn for r in attached):
+    if any(r.get("RoleArn") == role_arn and r.get("Status") == "ACTIVE" for r in attached):
         log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
         return
-    client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
-        DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
-    )
-    log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
+    with ignore_client_errors("DBClusterRoleAlreadyExists"):
+        client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
+            DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
+        )
+        log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
+        return
+    log.info("provision.role_attach_already_exists", cluster=cluster_id, role=role_arn)
 
 
 def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
@@ -202,10 +210,25 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     else:
         # Reuse: the create response (and the generated password) aren't in hand, so read the
         # writer endpoint back. The create branch already has it from the create response.
-        endpoint = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0][
-            "Endpoint"
-        ]
-        log.info("provision.cluster_exists", cluster=cluster_id)
+        cluster_info = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"][0]
+        endpoint = cluster_info["Endpoint"]
+        log.info("provision.cluster_exists", cluster=cluster_id, status=cluster_info.get("Status"))
+        # Fail fast on the orphaned-cluster case: cluster exists but the connection param was
+        # never written (a prior run's SSM write and its rollback both failed). Otherwise the
+        # missing param surfaces only after the multi-minute instance waiter below, as an
+        # opaque ParameterNotFound from connect_new's SELECT 1.
+        try:
+            get_ssm_parameter(cfg, conn_param)
+        except ClientError as ssm_exc:
+            if ssm_exc.response["Error"]["Code"] == "ParameterNotFound":
+                log.error(
+                    "provision.conn_param_missing_on_reuse",
+                    cluster=cluster_id,
+                    name=conn_param,
+                    hint="cluster exists but its connection param was never written; "
+                    "manually delete the cluster before re-running",
+                )
+            raise
 
     if not _instance_exists(rds_client, instance_id):
         rds_client.create_db_instance(
