@@ -81,6 +81,19 @@ def extract_serving_structure() -> None:
     typer.echo(f"wrote {out} ({len(pks)} PKs, {len(idxs)} indexes, {len(fks)} FKs)")
 
 
+@app.command(name="emit-ddl")
+def emit_ddl() -> None:
+    """Render schema/data/target_schema.sql from the people_api marts (committed artifact)."""
+    from pathlib import Path
+
+    from loader.people_api.schema.emit_ddl import render_target_schema
+
+    cfg = _setup(verify_aws=False)
+    out = Path(__file__).parent / "schema" / "data" / "target_schema.sql"
+    out.write_text(render_target_schema(cfg), encoding="utf-8")
+    typer.echo(f"wrote {out}")
+
+
 @app.command()
 def unload(
     run_date: RunDateArg,
