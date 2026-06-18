@@ -224,8 +224,8 @@ select
     -- test, so a
     -- misconfigured prod fails closed rather than silently shipping unassigned leads.
     'Self-Filer Lead' as `Type`,
-    env_var('DBT_CIVICS_HUBSPOT_CONTACT_OWNER', '') as `Contact Owner`,
-    env_var('DBT_CIVICS_HUBSPOT_OWNER_NAME', '') as `Owner Name`,
+    '{{ env_var("DBT_CIVICS_HUBSPOT_CONTACT_OWNER", "") }}' as `Contact Owner`,
+    '{{ env_var("DBT_CIVICS_HUBSPOT_OWNER_NAME", "") }}' as `Owner Name`,
     f._ab_source_file_url as _ab_source_file_url,
     f.uploaded as uploaded,
     f._airbyte_extracted_at as _airbyte_extracted_at,
