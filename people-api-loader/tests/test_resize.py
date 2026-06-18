@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from botocore.exceptions import ClientError
 
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import resize as step
@@ -28,14 +29,21 @@ class _FakeWaiter:
 
 
 class FakeRds:
-    def __init__(self) -> None:
+    def __init__(self, raise_on: dict[str, str] | None = None) -> None:
         self.calls: list[tuple[str, dict]] = []
+        self._raise_on = raise_on or {}  # op -> ClientError code to raise after recording
+
+    def _maybe_raise(self, op: str) -> None:
+        if code := self._raise_on.get(op):
+            raise ClientError({"Error": {"Code": code, "Message": "in progress"}}, op)
 
     def modify_db_cluster(self, **kw: Any) -> None:
         self.calls.append(("modify_cluster", kw))
+        self._maybe_raise("modify_cluster")
 
     def modify_db_instance(self, **kw: Any) -> None:
         self.calls.append(("modify_instance", kw))
+        self._maybe_raise("modify_instance")
 
     def reboot_db_instance(self, **kw: Any) -> None:
         self.calls.append(("reboot", kw))
@@ -65,6 +73,25 @@ def test_resize_applies_serverless_and_writes_manifest(monkeypatch: pytest.Monke
     }
     assert by["modify_cluster"]["DeletionProtection"] is True
     assert by["modify_instance"]["DBInstanceClass"] == "db.serverless"
+
+
+def test_resize_swallows_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A re-run that lands while a prior partial run's modify is still in flight must fall
+    # through to the waiter, not hard-fail on InvalidDB*StateFault.
+    rds_client = FakeRds(
+        raise_on={
+            "modify_cluster": "InvalidDBClusterStateFault",
+            "modify_instance": "InvalidDBInstanceStateFault",
+        }
+    )
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+
+    manifest = step.run(_CFG, "20260616")  # must not raise despite both modifies rejecting
+
+    assert manifest.status == "complete"
+    assert "reboot" in dict(rds_client.calls)  # proceeded past the swallowed modifies
 
 
 def test_resize_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
