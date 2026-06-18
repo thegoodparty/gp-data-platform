@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: candidacy_techspeed
+    description: >
+      Civics-sourced TechSpeed enrichment feed (reverse-ETL sendable mart). One row per
+      gp_candidacy_id. Replaces m_ballotready_internal__records_sent_to_techspeed. Sends
+      missing-contact, non-major-party, future-election candidacies not already in HubSpot and
+      not already known to TechSpeed. The 42-column legacy shape is preserved (24
+      BallotReady-only columns null-filled, partner-confirmed unused); appended are the 4-part
+      match-back key (candidate_code), the reverse-ETL tracking-key inputs (election_year,
+      election_stage), gp_candidacy_id / gp_candidate_id (internal forensic ids), is_keyable,
+      and last_activity_at. See .tickets/DATA-1523/46_layer1_models_design.md.
+    columns:
+      - name: gp_candidacy_id
+        description: GoodParty candidacy id; the model grain and internal match-back backstop.
+        data_tests:
+          - unique
+          - not_null
+      - name: first_name
+        description: Candidate first name (TechSpeed researches missing contact from name + state + office).
+        data_tests:
+          - not_null
+      - name: last_name
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
+      - name: election_day
+        description: Upcoming election date sent to TechSpeed (legacy prefer-general contract date).
+        data_tests:
+          - not_null
+      - name: election_stage
+        description: >
+          Nearest-upcoming stage for the reverse-ETL dedup grain; deliberately distinct from
+          election_day (which keeps the legacy prefer-general date).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["primary", "general"]
+      - name: candidate_code
+        description: 4-part deterministic match-back slug (first/last/state/office_type); no city.
+      - name: is_keyable
+        description: True when candidate_code is non-null; the reverse-ETL diff filters on this.
+        data_tests:
+          - not_null
