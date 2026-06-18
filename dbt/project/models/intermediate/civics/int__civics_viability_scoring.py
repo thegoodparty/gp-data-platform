@@ -72,8 +72,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         tags=["intermediate", "civics", "viability"],
     )
 
-    candidacy = dbt.ref("m_civics__candidacy")
-    election   = dbt.ref("m_civics__election")
+    candidacy = dbt.ref("candidacy")
+    election   = dbt.ref("election")
 
     # bring in state, seats_available, number_of_opponents from the election table
     # (state is not on the candidacy mart; election.state is already a 2-letter abbreviation)
