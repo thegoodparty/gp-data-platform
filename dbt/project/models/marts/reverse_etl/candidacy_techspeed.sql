@@ -85,7 +85,9 @@ with
                     or (
                         c.phone_number is not null
                         and c.phone_number != ''
-                        and hs.phone_number = c.phone_number
+                        and length(regexp_replace(c.phone_number, '[^0-9]', '')) >= 10
+                        and regexp_replace(hs.phone_number, '[^0-9]', '')
+                        = regexp_replace(c.phone_number, '[^0-9]', '')
                     )
                     or (
                         br_int.br_candidacy_id is not null
