@@ -289,7 +289,8 @@ def model(dbt, session):
     current_year    = datetime.now().year
     inference_years = [current_year, current_year + 1, current_year + 2]
 
-    catalog = dbt.config.get("database")  # Unity Catalog name; follows the dbt project
+    catalog        = dbt.config.get("database")  # Unity Catalog name; follows the dbt project
+    models_schema  = "{{ var('voter_turnout_models_schema', 'model_predictions') }}"
 
     mlflow.set_registry_uri("databricks-uc")
     client = mlflow.MlflowClient()
@@ -303,7 +304,7 @@ def model(dbt, session):
     models, cat_maps = {}, {}
     model_family = None
     for slug in needed_slugs:
-        full_name = f"{catalog}.model_predictions.voter_turnout_model_{slug}"
+        full_name = f"{catalog}.{models_schema}.voter_turnout_model_{slug}"
         _check_lgbm_version(full_name, client)
         mv = client.get_model_version_by_alias(full_name, "production")
         models[slug] = mlflow.lightgbm.load_model(f"models:/{full_name}@production")
