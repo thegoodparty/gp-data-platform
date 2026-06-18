@@ -58,7 +58,7 @@ models:
       .tickets/DATA-1523/46_layer1_models_design.md.
     data_tests:
       # Fail-closed owner: a misconfigured prod (blank env var) fails this rather than
-      # silently shipping unassigned leads. Red until CIVICS_HUBSPOT_* env vars are set.
+      # silently shipping unassigned leads. Red until DBT_CIVICS_HUBSPOT_* env vars are set.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "`Contact Owner` <> '' and `Owner Name` <> ''"
@@ -69,12 +69,15 @@ models:
           - unique
           - not_null
       - name: First Name
+        quote: true
         data_tests:
           - not_null
       - name: Last Name
+        quote: true
         data_tests:
           - not_null
       - name: State/Region
+        quote: true
         data_tests:
           - not_null
       - name: candidate_code
