@@ -61,7 +61,11 @@ class FakeRds:
     def describe_db_clusters(self, DBClusterIdentifier: str) -> dict:
         if DBClusterIdentifier not in self.clusters:
             raise _not_found("DescribeDBClusters")
-        return {"DBClusters": [{"Endpoint": self.clusters[DBClusterIdentifier]["Endpoint"]}]}
+        cluster = self.clusters[DBClusterIdentifier]
+        base: dict = {"Endpoint": cluster["Endpoint"]}
+        if "AssociatedRoles" in cluster:
+            base["AssociatedRoles"] = cluster["AssociatedRoles"]
+        return {"DBClusters": [base]}
 
     def describe_db_instances(self, DBInstanceIdentifier: str) -> dict:
         if DBInstanceIdentifier not in self.instances:
@@ -164,6 +168,26 @@ def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.Monkey
     assert "instance" not in rds_client.names()  # not re-created
     assert "param" not in captured  # no new connection string stored (password unknown on reuse)
     assert "role" in rds_client.names()  # role attach is still idempotently ensured
+
+
+def test_provision_skips_role_attach_when_already_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An ACTIVE role association is treated as done -> no add_role_to_db_cluster (which would
+    # need iam:PassRole). A non-ACTIVE/absent role would fall through to the attach.
+    rds_client = FakeRds(
+        existing={
+            "gp-people-db-20260616": {
+                "Endpoint": "existing.rds.aws",
+                "AssociatedRoles": [{"RoleArn": "arn:aws:iam::1:role/rds-s3-import", "Status": "ACTIVE"}],
+            }
+        },
+        instances={"gp-people-db-20260616-writer"},
+    )
+    _patch(monkeypatch, rds_client, FakeEc2())
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616")
+
+    assert "role" not in rds_client.names()  # ACTIVE role -> no re-attach
 
 
 def test_provision_recovers_missing_instance(monkeypatch: pytest.MonkeyPatch) -> None:

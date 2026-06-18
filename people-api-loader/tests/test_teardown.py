@@ -46,9 +46,13 @@ class FakeRds:
 
     def modify_db_cluster(self, **kw: Any) -> None:
         self.calls.append("disable_protection")
+        if "cluster" in self._missing:
+            raise _err("DBClusterNotFoundFault")
 
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append("delete_cluster")
+        if "cluster" in self._missing:
+            raise _err("DBClusterNotFoundFault")
 
     def delete_db_cluster_parameter_group(self, **kw: Any) -> None:
         self.calls.append("delete_pg")
@@ -96,6 +100,17 @@ def test_teardown_idempotent_on_missing_resources(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert "delete_cluster" in rds_client.calls
+
+
+def test_teardown_idempotent_on_missing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Cluster was never created: modify/delete both raise DBClusterNotFoundFault, which the
+    # guards must swallow so teardown stays idempotent (covers the cluster-not-found branch).
+    rds_client, ssm_client = FakeRds(missing={"cluster"}), FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)  # must not raise
+    assert "delete_instance" in rds_client.calls
+    assert ssm_client.deleted == ["people-db-connection-string-dev-20260616"]
 
 
 class _FakePaginator:

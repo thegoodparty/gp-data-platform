@@ -248,8 +248,24 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     rds_client.get_waiter("db_instance_available").wait(
         DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
     )
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        cur.execute("SELECT 1")
+    try:
+        with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1")
+    except Exception:
+        # The cluster is up and the connection param is written; the DB is just unreachable
+        # (loader SG / VPC routing). This is recoverable WITHOUT discarding anything: the reuse
+        # branch re-runs this SELECT 1, so fixing connectivity and re-running self-heals (or
+        # `loader teardown` discards the cluster). Surface it rather than leaving an opaque
+        # psycopg error with no manifest. We deliberately do NOT delete the param — that would
+        # force a destructive teardown for a fixable network issue and never regenerates.
+        log.error(
+            "provision.connect_failed",
+            cluster=cluster_id,
+            endpoint=endpoint,
+            hint="DB unreachable after the waiter; check the loader security group + VPC "
+            "routing, then re-run to retry (or `loader teardown` to discard the cluster)",
+        )
+        raise
     log.info("provision.ready", endpoint=endpoint)
 
     vpce_id = _find_s3_vpc_endpoint(ec2_client, cfg.aws_region, cfg.vpc_id)
