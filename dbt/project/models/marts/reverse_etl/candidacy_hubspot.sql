@@ -112,6 +112,7 @@ with
             -- match-back key).
             ts_int.candidate_code as candidate_code_ts,
             br_int.br_candidacy_id,
+            br_int.br_race_id as br_race_id_br,
             e.population,
             e.city,
             e.district,
@@ -200,7 +201,9 @@ select
     coalesce(b.office_type, '') as `Office Type`,
     coalesce(b.office_level, '') as `Office Level`,
     coalesce(cast(b.filing_deadline as string), '') as `Filing Deadline`,
-    coalesce(cast(f.br_race_id as string), '') as br_race_id,
+    coalesce(
+        cast(b.br_race_id_br as string), cast(f.br_race_id as string), ''
+    ) as br_race_id,
     coalesce(cast(b.primary_election_date as string), '') as `Primary Election Date`,
     coalesce(cast(b.general_election_date as string), '') as `General Election Date`,
     coalesce(cast(b.election_date as string), '') as `Election Date`,
@@ -240,17 +243,20 @@ select
     coalesce(
         b.is_win_icp,
         b.population between 500 and 100000
-        and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices)
+        and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices),
+        false
     ) as icp_win,
     coalesce(
         b.is_serve_icp,
         b.population between 1000 and 100000
-        and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices)
+        and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices),
+        false
     ) as icp_serve,
     coalesce(
         b.is_win_supersize_icp,
         b.population > 100000
-        and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices)
+        and lower(trim(b.candidate_office)) in (select ts_office from icp_ts_offices),
+        false
     ) as icp_win_supersize,
     'Civics Net New' as lead_source,
 
