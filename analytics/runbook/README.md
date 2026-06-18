@@ -13,3 +13,4 @@ A Serve entry will be added here when it exists.
 ## What still lives here
 
 - **`CALIBRATION_<YYYY-MM-DD>.md`** — per-session calibration logs. Gitignored working documents; durable lessons are promoted into the two skills above (and the agent files). See `.claude/skills/win-analytics-process/references/calibration.md` for the convention.
+- **`CANDIDATES.md`** — the shared, committed, append-only calibration candidates ledger. Holds observations below the promotion bar, data-state findings awaiting confirmation, and parked Track 2 process-design candidates until they recur. Convention in the same calibration doc.

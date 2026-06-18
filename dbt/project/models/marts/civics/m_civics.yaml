@@ -2653,3 +2653,127 @@ models:
         description: Timestamp when the BallotReady position record was last updated.
         data_tests:
           - not_null
+
+  - name: district_census_stats
+    description: >
+      The universal district population reference: one row per district for every
+      district of the substrate's curated office-bearing types nationwide, plus one
+      clearly-flagged statewide row per state (district_type='State'). A rollup of
+      int__district_census_allocation (the substrate). The first consumer of the
+      Constituents Served substrate (DATA-1359); read by official_constituents.
+
+      Grain: One row per (state_postal_code, district_type, district_name).
+
+      Population basis differs by district_type. Local rows (the curated types) carry
+      voter-block-ALLOCATED population (inferred from blocks with >=1 L2 voter; carry
+      the ~2.4% zero-voter-block undercount). Statewide rows carry EXACT whole-state
+      2020 census population. Read one district_type at a time: summing
+      district_population across types double-counts, and summing local + statewide
+      mixes the two bases -- consumers wanting only local districts filter
+      WHERE district_type <> 'State'. v1 is population only; ACS demographics and the
+      validated non-exact-assignment share are phase 2 (DATA-1991).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state_postal_code, district_type, district_name]
+    columns:
+      - name: state_postal_code
+        description: Two-letter state postal code, derived from the census geoid FIPS prefix (authoritative).
+        data_tests:
+          - not_null
+      - name: district_type
+        description: >
+          L2 district-column type (one of the substrate's curated office-bearing types), or
+          'State' for the synthetic statewide rows.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - County
+                  - US_Congressional_District
+                  - State_Senate_District
+                  - State_House_District
+                  - State_Legislative_District
+                  - City
+                  - Township
+                  - Town_District
+                  - Village
+                  - Borough
+                  - City_Council_Commissioner_District
+                  - City_Ward
+                  - County_Commissioner_District
+                  - County_Supervisorial_District
+                  - School_District
+                  - Unified_School_District
+                  - School_Board_District
+                  - Board_of_Education_District
+                  - City_School_District
+                  - Elementary_School_District
+                  - High_School_District
+                  - Fire_District
+                  - Community_College
+                  - Community_College_SubDistrict
+                  - County_Board_of_Education_District
+                  - School_Subdistrict
+                  - School_District_Vocational
+                  - Educational_Service_District
+                  - Learning_Community_Coordinating_Council_District
+                  - Town_Ward
+                  - Township_Ward
+                  - Community_Council_SubDistrict
+                  - County_Legislative_District
+                  - Judicial_Justice_of_the_Peace
+                  - Judicial_Superior_Court_District
+                  - Judicial_District_Court_District
+                  - Park_District
+                  - Library_District
+                  - Water_District
+                  - Water_SubDistrict
+                  - Sewer_District
+                  - Fire_Protection_District
+                  - Port_District
+                  - Conservation_District
+                  - Conservation_SubDistrict
+                  - Soil_and_Water_District
+                  - Aquatic_District
+                  - State
+      - name: district_name
+        description: >
+          Normalized L2 district name (normalize_l2_district_name). NOT unique across
+          states (e.g. Congressional District '1' exists in many states) -- the key is
+          the full (state, type, name). For statewide rows this is the state postal code.
+        data_tests:
+          - not_null
+      - name: district_population
+        description: >
+          2020 census population of the district. Local rows: sum of the substrate's
+          block-population-weighted allocated_population (FRACTIONAL by design; round for
+          display). Statewide rows: exact whole-state census population.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: n_census_blocks
+        description: >
+          Census blocks composing the district. Local rows: voter-bearing blocks from the
+          substrate. Statewide rows: all census blocks in the state.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: registered_voters
+        description: >
+          L2 registered voters in the district (the voters-vs-constituents contrast Serve
+          shows). Local rows: sum of substrate voters_in_block_district. Statewide rows:
+          per-state sum of the per-block max voter count across types (equals the state's
+          universal-County voter total).
+        data_tests:
+          - not_null
+          # min 1 (not 0): every district/state has >=1 voter by construction. Also catches
+          # a statewide voter-join key mismatch silently zeroing voters.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1

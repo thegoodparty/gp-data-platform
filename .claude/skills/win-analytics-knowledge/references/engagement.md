@@ -30,7 +30,7 @@ caveats and deprecations the one-line registry definitions don't carry.
 - **`is_post_amplitude_registration`** (`user_created_at >= 2023-12-10`, the documented Amplitude tracking start) is **too loose** for engagement analyses — Win-product event instrumentation actually started ~2025-05-28.
 - **`has_completed_onboarding_flow`** (`onboarding_completed_at IS NOT NULL`, event `onboarding_complete`) and **`is_onboarded`** (US user, dashboard viewed within 14d of *Amplitude registration*) are both **⚠ NEW-FLOW-BLIND** across the 2026-05-07 cutover. Deprecated as cohort filters — use the canonical **Onboarded** metric instead.
 - **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses.
-- **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign); anchor it to `first_campaign_sent_at <= election_date` for forward/recent cohorts so post-election sends don't leak. Do not conflate with the colloquial "activated."
+- **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). Do not conflate with the colloquial "activated."
 - **Onboarding completed (pledge)** is version-agnostic across both eras but first-seen 2025-09, so it under-counts pre-2025-09 cohorts.
 
 ### Terminology
@@ -39,11 +39,11 @@ Two distinct onboarding concepts — keep them named separately so they stop dri
 - **"onboarding dashboard viewed"** (canonical **Onboarded**) = viewed the candidate dashboard within 14 days of account creation (the broad cohort filter).
 - **"onboarding completed (pledge)"** = fired `Onboarding - Candidate Pledge Completed` within 14 days (the strict funnel metric).
 
-Both are recomputed from durable, version-agnostic events; do NOT use the stored `is_onboarded` / `has_completed_onboarding_flow` flags across the 2026-05-07 cutover (both new-flow-blind, see Onboarding flow versions below).
+Both are recomputed from durable, version-agnostic events, not the stored `is_onboarded` / `has_completed_onboarding_flow` flags (new-flow-blind across the cutover; see Onboarding flow versions below).
 
 ### Point-in-time caveat for retrospective cohorts
 
-`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor, so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today.)
+`has_completed_onboarding_flow` and `is_activated` are lifetime-to-now flags (true if the user *ever* hit the milestone), like `is_active_candidate_*`. For a retrospective cohort analysis anchored to a past election, recompute them from the raw stream restricted to events before the anchor (for `is_activated`, `first_campaign_sent_at <= election_date`), so post-anchor activity doesn't leak into the funnel. (2026-06-01: the magnitude was immaterial for the Nov-2025 cohort — 21.2% as-of-today vs 20.9% anchored — but the principle holds and matters more for recent cohorts whose anchor is close to today.)
 
 ### "Any evidence" vs "engaged beyond account creation"
 

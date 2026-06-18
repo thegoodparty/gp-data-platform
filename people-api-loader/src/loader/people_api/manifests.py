@@ -38,6 +38,7 @@ __all__ = [
     "ResizeManifest",
     "SchemaManifest",
     "Status",
+    "TableInspection",
     "UnloadFile",
     "UnloadManifest",
     "ValidateManifest",
@@ -50,15 +51,23 @@ __all__ = [
 ]
 
 
+class TableInspection(BaseModel):
+    table: str
+    total_row_count: int
+    # Empty when the table has no "State" column (e.g. District*); per-state is only
+    # meaningful for state-partitioned tables like Voter.
+    per_state_row_counts: dict[str, int] = Field(default_factory=dict)
+    # max(updated_at) per state, ISO-8601 — the L2 snapshot freshness. Empty when the
+    # table lacks "State" or "updated_at".
+    per_state_snapshot_dates: dict[str, str] = Field(default_factory=dict)
+
+
 class InspectManifest(ManifestBase):
     step: Literal["inspect"] = "inspect"
     prod_cluster_id: str
-    engine_version: str
-    extensions: list[str]
-    roles: list[str]
-    prod_row_counts: dict[str, int]
-    prod_ddl_s3_uri: str
-    databricks_columns_s3_uri: str
+    # Per-table prod inspection (Voter + District family). Voter's per_state_row_counts
+    # is the "old" baseline the validate step diffs the new cluster against.
+    tables: list[TableInspection]
 
 
 class UnloadFile(BaseModel):
@@ -98,6 +107,7 @@ class SchemaManifest(ManifestBase):
 
 class CopyTableResult(BaseModel):
     table: str
+    state: str
     expected_rows: int
     actual_rows: int
     files_loaded: int
@@ -122,7 +132,9 @@ class IndexManifest(ManifestBase):
     indexes: list[IndexSpec]
     constraints_added: list[str]
     analyzed_tables: list[str]
-    l2type_coverage_missing: list[str] = Field(default_factory=list)
+    # None means the coverage check was skipped (org_districts unreachable);
+    # [] means it ran and found full coverage.
+    l2type_coverage_missing: list[str] | None = None
 
 
 class ResizeManifest(ManifestBase):

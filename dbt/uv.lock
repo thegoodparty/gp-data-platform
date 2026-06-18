@@ -706,7 +706,7 @@ dev = [
 requires-dist = [
     { name = "apache-airflow", specifier = "==3.2.2" },
     { name = "boto3", specifier = ">=1.43.24,<2.0.0" },
-    { name = "databricks-sdk", specifier = ">=0.94.0,<0.95.0" },
+    { name = "databricks-sdk", specifier = ">=0.94.0,<0.118.0" },
     { name = "databricks-sql-connector", specifier = ">=4.2.6,<5.0.0" },
     { name = "google-genai", specifier = ">=1.75.0,<2.0.0" },
     { name = "pandas", specifier = ">=2.2.3,<3.0.0" },

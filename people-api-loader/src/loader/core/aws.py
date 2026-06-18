@@ -42,6 +42,16 @@ def secrets(cfg: BaseLoaderConfig) -> BaseClient:
     return session(cfg).client("secretsmanager")
 
 
+def ssm(cfg: BaseLoaderConfig) -> BaseClient:
+    return session(cfg).client("ssm")
+
+
+def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True) -> str:
+    """Fetch an SSM Parameter Store value (SecureString decrypted by default)."""
+    resp = ssm(cfg).get_parameter(Name=name, WithDecryption=decrypt)
+    return resp["Parameter"]["Value"]
+
+
 def sts(cfg: BaseLoaderConfig) -> BaseClient:
     return session(cfg).client("sts")
 

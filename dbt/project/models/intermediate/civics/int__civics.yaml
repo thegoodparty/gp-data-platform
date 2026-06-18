@@ -3159,3 +3159,311 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [source_name, gp_election_stage_id]
+
+  - name: int__serve_district_resolution
+    description: >
+      Resolves each serve org to its L2 district: the serve-cohort entry point
+      onto the District/Census substrate (a downstream consumer; election-api
+      quarantined here, not in the substrate). Part of the Constituents Served
+      pipeline
+      (DATA-1988, epic DATA-1359). One row per serve org (organizations mart,
+      organization_type = 'serve'), resolved to the L2 district the official
+      serves: override-first through the org's election-api district record
+      (coalesce(override_district_id, district_id), which bakes in the manual
+      override corrections), with the LLM position->district crosswalk as
+      fallback. Carries the snapshot-stable normalized district join key (L2
+      names drift between snapshots), the resolution path, and guardrail
+      flags: requires_review (deterministic container-mismatch rules),
+      is_geo_seat (the jurisdiction-vs-electoral-seat semantics question),
+      is_statewide (reported separately downstream), and is_internal_email.
+      Rows are never excluded here; pending cohort decisions are var-driven
+      filters plus flags, and flagged rows flow through for downstream review.
+    columns:
+      - name: organization_slug
+        description: Serve org identifier (primary key)
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: Owning user of the serve org
+        data_tests:
+          - not_null
+      - name: elected_office_id
+        description: >
+          The org's elected office record (its existence is what makes the
+          org a serve org)
+        data_tests:
+          - not_null
+      - name: ballotready_position_id
+        description: BallotReady position id, when the org has a linked position
+      - name: position_name
+        description: Position title from the linked election-api position
+      - name: custom_position_name
+        description: Free-text position title entered in the product
+      - name: district_id
+        description: >
+          The election-api district id the org resolves through
+          (override_district_id when present, else the position's district)
+      - name: resolution_path
+        description: Which leg resolved the org to a district
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["district_mart", "crosswalk", "unresolved"]
+      - name: state
+        description: >
+          Two-letter state code of the resolved district. Sourced from the
+          district row (or crosswalk row), never from the org's
+          position_state, which is null for override-only orgs.
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: l2_district_type
+        description: >
+          L2 district-type column name. 'State' is a synthetic type for
+          statewide offices; every other value, including 'Other', is a real
+          L2 column.
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: l2_district_name
+        description: Raw L2 district name as carried by the resolving source
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: normalized_district_name
+        description: >
+          Snapshot-stable district join key (normalize_l2_district_name
+          macro: collapse whitespace, strip the drifting " (EST.)" suffix,
+          upper-case). Downstream joins to L2-derived tables must use this
+          key, normalized on both sides.
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_path != 'unresolved'"
+      - name: is_statewide
+        description: >
+          Resolved to the synthetic statewide district; statewide orgs are
+          reported separately downstream, never mixed into the local headline
+        data_tests:
+          - not_null
+      - name: review_rule_statewide_container
+        description: >
+          Deterministic rule (a) - matched to the synthetic statewide
+          district but the title is not a statewide office
+        data_tests:
+          - not_null
+      - name: review_rule_county_container
+        description: >
+          Deterministic rule (b) - matched to a whole county but the title
+          carries no county/borough/parish term (county-equivalent
+          independent cities, stored by L2 in the County column with a
+          ' CITY' suffix, are excluded as correct matches)
+        data_tests:
+          - not_null
+      - name: review_rule_subscope_marker
+        description: >
+          Deterministic rule (c) - title names a sub-jurisdiction (subarea
+          seat, community education council) while the match is a whole
+          county, city, or school district
+        data_tests:
+          - not_null
+      - name: requires_review
+        description: >
+          Any container-mismatch rule fired: the resolved district likely
+          contains, but is larger than, the office's real jurisdiction.
+          Flagged rows still flow through; the review queue consumes them.
+        data_tests:
+          - not_null
+      - name: review_reason
+        description: Human-readable list of the rules that fired; null when none
+      - name: is_geo_seat
+        description: >
+          Title carries a geographic seat designation (Ward 3, District F,
+          Zone 1) while the matched district is the whole jurisdiction.
+          Correct under whole-jurisdiction semantics (the v1 default),
+          overcounts under electoral-district semantics. Flag only - the
+          semantics decision is pending.
+        data_tests:
+          - not_null
+      - name: is_internal_email
+        description: >
+          Owner email matches the internal/test pattern. Whether these orgs
+          count toward the public metric is a pending product decision, so
+          flag, never exclude (the serve_cohort_exclude_internal_email_orgs
+          var flips the filter).
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: serve_district_resolution_review_reason_consistency
+          arguments:
+            expression: >
+              (requires_review and review_reason is not null)
+              or (not requires_review and review_reason is null)
+
+  - name: int__district_census_allocation
+    description: >
+      THE SUBSTRATE (DATA-1992, epic DATA-1359). One row per (census block,
+      district_type, normalized district_name) with the 2020 decennial
+      population allocated to that district in that block: allocated_population
+      = pct_of_geo * block_population, where pct_of_geo is the within-(block,
+      district_type) L2 voter share and the magnitude is census block
+      population (never voter counts). Block grain only; block_group_geoid
+      (LEFT 12) and tract_geoid (LEFT 11) are carried for GROUP BY rollups
+      (coarser grains are never stored as rows, so no cross-grain
+      double-count). Counts only, PII-free. Depends on L2 + census only (no
+      election-api edge). Consumed by people_served, official_constituents, and
+      district_census_stats.
+    columns:
+      - name: block_geoid
+        description: 15-char zero-padded 2020 census block GEOID
+        data_tests:
+          - not_null
+      - name: block_group_geoid
+        description: Block group GEOID (LEFT 12 of block_geoid); rollup key
+        data_tests:
+          - not_null
+      - name: tract_geoid
+        description: Tract GEOID (LEFT 11 of block_geoid); rollup key
+        data_tests:
+          - not_null
+      - name: state_postal_code
+        description: Uppercase two-letter state postal code
+        data_tests:
+          - not_null
+      - name: district_type
+        description: L2 district column name (the curated substrate subset)
+        data_tests:
+          - not_null
+      - name: district_name
+        description: Normalized L2 district name (the join key to the serve resolver)
+        data_tests:
+          - not_null
+      - name: voters_in_block_district
+        description: Distinct L2 voters in this (block, district_type, district_name)
+        data_tests:
+          - not_null
+      - name: voters_in_block
+        description: >
+          Distinct L2 voters in this block across all district_names of this
+          district_type (the split denominator)
+        data_tests:
+          - not_null
+      - name: block_population
+        description: 2020 decennial census population of the block
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: pct_of_geo
+        description: >
+          Share of the block allocated to this district =
+          voters_in_block_district / voters_in_block. At block grain this is the
+          fraction of the block in this district.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+                inclusive: true
+      - name: allocated_population
+        description: >
+          pct_of_geo * block_population (fractional by design; sums to
+          block_population per (block, district_type))
+        data_tests:
+          - not_null
+      - name: is_non_exact
+        description: >
+          The block's L2 voters report >1 district of this type (pct_of_geo <
+          1). A voter-OBSERVED split indicator at block grain: it includes L2
+          geocoding noise and misses geographic splits no observed voter falls
+          on both sides of, so it is an indicator, not a precise
+          geographic-overlap measure. The validated per-district
+          non-exact-assignment share (the accuracy story) is computed at
+          block-group grain in the demographic layer (phase 2); at block grain
+          splitting is mostly noise (TDD App B.2).
+        data_tests:
+          - not_null
+      - name: loaded_at
+        description: Max loaded_at of the contributing L2 rows
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: district_census_allocation_unique_key
+          arguments:
+            combination_of_columns: [block_geoid, district_type, district_name]
+      - dbt_utils.expression_is_true:
+          name: district_census_allocation_allocated_le_population
+          arguments:
+            # +1e-6 tolerance guards against any binary-float overshoot near
+            # pct_of_geo = 1.0 (sub-microperson; mass-conservation is the exact check)
+            expression: "allocated_population <= block_population + 1e-6"
+      - dbt_utils.expression_is_true:
+          name: district_census_allocation_geoid_lengths
+          arguments:
+            expression: >
+              length(block_geoid) = 15 and length(block_group_geoid) = 12
+              and length(tract_geoid) = 11
+
+  - name: int__serve_block_coverage
+    description: >
+      The count-once engine (DATA-1993, epic DATA-1359). One row per (census block,
+      served_set) with the count of DISTINCT cohort-served voters and the block's total
+      voters; people_served reads it as count-once(set) = sum(served_voters /
+      total_voters * block_population) over served blocks. Count-once is a
+      distinct-PERSON union across overlapping district types, which the counts-only
+      substrate cannot produce (cross-type voter dedup needs voter IDs), so this model
+      scans int__l2_nationwide_uniform once -- the "scanned, never surfaced" node from
+      TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same
+      district types as the substrate (get_l2_major_district_columns), so count-once <=
+      count-multiple holds. served_set is 'all' (served by any cohort district) or one
+      of the substrate's L2 district types; statewide officials are read from the exact T5
+      'State' rows in people_served, not here.
+    columns:
+      - name: block_geoid
+        description: 15-char zero-padded 2020 census block GEOID
+        data_tests:
+          - not_null
+      - name: served_set
+        description: >
+          'all' (voters served by any cohort district) or an L2 district_type (voters
+          served by a cohort district of that type)
+        data_tests:
+          - not_null
+      - name: served_voters
+        description: Distinct cohort-served voters in this block for this served_set
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: total_voters
+        description: >
+          Distinct voters in this block carrying >=1 of the substrate's district values
+          (the count-once denominator; ~= the block's total voters since County covers
+          essentially all)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: serve_block_coverage_unique_key
+          arguments:
+            combination_of_columns: [block_geoid, served_set]
+      - dbt_utils.expression_is_true:
+          name: serve_block_coverage_served_le_total
+          arguments:
+            expression: "served_voters <= total_voters"

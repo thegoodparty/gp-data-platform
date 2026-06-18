@@ -115,12 +115,18 @@ def copy(
 
 
 @app.command(name="build-indexes")
-def build_indexes(run_date: RunDateArg) -> None:
+def build_indexes(
+    run_date: RunDateArg,
+    parallelism: Annotated[
+        int,
+        typer.Option("--parallelism", help="Concurrent CREATE INDEX builds (peak memory scales with this)."),
+    ] = 32,
+) -> None:
     """Step 5 — PKs, non-unique indexes, FKs, ANALYZE."""
     from loader.people_api.steps import build_indexes as step
 
     cfg = _setup(run_date)
-    step.run(cfg, run_date)
+    step.run(cfg, run_date, parallelism=parallelism)
 
 
 @app.command()

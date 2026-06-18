@@ -26,7 +26,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 import psycopg2.extras
-from include.custom_functions.databricks_utils import read_databricks_table
+from include.custom_functions.databricks_utils import (
+    read_databricks_partitioned,
+    read_databricks_table,
+)
 
 logger = logging.getLogger("airflow.task")
 
@@ -97,35 +100,49 @@ def bulk_insert_from_databricks(
     target_columns: Sequence[str],
     transform_row: Callable[[tuple], tuple] | None = None,
     batch_size: int = 5000,
+    partition_column: str | None = None,
 ) -> int:
     """Stream `source_query` from Databricks into `staging.<table>_new` in batches.
 
     `transform_row` runs once per source row; if provided, the returned tuple
     must align with `target_columns`. If absent, source rows pass through
     unchanged (must already match `target_columns`).
-    """
-    logger.info("Reading from Databricks: %s", source_query)
-    _col_names, batches = read_databricks_table(source_query, batch_size=batch_size)
 
+    `partition_column`, if set, reads one distinct value at a time over a single
+    Databricks connection (see `read_databricks_partitioned`), so peak worker
+    memory stays bounded to a single partition instead of buffering the whole
+    table — and without the per-partition connection churn that otherwise
+    accumulates and OOMs the worker. The single commit still lands after the
+    whole load, so a mid-load failure rolls it back and a retry starts from a
+    clean `<table>_new`.
+    """
     col_list = ", ".join(f'"{c}"' for c in target_columns)
     insert_sql = f'INSERT INTO "{spec.staging_schema}"."{spec.new_table}" ' f"({col_list}) VALUES %s"
 
+    if partition_column is None:
+        _col_names, batches = read_databricks_table(source_query, batch_size=batch_size)
+    else:
+        batches = read_databricks_partitioned(source_query, partition_column, batch_size=batch_size)
+
     total = 0
+    cur = conn.cursor()
     try:
-        cur = conn.cursor()
-        try:
-            for batch in batches:
-                rows = [transform_row(r) if transform_row else tuple(r) for r in batch]
-                if not rows:
-                    continue
-                psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)
-                total += len(rows)
-                if total % 50_000 < batch_size:
-                    logger.info("Inserted %d rows so far", total)
-            conn.commit()
-        finally:
-            cur.close()
+        for batch in batches:
+            rows = [transform_row(r) if transform_row else tuple(r) for r in batch]
+            if not rows:
+                continue
+            psycopg2.extras.execute_values(cur, insert_sql, rows, page_size=batch_size)
+            total += len(rows)
+            if total % 50_000 < batch_size:
+                logger.info("Inserted %d rows so far", total)
+        conn.commit()
+    except Exception:
+        # Discard partial inserts so a retry starts from a clean <table>_new
+        # (and the connection isn't left in an aborted-transaction state).
+        conn.rollback()
+        raise
     finally:
+        cur.close()
         batches.close()
 
     logger.info("Loaded %d rows into %s.%s", total, spec.staging_schema, spec.new_table)

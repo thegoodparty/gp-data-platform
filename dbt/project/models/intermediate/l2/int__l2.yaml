@@ -238,7 +238,10 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
       - name: district_type
-        description: "L2 district column name (e.g. City, US_Congressional_District)"
+        description: >
+          L2 district column name (e.g. City, US_Congressional_District), plus
+          the synthetic value 'State' (one row per in-state zip, district_name =
+          state_postal_code) used to give statewide positions zip coverage.
         tests:
           - not_null
       - name: district_name
@@ -279,3 +282,125 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "voters_in_zip_district <= voters_in_zip"
+
+  - name: int__l2_block_district_map
+    description: >
+      One row per (census block, state, district_type, normalized
+      district_name) with the L2 voter count in that intersection
+      (voters_in_block_district) and the per-(block, district_type) voter total
+      (voters_in_block). The block-grain map underlying the district/census
+      substrate (DATA-1992; widened DATA-2013); UNPIVOTs the curated substrate district
+      columns. Block grain is the source of truth for overlap (do NOT count by
+      joining the district-level int__l2_district_aggregations on the
+      normalized name - its key is non-unique and would fan out).
+    columns:
+      - name: block_geoid
+        description: "15-char zero-padded 2020 census block GEOID (state+county+tract+block)."
+        tests:
+          - not_null
+      - name: state_postal_code
+        description: >
+          Uppercase two-letter state postal code, derived from the block's
+          geoid FIPS prefix (block_geoid[:2]) via the fips_codes seed -- NOT
+          L2's per-voter state (which is mislabeled for voters geocoded across
+          a state line). not_null confirms every block FIPS mapped; the
+          state-set test confirms the FIPS->postal mapping is correct.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
+      - name: district_type
+        description: "L2 district column name; the curated substrate subset (DATA-1992; widened DATA-2013)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - County
+                  - US_Congressional_District
+                  - State_Senate_District
+                  - State_House_District
+                  - State_Legislative_District
+                  - City
+                  - Township
+                  - Town_District
+                  - Village
+                  - Borough
+                  - City_Council_Commissioner_District
+                  - City_Ward
+                  - County_Commissioner_District
+                  - County_Supervisorial_District
+                  - School_District
+                  - Unified_School_District
+                  - School_Board_District
+                  - Board_of_Education_District
+                  - City_School_District
+                  - Elementary_School_District
+                  - High_School_District
+                  - Fire_District
+                  - Community_College
+                  - Community_College_SubDistrict
+                  - County_Board_of_Education_District
+                  - School_Subdistrict
+                  - School_District_Vocational
+                  - Educational_Service_District
+                  - Learning_Community_Coordinating_Council_District
+                  - Town_Ward
+                  - Township_Ward
+                  - Community_Council_SubDistrict
+                  - County_Legislative_District
+                  - Judicial_Justice_of_the_Peace
+                  - Judicial_Superior_Court_District
+                  - Judicial_District_Court_District
+                  - Park_District
+                  - Library_District
+                  - Water_District
+                  - Water_SubDistrict
+                  - Sewer_District
+                  - Fire_Protection_District
+                  - Port_District
+                  - Conservation_District
+                  - Conservation_SubDistrict
+                  - Soil_and_Water_District
+                  - Aquatic_District
+      - name: district_name
+        description: "Normalized L2 district name (normalize_l2_district_name): upper, trimmed, no ' (EST.)'."
+        tests:
+          - not_null
+      - name: voters_in_block_district
+        description: "Distinct L2 voters in this (block, district_type, district_name)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: voters_in_block
+        description: >
+          Distinct L2 voters in this block across all district_names of this
+          district_type (the substrate's split denominator). Invariant per
+          (block_geoid, district_type).
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: loaded_at
+        description: "Max loaded_at of the contributing L2 rows."
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [block_geoid, district_type, district_name]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "voters_in_block_district <= voters_in_block"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "length(block_geoid) = 15"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "length(trim(district_name)) > 0"
