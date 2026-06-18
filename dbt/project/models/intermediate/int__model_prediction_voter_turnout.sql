@@ -14,30 +14,6 @@
     )
 }}
 
--- =============================================================================
--- ABOUT THE CTEs BELOW (odd_year_projections, even_year_projections_pre_2026,
--- projections_2026_v2, projections_2027, projections_2028)
--- =============================================================================
---
--- WHY THESE CTEs STILL EXIST BUT ARE NOW DORMANT:
--- Each CTE filters on:  inference_at >= (SELECT MAX(inference_at) FROM this_table)
--- The source tables for these CTEs (ballots_projected_2027, etc.) were written
--- once, have old inference_at timestamps, and WILL NEVER PRODUCE NEW ROWS.
--- They are kept here only to avoid a full table rebuild that would temporarily
--- drop the historical rows they originally contributed.
---
--- NO DATA IS BEING DELETED OR DROPPED.
--- The rows from these old tables were already merged into this table when they
--- were first written. They remain in this table permanently. Removing a CTE
--- here does NOT remove those rows — it only stops dbt from re-reading a source
--- table that has nothing new to offer.
---
--- THE NEW SOURCE OF TRUTH FOR ALL FUTURE PROJECTIONS:
--- The `turnout_projections` CTE at the bottom of this file reads from
--- model_predictions.ballots_projected, which is written by the LightGBM
--- inference pipeline going forward.
--- =============================================================================
-
 with
     odd_year_projections as (
         select
