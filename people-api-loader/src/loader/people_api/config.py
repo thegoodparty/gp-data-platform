@@ -61,6 +61,16 @@ DEFAULT_ENGINE_VERSION = "16.8"
 # only so we can detect and refuse it. See `LoaderConfig.from_env()`.
 _FORBIDDEN_ENV_VAR = "VOTER_DB_MASTER_PASSWORD"
 
+# DDL generation reads column schemas from these dbt marts (Unity Catalog). The PG table
+# name (key) maps to the mart's fully-qualified name. Default schema matches the int model.
+DEFAULT_MART_CATALOG_SCHEMA = "goodparty_data_catalog.dbt"
+_MART_MODELS = {
+    "Voter": "m_people_api__voter",
+    "District": "m_people_api__district",
+    "DistrictStats": "m_people_api__districtstats",
+    "DistrictVoter": "m_people_api__districtvoter",
+}
+
 
 @dataclass(slots=True, kw_only=True)
 class LoaderConfig(BaseLoaderConfig):
@@ -97,6 +107,9 @@ class LoaderConfig(BaseLoaderConfig):
     serve_min_acu: float
     serve_max_acu: float
 
+    # PG table name -> Databricks mart FQN (column/type source for emit-ddl).
+    mart_fqns: dict[str, str]
+
     @classmethod
     def from_env(cls) -> LoaderConfig:
         if _FORBIDDEN_ENV_VAR in os.environ:
@@ -122,6 +135,8 @@ class LoaderConfig(BaseLoaderConfig):
         db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
+        mart_schema = os.environ.get("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
+        mart_fqns = {pg: f"{mart_schema}.{model}" for pg, model in _MART_MODELS.items()}
         return cls(
             aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
@@ -143,6 +158,7 @@ class LoaderConfig(BaseLoaderConfig):
             load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
             serve_max_acu=float(os.environ.get("LOADER_SERVE_MAX_ACU", DEFAULT_SERVE_MAX_ACU)),
+            mart_fqns=mart_fqns,
             _tags=tags,
         )
 
