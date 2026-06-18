@@ -29,6 +29,8 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
+from loader.people_api.schema import schema_spec
+from loader.people_api.schema.serving_structure import extract_indexes
 
 log = get_logger(__name__)
 
@@ -49,6 +51,11 @@ def _has_column(cur: psycopg.Cursor, table: str, column: str) -> bool:
 def _scalar_int(cur: psycopg.Cursor) -> int:
     row = cur.fetchone()
     return int(row[0]) if row and row[0] is not None else 0
+
+
+def _index_drift(live: set[str], seeded: set[str]) -> tuple[list[str], list[str]]:
+    """(indexes only on the live cluster, indexes only in the committed seed)."""
+    return sorted(live - seeded), sorted(seeded - live)
 
 
 def _inspect_table(cur: psycopg.Cursor, table: str) -> TableInspection:
@@ -121,6 +128,21 @@ def run(cfg: LoaderConfig, run_date: str) -> InspectManifest:
                 # Anything else — including a transient OperationalError (connection drop) —
                 # propagates, so we never write a silently-incomplete "complete" manifest.
                 log.warning("inspect.table_skip", table=table, error=str(e))
+
+        # Advisory: flag if the live Voter indexes diverge from the committed seed (e.g. the
+        # seed was captured from a different cluster, or prod changed out-of-band). Best-effort
+        # — a drift-check hiccup must never fail inspect, which produces the validate baseline.
+        try:
+            live = {i.name for i in extract_indexes(cur, [_REQUIRED_TABLE])}
+            only_live, only_seed = _index_drift(
+                live, {i.name for i in schema_spec.indexes_for(_REQUIRED_TABLE)}
+            )
+            if only_live or only_seed:
+                log.warning(
+                    "inspect.index_drift", table=_REQUIRED_TABLE, only_live=only_live, only_seed=only_seed
+                )
+        except Exception as e:  # advisory check, never fatal
+            log.warning("inspect.index_drift_check_failed", error=str(e))
 
     manifest = InspectManifest(
         run_date=run_date,

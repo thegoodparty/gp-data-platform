@@ -84,6 +84,16 @@ def test_run_optional_table_failure_is_skipped(monkeypatch: pytest.MonkeyPatch) 
     assert {t.table for t in manifest.tables} == {"Voter", "DistrictVoter", "District"}
 
 
+def test_index_drift_reports_both_directions() -> None:
+    only_live, only_seed = step._index_drift(live={"a", "b", "c"}, seeded={"b", "c", "d"})
+    assert only_live == ["a"]  # on the cluster but not the committed seed
+    assert only_seed == ["d"]  # in the seed but missing from the cluster
+
+
+def test_index_drift_empty_when_matched() -> None:
+    assert step._index_drift(live={"a", "b"}, seeded={"a", "b"}) == ([], [])
+
+
 def test_run_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
     done = SimpleNamespace(status="complete")
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: done)
