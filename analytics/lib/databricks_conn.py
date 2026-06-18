@@ -104,12 +104,15 @@ def _to_dataframe(description: Sequence[Any], rows: Sequence[Any]) -> pd.DataFra
     return pd.DataFrame(list(rows), columns=columns)
 
 
-def run_query(sql: str, *, max_retries: int = 5, retry_delay: int = 10) -> pd.DataFrame:
-    """Execute ``sql`` against the profile's SQL warehouse, return a DataFrame.
+def get_connection(*, max_retries: int = 5, retry_delay: int = 10) -> Any:
+    """Open an authenticated connection to the profile's SQL warehouse.
 
     Auth is resolved by the SDK ``Config`` (M2M service principal if configured,
     else the ``~/.databrickscfg`` profile). The SQL warehouse comes from
-    ``DATABRICKS_HTTP_PATH`` (``/sql/1.0/warehouses/<id>``).
+    ``DATABRICKS_HTTP_PATH`` (``/sql/1.0/warehouses/<id>``). The caller owns the
+    connection (use it as a context manager or ``close()`` it). Use this when you
+    need a cursor for writes / parameterized binding / executemany; for a one-shot
+    read use ``run_query``.
     """
     from databricks import sql as dbsql
     from databricks.sdk.core import Config, oauth_service_principal
@@ -120,7 +123,17 @@ def run_query(sql: str, *, max_retries: int = 5, retry_delay: int = 10) -> pd.Da
         os.environ.get("DATABRICKS_HTTP_PATH", ""),
         oauth_m2m=oauth_service_principal,
     )
-    connection = _connect_with_retry(dbsql.connect, kwargs, max_retries=max_retries, retry_delay=retry_delay)
+    return _connect_with_retry(dbsql.connect, kwargs, max_retries=max_retries, retry_delay=retry_delay)
+
+
+def run_query(sql: str, *, max_retries: int = 5, retry_delay: int = 10) -> pd.DataFrame:
+    """Execute ``sql`` against the profile's SQL warehouse, return a DataFrame.
+
+    Auth is resolved by the SDK ``Config`` (M2M service principal if configured,
+    else the ``~/.databrickscfg`` profile). The SQL warehouse comes from
+    ``DATABRICKS_HTTP_PATH`` (``/sql/1.0/warehouses/<id>``).
+    """
+    connection = get_connection(max_retries=max_retries, retry_delay=retry_delay)
     try:
         with connection.cursor() as cursor:
             cursor.execute(sql)
