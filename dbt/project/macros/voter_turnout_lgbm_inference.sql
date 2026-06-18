@@ -101,16 +101,9 @@ _NH_VT_PRECINCT = """
 
 
 def _year_to_model_slugs(year):
-    # Slug names encode the training lag relative to the most recent L2 vote history
-    # available at training time (_lag2 = trained on data 2 years before the target).
-    # When a new model family is trained with updated lag assumptions, update the slug
-    # names here and in promote_models_to_prod.py.
-    #
-    # TODO (2027): if off_year_local is retrained under the new family
-    # (precinct_level_lgbm_votehistory_socioecondemopolgeo) with a different lag,
-    # add it here and retire off_year_local_lag2. The old Turnout2_VoteHistory12_wAges
-    # family cannot be used as a fallback — it uses a Spark ML individual-level
-    # architecture incompatible with this precinct-level pipeline.
+    # If a needed slug has no @production model, the pipeline fails here — intentionally.
+    # Train the missing model (the _lagN convention means you can train on existing
+    # vote history without waiting for new data) rather than adding a fallback.
     if year % 2 != 0:
         return ["off_year_local_lag2"]
     elif year % 4 == 2:
