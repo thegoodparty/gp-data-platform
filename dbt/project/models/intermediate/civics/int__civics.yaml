@@ -3337,7 +3337,7 @@ models:
         data_tests:
           - not_null
       - name: district_type
-        description: L2 district column name (v1 major office-bearing subset)
+        description: L2 district column name (the curated substrate subset)
         data_tests:
           - not_null
       - name: district_name
@@ -3423,10 +3423,10 @@ models:
       distinct-PERSON union across overlapping district types, which the counts-only
       substrate cannot produce (cross-type voter dedup needs voter IDs), so this model
       scans int__l2_nationwide_uniform once -- the "scanned, never surfaced" node from
-      TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same 22
+      TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same
       district types as the substrate (get_l2_major_district_columns), so count-once <=
       count-multiple holds. served_set is 'all' (served by any cohort district) or one
-      of the 22 L2 district types; statewide officials are read from the exact T5
+      of the substrate's L2 district types; statewide officials are read from the exact T5
       'State' rows in people_served, not here.
     columns:
       - name: block_geoid
@@ -3449,7 +3449,7 @@ models:
                 inclusive: true
       - name: total_voters
         description: >
-          Distinct voters in this block carrying >=1 of the 22 major district values
+          Distinct voters in this block carrying >=1 of the substrate's district values
           (the count-once denominator; ~= the block's total voters since County covers
           essentially all)
         data_tests:

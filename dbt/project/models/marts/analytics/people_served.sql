@@ -3,14 +3,16 @@
 -- people_served (DATA-1993): the People Served metrics, one row per
 -- (metric_variant, office_type). count-once is the distinct-person union from
 -- int__serve_block_coverage; count-multiple variants are pure sums off the substrate
--- via district_census_stats. Scoped to the 22 office-bearing district types, so
+-- via district_census_stats. Scoped to the substrate's office-bearing district types,
+-- so
 -- count-once <= count_multiple_per_district <= per_seat <= per_org by construction
 -- (a distinct union is <= a sum; a per-district sum <= per-seat <= per-org because
 -- 1 <= n_seats <= n_orgs per district).
 --
 -- office_type: 'all' (the cohort-wide local rollup -- the North Star headline) or one
 -- of
--- the 22 local types, PLUS 'State' for STATEWIDE officials. Statewide is read from T5's
+-- the substrate's local types, PLUS 'State' for STATEWIDE officials. Statewide is
+-- read from T5's
 -- EXACT 'State' census rows and reported SEPARATELY (TDD 4.5): it is never folded
 -- into the
 -- local 'all' rollup (which would mix population bases and swamp the local story). The
@@ -95,7 +97,8 @@ with
         group by s.state_postal_code, s.district_population
     ),
 
-    -- count-multiple per office_type (the 22 types + 'State'), and a local-only 'all'
+    -- count-multiple per office_type (the substrate types + 'State'), and a
+    -- local-only 'all'
     -- rollup
     cm_by_type as (
         select
