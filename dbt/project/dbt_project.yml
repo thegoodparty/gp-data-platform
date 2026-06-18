@@ -3,6 +3,11 @@ name: "goodparty_data_catalog"
 version: "1.0.0"
 config-version: 2
 
+vars:
+  # Most recent year of vote history present in L2 data.
+  # Updated by scripts/promote_models_to_prod.py after each retrain.
+  max_vote_history_year: 2025
+
 # This setting configures which "profile" dbt uses for this project.
 profile: "default"
 

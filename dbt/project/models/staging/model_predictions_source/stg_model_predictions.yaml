@@ -1,5 +1,40 @@
 models:
 
+  - name: stg_model_predictions__ballots_projected
+    description: Turnout projections written by the LightGBM per-state inference pipeline. Live table — no year suffix.
+    columns:
+      - name: district_type
+        data_tests:
+          - not_null
+      - name: district_name
+        data_tests:
+          - not_null
+      - name: election_year
+        data_tests:
+          - not_null
+      - name: state
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [
+                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+                  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+                  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+                  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+                  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+                  "DC", "US",
+                ]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - district_type
+              - district_name
+              - election_year
+              - election_code
+
   - name: stg_model_predictions__candidacy_br_matches_20251204
     description: fuzzy matching between BallotReady election results and candidacies sourced from m_general__candidacy
     columns:

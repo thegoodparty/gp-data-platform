@@ -1155,6 +1155,8 @@ sources:
         description: raw data load from voter turnout projections for 2027
       - name: ballots_projected_2028
         description: raw data load from voter turnout projections for 2028
+      - name: ballots_projected
+        description: live voter turnout projections written by the LightGBM per-state inference pipeline
 
   - name: segment_storage_source
     database: segment_storage
