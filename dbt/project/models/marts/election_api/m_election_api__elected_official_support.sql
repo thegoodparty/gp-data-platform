@@ -146,14 +146,18 @@ with
         from product_offices_raw
     ),
 
-    -- 2025 DDHQ general results aggregated to the race: total votes cast, the top
-    -- winner's votes, seat count, and the office-name match keys. Excludes runoff
-    -- stages to avoid mixing vote tallies for the same race id.
-    ddhq_2025_raw as (
+    -- DDHQ general results (2025 onward) aggregated to the race: total votes
+    -- cast, the winning votes, seat count, and the office-name match keys. Any
+    -- general stage (incl. special/runoff) is kept; the 2025 floor on the civics
+    -- path means most of these are 2025, but in-window 2026 races the main path
+    -- missed are caught here too (the per_position dedup keeps it from
+    -- double-counting offices the civics path already covers).
+    ddhq_results_raw as (
         select
             ddhq_race_id,
             max(state_postal_code) as state,
             max(official_office_name) as official_office_name,
+            max(election_date) as election_date,
             sum(try_cast(votes as bigint)) as total_votes_cast,
             -- the winner's votes; fall back to the top vote-getter when DDHQ did
             -- not flag a winner (the top vote-getter is the winner)
@@ -164,23 +168,24 @@ with
             max(try_cast(number_of_seats_in_election as int)) as number_of_seats
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
         where
-            election_stage in ('general', 'general special')
-            and year(election_date) = 2025
+            lower(election_stage) like '%general%'
+            and election_date >= date '2025-01-01'
         group by ddhq_race_id
     ),
 
-    ddhq_2025_general as (
+    ddhq_results as (
         select
             ddhq_race_id,
             state,
+            election_date,
             total_votes_cast,
             votes_received,
             number_of_seats,
             {{ office_match_keys("official_office_name") }}
-        from ddhq_2025_raw
+        from ddhq_results_raw
     ),
 
-    -- Match a product office to its 2025 DDHQ race when, in the same state, the
+    -- Match a product office to its DDHQ race when, in the same state, the
     -- distinctive locality tokens are identical, the office category agrees, and
     -- the seat designator is null-safe equal. This normalization (via
     -- office_match_keys) catches the cross-source name variants -- City of X / X
@@ -197,7 +202,7 @@ with
             pos.icp_voter_count
         from product_offices as po
         inner join
-            ddhq_2025_general as d
+            ddhq_results as d
             on d.state = po.state
             and size(po.locality_key) >= 1
             and po.locality_key = d.locality_key
@@ -218,6 +223,7 @@ with
                 partition by po.br_position_id
                 order by
                     case when d.votes_received > 0 then 0 else 1 end,
+                    d.election_date desc nulls last,
                     d.total_votes_cast desc,
                     d.ddhq_race_id
             )

@@ -96,6 +96,10 @@
             lower({{ col }})
             rlike 'council|councillor|councilor|alderman|selectman|commission|trustee'
         then 'council'
+        when
+            lower({{ col }}) rlike '\\b(village|town|township|borough)\\b'
+            and lower({{ col }}) rlike '\\bboard\\b'
+        then 'council'
         when lower({{ col }}) rlike 'mayor'
         then 'mayor'
         when lower({{ col }}) rlike 'clerk'
