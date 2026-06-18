@@ -6,9 +6,10 @@
   These 51 model files are thin wrappers — each contains only a config()
   block and a call to this macro. All inference logic lives here so it only
   needs to be maintained in one place. To regenerate the wrapper files after
-  changing this macro, run:
-
-      uv run scripts/generate_voter_turnout_inference_models.py
+  changing this macro, run scripts/generate_voter_turnout_inference_models.py.
+  The generated files are committed to the repo so dbt can discover them as
+  static models (dbt Python models require literal strings in dbt.ref() calls,
+  which rules out runtime generation).
 
   Flow (runs once per state after each L2 load):
     1. Load the per-state L2 staging table and add state_postal_code via lit().
@@ -100,6 +101,16 @@ _NH_VT_PRECINCT = """
 
 
 def _year_to_model_slugs(year):
+    # Slug names encode the training lag relative to the most recent L2 vote history
+    # available at training time (_lag2 = trained on data 2 years before the target).
+    # When a new model family is trained with updated lag assumptions, update the slug
+    # names here and in promote_models_to_prod.py.
+    #
+    # TODO (2027): if off_year_local is retrained under the new family
+    # (precinct_level_lgbm_votehistory_socioecondemopolgeo) with a different lag,
+    # add it here and retire off_year_local_lag2. The old Turnout2_VoteHistory12_wAges
+    # family cannot be used as a fallback — it uses a Spark ML individual-level
+    # architecture incompatible with this precinct-level pipeline.
     if year % 2 != 0:
         return ["off_year_local_lag2"]
     elif year % 4 == 2:
@@ -290,9 +301,15 @@ def model(dbt, session):
     mlflow.set_registry_uri("databricks-uc")
     client = mlflow.MlflowClient()
 
+    needed_slugs = sorted({
+        slug
+        for year in inference_years
+        for slug in _year_to_model_slugs(year)
+    })
+
     models, cat_maps = {}, {}
     model_family = None
-    for slug in ["presidential_lag3", "midterm", "even_year_local", "off_year_local_lag2"]:
+    for slug in needed_slugs:
         full_name = f"{ml_catalog}.{ml_schema}.voter_turnout_model_{slug}"
         _check_lgbm_version(full_name, client)
         mv = client.get_model_version_by_alias(full_name, "production")
