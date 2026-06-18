@@ -582,10 +582,11 @@ def sync_election_api():
         def quality_checks(loaded_count: int) -> None:
             # Coverage is intentionally low: the support score needs an election
             # vote tally, which exists for only a small share of offices (see the
-            # model docs / DATA-2000 PR). This floor guards against a
-            # catastrophic partial load, not the known coverage ceiling.
-            if loaded_count < 500:
-                raise ValueError(f"Only {loaded_count} rows loaded (<500) — refusing to swap")
+            # model docs / DATA-2000 PR). A flat floor can't catch a regression
+            # that halves a ~1.1k-row table (a ~550-row load would clear 500), so
+            # gate on the ratio to the prior live table (same pattern as the
+            # DistrictTopIssue block); the absolute floor is the cold-start
+            # fallback only.
             with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
@@ -595,6 +596,31 @@ def sync_election_api():
                         f'FROM "{EOS.staging_schema}"."{EOS.new_table}"'
                     )
                     n, distinct_pos, null_pos = cur.fetchone()
+
+                    # Prior live state (absent on a true cold start). Both
+                    # identifiers must be double-quoted in the regclass argument
+                    # so Postgres does not fold the mixed-case name to lowercase.
+                    cur.execute(
+                        "SELECT to_regclass(%s)",
+                        (f'"{EOS.target_schema}"."{EOS.target_table}"',),
+                    )
+                    prior_exists = cur.fetchone()[0] is not None
+                    if prior_exists:
+                        cur.execute(f'SELECT COUNT(*) FROM "{EOS.target_schema}"."{EOS.target_table}"')
+                        prior_count = cur.fetchone()[0]
+                    else:
+                        prior_count = 0
+
+                    if prior_count > 0:
+                        ratio = loaded_count / prior_count
+                        if ratio < 0.5:
+                            raise ValueError(
+                                f"Loaded {loaded_count} rows, prior live had "
+                                f"{prior_count} (ratio {ratio:.2f}) — refusing to swap"
+                            )
+                    elif loaded_count < 500:
+                        raise ValueError(f"Cold-start load of {loaded_count} rows (<500) — refusing to swap")
+
                     if null_pos > 0:
                         raise ValueError(
                             f"{null_pos} staging rows have a NULL position_id — refusing to swap"
@@ -604,8 +630,9 @@ def sync_election_api():
                             f"position_id not unique ({distinct_pos} distinct of {n}) — refusing to swap"
                         )
                     t_log.info(
-                        "Quality checks passed: %d rows, position_id unique and non-null",
+                        "Quality checks passed: %d rows (prior %d), position_id unique and non-null",
                         n,
+                        prior_count,
                     )
                 finally:
                     cur.close()
