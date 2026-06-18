@@ -2,21 +2,22 @@
     config(
         materialized="incremental",
         incremental_strategy="merge",
-        unique_key="id",
+        unique_key="elected_office_id",
         auto_liquid_cluster=true,
         tags=["mart", "election_api", "elected_official_support"],
     )
 }}
 
--- Election API elected_official_support table.
--- Grain: one row per position (br_position_id), from that office's most recent
--- GENERAL election win. This is the position-grained, public-API version of the
--- civics elected_official_support model: the per-person gp_elected_official_id is
--- intentionally dropped (the election API is public and must not carry per-user
--- ids), and multi-seat offices, which have several winners, are collapsed to the
--- single top winner by votes. The support figure for a multi-seat office
--- therefore reflects one winner; number_of_seats is retained so the consumer can
--- label or adjust it.
+-- Election API Elected_Office_Support table.
+-- Grain: one row per gp-api elected_office instance (elected_office_id), which is
+-- tied to a user/official. Each office resolves to a single position via
+-- organization.position_id; the position's support numbers are attached, so every
+-- office at a position shares them. support_constituents is the position's
+-- general-election winning votes (position-level: multi-seat offices use the top
+-- winner by votes); total_constituents is the position's L2 registered-voter
+-- count. The product shows support_constituents / total_constituents.
+-- Per-position support is computed first (below) from each office's most recent
+-- GENERAL win, then fanned out to elected_office instances at the end.
 -- Primaries are excluded (a primary win does not confer office); 'general' covers
 -- general, general special, general runoff, and general special runoff.
 -- Population: every metric column is populated and positive. Only contested wins
@@ -242,43 +243,38 @@ with
         where projected_registered_supporters > 0
     ),
 
-    -- Attach the Election API position UUID (Position.id) so consumers can join
-    -- on the same key the product uses (organization.position_id resolves to
-    -- this UUID). br_database_id is unique in the position model, so this is a
-    -- 1:1 lookup; the inner join drops any office with no Election API position
-    -- row, which could not be exposed through the API anyway.
-    with_position as (
+    -- Fan out to one row per gp-api elected_office instance. Each office maps to
+    -- a single position via organization.position_id -> Position.id; the
+    -- position's support numbers are attached, so co-holders of a multi-seat
+    -- office share them. The join keys are unique (organization.slug,
+    -- Position.id, combined.br_position_id), so there is no fan-out beyond the
+    -- one row per elected_office_id. Offices whose position has no support row
+    -- are dropped.
+    office_support as (
         select
-            pos.id as position_id,
-            pp.br_position_id,
-            pp.number_of_seats,
-            pp.votes_received,
-            pp.total_votes_cast,
-            pp.icp_voter_count,
-            pp.projected_registered_supporters
-        from combined as pp
+            eo.id as elected_office_id,
+            c.votes_received as support_constituents,
+            c.icp_voter_count as total_constituents
+        from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
         inner join
-            {{ ref("m_election_api__position") }} as pos
-            on pp.br_position_id = pos.br_database_id
+            {{ ref("stg_airbyte_source__gp_api_db_organization") }} as org
+            on eo.organization_slug = org.slug
+        inner join
+            {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
+        inner join combined as c on c.br_position_id = pos.br_database_id
     )
 
 select
-    {{ generate_salted_uuid(fields=["with_position.br_position_id"]) }} as id,
+    office_support.elected_office_id,
+    office_support.support_constituents,
+    office_support.total_constituents,
     {% if is_incremental() %} coalesce(existing.created_at, now()) as created_at,
     {% else %} now() as created_at,
     {% endif %}
-    current_timestamp() as updated_at,
-    with_position.position_id,
-    with_position.br_position_id,
-    with_position.number_of_seats,
-    with_position.votes_received,
-    with_position.total_votes_cast,
-    with_position.icp_voter_count,
-    with_position.projected_registered_supporters
-from with_position
+    current_timestamp() as updated_at
+from office_support
 {% if is_incremental() %}
     left join
         {{ this }} as existing
-        on {{ generate_salted_uuid(fields=["with_position.br_position_id"]) }}
-        = existing.id
+        on office_support.elected_office_id = existing.elected_office_id
 {% endif %}

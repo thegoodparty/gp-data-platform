@@ -133,20 +133,15 @@ def test_dti_columns_pinned():
 def test_eos_columns_pinned():
     """Pin EOS_COLUMNS to catch silent column reorderings.
 
-    ElectedOfficialSupport loads with no row transform: EOS_COLUMNS drives both
+    Elected_Office_Support loads with no row transform: EOS_COLUMNS drives both
     the Databricks SELECT order and the positional Postgres insert, so a
     reordering would land values in the wrong columns without an insert-time
     error. The mart's column order must match this list.
     """
     assert EOS_COLUMNS == [
-        "id",
+        "elected_office_id",
+        "support_constituents",
+        "total_constituents",
         "created_at",
         "updated_at",
-        "position_id",
-        "br_position_id",
-        "number_of_seats",
-        "votes_received",
-        "total_votes_cast",
-        "icp_voter_count",
-        "projected_registered_supporters",
     ]

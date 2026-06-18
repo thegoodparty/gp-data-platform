@@ -249,47 +249,31 @@ def _ztp_constraint_ddl() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# ElectedOfficialSupport
+# Elected_Office_Support
 # ---------------------------------------------------------------------------
 
-EOS = TableSyncSpec(
-    target_table="ElectedOfficialSupport",
-    indexes=("ElectedOfficialSupport_position_id_key",),
-    fkeys=("ElectedOfficialSupport_position_id_fkey",),
-)
+# elected_office_id is the gp-api elected_office instance; it is not an enforced
+# FK (elected_office lives in gp-api, not the Election API), so the table has only
+# a primary key — no secondary indexes or foreign keys.
+EOS = TableSyncSpec(target_table="Elected_Office_Support")
 
-# The mart already emits id/created_at/updated_at, so rows pass through with no
-# transform (source order must match this list).
+# The mart emits these columns directly, so rows pass through with no transform
+# (source order must match this list).
 EOS_COLUMNS = [
-    "id",
+    "elected_office_id",
+    "support_constituents",
+    "total_constituents",
     "created_at",
     "updated_at",
-    "position_id",
-    "br_position_id",
-    "number_of_seats",
-    "votes_received",
-    "total_votes_cast",
-    "icp_voter_count",
-    "projected_registered_supporters",
 ]
 
 
 def _eos_constraint_ddl() -> list[str]:
     sn, nt = EOS.staging_schema, EOS.new_table
-    target_schema = EOS.target_schema
     return [
-        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{EOS.stage_name(EOS.pk_name)}" PRIMARY KEY (id)'),
-        (
-            f"CREATE UNIQUE INDEX "
-            f'"{EOS.stage_name("ElectedOfficialSupport_position_id_key")}" '
-            f'ON "{sn}"."{nt}" (position_id)'
-        ),
         (
             f'ALTER TABLE "{sn}"."{nt}" '
-            f'ADD CONSTRAINT "{EOS.stage_name("ElectedOfficialSupport_position_id_fkey")}" '
-            f"FOREIGN KEY (position_id) "
-            f'REFERENCES "{target_schema}"."Position"(id) '
-            f"ON UPDATE CASCADE ON DELETE RESTRICT"
+            f'ADD CONSTRAINT "{EOS.stage_name(EOS.pk_name)}" PRIMARY KEY (elected_office_id)'
         ),
     ]
 
@@ -591,8 +575,8 @@ def sync_election_api():
                 cur = conn.cursor()
                 try:
                     cur.execute(
-                        f"SELECT COUNT(*), COUNT(DISTINCT position_id), "
-                        f"COUNT(*) FILTER (WHERE position_id IS NULL) "
+                        f"SELECT COUNT(*), COUNT(DISTINCT elected_office_id), "
+                        f"COUNT(*) FILTER (WHERE elected_office_id IS NULL) "
                         f'FROM "{EOS.staging_schema}"."{EOS.new_table}"'
                     )
                     n, distinct_pos, null_pos = cur.fetchone()
@@ -623,14 +607,14 @@ def sync_election_api():
 
                     if null_pos > 0:
                         raise ValueError(
-                            f"{null_pos} staging rows have a NULL position_id — refusing to swap"
+                            f"{null_pos} staging rows have a NULL elected_office_id — refusing to swap"
                         )
                     if distinct_pos != n:
                         raise ValueError(
-                            f"position_id not unique ({distinct_pos} distinct of {n}) — refusing to swap"
+                            f"elected_office_id not unique ({distinct_pos} distinct of {n}) — refusing to swap"
                         )
                     t_log.info(
-                        "Quality checks passed: %d rows (prior %d), position_id unique and non-null",
+                        "Quality checks passed: %d rows (prior %d), elected_office_id unique and non-null",
                         n,
                         prior_count,
                     )

@@ -616,37 +616,56 @@ models:
 
   - name: m_election_api__elected_official_support
     description: >
-      Position-grained support metrics for the public Election API, one row per
-      position (office) from that office's most recent GENERAL election win.
-      This is the public-API version of mart_civics.elected_official_support: the
-      per-person gp_elected_official_id is intentionally dropped (the Election API
-      is fully public and must not carry per-user ids), and multi-seat offices
-      (which have several winners) are collapsed to the single top winner by
-      votes. The support figure for a multi-seat office therefore reflects one
-      winner; number_of_seats is retained so the consumer can label or adjust it.
+      Support metrics for the product's elected offices, one row per gp-api
+      elected_office instance (elected_office_id, tied to a user/official). Each
+      office resolves to a single position via organization.position_id; the
+      position's support numbers are attached, so co-holders of a multi-seat
+      office share them. Feeds the Election API Elected_Office_Support table; the
+      product displays support_constituents / total_constituents.
 
-      Primaries are excluded because a primary win does not confer office;
-      'general' covers general, general special, general runoff, and general
-      special runoff stages. Only contested wins with a coherent vote tally and an
-      L2 voter count are kept; rows are dropped when votes, the L2 voter count, or
-      the projected support would be zero. Uncontested winners (no numeric total),
-      rows where votes exceed the reported total (an unreliable BallotReady partial
-      load), and rows with no L2 district match are all excluded.
+      Per-position support is computed first from each office's most recent GENERAL
+      win (primaries excluded), then fanned out to elected_office instances. The
+      position-level figure uses the top winner by votes for multi-seat offices.
+      Only offices whose position has a coherent vote tally and an L2 voter count
+      are present; offices with no support row are dropped.
 
-      Grain: One row per br_position_id.
+      Grain: One row per elected_office_id.
 
-      Source note: votes_received is DDHQ-canonical via candidacy_stage;
-      total_votes_cast is BallotReady-first (DDHQ fallback) via election_stage;
-      icp_voter_count is the L2 district voter count from the positions mart.
-      projected_registered_supporters is an interim placeholder for a future
-      constituents-based support figure.
+      Source note: support_constituents (winning votes) is DDHQ-canonical via
+      candidacy_stage, plus a 2025 DDHQ supplement for product offices excluded by
+      the 2026 civics scope; total_constituents is the L2 district voter count from
+      the positions mart.
     columns:
-      - name: id
-        description: "UUID of the elected official support row (salted hash of br_position_id)"
+      - name: elected_office_id
+        description: >
+          gp-api elected_office instance UUID (the office as held by a specific
+          user/official). Primary key. Not an enforced FK — elected_office is owned
+          by gp-api, not the Election API.
         tests:
           - not_null
           - unique
           - is_uuid
+      - name: support_constituents
+        description: >
+          Winning votes for this office's position in its most recent general
+          election (position-level; multi-seat offices use the top winner by
+          votes). Sourced from candidacy_stage / the 2025 DDHQ supplement. Always
+          populated and positive.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: total_constituents
+        description: >
+          L2 district voter count (registered voters in the office's district),
+          from the positions mart. The product shows support_constituents /
+          total_constituents. Always populated and positive.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
       - name: created_at
         description: "Timestamp the row was first created in this table"
         tests:
@@ -655,114 +674,13 @@ models:
         description: "Timestamp the row was last refreshed"
         tests:
           - not_null
-      - name: position_id
-        description: >
-          Election API position UUID (m_election_api__position.id). The key the
-          product uses to look up an office (organization.position_id resolves to
-          this UUID), and the foreign key to the Election API Position table.
-        tests:
-          - not_null
-          - unique
-          - is_uuid
-          - relationships:
-              arguments:
-                to: ref('m_election_api__position')
-                field: id
-      - name: br_position_id
-        description: >
-          BallotReady position (office) identifier (Position.databaseId). The
-          natural key for this table and the join key to the Election API
-          position model (m_election_api__position.br_database_id).
-        tests:
-          - not_null
-          - unique
-          - relationships:
-              arguments:
-                to: ref('m_election_api__position')
-                field: br_database_id
-              config:
-                severity: warn
-      - name: number_of_seats
-        description: >
-          Number of seats filled in this race, from election_stage. Flags
-          multi-seat / at-large offices. In a multi-seat race the displayed
-          support reflects only the top winner by votes, so the consumer should
-          use this to label or adjust the displayed figure.
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-      - name: votes_received
-        description: >
-          Votes received by the top winner in the most recent general win for this
-          office. Sourced from candidacy_stage.votes_received (DDHQ-canonical).
-          Always populated and positive.
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-      - name: total_votes_cast
-        description: >
-          Total votes cast in that same race. Sourced from
-          election_stage.total_votes_cast (BallotReady first, DDHQ fallback).
-          Always populated and greater than zero.
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-      - name: icp_voter_count
-        description: >
-          L2 district voter count (registered voters in the office's district),
-          from the positions mart, joined on br_position_database_id. Always
-          populated here (rows without an L2 count are excluded). Because the
-          upstream LLM position-to-L2-district match is excluded when it fails,
-          this table under-covers offices the match struggles with (school boards
-          and special districts, and the states Texas and Missouri); it is not a
-          complete roster of offices. Always positive.
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
-      - name: projected_registered_supporters
-        description: >
-          Estimated registered voters in the district who support the office's top
-          winner, computed as icp_voter_count * (votes_received / total_votes_cast)
-          and rounded to a whole number. INTERIM PLACEHOLDER: when a real
-          constituents count exists, the same vote share will be applied to it
-          instead. Assumes non-voters would split at the same rate as voters. Fine
-          for a display figure, not for analysis. Always populated and positive;
-          rows that would round to zero are excluded.
-        tests:
-          - not_null
-          - dbt_utils.accepted_range:
-              arguments:
-                min_value: 1
     tests:
-      # Regression guard: the model's where clause already enforces
-      # votes_received <= total_votes_cast, so this cannot fail on current logic.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "votes_received <= total_votes_cast"
-          name: eos_votes_received_never_exceeds_total_votes_cast
-          config:
-            severity: warn
-      # Regression guard: guaranteed by construction (share <= 1).
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: "projected_registered_supporters <= icp_voter_count"
-          name: eos_projected_supporters_never_exceeds_registered_voters
-          config:
-            severity: warn
       # Real data-quality signal: a winner cannot receive more votes than there
       # are registered voters in the district. Violations indicate an upstream L2
       # position-to-district match that resolved to too small a district.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "votes_received <= icp_voter_count"
-          name: eos_votes_received_never_exceeds_registered_voters
+            expression: "support_constituents <= total_constituents"
+          name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
