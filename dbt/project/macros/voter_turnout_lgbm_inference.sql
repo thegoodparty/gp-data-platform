@@ -15,7 +15,8 @@
     1. Load the per-state L2 staging table and add state_postal_code via lit().
     2. Build precinct-level feature vectors in one Spark SQL aggregate per
        inference year (current year + 1 + 2).
-    3. Load the four LightGBM models + cat_maps from MLflow (@production alias).
+    3. Load the needed LightGBM models + cat_maps from MLflow (@production alias),
+       or fail loudly if a required model has not been promoted to production.
     4. Predict turnout probability per precinct for each applicable model slug.
     5. Join to a precinct→district membership CTE (built from L2 via STACK)
        and aggregate to district-level ballots_projected.
@@ -288,8 +289,7 @@ def model(dbt, session):
     current_year    = datetime.now().year
     inference_years = [current_year, current_year + 1, current_year + 2]
 
-    ml_catalog = dbt.config.get("voter_turnout_ml_catalog", default="goodparty_data_catalog")
-    ml_schema  = dbt.config.get("voter_turnout_ml_schema",  default="model_predictions")
+    catalog = dbt.config.get("database")  # Unity Catalog name; follows the dbt project
 
     mlflow.set_registry_uri("databricks-uc")
     client = mlflow.MlflowClient()
@@ -303,7 +303,7 @@ def model(dbt, session):
     models, cat_maps = {}, {}
     model_family = None
     for slug in needed_slugs:
-        full_name = f"{ml_catalog}.{ml_schema}.voter_turnout_model_{slug}"
+        full_name = f"{catalog}.model_predictions.voter_turnout_model_{slug}"
         _check_lgbm_version(full_name, client)
         mv = client.get_model_version_by_alias(full_name, "production")
         models[slug] = mlflow.lightgbm.load_model(f"models:/{full_name}@production")
