@@ -129,12 +129,10 @@ with
 
     -- ===== 2025 DDHQ supplement (offices product elected officials hold) =====
     -- Offices product elected officials hold, resolved to a BR position id via
-    -- elected_office -> organization.position_id (the Election API position UUID).
-    product_offices as (
-        select
-            pos.br_database_id as br_position_id,
-            pos.state,
-            lower(trim(regexp_replace(pos.name, '[^A-Za-z0-9 ]', ' '))) as office_norm
+    -- elected_office -> organization.position_id (the Election API position UUID),
+    -- with the office-name match keys (see the office_match_keys macro).
+    product_offices_raw as (
+        select distinct pos.br_database_id as br_position_id, pos.state, pos.name
         from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
         inner join
             {{ ref("stg_airbyte_source__gp_api_db_organization") }} as org
@@ -142,19 +140,21 @@ with
         inner join
             {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
         where pos.br_database_id is not null
-        group by 1, 2, 3
+    ),
+
+    product_offices as (
+        select br_position_id, state, {{ office_match_keys("name") }}
+        from product_offices_raw
     ),
 
     -- 2025 DDHQ general results aggregated to the race: total votes cast, the top
-    -- winner's votes, and seat count. Excludes runoff stages to avoid mixing
-    -- vote tallies for the same race id.
-    ddhq_2025_general as (
+    -- winner's votes, seat count, and the office-name match keys. Excludes runoff
+    -- stages to avoid mixing vote tallies for the same race id.
+    ddhq_2025_raw as (
         select
             ddhq_race_id,
             max(state_postal_code) as state,
-            lower(
-                trim(regexp_replace(max(official_office_name), '[^A-Za-z0-9 ]', ' '))
-            ) as office_norm,
+            max(official_office_name) as official_office_name,
             sum(try_cast(votes as bigint)) as total_votes_cast,
             max(
                 case when is_winner then try_cast(votes as bigint) end
@@ -167,11 +167,25 @@ with
         group by ddhq_race_id
     ),
 
-    -- Match each product office to its 2025 DDHQ race by state + a normalized
-    -- office-name prefix (anchors on the full office name, so a sibling-seat
-    -- suffix still matches but a different locality does not). icp_voter_count is
-    -- the BR position's own L2 count. One DDHQ race per office; prefer the
-    -- largest race if a prefix matches more than one.
+    ddhq_2025_general as (
+        select
+            ddhq_race_id,
+            state,
+            total_votes_cast,
+            votes_received,
+            number_of_seats,
+            {{ office_match_keys("official_office_name") }}
+        from ddhq_2025_raw
+    ),
+
+    -- Match a product office to its 2025 DDHQ race when, in the same state, the
+    -- distinctive locality tokens are identical, the office category agrees, and
+    -- the seat designator is null-safe equal. This normalization (via
+    -- office_match_keys) catches the cross-source name variants -- City of X / X
+    -- City, Twp / Township, Councilor / Council, numbered seats, at-large -- while
+    -- keeping different localities and office types apart. icp_voter_count is the
+    -- BR position's own L2 count. One DDHQ race per office; prefer one with votes,
+    -- then the largest.
     ddhq_matched as (
         select
             po.br_position_id,
@@ -183,15 +197,27 @@ with
         inner join
             ddhq_2025_general as d
             on d.state = po.state
-            and length(po.office_norm) >= 8
-            and d.office_norm like po.office_norm || '%'
+            and size(po.locality_key) >= 1
+            and po.locality_key = d.locality_key
+            and po.office_category = d.office_category
+            -- seat must agree; an unnumbered BR office is treated as compatible
+            -- with a DDHQ "at-large" race (the whole-body seat), but never with a
+            -- specific numbered seat.
+            and (
+                po.seat_designator <=> d.seat_designator
+                or (po.seat_designator is null and d.seat_designator = 'atlarge')
+                or (d.seat_designator is null and po.seat_designator = 'atlarge')
+            )
         left join
             {{ ref("positions") }} as pos
             on pos.br_position_database_id = po.br_position_id
         qualify
             row_number() over (
                 partition by po.br_position_id
-                order by d.total_votes_cast desc, d.ddhq_race_id
+                order by
+                    case when d.votes_received > 0 then 0 else 1 end,
+                    d.total_votes_cast desc,
+                    d.ddhq_race_id
             )
             = 1
     ),
