@@ -66,7 +66,13 @@ with
                 district_value for district_column_name
                 in ({{ get_l2_major_district_columns(use_backticks=false) }})
             )
-        where district_value is not null and trim(district_value) != ''
+        where
+            district_value is not null
+            and trim(district_value) != ''
+            -- drop values that normalize to empty (e.g. a bare "(EST.)"), mirroring
+            -- int__l2_block_district_map so the voter grain (and thus total_voters)
+            -- stays identical to the substrate across refreshes (verified 0-diff today)
+            and trim({{ normalize_l2_district_name("district_value") }}) != ''
     ),
 
     -- per (block, voter, type): is this voter in a cohort district of this type?
