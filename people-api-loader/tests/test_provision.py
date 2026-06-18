@@ -79,6 +79,10 @@ class FakeRds:
     def add_role_to_db_cluster(self, **kw: Any) -> None:
         self.calls.append(("role", kw))
 
+    def delete_db_cluster(self, **kw: Any) -> None:
+        self.calls.append(("delete_cluster", kw))
+        self.clusters.pop(kw["DBClusterIdentifier"], None)
+
     def get_waiter(self, name: str) -> _FakeWaiter:
         return _FakeWaiter()
 
@@ -123,10 +127,11 @@ def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.Monke
     assert (
         "cluster" in rds_client.names() and "instance" in rds_client.names() and "role" in rds_client.names()
     )
-    # the connection string was stored in SSM with the endpoint + master password embedded
+    # the connection string was stored in SSM with the endpoint + master password embedded,
+    # and forces TLS so the password can't traverse a plaintext-negotiated channel
     assert captured["param"] == "people-db-connection-string-dev-20260616"
     assert captured["conninfo"].startswith("postgresql://people_admin:")
-    assert "@gp-people-db-20260616.rds.aws:5432/people_prod" in captured["conninfo"]
+    assert "@gp-people-db-20260616.rds.aws:5432/people_prod?sslmode=require" in captured["conninfo"]
 
 
 def test_provision_idempotent_reuses_existing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,6 +164,30 @@ def test_provision_recovers_missing_instance(monkeypatch: pytest.MonkeyPatch) ->
     assert "cluster" not in rds_client.names()  # cluster reused
     assert "instance" in rds_client.names()  # missing instance created
     assert "param" not in captured  # no new connection string (cluster's master is unchanged)
+
+
+def test_provision_rolls_back_cluster_when_conn_param_write_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The generated master password lives only in memory until the SSM write. If that write
+    # fails, the cluster must be deleted so a re-run regenerates rather than looping on
+    # ParameterNotFound. Verify the cluster is created then rolled back and the error propagates.
+    rds_client = FakeRds()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ec2", lambda cfg: FakeEc2())
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn()))
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    def _boom(cfg: object, name: str, value: str, **k: object) -> None:
+        raise RuntimeError("ssm put denied")
+
+    monkeypatch.setattr(step, "put_ssm_parameter", _boom)
+
+    with pytest.raises(RuntimeError, match="ssm put denied"):
+        step.run(_CFG, "20260616")
+
+    assert "cluster" in rds_client.names()  # cluster was created
+    assert "delete_cluster" in rds_client.names()  # then rolled back
+    assert "instance" not in rds_client.names()  # bailed before creating the instance
 
 
 def test_provision_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

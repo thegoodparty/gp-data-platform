@@ -19,6 +19,8 @@ _CFG = cast(
         new_load_param_group=lambda rd: f"gp-people-db-{rd}-load",
         new_serve_param_group=lambda rd: f"gp-people-db-{rd}-serve",
         new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
+        export_prefix=lambda rd: f"voter_export_{rd}",
+        s3_bucket="test-bucket",
     ),
 )
 
@@ -94,3 +96,50 @@ def test_teardown_idempotent_on_missing_resources(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert "delete_cluster" in rds_client.calls
+
+
+class _FakePaginator:
+    def __init__(self, pages: list[dict]) -> None:
+        self._pages = pages
+
+    def paginate(self, **kw: Any) -> Any:
+        return iter(self._pages)
+
+
+class FakeS3:
+    def __init__(self, pages: list[dict], delete_errors: list[dict] | None = None) -> None:
+        self._pages = pages
+        self._delete_errors = delete_errors or []
+        self.deleted_keys: list[str] = []
+
+    def get_paginator(self, name: str) -> _FakePaginator:
+        return _FakePaginator(self._pages)
+
+    def delete_objects(self, Bucket: str, Delete: dict) -> dict:
+        self.deleted_keys.extend(o["Key"] for o in Delete["Objects"])
+        return {"Errors": self._delete_errors}
+
+
+def test_delete_s3_prefix_removes_all_objects(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = [
+        {"Contents": [{"Key": "voter_export_20260616/a"}, {"Key": "voter_export_20260616/b"}]},
+        {"Contents": [{"Key": "voter_export_20260616/c"}]},
+    ]
+    s3_client = FakeS3(pages)
+    monkeypatch.setattr(step, "s3", lambda cfg: s3_client)
+    step._delete_s3_prefix(_CFG, "20260616")
+    assert s3_client.deleted_keys == [
+        "voter_export_20260616/a",
+        "voter_export_20260616/b",
+        "voter_export_20260616/c",
+    ]
+
+
+def test_delete_s3_prefix_raises_on_partial_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # delete_objects reports per-key failures in Errors without raising; we must not
+    # silently count them as deleted.
+    pages = [{"Contents": [{"Key": "voter_export_20260616/a"}]}]
+    s3_client = FakeS3(pages, delete_errors=[{"Key": "voter_export_20260616/a", "Code": "AccessDenied"}])
+    monkeypatch.setattr(step, "s3", lambda cfg: s3_client)
+    with pytest.raises(RuntimeError, match="partial failure"):
+        step._delete_s3_prefix(_CFG, "20260616")

@@ -80,13 +80,23 @@ def _ensure_cluster_param_group(client: object, name: str, family: str, tags: li
 
 
 def _attach_s3_import_role(client: object, cluster_id: str, role_arn: str) -> None:
-    with ignore_client_errors("DBClusterRoleAlreadyExists"):
-        client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
-            DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
-        )
-        log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
+    """Attach the rds-s3-import role, describe-first.
+
+    `add_role_to_db_cluster` requires `iam:PassRole`, and AWS evaluates that BEFORE the
+    already-attached check — so a caller lacking PassRole gets `AccessDenied` (not
+    `DBClusterRoleAlreadyExists`) when the role is already attached, which `ignore_client_errors`
+    can't swallow. Describing first (a read, no PassRole) lets a re-run continue when an admin
+    pre-attached the role, the path PLAN_LOADER.md documents for a loader without PassRole.
+    """
+    resp = client.describe_db_clusters(DBClusterIdentifier=cluster_id)  # ty: ignore[unresolved-attribute]
+    attached = resp["DBClusters"][0].get("AssociatedRoles", [])
+    if any(r.get("RoleArn") == role_arn for r in attached):
+        log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
         return
-    log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
+    client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
+        DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
+    )
+    log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
 
 
 def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
@@ -157,15 +167,24 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             Tags=tags,
         )
         log.info("provision.cluster_created", cluster=cluster_id)
-        # Persist the connection string immediately — the cluster writer endpoint is assigned
-        # at creation. Writing it now (not after the availability wait) keeps the window where
-        # the password could be lost to a crash near zero: a re-run then reuses the param.
+        # Persist the connection string immediately — the cluster writer endpoint is assigned at
+        # creation. The generated master password lives only in memory, so if this write fails
+        # (IAM/throttle/crash) it is unrecoverable, and the reuse branch on a re-run would then
+        # loop forever on ParameterNotFound. Roll the cluster back on any write failure so a
+        # clean re-run regenerates. `sslmode=require` forces TLS: psycopg defaults to `prefer`
+        # (plaintext fallback) and the cluster's default param group does not set rds.force_ssl.
         endpoint = created["DBCluster"]["Endpoint"]
         conninfo = (
             f"postgresql://{cfg.prod_db_user}:{quote(password, safe='')}"
-            f"@{endpoint}:{cfg.prod_db_port}/{cfg.prod_db_name}"
+            f"@{endpoint}:{cfg.prod_db_port}/{cfg.prod_db_name}?sslmode=require"
         )
-        put_ssm_parameter(cfg, conn_param, conninfo)
+        try:
+            put_ssm_parameter(cfg, conn_param, conninfo)
+        except Exception:
+            log.error("provision.conn_param_write_failed", cluster=cluster_id, name=conn_param)
+            with ignore_client_errors("InvalidDBClusterStateFault"):
+                rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+            raise
         log.info("provision.conn_param_written", name=conn_param)
     else:
         # Reuse: the create response (and the generated password) aren't in hand, so read the
