@@ -1,6 +1,6 @@
 -- Civics mart district_census_stats: the universal district population reference
 -- (DATA-1994). One row per district -- (state_postal_code, district_type,
--- district_name) -- for every district of the 22 v1 major office-bearing types
+-- district_name) -- for every district of the substrate's curated office-bearing types
 -- nationwide, PLUS one clearly-flagged statewide row per state (50 + DC).
 --
 -- Rolls up int__district_census_allocation (THE SUBSTRATE). The substrate already
@@ -11,7 +11,7 @@
 -- UNION with the integer-valued statewide branch.
 --
 -- TWO POPULATION BASES live in district_population, distinguished by district_type:
--- * local rows (the 22 types): voter-block-ALLOCATED population -- inferred from
+-- * local rows (the curated types): voter-block-ALLOCATED population -- inferred from
 -- blocks that carry >=1 L2 voter, so they carry the documented ~2.4%
 -- zero-voter-block undercount (TDD App B.1).
 -- * statewide rows (district_type='State'): EXACT whole-state 2020 census
@@ -32,7 +32,8 @@
 with
     substrate as (select * from {{ ref("int__district_census_allocation") }}),
 
-    -- the 22-type local districts: a pure rollup of the substrate. Exact-binds to
+    -- the local (substrate-type) districts: a pure rollup of the substrate.
+    -- Exact-binds to
     -- the substrate (assert_district_census_stats_binds_substrate).
     local_districts as (
         select
@@ -68,7 +69,7 @@ with
     ),
 
     -- state registered-voter total: per block take the max voter count across the
-    -- 22 types, then sum per state. Verified to equal the universal-County voter
+    -- substrate types, then sum per state. Verified to equal the universal-County voter
     -- total to the voter (County covers every voter block), so this is the state's
     -- L2 voter count, robust for DC / independent cities that lack a County row.
     statewide_voters as (

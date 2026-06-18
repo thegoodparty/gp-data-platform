@@ -1464,7 +1464,7 @@ models:
       int__serve_block_coverage); the count_multiple variants are sums off the substrate
       via district_census_stats. Ordering holds within every office_type: count_once <=
       count_multiple_per_district <= per_seat <= per_org. office_type is 'all' (the local
-      cohort-wide North Star headline) or one of the 22 L2 district types, PLUS 'State'
+      cohort-wide North Star headline) or one of the substrate's L2 district types, PLUS 'State'
       for statewide officials, which are read from the EXACT T5 'State' census totals and
       reported SEPARATELY (TDD 4.5) -- never folded into 'all'. Filter office_type !=
       'State' for the local reading, = 'State' for the statewide breakout. The live 'all'

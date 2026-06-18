@@ -289,7 +289,7 @@ models:
       district_name) with the L2 voter count in that intersection
       (voters_in_block_district) and the per-(block, district_type) voter total
       (voters_in_block). The block-grain map underlying the district/census
-      substrate (DATA-1992); UNPIVOTs only the v1 major office-bearing district
+      substrate (DATA-1992; widened DATA-2013); UNPIVOTs the curated substrate district
       columns. Block grain is the source of truth for overlap (do NOT count by
       joining the district-level int__l2_district_aggregations on the
       normalized name - its key is non-unique and would fan out).
@@ -311,7 +311,7 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
       - name: district_type
-        description: "L2 district column name; restricted to the v1 major office-bearing subset (DATA-1992)."
+        description: "L2 district column name; the curated substrate subset (DATA-1992; widened DATA-2013)."
         tests:
           - not_null
           - accepted_values:
@@ -339,6 +339,31 @@ models:
                   - Elementary_School_District
                   - High_School_District
                   - Fire_District
+                  - Community_College
+                  - Community_College_SubDistrict
+                  - County_Board_of_Education_District
+                  - School_Subdistrict
+                  - School_District_Vocational
+                  - Educational_Service_District
+                  - Learning_Community_Coordinating_Council_District
+                  - Town_Ward
+                  - Township_Ward
+                  - Community_Council_SubDistrict
+                  - County_Legislative_District
+                  - Judicial_Justice_of_the_Peace
+                  - Judicial_Superior_Court_District
+                  - Judicial_District_Court_District
+                  - Park_District
+                  - Library_District
+                  - Water_District
+                  - Water_SubDistrict
+                  - Sewer_District
+                  - Fire_Protection_District
+                  - Port_District
+                  - Conservation_District
+                  - Conservation_SubDistrict
+                  - Soil_and_Water_District
+                  - Aquatic_District
       - name: district_name
         description: "Normalized L2 district name (normalize_l2_district_name): upper, trimmed, no ' (EST.)'."
         tests:

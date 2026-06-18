@@ -17,15 +17,16 @@
 -- (Dan's "break out only if it grows complex" clause); it restores the original TDD
 -- DAG.
 --
--- Scoped to the SAME 22 district types as the substrate
+-- Scoped to the SAME district types as the substrate
 -- (get_l2_major_district_columns),
--- so count-once <= count-multiple holds while the substrate is at 22 types. state is
+-- so count-once <= count-multiple holds for the substrate's curated type set. state is
 -- derived from the block's geoid FIPS prefix (the substrate's rule), matching the
 -- substrate block-for-block; the '06'=6 numeric coercion is proven (the merged
 -- substrate
 -- has all 51 states, 0 null state). served_set: 'all' (any cohort district) or one of
 -- the
--- 22 l2 types. Statewide officials are NOT here -- they are read from the exact T5
+-- substrate l2 types. Statewide officials are NOT here -- they are read from the
+-- exact T5
 -- 'State'
 -- rows in people_served and reported separately (TDD 4.5), avoiding a basis mix.
 with

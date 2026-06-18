@@ -2657,14 +2657,14 @@ models:
   - name: district_census_stats
     description: >
       The universal district population reference: one row per district for every
-      district of the 22 v1 major office-bearing types nationwide, plus one
+      district of the substrate's curated office-bearing types nationwide, plus one
       clearly-flagged statewide row per state (district_type='State'). A rollup of
       int__district_census_allocation (the substrate). The first consumer of the
       Constituents Served substrate (DATA-1359); read by official_constituents.
 
       Grain: One row per (state_postal_code, district_type, district_name).
 
-      Population basis differs by district_type. Local rows (the 22 types) carry
+      Population basis differs by district_type. Local rows (the curated types) carry
       voter-block-ALLOCATED population (inferred from blocks with >=1 L2 voter; carry
       the ~2.4% zero-voter-block undercount). Statewide rows carry EXACT whole-state
       2020 census population. Read one district_type at a time: summing
@@ -2683,7 +2683,7 @@ models:
           - not_null
       - name: district_type
         description: >
-          L2 district-column type (one of the 22 v1 major office-bearing types), or
+          L2 district-column type (one of the substrate's curated office-bearing types), or
           'State' for the synthetic statewide rows.
         data_tests:
           - not_null
@@ -2712,6 +2712,31 @@ models:
                   - Elementary_School_District
                   - High_School_District
                   - Fire_District
+                  - Community_College
+                  - Community_College_SubDistrict
+                  - County_Board_of_Education_District
+                  - School_Subdistrict
+                  - School_District_Vocational
+                  - Educational_Service_District
+                  - Learning_Community_Coordinating_Council_District
+                  - Town_Ward
+                  - Township_Ward
+                  - Community_Council_SubDistrict
+                  - County_Legislative_District
+                  - Judicial_Justice_of_the_Peace
+                  - Judicial_Superior_Court_District
+                  - Judicial_District_Court_District
+                  - Park_District
+                  - Library_District
+                  - Water_District
+                  - Water_SubDistrict
+                  - Sewer_District
+                  - Fire_Protection_District
+                  - Port_District
+                  - Conservation_District
+                  - Conservation_SubDistrict
+                  - Soil_and_Water_District
+                  - Aquatic_District
                   - State
       - name: district_name
         description: >
