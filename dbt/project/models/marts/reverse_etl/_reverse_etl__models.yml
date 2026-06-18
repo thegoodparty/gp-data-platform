@@ -45,3 +45,61 @@ models:
         description: True when candidate_code is non-null; the reverse-ETL diff filters on this.
         data_tests:
           - not_null
+
+  - name: candidacy_hubspot
+    description: >
+      Civics-sourced HubSpot lead feed (reverse-ETL sendable mart; ops runs it manually now).
+      One row per gp_candidacy_id, provider-agnostic (BallotReady / TechSpeed / DDHQ / gp_api).
+      Replaces both m_ballotready_internal__records_sent_to_hubspot and
+      m_techspeed__candidate_to_hubspot. Output is the Title-Case HubSpot import contract
+      (fuzzy-match diagnostics dropped; ER replaces them); Type and the owner columns are set
+      for all rows (owner via env_var); the match-back key (candidate_code), gp ids,
+      election_year/stage, and last_activity_at are appended. See
+      .tickets/DATA-1523/46_layer1_models_design.md.
+    data_tests:
+      # Fail-closed owner: a misconfigured prod (blank env var) fails this rather than
+      # silently shipping unassigned leads. Red until CIVICS_HUBSPOT_* env vars are set.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "`Contact Owner` <> '' and `Owner Name` <> ''"
+    columns:
+      - name: gp_candidacy_id
+        description: GoodParty candidacy id; the model grain and internal match-back backstop.
+        data_tests:
+          - unique
+          - not_null
+      - name: First Name
+        data_tests:
+          - not_null
+      - name: Last Name
+        data_tests:
+          - not_null
+      - name: State/Region
+        data_tests:
+          - not_null
+      - name: candidate_code
+        description: 4-part deterministic match-back slug (first/last/state/office_type); no city.
+      - name: icp_win
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_serve
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: icp_win_supersize
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: viability_rating_2_0
+        description: Viability 2.0 score (0-5); null for the not-yet-scored provider expansion.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+              config:
+                where: "viability_rating_2_0 is not null"
