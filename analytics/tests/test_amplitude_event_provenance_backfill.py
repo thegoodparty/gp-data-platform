@@ -1,7 +1,9 @@
 import os
+import subprocess
 from datetime import UTC, datetime
 
 import amplitude_event_provenance_backfill as bf
+import pytest
 from amplitude_event_provenance_backfill import (
     PROVENANCE_COLUMNS,
     PROVENANCE_SCHEMA,
@@ -27,8 +29,15 @@ from amplitude_event_provenance_backfill import (
 SEP = "\x1f"
 
 
-def _header(full, short, date, subject):
-    return "\x00" + SEP.join([full, short, date, subject])
+def _epoch(date):
+    """Synthetic midnight-UTC epoch for a YYYY-MM-DD date, so date order == ts order."""
+    return str(int(datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=UTC).timestamp()))
+
+
+def _header(full, short, date, subject, ts=None):
+    # ts (commit epoch, %at) sits between the short date and the subject; defaults to the
+    # date's midnight so existing single-date streams keep their chronological ordering.
+    return "\x00" + SEP.join([full, short, date, ts or _epoch(date), subject])
 
 
 # --------------------------------------------------------------------------- #
@@ -183,6 +192,27 @@ def test_parse_git_log_omits_events_never_seen():
     assert "Nonexistent Event" not in acc
 
 
+# Two net-changes to the same event on the SAME calendar day, newest-first as git emits.
+# The evening commit (re-add) is seen first; the morning commit (original add) is the true
+# instrumentation point. Date-only comparison can't tell them apart and keeps the first seen.
+_SAME_DAY_STREAM = [
+    _header("evening", "evening", "2025-05-01", "feat: re-add the literal (#2)", ts="1714588200"),
+    "diff --git a/x.ts b/x.ts",
+    "@@ -0,0 +1 @@",
+    "+  x: 'Event X',",
+    _header("morning", "morning", "2025-05-01", "feat: add the literal (#1)", ts="1714554600"),
+    "diff --git a/x.ts b/x.ts",
+    "@@ -0,0 +1 @@",
+    "+  x: 'Event X',",
+]
+
+
+def test_parse_git_log_same_day_instrumented_breaks_tie_by_commit_time():
+    # Earliest commit of the day must win 'instrumented', not the first one in stream order.
+    acc = parse_git_log(_SAME_DAY_STREAM, compile_event_pattern(["Event X"]))
+    assert acc["Event X"]["instrumented"]["commit"] == "morning"
+
+
 # --------------------------------------------------------------------------- #
 # build_provenance_row
 # --------------------------------------------------------------------------- #
@@ -264,7 +294,7 @@ def test_build_git_log_argv_single_pass_with_since():
     argv = build_git_log_argv("/repo", "2024-06-01", ["packages/gp-webapp"])
     assert argv[:4] == ["git", "-C", "/repo", "log"]
     assert "-p" in argv
-    assert "--format=%x00%H%x1f%h%x1f%ad%x1f%s" in argv
+    assert "--format=%x00%H%x1f%h%x1f%ad%x1f%at%x1f%s" in argv
     assert argv[argv.index("--since") + 1] == "2024-06-01"
     assert argv[argv.index("--") + 1 :] == ["packages/gp-webapp"]
 
@@ -568,6 +598,46 @@ def test_git_merge_pr_none_for_commit_with_no_merge(tmp_path):
     ).stdout.strip()
 
     assert bf.git_merge_pr(repo, head, "main") is None
+
+
+def _init_repo_one_commit(tmp_path):
+    """A minimal repo with a single commit; returns its path."""
+    repo = str(tmp_path)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@x",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@x",
+    }
+    subprocess.run(["git", "-C", repo, "init", "-q", "-b", "main"], check=True, env=env)
+    (tmp_path / "f.txt").write_text("base\n")
+    subprocess.run(["git", "-C", repo, "add", "."], check=True, capture_output=True, env=env)
+    subprocess.run(
+        ["git", "-C", repo, "commit", "-q", "-m", "base"], check=True, capture_output=True, env=env
+    )
+    return repo
+
+
+def test_run_git_log_raises_on_nonzero_exit(tmp_path):
+    # A bad ref makes `git log` exit non-zero; the stream must surface that, not yield nothing.
+    repo = _init_repo_one_commit(tmp_path)
+    with pytest.raises(subprocess.CalledProcessError):
+        list(bf.run_git_log(repo, None, ["f.txt"], ref="no-such-ref-abc123"))
+
+
+def test_run_git_log_streams_lines_on_success(tmp_path):
+    # The happy path still yields the log stream line-by-line.
+    repo = _init_repo_one_commit(tmp_path)
+    lines = list(bf.run_git_log(repo, None, ["f.txt"]))
+    assert any("base" in line for line in lines)
+
+
+def test_git_fetch_raises_on_failure(tmp_path):
+    # No 'origin' remote configured -> `git fetch origin develop` fails; must abort, not continue.
+    repo = _init_repo_one_commit(tmp_path)
+    with pytest.raises(SystemExit):
+        bf.git_fetch(repo, "origin/develop")
 
 
 def test_resolve_pr_gaps_fills_null_instrumented_pr():

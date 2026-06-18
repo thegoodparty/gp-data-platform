@@ -175,19 +175,28 @@ def find_events(text: str, pattern: re.Pattern[str]) -> set[str]:
 # --------------------------------------------------------------------------- #
 
 # Header line emitted by: git log -p --date=short
-#   --format='%x00%H%x1f%h%x1f%ad%x1f%s'
+#   --format='%x00%H%x1f%h%x1f%ad%x1f%at%x1f%s'
 # A NUL marks the start of each commit; the remaining fields are 0x1f-separated.
+# %ad (--date=short) is the human-readable date we store; %at (commit epoch) is the
+# precise ordering key, so same-day commits break ties by true time, not stream order.
 _HEADER_PREFIX = "\x00"
 _FIELD_SEP = "\x1f"
-_GIT_LOG_FORMAT = "--format=%x00%H%x1f%h%x1f%ad%x1f%s"
+_GIT_LOG_FORMAT = "--format=%x00%H%x1f%h%x1f%ad%x1f%at%x1f%s"
 
 Commit = dict[str, str | None]
 
 
 def _commit_from_header(line: str) -> Commit:
     """Parse a NUL-prefixed header line into a commit dict (pr derived from subject)."""
-    full, short, cdate, subject = line[len(_HEADER_PREFIX) :].split(_FIELD_SEP, 3)
-    return {"commit": full, "short": short, "date": cdate, "subject": subject, "pr": parse_pr_number(subject)}
+    full, short, cdate, ts, subject = line[len(_HEADER_PREFIX) :].split(_FIELD_SEP, 4)
+    return {
+        "commit": full,
+        "short": short,
+        "date": cdate,
+        "ts": ts,
+        "subject": subject,
+        "pr": parse_pr_number(subject),
+    }
 
 
 def parse_git_log(lines: Iterable[str], pattern: re.Pattern[str]) -> dict[str, dict]:
@@ -237,16 +246,17 @@ def parse_git_log(lines: Iterable[str], pattern: re.Pattern[str]) -> dict[str, d
 def _record(acc: dict[str, dict], event: str, commit: Commit, slot: str) -> None:
     """Keep the earliest commit for 'instrumented', the latest for 'retired'/'last_change'.
 
-    Dates are 'YYYY-MM-DD' strings, so lexical comparison is chronological.
+    Ordering is by commit epoch ('ts'), so two net-changes on the same calendar day
+    are disambiguated by their true time rather than by git's newest-first stream order.
     """
     entry = acc.setdefault(event, {"instrumented": None, "retired": None, "last_change": None})
     current = entry[slot]
     if current is None:
         entry[slot] = commit
     elif slot == "instrumented":
-        if commit["date"] < current["date"]:
+        if int(commit["ts"]) < int(current["ts"]):
             entry[slot] = commit
-    elif commit["date"] > current["date"]:  # 'retired' / 'last_change'
+    elif int(commit["ts"]) > int(current["ts"]):  # 'retired' / 'last_change'
         entry[slot] = commit
 
 
@@ -485,15 +495,22 @@ def build_watermark_merge_sql(state_table: str) -> str:
 
 
 def run_git_log(root: str, since: str | None, paths: Sequence[str], ref: str | None = None) -> Iterator[str]:
-    """Stream the single ``git log -p`` pass line-by-line (the diff stream is large)."""
+    """Stream the single ``git log -p`` pass line-by-line (the diff stream is large).
+
+    A non-zero exit (bad ref, corrupt repo) raises ``CalledProcessError`` once the stream
+    is exhausted: otherwise a failed log parses as an empty history and we would MERGE a
+    table of all-null provenance rows with no error signal.
+    """
     argv = build_git_log_argv(root, since, paths, ref)
-    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     assert proc.stdout is not None
     try:
         yield from (line.rstrip("\n") for line in proc.stdout)
     finally:
         proc.stdout.close()
-        proc.wait()
+        _, stderr = proc.communicate()
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, argv, stderr=stderr)
 
 
 def git_grep_present_text(root: str, events: Sequence[str], paths: Sequence[str], ref: str = "HEAD") -> str:
@@ -537,12 +554,22 @@ def git_commit_count(root: str, since: str | None, paths: Sequence[str], ref: st
 
 
 def git_fetch(root: str, ref: str) -> None:
-    """Update the deploy ref from its remote (``origin/develop`` -> ``git fetch origin develop``)."""
+    """Update the deploy ref from its remote (``origin/develop`` -> ``git fetch origin develop``).
+
+    Aborts on a non-zero exit (network outage, missing remote, bad credentials) rather than
+    silently walking — and watermarking — stale local ``origin/develop`` state.
+    """
     remote, _, branch = ref.partition("/")
     argv = ["git", "-C", root, "fetch", "--quiet", remote]
     if branch:
         argv.append(branch)
-    subprocess.run(argv, capture_output=True, text=True)
+    result = subprocess.run(argv, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"ERROR: git fetch {remote} {branch} failed (exit {result.returncode}).\n"
+            f"{result.stderr.strip()}\n"
+            "Use --no-fetch to skip the fetch and walk the local ref state."
+        )
 
 
 # --------------------------------------------------------------------------- #
