@@ -21,7 +21,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.snapshot import load_prod_dump
+from loader.people_api.schema.snapshot import load_target_schema
 from loader.people_api.schema.states import STATES
 from loader.people_api.schema.table_ddl import extract_create_tables
 
@@ -65,10 +65,12 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
     started = datetime.now(UTC)
     log.info("schema.start")
 
-    dump = load_prod_dump(cfg, run_date)
-    tables = extract_create_tables(dump)
+    schema_sql = load_target_schema(cfg, run_date)
+    tables = extract_create_tables(schema_sql)
     if _TARGET_TABLE not in tables:
-        raise RuntimeError(f'snapshot has no CREATE TABLE public."{_TARGET_TABLE}" (found: {sorted(tables)})')
+        raise RuntimeError(
+            f'target_schema.sql has no CREATE TABLE public."{_TARGET_TABLE}" (found: {sorted(tables)})'
+        )
     create_sql = tables[_TARGET_TABLE]
 
     # Build the partitioned parent DDL and per-state child partitions.

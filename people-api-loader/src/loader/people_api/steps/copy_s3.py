@@ -38,7 +38,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.snapshot import load_prod_dump
+from loader.people_api.schema.snapshot import load_target_schema
 from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
 
 log = get_logger(__name__)
@@ -196,9 +196,9 @@ def run(
 
     # Explicit column list (DDL order) so COPY maps by a pinned contract, not raw
     # position — see module docstring. Quote every name uniformly; "id" == id in PG.
-    tables = extract_create_tables(load_prod_dump(cfg, run_date))
+    tables = extract_create_tables(load_target_schema(cfg, run_date))
     if _TARGET_TABLE not in tables:
-        raise RuntimeError(f'snapshot has no CREATE TABLE public."{_TARGET_TABLE}"')
+        raise RuntimeError(f'target_schema.sql has no CREATE TABLE public."{_TARGET_TABLE}"')
     columns = extract_column_names(tables[_TARGET_TABLE])
     if not columns:
         raise RuntimeError(f'could not parse any columns from the "{_TARGET_TABLE}" DDL')

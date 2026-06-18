@@ -13,11 +13,21 @@ from tests._fakes import FakeConn, executed_sql, fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
 
-_DUMP = """
-ALTER TABLE ONLY public."Voter" ADD CONSTRAINT "Voter_pkey" PRIMARY KEY (id);
-CREATE UNIQUE INDEX "Voter_LALVOTERID_key" ON public."Voter" USING btree ("LALVOTERID");
-CREATE INDEX "Voter_Active_idx" ON public."Voter" USING btree ("Active");
-"""
+# schema_spec records build_indexes reads (PK on id; a unique index + a plain index).
+_PK = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id"])
+_IDXS = [
+    step.IndexDef(
+        table="Voter", name="Voter_LALVOTERID_key", sql="", unique=True, columns=["LALVOTERID"], where=None
+    ),
+    step.IndexDef(
+        table="Voter",
+        name="Voter_Active_idx",
+        sql='CREATE INDEX "Voter_Active_idx" ON public."Voter" USING btree ("Active");',
+        unique=False,
+        columns=["Active"],
+        where=None,
+    ),
+]
 
 
 def test_rewrite_injects_if_not_exists() -> None:
@@ -33,7 +43,8 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     captured: dict = {}
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DUMP)
+    monkeypatch.setattr(step, "primary_key_for", lambda t: _PK)
+    monkeypatch.setattr(step, "indexes_for", lambda t: _IDXS)
     monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd: [])
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")

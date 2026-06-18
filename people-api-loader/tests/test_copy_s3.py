@@ -70,7 +70,7 @@ def test_run_completes_and_records_state(monkeypatch: pytest.MonkeyPatch) -> Non
     captured: dict = {}
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -109,7 +109,7 @@ def test_full_run_raises_and_writes_no_manifest_when_incomplete(monkeypatch: pyt
     wrote: dict = {}
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100, "CA": 200})
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -126,7 +126,7 @@ def test_state_filter_partial_writes_no_manifest(monkeypatch: pytest.MonkeyPatch
     wrote: dict = {}
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100, "CA": 200})
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -190,7 +190,7 @@ def test_state_filter_reloads_carried_partial_state(monkeypatch: pytest.MonkeyPa
     )
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
     )
@@ -231,7 +231,7 @@ def test_state_filter_reloads_fully_loaded_state(monkeypatch: pytest.MonkeyPatch
     )
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
     )
@@ -257,7 +257,7 @@ def test_state_filter_no_loadable_files_raises(monkeypatch: pytest.MonkeyPatch) 
     # --state TX but every TX file is zero-byte (filtered out) -> must raise, not silently no-op.
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=0)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )

@@ -24,13 +24,8 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.index_specs import (
-    IndexDef,
-    PrimaryKey,
-    parse_indexes,
-    parse_primary_keys,
-)
-from loader.people_api.schema.snapshot import load_prod_dump
+from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
+from loader.people_api.schema.schema_spec import indexes_for, primary_key_for
 
 log = get_logger(__name__)
 
@@ -157,9 +152,9 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     started = datetime.now(UTC)
     log.info("indexes.start")
 
-    dump = load_prod_dump(cfg, run_date)
-    pks = [p for p in parse_primary_keys(dump) if p.table == _TARGET_TABLE]
-    idxs = [i for i in parse_indexes(dump) if i.table == _TARGET_TABLE]
+    pk = primary_key_for(_TARGET_TABLE)
+    pks = [pk] if pk is not None else []
+    idxs = indexes_for(_TARGET_TABLE)
     log.info("indexes.parsed", primary_keys=len(pks), indexes=len(idxs))
 
     # Partition key "State" must be part of every PK/unique on the partitioned table.

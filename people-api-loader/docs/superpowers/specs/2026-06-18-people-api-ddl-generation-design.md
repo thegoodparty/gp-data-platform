@@ -39,8 +39,14 @@ maintained in code.
 
 1. **Column/type source:** introspect the materialized Databricks marts (`DESCRIBE` /
    `databricks tables get`), not the dbt contract yaml and not the prod dump.
-2. **Scope:** all four `people_api` marts — `voter`, `district`, `districtstats`,
-   `districtvoter` — so the provisioned cluster is a complete people-api DB.
+2. **Scope:** Voter-only. (Revised from "all four marts" after the bootstrap revealed:
+   `DistrictStats` is not a serving Postgres table; `District`/`DistrictVoter` are small,
+   Prisma-defined — uuid PKs, timestamps, a `state` enum the marts don't describe — and are
+   built by the dbt write path, not bulk-loaded by this loader. Voter is the table the loader
+   loads and where mart-vs-dump drift actually matters. Empirical check: the Voter mart has 353
+   columns; the serving table has 354 — the only omitted column is `Mailing_HHGender_Description`
+   (a REMOVED_COLUMNS NULL placeholder), declared as a `TableSpec.extra_columns` Prisma-layer
+   entry. Generated DDL has exact column parity with the Voter-only `prod_dump.sql`.)
 3. **Generation timing:** committed artifact produced by a `loader emit-ddl` CLI step
    (reviewable git diffs, deterministic reruns, loader run needs no Databricks access),
    not live introspection inside `create_schema`.
