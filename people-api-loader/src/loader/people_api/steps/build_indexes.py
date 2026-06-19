@@ -1,9 +1,9 @@
 """Step 5 — build the PK + indexes on the unified Voter table, then ANALYZE (DATA-1853).
 
-Parses the PK, the LALVOTERID unique, and the plain indexes from the committed
-prod snapshot and applies them to public."Voter" in parallel (concurrent
-CREATE INDEX on one table run in separate sessions). `CREATE INDEX` (not
-CONCURRENTLY) since the cluster is idle. No FKs exist in this schema.
+Reads the PK, the LALVOTERID unique, and the plain indexes from `schema_spec`
+(the pg_catalog-sourced `_serving_seed`) and applies them to public."Voter" in
+parallel (concurrent CREATE INDEX on one table run in separate sessions).
+`CREATE INDEX` (not CONCURRENTLY) since the cluster is idle. No FKs exist in this schema.
 """
 
 from __future__ import annotations
@@ -78,9 +78,15 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, pk: PrimaryKey) -> None:
 def _create_index(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
     if idx.unique:
         # We rebuild a unique index from its parsed columns (to append the partition
-        # key), requoting each as an identifier. That's only valid for plain columns:
-        # an expression index (e.g. lower("c")) would become invalid DDL. The current
-        # snapshot has none; fail loudly rather than emit broken SQL if one appears.
+        # key), requoting each as an identifier. Empty columns would silently emit a
+        # wrong UNIQUE("State") — fail loudly instead (guards an extraction regression).
+        if not idx.columns:
+            raise RuntimeError(
+                f'unique index "{idx.name}" has no parsed columns; cannot rebuild it with the '
+                "partition key without dropping its real columns"
+            )
+        # Rebuilding is only valid for plain columns: an expression index (e.g. lower("c"))
+        # would become invalid DDL. The current seed has none; fail loudly if one appears.
         expr_cols = [c for c in idx.columns if "(" in c]
         if expr_cols:
             raise RuntimeError(

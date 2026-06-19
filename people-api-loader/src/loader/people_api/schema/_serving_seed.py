@@ -16,7 +16,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Active_idx",
         sql='CREATE INDEX "Voter_Active_idx" ON public."Voter" USING btree ("Active");',
         unique=False,
-        columns=[],
+        columns=["Active"],
         where=None,
     ),
     IndexDef(
@@ -24,7 +24,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Age_Int_idx",
         sql='CREATE INDEX "Voter_Age_Int_idx" ON public."Voter" USING btree ("Age_Int");',
         unique=False,
-        columns=[],
+        columns=["Age_Int"],
         where=None,
     ),
     IndexDef(
@@ -32,7 +32,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Age_idx",
         sql='CREATE INDEX "Voter_Age_idx" ON public."Voter" USING btree ("Age");',
         unique=False,
-        columns=[],
+        columns=["Age"],
         where=None,
     ),
     IndexDef(
@@ -40,7 +40,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Airport_District_idx",
         sql='CREATE INDEX "Voter_Airport_District_idx" ON public."Voter" USING btree ("Airport_District");',
         unique=False,
-        columns=[],
+        columns=["Airport_District"],
         where=None,
     ),
     IndexDef(
@@ -48,7 +48,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Annexation_District_idx",
         sql='CREATE INDEX "Voter_Annexation_District_idx" ON public."Voter" USING btree ("Annexation_District");',
         unique=False,
-        columns=[],
+        columns=["Annexation_District"],
         where=None,
     ),
     IndexDef(
@@ -56,7 +56,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Aquatic_Center_District_idx",
         sql='CREATE INDEX "Voter_Aquatic_Center_District_idx" ON public."Voter" USING btree ("Aquatic_Center_District");',
         unique=False,
-        columns=[],
+        columns=["Aquatic_Center_District"],
         where=None,
     ),
     IndexDef(
@@ -64,7 +64,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Aquatic_District_idx",
         sql='CREATE INDEX "Voter_Aquatic_District_idx" ON public."Voter" USING btree ("Aquatic_District");',
         unique=False,
-        columns=[],
+        columns=["Aquatic_District"],
         where=None,
     ),
     IndexDef(
@@ -72,7 +72,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Assessment_District_idx",
         sql='CREATE INDEX "Voter_Assessment_District_idx" ON public."Voter" USING btree ("Assessment_District");',
         unique=False,
-        columns=[],
+        columns=["Assessment_District"],
         where=None,
     ),
     IndexDef(
@@ -80,7 +80,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Bay_Area_Rapid_Transit_idx",
         sql='CREATE INDEX "Voter_Bay_Area_Rapid_Transit_idx" ON public."Voter" USING btree ("Bay_Area_Rapid_Transit");',
         unique=False,
-        columns=[],
+        columns=["Bay_Area_Rapid_Transit"],
         where=None,
     ),
     IndexDef(
@@ -88,7 +88,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Board_of_Education_District_idx",
         sql='CREATE INDEX "Voter_Board_of_Education_District_idx" ON public."Voter" USING btree ("Board_of_Education_District");',
         unique=False,
-        columns=[],
+        columns=["Board_of_Education_District"],
         where=None,
     ),
     IndexDef(
@@ -96,7 +96,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Board_of_Education_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Board_of_Education_SubDistrict_idx" ON public."Voter" USING btree ("Board_of_Education_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Board_of_Education_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -104,7 +104,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Bonds_District_idx",
         sql='CREATE INDEX "Voter_Bonds_District_idx" ON public."Voter" USING btree ("Bonds_District");',
         unique=False,
-        columns=[],
+        columns=["Bonds_District"],
         where=None,
     ),
     IndexDef(
@@ -112,7 +112,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Borough_Ward_idx",
         sql='CREATE INDEX "Voter_Borough_Ward_idx" ON public."Voter" USING btree ("Borough_Ward");',
         unique=False,
-        columns=[],
+        columns=["Borough_Ward"],
         where=None,
     ),
     IndexDef(
@@ -120,7 +120,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Borough_idx",
         sql='CREATE INDEX "Voter_Borough_idx" ON public."Voter" USING btree ("Borough");',
         unique=False,
-        columns=[],
+        columns=["Borough"],
         where=None,
     ),
     IndexDef(
@@ -128,7 +128,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Business_Owner_idx",
         sql='CREATE INDEX "Voter_Business_Owner_idx" ON public."Voter" USING btree ("Business_Owner");',
         unique=False,
-        columns=[],
+        columns=["Business_Owner"],
         where=None,
     ),
     IndexDef(
@@ -136,7 +136,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_CalculatedRegDate_idx",
         sql='CREATE INDEX "Voter_CalculatedRegDate_idx" ON public."Voter" USING btree ("CalculatedRegDate");',
         unique=False,
-        columns=[],
+        columns=["CalculatedRegDate"],
         where=None,
     ),
     IndexDef(
@@ -144,7 +144,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Career_Center_idx",
         sql='CREATE INDEX "Voter_Career_Center_idx" ON public."Voter" USING btree ("Career_Center");',
         unique=False,
-        columns=[],
+        columns=["Career_Center"],
         where=None,
     ),
     IndexDef(
@@ -152,7 +152,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Cemetery_District_idx",
         sql='CREATE INDEX "Voter_Cemetery_District_idx" ON public."Voter" USING btree ("Cemetery_District");',
         unique=False,
-        columns=[],
+        columns=["Cemetery_District"],
         where=None,
     ),
     IndexDef(
@@ -160,7 +160,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Central_Committee_District_idx",
         sql='CREATE INDEX "Voter_Central_Committee_District_idx" ON public."Voter" USING btree ("Central_Committee_District");',
         unique=False,
-        columns=[],
+        columns=["Central_Committee_District"],
         where=None,
     ),
     IndexDef(
@@ -168,7 +168,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Chemical_Control_District_idx",
         sql='CREATE INDEX "Voter_Chemical_Control_District_idx" ON public."Voter" USING btree ("Chemical_Control_District");',
         unique=False,
-        columns=[],
+        columns=["Chemical_Control_District"],
         where=None,
     ),
     IndexDef(
@@ -176,7 +176,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_City_Council_Commissioner_District_idx",
         sql='CREATE INDEX "Voter_City_Council_Commissioner_District_idx" ON public."Voter" USING btree ("City_Council_Commissioner_District");',
         unique=False,
-        columns=[],
+        columns=["City_Council_Commissioner_District"],
         where=None,
     ),
     IndexDef(
@@ -184,7 +184,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_City_Mayoral_District_idx",
         sql='CREATE INDEX "Voter_City_Mayoral_District_idx" ON public."Voter" USING btree ("City_Mayoral_District");',
         unique=False,
-        columns=[],
+        columns=["City_Mayoral_District"],
         where=None,
     ),
     IndexDef(
@@ -192,7 +192,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_City_School_District_idx",
         sql='CREATE INDEX "Voter_City_School_District_idx" ON public."Voter" USING btree ("City_School_District");',
         unique=False,
-        columns=[],
+        columns=["City_School_District"],
         where=None,
     ),
     IndexDef(
@@ -200,7 +200,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_City_Ward_idx",
         sql='CREATE INDEX "Voter_City_Ward_idx" ON public."Voter" USING btree ("City_Ward");',
         unique=False,
-        columns=[],
+        columns=["City_Ward"],
         where=None,
     ),
     IndexDef(
@@ -208,7 +208,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_City_idx",
         sql='CREATE INDEX "Voter_City_idx" ON public."Voter" USING btree ("City");',
         unique=False,
-        columns=[],
+        columns=["City"],
         where=None,
     ),
     IndexDef(
@@ -216,7 +216,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Coast_Water_District_idx",
         sql='CREATE INDEX "Voter_Coast_Water_District_idx" ON public."Voter" USING btree ("Coast_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Coast_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -224,7 +224,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_College_Board_District_idx",
         sql='CREATE INDEX "Voter_College_Board_District_idx" ON public."Voter" USING btree ("College_Board_District");',
         unique=False,
-        columns=[],
+        columns=["College_Board_District"],
         where=None,
     ),
     IndexDef(
@@ -232,7 +232,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Committee_Super_District_idx",
         sql='CREATE INDEX "Voter_Committee_Super_District_idx" ON public."Voter" USING btree ("Committee_Super_District");',
         unique=False,
-        columns=[],
+        columns=["Committee_Super_District"],
         where=None,
     ),
     IndexDef(
@@ -240,7 +240,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Communications_District_idx",
         sql='CREATE INDEX "Voter_Communications_District_idx" ON public."Voter" USING btree ("Communications_District");',
         unique=False,
-        columns=[],
+        columns=["Communications_District"],
         where=None,
     ),
     IndexDef(
@@ -248,7 +248,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_College_At_Large_idx",
         sql='CREATE INDEX "Voter_Community_College_At_Large_idx" ON public."Voter" USING btree ("Community_College_At_Large");',
         unique=False,
-        columns=[],
+        columns=["Community_College_At_Large"],
         where=None,
     ),
     IndexDef(
@@ -256,7 +256,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_College_Commissioner_District_idx",
         sql='CREATE INDEX "Voter_Community_College_Commissioner_District_idx" ON public."Voter" USING btree ("Community_College_Commissioner_District");',
         unique=False,
-        columns=[],
+        columns=["Community_College_Commissioner_District"],
         where=None,
     ),
     IndexDef(
@@ -264,7 +264,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_College_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Community_College_SubDistrict_idx" ON public."Voter" USING btree ("Community_College_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Community_College_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -272,7 +272,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Council_District_idx",
         sql='CREATE INDEX "Voter_Community_Council_District_idx" ON public."Voter" USING btree ("Community_Council_District");',
         unique=False,
-        columns=[],
+        columns=["Community_Council_District"],
         where=None,
     ),
     IndexDef(
@@ -280,7 +280,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Council_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Community_Council_SubDistrict_idx" ON public."Voter" USING btree ("Community_Council_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Community_Council_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -288,7 +288,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Facilities_District_idx",
         sql='CREATE INDEX "Voter_Community_Facilities_District_idx" ON public."Voter" USING btree ("Community_Facilities_District");',
         unique=False,
-        columns=[],
+        columns=["Community_Facilities_District"],
         where=None,
     ),
     IndexDef(
@@ -296,7 +296,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Facilities_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Community_Facilities_SubDistrict_idx" ON public."Voter" USING btree ("Community_Facilities_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Community_Facilities_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -304,7 +304,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Hospital_District_idx",
         sql='CREATE INDEX "Voter_Community_Hospital_District_idx" ON public."Voter" USING btree ("Community_Hospital_District");',
         unique=False,
-        columns=[],
+        columns=["Community_Hospital_District"],
         where=None,
     ),
     IndexDef(
@@ -312,7 +312,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Planning_Area_idx",
         sql='CREATE INDEX "Voter_Community_Planning_Area_idx" ON public."Voter" USING btree ("Community_Planning_Area");',
         unique=False,
-        columns=[],
+        columns=["Community_Planning_Area"],
         where=None,
     ),
     IndexDef(
@@ -320,7 +320,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Service_District_idx",
         sql='CREATE INDEX "Voter_Community_Service_District_idx" ON public."Voter" USING btree ("Community_Service_District");',
         unique=False,
-        columns=[],
+        columns=["Community_Service_District"],
         where=None,
     ),
     IndexDef(
@@ -328,7 +328,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Community_Service_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Community_Service_SubDistrict_idx" ON public."Voter" USING btree ("Community_Service_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Community_Service_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -336,7 +336,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Congressional_Township_idx",
         sql='CREATE INDEX "Voter_Congressional_Township_idx" ON public."Voter" USING btree ("Congressional_Township");',
         unique=False,
-        columns=[],
+        columns=["Congressional_Township"],
         where=None,
     ),
     IndexDef(
@@ -344,7 +344,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Consolidated_Water_District_idx",
         sql='CREATE INDEX "Voter_Consolidated_Water_District_idx" ON public."Voter" USING btree ("Consolidated_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Consolidated_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -352,7 +352,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Control_Zone_District_idx",
         sql='CREATE INDEX "Voter_Control_Zone_District_idx" ON public."Voter" USING btree ("Control_Zone_District");',
         unique=False,
-        columns=[],
+        columns=["Control_Zone_District"],
         where=None,
     ),
     IndexDef(
@@ -360,7 +360,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Corrections_District_idx",
         sql='CREATE INDEX "Voter_Corrections_District_idx" ON public."Voter" USING btree ("Corrections_District");',
         unique=False,
-        columns=[],
+        columns=["Corrections_District"],
         where=None,
     ),
     IndexDef(
@@ -368,7 +368,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Board_of_Education_District_idx",
         sql='CREATE INDEX "Voter_County_Board_of_Education_District_idx" ON public."Voter" USING btree ("County_Board_of_Education_District");',
         unique=False,
-        columns=[],
+        columns=["County_Board_of_Education_District"],
         where=None,
     ),
     IndexDef(
@@ -376,7 +376,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Board_of_Education_SubDistrict_idx",
         sql='CREATE INDEX "Voter_County_Board_of_Education_SubDistrict_idx" ON public."Voter" USING btree ("County_Board_of_Education_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["County_Board_of_Education_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -384,7 +384,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Commissioner_District_idx",
         sql='CREATE INDEX "Voter_County_Commissioner_District_idx" ON public."Voter" USING btree ("County_Commissioner_District");',
         unique=False,
-        columns=[],
+        columns=["County_Commissioner_District"],
         where=None,
     ),
     IndexDef(
@@ -392,7 +392,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Community_College_District_idx",
         sql='CREATE INDEX "Voter_County_Community_College_District_idx" ON public."Voter" USING btree ("County_Community_College_District");',
         unique=False,
-        columns=[],
+        columns=["County_Community_College_District"],
         where=None,
     ),
     IndexDef(
@@ -400,7 +400,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Fire_District_idx",
         sql='CREATE INDEX "Voter_County_Fire_District_idx" ON public."Voter" USING btree ("County_Fire_District");',
         unique=False,
-        columns=[],
+        columns=["County_Fire_District"],
         where=None,
     ),
     IndexDef(
@@ -408,7 +408,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Hospital_District_idx",
         sql='CREATE INDEX "Voter_County_Hospital_District_idx" ON public."Voter" USING btree ("County_Hospital_District");',
         unique=False,
-        columns=[],
+        columns=["County_Hospital_District"],
         where=None,
     ),
     IndexDef(
@@ -416,7 +416,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Legislative_District_idx",
         sql='CREATE INDEX "Voter_County_Legislative_District_idx" ON public."Voter" USING btree ("County_Legislative_District");',
         unique=False,
-        columns=[],
+        columns=["County_Legislative_District"],
         where=None,
     ),
     IndexDef(
@@ -424,7 +424,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Library_District_idx",
         sql='CREATE INDEX "Voter_County_Library_District_idx" ON public."Voter" USING btree ("County_Library_District");',
         unique=False,
-        columns=[],
+        columns=["County_Library_District"],
         where=None,
     ),
     IndexDef(
@@ -432,7 +432,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Memorial_District_idx",
         sql='CREATE INDEX "Voter_County_Memorial_District_idx" ON public."Voter" USING btree ("County_Memorial_District");',
         unique=False,
-        columns=[],
+        columns=["County_Memorial_District"],
         where=None,
     ),
     IndexDef(
@@ -440,7 +440,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Paramedic_District_idx",
         sql='CREATE INDEX "Voter_County_Paramedic_District_idx" ON public."Voter" USING btree ("County_Paramedic_District");',
         unique=False,
-        columns=[],
+        columns=["County_Paramedic_District"],
         where=None,
     ),
     IndexDef(
@@ -448,7 +448,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Service_Area_SubDistrict_idx",
         sql='CREATE INDEX "Voter_County_Service_Area_SubDistrict_idx" ON public."Voter" USING btree ("County_Service_Area_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["County_Service_Area_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -456,7 +456,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Service_Area_idx",
         sql='CREATE INDEX "Voter_County_Service_Area_idx" ON public."Voter" USING btree ("County_Service_Area");',
         unique=False,
-        columns=[],
+        columns=["County_Service_Area"],
         where=None,
     ),
     IndexDef(
@@ -464,7 +464,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Sewer_District_idx",
         sql='CREATE INDEX "Voter_County_Sewer_District_idx" ON public."Voter" USING btree ("County_Sewer_District");',
         unique=False,
-        columns=[],
+        columns=["County_Sewer_District"],
         where=None,
     ),
     IndexDef(
@@ -472,7 +472,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Superintendent_of_Schools_District_idx",
         sql='CREATE INDEX "Voter_County_Superintendent_of_Schools_District_idx" ON public."Voter" USING btree ("County_Superintendent_of_Schools_District");',
         unique=False,
-        columns=[],
+        columns=["County_Superintendent_of_Schools_District"],
         where=None,
     ),
     IndexDef(
@@ -480,7 +480,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Supervisorial_District_idx",
         sql='CREATE INDEX "Voter_County_Supervisorial_District_idx" ON public."Voter" USING btree ("County_Supervisorial_District");',
         unique=False,
-        columns=[],
+        columns=["County_Supervisorial_District"],
         where=None,
     ),
     IndexDef(
@@ -488,7 +488,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Unified_School_District_idx",
         sql='CREATE INDEX "Voter_County_Unified_School_District_idx" ON public."Voter" USING btree ("County_Unified_School_District");',
         unique=False,
-        columns=[],
+        columns=["County_Unified_School_District"],
         where=None,
     ),
     IndexDef(
@@ -496,7 +496,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Water_District_idx",
         sql='CREATE INDEX "Voter_County_Water_District_idx" ON public."Voter" USING btree ("County_Water_District");',
         unique=False,
-        columns=[],
+        columns=["County_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -504,7 +504,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Water_Landowner_District_idx",
         sql='CREATE INDEX "Voter_County_Water_Landowner_District_idx" ON public."Voter" USING btree ("County_Water_Landowner_District");',
         unique=False,
-        columns=[],
+        columns=["County_Water_Landowner_District"],
         where=None,
     ),
     IndexDef(
@@ -512,7 +512,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_Water_SubDistrict_idx",
         sql='CREATE INDEX "Voter_County_Water_SubDistrict_idx" ON public."Voter" USING btree ("County_Water_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["County_Water_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -520,7 +520,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_County_idx",
         sql='CREATE INDEX "Voter_County_idx" ON public."Voter" USING btree ("County");',
         unique=False,
-        columns=[],
+        columns=["County"],
         where=None,
     ),
     IndexDef(
@@ -528,7 +528,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Democratic_Convention_Member_idx",
         sql='CREATE INDEX "Voter_Democratic_Convention_Member_idx" ON public."Voter" USING btree ("Democratic_Convention_Member");',
         unique=False,
-        columns=[],
+        columns=["Democratic_Convention_Member"],
         where=None,
     ),
     IndexDef(
@@ -536,7 +536,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Democratic_Zone_idx",
         sql='CREATE INDEX "Voter_Democratic_Zone_idx" ON public."Voter" USING btree ("Democratic_Zone");',
         unique=False,
-        columns=[],
+        columns=["Democratic_Zone"],
         where=None,
     ),
     IndexDef(
@@ -544,7 +544,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Designated_Market_Area_DMA_idx",
         sql='CREATE INDEX "Voter_Designated_Market_Area_DMA_idx" ON public."Voter" USING btree ("Designated_Market_Area_DMA");',
         unique=False,
-        columns=[],
+        columns=["Designated_Market_Area_DMA"],
         where=None,
     ),
     IndexDef(
@@ -552,7 +552,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_District_Attorney_idx",
         sql='CREATE INDEX "Voter_District_Attorney_idx" ON public."Voter" USING btree ("District_Attorney");',
         unique=False,
-        columns=[],
+        columns=["District_Attorney"],
         where=None,
     ),
     IndexDef(
@@ -560,7 +560,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Drainage_District_idx",
         sql='CREATE INDEX "Voter_Drainage_District_idx" ON public."Voter" USING btree ("Drainage_District");',
         unique=False,
-        columns=[],
+        columns=["Drainage_District"],
         where=None,
     ),
     IndexDef(
@@ -568,7 +568,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_EXT_District_idx",
         sql='CREATE INDEX "Voter_EXT_District_idx" ON public."Voter" USING btree ("EXT_District");',
         unique=False,
-        columns=[],
+        columns=["EXT_District"],
         where=None,
     ),
     IndexDef(
@@ -576,7 +576,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Education_Commission_District_idx",
         sql='CREATE INDEX "Voter_Education_Commission_District_idx" ON public."Voter" USING btree ("Education_Commission_District");',
         unique=False,
-        columns=[],
+        columns=["Education_Commission_District"],
         where=None,
     ),
     IndexDef(
@@ -584,7 +584,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Education_Of_Person_idx",
         sql='CREATE INDEX "Voter_Education_Of_Person_idx" ON public."Voter" USING btree ("Education_Of_Person");',
         unique=False,
-        columns=[],
+        columns=["Education_Of_Person"],
         where=None,
     ),
     IndexDef(
@@ -592,7 +592,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Educational_Service_District_idx",
         sql='CREATE INDEX "Voter_Educational_Service_District_idx" ON public."Voter" USING btree ("Educational_Service_District");',
         unique=False,
-        columns=[],
+        columns=["Educational_Service_District"],
         where=None,
     ),
     IndexDef(
@@ -600,7 +600,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Educational_Service_Subdistrict_idx",
         sql='CREATE INDEX "Voter_Educational_Service_Subdistrict_idx" ON public."Voter" USING btree ("Educational_Service_Subdistrict");',
         unique=False,
-        columns=[],
+        columns=["Educational_Service_Subdistrict"],
         where=None,
     ),
     IndexDef(
@@ -608,7 +608,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Election_Commissioner_District_idx",
         sql='CREATE INDEX "Voter_Election_Commissioner_District_idx" ON public."Voter" USING btree ("Election_Commissioner_District");',
         unique=False,
-        columns=[],
+        columns=["Election_Commissioner_District"],
         where=None,
     ),
     IndexDef(
@@ -616,7 +616,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Elementary_School_District_idx",
         sql='CREATE INDEX "Voter_Elementary_School_District_idx" ON public."Voter" USING btree ("Elementary_School_District");',
         unique=False,
-        columns=[],
+        columns=["Elementary_School_District"],
         where=None,
     ),
     IndexDef(
@@ -624,7 +624,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Elementary_School_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Elementary_School_SubDistrict_idx" ON public."Voter" USING btree ("Elementary_School_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Elementary_School_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -632,7 +632,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Emergency_Communication_911_District_idx",
         sql='CREATE INDEX "Voter_Emergency_Communication_911_District_idx" ON public."Voter" USING btree ("Emergency_Communication_911_District");',
         unique=False,
-        columns=[],
+        columns=["Emergency_Communication_911_District"],
         where=None,
     ),
     IndexDef(
@@ -640,7 +640,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Emergency_Communication_911_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Emergency_Communication_911_SubDistrict_idx" ON public."Voter" USING btree ("Emergency_Communication_911_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Emergency_Communication_911_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -648,7 +648,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Enterprise_Zone_District_idx",
         sql='CREATE INDEX "Voter_Enterprise_Zone_District_idx" ON public."Voter" USING btree ("Enterprise_Zone_District");',
         unique=False,
-        columns=[],
+        columns=["Enterprise_Zone_District"],
         where=None,
     ),
     IndexDef(
@@ -656,7 +656,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Estimated_Income_Amount_Int_idx",
         sql='CREATE INDEX "Voter_Estimated_Income_Amount_Int_idx" ON public."Voter" USING btree ("Estimated_Income_Amount_Int");',
         unique=False,
-        columns=[],
+        columns=["Estimated_Income_Amount_Int"],
         where=None,
     ),
     IndexDef(
@@ -664,7 +664,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Estimated_Income_Amount_idx",
         sql='CREATE INDEX "Voter_Estimated_Income_Amount_idx" ON public."Voter" USING btree ("Estimated_Income_Amount");',
         unique=False,
-        columns=[],
+        columns=["Estimated_Income_Amount"],
         where=None,
     ),
     IndexDef(
@@ -672,7 +672,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_EthnicGroups_EthnicGroup1Desc_idx",
         sql='CREATE INDEX "Voter_EthnicGroups_EthnicGroup1Desc_idx" ON public."Voter" USING btree ("EthnicGroups_EthnicGroup1Desc");',
         unique=False,
-        columns=[],
+        columns=["EthnicGroups_EthnicGroup1Desc"],
         where=None,
     ),
     IndexDef(
@@ -680,7 +680,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Exempted_Village_School_District_idx",
         sql='CREATE INDEX "Voter_Exempted_Village_School_District_idx" ON public."Voter" USING btree ("Exempted_Village_School_District");',
         unique=False,
-        columns=[],
+        columns=["Exempted_Village_School_District"],
         where=None,
     ),
     IndexDef(
@@ -688,7 +688,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Facilities_Improvement_District_idx",
         sql='CREATE INDEX "Voter_Facilities_Improvement_District_idx" ON public."Voter" USING btree ("Facilities_Improvement_District");',
         unique=False,
-        columns=[],
+        columns=["Facilities_Improvement_District"],
         where=None,
     ),
     IndexDef(
@@ -696,7 +696,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_District_idx",
         sql='CREATE INDEX "Voter_Fire_District_idx" ON public."Voter" USING btree ("Fire_District");',
         unique=False,
-        columns=[],
+        columns=["Fire_District"],
         where=None,
     ),
     IndexDef(
@@ -704,7 +704,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_Maintenance_District_idx",
         sql='CREATE INDEX "Voter_Fire_Maintenance_District_idx" ON public."Voter" USING btree ("Fire_Maintenance_District");',
         unique=False,
-        columns=[],
+        columns=["Fire_Maintenance_District"],
         where=None,
     ),
     IndexDef(
@@ -712,7 +712,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_Protection_District_idx",
         sql='CREATE INDEX "Voter_Fire_Protection_District_idx" ON public."Voter" USING btree ("Fire_Protection_District");',
         unique=False,
-        columns=[],
+        columns=["Fire_Protection_District"],
         where=None,
     ),
     IndexDef(
@@ -720,7 +720,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_Protection_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Fire_Protection_SubDistrict_idx" ON public."Voter" USING btree ("Fire_Protection_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Fire_Protection_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -728,7 +728,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_Protection_Tax_Measure_District_idx",
         sql='CREATE INDEX "Voter_Fire_Protection_Tax_Measure_District_idx" ON public."Voter" USING btree ("Fire_Protection_Tax_Measure_District");',
         unique=False,
-        columns=[],
+        columns=["Fire_Protection_Tax_Measure_District"],
         where=None,
     ),
     IndexDef(
@@ -736,7 +736,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_Service_Area_District_idx",
         sql='CREATE INDEX "Voter_Fire_Service_Area_District_idx" ON public."Voter" USING btree ("Fire_Service_Area_District");',
         unique=False,
-        columns=[],
+        columns=["Fire_Service_Area_District"],
         where=None,
     ),
     IndexDef(
@@ -744,7 +744,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Fire_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Fire_SubDistrict_idx" ON public."Voter" USING btree ("Fire_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Fire_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -752,7 +752,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_FirstName_idx",
         sql='CREATE INDEX "Voter_FirstName_idx" ON public."Voter" USING btree ("FirstName");',
         unique=False,
-        columns=[],
+        columns=["FirstName"],
         where=None,
     ),
     IndexDef(
@@ -760,7 +760,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Flood_Control_Zone_idx",
         sql='CREATE INDEX "Voter_Flood_Control_Zone_idx" ON public."Voter" USING btree ("Flood_Control_Zone");',
         unique=False,
-        columns=[],
+        columns=["Flood_Control_Zone"],
         where=None,
     ),
     IndexDef(
@@ -768,7 +768,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Forest_Preserve_idx",
         sql='CREATE INDEX "Voter_Forest_Preserve_idx" ON public."Voter" USING btree ("Forest_Preserve");',
         unique=False,
-        columns=[],
+        columns=["Forest_Preserve"],
         where=None,
     ),
     IndexDef(
@@ -776,7 +776,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Garbage_District_idx",
         sql='CREATE INDEX "Voter_Garbage_District_idx" ON public."Voter" USING btree ("Garbage_District");',
         unique=False,
-        columns=[],
+        columns=["Garbage_District"],
         where=None,
     ),
     IndexDef(
@@ -784,7 +784,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Gender_idx",
         sql='CREATE INDEX "Voter_Gender_idx" ON public."Voter" USING btree ("Gender");',
         unique=False,
-        columns=[],
+        columns=["Gender"],
         where=None,
     ),
     IndexDef(
@@ -792,7 +792,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Geological_Hazard_Abatement_District_idx",
         sql='CREATE INDEX "Voter_Geological_Hazard_Abatement_District_idx" ON public."Voter" USING btree ("Geological_Hazard_Abatement_District");',
         unique=False,
-        columns=[],
+        columns=["Geological_Hazard_Abatement_District"],
         where=None,
     ),
     IndexDef(
@@ -800,7 +800,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Hamlet_Community_Area_idx",
         sql='CREATE INDEX "Voter_Hamlet_Community_Area_idx" ON public."Voter" USING btree ("Hamlet_Community_Area");',
         unique=False,
-        columns=[],
+        columns=["Hamlet_Community_Area"],
         where=None,
     ),
     IndexDef(
@@ -808,7 +808,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Health_District_idx",
         sql='CREATE INDEX "Voter_Health_District_idx" ON public."Voter" USING btree ("Health_District");',
         unique=False,
-        columns=[],
+        columns=["Health_District"],
         where=None,
     ),
     IndexDef(
@@ -816,7 +816,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_High_School_District_idx",
         sql='CREATE INDEX "Voter_High_School_District_idx" ON public."Voter" USING btree ("High_School_District");',
         unique=False,
-        columns=[],
+        columns=["High_School_District"],
         where=None,
     ),
     IndexDef(
@@ -824,7 +824,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_High_School_SubDistrict_idx",
         sql='CREATE INDEX "Voter_High_School_SubDistrict_idx" ON public."Voter" USING btree ("High_School_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["High_School_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -832,7 +832,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Homeowner_Probability_Model_idx",
         sql='CREATE INDEX "Voter_Homeowner_Probability_Model_idx" ON public."Voter" USING btree ("Homeowner_Probability_Model");',
         unique=False,
-        columns=[],
+        columns=["Homeowner_Probability_Model"],
         where=None,
     ),
     IndexDef(
@@ -840,7 +840,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Hospital_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Hospital_SubDistrict_idx" ON public."Voter" USING btree ("Hospital_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Hospital_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -848,7 +848,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Improvement_Landowner_District_idx",
         sql='CREATE INDEX "Voter_Improvement_Landowner_District_idx" ON public."Voter" USING btree ("Improvement_Landowner_District");',
         unique=False,
-        columns=[],
+        columns=["Improvement_Landowner_District"],
         where=None,
     ),
     IndexDef(
@@ -856,7 +856,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Independent_Fire_District_idx",
         sql='CREATE INDEX "Voter_Independent_Fire_District_idx" ON public."Voter" USING btree ("Independent_Fire_District");',
         unique=False,
-        columns=[],
+        columns=["Independent_Fire_District"],
         where=None,
     ),
     IndexDef(
@@ -864,7 +864,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Irrigation_District_idx",
         sql='CREATE INDEX "Voter_Irrigation_District_idx" ON public."Voter" USING btree ("Irrigation_District");',
         unique=False,
-        columns=[],
+        columns=["Irrigation_District"],
         where=None,
     ),
     IndexDef(
@@ -872,7 +872,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Irrigation_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Irrigation_SubDistrict_idx" ON public."Voter" USING btree ("Irrigation_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Irrigation_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -880,7 +880,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Island_idx",
         sql='CREATE INDEX "Voter_Island_idx" ON public."Voter" USING btree ("Island");',
         unique=False,
-        columns=[],
+        columns=["Island"],
         where=None,
     ),
     IndexDef(
@@ -888,7 +888,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Appellate_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Appellate_District_idx" ON public."Voter" USING btree ("Judicial_Appellate_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Appellate_District"],
         where=None,
     ),
     IndexDef(
@@ -896,7 +896,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Circuit_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Circuit_Court_District_idx" ON public."Voter" USING btree ("Judicial_Circuit_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Circuit_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -904,7 +904,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_County_Board_of_Review_District_idx",
         sql='CREATE INDEX "Voter_Judicial_County_Board_of_Review_District_idx" ON public."Voter" USING btree ("Judicial_County_Board_of_Review_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_County_Board_of_Review_District"],
         where=None,
     ),
     IndexDef(
@@ -912,7 +912,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_County_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_County_Court_District_idx" ON public."Voter" USING btree ("Judicial_County_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_County_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -920,7 +920,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_District_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_District_Court_District_idx" ON public."Voter" USING btree ("Judicial_District_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_District_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -928,7 +928,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_District_idx",
         sql='CREATE INDEX "Voter_Judicial_District_idx" ON public."Voter" USING btree ("Judicial_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_District"],
         where=None,
     ),
     IndexDef(
@@ -936,7 +936,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Family_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Family_Court_District_idx" ON public."Voter" USING btree ("Judicial_Family_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Family_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -944,7 +944,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Jury_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Jury_District_idx" ON public."Voter" USING btree ("Judicial_Jury_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Jury_District"],
         where=None,
     ),
     IndexDef(
@@ -952,7 +952,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Juvenile_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Juvenile_Court_District_idx" ON public."Voter" USING btree ("Judicial_Juvenile_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Juvenile_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -960,7 +960,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Magistrate_Division_idx",
         sql='CREATE INDEX "Voter_Judicial_Magistrate_Division_idx" ON public."Voter" USING btree ("Judicial_Magistrate_Division");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Magistrate_Division"],
         where=None,
     ),
     IndexDef(
@@ -968,7 +968,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Municipal_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Municipal_Court_District_idx" ON public."Voter" USING btree ("Judicial_Municipal_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Municipal_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -976,7 +976,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Sub_Circuit_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Sub_Circuit_District_idx" ON public."Voter" USING btree ("Judicial_Sub_Circuit_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Sub_Circuit_District"],
         where=None,
     ),
     IndexDef(
@@ -984,7 +984,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Superior_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Superior_Court_District_idx" ON public."Voter" USING btree ("Judicial_Superior_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Superior_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -992,7 +992,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Judicial_Supreme_Court_District_idx",
         sql='CREATE INDEX "Voter_Judicial_Supreme_Court_District_idx" ON public."Voter" USING btree ("Judicial_Supreme_Court_District");',
         unique=False,
-        columns=[],
+        columns=["Judicial_Supreme_Court_District"],
         where=None,
     ),
     IndexDef(
@@ -1000,7 +1000,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_LALVOTERID_key",
         sql='CREATE UNIQUE INDEX "Voter_LALVOTERID_key" ON public."Voter" USING btree ("LALVOTERID");',
         unique=True,
-        columns=[],
+        columns=["LALVOTERID"],
         where=None,
     ),
     IndexDef(
@@ -1008,7 +1008,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Land_Commission_idx",
         sql='CREATE INDEX "Voter_Land_Commission_idx" ON public."Voter" USING btree ("Land_Commission");',
         unique=False,
-        columns=[],
+        columns=["Land_Commission"],
         where=None,
     ),
     IndexDef(
@@ -1016,7 +1016,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Landscaping_and_Lighting_Assessment_District_idx",
         sql='CREATE INDEX "Voter_Landscaping_and_Lighting_Assessment_District_idx" ON public."Voter" USING btree ("Landscaping_and_Lighting_Assessment_District");',
         unique=False,
-        columns=[],
+        columns=["Landscaping_and_Lighting_Assessment_District"],
         where=None,
     ),
     IndexDef(
@@ -1024,7 +1024,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Language_Code_idx",
         sql='CREATE INDEX "Voter_Language_Code_idx" ON public."Voter" USING btree ("Language_Code");',
         unique=False,
-        columns=[],
+        columns=["Language_Code"],
         where=None,
     ),
     IndexDef(
@@ -1032,7 +1032,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_LastName_idx",
         sql='CREATE INDEX "Voter_LastName_idx" ON public."Voter" USING btree ("LastName");',
         unique=False,
-        columns=[],
+        columns=["LastName"],
         where=None,
     ),
     IndexDef(
@@ -1040,7 +1040,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Law_Enforcement_District_idx",
         sql='CREATE INDEX "Voter_Law_Enforcement_District_idx" ON public."Voter" USING btree ("Law_Enforcement_District");',
         unique=False,
-        columns=[],
+        columns=["Law_Enforcement_District"],
         where=None,
     ),
     IndexDef(
@@ -1048,7 +1048,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Learning_Community_Coordinating_Council_District_idx",
         sql='CREATE INDEX "Voter_Learning_Community_Coordinating_Council_District_idx" ON public."Voter" USING btree ("Learning_Community_Coordinating_Council_District");',
         unique=False,
-        columns=[],
+        columns=["Learning_Community_Coordinating_Council_District"],
         where=None,
     ),
     IndexDef(
@@ -1056,7 +1056,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Levee_District_idx",
         sql='CREATE INDEX "Voter_Levee_District_idx" ON public."Voter" USING btree ("Levee_District");',
         unique=False,
-        columns=[],
+        columns=["Levee_District"],
         where=None,
     ),
     IndexDef(
@@ -1064,7 +1064,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Levee_Reconstruction_Assesment_District_idx",
         sql='CREATE INDEX "Voter_Levee_Reconstruction_Assesment_District_idx" ON public."Voter" USING btree ("Levee_Reconstruction_Assesment_District");',
         unique=False,
-        columns=[],
+        columns=["Levee_Reconstruction_Assesment_District"],
         where=None,
     ),
     IndexDef(
@@ -1072,7 +1072,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Library_District_idx",
         sql='CREATE INDEX "Voter_Library_District_idx" ON public."Voter" USING btree ("Library_District");',
         unique=False,
-        columns=[],
+        columns=["Library_District"],
         where=None,
     ),
     IndexDef(
@@ -1080,7 +1080,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Library_Services_District_idx",
         sql='CREATE INDEX "Voter_Library_Services_District_idx" ON public."Voter" USING btree ("Library_Services_District");',
         unique=False,
-        columns=[],
+        columns=["Library_Services_District"],
         where=None,
     ),
     IndexDef(
@@ -1088,7 +1088,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Library_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Library_SubDistrict_idx" ON public."Voter" USING btree ("Library_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Library_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1096,7 +1096,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Lighting_District_idx",
         sql='CREATE INDEX "Voter_Lighting_District_idx" ON public."Voter" USING btree ("Lighting_District");',
         unique=False,
-        columns=[],
+        columns=["Lighting_District"],
         where=None,
     ),
     IndexDef(
@@ -1104,7 +1104,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Local_Hospital_District_idx",
         sql='CREATE INDEX "Voter_Local_Hospital_District_idx" ON public."Voter" USING btree ("Local_Hospital_District");',
         unique=False,
-        columns=[],
+        columns=["Local_Hospital_District"],
         where=None,
     ),
     IndexDef(
@@ -1112,7 +1112,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Local_Park_District_idx",
         sql='CREATE INDEX "Voter_Local_Park_District_idx" ON public."Voter" USING btree ("Local_Park_District");',
         unique=False,
-        columns=[],
+        columns=["Local_Park_District"],
         where=None,
     ),
     IndexDef(
@@ -1120,7 +1120,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Mailing_Families_FamilyID_idx",
         sql='CREATE INDEX "Voter_Mailing_Families_FamilyID_idx" ON public."Voter" USING btree ("Mailing_Families_FamilyID");',
         unique=False,
-        columns=[],
+        columns=["Mailing_Families_FamilyID"],
         where=None,
     ),
     IndexDef(
@@ -1128,7 +1128,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Maintenance_District_idx",
         sql='CREATE INDEX "Voter_Maintenance_District_idx" ON public."Voter" USING btree ("Maintenance_District");',
         unique=False,
-        columns=[],
+        columns=["Maintenance_District"],
         where=None,
     ),
     IndexDef(
@@ -1136,7 +1136,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Marital_Status_idx",
         sql='CREATE INDEX "Voter_Marital_Status_idx" ON public."Voter" USING btree ("Marital_Status");',
         unique=False,
-        columns=[],
+        columns=["Marital_Status"],
         where=None,
     ),
     IndexDef(
@@ -1144,7 +1144,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Master_Plan_District_idx",
         sql='CREATE INDEX "Voter_Master_Plan_District_idx" ON public."Voter" USING btree ("Master_Plan_District");',
         unique=False,
-        columns=[],
+        columns=["Master_Plan_District"],
         where=None,
     ),
     IndexDef(
@@ -1152,7 +1152,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Memorial_District_idx",
         sql='CREATE INDEX "Voter_Memorial_District_idx" ON public."Voter" USING btree ("Memorial_District");',
         unique=False,
-        columns=[],
+        columns=["Memorial_District"],
         where=None,
     ),
     IndexDef(
@@ -1160,7 +1160,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Metro_Service_District_idx",
         sql='CREATE INDEX "Voter_Metro_Service_District_idx" ON public."Voter" USING btree ("Metro_Service_District");',
         unique=False,
-        columns=[],
+        columns=["Metro_Service_District"],
         where=None,
     ),
     IndexDef(
@@ -1168,7 +1168,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Metro_Service_Subdistrict_idx",
         sql='CREATE INDEX "Voter_Metro_Service_Subdistrict_idx" ON public."Voter" USING btree ("Metro_Service_Subdistrict");',
         unique=False,
-        columns=[],
+        columns=["Metro_Service_Subdistrict"],
         where=None,
     ),
     IndexDef(
@@ -1176,7 +1176,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Metro_Transit_District_idx",
         sql='CREATE INDEX "Voter_Metro_Transit_District_idx" ON public."Voter" USING btree ("Metro_Transit_District");',
         unique=False,
-        columns=[],
+        columns=["Metro_Transit_District"],
         where=None,
     ),
     IndexDef(
@@ -1184,7 +1184,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Metropolitan_Water_District_idx",
         sql='CREATE INDEX "Voter_Metropolitan_Water_District_idx" ON public."Voter" USING btree ("Metropolitan_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Metropolitan_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -1192,7 +1192,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_MiddleName_idx",
         sql='CREATE INDEX "Voter_MiddleName_idx" ON public."Voter" USING btree ("MiddleName");',
         unique=False,
-        columns=[],
+        columns=["MiddleName"],
         where=None,
     ),
     IndexDef(
@@ -1200,7 +1200,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Middle_School_District_idx",
         sql='CREATE INDEX "Voter_Middle_School_District_idx" ON public."Voter" USING btree ("Middle_School_District");',
         unique=False,
-        columns=[],
+        columns=["Middle_School_District"],
         where=None,
     ),
     IndexDef(
@@ -1208,7 +1208,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Mosquito_Abatement_District_idx",
         sql='CREATE INDEX "Voter_Mosquito_Abatement_District_idx" ON public."Voter" USING btree ("Mosquito_Abatement_District");',
         unique=False,
-        columns=[],
+        columns=["Mosquito_Abatement_District"],
         where=None,
     ),
     IndexDef(
@@ -1216,7 +1216,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Mountain_Water_District_idx",
         sql='CREATE INDEX "Voter_Mountain_Water_District_idx" ON public."Voter" USING btree ("Mountain_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Mountain_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -1224,7 +1224,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Multi_township_Assessor_idx",
         sql='CREATE INDEX "Voter_Multi_township_Assessor_idx" ON public."Voter" USING btree ("Multi_township_Assessor");',
         unique=False,
-        columns=[],
+        columns=["Multi_township_Assessor"],
         where=None,
     ),
     IndexDef(
@@ -1232,7 +1232,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Municipal_Advisory_Council_District_idx",
         sql='CREATE INDEX "Voter_Municipal_Advisory_Council_District_idx" ON public."Voter" USING btree ("Municipal_Advisory_Council_District");',
         unique=False,
-        columns=[],
+        columns=["Municipal_Advisory_Council_District"],
         where=None,
     ),
     IndexDef(
@@ -1240,7 +1240,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Municipal_Utility_District_idx",
         sql='CREATE INDEX "Voter_Municipal_Utility_District_idx" ON public."Voter" USING btree ("Municipal_Utility_District");',
         unique=False,
-        columns=[],
+        columns=["Municipal_Utility_District"],
         where=None,
     ),
     IndexDef(
@@ -1248,7 +1248,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Municipal_Utility_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Municipal_Utility_SubDistrict_idx" ON public."Voter" USING btree ("Municipal_Utility_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Municipal_Utility_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1256,7 +1256,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Municipal_Water_District_idx",
         sql='CREATE INDEX "Voter_Municipal_Water_District_idx" ON public."Voter" USING btree ("Municipal_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Municipal_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -1264,7 +1264,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Municipal_Water_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Municipal_Water_SubDistrict_idx" ON public."Voter" USING btree ("Municipal_Water_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Municipal_Water_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1272,7 +1272,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Museum_District_idx",
         sql='CREATE INDEX "Voter_Museum_District_idx" ON public."Voter" USING btree ("Museum_District");',
         unique=False,
-        columns=[],
+        columns=["Museum_District"],
         where=None,
     ),
     IndexDef(
@@ -1280,7 +1280,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Northeast_Soil_and_Water_District_idx",
         sql='CREATE INDEX "Voter_Northeast_Soil_and_Water_District_idx" ON public."Voter" USING btree ("Northeast_Soil_and_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Northeast_Soil_and_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -1288,7 +1288,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_OfficialRegDate_idx",
         sql='CREATE INDEX "Voter_OfficialRegDate_idx" ON public."Voter" USING btree ("OfficialRegDate");',
         unique=False,
-        columns=[],
+        columns=["OfficialRegDate"],
         where=None,
     ),
     IndexDef(
@@ -1296,7 +1296,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Open_Space_District_idx",
         sql='CREATE INDEX "Voter_Open_Space_District_idx" ON public."Voter" USING btree ("Open_Space_District");',
         unique=False,
-        columns=[],
+        columns=["Open_Space_District"],
         where=None,
     ),
     IndexDef(
@@ -1304,7 +1304,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Open_Space_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Open_Space_SubDistrict_idx" ON public."Voter" USING btree ("Open_Space_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Open_Space_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1312,7 +1312,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Other_idx",
         sql='CREATE INDEX "Voter_Other_idx" ON public."Voter" USING btree ("Other");',
         unique=False,
-        columns=[],
+        columns=["Other"],
         where=None,
     ),
     IndexDef(
@@ -1320,7 +1320,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Paramedic_District_idx",
         sql='CREATE INDEX "Voter_Paramedic_District_idx" ON public."Voter" USING btree ("Paramedic_District");',
         unique=False,
-        columns=[],
+        columns=["Paramedic_District"],
         where=None,
     ),
     IndexDef(
@@ -1328,7 +1328,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Park_Commissioner_District_idx",
         sql='CREATE INDEX "Voter_Park_Commissioner_District_idx" ON public."Voter" USING btree ("Park_Commissioner_District");',
         unique=False,
-        columns=[],
+        columns=["Park_Commissioner_District"],
         where=None,
     ),
     IndexDef(
@@ -1336,7 +1336,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Park_District_idx",
         sql='CREATE INDEX "Voter_Park_District_idx" ON public."Voter" USING btree ("Park_District");',
         unique=False,
-        columns=[],
+        columns=["Park_District"],
         where=None,
     ),
     IndexDef(
@@ -1344,7 +1344,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Park_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Park_SubDistrict_idx" ON public."Voter" USING btree ("Park_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Park_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1352,7 +1352,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Parties_Description_idx",
         sql='CREATE INDEX "Voter_Parties_Description_idx" ON public."Voter" USING btree ("Parties_Description");',
         unique=False,
-        columns=[],
+        columns=["Parties_Description"],
         where=None,
     ),
     IndexDef(
@@ -1360,7 +1360,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Planning_Area_District_idx",
         sql='CREATE INDEX "Voter_Planning_Area_District_idx" ON public."Voter" USING btree ("Planning_Area_District");',
         unique=False,
-        columns=[],
+        columns=["Planning_Area_District"],
         where=None,
     ),
     IndexDef(
@@ -1368,7 +1368,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Police_District_idx",
         sql='CREATE INDEX "Voter_Police_District_idx" ON public."Voter" USING btree ("Police_District");',
         unique=False,
-        columns=[],
+        columns=["Police_District"],
         where=None,
     ),
     IndexDef(
@@ -1376,7 +1376,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Port_District_idx",
         sql='CREATE INDEX "Voter_Port_District_idx" ON public."Voter" USING btree ("Port_District");',
         unique=False,
-        columns=[],
+        columns=["Port_District"],
         where=None,
     ),
     IndexDef(
@@ -1384,7 +1384,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Port_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Port_SubDistrict_idx" ON public."Voter" USING btree ("Port_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Port_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1392,7 +1392,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Power_District_idx",
         sql='CREATE INDEX "Voter_Power_District_idx" ON public."Voter" USING btree ("Power_District");',
         unique=False,
-        columns=[],
+        columns=["Power_District"],
         where=None,
     ),
     IndexDef(
@@ -1400,7 +1400,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Precinct_idx",
         sql='CREATE INDEX "Voter_Precinct_idx" ON public."Voter" USING btree ("Precinct");',
         unique=False,
-        columns=[],
+        columns=["Precinct"],
         where=None,
     ),
     IndexDef(
@@ -1408,7 +1408,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Presence_Of_Children_idx",
         sql='CREATE INDEX "Voter_Presence_Of_Children_idx" ON public."Voter" USING btree ("Presence_Of_Children");',
         unique=False,
-        columns=[],
+        columns=["Presence_Of_Children"],
         where=None,
     ),
     IndexDef(
@@ -1416,7 +1416,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_City_Commissioner_District_idx",
         sql='CREATE INDEX "Voter_Proposed_City_Commissioner_District_idx" ON public."Voter" USING btree ("Proposed_City_Commissioner_District");',
         unique=False,
-        columns=[],
+        columns=["Proposed_City_Commissioner_District"],
         where=None,
     ),
     IndexDef(
@@ -1424,7 +1424,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_City_idx",
         sql='CREATE INDEX "Voter_Proposed_City_idx" ON public."Voter" USING btree ("Proposed_City");',
         unique=False,
-        columns=[],
+        columns=["Proposed_City"],
         where=None,
     ),
     IndexDef(
@@ -1432,7 +1432,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_Community_College_idx",
         sql='CREATE INDEX "Voter_Proposed_Community_College_idx" ON public."Voter" USING btree ("Proposed_Community_College");',
         unique=False,
-        columns=[],
+        columns=["Proposed_Community_College"],
         where=None,
     ),
     IndexDef(
@@ -1440,7 +1440,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_District_idx",
         sql='CREATE INDEX "Voter_Proposed_District_idx" ON public."Voter" USING btree ("Proposed_District");',
         unique=False,
-        columns=[],
+        columns=["Proposed_District"],
         where=None,
     ),
     IndexDef(
@@ -1448,7 +1448,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_Elementary_School_District_idx",
         sql='CREATE INDEX "Voter_Proposed_Elementary_School_District_idx" ON public."Voter" USING btree ("Proposed_Elementary_School_District");',
         unique=False,
-        columns=[],
+        columns=["Proposed_Elementary_School_District"],
         where=None,
     ),
     IndexDef(
@@ -1456,7 +1456,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_Fire_District_idx",
         sql='CREATE INDEX "Voter_Proposed_Fire_District_idx" ON public."Voter" USING btree ("Proposed_Fire_District");',
         unique=False,
-        columns=[],
+        columns=["Proposed_Fire_District"],
         where=None,
     ),
     IndexDef(
@@ -1464,7 +1464,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Proposed_Unified_School_District_idx",
         sql='CREATE INDEX "Voter_Proposed_Unified_School_District_idx" ON public."Voter" USING btree ("Proposed_Unified_School_District");',
         unique=False,
-        columns=[],
+        columns=["Proposed_Unified_School_District"],
         where=None,
     ),
     IndexDef(
@@ -1472,7 +1472,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Public_Airport_District_idx",
         sql='CREATE INDEX "Voter_Public_Airport_District_idx" ON public."Voter" USING btree ("Public_Airport_District");',
         unique=False,
-        columns=[],
+        columns=["Public_Airport_District"],
         where=None,
     ),
     IndexDef(
@@ -1480,7 +1480,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Public_Regulation_Commission_idx",
         sql='CREATE INDEX "Voter_Public_Regulation_Commission_idx" ON public."Voter" USING btree ("Public_Regulation_Commission");',
         unique=False,
-        columns=[],
+        columns=["Public_Regulation_Commission"],
         where=None,
     ),
     IndexDef(
@@ -1488,7 +1488,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Public_Service_Commission_District_idx",
         sql='CREATE INDEX "Voter_Public_Service_Commission_District_idx" ON public."Voter" USING btree ("Public_Service_Commission_District");',
         unique=False,
-        columns=[],
+        columns=["Public_Service_Commission_District"],
         where=None,
     ),
     IndexDef(
@@ -1496,7 +1496,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Public_Utility_District_idx",
         sql='CREATE INDEX "Voter_Public_Utility_District_idx" ON public."Voter" USING btree ("Public_Utility_District");',
         unique=False,
-        columns=[],
+        columns=["Public_Utility_District"],
         where=None,
     ),
     IndexDef(
@@ -1504,7 +1504,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Public_Utility_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Public_Utility_SubDistrict_idx" ON public."Voter" USING btree ("Public_Utility_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Public_Utility_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1512,7 +1512,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Rapid_Transit_District_idx",
         sql='CREATE INDEX "Voter_Rapid_Transit_District_idx" ON public."Voter" USING btree ("Rapid_Transit_District");',
         unique=False,
-        columns=[],
+        columns=["Rapid_Transit_District"],
         where=None,
     ),
     IndexDef(
@@ -1520,7 +1520,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Rapid_Transit_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Rapid_Transit_SubDistrict_idx" ON public."Voter" USING btree ("Rapid_Transit_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Rapid_Transit_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1528,7 +1528,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Reclamation_District_idx",
         sql='CREATE INDEX "Voter_Reclamation_District_idx" ON public."Voter" USING btree ("Reclamation_District");',
         unique=False,
-        columns=[],
+        columns=["Reclamation_District"],
         where=None,
     ),
     IndexDef(
@@ -1536,7 +1536,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Recreation_District_idx",
         sql='CREATE INDEX "Voter_Recreation_District_idx" ON public."Voter" USING btree ("Recreation_District");',
         unique=False,
-        columns=[],
+        columns=["Recreation_District"],
         where=None,
     ),
     IndexDef(
@@ -1544,7 +1544,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Recreational_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Recreational_SubDistrict_idx" ON public."Voter" USING btree ("Recreational_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Recreational_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1552,7 +1552,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Regional_Office_of_Education_District_idx",
         sql='CREATE INDEX "Voter_Regional_Office_of_Education_District_idx" ON public."Voter" USING btree ("Regional_Office_of_Education_District");',
         unique=False,
-        columns=[],
+        columns=["Regional_Office_of_Education_District"],
         where=None,
     ),
     IndexDef(
@@ -1560,7 +1560,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Republican_Area_idx",
         sql='CREATE INDEX "Voter_Republican_Area_idx" ON public."Voter" USING btree ("Republican_Area");',
         unique=False,
-        columns=[],
+        columns=["Republican_Area"],
         where=None,
     ),
     IndexDef(
@@ -1568,7 +1568,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Republican_Convention_Member_idx",
         sql='CREATE INDEX "Voter_Republican_Convention_Member_idx" ON public."Voter" USING btree ("Republican_Convention_Member");',
         unique=False,
-        columns=[],
+        columns=["Republican_Convention_Member"],
         where=None,
     ),
     IndexDef(
@@ -1576,7 +1576,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Resort_Improvement_District_idx",
         sql='CREATE INDEX "Voter_Resort_Improvement_District_idx" ON public."Voter" USING btree ("Resort_Improvement_District");',
         unique=False,
-        columns=[],
+        columns=["Resort_Improvement_District"],
         where=None,
     ),
     IndexDef(
@@ -1584,7 +1584,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Resource_Conservation_District_idx",
         sql='CREATE INDEX "Voter_Resource_Conservation_District_idx" ON public."Voter" USING btree ("Resource_Conservation_District");',
         unique=False,
-        columns=[],
+        columns=["Resource_Conservation_District"],
         where=None,
     ),
     IndexDef(
@@ -1592,7 +1592,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_River_Water_District_idx",
         sql='CREATE INDEX "Voter_River_Water_District_idx" ON public."Voter" USING btree ("River_Water_District");',
         unique=False,
-        columns=[],
+        columns=["River_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -1600,7 +1600,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Road_Maintenance_District_idx",
         sql='CREATE INDEX "Voter_Road_Maintenance_District_idx" ON public."Voter" USING btree ("Road_Maintenance_District");',
         unique=False,
-        columns=[],
+        columns=["Road_Maintenance_District"],
         where=None,
     ),
     IndexDef(
@@ -1608,7 +1608,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Rural_Service_District_idx",
         sql='CREATE INDEX "Voter_Rural_Service_District_idx" ON public."Voter" USING btree ("Rural_Service_District");',
         unique=False,
-        columns=[],
+        columns=["Rural_Service_District"],
         where=None,
     ),
     IndexDef(
@@ -1616,7 +1616,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Sanitary_District_idx",
         sql='CREATE INDEX "Voter_Sanitary_District_idx" ON public."Voter" USING btree ("Sanitary_District");',
         unique=False,
-        columns=[],
+        columns=["Sanitary_District"],
         where=None,
     ),
     IndexDef(
@@ -1624,7 +1624,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Sanitary_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Sanitary_SubDistrict_idx" ON public."Voter" USING btree ("Sanitary_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Sanitary_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1632,7 +1632,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_School_Board_District_idx",
         sql='CREATE INDEX "Voter_School_Board_District_idx" ON public."Voter" USING btree ("School_Board_District");',
         unique=False,
-        columns=[],
+        columns=["School_Board_District"],
         where=None,
     ),
     IndexDef(
@@ -1640,7 +1640,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_School_District_Vocational_idx",
         sql='CREATE INDEX "Voter_School_District_Vocational_idx" ON public."Voter" USING btree ("School_District_Vocational");',
         unique=False,
-        columns=[],
+        columns=["School_District_Vocational"],
         where=None,
     ),
     IndexDef(
@@ -1648,7 +1648,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_School_District_idx",
         sql='CREATE INDEX "Voter_School_District_idx" ON public."Voter" USING btree ("School_District");',
         unique=False,
-        columns=[],
+        columns=["School_District"],
         where=None,
     ),
     IndexDef(
@@ -1656,7 +1656,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_School_Facilities_Improvement_District_idx",
         sql='CREATE INDEX "Voter_School_Facilities_Improvement_District_idx" ON public."Voter" USING btree ("School_Facilities_Improvement_District");',
         unique=False,
-        columns=[],
+        columns=["School_Facilities_Improvement_District"],
         where=None,
     ),
     IndexDef(
@@ -1664,7 +1664,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_School_Subdistrict_idx",
         sql='CREATE INDEX "Voter_School_Subdistrict_idx" ON public."Voter" USING btree ("School_Subdistrict");',
         unique=False,
-        columns=[],
+        columns=["School_Subdistrict"],
         where=None,
     ),
     IndexDef(
@@ -1672,7 +1672,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Service_Area_District_idx",
         sql='CREATE INDEX "Voter_Service_Area_District_idx" ON public."Voter" USING btree ("Service_Area_District");',
         unique=False,
-        columns=[],
+        columns=["Service_Area_District"],
         where=None,
     ),
     IndexDef(
@@ -1680,7 +1680,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Sewer_District_idx",
         sql='CREATE INDEX "Voter_Sewer_District_idx" ON public."Voter" USING btree ("Sewer_District");',
         unique=False,
-        columns=[],
+        columns=["Sewer_District"],
         where=None,
     ),
     IndexDef(
@@ -1688,7 +1688,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Sewer_Maintenance_District_idx",
         sql='CREATE INDEX "Voter_Sewer_Maintenance_District_idx" ON public."Voter" USING btree ("Sewer_Maintenance_District");',
         unique=False,
-        columns=[],
+        columns=["Sewer_Maintenance_District"],
         where=None,
     ),
     IndexDef(
@@ -1696,7 +1696,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Sewer_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Sewer_SubDistrict_idx" ON public."Voter" USING btree ("Sewer_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Sewer_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1704,7 +1704,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Snow_Removal_District_idx",
         sql='CREATE INDEX "Voter_Snow_Removal_District_idx" ON public."Voter" USING btree ("Snow_Removal_District");',
         unique=False,
-        columns=[],
+        columns=["Snow_Removal_District"],
         where=None,
     ),
     IndexDef(
@@ -1712,7 +1712,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Special_Reporting_District_idx",
         sql='CREATE INDEX "Voter_Special_Reporting_District_idx" ON public."Voter" USING btree ("Special_Reporting_District");',
         unique=False,
-        columns=[],
+        columns=["Special_Reporting_District"],
         where=None,
     ),
     IndexDef(
@@ -1720,7 +1720,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Special_Tax_District_idx",
         sql='CREATE INDEX "Voter_Special_Tax_District_idx" ON public."Voter" USING btree ("Special_Tax_District");',
         unique=False,
-        columns=[],
+        columns=["Special_Tax_District"],
         where=None,
     ),
     IndexDef(
@@ -1728,7 +1728,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_State_House_District_idx",
         sql='CREATE INDEX "Voter_State_House_District_idx" ON public."Voter" USING btree ("State_House_District");',
         unique=False,
-        columns=[],
+        columns=["State_House_District"],
         where=None,
     ),
     IndexDef(
@@ -1736,7 +1736,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_State_Senate_District_idx",
         sql='CREATE INDEX "Voter_State_Senate_District_idx" ON public."Voter" USING btree ("State_Senate_District");',
         unique=False,
-        columns=[],
+        columns=["State_Senate_District"],
         where=None,
     ),
     IndexDef(
@@ -1744,7 +1744,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_State_updated_at_idx",
         sql='CREATE INDEX "Voter_State_updated_at_idx" ON public."Voter" USING btree ("State", updated_at);',
         unique=False,
-        columns=[],
+        columns=["State", "updated_at"],
         where=None,
     ),
     IndexDef(
@@ -1752,7 +1752,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Storm_Water_District_idx",
         sql='CREATE INDEX "Voter_Storm_Water_District_idx" ON public."Voter" USING btree ("Storm_Water_District");',
         unique=False,
-        columns=[],
+        columns=["Storm_Water_District"],
         where=None,
     ),
     IndexDef(
@@ -1760,7 +1760,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Street_Lighting_District_idx",
         sql='CREATE INDEX "Voter_Street_Lighting_District_idx" ON public."Voter" USING btree ("Street_Lighting_District");',
         unique=False,
-        columns=[],
+        columns=["Street_Lighting_District"],
         where=None,
     ),
     IndexDef(
@@ -1768,7 +1768,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Superintendent_of_Schools_District_idx",
         sql='CREATE INDEX "Voter_Superintendent_of_Schools_District_idx" ON public."Voter" USING btree ("Superintendent_of_Schools_District");',
         unique=False,
-        columns=[],
+        columns=["Superintendent_of_Schools_District"],
         where=None,
     ),
     IndexDef(
@@ -1776,7 +1776,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_TV_Translator_District_idx",
         sql='CREATE INDEX "Voter_TV_Translator_District_idx" ON public."Voter" USING btree ("TV_Translator_District");',
         unique=False,
-        columns=[],
+        columns=["TV_Translator_District"],
         where=None,
     ),
     IndexDef(
@@ -1784,7 +1784,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Town_Council_idx",
         sql='CREATE INDEX "Voter_Town_Council_idx" ON public."Voter" USING btree ("Town_Council");',
         unique=False,
-        columns=[],
+        columns=["Town_Council"],
         where=None,
     ),
     IndexDef(
@@ -1792,7 +1792,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Town_District_idx",
         sql='CREATE INDEX "Voter_Town_District_idx" ON public."Voter" USING btree ("Town_District");',
         unique=False,
-        columns=[],
+        columns=["Town_District"],
         where=None,
     ),
     IndexDef(
@@ -1800,7 +1800,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Town_Ward_idx",
         sql='CREATE INDEX "Voter_Town_Ward_idx" ON public."Voter" USING btree ("Town_Ward");',
         unique=False,
-        columns=[],
+        columns=["Town_Ward"],
         where=None,
     ),
     IndexDef(
@@ -1808,7 +1808,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Township_Ward_idx",
         sql='CREATE INDEX "Voter_Township_Ward_idx" ON public."Voter" USING btree ("Township_Ward");',
         unique=False,
-        columns=[],
+        columns=["Township_Ward"],
         where=None,
     ),
     IndexDef(
@@ -1816,7 +1816,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Township_idx",
         sql='CREATE INDEX "Voter_Township_idx" ON public."Voter" USING btree ("Township");',
         unique=False,
-        columns=[],
+        columns=["Township"],
         where=None,
     ),
     IndexDef(
@@ -1824,7 +1824,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Transit_District_idx",
         sql='CREATE INDEX "Voter_Transit_District_idx" ON public."Voter" USING btree ("Transit_District");',
         unique=False,
-        columns=[],
+        columns=["Transit_District"],
         where=None,
     ),
     IndexDef(
@@ -1832,7 +1832,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Transit_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Transit_SubDistrict_idx" ON public."Voter" USING btree ("Transit_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Transit_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1840,7 +1840,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_TriCity_Service_District_idx",
         sql='CREATE INDEX "Voter_TriCity_Service_District_idx" ON public."Voter" USING btree ("TriCity_Service_District");',
         unique=False,
-        columns=[],
+        columns=["TriCity_Service_District"],
         where=None,
     ),
     IndexDef(
@@ -1848,7 +1848,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_US_Congressional_District_idx",
         sql='CREATE INDEX "Voter_US_Congressional_District_idx" ON public."Voter" USING btree ("US_Congressional_District");',
         unique=False,
-        columns=[],
+        columns=["US_Congressional_District"],
         where=None,
     ),
     IndexDef(
@@ -1856,7 +1856,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Unified_School_District_idx",
         sql='CREATE INDEX "Voter_Unified_School_District_idx" ON public."Voter" USING btree ("Unified_School_District");',
         unique=False,
-        columns=[],
+        columns=["Unified_School_District"],
         where=None,
     ),
     IndexDef(
@@ -1864,7 +1864,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Unified_School_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Unified_School_SubDistrict_idx" ON public."Voter" USING btree ("Unified_School_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Unified_School_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -1872,7 +1872,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Unincorporated_District_idx",
         sql='CREATE INDEX "Voter_Unincorporated_District_idx" ON public."Voter" USING btree ("Unincorporated_District");',
         unique=False,
-        columns=[],
+        columns=["Unincorporated_District"],
         where=None,
     ),
     IndexDef(
@@ -1880,7 +1880,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Unincorporated_Park_District_idx",
         sql='CREATE INDEX "Voter_Unincorporated_Park_District_idx" ON public."Voter" USING btree ("Unincorporated_Park_District");',
         unique=False,
-        columns=[],
+        columns=["Unincorporated_Park_District"],
         where=None,
     ),
     IndexDef(
@@ -1888,7 +1888,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Unprotected_Fire_District_idx",
         sql='CREATE INDEX "Voter_Unprotected_Fire_District_idx" ON public."Voter" USING btree ("Unprotected_Fire_District");',
         unique=False,
-        columns=[],
+        columns=["Unprotected_Fire_District"],
         where=None,
     ),
     IndexDef(
@@ -1896,7 +1896,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Ute_Creek_Soil_District_idx",
         sql='CREATE INDEX "Voter_Ute_Creek_Soil_District_idx" ON public."Voter" USING btree ("Ute_Creek_Soil_District");',
         unique=False,
-        columns=[],
+        columns=["Ute_Creek_Soil_District"],
         where=None,
     ),
     IndexDef(
@@ -1904,7 +1904,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Vector_Control_District_idx",
         sql='CREATE INDEX "Voter_Vector_Control_District_idx" ON public."Voter" USING btree ("Vector_Control_District");',
         unique=False,
-        columns=[],
+        columns=["Vector_Control_District"],
         where=None,
     ),
     IndexDef(
@@ -1912,7 +1912,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Veteran_Status_idx",
         sql='CREATE INDEX "Voter_Veteran_Status_idx" ON public."Voter" USING btree ("Veteran_Status");',
         unique=False,
-        columns=[],
+        columns=["Veteran_Status"],
         where=None,
     ),
     IndexDef(
@@ -1920,7 +1920,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Village_Ward_idx",
         sql='CREATE INDEX "Voter_Village_Ward_idx" ON public."Voter" USING btree ("Village_Ward");',
         unique=False,
-        columns=[],
+        columns=["Village_Ward"],
         where=None,
     ),
     IndexDef(
@@ -1928,7 +1928,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Village_idx",
         sql='CREATE INDEX "Voter_Village_idx" ON public."Voter" USING btree ("Village");',
         unique=False,
-        columns=[],
+        columns=["Village"],
         where=None,
     ),
     IndexDef(
@@ -1936,7 +1936,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Vote_By_Mail_Area_idx",
         sql='CREATE INDEX "Voter_Vote_By_Mail_Area_idx" ON public."Voter" USING btree ("Vote_By_Mail_Area");',
         unique=False,
-        columns=[],
+        columns=["Vote_By_Mail_Area"],
         where=None,
     ),
     IndexDef(
@@ -1944,7 +1944,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VoterParties_Change_Changed_Party_idx",
         sql='CREATE INDEX "Voter_VoterParties_Change_Changed_Party_idx" ON public."Voter" USING btree ("VoterParties_Change_Changed_Party");',
         unique=False,
-        columns=[],
+        columns=["VoterParties_Change_Changed_Party"],
         where=None,
     ),
     IndexDef(
@@ -1952,7 +1952,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VoterTelephones_CellConfidenceCode_idx",
         sql='CREATE INDEX "Voter_VoterTelephones_CellConfidenceCode_idx" ON public."Voter" USING btree ("VoterTelephones_CellConfidenceCode");',
         unique=False,
-        columns=[],
+        columns=["VoterTelephones_CellConfidenceCode"],
         where=None,
     ),
     IndexDef(
@@ -1960,7 +1960,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VoterTelephones_CellPhoneFormatted_idx",
         sql='CREATE INDEX "Voter_VoterTelephones_CellPhoneFormatted_idx" ON public."Voter" USING btree ("VoterTelephones_CellPhoneFormatted");',
         unique=False,
-        columns=[],
+        columns=["VoterTelephones_CellPhoneFormatted"],
         where=None,
     ),
     IndexDef(
@@ -1968,7 +1968,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VoterTelephones_LandlineConfidenceCode_idx",
         sql='CREATE INDEX "Voter_VoterTelephones_LandlineConfidenceCode_idx" ON public."Voter" USING btree ("VoterTelephones_LandlineConfidenceCode");',
         unique=False,
-        columns=[],
+        columns=["VoterTelephones_LandlineConfidenceCode"],
         where=None,
     ),
     IndexDef(
@@ -1976,7 +1976,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VoterTelephones_LandlineFormatted_idx",
         sql='CREATE INDEX "Voter_VoterTelephones_LandlineFormatted_idx" ON public."Voter" USING btree ("VoterTelephones_LandlineFormatted");',
         unique=False,
-        columns=[],
+        columns=["VoterTelephones_LandlineFormatted"],
         where=None,
     ),
     IndexDef(
@@ -1984,7 +1984,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Voter_Status_UpdatedAt_idx",
         sql='CREATE INDEX "Voter_Voter_Status_UpdatedAt_idx" ON public."Voter" USING btree ("Voter_Status_UpdatedAt");',
         unique=False,
-        columns=[],
+        columns=["Voter_Status_UpdatedAt"],
         where=None,
     ),
     IndexDef(
@@ -1992,7 +1992,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Voter_Status_idx",
         sql='CREATE INDEX "Voter_Voter_Status_idx" ON public."Voter" USING btree ("Voter_Status");',
         unique=False,
-        columns=[],
+        columns=["Voter_Status"],
         where=None,
     ),
     IndexDef(
@@ -2000,7 +2000,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VotingPerformanceEvenYearGeneralAndPrimary_idx",
         sql='CREATE INDEX "Voter_VotingPerformanceEvenYearGeneralAndPrimary_idx" ON public."Voter" USING btree ("VotingPerformanceEvenYearGeneralAndPrimary");',
         unique=False,
-        columns=[],
+        columns=["VotingPerformanceEvenYearGeneralAndPrimary"],
         where=None,
     ),
     IndexDef(
@@ -2008,7 +2008,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VotingPerformanceEvenYearGeneral_idx",
         sql='CREATE INDEX "Voter_VotingPerformanceEvenYearGeneral_idx" ON public."Voter" USING btree ("VotingPerformanceEvenYearGeneral");',
         unique=False,
-        columns=[],
+        columns=["VotingPerformanceEvenYearGeneral"],
         where=None,
     ),
     IndexDef(
@@ -2016,7 +2016,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VotingPerformanceEvenYearPrimary_idx",
         sql='CREATE INDEX "Voter_VotingPerformanceEvenYearPrimary_idx" ON public."Voter" USING btree ("VotingPerformanceEvenYearPrimary");',
         unique=False,
-        columns=[],
+        columns=["VotingPerformanceEvenYearPrimary"],
         where=None,
     ),
     IndexDef(
@@ -2024,7 +2024,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_VotingPerformanceMinorElection_idx",
         sql='CREATE INDEX "Voter_VotingPerformanceMinorElection_idx" ON public."Voter" USING btree ("VotingPerformanceMinorElection");',
         unique=False,
-        columns=[],
+        columns=["VotingPerformanceMinorElection"],
         where=None,
     ),
     IndexDef(
@@ -2032,7 +2032,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Wastewater_District_idx",
         sql='CREATE INDEX "Voter_Wastewater_District_idx" ON public."Voter" USING btree ("Wastewater_District");',
         unique=False,
-        columns=[],
+        columns=["Wastewater_District"],
         where=None,
     ),
     IndexDef(
@@ -2040,7 +2040,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Agency_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Water_Agency_SubDistrict_idx" ON public."Voter" USING btree ("Water_Agency_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Water_Agency_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -2048,7 +2048,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Agency_idx",
         sql='CREATE INDEX "Voter_Water_Agency_idx" ON public."Voter" USING btree ("Water_Agency");',
         unique=False,
-        columns=[],
+        columns=["Water_Agency"],
         where=None,
     ),
     IndexDef(
@@ -2056,7 +2056,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Conservation_District_idx",
         sql='CREATE INDEX "Voter_Water_Conservation_District_idx" ON public."Voter" USING btree ("Water_Conservation_District");',
         unique=False,
-        columns=[],
+        columns=["Water_Conservation_District"],
         where=None,
     ),
     IndexDef(
@@ -2064,7 +2064,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Conservation_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Water_Conservation_SubDistrict_idx" ON public."Voter" USING btree ("Water_Conservation_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Water_Conservation_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -2072,7 +2072,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Control_Water_Conservation_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Water_Control_Water_Conservation_SubDistrict_idx" ON public."Voter" USING btree ("Water_Control_Water_Conservation_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Water_Control_Water_Conservation_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -2080,7 +2080,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Control_Water_Conservation_idx",
         sql='CREATE INDEX "Voter_Water_Control_Water_Conservation_idx" ON public."Voter" USING btree ("Water_Control_Water_Conservation");',
         unique=False,
-        columns=[],
+        columns=["Water_Control_Water_Conservation"],
         where=None,
     ),
     IndexDef(
@@ -2088,7 +2088,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_District_idx",
         sql='CREATE INDEX "Voter_Water_District_idx" ON public."Voter" USING btree ("Water_District");',
         unique=False,
-        columns=[],
+        columns=["Water_District"],
         where=None,
     ),
     IndexDef(
@@ -2096,7 +2096,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Public_Utility_District_idx",
         sql='CREATE INDEX "Voter_Water_Public_Utility_District_idx" ON public."Voter" USING btree ("Water_Public_Utility_District");',
         unique=False,
-        columns=[],
+        columns=["Water_Public_Utility_District"],
         where=None,
     ),
     IndexDef(
@@ -2104,7 +2104,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Public_Utility_Subdistrict_idx",
         sql='CREATE INDEX "Voter_Water_Public_Utility_Subdistrict_idx" ON public."Voter" USING btree ("Water_Public_Utility_Subdistrict");',
         unique=False,
-        columns=[],
+        columns=["Water_Public_Utility_Subdistrict"],
         where=None,
     ),
     IndexDef(
@@ -2112,7 +2112,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Replacement_District_idx",
         sql='CREATE INDEX "Voter_Water_Replacement_District_idx" ON public."Voter" USING btree ("Water_Replacement_District");',
         unique=False,
-        columns=[],
+        columns=["Water_Replacement_District"],
         where=None,
     ),
     IndexDef(
@@ -2120,7 +2120,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_Replacement_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Water_Replacement_SubDistrict_idx" ON public."Voter" USING btree ("Water_Replacement_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Water_Replacement_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -2128,7 +2128,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Water_SubDistrict_idx",
         sql='CREATE INDEX "Voter_Water_SubDistrict_idx" ON public."Voter" USING btree ("Water_SubDistrict");',
         unique=False,
-        columns=[],
+        columns=["Water_SubDistrict"],
         where=None,
     ),
     IndexDef(
@@ -2136,7 +2136,7 @@ INDEXES: list[IndexDef] = [
         name="Voter_Weed_District_idx",
         sql='CREATE INDEX "Voter_Weed_District_idx" ON public."Voter" USING btree ("Weed_District");',
         unique=False,
-        columns=[],
+        columns=["Weed_District"],
         where=None,
     ),
 ]

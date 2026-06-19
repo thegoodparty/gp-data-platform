@@ -40,8 +40,27 @@ def test_extract_indexes_skips_pk_and_keeps_definition() -> None:
     )
     idxs = extract_indexes(cur, ["Voter"])
     assert [i.name for i in idxs] == ["Voter_LastName_idx", "Voter_family_idx"]
+    # columns must be parsed (build_indexes rebuilds unique indexes from them) — not left empty
+    assert idxs[0].columns == ["LastName"]
+    assert idxs[1].columns == ["Mailing_Families_FamilyID"]
     assert idxs[1].where == '("Mailing_Families_FamilyID" IS NOT NULL)'
     assert idxs[1].unique is False
+
+
+def test_extract_indexes_parses_unique_columns() -> None:
+    cur = _FakeCursor(
+        [
+            (
+                "Voter",
+                "Voter_LALVOTERID_key",
+                'CREATE UNIQUE INDEX "Voter_LALVOTERID_key" ON public."Voter" USING btree ("LALVOTERID")',
+                True,
+            )
+        ]
+    )
+    idx = extract_indexes(cur, ["Voter"])[0]
+    assert idx.unique is True
+    assert idx.columns == ["LALVOTERID"]  # populated so the unique rebuild keeps the real column
 
 
 def test_extract_primary_keys() -> None:

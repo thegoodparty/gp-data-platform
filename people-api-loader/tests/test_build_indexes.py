@@ -105,6 +105,18 @@ def test_create_index_unique_functional_raises(monkeypatch: pytest.MonkeyPatch) 
         step._create_index(_CFG, "20260609", idx)
 
 
+def test_create_index_unique_empty_columns_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A unique index with no parsed columns must NOT silently rebuild to UNIQUE("State") —
+    # guards the extraction regression the seed once had (columns=[]).
+    conn = FakeConn()
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    idx = step.IndexDef(
+        table="Voter", name="Voter_LALVOTERID_key", sql="(unused)", unique=True, columns=[], where=None
+    )
+    with pytest.raises(RuntimeError, match="no parsed columns"):
+        step._create_index(_CFG, "20260609", idx)
+
+
 def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # prod has Type_A + Type_B; new table only has a Type_A column -> Type_B missing.
     prod_conn = FakeConn().queue_result([("Type_A",), ("Type_B",)])

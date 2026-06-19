@@ -21,6 +21,52 @@ def _split_cols(cols: str) -> list[str]:
     return [c.strip().strip('"') for c in cols.split(",")]
 
 
+def _balanced(text: str, open_pos: int) -> str:
+    """Contents of the parenthesised group opening at text[open_pos] (nesting-aware)."""
+    depth = 0
+    for i in range(open_pos, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_pos + 1 : i]
+    return text[open_pos + 1 :]
+
+
+def _split_top_level(cols: str) -> list[str]:
+    """Split a column list on commas not nested inside parentheses (functional exprs)."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, c in enumerate(cols):
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "," and depth == 0:
+            parts.append(cols[start:i])
+            start = i + 1
+    parts.append(cols[start:])
+    return parts
+
+
+def _index_columns(definition: str) -> list[str]:
+    """Parse the indexed column list from a `pg_get_indexdef` string.
+
+    Anchors on the `USING <method> (...)` group and captures it balanced, so a functional
+    expression (`lower("c")`) stays intact and a trailing `WHERE (...)` isn't mistaken for a
+    column. build_indexes rebuilds unique-index DDL from these columns (to append the
+    partition key), so they must be populated, not left empty.
+    """
+    m = re.search(r"\bUSING\s+\w+\s*\(", definition, re.IGNORECASE)
+    open_pos = (m.end() - 1) if m else definition.find("(")
+    if open_pos < 0:
+        return []
+    raw = _balanced(definition, open_pos)
+    return [p.strip().strip('"') for p in _split_top_level(raw) if p.strip()]
+
+
 def extract_indexes(cur: Any, tables: list[str]) -> list[IndexDef]:
     """Non-constraint indexes (the PK/unique-constraint-backing indexes are excluded by the query)."""
     cur.execute(
@@ -45,7 +91,7 @@ def extract_indexes(cur: Any, tables: list[str]) -> list[IndexDef]:
                 name=name,
                 sql=definition if definition.rstrip().endswith(";") else definition + ";",
                 unique=bool(is_unique) or bool(_UNIQUE_RE.match(definition)),
-                columns=[],  # manifest-only; the verbatim sql is what gets re-issued
+                columns=_index_columns(definition),
                 where=where_m.group("where").strip() if where_m else None,
             )
         )
