@@ -3,8 +3,10 @@
 `LoaderConfig.from_env()` is the one entrypoint. Every step accepts a
 `LoaderConfig` and a `run_date` — no step reaches into `os.environ` directly.
 
-The one secret we can't avoid (the RDS master password) is fetched lazily
-from AWS Secrets Manager — never read from the process environment. This
+Connections are never assembled from a process-env password. Both clusters
+are reached through SSM SecureString connection strings: the Present cluster
+via `db_conn_param`, and the freshly-provisioned cluster via `new_conn_param`
+(provision writes that one, embedding the generated master password). This
 module hard-fails if `VOTER_DB_MASTER_PASSWORD` is set, so nobody can paper
 over that contract by exporting it.
 """
@@ -21,10 +23,13 @@ DEFAULT_AWS_REGION = "us-west-2"
 DEFAULT_S3_BUCKET = "gp-voter-loader"
 DEFAULT_DATABRICKS_TABLE = "goodparty_data_catalog.dbt.int__l2_nationwide_uniform"
 
-# The Present-cluster connection string lives in SSM Parameter Store as a SecureString,
-# `people-db-connection-string-{env}` (env from LOADER_ENV, dev/qa/prod). connect_prod
-# fetches and decrypts it at connect time — nothing connection-related is committed here.
+# Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
+# (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
+# provisioned cluster is `{CONN_PARAM_PREFIX}-{env}-{run_date}` (unique per run, no collision
+# with the serving cluster). connect_prod/connect_new fetch and decrypt at connect time —
+# nothing connection-related is committed here.
 DEFAULT_DB_ENV = "dev"
+CONN_PARAM_PREFIX = "people-db-connection-string"
 
 # Infrastructure identifiers (AWS account ID, VPC / subnet group / security group / KMS
 # key, plus the new cluster's DB name/user/port) are intentionally NOT hardcoded — this
@@ -40,6 +45,9 @@ DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
 DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
 DEFAULT_KMS_KEY_ARN = _PLACEHOLDER
 DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
+# Durable rds-s3-import role (created once by platform/DATA-1856, not per run). provision
+# references and attaches it via PassRole; it does not create it.
+DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 
 # Load-phase instance. Prod is serverless, but we use provisioned for load
@@ -53,6 +61,16 @@ DEFAULT_ENGINE_VERSION = "16.8"
 # only so we can detect and refuse it. See `LoaderConfig.from_env()`.
 _FORBIDDEN_ENV_VAR = "VOTER_DB_MASTER_PASSWORD"
 
+# DDL generation reads column schemas from these dbt marts (Unity Catalog). The PG table
+# name (key) maps to the mart's fully-qualified name. Default schema matches the int model.
+DEFAULT_MART_CATALOG_SCHEMA = "goodparty_data_catalog.dbt"
+_MART_MODELS = {
+    "Voter": "m_people_api__voter",
+    "District": "m_people_api__district",
+    "DistrictStats": "m_people_api__districtstats",
+    "DistrictVoter": "m_people_api__districtvoter",
+}
+
 
 @dataclass(slots=True, kw_only=True)
 class LoaderConfig(BaseLoaderConfig):
@@ -65,6 +83,8 @@ class LoaderConfig(BaseLoaderConfig):
 
     databricks_table: str
 
+    # Deployment env (dev/qa/prod) — keys the SSM connection-string parameter names.
+    db_env: str
     # SSM Parameter Store name holding the Present-cluster connection string (SecureString).
     db_conn_param: str
 
@@ -79,6 +99,7 @@ class LoaderConfig(BaseLoaderConfig):
     db_subnet_group: str
     security_group_id: str
     kms_key_arn: str
+    s3_import_role_arn: str
 
     # New cluster defaults
     engine_version: str
@@ -86,13 +107,16 @@ class LoaderConfig(BaseLoaderConfig):
     serve_min_acu: float
     serve_max_acu: float
 
+    # PG table name -> Databricks mart FQN (column/type source for emit-ddl).
+    mart_fqns: dict[str, str]
+
     @classmethod
     def from_env(cls) -> LoaderConfig:
         if _FORBIDDEN_ENV_VAR in os.environ:
             raise RuntimeError(
-                f"${_FORBIDDEN_ENV_VAR} is set in the process environment. The "
-                "loader fetches the RDS master password from AWS Secrets Manager "
-                "at runtime; env-var passwords are not allowed. Unset it and re-run."
+                f"${_FORBIDDEN_ENV_VAR} is set in the process environment. The loader "
+                "builds connections from SSM SecureString connection strings at runtime; "
+                "env-var passwords are not allowed. Unset it and re-run."
             )
 
         # Tagging for loader-created resources. The IAM role this loader runs
@@ -108,15 +132,18 @@ class LoaderConfig(BaseLoaderConfig):
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
         # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
         env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
-        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"people-db-connection-string-{env}")
+        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
+        mart_schema = os.environ.get("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
+        mart_fqns = {pg: f"{mart_schema}.{model}" for pg, model in _MART_MODELS.items()}
         return cls(
             aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
             databricks_table=os.environ.get("LOADER_DATABRICKS_TABLE", DEFAULT_DATABRICKS_TABLE),
+            db_env=env,
             db_conn_param=db_conn_param,
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
             prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
@@ -126,10 +153,12 @@ class LoaderConfig(BaseLoaderConfig):
             db_subnet_group=os.environ.get("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
             security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
             kms_key_arn=os.environ.get("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
+            s3_import_role_arn=os.environ.get("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
             engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
             serve_max_acu=float(os.environ.get("LOADER_SERVE_MAX_ACU", DEFAULT_SERVE_MAX_ACU)),
+            mart_fqns=mart_fqns,
             _tags=tags,
         )
 
@@ -142,11 +171,9 @@ class LoaderConfig(BaseLoaderConfig):
     def new_writer_instance_id(self, run_date: str) -> str:
         return f"gp-people-db-{run_date}-writer"
 
-    def new_master_secret_id(self, run_date: str) -> str:
-        return f"gp-people-db/{run_date}/master"
-
-    def new_iam_role_name(self, run_date: str) -> str:
-        return f"rds-s3-import-{run_date}"
+    def new_conn_param(self, run_date: str) -> str:
+        """SSM SecureString name for the provisioned cluster's connection string."""
+        return f"{CONN_PARAM_PREFIX}-{self.db_env}-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
         return f"gp-people-db-{run_date}-load"

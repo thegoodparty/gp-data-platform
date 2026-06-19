@@ -95,7 +95,7 @@ class ProvisionManifest(ManifestBase):
     vpc_endpoint_id: str
     load_parameter_group: str
     serve_parameter_group: str
-    master_secret_id: str
+    conn_param: str
 
 
 class SchemaManifest(ManifestBase):

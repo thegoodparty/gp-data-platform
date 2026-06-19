@@ -1,9 +1,9 @@
 """Step 5 — build the PK + indexes on the unified Voter table, then ANALYZE (DATA-1853).
 
-Parses the PK, the LALVOTERID unique, and the plain indexes from the committed
-prod snapshot and applies them to public."Voter" in parallel (concurrent
-CREATE INDEX on one table run in separate sessions). `CREATE INDEX` (not
-CONCURRENTLY) since the cluster is idle. No FKs exist in this schema.
+Reads the PK, the LALVOTERID unique, and the plain indexes from `schema_spec`
+(the pg_catalog-sourced `_serving_seed`) and applies them to public."Voter" in
+parallel (concurrent CREATE INDEX on one table run in separate sessions).
+`CREATE INDEX` (not CONCURRENTLY) since the cluster is idle. No FKs exist in this schema.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import psycopg
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, connect_prod, resolve_writer_endpoint
+from loader.people_api.db import connect_new, connect_prod
 from loader.people_api.manifests import (
     IndexManifest,
     IndexSpec,
@@ -24,13 +24,8 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.index_specs import (
-    IndexDef,
-    PrimaryKey,
-    parse_indexes,
-    parse_primary_keys,
-)
-from loader.people_api.schema.snapshot import load_prod_dump
+from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
+from loader.people_api.schema.schema_spec import indexes_for, primary_key_for
 
 log = get_logger(__name__)
 
@@ -65,10 +60,10 @@ def _rewrite_index_sql(sql: str) -> str:
     return sql
 
 
-def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk: PrimaryKey) -> None:
+def _add_primary_key(cfg: LoaderConfig, run_date: str, pk: PrimaryKey) -> None:
     cols = ", ".join(f'"{c}"' for c in pk.columns)
     sql = f'ALTER TABLE public."{pk.table}" ADD CONSTRAINT "{pk.constraint}" PRIMARY KEY ({cols})'
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         _apply_session(cur)
         try:
             cur.execute(sql)  # ty: ignore[no-matching-overload]
@@ -80,12 +75,18 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, writer_endpoint: str, pk:
             log.info("indexes.pk_exists", table=pk.table, constraint=pk.constraint)
 
 
-def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: IndexDef) -> None:
+def _create_index(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
     if idx.unique:
         # We rebuild a unique index from its parsed columns (to append the partition
-        # key), requoting each as an identifier. That's only valid for plain columns:
-        # an expression index (e.g. lower("c")) would become invalid DDL. The current
-        # snapshot has none; fail loudly rather than emit broken SQL if one appears.
+        # key), requoting each as an identifier. Empty columns would silently emit a
+        # wrong UNIQUE("State") — fail loudly instead (guards an extraction regression).
+        if not idx.columns:
+            raise RuntimeError(
+                f'unique index "{idx.name}" has no parsed columns; cannot rebuild it with the '
+                "partition key without dropping its real columns"
+            )
+        # Rebuilding is only valid for plain columns: an expression index (e.g. lower("c"))
+        # would become invalid DDL. The current seed has none; fail loudly if one appears.
         expr_cols = [c for c in idx.columns if "(" in c]
         if expr_cols:
             raise RuntimeError(
@@ -109,19 +110,19 @@ def _create_index(cfg: LoaderConfig, run_date: str, writer_endpoint: str, idx: I
         sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols}){where_clause}'
     else:
         sql = _rewrite_index_sql(idx.sql)
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         _apply_session(cur)
         cur.execute(sql)  # ty: ignore[no-matching-overload]
         log.info("indexes.built", table=idx.table, name=idx.name, unique=idx.unique)
 
 
-def _analyze(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> None:
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+def _analyze(cfg: LoaderConfig, run_date: str) -> None:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute('ANALYZE public."Voter"')
         log.info("indexes.analyzed", table=_TARGET_TABLE)
 
 
-def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> list[str] | None:
+def _l2type_coverage(cfg: LoaderConfig, run_date: str) -> list[str] | None:
     """l2Type values in prod org_districts not present as columns on Voter.
 
     Returns the missing list, or `None` when the check was skipped because
@@ -136,7 +137,7 @@ def _l2type_coverage(cfg: LoaderConfig, run_date: str, writer_endpoint: str) -> 
         log.warning("indexes.l2type.skip", error=str(e))
         return None
 
-    with connect_new(cfg, run_date, writer_endpoint) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema='public' AND table_name='Voter'"
@@ -154,13 +155,12 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
         )
         return existing
 
-    writer_endpoint = resolve_writer_endpoint(cfg, run_date)
     started = datetime.now(UTC)
     log.info("indexes.start")
 
-    dump = load_prod_dump(cfg, run_date)
-    pks = [p for p in parse_primary_keys(dump) if p.table == _TARGET_TABLE]
-    idxs = [i for i in parse_indexes(dump) if i.table == _TARGET_TABLE]
+    pk = primary_key_for(_TARGET_TABLE)
+    pks = [pk] if pk is not None else []
+    idxs = indexes_for(_TARGET_TABLE)
     log.info("indexes.parsed", primary_keys=len(pks), indexes=len(idxs))
 
     # Partition key "State" must be part of every PK/unique on the partitioned table.
@@ -171,9 +171,9 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     ]
 
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
-        """Run `fn(cfg, run_date, writer_endpoint, item)` across items, fail-fast."""
+        """Run `fn(cfg, run_date, item)` across items, fail-fast."""
         with ThreadPoolExecutor(max_workers=parallelism) as executor:
-            futures = [executor.submit(fn, cfg, run_date, writer_endpoint, item) for item in items]
+            futures = [executor.submit(fn, cfg, run_date, item) for item in items]
             for fut in as_completed(futures):
                 fut.result()
 
@@ -182,10 +182,10 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     _build_in_parallel(_create_index, idxs)
 
     # 3. ANALYZE.
-    _analyze(cfg, run_date, writer_endpoint)
+    _analyze(cfg, run_date)
 
     # 4. l2Type coverage.
-    missing = _l2type_coverage(cfg, run_date, writer_endpoint)
+    missing = _l2type_coverage(cfg, run_date)
     if missing is None:
         log.warning("indexes.l2type.skipped", reason="org_districts unreachable")
     elif missing:

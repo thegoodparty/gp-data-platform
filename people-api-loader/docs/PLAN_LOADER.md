@@ -22,8 +22,20 @@
 > from an SSM Parameter Store SecureString, `people-db-connection-string-{env}` (env from
 > `LOADER_ENV`, dev/qa/prod; dev and qa share a value, prod is separate). Mentions of
 > `~/.pg_service.conf [people]` / `service=people` / `LOADER_PROD_CONFIG_SECRET_ID` below
-> are superseded by this. The new (provisioned) cluster still uses its Secrets Manager
-> master password.
+> are superseded by this. The new (provisioned) cluster is reached the same way:
+> `connect_new` reads `people-db-connection-string-{env}-{date}`, an SSM SecureString that
+> `provision` writes with the generated master password embedded in the `postgresql://`
+> URL. The loader no longer uses AWS Secrets Manager at all; prose below mentioning
+> `gp-people-db/{date}/master` secrets, `_ensure_master_secret`, or `secretsmanager:*`
+> grants is superseded.
+>
+> **Schema source (DATA-1904):** the committed `schema/data/prod_dump.sql` is retired.
+> The Voter table DDL is generated from the `m_people_api__voter` mart by `loader emit-ddl`
+> into `schema/data/target_schema.sql` (columns/types from Databricks introspection + a
+> declared Prisma layer in `schema_spec`); the PK + ~266 indexes come from `_serving_seed.py`,
+> captured from the serving cluster's `pg_catalog` by `loader extract-serving-structure`.
+> `create-schema`/`copy`/`build-indexes` read those generated artifacts. Scope is Voter-only;
+> the District family is built by the dbt write path.
 
 ## Context
 

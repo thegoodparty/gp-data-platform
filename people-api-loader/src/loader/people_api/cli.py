@@ -61,6 +61,39 @@ def inspect_prod(
     step.run(cfg, run_date)
 
 
+@app.command(name="extract-serving-structure")
+def extract_serving_structure() -> None:
+    """Bootstrap: capture prod PK/indexes/FKs into schema/_serving_seed.py (committed)."""
+    from pathlib import Path
+
+    from loader.people_api.db import connect_prod
+    from loader.people_api.schema import serving_structure as ss
+    from loader.people_api.schema.serving_seed_writer import render_seed_module
+
+    cfg = _setup()
+    tables = ["Voter", "District", "DistrictStats", "DistrictVoter"]
+    with connect_prod(cfg) as conn, conn.cursor() as cur:
+        pks = ss.extract_primary_keys(cur, tables)
+        idxs = ss.extract_indexes(cur, tables)
+        fks = ss.extract_foreign_keys(cur, tables)
+    out = Path(__file__).parent / "schema" / "_serving_seed.py"
+    out.write_text(render_seed_module(pks, idxs, fks), encoding="utf-8")
+    typer.echo(f"wrote {out} ({len(pks)} PKs, {len(idxs)} indexes, {len(fks)} FKs)")
+
+
+@app.command(name="emit-ddl")
+def emit_ddl() -> None:
+    """Render schema/data/target_schema.sql from the people_api marts (committed artifact)."""
+    from pathlib import Path
+
+    from loader.people_api.schema.emit_ddl import render_target_schema
+
+    cfg = _setup(verify_aws=False)
+    out = Path(__file__).parent / "schema" / "data" / "target_schema.sql"
+    out.write_text(render_target_schema(cfg), encoding="utf-8")
+    typer.echo(f"wrote {out}")
+
+
 @app.command()
 def unload(
     run_date: RunDateArg,

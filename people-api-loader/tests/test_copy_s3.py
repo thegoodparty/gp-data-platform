@@ -32,7 +32,7 @@ def _unload(files, counts):
 def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    step._copy_one_file(_CFG, "20260609", "wh", "voter_export_20260609/state_id=TX/part-0.csv", _COLS)
+    step._copy_one_file(_CFG, "20260609", "voter_export_20260609/state_id=TX/part-0.csv", _COLS)
     sql = executed_sql(conn)
     assert any("aws_s3.table_import_from_s3" in s for s in sql)
     # all five session SETs run before the import
@@ -57,7 +57,6 @@ def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) ->
     r = step._load_state(
         cfg=_CFG,
         run_date="20260609",
-        writer_endpoint="wh",
         state="TX",
         expected_rows=100,
         s3_keys=["k"],
@@ -71,8 +70,7 @@ def test_run_completes_and_records_state(monkeypatch: pytest.MonkeyPatch) -> Non
     captured: dict = {}
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -111,8 +109,7 @@ def test_full_run_raises_and_writes_no_manifest_when_incomplete(monkeypatch: pyt
     wrote: dict = {}
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100, "CA": 200})
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -129,8 +126,7 @@ def test_state_filter_partial_writes_no_manifest(monkeypatch: pytest.MonkeyPatch
     wrote: dict = {}
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100, "CA": 200})
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -148,7 +144,6 @@ def test_load_state_partial_reload_deletes_then_loads(monkeypatch: pytest.Monkey
     r = step._load_state(
         cfg=_CFG,
         run_date="20260609",
-        writer_endpoint="wh",
         state="TX",
         expected_rows=100,
         s3_keys=["k"],
@@ -167,7 +162,6 @@ def test_load_state_skip_path_does_not_delete(monkeypatch: pytest.MonkeyPatch) -
     step._load_state(
         cfg=_CFG,
         run_date="20260609",
-        writer_endpoint="wh",
         state="TX",
         expected_rows=100,
         s3_keys=["k"],
@@ -196,8 +190,7 @@ def test_state_filter_reloads_carried_partial_state(monkeypatch: pytest.MonkeyPa
     )
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
     )
@@ -238,8 +231,7 @@ def test_state_filter_reloads_fully_loaded_state(monkeypatch: pytest.MonkeyPatch
     )
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=10)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: existing if name == "copy" else unload
     )
@@ -265,8 +257,7 @@ def test_state_filter_no_loadable_files_raises(monkeypatch: pytest.MonkeyPatch) 
     # --state TX but every TX file is zero-byte (filtered out) -> must raise, not silently no-op.
     files = [SimpleNamespace(state="TX", s3_key="state_id=TX/part-0.csv", size_bytes=0)]
     unload = _unload(files, {"TX": 100})
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
-    monkeypatch.setattr(step, "load_prod_dump", lambda cfg, rd: _DDL)
+    monkeypatch.setattr(step, "load_target_schema", lambda cfg, rd: _DDL)
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "copy" else unload
     )
@@ -283,7 +274,6 @@ def test_load_state_acquires_advisory_lock(monkeypatch: pytest.MonkeyPatch) -> N
     step._load_state(
         cfg=_CFG,
         run_date="20260609",
-        writer_endpoint="wh",
         state="TX",
         expected_rows=100,
         s3_keys=["k"],

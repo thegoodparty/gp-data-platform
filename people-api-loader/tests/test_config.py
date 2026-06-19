@@ -45,3 +45,14 @@ def test_from_env_db_conn_param_full_override(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("LOADER_ENV", "prod")
     monkeypatch.setenv("LOADER_DB_CONN_PARAM", "custom/param/name")
     assert LoaderConfig.from_env().db_conn_param == "custom/param/name"
+
+
+def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    for k in list(os.environ):
+        if k.startswith("LOADER_MART_"):
+            monkeypatch.delenv(k, raising=False)
+    cfg = LoaderConfig.from_env()
+    assert cfg.mart_fqns["Voter"] == "goodparty_data_catalog.dbt.m_people_api__voter"
+    assert set(cfg.mart_fqns) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
