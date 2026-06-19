@@ -23,7 +23,9 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col,
     coalesce,
+    count,
     current_timestamp,
+    isnan,
     lit,
     log,
     lower,
@@ -75,7 +77,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     candidacy = dbt.ref("candidacy")
     election   = dbt.ref("election")
 
-    # bring in state, seats_available, number_of_opponents from the election table
+    # bring in state, seats_available, and number_of_opponents fallback from election table
     # (state is not on the candidacy mart; election.state is already a 2-letter abbreviation)
     election_fields = election.select(
         col("gp_election_id"),
@@ -84,7 +86,21 @@ def model(dbt, session: SparkSession) -> DataFrame:
         col("number_of_opponents").alias("raw_n_opponents"),
     )
 
-    df = candidacy.join(election_fields, on="gp_election_id", how="left")
+    # count candidacies per election from the mart (~75% fill vs ~2.6% for the pre-computed column)
+    # only trust this count when > 1: a count of 1 may mean we only ingested one candidate,
+    # not that the race is genuinely uncontested
+    n_candidates_per_election = (
+        candidacy
+        .filter(col("gp_election_id").isNotNull())
+        .groupBy("gp_election_id")
+        .agg(count("*").alias("n_candidates_mart"))
+    )
+
+    df = (
+        candidacy
+        .join(election_fields, on="gp_election_id", how="left")
+        .join(n_candidates_per_election, on="gp_election_id", how="left")
+    )
 
     df = (
         df
@@ -98,12 +114,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .otherwise(col("seats_available").cast("int")),
         )
 
-        # n_candidates from opponents field ("10+" → 11, empty → null)
+        # n_candidates: trust mart count when > 1, else fall back to election column, else null
         .withColumn(
             "n_candidates",
-            when(col("raw_n_opponents") == "10+", lit(11))
-            .when(col("raw_n_opponents").isNull() | (col("raw_n_opponents") == ""), None)
-            .otherwise(col("raw_n_opponents").cast("int") + 1),
+            when(col("n_candidates_mart") > 1, col("n_candidates_mart"))
+            .when(
+                col("raw_n_opponents").isNotNull() & (col("raw_n_opponents") != ""),
+                when(col("raw_n_opponents") == "10+", lit(11))
+                .otherwise(col("raw_n_opponents").cast("int") + 1),
+            )
+            .otherwise(None),
         )
 
         # derived features
@@ -115,8 +135,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
         )
         .withColumn(
             "partisan_contest",
-            when(col("is_partisan").isNull(), None)
-            .when(col("is_partisan"), lit(1))
+            when(col("is_partisan").isNotNull(), when(col("is_partisan"), lit(1)).otherwise(lit(0)))
+            .when(col("level").isin("federal", "state"), lit(1))
             .otherwise(lit(0)),
         )
         .withColumn("is_unexpired", lit(False))
@@ -161,8 +181,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
     for modelname, score_col in waterfall:
         df_pd = _score_using_model(df_pd, modelname, score_col)
 
+    score_cols = ["y_score0a", "y_score0b", "y_score2", "y_score3", "y_score1a"]
+
+    df_scored = spark.createDataFrame(df_pd.to_dict("records"))
+
+    # pandas NaN survives as float NaN in Spark (not null) — convert explicitly
+    # so COALESCE and comparisons behave correctly
+    for s in score_cols:
+        df_scored = df_scored.withColumn(s, when(col(s).isNull() | isnan(col(s)), None).otherwise(col(s)))
+
     df_scored = (
-        spark.createDataFrame(df_pd.to_dict("records"))
+        df_scored
         .withColumn(
             "viability_rating_2_0",
             round(
