@@ -897,3 +897,127 @@ def test_read_provenance_rows_keys_by_event_type():
     assert set(rows) == {"Event A", "Event B"}
     assert rows["Event A"]["instrumented_commit"] == "aaaa"
     assert rows["Event B"]["code_status"] == "present"
+
+
+# --------------------------------------------------------------------------- #
+# run_refresh -- orchestration wiring
+# --------------------------------------------------------------------------- #
+
+# A window stream that net-removes only Event B (newer than the watermark).
+_REFRESH_STREAM = [
+    _header("eeee", "eeee", "2026-06-18", "feat: remove Event B (#999)"),
+    "diff --git a/x.ts b/x.ts",
+    "--- a/x.ts",
+    "+++ b/x.ts",
+    "@@ -1,2 +1,1 @@",
+    "-  b: 'Event B',",
+]
+
+_EXISTING_ROWS = [
+    (
+        "Event A",
+        "event_a",
+        "aaaa",
+        None,
+        "2025-02-01",
+        None,
+        None,
+        None,
+        "present",
+        True,
+        "2025-02-01",
+        "2026-01-01T00:00:00",
+    ),
+    (
+        "Event B",
+        "event_b",
+        "aaaa",
+        None,
+        "2025-02-01",
+        None,
+        None,
+        None,
+        "present",
+        True,
+        "2025-02-01",
+        "2026-01-01T00:00:00",
+    ),
+]
+
+
+def test_run_refresh_falls_back_to_full_backfill_when_no_watermark(monkeypatch):
+    called = {}
+
+    def fake_backfill(cursor, root, since, now, **kwargs):
+        called["since"] = since
+        return [{"event_type": "Event A"}]
+
+    monkeypatch.setattr(bf, "run_backfill", fake_backfill)
+    cur = RefreshCursor(["Event A", "Event B"], watermark_row=None)
+    rows = bf.run_refresh(cur, "/omni", "2024-06-01", datetime(2026, 6, 18, tzinfo=UTC))
+    assert called["since"] == "2024-06-01"
+    assert rows == [{"event_type": "Event A"}]
+
+
+def test_run_refresh_walks_bounded_range_from_watermark(monkeypatch):
+    captured = {}
+
+    def fake_git_log(root, since, paths, ref=None):
+        captured["ref"] = ref
+        captured["since"] = since
+        return iter(_REFRESH_STREAM)
+
+    monkeypatch.setattr(bf, "run_git_log", fake_git_log)
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda root, events, paths, ref="HEAD": "")
+    monkeypatch.setattr(bf, "git_head_sha", lambda root, ref="HEAD": "newhead")
+    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/develop")
+    monkeypatch.setattr(bf, "git_commit_count", lambda root, since, paths, ref="HEAD": 50)
+
+    wm = ("oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
+    cur = RefreshCursor(["Event A", "Event B"], watermark_row=wm, existing_rows=_EXISTING_ROWS)
+    bf.run_refresh(cur, "/omni", "2024-06-01", datetime(2026, 6, 18, tzinfo=UTC))
+    assert captured["ref"] == "oldsha..origin/develop"
+    assert captured["since"] is None  # the range supersedes --since
+
+
+def test_run_refresh_merges_only_affected_events_and_advances_watermark(monkeypatch):
+    monkeypatch.setattr(bf, "run_git_log", lambda root, since, paths, ref=None: iter(_REFRESH_STREAM))
+    # Event B absent at HEAD -> grep empty -> code_status removed
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda root, events, paths, ref="HEAD": "")
+    monkeypatch.setattr(bf, "git_head_sha", lambda root, ref="HEAD": "newhead")
+    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/develop")
+    monkeypatch.setattr(bf, "git_commit_count", lambda root, since, paths, ref="HEAD": 50)
+
+    wm = ("oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
+    cur = RefreshCursor(["Event A", "Event B"], watermark_row=wm, existing_rows=_EXISTING_ROWS)
+    rows = bf.run_refresh(cur, "/omni", "2024-06-01", datetime(2026, 6, 18, tzinfo=UTC))
+
+    # only Event B is rewritten, and its existing instrumentation is preserved
+    assert [r["event_type"] for r in rows] == ["Event B"]
+    assert rows[0]["instrumented_commit"] == "aaaa"
+    assert rows[0]["code_status"] == "removed"
+    assert rows[0]["retired_commit"] == "eeee"
+
+    inserts = [(s, p) for s, p in cur.executed if s.startswith("INSERT INTO")]
+    assert len(inserts) == 1
+    assert inserts[0][0].count("?") == 1 * len(PROVENANCE_COLUMNS)  # exactly one row
+
+    wm_merges = [(s, p) for s, p in cur.executed if "ON t.job_name = s.job_name" in s]
+    assert len(wm_merges) == 1
+    assert wm_merges[0][1] == (bf.JOB_NAME, "newhead", "origin/develop", 50, "2026-06-18T00:00:00")
+
+
+def test_run_refresh_advances_watermark_when_nothing_changed(monkeypatch):
+    monkeypatch.setattr(bf, "run_git_log", lambda root, since, paths, ref=None: iter([]))
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda root, events, paths, ref="HEAD": "")
+    monkeypatch.setattr(bf, "git_head_sha", lambda root, ref="HEAD": "newhead")
+    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/develop")
+    monkeypatch.setattr(bf, "git_commit_count", lambda root, since, paths, ref="HEAD": 50)
+
+    wm = ("oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
+    cur = RefreshCursor(["Event A", "Event B"], watermark_row=wm, existing_rows=_EXISTING_ROWS)
+    rows = bf.run_refresh(cur, "/omni", "2024-06-01", datetime(2026, 6, 18, tzinfo=UTC))
+
+    assert rows == []
+    assert not [s for s, _ in cur.executed if s.startswith("INSERT INTO")]  # no provenance write
+    assert any("ON t.job_name = s.job_name" in s for s, _ in cur.executed)  # watermark still advanced

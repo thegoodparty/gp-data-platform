@@ -811,6 +811,64 @@ def run_backfill(
     return rows
 
 
+def run_refresh(
+    cursor: Any,
+    root: str,
+    since: str | None,
+    now: datetime,
+    table: str = PROVENANCE_TABLE,
+    state_table: str = STATE_TABLE,
+    ref: str = DEPLOY_REF,
+    pr_resolver: Callable[[str], str | None] | None = None,
+) -> list[dict]:
+    """Incremental refresh bounded by the SHA watermark; full backfill when there is none.
+
+    ``since`` is used only on the no-watermark fallback path. On the incremental path the
+    ``<last_sha>..ref`` range supersedes any date bound. Always advances the watermark so
+    the next run resumes from HEAD; only MERGEs provenance rows for events that changed.
+    """
+    updated_at = now.replace(tzinfo=None).isoformat(timespec="seconds")
+    watermark = read_watermark(cursor, state_table)
+    if watermark is None:
+        print("No watermark found -> full backfill", file=sys.stderr)
+        return run_backfill(
+            cursor, root, since, now, table=table, state_table=state_table, ref=ref, pr_resolver=pr_resolver
+        )
+
+    last_sha = watermark["last_processed_sha"]
+    events = fetch_event_universe(cursor)
+    range_ref = f"{last_sha}..{ref}"
+    print(f"Refresh: walking git log -p {range_ref} {' '.join(INSTRUMENTATION_PATHS)} ...", file=sys.stderr)
+
+    lines = run_git_log(root, None, INSTRUMENTATION_PATHS, range_ref)
+    acc = parse_git_log(lines, compile_event_pattern(events))
+    affected = sorted(acc.keys())
+    print(f"Affected events in window: {len(affected)}", file=sys.stderr)
+
+    rows: list[dict] = []
+    if affected:
+        existing = read_provenance_rows(cursor, table)
+        grep_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, ref)
+        present = present_at_head(affected, grep_text)
+        for ev in affected:
+            merged = merge_provenance_entry(existing.get(ev), acc[ev])
+            rows.append(build_provenance_row(ev, merged, present.get(ev), updated_at))
+        _, filled = resolve_pr_gaps(rows, pr_resolver)
+        if pr_resolver is not None:
+            print(f"Merge-walk PR backfill: filled {filled} *_pr gaps", file=sys.stderr)
+        write_provenance(cursor, rows, table)
+
+    write_watermark(
+        cursor,
+        git_head_sha(root, ref),
+        git_head_ref(root, ref),
+        git_commit_count(root, None, INSTRUMENTATION_PATHS, ref),
+        updated_at,
+        state_table,
+    )
+    return rows
+
+
 def _summarize(rows: Sequence[dict]) -> str:
     by_status: dict[str, int] = {}
     for r in rows:
