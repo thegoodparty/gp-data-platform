@@ -48,7 +48,15 @@ with
     general_winning_stages as (
         select gp_election_stage_id, votes_received, election_stage_date
         from {{ ref("candidacy_stage") }}
-        where is_winner and lower(election_stage) like '%general%'
+        where
+            is_winner
+            and lower(election_stage) like '%general%'
+            -- 2026+ only: the civics path is scoped to the post-cutover window
+            -- (matching this model's stated scope). Earlier (Nov 2025) general
+            -- results are owned by the DDHQ supplement below; without this floor a
+            -- leaked 2025 civics winner would occupy per_position and block the
+            -- supplement for that office via the NOT IN guard.
+            and election_stage_date >= date '2026-01-01'
     ),
 
     -- Resolve the office straight from election_stage (which carries
@@ -158,7 +166,12 @@ with
             max(state_postal_code) as state,
             max(official_office_name) as official_office_name,
             max(election_date) as election_date,
-            sum(try_cast(votes as bigint)) as total_votes_cast,
+            -- race-level ballot count DDHQ supplies on every candidate row; do NOT
+            -- sum per-candidate votes (a multi-seat voter casts up to N votes, so
+            -- the sum over-counts the denominator N-fold)
+            max(
+                try_cast(total_number_of_ballots_in_race as bigint)
+            ) as total_votes_cast,
             -- the winner's votes; fall back to the top vote-getter when DDHQ did
             -- not flag a winner (the top vote-getter is the winner)
             coalesce(
