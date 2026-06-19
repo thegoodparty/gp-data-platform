@@ -21,8 +21,8 @@ import numpy as np
 import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
-    col,
     coalesce,
+    col,
     count,
     current_timestamp,
     isnan,
@@ -36,15 +36,11 @@ from pyspark.sql.functions import (
 
 def _score_using_model(df: pd.DataFrame, modelname: str, score_col: str) -> pd.DataFrame:
     client = mlflow.tracking.MlflowClient()
-    model = mlflow.sklearn.load_model(
-        f"models:/goodparty_data_catalog.model_predictions.{modelname}@prod"
-    )
+    model = mlflow.sklearn.load_model(f"models:/goodparty_data_catalog.model_predictions.{modelname}@prod")
     df[score_col] = np.nan
     valid_rows = df[model.feature_names_in_].notnull().all(axis=1)
     if valid_rows.sum() > 0:
-        df.loc[valid_rows, score_col] = model.predict_proba(
-            df.loc[valid_rows, model.feature_names_in_]
-        )[:, 1]
+        df.loc[valid_rows, score_col] = model.predict_proba(df.loc[valid_rows, model.feature_names_in_])[:, 1]
     return df
 
 
@@ -75,7 +71,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
     )
 
     candidacy = dbt.ref("candidacy")
-    election   = dbt.ref("election")
+    election = dbt.ref("election")
 
     # bring in state, seats_available, and number_of_opponents fallback from election table
     # (state is not on the candidacy mart; election.state is already a 2-letter abbreviation)
@@ -90,22 +86,17 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # only trust this count when > 1: a count of 1 may mean we only ingested one candidate,
     # not that the race is genuinely uncontested
     n_candidates_per_election = (
-        candidacy
-        .filter(col("gp_election_id").isNotNull())
+        candidacy.filter(col("gp_election_id").isNotNull())
         .groupBy("gp_election_id")
         .agg(count("*").alias("n_candidates_mart"))
     )
 
-    df = (
-        candidacy
-        .join(election_fields, on="gp_election_id", how="left")
-        .join(n_candidates_per_election, on="gp_election_id", how="left")
+    df = candidacy.join(election_fields, on="gp_election_id", how="left").join(
+        n_candidates_per_election, on="gp_election_id", how="left"
     )
 
     df = (
-        df
-        .withColumn("level", lower(col("office_level")))
-
+        df.withColumn("level", lower(col("office_level")))
         # seats
         .withColumn(
             "n_seats",
@@ -113,25 +104,22 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .when(col("seats_available") == 0, None)
             .otherwise(col("seats_available").cast("int")),
         )
-
         # n_candidates: trust mart count when > 1, else fall back to election column, else null
         .withColumn(
             "n_candidates",
             when(col("n_candidates_mart") > 1, col("n_candidates_mart"))
             .when(
                 col("raw_n_opponents").isNotNull() & (col("raw_n_opponents") != ""),
-                when(col("raw_n_opponents") == "10+", lit(11))
-                .otherwise(col("raw_n_opponents").cast("int") + 1),
+                when(col("raw_n_opponents") == "10+", lit(11)).otherwise(
+                    col("raw_n_opponents").cast("int") + 1
+                ),
             )
             .otherwise(None),
         )
-
         # derived features
         .withColumn(
             "multi_seat",
-            when(col("n_seats").isNull(), None)
-            .when(col("n_seats") > 1, lit(1))
-            .otherwise(lit(0)),
+            when(col("n_seats").isNull(), None).when(col("n_seats") > 1, lit(1)).otherwise(lit(0)),
         )
         .withColumn(
             "partisan_contest",
@@ -147,8 +135,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             .otherwise(log(col("n_candidates") - col("n_seats"))),
         )
         # open_seat: boolean → keep as-is (pandas will cast to float 0/1/NaN)
-        .withColumnRenamed("is_open_seat",    "open_seat")
-        .withColumnRenamed("is_incumbent",    "is_incumbent")
+        .withColumnRenamed("is_open_seat", "open_seat")
+        .withColumnRenamed("is_incumbent", "is_incumbent")
     )
 
     # WoE encoding
@@ -172,10 +160,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
 
     # waterfall — each model scores the rows it can; COALESCE picks best available
     waterfall = [
-        ("viabilitywithopponentdata",  "y_score0a"),
-        ("viabilitywithoutopenseat",   "y_score0b"),
-        ("viabilitynoopponentdata",    "y_score2"),
-        ("viabilitynoincumbency",      "y_score3"),
+        ("viabilitywithopponentdata", "y_score0a"),
+        ("viabilitywithoutopenseat", "y_score0b"),
+        ("viabilitynoopponentdata", "y_score2"),
+        ("viabilitynoincumbency", "y_score3"),
         ("viabilitynocandidatedatahs", "y_score1a"),
     ]
     for modelname, score_col in waterfall:
@@ -191,11 +179,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
         df_scored = df_scored.withColumn(s, when(col(s).isNull() | isnan(col(s)), None).otherwise(col(s)))
 
     df_scored = (
-        df_scored
-        .withColumn(
+        df_scored.withColumn(
             "viability_rating_2_0",
             round(
-                5 * coalesce(
+                5
+                * coalesce(
                     col("y_score0a"),
                     col("y_score0b"),
                     col("y_score2"),
