@@ -86,7 +86,7 @@
                     ''
                 )
             ),
-            x -> x rlike '^[a-z]'
+            x -> x rlike '^[a-z0-9]'
         )
     ) as locality_key,
     case
