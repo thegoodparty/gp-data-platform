@@ -62,10 +62,13 @@ class FakeRds:
 
 
 class FakeSsm:
-    def __init__(self) -> None:
+    def __init__(self, missing: bool = False) -> None:
         self.deleted: list[str] = []
+        self._missing = missing  # raise ParameterNotFound (param never written)
 
     def delete_parameter(self, **kw: Any) -> None:
+        if self._missing:
+            raise _err("ParameterNotFound")
         self.deleted.append(kw["Name"])
 
 
@@ -100,6 +103,16 @@ def test_teardown_idempotent_on_missing_resources(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert "delete_cluster" in rds_client.calls
+
+
+def test_teardown_idempotent_on_missing_ssm_param(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SSM param never written (provision failed before that step): ParameterNotFound must be
+    # swallowed so teardown stays idempotent (exercises the ignore_client_errors guard).
+    rds_client, ssm_client = FakeRds(), FakeSsm(missing=True)
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)  # must not raise
+    assert ssm_client.deleted == []
 
 
 def test_teardown_idempotent_on_missing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:

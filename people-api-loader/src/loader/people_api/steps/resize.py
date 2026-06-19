@@ -46,19 +46,25 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     log.info("resize.start", cluster=cluster_id, instance=instance_id)
 
     rds_client = rds(cfg)
-    waiter = rds_client.get_waiter("db_instance_available")
+    instance_waiter = rds_client.get_waiter("db_instance_available")
+    cluster_waiter = rds_client.get_waiter("db_cluster_available")
 
     def _wait() -> None:
-        waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+        instance_waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
 
-    def _modify_settle(call: Callable[[], object], fault: str) -> None:
+    def _wait_cluster() -> None:
+        # The writer instance can read `available` while the cluster is still `modifying`,
+        # so cluster-level modifies must be gated on the cluster waiter, not the instance one.
+        cluster_waiter.wait(DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+
+    def _modify_settle(call: Callable[[], object], fault: str, settle: Callable[[], None]) -> None:
         """Apply a modify, tolerating only a still-in-progress modify from a partial re-run.
 
-        On `fault` (InvalidDB{Cluster,Instance}StateFault) we wait for the in-flight modify
-        to settle, then RE-ISSUE the call so our settings are actually applied. We do not
-        swallow-and-skip: AWS uses the same fault for creating/deleting/failed states, and a
-        skipped modify would write a `complete` manifest over a misconfigured cluster. A
-        genuinely bad state re-raises on the retry instead of being masked.
+        On `fault` (InvalidDB{Cluster,Instance}StateFault) we wait (via `settle`, the matching
+        cluster/instance waiter) for the in-flight modify to settle, then RE-ISSUE the call so
+        our settings are actually applied. We do not swallow-and-skip: AWS uses the same fault
+        for creating/deleting/failed states, and a skipped modify would write a `complete`
+        manifest over a misconfigured cluster. A genuinely bad state re-raises on the retry.
         """
         try:
             call()
@@ -66,7 +72,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
             if e.response["Error"]["Code"] != fault:
                 raise
             log.warning("resize.modify_retry_after_settle", fault=fault)
-            _wait()
+            settle()
             call()
 
     # Serve param group + Serverless v2 scaling (cluster-level) + lock-down, applied now.
@@ -83,16 +89,19 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
             ApplyImmediately=True,
         ),
         "InvalidDBClusterStateFault",
+        _wait_cluster,
     )
-    # Let the cluster-level modify settle before the instance-class change, so the two
-    # don't overlap (an in-progress modify would reject the next one).
-    _wait()
+    # Gate on the CLUSTER waiter: the instance can be `available` while the cluster is still
+    # `modifying`, and modify_db_instance against a modifying cluster raises
+    # InvalidDBClusterStateFault (which the instance-fault guard below would not catch).
+    _wait_cluster()
     # Flip the writer instance to serverless (instance-level class).
     _modify_settle(
         lambda: rds_client.modify_db_instance(
             DBInstanceIdentifier=instance_id, DBInstanceClass=_SERVERLESS_CLASS, ApplyImmediately=True
         ),
         "InvalidDBInstanceStateFault",
+        _wait,
     )
     # The class change leaves the instance 'modifying' for minutes; a reboot now would be
     # rejected (InvalidDBInstanceStateFault). Wait for available, reboot to apply the serve
