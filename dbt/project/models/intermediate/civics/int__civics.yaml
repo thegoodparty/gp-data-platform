@@ -3337,7 +3337,7 @@ models:
         data_tests:
           - not_null
       - name: district_type
-        description: L2 district column name (v1 major office-bearing subset)
+        description: L2 district column name (the curated substrate subset)
         data_tests:
           - not_null
       - name: district_name
@@ -3413,6 +3413,60 @@ models:
             expression: >
               length(block_geoid) = 15 and length(block_group_geoid) = 12
               and length(tract_geoid) = 11
+
+  - name: int__serve_block_coverage
+    description: >
+      The count-once engine (DATA-1993, epic DATA-1359). One row per (census block,
+      served_set) with the count of DISTINCT cohort-served voters and the block's total
+      voters; people_served reads it as count-once(set) = sum(served_voters /
+      total_voters * block_population) over served blocks. Count-once is a
+      distinct-PERSON union across overlapping district types, which the counts-only
+      substrate cannot produce (cross-type voter dedup needs voter IDs), so this model
+      scans int__l2_nationwide_uniform once -- the "scanned, never surfaced" node from
+      TDD 7.1 -- and emits only block-grain counts (PII-free). Scoped to the same
+      district types as the substrate (get_l2_major_district_columns), so count-once <=
+      count-multiple holds. served_set is 'all' (served by any cohort district) or one
+      of the substrate's L2 district types; statewide officials are read from the exact T5
+      'State' rows in people_served, not here.
+    columns:
+      - name: block_geoid
+        description: 15-char zero-padded 2020 census block GEOID
+        data_tests:
+          - not_null
+      - name: served_set
+        description: >
+          'all' (voters served by any cohort district) or an L2 district_type (voters
+          served by a cohort district of that type)
+        data_tests:
+          - not_null
+      - name: served_voters
+        description: Distinct cohort-served voters in this block for this served_set
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: total_voters
+        description: >
+          Distinct voters in this block carrying >=1 of the substrate's district values
+          (the count-once denominator; ~= the block's total voters since County covers
+          essentially all)
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          name: serve_block_coverage_unique_key
+          arguments:
+            combination_of_columns: [block_geoid, served_set]
+      - dbt_utils.expression_is_true:
+          name: serve_block_coverage_served_le_total
+          arguments:
+            expression: "served_voters <= total_voters"
 
   - name: int__civics_viability_scoring
     description: >
