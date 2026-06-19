@@ -21,16 +21,16 @@ client = mlflow.tracking.MlflowClient()
 # Maps sandbox model name → latest sandbox version to promote.
 # Update these version numbers if models are retrained before this script runs.
 MODELS_TO_PROMOTE = [
-    ("viabilitywithopponentdata",  5),
-    ("viabilitywithoutopenseat",   5),
-    ("viabilitynoincumbency",      2),
-    ("viabilitynoopponentdata",    2),
+    ("viabilitywithopponentdata", 5),
+    ("viabilitywithoutopenseat", 5),
+    ("viabilitynoincumbency", 2),
+    ("viabilitynoopponentdata", 2),
     ("viabilitynocandidatedatahs", 2),
 ]
 
-SANDBOX_CATALOG    = "goodparty_data_catalog.sandbox"
-PROD_CATALOG       = "goodparty_data_catalog.model_predictions"
-PROD_ALIAS         = "prod"
+SANDBOX_CATALOG = "goodparty_data_catalog.sandbox"
+PROD_CATALOG = "goodparty_data_catalog.model_predictions"
+PROD_ALIAS = "prod"
 
 
 def _current_prod_source(prod_name: str) -> str | None:
@@ -43,7 +43,7 @@ def _current_prod_source(prod_name: str) -> str | None:
 
 
 def promote(sandbox_model: str, sandbox_version: int) -> None:
-    src_uri  = f"models:/{SANDBOX_CATALOG}.{sandbox_model}/{sandbox_version}"
+    src_uri = f"models:/{SANDBOX_CATALOG}.{sandbox_model}/{sandbox_version}"
     dst_name = f"{PROD_CATALOG}.{sandbox_model}"
 
     current_source = _current_prod_source(dst_name)
