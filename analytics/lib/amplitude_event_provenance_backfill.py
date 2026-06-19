@@ -5,9 +5,10 @@ provenance row per Amplitude ``event_type`` to a Databricks landing table via an
 idempotent MERGE, plus a commit-SHA watermark so DATA-2006's incremental updater
 can resume with ``git log <lastSHA>..HEAD``.
 
-This is phase 1 extracted from DATA-2006; it builds nothing incremental and writes
-nothing back to Amplitude. DATA-2005 builds ``stg__amplitude_event_provenance`` over
-the table this produces.
+DATA-2007 shipped the one-time backfill; DATA-2014 adds the watermark-bounded ``--refresh``
+path (read the SHA watermark, walk ``git log <lastSHA>..origin/develop``, MERGE only affected
+events, advance the watermark; full backfill when no watermark exists). Neither writes back to
+Amplitude. DATA-2005 builds ``stg__amplitude_event_provenance`` over the table this produces.
 
 Cross-repo by nature: it READS the omni working tree's git history (``--repo`` /
 ``OMNI_REPO``) and WRITES this repo's Databricks data layer (via the analytics
@@ -41,6 +42,9 @@ Usage::
     # local dev (writable schema):
     cd analytics && uv run python lib/amplitude_event_provenance_backfill.py \\
         --repo ~/Documents/0_goodparty/0_repos/omni --schema private_tristan
+    # scheduled refresh (incremental; full backfill on first run):
+    cd analytics && uv run python lib/amplitude_event_provenance_backfill.py \\
+        --repo ~/Documents/0_goodparty/0_repos/omni --refresh
 """
 
 from __future__ import annotations
@@ -910,6 +914,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="Skip the merge-walk PR backfill; *_pr stays whatever the commit subject yielded.",
     )
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Incremental watermark-bounded refresh (full backfill if no watermark exists).",
+    )
     return p.parse_args(argv)
 
 
@@ -934,7 +943,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            rows = run_backfill(
+            runner = run_refresh if args.refresh else run_backfill
+            rows = runner(
                 cursor,
                 root,
                 since,

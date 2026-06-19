@@ -1021,3 +1021,13 @@ def test_run_refresh_advances_watermark_when_nothing_changed(monkeypatch):
     assert rows == []
     assert not [s for s, _ in cur.executed if s.startswith("INSERT INTO")]  # no provenance write
     assert any("ON t.job_name = s.job_name" in s for s, _ in cur.executed)  # watermark still advanced
+
+
+# --------------------------------------------------------------------------- #
+# parse_args --refresh flag
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_args_refresh_flag_defaults_false_and_sets_true():
+    assert bf.parse_args([]).refresh is False
+    assert bf.parse_args(["--refresh"]).refresh is True
