@@ -3,7 +3,7 @@ Promote viability MLflow models from sandbox to model_predictions.
 
 Run once after this PR merges, before the new dbt model is executed.
 Safe to re-run: skips copy if @prod alias already points at a version
-copied from the same sandbox source URI.
+promoted from the same sandbox source URI (tracked via a model version tag).
 
 Requires env vars: DATABRICKS_HOST, DATABRICKS_TOKEN
 """
@@ -32,13 +32,14 @@ MODELS_TO_PROMOTE = [
 SANDBOX_CATALOG = "goodparty_data_catalog.sandbox"
 PROD_CATALOG = "goodparty_data_catalog.model_predictions"
 PROD_ALIAS = "prod"
+TAG_PROMOTED_FROM = "promoted_from"
 
 
-def _current_prod_source(prod_name: str) -> str | None:
-    """Return the source_model_uri of the version currently tagged @prod, or None."""
+def _prod_alias_source_tag(prod_name: str) -> str | None:
+    """Return the promoted_from tag on the current @prod version, or None."""
     try:
         mv = client.get_model_version_by_alias(prod_name, PROD_ALIAS)
-        return mv.source
+        return mv.tags.get(TAG_PROMOTED_FROM)
     except mlflow.exceptions.MlflowException:
         return None
 
@@ -47,9 +48,8 @@ def promote(sandbox_model: str, sandbox_version: int) -> None:
     src_uri = f"models:/{SANDBOX_CATALOG}.{sandbox_model}/{sandbox_version}"
     dst_name = f"{PROD_CATALOG}.{sandbox_model}"
 
-    current_source = _current_prod_source(dst_name)
-    if current_source == src_uri:
-        print(f"  SKIP  {sandbox_model}: @prod already points at {src_uri}")
+    if _prod_alias_source_tag(dst_name) == src_uri:
+        print(f"  SKIP  {sandbox_model}: @prod already promoted from {src_uri}")
         return
 
     print(f"  COPY  {src_uri}  →  {dst_name}")
@@ -59,6 +59,13 @@ def promote(sandbox_model: str, sandbox_version: int) -> None:
     )
     new_version = new_mv.version
     print(f"        created version {new_version} in {dst_name}")
+
+    client.set_model_version_tag(
+        name=dst_name,
+        version=new_version,
+        key=TAG_PROMOTED_FROM,
+        value=src_uri,
+    )
 
     print(f"  ALIAS {dst_name}@{PROD_ALIAS}  →  v{new_version}")
     client.set_registered_model_alias(
