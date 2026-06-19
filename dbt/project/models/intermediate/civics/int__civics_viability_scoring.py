@@ -35,7 +35,6 @@ from pyspark.sql.functions import (
 
 
 def _score_using_model(df: pd.DataFrame, modelname: str, score_col: str) -> pd.DataFrame:
-    client = mlflow.tracking.MlflowClient()
     model = mlflow.sklearn.load_model(f"models:/goodparty_data_catalog.model_predictions.{modelname}@prod")
     df[score_col] = np.nan
     valid_rows = df[model.feature_names_in_].notnull().all(axis=1)
