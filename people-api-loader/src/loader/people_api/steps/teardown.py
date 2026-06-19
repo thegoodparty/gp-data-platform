@@ -84,8 +84,11 @@ def run(
     rds_client.get_waiter("db_cluster_deleted").wait(DBClusterIdentifier=cluster_id)
 
     # 3. Parameter groups (only deletable once no cluster references them).
+    #    DeleteDBClusterParameterGroup's modeled not-found code is DBParameterGroupNotFound
+    #    (per the botocore RDS service model); we also tolerate the cluster-specific variant
+    #    defensively, so a partial-teardown re-run stays idempotent regardless.
     for pg in (load_pg, serve_pg):
-        with ignore_client_errors("DBParameterGroupNotFound"):
+        with ignore_client_errors("DBParameterGroupNotFound", "DBClusterParameterGroupNotFound"):
             rds_client.delete_db_cluster_parameter_group(DBClusterParameterGroupName=pg)
 
     # 4. Connection-string SSM parameter (per-run; holds the embedded master password).

@@ -35,9 +35,12 @@ def _err(code: str) -> ClientError:
 
 
 class FakeRds:
-    def __init__(self, missing: set[str] | None = None) -> None:
+    def __init__(
+        self, missing: set[str] | None = None, *, pg_error: str = "DBParameterGroupNotFound"
+    ) -> None:
         self.calls: list[str] = []
         self._missing = missing or set()  # ops that should raise NotFound
+        self._pg_error = pg_error  # which not-found code delete_db_cluster_parameter_group raises
 
     def delete_db_instance(self, **kw: Any) -> None:
         self.calls.append("delete_instance")
@@ -57,7 +60,7 @@ class FakeRds:
     def delete_db_cluster_parameter_group(self, **kw: Any) -> None:
         self.calls.append("delete_pg")
         if "param_group" in self._missing:
-            raise _err("DBParameterGroupNotFound")
+            raise _err(self._pg_error)
 
     def get_waiter(self, name: str) -> _FakeWaiter:
         return _FakeWaiter()
@@ -117,10 +120,12 @@ def test_teardown_idempotent_on_missing_ssm_param(monkeypatch: pytest.MonkeyPatc
     assert ssm_client.deleted == []
 
 
-def test_teardown_idempotent_on_missing_param_groups(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Param groups never created (provision failed before that step): DBParameterGroupNotFound
-    # must be swallowed so teardown stays idempotent (exercises the guard on each delete_pg).
-    rds_client, ssm_client = FakeRds(missing={"param_group"}), FakeSsm()
+@pytest.mark.parametrize("pg_error", ["DBParameterGroupNotFound", "DBClusterParameterGroupNotFound"])
+def test_teardown_idempotent_on_missing_param_groups(monkeypatch: pytest.MonkeyPatch, pg_error: str) -> None:
+    # Param groups never created (provision failed before that step): the not-found fault must
+    # be swallowed so teardown stays idempotent. DeleteDBClusterParameterGroup's modeled code is
+    # DBParameterGroupNotFound; we also tolerate the cluster-specific variant defensively.
+    rds_client, ssm_client = FakeRds(missing={"param_group"}, pg_error=pg_error), FakeSsm()
     monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
