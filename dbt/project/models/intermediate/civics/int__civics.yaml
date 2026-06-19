@@ -3413,3 +3413,37 @@ models:
             expression: >
               length(block_geoid) = 15 and length(block_group_geoid) = 12
               and length(tract_geoid) = 11
+
+  - name: int__civics_viability_scoring
+    description: >
+      Viability scores for all candidacies in the civics mart, produced by an
+      MLflow model waterfall. Grain: one row per gp_candidacy_id.
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key — foreign key to the candidacy mart.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: viability_rating_2_0
+        description: Viability score on a 0–5 scale.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+      - name: score_viability_automated
+        description: Human-readable viability label derived from viability_rating_2_0.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - No Chance
+                  - Unlikely to Win
+                  - Has a Chance
+                  - Likely to Win
+                  - Frontrunner
+      - name: updated_at
+        description: Timestamp when the score was last computed.
+        data_tests:
+          - not_null
