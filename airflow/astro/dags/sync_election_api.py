@@ -542,12 +542,11 @@ def sync_election_api():
         @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
-            # Source schema is overridable for this table only. The other syncs
-            # read the production `dbt` mart, but on the first run this model may
-            # not be promoted there yet (it lands in `dbt_staging` first), so set
-            # the `elected_office_support_source_schema` Variable to `dbt_staging`
-            # for that run; it defaults back to the prod `dbt` schema otherwise.
-            source_schema = Variable.get("elected_office_support_source_schema", default=DATABRICKS_SCHEMA)
+            # TEMPORARY (dev test): read the new model from the dev schema
+            # dbt_hugh, where it lives before promotion. REVERT to
+            # DATABRICKS_SCHEMA ("dbt") before merge so this matches the other
+            # sync tables.
+            source_schema = "dbt_hugh"
             col_list = ", ".join(EOS_COLUMNS)
             query = (
                 f"SELECT {col_list} "
