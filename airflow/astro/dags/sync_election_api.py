@@ -542,10 +542,16 @@ def sync_election_api():
         @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
+            # Source schema is overridable for this table only. The other syncs
+            # read the production `dbt` mart, but on the first run this model may
+            # not be promoted there yet (it lands in `dbt_staging` first), so set
+            # the `elected_office_support_source_schema` Variable to `dbt_staging`
+            # for that run; it defaults back to the prod `dbt` schema otherwise.
+            source_schema = Variable.get("elected_office_support_source_schema", default=DATABRICKS_SCHEMA)
             col_list = ", ".join(EOS_COLUMNS)
             query = (
                 f"SELECT {col_list} "
-                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"FROM `{catalog}`.`{source_schema}`."
                 f"`m_election_api__elected_official_support`"
             )
             # ~1.1k rows; no partitioning needed (one small result fits easily).
