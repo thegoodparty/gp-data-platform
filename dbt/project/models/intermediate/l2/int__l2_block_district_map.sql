@@ -10,9 +10,9 @@
 -- (voters_in_block). The block-grain twin of int__zip_code_to_l2_district and
 -- the input to int__district_census_allocation (the substrate, DATA-1992).
 --
--- UNPIVOTs ONLY the v1 major office-bearing district columns
--- (get_l2_major_district_columns); the sparse special-district long tail is a
--- documented fast-follow. District names are normalized here so the grain and
+-- UNPIVOTs the curated substrate district columns
+-- (get_l2_major_district_columns) -- the cohort-occupied office-bearing types
+-- (widened in DATA-2013). District names are normalized here so the grain and
 -- every downstream name-join key match the serve resolver's
 -- normalized_district_name (L2 "(EST.)"/whitespace drift between snapshots).
 --
