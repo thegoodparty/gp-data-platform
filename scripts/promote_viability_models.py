@@ -8,11 +8,12 @@ copied from the same sandbox source URI.
 Requires env vars: DATABRICKS_HOST, DATABRICKS_TOKEN
 """
 
-import mlflow
 import os
 
-DATABRICKS_HOST = os.environ["DATABRICKS_HOST"]   # e.g. https://dbc-3d8ca484-79f3.cloud.databricks.com
-DATABRICKS_TOKEN = os.environ["DATABRICKS_TOKEN"] # Databricks PAT — set in env before running
+import mlflow
+
+DATABRICKS_HOST = os.environ["DATABRICKS_HOST"]  # e.g. https://dbc-3d8ca484-79f3.cloud.databricks.com
+DATABRICKS_TOKEN = os.environ["DATABRICKS_TOKEN"]  # Databricks PAT — set in env before running
 
 mlflow.set_tracking_uri("databricks")
 
