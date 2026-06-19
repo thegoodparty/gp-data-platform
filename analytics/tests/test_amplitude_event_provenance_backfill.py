@@ -854,6 +854,7 @@ def test_merge_readd_preserves_original_instrumented_and_advances_last_change():
     merged = bf.merge_provenance_entry(existing, new_entry)
     assert merged["instrumented"]["commit"] == "aaaa"  # original instrumentation kept
     assert merged["last_change"]["commit"] == "eeee"  # window is the latest change
+    assert merged["retired"]["commit"] == "bbbb"  # carried forward from existing row
 
 
 # --------------------------------------------------------------------------- #
@@ -970,13 +971,13 @@ def test_run_refresh_walks_bounded_range_from_watermark(monkeypatch):
     monkeypatch.setattr(bf, "run_git_log", fake_git_log)
     monkeypatch.setattr(bf, "git_grep_present_text", lambda root, events, paths, ref="HEAD": "")
     monkeypatch.setattr(bf, "git_head_sha", lambda root, ref="HEAD": "newhead")
-    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/develop")
+    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/main")
     monkeypatch.setattr(bf, "git_commit_count", lambda root, since, paths, ref="HEAD": 50)
 
-    wm = ("oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
+    wm = ("oldsha", "origin/main", 42, "2026-06-01T00:00:00")
     cur = RefreshCursor(["Event A", "Event B"], watermark_row=wm, existing_rows=_EXISTING_ROWS)
-    bf.run_refresh(cur, "/omni", "2024-06-01", datetime(2026, 6, 18, tzinfo=UTC))
-    assert captured["ref"] == "oldsha..origin/develop"
+    bf.run_refresh(cur, "/omni", "2024-06-01", datetime(2026, 6, 18, tzinfo=UTC), ref="origin/main")
+    assert captured["ref"] == "oldsha..origin/main"
     assert captured["since"] is None  # the range supersedes --since
 
 

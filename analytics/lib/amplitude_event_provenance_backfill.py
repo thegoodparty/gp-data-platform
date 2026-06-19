@@ -866,7 +866,7 @@ def run_refresh(
         cursor,
         git_head_sha(root, ref),
         git_head_ref(root, ref),
-        git_commit_count(root, None, INSTRUMENTATION_PATHS, ref),
+        git_commit_count(root, None, INSTRUMENTATION_PATHS, ref),  # total count at ref tip, not incremental
         updated_at,
         state_table,
     )
