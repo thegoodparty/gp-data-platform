@@ -40,8 +40,10 @@ def _prod_alias_source_tag(prod_name: str) -> str | None:
     try:
         mv = client.get_model_version_by_alias(prod_name, PROD_ALIAS)
         return mv.tags.get(TAG_PROMOTED_FROM)
-    except mlflow.exceptions.MlflowException:
-        return None
+    except mlflow.exceptions.MlflowException as e:
+        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
+            return None
+        raise
 
 
 def promote(sandbox_model: str, sandbox_version: int) -> None:
