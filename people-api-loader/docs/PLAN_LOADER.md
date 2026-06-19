@@ -35,8 +35,7 @@
 > declared Prisma layer in `schema_spec`); the PK + ~266 indexes come from `_serving_seed.py`,
 > captured from the serving cluster's `pg_catalog` by `loader extract-serving-structure`.
 > `create-schema`/`copy`/`build-indexes` read those generated artifacts. Scope is Voter-only;
-> the District family is built by the dbt write path. See
-> `docs/superpowers/specs/2026-06-18-people-api-ddl-generation-design.md`.
+> the District family is built by the dbt write path.
 
 ## Context
 
