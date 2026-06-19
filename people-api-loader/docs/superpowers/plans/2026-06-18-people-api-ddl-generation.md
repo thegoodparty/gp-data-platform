@@ -1,5 +1,15 @@
 # People-API DDL Generation Implementation Plan
 
+> **STATUS: IMPLEMENTED — scope revised to Voter-only during execution.** This plan was
+> written for all four `people_api` tables, but the bootstrap revealed that `DistrictStats`
+> isn't a serving Postgres table and `District`/`DistrictVoter` are Prisma-defined and built
+> by the dbt write path, not this loader. The shipped code generates **only the Voter table**.
+> Where any task below references "all four tables", `District`/`DistrictStats`/`DistrictVoter`,
+> or `TABLE_SPECS` with four entries (notably Tasks 7, 10, 11 and the file-structure list),
+> **the committed code and the spec are authoritative** — `TABLE_SPECS == {"Voter": ...}` with a
+> declared Prisma-layer `extra_columns`. Do not replay those tasks verbatim. See the spec's
+> "Scope" decision and the committed `schema_spec.py`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Generate the loader's target Postgres schema from the people-api dbt marts (columns/types) plus a version-controlled serving-structure spec (PK/indexes/partitions seeded from prod), retiring the committed `prod_dump.sql`.
@@ -713,18 +723,20 @@ from __future__ import annotations
 from loader.people_api.schema.schema_spec import TABLE_SPECS, indexes_for, primary_key_for
 
 
-def test_specs_cover_four_tables_with_overrides_and_partition() -> None:
-    assert set(TABLE_SPECS) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
+def test_spec_is_voter_only_with_overrides_partition_and_prisma_column() -> None:
+    assert set(TABLE_SPECS) == {"Voter"}
     voter = TABLE_SPECS["Voter"]
     assert voter.partition_by == "State"
     assert voter.type_overrides["id"] == "UUID"
-    assert TABLE_SPECS["District"].partition_by is None
+    assert ("Mailing_HHGender_Description", "TEXT", True) in voter.extra_columns
 
 
-def test_lookup_helpers_filter_seed_by_table() -> None:
-    # These read from the committed _serving_seed; assert they return only the table asked for.
-    assert all(p.table == "Voter" for p in [primary_key_for("Voter")] if primary_key_for("Voter"))
+def test_lookup_helpers_filter_by_table() -> None:
+    # Works whether the committed seed is the empty placeholder or populated.
+    assert isinstance(indexes_for("Voter"), list)
     assert all(i.table == "Voter" for i in indexes_for("Voter"))
+    pk = primary_key_for("Voter")
+    assert pk is None or pk.table == "Voter"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -755,16 +767,19 @@ class TableSpec:
     pg_table: str
     partition_by: str | None  # column name for LIST partitioning, or None for a plain table
     type_overrides: dict[str, str] = field(default_factory=dict)
+    # App/Prisma-managed columns in the serving table but not the mart (name, pg_type, nullable).
+    extra_columns: list[tuple[str, str, bool]] = field(default_factory=list)
 
 
+# Voter-only (see the STATUS banner): District/DistrictVoter are built by the dbt write path
+# and DistrictStats isn't a serving table. The one serving column the mart omits is
+# Mailing_HHGender_Description (a REMOVED_COLUMNS NULL placeholder); `id` is stored as UUID.
 TABLE_SPECS: dict[str, TableSpec] = {
-    "Voter": TableSpec(pg_table="Voter", partition_by="State", type_overrides={"id": "UUID"}),
-    "District": TableSpec(pg_table="District", partition_by=None, type_overrides={"id": "UUID"}),
-    "DistrictStats": TableSpec(pg_table="DistrictStats", partition_by=None),
-    "DistrictVoter": TableSpec(
-        pg_table="DistrictVoter",
-        partition_by=None,
-        type_overrides={"voter_id": "UUID", "district_id": "UUID"},
+    "Voter": TableSpec(
+        pg_table="Voter",
+        partition_by="State",
+        type_overrides={"id": "UUID"},
+        extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
 }
 
