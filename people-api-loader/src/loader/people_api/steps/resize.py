@@ -11,9 +11,12 @@ Idempotent: a completed manifest short-circuits.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
-from loader.core.aws import ignore_client_errors, rds
+from botocore.exceptions import ClientError
+
+from loader.core.aws import rds
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.manifests import (
@@ -48,13 +51,27 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
     def _wait() -> None:
         waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
 
+    def _modify_settle(call: Callable[[], object], fault: str) -> None:
+        """Apply a modify, tolerating only a still-in-progress modify from a partial re-run.
+
+        On `fault` (InvalidDB{Cluster,Instance}StateFault) we wait for the in-flight modify
+        to settle, then RE-ISSUE the call so our settings are actually applied. We do not
+        swallow-and-skip: AWS uses the same fault for creating/deleting/failed states, and a
+        skipped modify would write a `complete` manifest over a misconfigured cluster. A
+        genuinely bad state re-raises on the retry instead of being masked.
+        """
+        try:
+            call()
+        except ClientError as e:
+            if e.response["Error"]["Code"] != fault:
+                raise
+            log.warning("resize.modify_retry_after_settle", fault=fault)
+            _wait()
+            call()
+
     # Serve param group + Serverless v2 scaling (cluster-level) + lock-down, applied now.
-    # InvalidDBClusterStateFault is swallowed so a re-run that lands while a prior partial
-    # run's modify is still in-progress falls through to the waiter below (which lets the
-    # equivalent in-flight modify settle) rather than hard-failing. The modify is
-    # deterministic from cfg, so the in-flight one applies the same settings.
-    with ignore_client_errors("InvalidDBClusterStateFault"):
-        rds_client.modify_db_cluster(
+    _modify_settle(
+        lambda: rds_client.modify_db_cluster(
             DBClusterIdentifier=cluster_id,
             DBClusterParameterGroupName=serve_pg,
             ServerlessV2ScalingConfiguration={
@@ -64,18 +81,19 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
             BackupRetentionPeriod=_BACKUP_RETENTION_DAYS,
             DeletionProtection=True,
             ApplyImmediately=True,
-        )
+        ),
+        "InvalidDBClusterStateFault",
+    )
     # Let the cluster-level modify settle before the instance-class change, so the two
-    # don't overlap (an in-progress modify would reject the next one). Returns immediately
-    # if the instance isn't affected.
+    # don't overlap (an in-progress modify would reject the next one).
     _wait()
-    # Flip the writer instance to serverless (instance-level class). Same idempotency guard:
-    # a re-run hitting an instance still 'modifying' from a prior partial run falls through
-    # to the waiter rather than raising InvalidDBInstanceStateFault.
-    with ignore_client_errors("InvalidDBInstanceStateFault"):
-        rds_client.modify_db_instance(
+    # Flip the writer instance to serverless (instance-level class).
+    _modify_settle(
+        lambda: rds_client.modify_db_instance(
             DBInstanceIdentifier=instance_id, DBInstanceClass=_SERVERLESS_CLASS, ApplyImmediately=True
-        )
+        ),
+        "InvalidDBInstanceStateFault",
+    )
     # The class change leaves the instance 'modifying' for minutes; a reboot now would be
     # rejected (InvalidDBInstanceStateFault). Wait for available, reboot to apply the serve
     # parameter group, then wait for available again.

@@ -111,12 +111,15 @@ def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
     """Return the S3 gateway VPC endpoint id in the VPC, or "" if absent.
 
     provision does not create it (it's durable platform infra); this verifies it exists
-    and records its id. Absence is a warning, not a hard failure.
+    and records its id. Absence is a warning, not a hard failure. Filtered to `available`
+    so a deleting/failed/expired endpoint isn't recorded as a working one (which would give
+    false confidence and surface only later as a copy/import failure with no diagnostic).
     """
     resp = client.describe_vpc_endpoints(  # ty: ignore[unresolved-attribute]
         Filters=[
             {"Name": "vpc-id", "Values": [vpc_id]},
             {"Name": "service-name", "Values": [f"com.amazonaws.{region}.s3"]},
+            {"Name": "vpc-endpoint-state", "Values": ["available"]},
         ]
     )
     endpoints = resp.get("VpcEndpoints", [])

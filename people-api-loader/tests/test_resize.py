@@ -29,12 +29,16 @@ class _FakeWaiter:
 
 
 class FakeRds:
-    def __init__(self, raise_on: dict[str, str] | None = None) -> None:
+    def __init__(self, raise_on: dict[str, str] | None = None, *, persistent: bool = False) -> None:
         self.calls: list[tuple[str, dict]] = []
         self._raise_on = raise_on or {}  # op -> ClientError code to raise after recording
+        self._persistent = persistent  # raise every time (bad state) vs once (in-progress)
+        self._raised: set[str] = set()
 
     def _maybe_raise(self, op: str) -> None:
-        if code := self._raise_on.get(op):
+        code = self._raise_on.get(op)
+        if code and (self._persistent or op not in self._raised):
+            self._raised.add(op)
             raise ClientError({"Error": {"Code": code, "Message": "in progress"}}, op)
 
     def modify_db_cluster(self, **kw: Any) -> None:
@@ -75,9 +79,9 @@ def test_resize_applies_serverless_and_writes_manifest(monkeypatch: pytest.Monke
     assert by["modify_instance"]["DBInstanceClass"] == "db.serverless"
 
 
-def test_resize_swallows_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A re-run that lands while a prior partial run's modify is still in flight must fall
-    # through to the waiter, not hard-fail on InvalidDB*StateFault.
+def test_resize_retries_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A re-run that lands while a prior partial run's modify is still in flight: the first
+    # call hits InvalidDB*StateFault, we wait, then RE-ISSUE so the settings are applied.
     rds_client = FakeRds(
         raise_on={
             "modify_cluster": "InvalidDBClusterStateFault",
@@ -88,10 +92,28 @@ def test_resize_swallows_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
 
-    manifest = step.run(_CFG, "20260616")  # must not raise despite both modifies rejecting
+    manifest = step.run(_CFG, "20260616")  # must not raise; modifies retried after settle
 
     assert manifest.status == "complete"
-    assert "reboot" in dict(rds_client.calls)  # proceeded past the swallowed modifies
+    ops = [c[0] for c in rds_client.calls]
+    # each modify was re-issued after the fault (so its settings actually applied), then reboot
+    assert ops.count("modify_cluster") == 2
+    assert ops.count("modify_instance") == 2
+    assert "reboot" in ops
+
+
+def test_resize_propagates_persistent_modify_fault(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A genuinely bad cluster state (not just in-progress) raises the same fault every time;
+    # it must surface, not be masked into a "complete" manifest over a misconfigured cluster.
+    rds_client = FakeRds(raise_on={"modify_cluster": "InvalidDBClusterStateFault"}, persistent=True)
+    wrote: dict = {}
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.setdefault("m", m) or "uri")
+
+    with pytest.raises(ClientError):
+        step.run(_CFG, "20260616")
+    assert "m" not in wrote  # no complete manifest written
 
 
 def test_resize_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
