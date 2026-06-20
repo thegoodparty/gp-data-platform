@@ -12,7 +12,7 @@ This repo standardizes on Astral tools and is intentionally not aligned with `gp
 
 | Tool | Use | Notes |
 |---|---|---|
-| `uv` | env + deps | Installs Python 3.12 itself via `.python-version`. No pyenv. |
+| `uv` | env + deps | Installs Python 3.14 itself via `.python-version`. No pyenv. |
 | `ruff` | lint + format | Line length 110. Don't introduce black/isort/flake8. |
 | `ty` | type checker | Pre-1.0 — version is pinned exactly in `pyproject.toml`. Don't loosen the pin without testing. Don't introduce pyright/mypy. |
 

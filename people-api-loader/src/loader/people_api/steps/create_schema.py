@@ -1,9 +1,9 @@
 """Step 3 — create the Voter table on the new cluster (ClickUp DATA-1910).
 
 Applies a partitioned `CREATE TABLE public."Voter"` (LIST partitioned by
-"State") extracted from the committed prod snapshot (tables only — indexes/PK
-are deferred to build-indexes), after installing the aws_s3/aws_commons
-extensions. One child partition per USState is created.
+"State") extracted from the committed, generated `target_schema.sql` (from `loader
+emit-ddl`; tables only — indexes/PK are deferred to build-indexes), after installing
+the aws_s3/aws_commons extensions. One child partition per USState is created.
 """
 
 from __future__ import annotations

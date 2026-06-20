@@ -4,8 +4,8 @@ A ThreadPoolExecutor issues one `aws_s3.table_import_from_s3` per file, all
 targeting `public."Voter"`; the `"State"` column comes from the data. PG's COPY
 is single-threaded per statement, so file-level parallelism is the lever.
 
-Column contract: we pass an EXPLICIT column list (derived from the committed prod
-DDL via `extract_column_names`) rather than an empty list. An empty list makes COPY
+Column contract: we pass an EXPLICIT column list (derived from the committed, generated
+`target_schema.sql` (emit-ddl output) via `extract_column_names`) rather than an empty list. An empty list makes COPY
 map file columns positionally against the table's physical DDL order, which is a
 silent-corruption trap here — the Prisma-managed columns `created_at`, `id`, and
 `updated_at` sit MID-table (not at the end), so any unload whose layout differs

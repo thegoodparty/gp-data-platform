@@ -266,8 +266,8 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     started = datetime.now(UTC)
     log.info("validate.start")
 
-    # Run all checks. An unexpected exception (new cluster unreachable, Secrets Manager
-    # timeout, an unguarded connect_new inside a check) must still leave a `failed` manifest
+    # Run all checks. An unexpected exception (new cluster unreachable, SSM connection-string
+    # fetch timeout, an unguarded connect_new inside a check) must still leave a `failed` manifest
     # behind so a retry sees a known state — never propagate out of run() with nothing
     # written. The per-check functions capture their own expected failures; this catches
     # everything else.

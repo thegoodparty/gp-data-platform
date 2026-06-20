@@ -173,7 +173,7 @@ def resize(run_date: RunDateArg) -> None:
 
 @app.command()
 def validate(run_date: RunDateArg) -> None:
-    """Step 7 — five validation checks. Exits non-zero if any fail."""
+    """Step 7 — six validation checks. Exits non-zero if any fail."""
     from loader.people_api.steps import validate as step
 
     cfg = _setup(run_date)

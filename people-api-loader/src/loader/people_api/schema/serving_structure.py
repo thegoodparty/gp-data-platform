@@ -68,7 +68,9 @@ def _index_columns(definition: str) -> list[str]:
 
 
 def extract_indexes(cur: Any, tables: list[str]) -> list[IndexDef]:
-    """Non-constraint indexes (the PK/unique-constraint-backing indexes are excluded by the query)."""
+    """All non-PK indexes (standalone and unique-constraint-backing alike); only PK indexes
+    are excluded (NOT indisprimary). build_indexes re-issues each as CREATE [UNIQUE] INDEX
+    IF NOT EXISTS on the fresh cluster, so a unique-constraint-backing index is fine here."""
     cur.execute(
         """
         SELECT t.relname AS table, c.relname AS index_name, pg_get_indexdef(i.indexrelid) AS def,
