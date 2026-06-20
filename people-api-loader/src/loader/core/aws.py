@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import cache
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 import boto3
@@ -61,10 +62,29 @@ def ssm(cfg: BaseLoaderConfig) -> BaseClient:
     return session(cfg).client("ssm")
 
 
+_ssm_cache: dict[tuple[str | None, str, str, bool], str] = {}
+_ssm_cache_lock = Lock()
+
+
 def get_ssm_parameter(cfg: BaseLoaderConfig, name: str, *, decrypt: bool = True) -> str:
-    """Fetch an SSM Parameter Store value (SecureString decrypted by default)."""
-    resp = ssm(cfg).get_parameter(Name=name, WithDecryption=decrypt)
-    return resp["Parameter"]["Value"]
+    """Fetch an SSM Parameter Store value (SecureString decrypted by default).
+
+    Cached for the process lifetime, keyed on session identity (profile, region) + name +
+    decrypt. Loader-written params (connection strings) are immutable within a run, and the
+    parallel fan-out in copy_s3 (up to 128 workers) and build_indexes (32) opens many
+    connections at once — uncached, the repeated GetParameter calls on the same name would
+    exceed SSM's 40 TPS standard-tier throttle. The lock makes a cold concurrent burst do
+    exactly one live call: contenders block, then read the populated value.
+    """
+    key = (cfg.aws_profile, cfg.aws_region, name, decrypt)
+    cached = _ssm_cache.get(key)
+    if cached is not None:
+        return cached
+    with _ssm_cache_lock:
+        if key not in _ssm_cache:  # double-checked: only the first cold caller hits the API
+            resp = ssm(cfg).get_parameter(Name=name, WithDecryption=decrypt)
+            _ssm_cache[key] = resp["Parameter"]["Value"]
+        return _ssm_cache[key]
 
 
 def put_ssm_parameter(cfg: BaseLoaderConfig, name: str, value: str, *, secure: bool = True) -> None:
