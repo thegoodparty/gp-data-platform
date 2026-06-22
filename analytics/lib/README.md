@@ -8,7 +8,7 @@ stop rebuilding the same cohort and engagement logic from scratch each run.
 The Win event-family allowlist and the consolidated per-user working set were being
 retyped in every analysis. That is a token cost, a time cost, and a transcription-drift
 risk. This package holds one copy. The event classification is now sourced from the dbt
-model `int__amplitude_event_taxonomy` (DATA-1945) so there is a single source of truth
+model `int__amplitude_event_catalog` (DATA-1945) so there is a single source of truth
 shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
 `references/engagement.md` for the family taxonomy and the win-analytics-process skill's
 `references/methodology.md` for the build-once-slice-many pattern.
@@ -17,7 +17,7 @@ shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
 
 `win_analysis.py`:
 - `win_event_predicate(drift_cutoff="2026-01-01")` — the drift-controlled Win event
-  allowlist as a SQL predicate string. Reads `int__amplitude_event_taxonomy`
+  allowlist as a SQL predicate string. Reads `int__amplitude_event_catalog`
   (`is_win` for membership; `first_seen_date <= drift_cutoff` for drift control), so
   it stays in sync with the dbt models automatically. Returns an
   `event_type IN (<subquery>)` expression — use it in a WHERE/HAVING/JOIN, not inside
@@ -70,7 +70,7 @@ df = wa.build_win_working_set(run_query, cohorts)
   your cohort window) for a stricter coverage-comparability check. The former
   core/partial split is retired — a sensitivity check is just a second run with a
   different cutoff.
-- Reads `goodparty_data_catalog.dbt.int__amplitude_event_taxonomy` (prod). That table
+- Reads `goodparty_data_catalog.dbt.int__amplitude_event_catalog` (prod). That table
   must exist (a prod dbt run of the model); it does as of DATA-1945.
 - `build_win_working_set` is **election-anchored with a backward window** (it joins
   events strictly *before* each user's anchor date). It does NOT fit signup-anchored,
@@ -82,7 +82,7 @@ df = wa.build_win_working_set(run_query, cohorts)
 
 ## Single source of truth: the dbt event-taxonomy model
 
-`int__amplitude_event_taxonomy` (`event_type, family, is_win, is_recurrent,
+`int__amplitude_event_catalog` (`event_type, family, is_win, is_recurrent,
 first_seen_date`; DATA-1945) is the one classifier. The dbt models
 (`int__amplitude_win_activity` / `_weekly`) consume it via `is_recurrent`, and this
 helper consumes it via `is_win` + `first_seen_date`. There is no longer a separate

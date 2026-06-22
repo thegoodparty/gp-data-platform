@@ -14,7 +14,7 @@ stream they're computed from.
 
 - IF the question asks for a governed metric's definition (Active, Activated, Onboarded, etc.) → [canonical_metrics.md](canonical_metrics.md); the caveats are below.
 - IF the analysis spans the **2026-05-07 onboarding cutover** → use version-agnostic anchors (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`.
-- IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_taxonomy` model / `amplitude_event_family` macro (taxonomy below).
+- IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
 - IF the question is about self-reported win/loss from the Did-You-Win modal → that's an outcome; see [outcomes.md](outcomes.md).
 
@@ -70,7 +70,7 @@ The dbt intermediates aggregate only **~4% of distinct event types** (12 of ~300
 
 ### Event family taxonomy
 
-Membership is **not** maintained here. `is_win` (Win membership) and `first_seen_date` (drift) live in the dbt model `int__amplitude_event_taxonomy`; the LIKE/IN patterns live in the `amplitude_event_family` macro (`dbt/project/macros/amplitude_event_taxonomy.sql`). Read those for the authoritative set — do not infer membership from the index below. This list is a human-readable index of what families exist and how to read them; it deliberately omits the patterns (the macro owns them) and per-family first-seen dates (the model's `first_seen_date` owns them, governed by the analysis `drift_cutoff`, default `2026-01-01`).
+Membership is **not** maintained here. `is_win` (Win membership) and `first_seen_date` (drift) live in the dbt model `int__amplitude_event_catalog`; the LIKE/IN patterns live in the `amplitude_event_family` macro (`dbt/project/macros/amplitude_event_taxonomy.sql`). Read those for the authoritative set — do not infer membership from the index below. This list is a human-readable index of what families exist and how to read them; it deliberately omits the patterns (the macro owns them) and per-family first-seen dates (the model's `first_seen_date` owns them, governed by the analysis `drift_cutoff`, default `2026-01-01`).
 
 **Win families** (`is_win = true`, prefixed `win_`): `win_onboarding`, `win_dashboard`, `win_voter_outreach`, `win_outreach_planning`, `win_outreach_scheduling`, `win_content_builder`, `win_voter_data`, `win_candidate_profile`, `win_pro_upgrade`, `win_p2p_upgrade`, `win_candidate_website`, `win_candidacy_self_report` (the Did-You-Win modal — see [outcomes.md](outcomes.md) for outcomes use), `win_compliance_or_planning`, `win_ai_assistant`, `win_briefings`, `win_contacts`, `win_resources`. Families first seen after the cutoff (e.g. `win_briefings`, and `Dashboard - Campaign Plan Viewed` within `win_dashboard`) fall out as drift unless you widen `drift_cutoff`.
 

@@ -454,3 +454,49 @@ models:
         description: "Change in totals since last update"
       - name: clusters_hidden
         description: "Whether the event is hidden in cluster analysis"
+
+  - name: stg_airbyte_source__amplitude_taxonomy_event_type
+    description: "Staging model for the Amplitude Govern taxonomy stream - one row per event_type with human-curated metadata. category is flattened to its name and tags is parsed to an array in this layer."
+    columns:
+      - name: _airbyte_raw_id
+        description: "Airbyte internal unique identifier for the raw record"
+        tests:
+          - not_null
+          - unique
+      - name: _airbyte_extracted_at
+        description: "Timestamp when the record was extracted from the Amplitude API"
+        tests:
+          - not_null
+      - name: _airbyte_meta
+        description: "Airbyte metadata containing sync information"
+        tests:
+          - not_null
+      - name: _airbyte_generation_id
+        description: "Airbyte generation ID for tracking data lineage"
+        tests:
+          - not_null
+      - name: event_type
+        description: "Amplitude event name. Primary key for the taxonomy stream."
+        tests:
+          - not_null
+          - unique
+      - name: display_name
+        description: "Display name for the event in the Amplitude UI"
+      - name: description
+        description: "Human-curated description of the event"
+      - name: is_active
+        description: "Whether Govern considers the event active"
+      - name: category_name
+        description: "Govern category name, flattened from the category JSON object"
+      - name: tags
+        description: "Govern tags, parsed from the JSON array (array<string>)"
+      - name: owner
+        description: "Govern-recorded owner of the event"
+      - name: is_hidden_from_dropdowns
+        description: "Whether the event is hidden from UI dropdowns"
+      - name: is_hidden_from_persona_results
+        description: "Whether the event is hidden from persona results"
+      - name: is_hidden_from_pathfinder
+        description: "Whether the event is hidden from pathfinder"
+      - name: is_hidden_from_timeline
+        description: "Whether the event is hidden from the user timeline"

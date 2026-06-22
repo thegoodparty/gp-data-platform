@@ -1,7 +1,7 @@
 """Reusable helpers for Win-product engagement analyses.
 
 Win event classification is sourced from the single-source dbt model
-``int__amplitude_event_taxonomy`` (DATA-1945) rather than a hand-maintained
+``int__amplitude_event_catalog`` (DATA-1945) rather than a hand-maintained
 ``CASE WHEN event_type LIKE ...`` block: an event is "Win" when its taxonomy
 ``is_win`` flag is true, and drift is controlled by
 ``first_seen_date <= drift_cutoff`` (features first seen after the cutoff are
@@ -31,7 +31,7 @@ import pandas as pd
 # Repoint these for a dev/test catalog.
 EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events"
 USERS_WIN_CANDIDACY = "goodparty_data_catalog.mart_analytics.users_win_candidacy"
-EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_taxonomy"
+EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_catalog"
 
 # Default drift cutoff: keep all 2025 product families in scope and exclude the
 # 2026 drift families (win_briefings, 'Dashboard - Campaign Plan Viewed', etc.).
@@ -71,7 +71,7 @@ def _win_event_types_sql(drift_cutoff: str) -> str:
 def win_event_predicate(drift_cutoff: str = DEFAULT_DRIFT_CUTOFF) -> str:
     """Return a SQL predicate selecting drift-controlled Win-product events.
 
-    Win membership comes from ``int__amplitude_event_taxonomy.is_win``; drift is
+    Win membership comes from ``int__amplitude_event_catalog.is_win``; drift is
     controlled by ``first_seen_date <= drift_cutoff``. Supersedes the former
     hand-maintained LIKE allowlist.
 
@@ -123,7 +123,7 @@ def build_win_working_set(
     steps are derived point-in-time from the raw event stream (events strictly
     before each user's election anchor), so onboarding/activation are anchored
     rather than as-of-today. Win events are identified by a LEFT JOIN to the
-    drift-controlled Win event_types from ``int__amplitude_event_taxonomy``.
+    drift-controlled Win event_types from ``int__amplitude_event_catalog``.
 
     Args:
         run_query: callable taking a SQL string and returning a DataFrame.
