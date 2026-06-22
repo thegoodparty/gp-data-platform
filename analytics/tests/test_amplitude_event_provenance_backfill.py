@@ -459,10 +459,21 @@ class FakeCursor:
 
     def execute(self, sql, params=None):
         self.executed.append((sql, params))
-        self._fetch = [(e,) for e in self._events] if "int__amplitude_event_taxonomy" in sql else []
+        self._fetch = [(e,) for e in self._events] if "amplitude_taxonomy_event_type" in sql else []
 
     def fetchall(self):
         return self._fetch
+
+
+def test_fetch_event_universe_anchors_on_airbyte_taxonomy_source():
+    # The event universe is anchored on the Airbyte-synced Amplitude Govern taxonomy,
+    # not the dbt int__ model (repointed 2026-06-22).
+    cur = FakeCursor(["Event A", "Event B"])
+    events = bf.fetch_event_universe(cur)
+    assert events == ["Event A", "Event B"]
+    sql = cur.executed[-1][0]
+    assert "airbyte_source.amplitude_taxonomy_event_type" in sql
+    assert "int__amplitude_event_taxonomy" not in sql
 
 
 def test_run_backfill_inserts_then_merges_then_watermarks(monkeypatch):
@@ -765,7 +776,7 @@ class RefreshCursor:
 
     def execute(self, sql, params=None):
         self.executed.append((sql, params))
-        if "int__amplitude_event_taxonomy" in sql:
+        if "amplitude_taxonomy_event_type" in sql:
             self._fetch = [(e,) for e in self._events]
         elif sql.startswith("SELECT last_processed_sha"):
             self._fetch = [self._watermark_row] if self._watermark_row else []

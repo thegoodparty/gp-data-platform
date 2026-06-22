@@ -19,8 +19,9 @@ Extraction note: ``trackEvent(...)`` in omni is called with *constant references
 event-type strings live as VALUES in the ``EVENTS`` map
 (packages/gp-webapp/helpers/analyticsHelper.ts) and a few gp-api type/string files.
 So we do not parse ``trackEvent('...')``; instead we anchor on the authoritative event
-universe (``dbt.int__amplitude_event_taxonomy``, ~408 events) and match those literals
-against added/removed diff lines in a single ``git log -p`` pass.
+universe (``airbyte_source.amplitude_taxonomy_event_type``, ~434 events synced directly
+from Amplitude Govern) and match those literals against added/removed diff lines in a
+single ``git log -p`` pass.
 
 Deploy-ref anchored: the walk, the HEAD-presence grep, and PR attribution all target the
 deployed default branch (``origin/develop``, fetched first), so provenance reflects what
@@ -77,7 +78,10 @@ INSERT_CHUNK_ROWS = 200
 DEPLOY_REF = "origin/develop"
 
 DATABRICKS_CATALOG = "goodparty_data_catalog"
-TAXONOMY_TABLE = f"{DATABRICKS_CATALOG}.dbt.int__amplitude_event_taxonomy"
+# Event universe: Amplitude Govern taxonomy synced directly via Airbyte (~434 events, all
+# is_active). Replaced dbt.int__amplitude_event_taxonomy as the anchor on 2026-06-22 -- the
+# Airbyte feed is the first-party source of truth (int__ is being rebuilt to source from it).
+TAXONOMY_TABLE = f"{DATABRICKS_CATALOG}.airbyte_source.amplitude_taxonomy_event_type"
 
 # Landing schema is env-configurable, mirroring the airflow_source convention
 # (l2_expired_voters reads Variable `databricks_source_schema`: airflow_source in prod,
@@ -680,7 +684,7 @@ def _ensure_columns(cursor: Any, table: str, schema: Sequence[tuple[str, str]]) 
 
 
 def fetch_event_universe(cursor: Any, taxonomy_table: str = TAXONOMY_TABLE) -> list[str]:
-    """The authoritative ~408 distinct event_type values to attribute provenance for."""
+    """The authoritative ~434 distinct event_type values to attribute provenance for."""
     cursor.execute(
         f"SELECT DISTINCT event_type FROM {taxonomy_table} WHERE event_type IS NOT NULL ORDER BY event_type"
     )
