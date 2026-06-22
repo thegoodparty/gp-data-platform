@@ -654,12 +654,12 @@ def run_backfill(
     root: str,
     since: str | None,
     now: datetime,
-    table: str = "",
-    state_table: str = "",
+    csv_path: str = DEFAULT_CSV_PATH,
+    state_path: str = DEFAULT_STATE_PATH,
     ref: str = DEPLOY_REF,
     pr_resolver: Callable[[str], str | None] | None = None,
 ) -> list[dict]:
-    """Fetch the universe, walk git once, write the table + watermark. Returns the rows."""
+    """Fetch the universe, walk git once, write the CSV + watermark file. Returns the rows."""
     updated_at = now.replace(tzinfo=None).isoformat(timespec="seconds")
     events = fetch_event_universe(cursor)
     print(f"Event universe: {len(events)} event_types", file=sys.stderr)
@@ -670,22 +670,19 @@ def run_backfill(
     )
     lines = run_git_log(root, since, INSTRUMENTATION_PATHS, ref)
     grep_text = git_grep_present_text(root, events, INSTRUMENTATION_PATHS, ref)
-    # parse_git_log consumes the stream; collect_provenance needs both, so materialize
-    # the (small) grep dump first and stream the (large) log into collect_provenance.
     rows = collect_provenance(events, lines, grep_text, updated_at)
 
-    _, filled = resolve_pr_gaps(rows, pr_resolver)  # mutates rows in place
+    _, filled = resolve_pr_gaps(rows, pr_resolver)
     if pr_resolver is not None:
         print(f"Merge-walk PR backfill: filled {filled} *_pr gaps", file=sys.stderr)
 
-    write_provenance(cursor, rows, table)
+    write_provenance(rows, csv_path)
     write_watermark(
-        cursor,
+        state_path,
         git_head_sha(root, ref),
         git_head_ref(root, ref),
         git_commit_count(root, since, INSTRUMENTATION_PATHS, ref),
         updated_at,
-        state_table,
     )
     return rows
 

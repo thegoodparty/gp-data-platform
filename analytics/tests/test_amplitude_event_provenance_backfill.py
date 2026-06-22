@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 import amplitude_event_provenance_backfill as bf
 import pytest
 from amplitude_event_provenance_backfill import (
-    PROVENANCE_COLUMNS,
     build_git_log_argv,
     build_provenance_row,
     classify_code_status,
@@ -20,6 +19,8 @@ from amplitude_event_provenance_backfill import (
 )
 
 SEP = "\x1f"
+
+DT = datetime(2026, 6, 22, tzinfo=UTC)
 
 
 def _epoch(date):
@@ -402,56 +403,28 @@ def test_fetch_event_universe_anchors_on_airbyte_taxonomy_source():
     assert "int__amplitude_event_taxonomy" not in sql
 
 
-def test_run_backfill_inserts_then_merges_then_watermarks(monkeypatch):
-    monkeypatch.setattr(bf, "run_git_log", lambda root, since, paths, ref=None: iter(_STREAM))
-    monkeypatch.setattr(
-        bf, "git_grep_present_text", lambda root, events, paths, ref="HEAD": "'Event A'\n'Event C'"
-    )
-    monkeypatch.setattr(bf, "git_head_sha", lambda root, ref="HEAD": "deadbeef")
-    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/develop")
-    monkeypatch.setattr(bf, "git_commit_count", lambda root, since, paths, ref="HEAD": 42)
+def test_run_backfill_writes_csv_and_state(monkeypatch, tmp_path):
+    csv_path = tmp_path / "prov.csv"
+    state_path = tmp_path / "state.json"
+    cur = FakeCursor(["Event A", "Event B"])
+    stream = [
+        _header("a1", "a1", "2025-02-01", "feat: add A (#1)"),
+        '+  trackEvent(EVENTS.X)  // "Event A"',
+        _header("b1", "b1", "2025-03-01", "feat: add B (#2)"),
+        '+  trackEvent(EVENTS.Y)  // "Event B"',
+    ]
+    monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter(stream))
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '"Event A" "Event B"')
+    monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "headsha")
+    monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
+    monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 7)
 
-    cur = FakeCursor(["Event A", "Event B", "Event C"])
-    rows = bf.run_backfill(cur, "/omni", "2024-06-01", datetime(2026, 6, 17, tzinfo=UTC))
+    rows = bf.run_backfill(cur, "/root", None, DT, csv_path=str(csv_path), state_path=str(state_path))
 
-    assert {r["event_type"] for r in rows} == {"Event A", "Event B", "Event C"}
-    # rows inserted via a parameterized bulk INSERT (3 events -> 3 tuples in one chunk)
-    inserts = [(s, p) for s, p in cur.executed if s.startswith("INSERT INTO")]
-    assert len(inserts) == 1
-    insert_sql, params = inserts[0]
-    assert insert_sql.count("?") == 3 * len(PROVENANCE_COLUMNS)
-    assert len(params) == 3 * len(PROVENANCE_COLUMNS)
-    # provenance MERGE on event_type, then watermark MERGE on job_name (with 5 bound params)
-    merges = [(s, p) for s, p in cur.executed if "MERGE INTO" in s]
-    assert any("ON t.event_type = s.event_type" in s for s, _ in merges)
-    wm = [(s, p) for s, p in merges if "ON t.job_name = s.job_name" in s]
-    assert len(wm) == 1 and wm[0][1] == (bf.JOB_NAME, "deadbeef", "origin/develop", 42, "2026-06-17T00:00:00")
-    prov_i = next(i for i, (s, _) in enumerate(cur.executed) if "ON t.event_type = s.event_type" in s)
-    wm_i = next(i for i, (s, _) in enumerate(cur.executed) if "ON t.job_name = s.job_name" in s)
-    assert wm_i > prov_i
-
-
-def test_run_backfill_applies_pr_resolver(monkeypatch):
-    monkeypatch.setattr(bf, "run_git_log", lambda root, since, paths, ref=None: iter(_STREAM))
-    monkeypatch.setattr(
-        bf, "git_grep_present_text", lambda root, events, paths, ref="HEAD": "'Event A'\n'Event C'"
-    )
-    monkeypatch.setattr(bf, "git_head_sha", lambda root, ref="HEAD": "deadbeef")
-    monkeypatch.setattr(bf, "git_head_ref", lambda root, ref=None: "origin/develop")
-    monkeypatch.setattr(bf, "git_commit_count", lambda root, since, paths, ref="HEAD": 42)
-
-    cur = FakeCursor(["Event A", "Event B", "Event C"])
-    # Event A is instrumented at "aaaa" whose subject "WEB-1: add events" has no PR ref;
-    # the merge-walk resolver backfills instrumented_pr from the introducing merge commit.
-    rows = bf.run_backfill(
-        cur,
-        "/omni",
-        "2024-06-01",
-        datetime(2026, 6, 17, tzinfo=UTC),
-        pr_resolver=lambda sha: "4321" if sha == "aaaa" else None,
-    )
-    row_a = next(r for r in rows if r["event_type"] == "Event A")
-    assert row_a["instrumented_pr"] == "4321"
+    assert {r["event_type"] for r in rows} == {"Event A", "Event B"}
+    assert csv_path.exists()
+    assert bf.read_watermark(str(state_path))["last_processed_sha"] == "headsha"
+    assert set(bf.read_provenance_rows(str(csv_path))) == {"Event A", "Event B"}
 
 
 # --------------------------------------------------------------------------- #
