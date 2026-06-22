@@ -21,7 +21,6 @@ from loader.core.config import BaseLoaderConfig
 
 DEFAULT_AWS_REGION = "us-west-2"
 DEFAULT_S3_BUCKET = "gp-voter-loader"
-DEFAULT_DATABRICKS_TABLE = "goodparty_data_catalog.dbt.int__l2_nationwide_uniform"
 
 # Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
 # (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
@@ -81,7 +80,6 @@ class LoaderConfig(BaseLoaderConfig):
     `os.environ`.
     """
 
-    databricks_table: str
     # Databricks SQL warehouse the unload step submits INSERT OVERWRITE DIRECTORY to.
     databricks_warehouse_id: str
 
@@ -144,7 +142,6 @@ class LoaderConfig(BaseLoaderConfig):
             aws_profile=os.environ.get("AWS_PROFILE"),
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
-            databricks_table=os.environ.get("LOADER_DATABRICKS_TABLE", DEFAULT_DATABRICKS_TABLE),
             databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
