@@ -58,10 +58,10 @@ models:
       analytics:
         +schema: mart_analytics
         +tags: ["mart", "analytics"]
-      reverse_etl:
-        +schema: mart_reverse_etl
+      sales_reverse_etl:
+        +schema: mart_sales_reverse_etl
         +materialized: view
-        +tags: ["mart", "reverse_etl"]
+        +tags: ["mart", "sales_reverse_etl"]
       mban2026:
         +schema: mart_mban2026
       serve_agents:

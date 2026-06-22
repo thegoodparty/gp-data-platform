@@ -11,7 +11,7 @@
 -- diagnostics
 -- dropped; ER replaces them), with owner/Type set for ALL rows and the match-back/key
 -- columns
--- appended. Materialized as a view in mart_reverse_etl (dbt_project.yml).
+-- appended. Materialized as a view in mart_sales_reverse_etl (dbt_project.yml).
 --
 -- Design: .tickets/DATA-1523/46_layer1_models_design.md. Validation:
 -- 40_stream3_validation.md.
