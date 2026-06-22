@@ -1,5 +1,5 @@
 # Astro Runtime pre-installed provider packages: https://docs.astronomer.io/astro/runtime-image-architecture#provider-packages
-duckdb==1.5.3
+duckdb==1.5.4
 tabulate==0.10.0
 pyarrow
 pandas>=2.3.1,<3.0.0
