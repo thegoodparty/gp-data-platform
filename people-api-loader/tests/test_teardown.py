@@ -36,11 +36,16 @@ def _err(code: str) -> ClientError:
 
 class FakeRds:
     def __init__(
-        self, missing: set[str] | None = None, *, pg_error: str = "DBParameterGroupNotFound"
+        self,
+        missing: set[str] | None = None,
+        *,
+        pg_error: str = "DBParameterGroupNotFound",
+        modify_error: str | None = None,
     ) -> None:
         self.calls: list[str] = []
         self._missing = missing or set()  # ops that should raise NotFound
         self._pg_error = pg_error  # which not-found code delete_db_cluster_parameter_group raises
+        self._modify_error = modify_error  # error code modify_db_cluster raises (e.g. bad state)
 
     def delete_db_instance(self, **kw: Any) -> None:
         self.calls.append("delete_instance")
@@ -49,6 +54,8 @@ class FakeRds:
 
     def modify_db_cluster(self, **kw: Any) -> None:
         self.calls.append("disable_protection")
+        if self._modify_error:
+            raise _err(self._modify_error)
         if "cluster" in self._missing:
             raise _err("DBClusterNotFoundFault")
 
@@ -130,6 +137,19 @@ def test_teardown_idempotent_on_missing_param_groups(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert rds_client.calls.count("delete_pg") == 2  # both param-group deletes attempted
+
+
+def test_teardown_tolerates_creating_cluster_on_protection_disable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Orphan stuck in `creating` (rollback-failed scenario): modify_db_cluster to disable
+    # deletion protection raises InvalidDBClusterStateFault. That must be swallowed (the
+    # orphan never reached resize, so protection is already False) so teardown reaches the
+    # delete — this is the documented `loader teardown --confirm` recovery path.
+    rds_client = FakeRds(modify_error="InvalidDBClusterStateFault")
+    ssm_client = FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)  # must not raise
+    assert "delete_cluster" in rds_client.calls  # proceeded past the swallowed modify
 
 
 def test_teardown_idempotent_on_missing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:

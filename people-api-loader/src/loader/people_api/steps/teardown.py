@@ -75,7 +75,11 @@ def run(
     rds_client.get_waiter("db_instance_deleted").wait(DBInstanceIdentifier=instance_id)
 
     # 2. Cluster — disable deletion protection (resize enabled it) before deleting.
-    with ignore_client_errors("DBClusterNotFoundFault"):
+    #    Also tolerate InvalidDBClusterStateFault: an orphan stuck in `creating` (the
+    #    rollback-failed scenario provision documents) never reached resize, so protection is
+    #    still False — there's nothing to disable, and this modify is safely skipped so teardown
+    #    proceeds to the delete (the documented `loader teardown --confirm` recovery path).
+    with ignore_client_errors("DBClusterNotFoundFault", "InvalidDBClusterStateFault"):
         rds_client.modify_db_cluster(
             DBClusterIdentifier=cluster_id, DeletionProtection=False, ApplyImmediately=True
         )
