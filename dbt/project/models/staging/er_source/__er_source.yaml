@@ -357,7 +357,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["ballotready_techspeed", "gp_api"]
+                values: ["ballotready_techspeed", "gp_api", "ddhq"]
       - name: first_name
         description: Official's first name (lowercased, trimmed in prematch).
       - name: last_name
@@ -465,14 +465,14 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["ballotready_techspeed", "gp_api"]
+                values: ["ballotready_techspeed", "gp_api", "ddhq"]
       - name: source_name_r
         description: Origin source for the right record.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ["ballotready_techspeed", "gp_api"]
+                values: ["ballotready_techspeed", "gp_api", "ddhq"]
       - name: source_id_l
         description: Source-specific identifier for the left record.
       - name: source_id_r
