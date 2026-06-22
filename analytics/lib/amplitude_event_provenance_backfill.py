@@ -692,23 +692,30 @@ def run_refresh(
     root: str,
     since: str | None,
     now: datetime,
-    table: str = "",
-    state_table: str = "",
+    csv_path: str = DEFAULT_CSV_PATH,
+    state_path: str = DEFAULT_STATE_PATH,
     ref: str = DEPLOY_REF,
     pr_resolver: Callable[[str], str | None] | None = None,
 ) -> list[dict]:
     """Incremental refresh bounded by the SHA watermark; full backfill when there is none.
 
-    ``since`` is used only on the no-watermark fallback path. On the incremental path the
-    ``<last_sha>..ref`` range supersedes any date bound. Always advances the watermark so
-    the next run resumes from HEAD; only MERGEs provenance rows for events that changed.
+    Reads the whole CSV, replaces only the events that changed in the window (giving them a
+    fresh updated_at), carries every other row forward verbatim, and rewrites the full sorted
+    CSV. Always advances the watermark file so the next run resumes from HEAD.
     """
     updated_at = now.replace(tzinfo=None).isoformat(timespec="seconds")
-    watermark = read_watermark(cursor, state_table)
+    watermark = read_watermark(state_path)
     if watermark is None:
         print("No watermark found -> full backfill", file=sys.stderr)
         return run_backfill(
-            cursor, root, since, now, table=table, state_table=state_table, ref=ref, pr_resolver=pr_resolver
+            cursor,
+            root,
+            since,
+            now,
+            csv_path=csv_path,
+            state_path=state_path,
+            ref=ref,
+            pr_resolver=pr_resolver,
         )
 
     last_sha = watermark["last_processed_sha"]
@@ -721,26 +728,28 @@ def run_refresh(
     affected = sorted(acc.keys())
     print(f"Affected events in window: {len(affected)}", file=sys.stderr)
 
-    rows: list[dict] = []
+    existing = read_provenance_rows(csv_path)
     if affected:
-        existing = read_provenance_rows(cursor, table)
         grep_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, ref)
         present = present_at_head(affected, grep_text)
+        updated_rows: list[dict] = []
         for ev in affected:
             merged = merge_provenance_entry(existing.get(ev), acc[ev])
-            rows.append(build_provenance_row(ev, merged, present.get(ev), updated_at))
-        _, filled = resolve_pr_gaps(rows, pr_resolver)
+            updated_rows.append(build_provenance_row(ev, merged, present.get(ev), updated_at))
+        _, filled = resolve_pr_gaps(updated_rows, pr_resolver)
         if pr_resolver is not None:
             print(f"Merge-walk PR backfill: filled {filled} *_pr gaps", file=sys.stderr)
-        write_provenance(cursor, rows, table)
+        for row in updated_rows:
+            existing[row["event_type"]] = row
 
+    rows = list(existing.values())
+    write_provenance(rows, csv_path)
     write_watermark(
-        cursor,
+        state_path,
         git_head_sha(root, ref),
         git_head_ref(root, ref),
-        git_commit_count(root, None, INSTRUMENTATION_PATHS, ref),  # total count at ref tip, not incremental
+        git_commit_count(root, None, INSTRUMENTATION_PATHS, ref),
         updated_at,
-        state_table,
     )
     return rows
 
