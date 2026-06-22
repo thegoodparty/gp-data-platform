@@ -82,6 +82,8 @@ class LoaderConfig(BaseLoaderConfig):
     """
 
     databricks_table: str
+    # Databricks SQL warehouse the unload step submits INSERT OVERWRITE DIRECTORY to.
+    databricks_warehouse_id: str
 
     # Deployment env (dev/qa/prod) — keys the SSM connection-string parameter names.
     db_env: str
@@ -143,6 +145,7 @@ class LoaderConfig(BaseLoaderConfig):
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
             databricks_table=os.environ.get("LOADER_DATABRICKS_TABLE", DEFAULT_DATABRICKS_TABLE),
+            databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
