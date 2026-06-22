@@ -405,7 +405,25 @@ select
     party,
     candidate_office,
     office_level,
-    office_type,
+    -- Normalize office_type into a clean candidacy-ER race-key discriminator.
+    case
+        when
+            lower(trim(office_type)) in (
+                'alderman',
+                'alderperson',
+                'town council',
+                'town chair',
+                'township council',
+                'city commission',
+                'city commissioner',
+                'city council'
+            )
+        then 'City Council'
+        -- Non-discriminating buckets -> NULL so the race-key clause wildcards.
+        when lower(trim(office_type)) in ('other', 'local', 'county', 'state')
+        then null
+        else nullif(initcap(trim(office_type)), '')
+    end as office_type,
     nullif(district_raw, '') as district_raw,
     district_identifier,
     election_date,

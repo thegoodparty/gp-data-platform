@@ -134,17 +134,16 @@ CANDIDACY_CONFIG = EntityConfig(
     clustered_output_name="clustered_candidacies.csv",
     post_prediction_filters=[
         BASE_POST_PREDICTION_FILTER,
-        # Race ID guard: drop pairs whose br_race_ids differ unless the office
-        # names are reasonably similar (JW >= 0.88, gamma 3 with the levels
-        # below). Threshold tracks the JW>=0.88 level — keep this in sync if
-        # the official_office_name comparison's level order changes.
-        # Levels: 0=Else, 1=ArrayIntersect, 2=JW>=0.75, 3=JW>=0.88, 4=JW>=0.95.
+        # Race key: keep only if offices match strongly (gamma 3 == JW >= 0.88), br_race_id is shared, or br_race_id/district/office_type do not conflict (null-wildcards).
         """
-          NOT (
-            br_race_id_l IS NOT NULL
-            AND br_race_id_r IS NOT NULL
-            AND br_race_id_l != br_race_id_r
-            AND gamma_official_office_name < 3
+          (
+            gamma_official_office_name >= 3
+            OR (br_race_id_l IS NOT NULL AND br_race_id_l = br_race_id_r)
+            OR (
+              (br_race_id_l IS NULL OR br_race_id_r IS NULL OR br_race_id_l = br_race_id_r)
+              AND (district_identifier_l IS NULL OR district_identifier_r IS NULL OR district_identifier_l = district_identifier_r)
+              AND (office_type_l IS NULL OR office_type_r IS NULL OR office_type_l = office_type_r)
+            )
           )
         """,
         # Same-stage guard: candidacy_stage entities are stage-grained, so
