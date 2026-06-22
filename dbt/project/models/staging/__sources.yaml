@@ -23,6 +23,12 @@ sources:
         description: raw data load from amplitude api events
       - name: amplitude_api_events_list
         description: raw data load from amplitude api events list
+      - name: amplitude_taxonomy_event_type
+        description: >
+          raw data load from the amplitude govern taxonomy api
+          (GET /api/2/taxonomy/event, showDeleted=true). one row per event_type
+          with human-curated metadata (category, description, is_active,
+          is_hidden_*, tags, owner).
       - name: ballotready_api_election
         description: raw data scan from [`elections` query](https://developers.civicengine.com/docs/api/graphql/reference/queries/elections)
       - name: ballotready_api_issue

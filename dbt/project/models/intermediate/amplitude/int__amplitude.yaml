@@ -465,19 +465,21 @@ models:
           config:
             where: "recipient_count is not null"
 
-  - name: int__amplitude_event_taxonomy
+  - name: int__amplitude_event_catalog
     description: >
-      Single source of truth for Amplitude event-family classification. One row
-      per distinct event_type, bucketed into a product-feature family via
-      pattern matching (amplitude_event_family macro). Replaces event-type logic
-      previously duplicated across int__amplitude_win_activity,
-      int__amplitude_user_milestones, the analytics helper, and the runbook
-      (DATA-1945). Pattern-based so new event_types in known families classify
-      automatically; first_seen_date enables drift control via
-      WHERE first_seen_date <= '<cutoff>'.
+      Read-only catalog of Amplitude events: macro-derived family classification
+      plus volume/recency from the event stream, joined to Amplitude Govern
+      metadata, one row per event_type. Renamed from int__amplitude_event_taxonomy
+      (DATA-2005). Pattern-based so new event_types in known families classify
+      automatically. Does not compute a staleness verdict; code-presence provenance
+      lives as a repo CSV (analytics/data/amplitude_event_provenance.csv, DATA-2014)
+      and the relevance / up-to-dateness judgment is made at check time by an agent
+      or the health monitor reconciling that CSV with this table. family is
+      authoritative for classification; govern_category is descriptive metadata only.
 
-      Grain: one row per distinct event_type. Source:
-      stg_airbyte_source__amplitude_api_events.
+      Grain: one row per distinct event_type. Sources:
+      stg_airbyte_source__amplitude_api_events (behavior),
+      stg_airbyte_source__amplitude_taxonomy_event_type (Govern metadata).
     columns:
       - name: event_type
         description: Distinct Amplitude event name. Primary key for this model.
@@ -543,13 +545,60 @@ models:
         data_tests:
           - not_null
 
+      - name: last_seen_date
+        description: >
+          Date of most recent appearance in the raw event stream. Powers recency
+          checks (e.g. is the event still firing) at the consumer/agent layer.
+        data_tests:
+          - not_null
+
       - name: event_count
-        description: Total occurrences of this event_type in the raw stream (volume context).
+        description: Total occurrences of this event_type in the raw stream, all-time (volume context).
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
+
+      - name: event_count_30d
+        description: Occurrences of this event_type in the trailing 30 days (recent volume).
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: govern_category
+        description: >
+          Govern category name, flattened from the category JSON object. Descriptive
+          metadata only, not used in any derived logic; largely uncurated today.
+
+      - name: govern_description
+        description: Govern human-curated description of the event (where populated).
+
+      - name: govern_display_name
+        description: Govern display name for the event.
+
+      - name: govern_is_active
+        description: Govern is_active flag for the event.
+
+      - name: govern_is_hidden
+        description: >
+          True if the event is hidden from any Govern surface (OR of the four
+          is_hidden_* flags).
+
+      - name: govern_tags
+        description: Govern tags for the event (array<string>; uncurated today).
+
+      - name: govern_owner
+        description: Govern-recorded owner of the event (uncurated today).
+
+      - name: in_govern_taxonomy
+        description: >
+          Whether a Govern taxonomy row matched this event_type. Distinguishes
+          "not in Govern" from "in Govern but uncurated".
+        data_tests:
+          - not_null
     tests:
       - dbt_utils.expression_is_true:
           arguments:

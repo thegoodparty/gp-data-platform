@@ -55,7 +55,7 @@ def test_wilson_rejects_k_outside_zero_to_n(k, n):
 def test_win_event_predicate_sources_from_taxonomy_with_cutoff():
     pred = wa.win_event_predicate("2026-01-01")
     assert pred.startswith("event_type IN (")
-    assert "int__amplitude_event_taxonomy" in pred
+    assert "int__amplitude_event_catalog" in pred
     assert "is_win" in pred
     assert "first_seen_date <= DATE'2026-01-01'" in pred
 

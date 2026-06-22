@@ -60,7 +60,7 @@ with
             -- 'Dashboard - Candidate Dashboard Viewed'.
             and event_type in (
                 select event_type
-                from {{ ref("int__amplitude_event_taxonomy") }}
+                from {{ ref("int__amplitude_event_catalog") }}
                 where is_recurrent
             )
     ),

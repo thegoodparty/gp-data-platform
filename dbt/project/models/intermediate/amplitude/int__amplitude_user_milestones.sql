@@ -80,7 +80,7 @@ with
             and try_cast(user_id as bigint) is not null
             -- This is a bespoke milestone pick (specific named lifecycle events),
             -- not a taxonomy family, so the list stays explicit here. The
-            -- single-source classifier is int__amplitude_event_taxonomy
+            -- single-source classifier is int__amplitude_event_catalog
             -- (DATA-1945); a singular test (assert_milestone_events_classified)
             -- guards that every event below classifies to a non-'other' family.
             and event_type in (
