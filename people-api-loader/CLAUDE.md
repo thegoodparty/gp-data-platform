@@ -12,7 +12,7 @@ This repo standardizes on Astral tools and is intentionally not aligned with `gp
 
 | Tool | Use | Notes |
 |---|---|---|
-| `uv` | env + deps | Installs Python 3.12 itself via `.python-version`. No pyenv. |
+| `uv` | env + deps | Installs Python 3.14 itself via `.python-version`. No pyenv. |
 | `ruff` | lint + format | Line length 110. Don't introduce black/isort/flake8. |
 | `ty` | type checker | Pre-1.0 — version is pinned exactly in `pyproject.toml`. Don't loosen the pin without testing. Don't introduce pyright/mypy. |
 
@@ -26,7 +26,7 @@ Stub return-type rule: even when a stub only raises, declare the eventual real r
 
 ## Never
 
-- Don't read or set `VOTER_DB_MASTER_PASSWORD`. `LoaderConfig.from_env()` hard-fails if it's set. The master password lives in AWS Secrets Manager and is fetched lazily.
+- Don't read or set `VOTER_DB_MASTER_PASSWORD`. `LoaderConfig.from_env()` hard-fails if it's set. Connections come from SSM SecureString connection strings (`people-db-connection-string-{env}` for the Present cluster, `-{date}`-suffixed for each provisioned cluster), never an env-var password.
 - Don't put people-API-specific knowledge in `src/loader/core/`. The harness must stay consumer-agnostic — a second consumer (e.g. donor data) should sit alongside `people_api/`, not require core changes.
 - Don't omit `Environment=dev` tags on any AWS resource the loader creates. The loader's IAM permissions-boundary requires it; missing tags = denied API call.
 - Don't mutate the existing serving cluster. The model is train-deployment: every refresh provisions a fresh Aurora cluster and swaps in.

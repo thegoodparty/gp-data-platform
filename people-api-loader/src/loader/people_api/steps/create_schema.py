@@ -1,9 +1,9 @@
 """Step 3 — create the Voter table on the new cluster (ClickUp DATA-1910).
 
 Applies a partitioned `CREATE TABLE public."Voter"` (LIST partitioned by
-"State") extracted from the committed prod snapshot (tables only — indexes/PK
-are deferred to build-indexes), after installing the aws_s3/aws_commons
-extensions. One child partition per USState is created.
+"State") extracted from the committed, generated `target_schema.sql` (from `loader
+emit-ddl`; tables only — indexes/PK are deferred to build-indexes), after installing
+the aws_s3/aws_commons extensions. One child partition per USState is created.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, resolve_writer_endpoint
+from loader.people_api.db import connect_new
 from loader.people_api.manifests import (
     SchemaManifest,
     manifest_uri,
@@ -21,7 +21,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.snapshot import load_prod_dump
+from loader.people_api.schema.snapshot import load_target_schema
 from loader.people_api.schema.states import STATES
 from loader.people_api.schema.table_ddl import extract_create_tables
 
@@ -62,14 +62,15 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
         )
         return existing
 
-    writer_endpoint = resolve_writer_endpoint(cfg, run_date)
     started = datetime.now(UTC)
     log.info("schema.start")
 
-    dump = load_prod_dump(cfg, run_date)
-    tables = extract_create_tables(dump)
+    schema_sql = load_target_schema(cfg, run_date)
+    tables = extract_create_tables(schema_sql)
     if _TARGET_TABLE not in tables:
-        raise RuntimeError(f'snapshot has no CREATE TABLE public."{_TARGET_TABLE}" (found: {sorted(tables)})')
+        raise RuntimeError(
+            f'target_schema.sql has no CREATE TABLE public."{_TARGET_TABLE}" (found: {sorted(tables)})'
+        )
     create_sql = tables[_TARGET_TABLE]
 
     # Build the partitioned parent DDL and per-state child partitions.
@@ -79,7 +80,7 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
     ddl_uri = put_artifact(cfg, run_date, "schema/target_schema.sql", full_ddl)
     log.info("schema.ddl_emitted", uri=ddl_uri, bytes=len(full_ddl))
 
-    with connect_new(cfg, run_date, writer_endpoint) as conn:
+    with connect_new(cfg, run_date) as conn:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE")
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_commons")

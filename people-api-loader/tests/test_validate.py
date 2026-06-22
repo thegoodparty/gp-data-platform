@@ -40,12 +40,11 @@ def test_compare_counts_flags_unexpected_state() -> None:
 def test_new_voter_counts_by_state(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn().queue_result([("TX", 100), ("CA", 50)])
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    assert step._new_voter_counts_by_state(_CFG, "20260609", "wh") == {"TX": 100, "CA": 50}
+    assert step._new_voter_counts_by_state(_CFG, "20260609") == {"TX": 100, "CA": 50}
 
 
 def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
     unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
@@ -74,7 +73,6 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
     unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
@@ -126,7 +124,7 @@ class _RaisingConn:
 def test_check_schema_diff_clean_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("col_a",), ("col_b",)])))
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("col_a",), ("col_b",)])))
-    check = step._check_schema_diff(_CFG, "20260609", "wh")
+    check = step._check_schema_diff(_CFG, "20260609")
     assert check.passed is True
     assert check.details["missing_from_new"] == [] and check.details["extra_in_new"] == []
 
@@ -134,14 +132,14 @@ def test_check_schema_diff_clean_pass(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_check_schema_diff_missing_column_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("col_a",), ("col_b",)])))
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("col_a",)])))
-    check = step._check_schema_diff(_CFG, "20260609", "wh")
+    check = step._check_schema_diff(_CFG, "20260609")
     assert check.passed is False
     assert "col_b" in check.details["missing_from_new"]
 
 
 def test_check_schema_diff_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", _boom)
-    check = step._check_schema_diff(_CFG, "20260609", "wh")
+    check = step._check_schema_diff(_CFG, "20260609")
     assert check.passed is False and "error_reading_prod" in check.details
 
 
@@ -151,7 +149,7 @@ def test_check_schema_diff_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatc
 def test_check_indexes_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("Voter_pkey",)])))
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Voter_pkey",)])))
-    assert step._check_indexes(_CFG, "20260609", "wh").passed is True
+    assert step._check_indexes(_CFG, "20260609").passed is True
 
 
 def test_check_indexes_missing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,14 +157,14 @@ def test_check_indexes_missing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
         step, "connect_prod", fake_connect(FakeConn().queue_result([("Voter_pkey",), ("Voter_x_idx",)]))
     )
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Voter_pkey",)])))
-    check = step._check_indexes(_CFG, "20260609", "wh")
+    check = step._check_indexes(_CFG, "20260609")
     assert check.passed is False
     assert "Voter_x_idx" in check.details["missing_from_new"]
 
 
 def test_check_indexes_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", _boom)
-    check = step._check_indexes(_CFG, "20260609", "wh")
+    check = step._check_indexes(_CFG, "20260609")
     assert check.passed is False and "error_reading_prod" in check.details
 
 
@@ -178,13 +176,13 @@ def test_check_sample_queries_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     for _ in step._SAMPLE_QUERIES:
         conn.queue_result((1,))  # each query's fetchone returns a row
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    check = step._check_sample_queries(_CFG, "20260609", "wh")
+    check = step._check_sample_queries(_CFG, "20260609")
     assert check.passed is True and not check.details["fail"]
 
 
 def test_check_sample_queries_failure_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_new", lambda *a, **k: _RaisingConn())
-    check = step._check_sample_queries(_CFG, "20260609", "wh")
+    check = step._check_sample_queries(_CFG, "20260609")
     assert check.passed is False
     assert len(check.details["fail"]) == len(step._SAMPLE_QUERIES)
 
@@ -195,7 +193,7 @@ def test_check_sample_queries_failure_recorded(monkeypatch: pytest.MonkeyPatch) 
 def test_check_l2type_coverage_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("Type_A",)])))
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Type_A",)])))
-    assert step._check_l2type_coverage(_CFG, "20260609", "wh").passed is True
+    assert step._check_l2type_coverage(_CFG, "20260609").passed is True
 
 
 def test_check_l2type_coverage_missing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,7 +201,7 @@ def test_check_l2type_coverage_missing_fails(monkeypatch: pytest.MonkeyPatch) ->
         step, "connect_prod", fake_connect(FakeConn().queue_result([("Type_A",), ("Type_B",)]))
     )
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Type_A",)])))
-    check = step._check_l2type_coverage(_CFG, "20260609", "wh")
+    check = step._check_l2type_coverage(_CFG, "20260609")
     assert check.passed is False
     assert "Type_B" in check.details["missing_columns"]
 
@@ -212,7 +210,7 @@ def test_check_l2type_coverage_skips_when_org_districts_unreachable(monkeypatch:
     # org_districts is an environmental dependency build_indexes already skips; validate
     # must skip too (passed=True, visibly recorded), not hard-fail and wedge the pipeline.
     monkeypatch.setattr(step, "connect_prod", _boom)
-    check = step._check_l2type_coverage(_CFG, "20260609", "wh")
+    check = step._check_l2type_coverage(_CFG, "20260609")
     assert check.passed is True
     assert "skipped" in check.details
 
@@ -222,7 +220,6 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
     # only on 'complete', so a retry must re-execute every check and rewrite the manifest.
     # Pins the contract documented in run() (write 'failed', not 'complete', on a failure).
     captured: dict = {}
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
     unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
     failed = SimpleNamespace(status="failed")
     monkeypatch.setattr(
@@ -286,14 +283,13 @@ def test_compare_counts_flag_unexpected_false_ignores_new_state() -> None:
 def test_new_voter_counts_by_state_drops_null_state(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn().queue_result([("TX", 100), (None, 3)])  # NULL-State group must be dropped
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    assert step._new_voter_counts_by_state(_CFG, "20260609", "wh") == {"TX": 100}
+    assert step._new_voter_counts_by_state(_CFG, "20260609") == {"TX": 100}
 
 
 def test_run_writes_failed_manifest_when_new_cluster_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
     # A naked pre-check failure must still leave a `failed` manifest (retryable), not
     # propagate out of run() with nothing written.
     captured: dict = {}
-    monkeypatch.setattr(step, "resolve_writer_endpoint", lambda cfg, rd: "wh")
     unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload

@@ -1,10 +1,9 @@
-"""Committed static snapshot of the prod schema (pg_dump --schema-only).
+"""Committed target schema for the new cluster.
 
-`create-schema` and `build-indexes` read the prod schema DDL from this
-versioned file under `schema/data/` rather than generating it live. Override
-the path with `LOADER_PROD_DUMP_PATH` (used by tests and ad-hoc runs). A
-dedicated Prisma-to-DDL emitter (DATA-1904) would eventually replace this
-committed snapshot.
+`create-schema`, `copy`, and `build-indexes` read the Voter table DDL from the
+committed `schema/data/target_schema.sql`, generated from the people-api mart by
+`loader emit-ddl` (DATA-1904). Override the path with `LOADER_TARGET_SCHEMA_PATH`
+(used by tests and ad-hoc runs).
 """
 
 from __future__ import annotations
@@ -17,8 +16,8 @@ from loader.people_api.config import LoaderConfig
 DATA_DIR = Path(__file__).parent / "data"
 
 
-def load_prod_dump(cfg: LoaderConfig, run_date: str) -> str:
+def load_target_schema(cfg: LoaderConfig, run_date: str) -> str:
     del cfg, run_date  # reserved for a future inspect-manifest path
-    override = os.environ.get("LOADER_PROD_DUMP_PATH")
-    path = Path(override) if override else DATA_DIR / "prod_dump.sql"
+    override = os.environ.get("LOADER_TARGET_SCHEMA_PATH")
+    path = Path(override) if override else DATA_DIR / "target_schema.sql"
     return path.read_text(encoding="utf-8")
