@@ -1,0 +1,21 @@
+with
+    source as (
+        select * from {{ source("airbyte_source", "gp_api_db_annotation_review") }}
+    ),
+    renamed as (
+        select
+            {{ adapter.quote("_airbyte_raw_id") }},
+            {{ adapter.quote("_airbyte_extracted_at") }},
+            {{ adapter.quote("_airbyte_meta") }},
+            {{ adapter.quote("_airbyte_generation_id") }},
+            {{ adapter.quote("id") }},
+            {{ adapter.quote("body") }},
+            {{ adapter.quote("created_at") }},
+            {{ adapter.quote("updated_at") }},
+            {{ adapter.quote("reviewer_email") }},
+            {{ adapter.quote("reviewer_clerk_sub") }}
+
+        from source
+    )
+select *
+from renamed

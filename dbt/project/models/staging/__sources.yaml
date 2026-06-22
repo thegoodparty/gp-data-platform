@@ -80,8 +80,26 @@ sources:
         description: >
           Race-level data loaded from the DDHQ Elections gsheet for races whose
           results have not yet been reported. One row per ddhq_race_id.
+      - name: gp_api_db_annotation
+        description: raw data load from gp_api_db postgres db from table `annotation`
+      - name: gp_api_db_annotation_bug_report
+        description: raw data load from gp_api_db postgres db from table `annotation_bug_report`
+      - name: gp_api_db_annotation_note
+        description: raw data load from gp_api_db postgres db from table `annotation_note`
+      - name: gp_api_db_annotation_note_attachment
+        description: raw data load from gp_api_db postgres db from table `annotation_note_attachment`
+      - name: gp_api_db_annotation_review
+        description: raw data load from gp_api_db postgres db from table `annotation_review`
+      - name: gp_api_db_artifact_feedback
+        description: raw data load from gp_api_db postgres db from table `artifact_feedback`
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
+      - name: gp_api_db_chat_conversation
+        description: raw data load from gp_api_db postgres db from table `chat_conversation`
+      - name: gp_api_db_chat_message
+        description: raw data load from gp_api_db postgres db from table `chat_message`
+      - name: gp_api_db_meeting_briefing
+        description: raw data load from gp_api_db postgres db from table `meeting_briefing`
       - name: gp_api_db_campaign_position
         description: raw data load from gp_api_db postgres db from table `campaign_position`
       - name: gp_api_db_domain
