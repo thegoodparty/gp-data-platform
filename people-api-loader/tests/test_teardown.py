@@ -41,11 +41,13 @@ class FakeRds:
         *,
         pg_error: str = "DBParameterGroupNotFound",
         modify_error: str | None = None,
+        delete_creating_once: bool = False,
     ) -> None:
         self.calls: list[str] = []
         self._missing = missing or set()  # ops that should raise NotFound
         self._pg_error = pg_error  # which not-found code delete_db_cluster_parameter_group raises
         self._modify_error = modify_error  # error code modify_db_cluster raises (e.g. bad state)
+        self._delete_creating_once = delete_creating_once  # 1st delete raises creating-state, then ok
 
     def delete_db_instance(self, **kw: Any) -> None:
         self.calls.append("delete_instance")
@@ -61,6 +63,8 @@ class FakeRds:
 
     def delete_db_cluster(self, **kw: Any) -> None:
         self.calls.append("delete_cluster")
+        if self._delete_creating_once and self.calls.count("delete_cluster") == 1:
+            raise _err("InvalidDBClusterStateFault")
         if "cluster" in self._missing:
             raise _err("DBClusterNotFoundFault")
 
@@ -150,6 +154,18 @@ def test_teardown_tolerates_creating_cluster_on_protection_disable(monkeypatch: 
     monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
     step.run(_CFG, "20260616", confirm=True)  # must not raise
     assert "delete_cluster" in rds_client.calls  # proceeded past the swallowed modify
+
+
+def test_teardown_waits_then_deletes_creating_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Orphan still in `creating`: the first delete raises InvalidDBClusterStateFault. teardown
+    # must wait for the cluster to settle, then re-issue the delete (not abort, not swallow-and-
+    # leave-it) — so the documented recovery tool actually removes the orphan.
+    rds_client = FakeRds(delete_creating_once=True)
+    ssm_client = FakeSsm()
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "ssm", lambda cfg: ssm_client)
+    step.run(_CFG, "20260616", confirm=True)  # must not raise
+    assert rds_client.calls.count("delete_cluster") == 2  # first raised creating, retried after wait
 
 
 def test_teardown_idempotent_on_missing_cluster(monkeypatch: pytest.MonkeyPatch) -> None:

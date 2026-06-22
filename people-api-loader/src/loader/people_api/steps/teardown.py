@@ -13,6 +13,8 @@ is a documented no-op — we reference a shared endpoint, never our own.
 
 from __future__ import annotations
 
+from botocore.exceptions import ClientError
+
 from loader.core.aws import ignore_client_errors, rds, s3, ssm
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
@@ -75,16 +77,30 @@ def run(
     rds_client.get_waiter("db_instance_deleted").wait(DBInstanceIdentifier=instance_id)
 
     # 2. Cluster — disable deletion protection (resize enabled it) before deleting.
-    #    Also tolerate InvalidDBClusterStateFault: an orphan stuck in `creating` (the
-    #    rollback-failed scenario provision documents) never reached resize, so protection is
-    #    still False — there's nothing to disable, and this modify is safely skipped so teardown
-    #    proceeds to the delete (the documented `loader teardown --confirm` recovery path).
+    #    Tolerate InvalidDBClusterStateFault: an orphan stuck in `creating` (the rollback-failed
+    #    scenario provision documents) never reached resize, so protection is still False —
+    #    nothing to disable, so this modify is safely skipped. The delete below handles the
+    #    same `creating` state by waiting for it to settle first.
     with ignore_client_errors("DBClusterNotFoundFault", "InvalidDBClusterStateFault"):
         rds_client.modify_db_cluster(
             DBClusterIdentifier=cluster_id, DeletionProtection=False, ApplyImmediately=True
         )
-    with ignore_client_errors("DBClusterNotFoundFault"):
-        rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+    # Delete. A cluster still in `creating` can't be deleted yet (InvalidDBClusterStateFault);
+    # since this is the recovery tool for that orphan, wait for it to settle, then delete —
+    # rather than aborting (operator must retry) or swallowing (the cluster is never deleted
+    # and the deleted-waiter below would just time out). Mirrors resize's wait-then-retry.
+    try:
+        with ignore_client_errors("DBClusterNotFoundFault"):
+            rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "InvalidDBClusterStateFault":
+            raise
+        log.warning("teardown.cluster_not_yet_deletable", cluster=cluster_id, reason="waiting for creating")
+        rds_client.get_waiter("db_cluster_available").wait(
+            DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
+        )
+        with ignore_client_errors("DBClusterNotFoundFault"):
+            rds_client.delete_db_cluster(DBClusterIdentifier=cluster_id, SkipFinalSnapshot=True)
     rds_client.get_waiter("db_cluster_deleted").wait(DBClusterIdentifier=cluster_id)
 
     # 3. Parameter groups (only deletable once no cluster references them).
