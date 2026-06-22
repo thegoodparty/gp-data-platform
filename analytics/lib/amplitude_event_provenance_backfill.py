@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import re
 import subprocess
@@ -436,39 +437,6 @@ def build_git_log_argv(
     return [*argv, "--", *paths]
 
 
-STATE_COLUMNS = ["job_name", "last_processed_sha", "head_ref", "commit_count", "last_run_at"]
-
-_CREATE_STATE_TABLE_SQL = (
-    "CREATE TABLE IF NOT EXISTS {table} (\n"
-    "  job_name STRING,\n"
-    "  last_processed_sha STRING,\n"
-    "  head_ref STRING,\n"
-    "  commit_count BIGINT,\n"
-    "  last_run_at TIMESTAMP\n"
-    ") USING DELTA"
-)
-
-
-def build_watermark_merge_sql(state_table: str) -> str:
-    """Parameterized single-row MERGE of the high-water mark, keyed on ``job_name``.
-
-    Five bound params, in ``STATE_COLUMNS`` order. ``commit_count`` / ``last_run_at``
-    are CAST to their column types so string/int binds land correctly.
-    """
-    return (
-        f"MERGE INTO {state_table} AS t\n"
-        f"USING (SELECT ? AS job_name, ? AS last_processed_sha, ? AS head_ref, "
-        f"CAST(? AS BIGINT) AS commit_count, CAST(? AS TIMESTAMP) AS last_run_at) AS s\n"
-        f"ON t.job_name = s.job_name\n"
-        f"WHEN MATCHED THEN UPDATE SET "
-        f"t.last_processed_sha = s.last_processed_sha, t.head_ref = s.head_ref, "
-        f"t.commit_count = s.commit_count, t.last_run_at = s.last_run_at\n"
-        f"WHEN NOT MATCHED THEN INSERT "
-        f"(job_name, last_processed_sha, head_ref, commit_count, last_run_at) "
-        f"VALUES (s.job_name, s.last_processed_sha, s.head_ref, s.commit_count, s.last_run_at)"
-    )
-
-
 # --------------------------------------------------------------------------- #
 # Git IO (thin subprocess wrappers; injectable for tests)
 # --------------------------------------------------------------------------- #
@@ -632,46 +600,36 @@ def read_provenance_rows(csv_path: str = DEFAULT_CSV_PATH) -> dict[str, dict]:
 
 
 def write_watermark(
-    cursor: Any,
+    state_path: str,
     last_processed_sha: str,
     head_ref: str,
     commit_count: int,
     last_run_at: str,
-    state_table: str = "",
 ) -> None:
-    """Upsert the SHA high-water mark so DATA-2006 can resume with git log <sha>..HEAD."""
-    cursor.execute(_CREATE_STATE_TABLE_SQL.format(table=state_table))
-    cursor.execute(
-        build_watermark_merge_sql(state_table),
-        (JOB_NAME, last_processed_sha, head_ref, commit_count, last_run_at),
-    )
-
-
-def read_watermark(
-    cursor: Any,
-    state_table: str = "",
-    job_name: str = JOB_NAME,
-) -> dict | None:
-    """Read the SHA high-water mark for ``job_name``; None when there is no row yet.
-
-    Creates the state table if absent (idempotent, mirroring ``write_watermark``), so a
-    first run reads an empty table and gets None -> the caller does a full backfill.
-    """
-    cursor.execute(_CREATE_STATE_TABLE_SQL.format(table=state_table))
-    cursor.execute(
-        f"SELECT last_processed_sha, head_ref, commit_count, last_run_at "
-        f"FROM {state_table} WHERE job_name = ?",
-        (job_name,),
-    )
-    rows = cursor.fetchall()
-    if not rows:
-        return None
-    sha, head_ref, commit_count, last_run_at = rows[0]
-    return {
-        "last_processed_sha": sha,
+    """Write the SHA high-water mark to a sidecar JSON so the next run resumes from it."""
+    path = Path(state_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "job_name": JOB_NAME,
+        "last_processed_sha": last_processed_sha,
         "head_ref": head_ref,
         "commit_count": commit_count,
         "last_run_at": last_run_at,
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def read_watermark(state_path: str = DEFAULT_STATE_PATH) -> dict | None:
+    """Read the SHA high-water mark; None when the file is absent (first run -> backfill)."""
+    path = Path(state_path)
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        "last_processed_sha": data["last_processed_sha"],
+        "head_ref": data["head_ref"],
+        "commit_count": data["commit_count"],
+        "last_run_at": data["last_run_at"],
     }
 
 

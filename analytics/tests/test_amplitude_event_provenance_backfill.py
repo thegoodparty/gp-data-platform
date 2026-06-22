@@ -8,7 +8,6 @@ from amplitude_event_provenance_backfill import (
     PROVENANCE_COLUMNS,
     build_git_log_argv,
     build_provenance_row,
-    build_watermark_merge_sql,
     classify_code_status,
     collect_provenance,
     compile_event_pattern,
@@ -340,15 +339,6 @@ def test_collect_provenance_one_row_per_event():
     # Event C: instrumented set, retired null -> present
     assert by_event["Event C"]["instrumented_commit"] == "bbbb"
     assert by_event["Event C"]["retired_commit"] is None
-
-
-def test_build_watermark_merge_sql_is_parameterized_and_keys_on_job_name():
-    sql = build_watermark_merge_sql("cat.sch.state")
-    assert "MERGE INTO cat.sch.state AS t" in sql
-    assert "ON t.job_name = s.job_name" in sql
-    assert "CAST(? AS BIGINT) AS commit_count" in sql
-    assert "CAST(? AS TIMESTAMP) AS last_run_at" in sql
-    assert sql.count("?") == 5  # job_name, sha, head_ref, commit_count, last_run_at
 
 
 # --------------------------------------------------------------------------- #
@@ -687,11 +677,10 @@ class RefreshCursor:
         return self._fetch
 
 
-def test_read_watermark_returns_row_as_dict():
-    wm = ("oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
-    cur = RefreshCursor(["Event A"], watermark_row=wm)
-    result = bf.read_watermark(cur)
-    assert result == {
+def test_watermark_round_trips_via_json(tmp_path):
+    state_path = tmp_path / "state.json"
+    bf.write_watermark(str(state_path), "oldsha", "origin/develop", 42, "2026-06-01T00:00:00")
+    assert bf.read_watermark(str(state_path)) == {
         "last_processed_sha": "oldsha",
         "head_ref": "origin/develop",
         "commit_count": 42,
@@ -699,9 +688,16 @@ def test_read_watermark_returns_row_as_dict():
     }
 
 
-def test_read_watermark_none_when_no_row():
-    cur = RefreshCursor(["Event A"], watermark_row=None)
-    assert bf.read_watermark(cur) is None
+def test_read_watermark_none_when_file_absent(tmp_path):
+    assert bf.read_watermark(str(tmp_path / "missing.json")) is None
+
+
+def test_write_watermark_includes_job_name(tmp_path):
+    import json as _json
+
+    state_path = tmp_path / "state.json"
+    bf.write_watermark(str(state_path), "sha", "origin/develop", 1, "2026-06-01T00:00:00")
+    assert _json.loads(state_path.read_text())["job_name"] == bf.JOB_NAME
 
 
 # --------------------------------------------------------------------------- #
