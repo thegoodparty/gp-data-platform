@@ -107,6 +107,12 @@ def run(
         per_state_row_counts=per_state_row_counts,
         files=files,
     )
+    # A state-filtered run covers only one state, so it must NOT write the canonical
+    # (run_date, step)-keyed manifest — otherwise a later full run's skip-guard would see
+    # status="complete" and return this partial, never unloading the rest. Mirrors copy_s3.
+    if state_filter is not None:
+        log.info("unload.state_written", state=state_filter, files=len(files))
+        return manifest
     uri = write_manifest(cfg, manifest)
     log.info("unload.complete", uri=uri, states=len(states), files=len(files))
     return manifest

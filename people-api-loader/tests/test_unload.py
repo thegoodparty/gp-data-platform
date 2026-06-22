@@ -82,12 +82,19 @@ def test_unload_builds_per_state_sql_and_manifest(monkeypatch: pytest.MonkeyPatc
     assert len(manifest.files) == 2
 
 
-def test_unload_state_filter_submits_one_state(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unload_state_filter_submits_one_state_and_writes_no_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     submitted: list[str] = []
     _patch(monkeypatch, submitted)
+    wrote: list[object] = []
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.append(m) or "uri")
     step.run(_CFG, "20260622", state_filter="FL")
     inserts = [s for s in submitted if "INSERT OVERWRITE DIRECTORY" in s]
     assert len(inserts) == 1 and "state=FL/" in inserts[0]
+    # a state-filtered run must NOT persist the canonical manifest (would poison a later
+    # full run's skip-guard into returning a partial as complete)
+    assert wrote == []
 
 
 def test_unload_skip_submit_builds_no_calls(monkeypatch: pytest.MonkeyPatch) -> None:
