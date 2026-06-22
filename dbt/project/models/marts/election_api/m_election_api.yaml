@@ -617,29 +617,25 @@ models:
   - name: m_election_api__elected_official_support
     description: >
       Support metrics for the product's elected offices, one row per gp-api
-      elected_office instance (elected_office_id, tied to a user/official). Each
-      office resolves to a single position via organization.position_id; the
-      position's support numbers are attached, so co-holders of a multi-seat
-      office share them. Feeds the Election API Elected_Office_Support table; the
-      product displays support_constituents / total_constituents.
+      elected_office instance (elected_office_id, tied to a user/official). Feeds
+      the Election API Elected_Office_Support table; the product displays
+      support_constituents / total_constituents.
 
-      Per-position support is computed first from each office's most recent GENERAL
-      win (primaries excluded), then fanned out to elected_office instances. The
-      position-level figure uses the top winner by votes for multi-seat offices.
-      A person-level DDHQ match then overlays this for product officials: the
-      official's own name is matched to their DDHQ winning result so
-      support_constituents is their OWN votes, not the race top winner's. This
-      corrects multi-seat over-attribution and recovers offices the position-level
-      paths miss. Only offices with a coherent vote tally and an L2 voter count are
-      present; offices with no support figure are dropped.
+      support_constituents is taken by precedence: (1) the official's OWN DDHQ
+      winning votes, from the DDHQ winner clustered to the office by the matcha
+      elected_official entity resolution (primary); else (2) a position-level
+      figure from the office's most recent 2026+ GENERAL win in the civics data
+      (multi-seat offices use the top winner by votes). All DDHQ office-name
+      matching lives in the matcher (the prematch official_office_norm key), not a
+      separate supplement here. Only offices with a coherent vote tally and an L2
+      voter count are present; offices with no support figure are dropped.
 
       Grain: One row per elected_office_id.
 
-      Source note: support_constituents (winning votes) is DDHQ-canonical via
-      candidacy_stage, plus a 2025 DDHQ supplement for product offices excluded by
-      the 2026 civics scope and a person-level DDHQ match (the official's own
-      votes); total_constituents is the L2 district voter count from the positions
-      mart.
+      Source note: support_constituents (winning votes) is DDHQ via the matcha
+      cluster (the official's own votes), falling back to the civics 2026+
+      general-win path; total_constituents is the L2 district voter count from the
+      positions mart.
     columns:
       - name: elected_office_id
         description: >
@@ -652,11 +648,10 @@ models:
           - is_uuid
       - name: support_constituents
         description: >
-          Winning votes for this office in its most recent general election. For
-          product officials this is the official's OWN votes (person-level DDHQ
-          match); otherwise it is the position-level figure (multi-seat offices use
-          the top winner by votes). Sourced from candidacy_stage / the 2025 DDHQ
-          supplement / the person-level DDHQ match. Always populated and positive.
+          Winning votes for this office in its most recent general election. The
+          official's OWN votes from the matcha DDHQ cluster where matched, else the
+          position-level civics figure (multi-seat offices use the top winner by
+          votes). Always populated and positive.
         tests:
           - not_null
           - dbt_utils.accepted_range:
