@@ -139,10 +139,11 @@ def test_build_settings_candidacy():
 
 
 def test_build_settings_elected_official():
-    """EO build_settings has 12 comparisons (office_type + office_level +
-    ballotready_position_id + the term_start_date election-cycle comparison)."""
+    """EO build_settings has 13 comparisons (office_type + office_level +
+    ballotready_position_id + term_start_date date comparison + normalized
+    office)."""
     settings = build_settings(ELECTED_OFFICIAL_CONFIG)
-    assert len(settings.comparisons) == 12
+    assert len(settings.comparisons) == 13
 
 
 # ── E2E Smoke Test ──

@@ -187,34 +187,82 @@ with
         union all
         select *
         from ddhq
-    )
+    ),
 
--- Splink treats empty strings as real values for exact matching, so convert
--- sparse columns to NULL where empty so missing data is handled correctly.
+    -- Splink treats empty strings as real values for exact matching, so convert
+    -- sparse columns to NULL where empty so missing data is handled correctly.
+    assembled as (
+        select
+            source_name || '|' || source_id as unique_id,
+            source_id,
+            u.source_name,
+            {{ first_name_normalized("u.first_name") }} as first_name,
+            u.last_name,
+            -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel.
+            coalesce(
+                na.aliases, array({{ first_name_normalized("u.first_name") }})
+            ) as first_name_aliases,
+            -- >=2-char first-name token array for Splink ArrayIntersectLevel: lets
+            -- compound first names overlap on a shared token
+            {{ first_name_tokens("u.first_name") }} as first_name_tokens,
+            u.state,
+            party,
+            candidate_office,
+            office_level,
+            office_type,
+            nullif(district_raw, '') as district_raw,
+            district_identifier,
+            nullif(email, '') as email,
+            nullif(phone, '') as phone,
+            nullif(lower(trim(official_office_name)), '') as official_office_name,
+            nullif(city, '') as city,
+            term_start_date,
+            term_end_date,
+            ballotready_position_id,
+            br_office_holder_id,
+            br_candidate_id,
+            ts_officeholder_id,
+            ts_position_id,
+            gp_api_user_id,
+            gp_api_campaign_id,
+            gp_api_elected_office_id,
+            gp_api_organization_slug,
+            ddhq_votes
+        from unioned as u
+        left join
+            nickname_aliases as na
+            on {{ first_name_normalized("u.first_name") }} = na.name1
+    ),
+
+    -- Normalized office key so the matcher links cross-source office-name
+    -- variants the raw JaroWinkler misses ("Georgetown City Mayor" vs "Mayor of
+    -- Georgetown", "X Township Trustee" vs "X Township Trustee Board At-Large").
+    -- Reuses office_match_keys (locality tokens + category + seat). at-large is
+    -- treated as null (whole-body seat) so it matches an unnumbered office, but a
+    -- specific numbered seat still differs. Null when there is no office name or
+    -- no distinctive locality token, so sparse offices stay neutral (not all
+    -- collapsing to one key).
+    keyed as (select *, {{ office_match_keys("official_office_name") }} from assembled)
+
 select
-    source_name || '|' || source_id as unique_id,
+    unique_id,
     source_id,
-    u.source_name,
-    {{ first_name_normalized("u.first_name") }} as first_name,
-    u.last_name,
-    -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel.
-    coalesce(
-        na.aliases, array({{ first_name_normalized("u.first_name") }})
-    ) as first_name_aliases,
-    -- >=2-char first-name token array for Splink ArrayIntersectLevel: lets
-    -- compound first names overlap on a shared token ("charles kirk" vs "charles")
-    {{ first_name_tokens("u.first_name") }} as first_name_tokens,
-    u.state,
+    source_name,
+    first_name,
+    last_name,
+    first_name_aliases,
+    first_name_tokens,
+    state,
     party,
     candidate_office,
     office_level,
     office_type,
-    nullif(district_raw, '') as district_raw,
+    district_raw,
     district_identifier,
-    nullif(email, '') as email,
-    nullif(phone, '') as phone,
-    nullif(lower(trim(official_office_name)), '') as official_office_name,
-    nullif(city, '') as city,
+    email,
+    phone,
+    official_office_name,
+    city,
     term_start_date,
     term_end_date,
     ballotready_position_id,
@@ -226,7 +274,20 @@ select
     gp_api_campaign_id,
     gp_api_elected_office_id,
     gp_api_organization_slug,
-    ddhq_votes
-from unioned as u
-left join
-    nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1
+    ddhq_votes,
+    case
+        when official_office_name is null or size(locality_key) = 0
+        then null
+        else
+            concat_ws(
+                '|',
+                array_join(locality_key, ' '),
+                office_category,
+                case
+                    when seat_designator = 'atlarge'
+                    then ''
+                    else coalesce(seat_designator, '')
+                end
+            )
+    end as official_office_norm
+from keyed

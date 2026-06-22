@@ -42,6 +42,13 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
             "official_office_name",
             score_threshold_or_thresholds=[0.95, 0.88, 0.75],
         ),
+        # Normalized office key (locality tokens + category + seat, at-large
+        # treated as null). Catches cross-source office-name variants the raw
+        # JaroWinkler above misses -- "Georgetown City Mayor" vs "Mayor of
+        # Georgetown", "X Township Trustee" vs "X Township Trustee Board
+        # At-Large". Null for offices with no distinctive locality, so sparse
+        # offices stay neutral.
+        cl.ExactMatch("official_office_norm"),
         cl.ExactMatch("district_identifier"),
         cl.ExactMatch("office_type"),
         cl.ExactMatch("office_level"),
@@ -160,6 +167,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         "gamma_office_level",
         "gamma_ballotready_position_id",
         "gamma_term_start_date",
+        "gamma_official_office_norm",
     ],
     false_negative_group_cols=["source_name", "state", "office_level"],
 )
