@@ -80,7 +80,10 @@ def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: s
             {
                 "table": f'public."{_TARGET_TABLE}"',
                 "columns": column_list,
-                "options": "(FORMAT text, DELIMITER E'\\t', NULL '\\N', ENCODING 'UTF8')",
+                # CSV (tab-delimited) to match the unload's Spark CSV writer: quoting/escaping
+                # (both '"') handle embedded tab/newline/quote in free-text fields; NULL '' pairs
+                # with the unload's nullValue=''. See unload_sql._CSV_OPTIONS.
+                "options": "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')",
                 "bucket": cfg.s3_bucket,
                 "key": s3_key,
                 "region": cfg.aws_region,
