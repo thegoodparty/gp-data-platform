@@ -2081,6 +2081,7 @@ models:
                   - techspeed
                   - ballotready_techspeed
                   - gp_api
+                  - ddhq
 
       - name: source_id
         description: >

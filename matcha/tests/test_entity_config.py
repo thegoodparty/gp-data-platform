@@ -62,10 +62,11 @@ def test_candidacy_config_blocking_rules():
 
 
 def test_elected_official_config_comparisons():
-    """Elected official config has 11 comparisons (no election_date)."""
+    """Elected official config has 12 comparisons (adds the term_start_date
+    election-cycle date comparison for the ddhq source)."""
     from scripts.configs.elected_official import ELECTED_OFFICIAL_CONFIG
 
-    assert len(ELECTED_OFFICIAL_CONFIG.comparisons) == 11
+    assert len(ELECTED_OFFICIAL_CONFIG.comparisons) == 12
     assert ELECTED_OFFICIAL_CONFIG.entity_type == "elected_official"
     assert ELECTED_OFFICIAL_CONFIG.clustered_output_name == "clustered_elected_officials.csv"
 

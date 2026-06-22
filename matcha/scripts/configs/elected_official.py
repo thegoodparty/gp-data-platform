@@ -47,6 +47,17 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         cl.ExactMatch("office_level"),
         # ── Cross-source position ID (BR position FK) ──
         cl.ExactMatch("ballotready_position_id"),
+        # ── Election cycle (links a DDHQ winner to the right term) ──
+        # term_start_date carries the official's term start for BR/gp_api and the
+        # winning election_date for ddhq (an official's term starts shortly after
+        # their election). Same-cycle records land within a few months; different
+        # cycles of the same office are years apart, so this separates them.
+        cl.AbsoluteDateDifferenceAtThresholds(
+            "term_start_date",
+            input_is_string=True,
+            metrics=["month", "month"],
+            thresholds=[6, 24],
+        ),
     ],
     blocking_rules_for_prediction=[
         # Rule 1: state + fuzzy office name + exact last name
@@ -104,6 +115,8 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         "gp_api_campaign_id",
         "gp_api_elected_office_id",
         "gp_api_organization_slug",
+        # ddhq winner's own votes; read by the support score off the cluster
+        "ddhq_votes",
     ],
     em_training_blocks=[
         ("last_name", "state", "office_level"),
@@ -114,7 +127,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
     ],
     predict_threshold=0.01,
     cluster_threshold=0.95,
-    date_columns=[],
+    date_columns=["term_start_date"],
     clustered_output_name="clustered_elected_officials.csv",
     post_prediction_filters=[EO_POST_PREDICTION_FILTER],
     audit_display_columns=[
@@ -132,6 +145,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         "office_type",
         "office_level",
         "ballotready_position_id",
+        "term_start_date",
     ],
     audit_gamma_columns=[
         "gamma_last_name",
@@ -145,6 +159,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         "gamma_office_type",
         "gamma_office_level",
         "gamma_ballotready_position_id",
+        "gamma_term_start_date",
     ],
     false_negative_group_cols=["source_name", "state", "office_level"],
 )

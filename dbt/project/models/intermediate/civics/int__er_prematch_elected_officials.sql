@@ -79,7 +79,8 @@ with
             cast(null as bigint) as gp_api_user_id,
             cast(null as bigint) as gp_api_campaign_id,
             cast(null as string) as gp_api_elected_office_id,
-            cast(null as string) as gp_api_organization_slug
+            cast(null as string) as gp_api_organization_slug,
+            cast(null as bigint) as ddhq_votes
         from br_with_ts as b
         where
             not coalesce(b.is_vacant, false)
@@ -125,7 +126,8 @@ with
             g.gp_api_user_id,
             g.gp_api_campaign_id,
             g.gp_api_elected_office_id,
-            g.gp_api_organization_slug
+            g.gp_api_organization_slug,
+            cast(null as bigint) as ddhq_votes
         from {{ ref("int__civics_elected_official_gp_api") }} as g
         where
             nullif(trim(g.first_name), '') is not null
@@ -136,12 +138,55 @@ with
             and nullif(trim(g.campaign_office_raw), '') is not null
     ),
 
+    -- Source 3: ddhq winners (one row per general winner with a vote tally).
+    -- term_start_date is set to the winning election_date so the date comparison
+    -- links each winner to the correct cycle of an office (an official's term
+    -- starts shortly after their election). office_level/office_type are left
+    -- null because DDHQ's taxonomy does not align with BR's ExactMatch buckets.
+    -- ddhq_votes carries the official's own votes for the support score.
+    ddhq as (
+        select
+            'ddhq' as source_name,
+            d.ddhq_candidate_id || '|' || d.ddhq_race_id as source_id,
+            lower(trim(d.first_name)) as first_name,
+            lower(trim(d.last_name)) as last_name,
+            d.state,
+            d.party_affiliation as party,
+            d.candidate_office,
+            cast(null as string) as office_level,
+            cast(null as string) as office_type,
+            {{ extract_district_raw("d.official_office_name") }} as district_raw,
+            {{ extract_district_identifier("d.official_office_name") }}
+            as district_identifier,
+            cast(null as string) as email,
+            cast(null as string) as phone,
+            trim(d.official_office_name) as official_office_name,
+            cast(null as string) as city,
+            -- date anchor: election_date stands in for term_start_date
+            d.election_date as term_start_date,
+            cast(null as date) as term_end_date,
+            cast(null as bigint) as ballotready_position_id,
+            cast(null as int) as br_office_holder_id,
+            cast(null as int) as br_candidate_id,
+            cast(null as string) as ts_officeholder_id,
+            cast(null as string) as ts_position_id,
+            cast(null as bigint) as gp_api_user_id,
+            cast(null as bigint) as gp_api_campaign_id,
+            cast(null as string) as gp_api_elected_office_id,
+            cast(null as string) as gp_api_organization_slug,
+            d.votes as ddhq_votes
+        from {{ ref("int__civics_elected_official_ddhq") }} as d
+    ),
+
     unioned as (
         select *
         from ballotready_techspeed
         union all
         select *
         from gp_api
+        union all
+        select *
+        from ddhq
     )
 
 -- Splink treats empty strings as real values for exact matching, so convert
@@ -180,7 +225,8 @@ select
     gp_api_user_id,
     gp_api_campaign_id,
     gp_api_elected_office_id,
-    gp_api_organization_slug
+    gp_api_organization_slug,
+    ddhq_votes
 from unioned as u
 left join
     nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1

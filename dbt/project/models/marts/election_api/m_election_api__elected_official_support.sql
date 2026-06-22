@@ -44,11 +44,16 @@
 -- excludes; DDHQ results are independent of the HubSpot/BR candidate
 -- cutover, so reading them here does not cross that boundary. The civics
 -- path wins when an office is covered by both.
--- A third, person-level path then overlays the above (see the person_matched
--- CTE): for product officials, the official's OWN name is matched to their DDHQ
--- winning result so support_constituents is their own votes, not the race top
--- winner's. It overrides the position-level figure wherever it matches and also
--- recovers offices the position-level paths miss.
+-- Person-level paths then overlay the above so support_constituents is the
+-- official's OWN votes, not the race top winner's. Two, by precedence:
+-- a) cluster_ddhq (PRIMARY): the DDHQ general-winner record clustered to the
+-- official by the matcha elected_official entity resolution (fuzzy name +
+-- office + election-cycle date). Empty until matcha is re-run with the DDHQ
+-- source and the er_source table reloaded.
+-- b) person_matched (FALLBACK): an exact name + office-key match to the DDHQ
+-- result, deterministic, which carries the person-level figure in the window
+-- before the cluster is rebuilt.
+-- Either overrides the position-level figure and recovers offices it misses.
 with
     general_winning_stages as (
         select gp_election_stage_id, votes_received, election_stage_date
@@ -371,22 +376,57 @@ with
         where projected_registered_supporters > 0
     ),
 
+    -- ===== Primary person-level source: the DDHQ winner clustered to the
+    -- official by the matcha elected_official entity resolution =====
+    -- The matcha Splink matcher resolves each gp_api elected_office to its DDHQ
+    -- general-winner record (fuzzy name + office + state, with the election-cycle
+    -- date comparison picking the right term). The clustered DDHQ row carries the
+    -- official's OWN votes (ddhq_votes). This is the primary support source: it is
+    -- more forgiving than the exact-name person_matched fallback below, so it
+    -- recovers offices exact keys miss, while the cluster's office filters keep it
+    -- from attaching a same-name official's race elsewhere. One row per
+    -- elected_office_id (the official's most recent winning cycle).
+    -- Empty until the matcha cluster is re-run with the DDHQ source and the
+    -- er_source table reloaded; until then the fallbacks below carry the model.
+    cluster_ddhq as (
+        select
+            g.gp_api_elected_office_id as elected_office_id,
+            d.ddhq_votes as votes_received
+        from {{ ref("stg_er_source__clustered_elected_officials") }} as g
+        inner join
+            {{ ref("stg_er_source__clustered_elected_officials") }} as d
+            on g.cluster_id = d.cluster_id
+            and d.source_name = 'ddhq'
+            and d.ddhq_votes is not null
+        where g.source_name = 'gp_api' and g.gp_api_elected_office_id is not null
+        qualify
+            row_number() over (
+                partition by g.gp_api_elected_office_id
+                order by d.term_start_date desc nulls last, d.ddhq_votes desc
+            )
+            = 1
+    ),
+
     -- Fan out to one row per gp-api elected_office instance. Each office maps to
-    -- a single position via organization.position_id -> Position.id; the
-    -- position-level support numbers (combined) are attached, so co-holders of a
-    -- multi-seat office share them. A person-level match (person_matched), when
-    -- present, OVERRIDES support_constituents with the official's own votes --
-    -- correcting multi-seat over-attribution and recovering offices the
-    -- position-level paths miss (those get their total from the person match's
-    -- own position icp). The join keys are unique (organization.slug,
-    -- Position.id, combined.br_position_id, person_matched.elected_office_id), so
-    -- there is no fan-out beyond one row per elected_office_id. Offices with
-    -- neither a position-level nor a person-level support figure are dropped.
+    -- a single position via organization.position_id -> Position.id. support_-
+    -- constituents is taken by precedence: (1) the matcha cluster's DDHQ votes
+    -- (cluster_ddhq, primary -- the official's own votes via fuzzy ER), then
+    -- (2) the exact-name person match (person_matched, a deterministic person-
+    -- level fallback that bridges the window before the cluster is re-run), then
+    -- (3) the position-level figure (combined: civics general wins + the
+    -- office_match_keys DDHQ supplement). total_constituents is the office's L2
+    -- voter count, from combined where present else the position's own count, so
+    -- person/cluster-only recoveries still get a denominator. The join keys are
+    -- unique (organization.slug, Position.id, and the per-elected_office_id
+    -- overlays), so there is no fan-out beyond one row per elected_office_id.
+    -- Offices with no support figure from any source are dropped.
     office_support as (
         select
             eo.id as elected_office_id,
-            coalesce(pm.votes_received, c.votes_received) as support_constituents,
-            coalesce(c.icp_voter_count, pm.icp_voter_count) as total_constituents
+            coalesce(
+                cd.votes_received, pm.votes_received, c.votes_received
+            ) as support_constituents,
+            coalesce(c.icp_voter_count, p.icp_voter_count) as total_constituents
         from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
         inner join
             {{ ref("stg_airbyte_source__gp_api_db_organization") }} as org
@@ -394,10 +434,14 @@ with
         inner join
             {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
         left join combined as c on c.br_position_id = pos.br_database_id
+        left join cluster_ddhq as cd on cd.elected_office_id = eo.id
         left join person_matched as pm on pm.elected_office_id = eo.id
+        left join
+            {{ ref("positions") }} as p
+            on p.br_position_database_id = pos.br_database_id
         where
-            coalesce(pm.votes_received, c.votes_received) > 0
-            and coalesce(c.icp_voter_count, pm.icp_voter_count) > 0
+            coalesce(cd.votes_received, pm.votes_received, c.votes_received) > 0
+            and coalesce(c.icp_voter_count, p.icp_voter_count) > 0
     )
 
 select
