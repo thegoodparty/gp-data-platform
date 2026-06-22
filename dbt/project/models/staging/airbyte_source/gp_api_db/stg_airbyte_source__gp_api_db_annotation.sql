@@ -2,25 +2,24 @@ with
     source as (select * from {{ source("airbyte_source", "gp_api_db_annotation") }}),
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            {{ adapter.quote("id") }},
-            {{ adapter.quote("end") }},
-            {{ adapter.quote("kind") }},
-            {{ adapter.quote("start") }},
-            {{ adapter.quote("note_id") }},
-            {{ adapter.quote("json_path") }},
-            {{ adapter.quote("created_at") }},
-            {{ adapter.quote("updated_at") }},
-            {{ adapter.quote("resource_id") }},
-            {{ adapter.quote("resource_type") }},
-            {{ adapter.quote("author_user_id") }},
-            {{ adapter.quote("annotation_review_id") }},
-            {{ adapter.quote("chat_conversation_id") }},
-            {{ adapter.quote("annotation_bug_report_id") }}
-
+            _airbyte_raw_id,
+            _airbyte_extracted_at,
+            _airbyte_meta,
+            _airbyte_generation_id,
+            id,
+            cast(`start` as int) as `start`,
+            cast(`end` as int) as `end`,
+            kind,
+            note_id,
+            json_path,
+            cast(created_at as timestamp) as created_at,
+            cast(updated_at as timestamp) as updated_at,
+            resource_id,
+            resource_type,
+            cast(author_user_id as int) as author_user_id,
+            annotation_review_id,
+            chat_conversation_id,
+            annotation_bug_report_id
         from source
     )
 select *

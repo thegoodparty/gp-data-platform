@@ -4,17 +4,16 @@ with
     ),
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            {{ adapter.quote("id") }},
-            {{ adapter.quote("body") }},
-            {{ adapter.quote("created_at") }},
-            {{ adapter.quote("updated_at") }},
-            {{ adapter.quote("reviewer_email") }},
-            {{ adapter.quote("reviewer_clerk_sub") }}
-
+            _airbyte_raw_id,
+            _airbyte_extracted_at,
+            _airbyte_meta,
+            _airbyte_generation_id,
+            id,
+            body,
+            reviewer_email,
+            reviewer_clerk_sub,
+            cast(created_at as timestamp) as created_at,
+            cast(updated_at as timestamp) as updated_at
         from source
     )
 select *

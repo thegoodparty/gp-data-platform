@@ -4,19 +4,19 @@ with
     ),
     renamed as (
         select
-            {{ adapter.quote("_airbyte_raw_id") }},
-            {{ adapter.quote("_airbyte_extracted_at") }},
-            {{ adapter.quote("_airbyte_meta") }},
-            {{ adapter.quote("_airbyte_generation_id") }},
-            {{ adapter.quote("id") }},
-            {{ adapter.quote("scope") }},
-            {{ adapter.quote("title") }},
-            {{ adapter.quote("created_at") }},
-            {{ adapter.quote("deleted_at") }},
-            {{ adapter.quote("updated_at") }},
-            {{ adapter.quote("owner_user_id") }},
-            {{ adapter.quote("organization_slug") }}
-
+            _airbyte_raw_id,
+            _airbyte_extracted_at,
+            _airbyte_meta,
+            _airbyte_generation_id,
+            id,
+            scope,
+            title,
+            anchor,
+            organization_slug,
+            cast(owner_user_id as int) as owner_user_id,
+            cast(created_at as timestamp) as created_at,
+            cast(updated_at as timestamp) as updated_at,
+            cast(deleted_at as timestamp) as deleted_at
         from source
     )
 select *

@@ -198,6 +198,8 @@ models:
         description: "Scope of the conversation"
       - name: title
         description: "Title of the conversation"
+      - name: anchor
+        description: "Anchor reference locating the conversation within its resource"
       - name: owner_user_id
         description: "Foreign key to the user who owns the conversation"
         data_tests:
