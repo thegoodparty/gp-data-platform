@@ -51,12 +51,14 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 # Instrumentation packages whose history defines when an event was added/removed.
@@ -67,11 +69,6 @@ INSTRUMENTATION_PATHS = ["packages/gp-webapp", "packages/gp-api"]
 # keeping an 8-month margin before real instrumentation. None walks full history.
 DEFAULT_SINCE = "2024-06-01"
 
-# Rows per multi-row INSERT. One round-trip per chunk; small enough to stay well under
-# any bound-parameter ceiling (chunk * ~12 cols params), large enough that the whole
-# ~400-row table writes in a couple of round-trips (minimizes warehouse-drop exposure).
-INSERT_CHUNK_ROWS = 200
-
 # Deployed default branch we attribute against. Provenance must reflect what shipped, so
 # the walk, the HEAD-presence grep, and the merge-walk all target this ref (fetched first),
 # not whatever branch the local omni checkout happens to be on.
@@ -79,38 +76,16 @@ DEPLOY_REF = "origin/develop"
 
 DATABRICKS_CATALOG = "goodparty_data_catalog"
 # Event universe: Amplitude Govern taxonomy synced directly via Airbyte (~434 events, all
-# is_active). Replaced dbt.int__amplitude_event_taxonomy as the anchor on 2026-06-22 -- the
-# Airbyte feed is the first-party source of truth (int__ is being rebuilt to source from it).
+# is_active). The one Databricks read this pipeline still makes.
 TAXONOMY_TABLE = f"{DATABRICKS_CATALOG}.airbyte_source.amplitude_taxonomy_event_type"
 
-# Landing schema is env-configurable, mirroring the airflow_source convention
-# (l2_expired_voters reads Variable `databricks_source_schema`: airflow_source in prod,
-# airflow_source_dev in dev). airflow_source is the repo's source for job-written tables and
-# is where DATA-2005 registers this as a dbt source; the state table sits beside it, like
-# l2_expired_voters + l2_expired_voters_loads. Local dev runs (whose creds can't write the
-# airflow_source* schemas) pass --schema private_tristan. The prod default is zero-config.
-DEFAULT_SOURCE_SCHEMA = "airflow_source"
-_PROVENANCE_BASENAME = "amplitude_event_provenance"
 JOB_NAME = "amplitude_event_provenance_backfill"
 
-
-def provenance_tables(schema: str, catalog: str = DATABRICKS_CATALOG) -> tuple[str, str]:
-    """``(landing_table, state_table)`` fully-qualified names for a landing schema."""
-    base = f"{catalog}.{schema}.{_PROVENANCE_BASENAME}"
-    return base, f"{base}_state"
-
-
-def resolve_schema(env: dict[str, str], override: str | None = None) -> str:
-    """Landing schema: explicit --schema, else env, else the prod default (airflow_source)."""
-    return (
-        override
-        or env.get("AMPLITUDE_PROVENANCE_SCHEMA")
-        or env.get("DBT_AIRFLOW_SOURCE_SCHEMA")
-        or DEFAULT_SOURCE_SCHEMA
-    )
-
-
-PROVENANCE_TABLE, STATE_TABLE = provenance_tables(DEFAULT_SOURCE_SCHEMA)
+# Committed outputs. Resolved from this file so paths are cwd-independent:
+# analytics/lib/<this file> -> analytics/data/.
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DEFAULT_CSV_PATH = str(_DATA_DIR / "amplitude_event_provenance.csv")
+DEFAULT_STATE_PATH = str(_DATA_DIR / "amplitude_event_provenance_state.json")
 
 
 # --------------------------------------------------------------------------- #
@@ -272,22 +247,21 @@ def _record(acc: dict[str, dict], event: str, commit: Commit, slot: str) -> None
 # Row assembly (schema shared with DATA-2005 staging and DATA-2006 incremental)
 # --------------------------------------------------------------------------- #
 
-# (column, Databricks type) in write order.
-PROVENANCE_SCHEMA = [
-    ("event_type", "STRING"),
-    ("event_type_slug", "STRING"),
-    ("instrumented_commit", "STRING"),
-    ("instrumented_pr", "STRING"),
-    ("instrumented_date", "DATE"),
-    ("retired_commit", "STRING"),
-    ("retired_pr", "STRING"),
-    ("retired_date", "DATE"),
-    ("code_status", "STRING"),
-    ("still_in_code", "BOOLEAN"),
-    ("last_code_change_date", "DATE"),
-    ("updated_at", "TIMESTAMP"),
+# Output columns in write order. code_status / still_in_code dropped: both are derivable
+# from the date null-pattern (present = instrumented set + retired null; removed = both set;
+# not_found_in_code = instrumented null), so consumers derive them at read time.
+PROVENANCE_COLUMNS = [
+    "event_type",
+    "event_type_slug",
+    "instrumented_commit",
+    "instrumented_pr",
+    "instrumented_date",
+    "retired_commit",
+    "retired_pr",
+    "retired_date",
+    "last_code_change_date",
+    "updated_at",
 ]
-PROVENANCE_COLUMNS = [c for c, _ in PROVENANCE_SCHEMA]
 
 
 def build_provenance_row(
@@ -318,8 +292,6 @@ def build_provenance_row(
         "retired_commit": None,
         "retired_pr": None,
         "retired_date": None,
-        "code_status": code_status,
-        "still_in_code": present_in_head,
         "last_code_change_date": last_change["date"] if last_change else None,
         "updated_at": updated_at,
     }
@@ -462,47 +434,6 @@ def build_git_log_argv(
     if ref:
         argv.append(ref)
     return [*argv, "--", *paths]
-
-
-def build_create_table_sql(table: str, or_replace: bool = False) -> str:
-    """Typed Delta DDL for the shared provenance schema (CREATE [OR REPLACE] / IF NOT EXISTS)."""
-    cols = ",\n  ".join(f"{c} {t}" for c, t in PROVENANCE_SCHEMA)
-    verb = "CREATE OR REPLACE TABLE" if or_replace else "CREATE TABLE IF NOT EXISTS"
-    return f"{verb} {table} (\n  {cols}\n) USING DELTA"
-
-
-def build_merge_sql(target: str, staging: str, columns: Sequence[str], key: str = "event_type") -> str:
-    """Idempotent MERGE of ``staging`` into ``target`` keyed on ``key`` (UPDATE/INSERT)."""
-    non_key = [c for c in columns if c != key]
-    set_clause = ", ".join(f"t.{c} = s.{c}" for c in non_key)
-    insert_cols = ", ".join(columns)
-    insert_vals = ", ".join(f"s.{c}" for c in columns)
-    return (
-        f"MERGE INTO {target} AS t\n"
-        f"USING {staging} AS s\n"
-        f"ON t.{key} = s.{key}\n"
-        f"WHEN MATCHED THEN UPDATE SET {set_clause}\n"
-        f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
-    )
-
-
-def row_params(row: dict, columns: Sequence[str]) -> tuple:
-    """Row dict -> positional bind tuple in ``columns`` order (raw values, no escaping)."""
-    return tuple(row.get(c) for c in columns)
-
-
-def build_bulk_insert(table: str, columns: Sequence[str], rows: Sequence[dict]) -> tuple[str, list]:
-    """One multi-row parameterized INSERT + flattened (row-major) bind params.
-
-    Values are BOUND, never interpolated -- this is what makes event names with
-    apostrophes (e.g. "Click Can't See Office") store correctly. A single multi-row
-    INSERT is one network round-trip, far more robust than ``executemany`` (which
-    round-trips per row and holds the warehouse connection long enough to be dropped).
-    """
-    tuple_sql = "(" + ", ".join("?" for _ in columns) + ")"
-    sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES " + ", ".join(tuple_sql for _ in rows)
-    params = [v for row in rows for v in row_params(row, columns)]
-    return sql, params
 
 
 STATE_COLUMNS = ["job_name", "last_processed_sha", "head_ref", "commit_count", "last_run_at"]
@@ -659,30 +590,6 @@ def make_merge_walk_resolver(root: str, deploy_ref: str) -> Callable[[str], str 
 # --------------------------------------------------------------------------- #
 
 
-def _missing_columns(existing: set[str], schema: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Schema entries whose column is absent from ``existing`` (order preserved)."""
-    return [(c, t) for c, t in schema if c not in existing]
-
-
-def _ensure_columns(cursor: Any, table: str, schema: Sequence[tuple[str, str]]) -> None:
-    """Add any schema columns missing from an existing table (Delta schema evolution).
-
-    Needed because ``CREATE TABLE IF NOT EXISTS`` will not evolve a table that already
-    exists with an older schema -- e.g. when this shared table predates ``event_type_slug``.
-    """
-    cursor.execute(f"DESCRIBE TABLE {table}")
-    existing: set[str] = set()
-    for row in cursor.fetchall():
-        name = row[0]
-        if not name or name.startswith("#"):  # partition / detail section -> stop
-            break
-        existing.add(name)
-    missing = _missing_columns(existing, schema)
-    if missing:
-        adds = ", ".join(f"{c} {t}" for c, t in missing)
-        cursor.execute(f"ALTER TABLE {table} ADD COLUMNS ({adds})")
-
-
 def fetch_event_universe(cursor: Any, taxonomy_table: str = TAXONOMY_TABLE) -> list[str]:
     """The authoritative ~434 distinct event_type values to attribute provenance for."""
     cursor.execute(
@@ -691,31 +598,37 @@ def fetch_event_universe(cursor: Any, taxonomy_table: str = TAXONOMY_TABLE) -> l
     return [str(r[0]) for r in cursor.fetchall()]
 
 
-def read_provenance_rows(cursor: Any, table: str = PROVENANCE_TABLE) -> dict[str, dict]:
-    """Existing provenance rows keyed by ``event_type`` (the table is ~400 rows).
+def write_provenance(rows: Sequence[dict], csv_path: str = DEFAULT_CSV_PATH) -> None:
+    """Write the full provenance dataset to a CSV, sorted by event_type.
 
-    Read whole rather than filtered: the table is tiny, so a single SELECT is simpler
-    and cheaper than binding an IN-list of affected events.
+    Full rewrite (the dataset is ~434 rows): a deterministic column and row order keeps the
+    committed file's git diffs minimal. Nulls render as empty fields. The csv module quotes
+    event names containing commas or apostrophes correctly.
     """
-    cursor.execute(f"SELECT {', '.join(PROVENANCE_COLUMNS)} FROM {table}")
-    return {row[0]: dict(zip(PROVENANCE_COLUMNS, row, strict=False)) for row in cursor.fetchall()}
+    ordered = sorted(rows, key=lambda r: r["event_type"])
+    path = Path(csv_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=PROVENANCE_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        for row in ordered:
+            writer.writerow({c: ("" if row.get(c) is None else row[c]) for c in PROVENANCE_COLUMNS})
 
 
-def write_provenance(cursor: Any, rows: Sequence[dict], table: str = PROVENANCE_TABLE) -> None:
-    """Create the table if needed and MERGE rows in via a staging table (idempotent).
+def read_provenance_rows(csv_path: str = DEFAULT_CSV_PATH) -> dict[str, dict]:
+    """Existing provenance rows keyed by event_type; {} when the file does not exist.
 
-    Rows are bound via ``executemany`` -- no inline SQL -- so apostrophes/quotes in
-    event names survive intact.
+    Empty CSV fields parse back to None (the inverse of write_provenance's null rendering).
     """
-    staging = f"{table}__stage"
-    cursor.execute(build_create_table_sql(table))
-    _ensure_columns(cursor, table, PROVENANCE_SCHEMA)  # evolve a pre-existing older table
-    cursor.execute(build_create_table_sql(staging, or_replace=True))
-    for i in range(0, len(rows), INSERT_CHUNK_ROWS):
-        chunk = rows[i : i + INSERT_CHUNK_ROWS]
-        cursor.execute(*build_bulk_insert(staging, PROVENANCE_COLUMNS, chunk))
-    cursor.execute(build_merge_sql(table, staging, PROVENANCE_COLUMNS))
-    cursor.execute(f"DROP TABLE IF EXISTS {staging}")
+    path = Path(csv_path)
+    if not path.exists():
+        return {}
+    out: dict[str, dict] = {}
+    with path.open(newline="", encoding="utf-8") as fh:
+        for raw in csv.DictReader(fh):
+            row = {c: (raw.get(c) or None) for c in PROVENANCE_COLUMNS}
+            out[row["event_type"]] = row
+    return out
 
 
 def write_watermark(
@@ -724,7 +637,7 @@ def write_watermark(
     head_ref: str,
     commit_count: int,
     last_run_at: str,
-    state_table: str = STATE_TABLE,
+    state_table: str = "",
 ) -> None:
     """Upsert the SHA high-water mark so DATA-2006 can resume with git log <sha>..HEAD."""
     cursor.execute(_CREATE_STATE_TABLE_SQL.format(table=state_table))
@@ -736,7 +649,7 @@ def write_watermark(
 
 def read_watermark(
     cursor: Any,
-    state_table: str = STATE_TABLE,
+    state_table: str = "",
     job_name: str = JOB_NAME,
 ) -> dict | None:
     """Read the SHA high-water mark for ``job_name``; None when there is no row yet.
@@ -783,8 +696,8 @@ def run_backfill(
     root: str,
     since: str | None,
     now: datetime,
-    table: str = PROVENANCE_TABLE,
-    state_table: str = STATE_TABLE,
+    table: str = "",
+    state_table: str = "",
     ref: str = DEPLOY_REF,
     pr_resolver: Callable[[str], str | None] | None = None,
 ) -> list[dict]:
@@ -824,8 +737,8 @@ def run_refresh(
     root: str,
     since: str | None,
     now: datetime,
-    table: str = PROVENANCE_TABLE,
-    state_table: str = STATE_TABLE,
+    table: str = "",
+    state_table: str = "",
     ref: str = DEPLOY_REF,
     pr_resolver: Callable[[str], str | None] | None = None,
 ) -> list[dict]:
@@ -878,11 +791,9 @@ def run_refresh(
 
 
 def _summarize(rows: Sequence[dict]) -> str:
-    by_status: dict[str, int] = {}
-    for r in rows:
-        by_status[r["code_status"]] = by_status.get(r["code_status"], 0) + 1
-    parts = ", ".join(f"{k}={v}" for k, v in sorted(by_status.items()))
-    return f"{len(rows)} rows ({parts})"
+    instrumented = sum(1 for r in rows if r.get("instrumented_commit"))
+    retired = sum(1 for r in rows if r.get("retired_commit"))
+    return f"{len(rows)} rows (instrumented={instrumented}, retired={retired})"
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -893,16 +804,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=DEFAULT_SINCE,
         help=f"Lower-bound git history (default {DEFAULT_SINCE}). 'all' walks full history.",
     )
+    p.add_argument("--table", default=None, help="Full landing table name (deprecated; write goes to CSV).")
     p.add_argument(
-        "--schema",
-        default=None,
-        help=(
-            f"Landing schema (default: $AMPLITUDE_PROVENANCE_SCHEMA / $DBT_AIRFLOW_SOURCE_SCHEMA "
-            f"/ {DEFAULT_SOURCE_SCHEMA}). Use --schema private_tristan for local dev."
-        ),
+        "--state-table", default=None, help="Full state table name (deprecated; state goes to JSON)."
     )
-    p.add_argument("--table", default=None, help="Full landing table name; overrides --schema.")
-    p.add_argument("--state-table", default=None, help="Full state table name; overrides --schema.")
     p.add_argument(
         "--ref",
         default=DEPLOY_REF,
@@ -931,12 +836,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     root = resolve_omni_repo(args.repo, dict(os.environ))
     since = None if args.since == "all" else args.since
 
-    schema = resolve_schema(dict(os.environ), args.schema)
-    default_table, default_state = provenance_tables(schema)
-    table = args.table or default_table
-    state_table = args.state_table or default_state
-    print(f"Landing schema: {schema} -> {table}", file=sys.stderr)
-
     if not args.no_fetch:
         print(f"Fetching {args.ref} ...", file=sys.stderr)
         git_fetch(root, args.ref)
@@ -953,15 +852,13 @@ def main(argv: Sequence[str] | None = None) -> None:
                 root,
                 since,
                 datetime.now(UTC),
-                table=table,
-                state_table=state_table,
                 ref=args.ref,
                 pr_resolver=pr_resolver,
             )
     finally:
         connection.close()
     print(_summarize(rows), file=sys.stderr)
-    print(f"Wrote {table} and watermark {state_table}", file=sys.stderr)
+    print(f"Wrote provenance to {DEFAULT_CSV_PATH}", file=sys.stderr)
 
 
 if __name__ == "__main__":

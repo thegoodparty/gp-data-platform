@@ -6,12 +6,7 @@ import amplitude_event_provenance_backfill as bf
 import pytest
 from amplitude_event_provenance_backfill import (
     PROVENANCE_COLUMNS,
-    PROVENANCE_SCHEMA,
-    _missing_columns,
-    build_bulk_insert,
-    build_create_table_sql,
     build_git_log_argv,
-    build_merge_sql,
     build_provenance_row,
     build_watermark_merge_sql,
     classify_code_status,
@@ -22,7 +17,6 @@ from amplitude_event_provenance_backfill import (
     parse_pr_number,
     present_at_head,
     resolve_omni_repo,
-    row_params,
     slugify_event,
 )
 
@@ -237,8 +231,6 @@ COMMIT_B = {
 def test_build_row_present_event_has_instrumented_and_no_retire():
     acc = {"instrumented": COMMIT_A, "retired": None, "last_change": COMMIT_A}
     row = build_provenance_row("Event A", acc, present_in_head=True, updated_at=UPDATED)
-    assert row["code_status"] == "present"
-    assert row["still_in_code"] is True
     assert row["instrumented_commit"] == "aaaa"
     assert row["instrumented_pr"] is None
     assert row["instrumented_date"] == "2025-02-01"
@@ -256,8 +248,6 @@ def test_build_row_includes_slug():
 def test_build_row_removed_event_populates_retire():
     acc = {"instrumented": COMMIT_A, "retired": COMMIT_B, "last_change": COMMIT_B}
     row = build_provenance_row("Event B", acc, present_in_head=False, updated_at=UPDATED)
-    assert row["code_status"] == "removed"
-    assert row["still_in_code"] is False
     assert row["retired_commit"] == "bbbb"
     assert row["retired_pr"] == "222"
     assert row["retired_date"] == "2025-03-01"
@@ -265,7 +255,6 @@ def test_build_row_removed_event_populates_retire():
 
 def test_build_row_not_found_event_is_all_null():
     row = build_provenance_row("Sign Up Clicked", None, present_in_head=False, updated_at=UPDATED)
-    assert row["code_status"] == "not_found_in_code"
     assert row["instrumented_commit"] is None
     assert row["retired_commit"] is None
     assert row["last_code_change_date"] is None
@@ -273,8 +262,6 @@ def test_build_row_not_found_event_is_all_null():
 
 def test_build_row_present_but_predates_window_does_not_guess():
     row = build_provenance_row("Old Event", None, present_in_head=True, updated_at=UPDATED)
-    assert row["code_status"] == "present"
-    assert row["still_in_code"] is True
     assert row["instrumented_commit"] is None
     assert row["last_code_change_date"] is None
 
@@ -282,7 +269,29 @@ def test_build_row_present_but_predates_window_does_not_guess():
 def test_build_row_event_type_preserved():
     row = build_provenance_row("Event A", None, present_in_head=None, updated_at=UPDATED)
     assert row["event_type"] == "Event A"
-    assert row["code_status"] == "unknown"
+
+
+def test_build_row_drops_code_status_and_still_in_code():
+    entry = {
+        "instrumented": {"commit": "aaaa", "pr": "1", "date": "2025-02-01"},
+        "retired": None,
+        "last_change": {"commit": "aaaa", "pr": "1", "date": "2025-02-01"},
+    }
+    row = bf.build_provenance_row("Event A", entry, True, "2026-06-22T00:00:00")
+    assert set(row) == set(bf.PROVENANCE_COLUMNS)
+    assert "code_status" not in row
+    assert "still_in_code" not in row
+
+
+def test_build_row_removed_event_still_populates_retire_via_internal_status():
+    entry = {
+        "instrumented": {"commit": "aaaa", "pr": "1", "date": "2025-02-01"},
+        "retired": {"commit": "zzzz", "pr": "9", "date": "2026-01-01"},
+        "last_change": {"commit": "zzzz", "pr": "9", "date": "2026-01-01"},
+    }
+    row = bf.build_provenance_row("Event A", entry, False, "2026-06-22T00:00:00")
+    assert row["retired_commit"] == "zzzz"
+    assert row["retired_date"] == "2026-01-01"
 
 
 # --------------------------------------------------------------------------- #
@@ -317,93 +326,20 @@ def test_present_at_head_marks_found_literals():
     assert present == {"Event A": True, "Event B": False, "Event C": True}
 
 
-def test_collect_provenance_one_row_per_event_with_correct_status():
+def test_collect_provenance_one_row_per_event():
     grep_text = "'Event A'\n'Event C'"  # B is gone at HEAD
     rows = collect_provenance(["Event A", "Event B", "Event C"], _STREAM, grep_text, updated_at=UPDATED)
     by_event = {r["event_type"]: r for r in rows}
     assert len(rows) == 3
-    assert by_event["Event A"]["code_status"] == "present"
+    # Event A: instrumented set, retired null -> present
     assert by_event["Event A"]["instrumented_commit"] == "aaaa"
-    assert by_event["Event B"]["code_status"] == "removed"
+    assert by_event["Event A"]["retired_commit"] is None
+    # Event B: instrumented set, retired set -> removed
+    assert by_event["Event B"]["instrumented_commit"] == "aaaa"
     assert by_event["Event B"]["retired_commit"] == "bbbb"
-    assert by_event["Event C"]["code_status"] == "present"
+    # Event C: instrumented set, retired null -> present
     assert by_event["Event C"]["instrumented_commit"] == "bbbb"
-
-
-# --------------------------------------------------------------------------- #
-# SQL builders (parameterized -- no hand-escaping)
-# --------------------------------------------------------------------------- #
-
-
-def test_build_create_table_sql_declares_typed_columns():
-    sql = build_create_table_sql("cat.sch.t")
-    assert "CREATE TABLE IF NOT EXISTS cat.sch.t" in sql
-    assert "event_type STRING" in sql
-    assert "event_type_slug STRING" in sql
-    assert "instrumented_date DATE" in sql
-    assert "still_in_code BOOLEAN" in sql
-    assert "updated_at TIMESTAMP" in sql
-
-
-def test_build_create_table_sql_or_replace():
-    assert build_create_table_sql("cat.sch.stage", or_replace=True).startswith(
-        "CREATE OR REPLACE TABLE cat.sch.stage"
-    )
-
-
-def test_missing_columns_returns_schema_entries_absent_from_table_in_order():
-    existing = {"event_type", "instrumented_commit", "updated_at"}
-    missing = _missing_columns(existing, PROVENANCE_SCHEMA)
-    names = [c for c, _ in missing]
-    assert "event_type_slug" in names  # the newly-added column is flagged
-    assert "event_type" not in names  # already present, not re-added
-    assert names == [c for c, _ in PROVENANCE_SCHEMA if c not in existing]  # order preserved
-
-
-def test_missing_columns_empty_when_all_present():
-    existing = {c for c, _ in PROVENANCE_SCHEMA}
-    assert _missing_columns(existing, PROVENANCE_SCHEMA) == []
-
-
-def test_build_bulk_insert_one_tuple_per_row_with_flattened_params():
-    rows = [
-        build_provenance_row(
-            "A", {"instrumented": COMMIT_A, "retired": None, "last_change": COMMIT_A}, True, UPDATED
-        ),
-        build_provenance_row("Can't B", None, False, UPDATED),
-    ]
-    sql, params = build_bulk_insert("cat.sch.stage", PROVENANCE_COLUMNS, rows)
-    assert sql.startswith("INSERT INTO cat.sch.stage (")
-    n = len(PROVENANCE_COLUMNS)
-    assert sql.count("?") == 2 * n  # 2 rows worth of placeholders
-    assert sql.count("), (") == 1  # two value tuples
-    assert len(params) == 2 * n  # flattened, row-major
-    assert params[0] == "A" and params[n] == "Can't B"  # row boundaries; apostrophe intact
-
-
-def test_row_params_orders_values_and_preserves_apostrophe():
-    row = build_provenance_row(
-        "Onboarding - Office Step: Click Can't See Office",
-        {"instrumented": COMMIT_A, "retired": None, "last_change": COMMIT_A},
-        present_in_head=True,
-        updated_at=UPDATED,
-    )
-    params = row_params(row, PROVENANCE_COLUMNS)
-    assert params[0] == "Onboarding - Office Step: Click Can't See Office"  # apostrophe intact
-    assert params[1] == "onboarding_office_step_click_cant_see_office"  # slug
-    assert params[PROVENANCE_COLUMNS.index("still_in_code")] is True
-    assert len(params) == len(PROVENANCE_COLUMNS)
-
-
-def test_build_merge_sql_keys_on_event_type_and_updates_non_key_columns():
-    sql = build_merge_sql("cat.sch.target", "cat.sch.stage", ["event_type", "code_status", "updated_at"])
-    assert "MERGE INTO cat.sch.target AS t" in sql
-    assert "USING cat.sch.stage AS s" in sql
-    assert "ON t.event_type = s.event_type" in sql
-    assert "t.code_status = s.code_status" in sql
-    set_block = sql.split("UPDATE SET", 1)[1].split("WHEN NOT MATCHED", 1)[0]
-    assert "t.event_type = s.event_type" not in set_block
-    assert "WHEN NOT MATCHED THEN INSERT" in sql
+    assert by_event["Event C"]["retired_commit"] is None
 
 
 def test_build_watermark_merge_sql_is_parameterized_and_keys_on_job_name():
@@ -721,44 +657,6 @@ def test_resolve_pr_gaps_skips_rows_without_commit():
 
 
 # --------------------------------------------------------------------------- #
-# Schema resolution -- env-configurable landing schema (airflow_source convention)
-# --------------------------------------------------------------------------- #
-
-
-def test_provenance_tables_builds_table_and_state_from_schema():
-    table, state = bf.provenance_tables("airflow_source")
-    assert table == "goodparty_data_catalog.airflow_source.amplitude_event_provenance"
-    assert state == "goodparty_data_catalog.airflow_source.amplitude_event_provenance_state"
-
-
-def test_provenance_tables_honors_a_dev_schema():
-    table, state = bf.provenance_tables("private_tristan")
-    assert table == "goodparty_data_catalog.private_tristan.amplitude_event_provenance"
-    assert state == "goodparty_data_catalog.private_tristan.amplitude_event_provenance_state"
-
-
-def test_resolve_schema_explicit_override_wins():
-    assert (
-        bf.resolve_schema({"DBT_AIRFLOW_SOURCE_SCHEMA": "airflow_source"}, "private_tristan")
-        == "private_tristan"
-    )
-
-
-def test_resolve_schema_falls_back_through_env_then_default():
-    assert (
-        bf.resolve_schema({"AMPLITUDE_PROVENANCE_SCHEMA": "airflow_source_dev"}, None) == "airflow_source_dev"
-    )
-    assert bf.resolve_schema({"DBT_AIRFLOW_SOURCE_SCHEMA": "airflow_source"}, None) == "airflow_source"
-    assert bf.resolve_schema({}, None) == bf.DEFAULT_SOURCE_SCHEMA
-
-
-def test_default_constants_target_prod_source_schema():
-    assert bf.DEFAULT_SOURCE_SCHEMA == "airflow_source"
-    assert bf.PROVENANCE_TABLE == "goodparty_data_catalog.airflow_source.amplitude_event_provenance"
-    assert bf.STATE_TABLE == "goodparty_data_catalog.airflow_source.amplitude_event_provenance_state"
-
-
-# --------------------------------------------------------------------------- #
 # read_watermark / refresh
 # --------------------------------------------------------------------------- #
 
@@ -829,8 +727,6 @@ _EXISTING_B = {
     "retired_commit": None,
     "retired_pr": None,
     "retired_date": None,
-    "code_status": "present",
-    "still_in_code": True,
     "last_code_change_date": "2025-02-01",
     "updated_at": "2026-01-01T00:00:00",
 }
@@ -858,57 +754,12 @@ def test_merge_readd_preserves_original_instrumented_and_advances_last_change():
         "retired_commit": "bbbb",
         "retired_pr": "222",
         "retired_date": "2025-03-01",
-        "code_status": "removed",
-        "still_in_code": False,
     }
     new_entry = {"instrumented": COMMIT_E, "retired": None, "last_change": COMMIT_E}
     merged = bf.merge_provenance_entry(existing, new_entry)
     assert merged["instrumented"]["commit"] == "aaaa"  # original instrumentation kept
     assert merged["last_change"]["commit"] == "eeee"  # window is the latest change
     assert merged["retired"]["commit"] == "bbbb"  # carried forward from existing row
-
-
-# --------------------------------------------------------------------------- #
-# read_provenance_rows
-# --------------------------------------------------------------------------- #
-
-
-def test_read_provenance_rows_keys_by_event_type():
-    existing = [
-        (
-            "Event A",
-            "event_a",
-            "aaaa",
-            None,
-            "2025-02-01",
-            None,
-            None,
-            None,
-            "present",
-            True,
-            "2025-02-01",
-            "2026-01-01T00:00:00",
-        ),
-        (
-            "Event B",
-            "event_b",
-            "aaaa",
-            None,
-            "2025-02-01",
-            None,
-            None,
-            None,
-            "present",
-            True,
-            "2025-02-01",
-            "2026-01-01T00:00:00",
-        ),
-    ]
-    cur = RefreshCursor(["Event A", "Event B"], existing_rows=existing)
-    rows = bf.read_provenance_rows(cur)
-    assert set(rows) == {"Event A", "Event B"}
-    assert rows["Event A"]["instrumented_commit"] == "aaaa"
-    assert rows["Event B"]["code_status"] == "present"
 
 
 # --------------------------------------------------------------------------- #
@@ -935,8 +786,6 @@ _EXISTING_ROWS = [
         None,
         None,
         None,
-        "present",
-        True,
         "2025-02-01",
         "2026-01-01T00:00:00",
     ),
@@ -949,8 +798,6 @@ _EXISTING_ROWS = [
         None,
         None,
         None,
-        "present",
-        True,
         "2025-02-01",
         "2026-01-01T00:00:00",
     ),
@@ -1007,12 +854,7 @@ def test_run_refresh_merges_only_affected_events_and_advances_watermark(monkeypa
     # only Event B is rewritten, and its existing instrumentation is preserved
     assert [r["event_type"] for r in rows] == ["Event B"]
     assert rows[0]["instrumented_commit"] == "aaaa"
-    assert rows[0]["code_status"] == "removed"
     assert rows[0]["retired_commit"] == "eeee"
-
-    inserts = [(s, p) for s, p in cur.executed if s.startswith("INSERT INTO")]
-    assert len(inserts) == 1
-    assert inserts[0][0].count("?") == 1 * len(PROVENANCE_COLUMNS)  # exactly one row
 
     wm_merges = [(s, p) for s, p in cur.executed if "ON t.job_name = s.job_name" in s]
     assert len(wm_merges) == 1
@@ -1033,6 +875,54 @@ def test_run_refresh_advances_watermark_when_nothing_changed(monkeypatch):
     assert rows == []
     assert not [s for s, _ in cur.executed if s.startswith("INSERT INTO")]  # no provenance write
     assert any("ON t.job_name = s.job_name" in s for s, _ in cur.executed)  # watermark still advanced
+
+
+# --------------------------------------------------------------------------- #
+# CSV persistence
+# --------------------------------------------------------------------------- #
+
+
+def _row(event_type, **over):
+    base = {c: None for c in bf.PROVENANCE_COLUMNS}
+    base["event_type"] = event_type
+    base["event_type_slug"] = bf.slugify_event(event_type)
+    base["updated_at"] = "2026-06-22T00:00:00"
+    base.update(over)
+    return base
+
+
+def test_write_provenance_writes_sorted_header_and_rows(tmp_path):
+    csv_path = tmp_path / "prov.csv"
+    rows = [_row("Event B"), _row("Event A")]
+    bf.write_provenance(rows, str(csv_path))
+    lines = csv_path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == ",".join(bf.PROVENANCE_COLUMNS)
+    assert lines[1].startswith("Event A,")
+    assert lines[2].startswith("Event B,")
+
+
+def test_write_provenance_renders_none_as_empty_field(tmp_path):
+    csv_path = tmp_path / "prov.csv"
+    bf.write_provenance([_row("Event A")], str(csv_path))
+    back = bf.read_provenance_rows(str(csv_path))
+    assert back["Event A"]["retired_commit"] is None
+
+
+def test_provenance_csv_round_trips(tmp_path):
+    csv_path = tmp_path / "prov.csv"
+    rows = [
+        _row("Event A", instrumented_commit="aaaa", instrumented_date="2025-02-01"),
+        _row("Click Can't See Office", instrumented_commit="bbbb", instrumented_pr="7"),
+    ]
+    bf.write_provenance(rows, str(csv_path))
+    back = bf.read_provenance_rows(str(csv_path))
+    assert back["Event A"]["instrumented_commit"] == "aaaa"
+    assert back["Click Can't See Office"]["instrumented_pr"] == "7"
+    assert set(back) == {"Event A", "Click Can't See Office"}
+
+
+def test_read_provenance_rows_empty_when_file_absent(tmp_path):
+    assert bf.read_provenance_rows(str(tmp_path / "missing.csv")) == {}
 
 
 # --------------------------------------------------------------------------- #
