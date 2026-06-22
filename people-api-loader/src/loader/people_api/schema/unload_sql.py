@@ -10,7 +10,12 @@ from __future__ import annotations
 import re
 
 # Spark CSV OPTIONS, pinned to mirror copy's PG `FORMAT csv` import (tab-delimited CSV, empty
-# string = NULL, double-quote for both quote and escape, no header row).
+# string = NULL, double-quote for both quote and escape, no header row). The NULL-vs-empty-string
+# round-trip is load-bearing and relies on Spark's write defaults: nullValue='' writes NULL as an
+# unquoted empty field while an actual "" empty string is written quoted (default emptyValue '""'),
+# and PG `FORMAT csv, NULL ''` reads unquoted-empty as NULL but quoted-empty as ''. Embedded
+# tab/newline/quote round-trip because the field is quoted and PG csv supports quoted multi-line
+# values; embedded quotes are doubled ("") on both sides.
 _CSV_OPTIONS = "'sep' = '\\t', 'header' = 'false', 'nullValue' = '', 'quote' = '\"', 'escape' = '\"'"
 
 _DDL_COL_RE = re.compile(r'^\s*"(?P<name>[^"]+)"\s+(?P<type>[A-Z][A-Z0-9 ()]*?)(?:\s+NOT NULL)?,?\s*$')

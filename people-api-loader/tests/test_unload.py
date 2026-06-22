@@ -31,11 +31,15 @@ _CFG = cast(
 
 
 class _FakeS3:
-    """Lists two part files for FL, one for CA."""
+    """Lists a part file (+ a non-data marker) for FL, one part file for CA."""
 
     def get_paginator(self, name: str) -> Any:
         pages = {
-            "voter_export_20260622/state=FL/": [{"Key": "voter_export_20260622/state=FL/part-0", "Size": 10}],
+            "voter_export_20260622/state=FL/": [
+                {"Key": "voter_export_20260622/state=FL/part-0", "Size": 10},
+                # a non-zero marker/sidecar that must NOT be recorded (would corrupt copy)
+                {"Key": "voter_export_20260622/state=FL/_committed_123", "Size": 42},
+            ],
             "voter_export_20260622/state=CA/": [{"Key": "voter_export_20260622/state=CA/part-0", "Size": 7}],
         }
 
@@ -73,6 +77,9 @@ def test_unload_builds_per_state_sql_and_manifest(monkeypatch: pytest.MonkeyPatc
     assert manifest.per_state_row_counts == {"FL": 3, "CA": 2}
     assert {f.state for f in manifest.files} == {"FL", "CA"}
     assert any(f.s3_key.endswith("state=FL/part-0") and f.size_bytes == 10 for f in manifest.files)
+    # the non-data marker file is filtered out (only part-* data files are recorded)
+    assert all("_committed_" not in f.s3_key for f in manifest.files)
+    assert len(manifest.files) == 2
 
 
 def test_unload_state_filter_submits_one_state(monkeypatch: pytest.MonkeyPatch) -> None:

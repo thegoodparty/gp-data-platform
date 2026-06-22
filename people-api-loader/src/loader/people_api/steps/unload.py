@@ -33,12 +33,20 @@ _TARGET_TABLE = "Voter"
 
 
 def _list_state_files(cfg: LoaderConfig, prefix: str, state: str) -> list[UnloadFile]:
-    """Enumerate written part files for a state; row_count is best-effort (see spec)."""
+    """Enumerate the written data part files for a state; row_count is best-effort (see spec).
+
+    Only Spark data files (basename `part-*`) are recorded — never the writer's marker/sidecar
+    files (`_SUCCESS`, `_committed_*`, `_started_*`, `.crc`). copy feeds every listed file
+    straight to aws_s3.table_import_from_s3, so a stray non-data file would corrupt the load;
+    filtering positively here (not just on size) is the robust guard.
+    """
     state_prefix = f"{prefix}/state={state}/"
     files: list[UnloadFile] = []
     paginator = s3(cfg).get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=cfg.s3_bucket, Prefix=state_prefix):
         for obj in page.get("Contents", []):
+            if not obj["Key"].rsplit("/", 1)[-1].startswith("part-"):
+                continue
             files.append(UnloadFile(state=state, s3_key=obj["Key"], size_bytes=obj["Size"], row_count=0))
     return files
 
