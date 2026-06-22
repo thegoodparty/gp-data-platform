@@ -20,16 +20,19 @@ with
             {%- endif %}
         {% endfor %}
     ),
-    present_states as (
-        select distinct `State` as state from {{ ref("m_people_api__voter") }}
+    -- single scan of the 218M-row mart; both checks derive from this ~51-row aggregate
+    state_counts as (
+        select `State` as state, count(*) as n
+        from {{ ref("m_people_api__voter") }}
+        group by `State`
     ),
     missing_states as (
         select e.state
         from expected_states as e
-        left join present_states as p on p.state = e.state
-        where p.state is null
+        left join state_counts as c on c.state = e.state
+        where c.state is null
     ),
-    total as (select count(*) as n from {{ ref("m_people_api__voter") }})
+    total as (select coalesce(sum(n), 0) as n from state_counts)
 select 'missing_state' as violation, state as detail
 from missing_states
 union all

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 _DUMP = """
 CREATE TABLE public."Voter" (
@@ -36,3 +40,21 @@ def test_extract_column_names_in_ddl_order() -> None:
     # Quoted and bare (Prisma) columns, in physical order; constraint lines excluded.
     cols = extract_column_names(extract_create_tables(_DUMP)["Voter"])
     assert cols == ["LALVOTERID", "State", "created_at", "id"]
+
+
+def test_extract_column_types_from_generated_ddl() -> None:
+    # The emit-ddl-generated shape: quoted columns, uppercase PG types (NOT NULL stripped).
+    ddl = (
+        'CREATE TABLE public."Voter" (\n'
+        '    "id" UUID NOT NULL,\n'
+        '    "Age_Int" INTEGER,\n'
+        '    "Estimated_Income" NUMERIC(12,2),\n'
+        '    "State" TEXT NOT NULL\n'
+        ");"
+    )
+    assert extract_column_types(ddl) == {
+        "id": "UUID",
+        "Age_Int": "INTEGER",
+        "Estimated_Income": "NUMERIC(12,2)",
+        "State": "TEXT",
+    }

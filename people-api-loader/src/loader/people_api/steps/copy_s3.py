@@ -58,6 +58,12 @@ _SESSION_SQL: tuple[str, ...] = (
     "SET idle_in_transaction_session_timeout = 0",
 )
 
+# PG `aws_s3.table_import_from_s3` options — CSV (tab-delimited) to match the unload's Spark CSV
+# writer: quoting/escaping (both '"') handle embedded tab/newline/quote in free-text fields;
+# NULL '' pairs with the unload's nullValue=''. MUST stay in sync with unload_sql._CSV_OPTIONS;
+# test_format_contract.py pins the pairing so a one-sided edit fails CI.
+_IMPORT_OPTIONS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
+
 
 def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: str) -> None:
     """Import one S3 file into public."Voter" on its own backend.
@@ -80,10 +86,7 @@ def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: s
             {
                 "table": f'public."{_TARGET_TABLE}"',
                 "columns": column_list,
-                # CSV (tab-delimited) to match the unload's Spark CSV writer: quoting/escaping
-                # (both '"') handle embedded tab/newline/quote in free-text fields; NULL '' pairs
-                # with the unload's nullValue=''. See unload_sql._CSV_OPTIONS.
-                "options": "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')",
+                "options": _IMPORT_OPTIONS,
                 "bucket": cfg.s3_bucket,
                 "key": s3_key,
                 "region": cfg.aws_region,

@@ -36,18 +36,3 @@ def test_unload_statement_shape() -> None:
 def test_count_by_state_statement() -> None:
     sql = unload_sql.count_by_state_statement("cat.dbt.m_people_api__voter")
     assert sql == ("SELECT `State` AS state, count(*) AS n FROM cat.dbt.m_people_api__voter GROUP BY `State`")
-
-
-def test_column_types_from_ddl() -> None:
-    ddl = (
-        'CREATE TABLE public."Voter" (\n'
-        '    "id" UUID NOT NULL,\n'
-        '    "Age_Int" INTEGER,\n'
-        '    "State" TEXT NOT NULL\n'
-        ");"
-    )
-    assert unload_sql.column_types_from_ddl(ddl) == {
-        "id": "UUID",
-        "Age_Int": "INTEGER",
-        "State": "TEXT",
-    }

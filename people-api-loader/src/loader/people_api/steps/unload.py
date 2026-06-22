@@ -9,6 +9,7 @@ the declared Prisma-extra columns the mart lacks are emitted as NULL. Records an
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from loader.core.aws import s3
 from loader.core.databricks import run_statement
@@ -25,25 +26,30 @@ from loader.people_api.schema import unload_sql
 from loader.people_api.schema.schema_spec import TABLE_SPECS
 from loader.people_api.schema.snapshot import load_target_schema
 from loader.people_api.schema.states import STATES
-from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 log = get_logger(__name__)
 
 _TARGET_TABLE = "Voter"
 
 
-def _list_state_files(cfg: LoaderConfig, prefix: str, state: str) -> list[UnloadFile]:
+def _list_state_files(s3_client: Any, bucket: str, prefix: str, state: str) -> list[UnloadFile]:
     """Enumerate the written data part files for a state; row_count is best-effort (see spec).
 
     Only Spark data files (basename `part-*`) are recorded — never the writer's marker/sidecar
     files (`_SUCCESS`, `_committed_*`, `_started_*`, `.crc`). copy feeds every listed file
     straight to aws_s3.table_import_from_s3, so a stray non-data file would corrupt the load;
-    filtering positively here (not just on size) is the robust guard.
+    filtering positively here (not just on size) is the robust guard. The S3 client is built
+    once by the caller and reused across states.
     """
     state_prefix = f"{prefix}/state={state}/"
     files: list[UnloadFile] = []
-    paginator = s3(cfg).get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=cfg.s3_bucket, Prefix=state_prefix):
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=state_prefix):
         for obj in page.get("Contents", []):
             if not obj["Key"].rsplit("/", 1)[-1].startswith("part-"):
                 continue
@@ -69,7 +75,7 @@ def run(
     ddl_columns = extract_column_names(create_sql)
     extras = {name for name, _type, _nullable in TABLE_SPECS[_TARGET_TABLE].extra_columns}
     exprs = unload_sql.select_exprs(ddl_columns, extras)
-    column_types_pg = unload_sql.column_types_from_ddl(create_sql)
+    column_types_pg = extract_column_types(create_sql)
 
     states = [state_filter] if state_filter else list(STATES)
     prefix = cfg.export_prefix(run_date)
@@ -93,8 +99,9 @@ def run(
         )
         for row in count_resp.result.data_array or []:
             per_state_row_counts[row[0]] = int(row[1])
+        s3_client = s3(cfg)  # built once, reused across states
         for state in states:
-            files.extend(_list_state_files(cfg, prefix, state))
+            files.extend(_list_state_files(s3_client, cfg.s3_bucket, prefix, state))
 
     manifest = UnloadManifest(
         run_date=run_date,
