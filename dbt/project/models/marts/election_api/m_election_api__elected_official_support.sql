@@ -44,6 +44,11 @@
 -- excludes; DDHQ results are independent of the HubSpot/BR candidate
 -- cutover, so reading them here does not cross that boundary. The civics
 -- path wins when an office is covered by both.
+-- A third, person-level path then overlays the above (see the person_matched
+-- CTE): for product officials, the official's OWN name is matched to their DDHQ
+-- winning result so support_constituents is their own votes, not the race top
+-- winner's. It overrides the position-level figure wherever it matches and also
+-- recovers offices the position-level paths miss.
 with
     general_winning_stages as (
         select gp_election_stage_id, votes_received, election_stage_date
@@ -267,7 +272,84 @@ with
             )
     ),
 
-    -- Union the two sources at the position grain before attaching the UUID.
+    -- ===== Person-level DDHQ match (a product official's OWN votes) =====
+    -- The position-level paths above attribute the race's top-winner votes to
+    -- every co-holder of a multi-seat office. For product (serve) officials we
+    -- can do better: match the official's OWN name to their DDHQ winning result
+    -- and use their own votes for support_constituents. Keyed by elected_office.
+    -- The name comes from the entity-resolution cluster (gp_api side); the office
+    -- is the official's position. This both corrects multi-seat over-attribution
+    -- and recovers offices the position-level paths miss. It overrides the
+    -- position-level figure (coalesce below) wherever it finds a match.
+    serve_officials as (
+        select
+            eo.id as elected_office_id,
+            pos.state,
+            pos.br_database_id as br_position_id,
+            lower(trim(c.first_name)) as first_name,
+            lower(trim(c.last_name)) as last_name,
+            {{ office_match_keys("pos.name") }}
+        from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
+        inner join
+            {{ ref("stg_airbyte_source__gp_api_db_organization") }} as org
+            on eo.organization_slug = org.slug
+        inner join
+            {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
+        inner join
+            {{ ref("stg_er_source__clustered_elected_officials") }} as c
+            on c.source_name = 'gp_api'
+            and cast(c.gp_api_elected_office_id as string) = cast(eo.id as string)
+        where c.first_name is not null and c.last_name is not null
+    ),
+
+    -- DDHQ winning candidate results (one row per candidate), with the office
+    -- match keys, for the person match. Same general/2025+ scope as the race-level
+    -- supplement, but kept at the candidate grain so we can read each official's
+    -- own votes rather than the race's top winner.
+    ddhq_candidate_results as (
+        select
+            state_postal_code as state,
+            lower(trim(candidate_first_name)) as first_name,
+            lower(trim(candidate_last_name)) as last_name,
+            election_date,
+            try_cast(votes as bigint) as votes_received,
+            {{ office_match_keys("official_office_name") }}
+        from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+        where
+            lower(election_stage) like '%general%'
+            and election_date >= date '2025-01-01'
+            and is_winner
+            and try_cast(votes as bigint) > 0
+    ),
+
+    -- One row per elected_office_id: the official's own winning votes from their
+    -- most recent general win, matched on name + state + locality + category.
+    -- The locality/category agreement is what makes a name match safe -- it drops
+    -- same-name officials who won a different race elsewhere. icp_voter_count is
+    -- the official's BR position L2 count (so person-only recoveries get a total).
+    person_matched as (
+        select so.elected_office_id, d.votes_received, pos.icp_voter_count
+        from serve_officials as so
+        inner join
+            ddhq_candidate_results as d
+            on d.state = so.state
+            and d.first_name = so.first_name
+            and d.last_name = so.last_name
+            and size(so.locality_key) >= 1
+            and so.locality_key = d.locality_key
+            and so.office_category = d.office_category
+        left join
+            {{ ref("positions") }} as pos
+            on pos.br_position_database_id = so.br_position_id
+        qualify
+            row_number() over (
+                partition by so.elected_office_id
+                order by d.election_date desc nulls last, d.votes_received desc
+            )
+            = 1
+    ),
+
+    -- Union the two position-grain sources before attaching the UUID.
     combined as (
         select
             br_position_id,
@@ -291,23 +373,31 @@ with
 
     -- Fan out to one row per gp-api elected_office instance. Each office maps to
     -- a single position via organization.position_id -> Position.id; the
-    -- position's support numbers are attached, so co-holders of a multi-seat
-    -- office share them. The join keys are unique (organization.slug,
-    -- Position.id, combined.br_position_id), so there is no fan-out beyond the
-    -- one row per elected_office_id. Offices whose position has no support row
-    -- are dropped.
+    -- position-level support numbers (combined) are attached, so co-holders of a
+    -- multi-seat office share them. A person-level match (person_matched), when
+    -- present, OVERRIDES support_constituents with the official's own votes --
+    -- correcting multi-seat over-attribution and recovering offices the
+    -- position-level paths miss (those get their total from the person match's
+    -- own position icp). The join keys are unique (organization.slug,
+    -- Position.id, combined.br_position_id, person_matched.elected_office_id), so
+    -- there is no fan-out beyond one row per elected_office_id. Offices with
+    -- neither a position-level nor a person-level support figure are dropped.
     office_support as (
         select
             eo.id as elected_office_id,
-            c.votes_received as support_constituents,
-            c.icp_voter_count as total_constituents
+            coalesce(pm.votes_received, c.votes_received) as support_constituents,
+            coalesce(c.icp_voter_count, pm.icp_voter_count) as total_constituents
         from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
         inner join
             {{ ref("stg_airbyte_source__gp_api_db_organization") }} as org
             on eo.organization_slug = org.slug
         inner join
             {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
-        inner join combined as c on c.br_position_id = pos.br_database_id
+        left join combined as c on c.br_position_id = pos.br_database_id
+        left join person_matched as pm on pm.elected_office_id = eo.id
+        where
+            coalesce(pm.votes_received, c.votes_received) > 0
+            and coalesce(c.icp_voter_count, pm.icp_voter_count) > 0
     )
 
 select

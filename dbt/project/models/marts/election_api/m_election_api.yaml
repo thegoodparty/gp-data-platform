@@ -626,15 +626,20 @@ models:
       Per-position support is computed first from each office's most recent GENERAL
       win (primaries excluded), then fanned out to elected_office instances. The
       position-level figure uses the top winner by votes for multi-seat offices.
-      Only offices whose position has a coherent vote tally and an L2 voter count
-      are present; offices with no support row are dropped.
+      A person-level DDHQ match then overlays this for product officials: the
+      official's own name is matched to their DDHQ winning result so
+      support_constituents is their OWN votes, not the race top winner's. This
+      corrects multi-seat over-attribution and recovers offices the position-level
+      paths miss. Only offices with a coherent vote tally and an L2 voter count are
+      present; offices with no support figure are dropped.
 
       Grain: One row per elected_office_id.
 
       Source note: support_constituents (winning votes) is DDHQ-canonical via
       candidacy_stage, plus a 2025 DDHQ supplement for product offices excluded by
-      the 2026 civics scope; total_constituents is the L2 district voter count from
-      the positions mart.
+      the 2026 civics scope and a person-level DDHQ match (the official's own
+      votes); total_constituents is the L2 district voter count from the positions
+      mart.
     columns:
       - name: elected_office_id
         description: >
@@ -647,10 +652,11 @@ models:
           - is_uuid
       - name: support_constituents
         description: >
-          Winning votes for this office's position in its most recent general
-          election (position-level; multi-seat offices use the top winner by
-          votes). Sourced from candidacy_stage / the 2025 DDHQ supplement. Always
-          populated and positive.
+          Winning votes for this office in its most recent general election. For
+          product officials this is the official's OWN votes (person-level DDHQ
+          match); otherwise it is the position-level figure (multi-seat offices use
+          the top winner by votes). Sourced from candidacy_stage / the 2025 DDHQ
+          supplement / the person-level DDHQ match. Always populated and positive.
         tests:
           - not_null
           - dbt_utils.accepted_range:
