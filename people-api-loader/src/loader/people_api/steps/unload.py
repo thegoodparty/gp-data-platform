@@ -77,6 +77,9 @@ def run(
     exprs = unload_sql.select_exprs(ddl_columns, extras)
     column_types_pg = extract_column_types(create_sql)
 
+    # state is interpolated into the unload SQL and the S3 path; only accept a known state code.
+    if state_filter is not None and state_filter not in STATES:
+        raise ValueError(f"--state must be one of the {len(STATES)} known state codes; got {state_filter!r}")
     states = [state_filter] if state_filter else list(STATES)
     prefix = cfg.export_prefix(run_date)
     started = datetime.now(UTC)
@@ -118,11 +121,13 @@ def run(
         per_state_row_counts=per_state_row_counts,
         files=files,
     )
-    # A state-filtered run covers only one state, so it must NOT write the canonical
-    # (run_date, step)-keyed manifest — otherwise a later full run's skip-guard would see
-    # status="complete" and return this partial, never unloading the rest. Mirrors copy_s3.
-    if state_filter is not None:
-        log.info("unload.state_written", state=state_filter, files=len(files))
+    # Do NOT write the canonical (run_date, step)-keyed manifest for a partial/no-op run:
+    # a state-filtered run covers one state, and a skip_submit (dry-run) submits nothing and
+    # lists no files. Persisting status="complete" in either case would poison a later full
+    # run's skip-guard into returning this partial/empty manifest, never unloading the rest.
+    # Mirrors copy_s3.
+    if state_filter is not None or skip_submit:
+        log.info("unload.partial", state=state_filter, skip_submit=skip_submit, files=len(files))
         return manifest
     uri = write_manifest(cfg, manifest)
     log.info("unload.complete", uri=uri, states=len(states), files=len(files))

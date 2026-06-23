@@ -99,12 +99,29 @@ def test_unload_state_filter_submits_one_state_and_writes_no_manifest(
     assert not any("GROUP BY" in s for s in submitted)
 
 
-def test_unload_skip_submit_builds_no_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unload_skip_submit_builds_no_calls_and_writes_no_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     submitted: list[str] = []
     _patch(monkeypatch, submitted)
+    wrote: list[object] = []
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: wrote.append(m) or "uri")
     manifest = step.run(_CFG, "20260622", skip_submit=True)
     assert submitted == []
     assert manifest.status == "complete"
+    # a dry-run must NOT persist the manifest — an empty status=complete would poison a later
+    # real run's skip-guard into returning it and never unloading anything
+    assert wrote == []
+
+
+def test_unload_rejects_unknown_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    submitted: list[str] = []
+    _patch(monkeypatch, submitted)
+    # an unknown --state must fail fast (it's interpolated into SQL + the S3 path), not silently
+    # produce an empty unload
+    with pytest.raises(ValueError, match="known state"):
+        step.run(_CFG, "20260622", state_filter="ZZ")
+    assert submitted == []
 
 
 def test_unload_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
