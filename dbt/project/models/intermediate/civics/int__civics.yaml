@@ -2990,7 +2990,7 @@ models:
       - name: hubspot_company_id
         description: HubSpot company ID for the matched campaign (alias of campaigns.hubspot_id).
 
-  - name: int__civics_elected_official_ddhq_votes
+  - name: int__civics_elected_office_ddhq_votes
     description: |
       DDHQ general-winner votes resolved to each gp-api elected office via the
       matcha elected_official entity resolution: the DDHQ winner record that

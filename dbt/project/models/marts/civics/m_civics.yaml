@@ -1919,7 +1919,7 @@ models:
         description: |
           The official's own DDHQ general-election winning votes, resolved to
           this office via the matcha elected_official entity resolution
-          (int__civics_elected_official_ddhq_votes). NULL when the office did not
+          (int__civics_elected_office_ddhq_votes). NULL when the office did not
           match a DDHQ winner. Feeds the election_api support score.
         data_tests:
           - dbt_utils.accepted_range:
