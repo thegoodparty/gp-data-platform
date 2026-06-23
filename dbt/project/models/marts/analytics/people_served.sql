@@ -47,7 +47,8 @@ with
     coverage as (select * from {{ ref("int__serve_block_coverage") }}),
 
     -- count-once per (cohort, served_set): 'all' reads served_voters, 'active' reads
-    -- served_voters_active. 'all' = the North Star headline at office_type 'all'.
+    -- served_voters_active. The North Star headline is (cohort='active',
+    -- office_type='all'); 'all' is the broad comparison reading.
     count_once_local as (
         select
             'all' as cohort,
