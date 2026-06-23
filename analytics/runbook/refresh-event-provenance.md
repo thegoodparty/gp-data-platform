@@ -2,8 +2,9 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 
 ## Prerequisites
 
-- **Omni checkout.** `OMNI_REPO` must be set to a local omni checkout (machine-specific; keep it in `~/.zshrc`, not committed). The script resolves `--repo` else `$OMNI_REPO`, expands `~`, and aborts if the path is unset or not a git checkout. It fetches `origin/develop` itself, so the checkout only needs a reachable remote, not a clean working tree.
-- **Databricks access.** One read per run (the event universe from `airbyte_source.amplitude_taxonomy_event_type`). Auth resolves the executor's default Databricks SDK profile in `~/.databrickscfg` (whoever runs it; refresh with `databricks auth login`, or `databricks auth login --profile <name>` for a named profile). `DATABRICKS_HTTP_PATH` must be set. No PAT.
+- **Omni checkout.** `OMNI_REPO` must be set to a local omni checkout (machine-specific, not committed; see Scheduled-shell environment below for where to set it). The script resolves `--repo` else `$OMNI_REPO`, expands `~`, and aborts if the path is unset or not a git checkout. It fetches `origin/develop` itself, so the checkout only needs a reachable remote, not a clean working tree.
+- **Databricks access.** One read per run (the event universe from `airbyte_source.amplitude_taxonomy_event_type`). Auth resolves the executor's default Databricks SDK profile in `~/.databrickscfg` (whoever runs it; refresh with `databricks auth login`, or `databricks auth login --profile <name>` for a named profile). `DATABRICKS_HTTP_PATH` (the SQL warehouse path, non-secret) must be set; see below. No PAT.
+- **Scheduled-shell environment.** A Claude Code scheduled run is a non-interactive shell and does NOT source `~/.zshrc`, so any var defined only there is absent (symptom: `DATABRICKS_HTTP_PATH is not set`). Set the two non-secret vars this job needs, `DATABRICKS_HTTP_PATH` and `OMNI_REPO`, where a non-interactive shell reads them: a `~/.claude/settings.json` `env` block (Claude Code injects it into every Bash subprocess it spawns) or `~/.zshenv`. Auth itself needs no env here, since it reads the file-based OAuth profile.
 - **Git/PR access.** `gh` authenticated and push access to the repo, since the run opens a PR. Never push to `main`.
 - **Python env.** Run from `analytics/` via `uv` (the subproject's own env), per the repo's multi-venv setup.
 
@@ -38,7 +39,8 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 ## Troubleshooting
 
 - Databricks auth / token-refresh error → the executor's OAuth token is stale; run `databricks auth login` (or `--profile <name>`). This needs a browser, so it cannot be done by the unattended run; the run fails loudly and waits for the next scheduled run after you re-auth.
-- `ERROR: pass --repo or set OMNI_REPO …` → `OMNI_REPO` is not set in the run's environment.
+- `DATABRICKS_HTTP_PATH is not set` → the scheduled (non-interactive) shell did not load `~/.zshrc`; set `DATABRICKS_HTTP_PATH` (and `OMNI_REPO`) via a `~/.claude/settings.json` env block or `~/.zshenv`. See the Scheduled-shell environment note in Prerequisites.
+- `ERROR: pass --repo or set OMNI_REPO …` → `OMNI_REPO` is not set in the run's environment (same non-interactive-shell cause as above).
 - `git fetch … failed` → the omni checkout's remote is unreachable or its credentials lapsed; the script aborts rather than walking stale `origin/develop` state.
 - `WARNING: N universe event(s) absent from the CSV` → see the refresh-limitation note above; resync with a full backfill if the gap matters.
 
