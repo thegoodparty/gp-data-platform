@@ -42,6 +42,27 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 - `git fetch … failed` → the omni checkout's remote is unreachable or its credentials lapsed; the script aborts rather than walking stale `origin/develop` state.
 - `WARNING: N universe event(s) absent from the CSV` → see the refresh-limitation note above; resync with a full backfill if the gap matters.
 
+## Test run (no commit, no PR)
+
+To validate the pipeline end to end without touching the repo or opening a PR, point the output at files outside the repo (`--csv` / `--state`). This exercises everything (auth, the `origin/develop` fetch, the walk, the write) and leaves an inspectable dataset in `~/Downloads`. The only in-repo side effect is the `git fetch` inside the omni checkout, which is expected.
+
+1. Preflight as in Step 1 above (profile valid, `OMNI_REPO` set).
+2. Seed the test output from the committed dataset so the run takes the incremental path (what the scheduled job does each run):
+   ```sh
+   cp analytics/data/amplitude_event_provenance.csv ~/Downloads/amplitude_event_provenance_TEST.csv
+   cp analytics/data/amplitude_event_provenance_state.json ~/Downloads/amplitude_event_provenance_state_TEST.json
+   ```
+3. Run, writing only to the Downloads copies:
+   ```sh
+   cd analytics && uv run python lib/amplitude_event_provenance_backfill.py \
+     --repo "$OMNI_REPO" \
+     --csv ~/Downloads/amplitude_event_provenance_TEST.csv \
+     --state ~/Downloads/amplitude_event_provenance_state_TEST.json
+   ```
+4. Inspect: read the summary line on stderr, `diff` the Downloads CSV against `analytics/data/amplitude_event_provenance.csv` to see the delta, and confirm `git status --porcelain` is clean.
+
+For a clean full backfill instead of the incremental path, skip step 2 and point `--state` at a Downloads path that does not exist yet; with no watermark the script rebuilds the whole dataset into Downloads (slower, a few minutes).
+
 ## Running it on a schedule (Claude Code Desktop)
 
 Create a Local routine whose working directory is the repo root and whose prompt is "follow `analytics/runbook/refresh-event-provenance.md`." Set the permission mode to auto-approve so it can run `uv`, `git`, and `gh` without stalling, and pick a cadence and a time the machine is awake and 1Password / the Databricks profile are usable. A missed run is harmless (see Notes), so err toward a time you are typically logged in.
