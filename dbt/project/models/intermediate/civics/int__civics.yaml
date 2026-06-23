@@ -3198,6 +3198,11 @@ models:
           downstream at the resolver).
         data_tests:
           - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: serve_active_user_flag_matches_components
+          arguments:
+            expression: "is_active_serve_user = (has_sent_sms_poll and has_pledged)"
 
   - name: int__serve_district_resolution
     description: >

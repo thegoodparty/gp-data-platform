@@ -1476,9 +1476,13 @@ models:
   - name: people_served
     description: >
       The People Served metrics (DATA-1993, epic DATA-1359): one row per
-      (metric_variant, office_type). count_once is the distinct-person union (from
-      int__serve_block_coverage); the count_multiple variants are sums off the substrate
-      via district_census_stats. Ordering holds within every office_type: count_once <=
+      (cohort, metric_variant, office_type). cohort is 'all' (every resolved serve
+      org) or 'active' (the active People Served cohort: in_people_served_cohort);
+      'active' is the canonical North Star and BOTH are present, so BI consumers MUST
+      filter or group by cohort -- omitting it double-counts. count_once is the
+      distinct-person union (from int__serve_block_coverage); the count_multiple
+      variants are sums off the substrate via district_census_stats. Ordering holds
+      within every (cohort, office_type): count_once <=
       count_multiple_per_district <= per_seat <= per_org. office_type is 'all' (the local
       cohort-wide North Star headline) or one of the substrate's L2 district types, PLUS 'State'
       for statewide officials, which are read from the EXACT T5 'State' census totals and
