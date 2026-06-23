@@ -43,6 +43,19 @@ with
         where is_matched
     ),
 
+    -- the active People Served cohort's two non-email inputs. active_user is the
+    -- behavioral half (unique by user_id, so the join cannot fan out the org
+    -- grain); icp_offices is the office half (unique by br_database_position_id,
+    -- verified in int__icp.yaml, so it cannot fan out either).
+    active_user as (
+        select user_id, is_active_serve_user from {{ ref("int__serve_active_user") }}
+    ),
+
+    icp_offices as (
+        select br_database_position_id, icp_office_serve
+        from {{ ref("int__icp_offices") }}
+    ),
+
     resolved as (
         select
             o.organization_slug,
@@ -75,10 +88,14 @@ with
                     coalesce(o.custom_position_name, '')
                 )
             ) as title_text,
-            o.user_email
+            o.user_email,
+            coalesce(au.is_active_serve_user, false) as is_active_serve_user,
+            coalesce(i.icp_office_serve, false) as icp_office_serve
         from serve_orgs o
         left join districts d on coalesce(o.override_district_id, o.district_id) = d.id
         left join crosswalk x on o.ballotready_position_id = x.br_database_id
+        left join active_user au on o.user_id = au.user_id
+        left join icp_offices i on o.ballotready_position_id = i.br_database_position_id
     ),
 
     final as (
@@ -185,7 +202,25 @@ with
 
             -- internal/test accounts; whether they count toward the public
             -- metric is a pending product decision, so flag, never exclude
-            coalesce(user_email ilike '%goodparty%', false) as is_internal_email
+            coalesce(user_email ilike '%goodparty%', false) as is_internal_email,
+
+            -- behavioral + office components of the cohort, carried for
+            -- observability so a cohort miss is debuggable rather than silent
+            is_active_serve_user,
+            icp_office_serve,
+
+            -- in_people_served_cohort (epic DATA-1359): the active People Served
+            -- cohort gate -- active serve user (sent SMS poll AND pledged) AND a
+            -- Serve-ICP office AND not an internal/test account. Flag only, never a
+            -- row exclusion: out-of-cohort officials still flow through for the
+            -- broad 'all' rollups and the per-official surface. A null/stale/missing
+            -- BallotReady position id leaves icp_office_serve false (an observable
+            -- non-ICP miss); a user with no active-user row is non-active. Drives
+            -- both count_once (block-coverage active union) and the count-multiple
+            -- variants (people_served district_level filter).
+            (
+                is_active_serve_user and icp_office_serve and not is_internal_email
+            ) as in_people_served_cohort
         from resolved
     )
 

@@ -40,6 +40,7 @@ select
     r.resolution_path,
     r.requires_review,
     r.is_geo_seat,
+    r.in_people_served_cohort,
     coalesce(s.district_population, sw.district_population) as constituents,
     coalesce(s.registered_voters, sw.registered_voters) as registered_voters,
     coalesce(s.district_population, sw.district_population)

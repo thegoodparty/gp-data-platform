@@ -3160,6 +3160,45 @@ models:
           arguments:
             combination_of_columns: [source_name, gp_election_stage_id]
 
+  - name: int__serve_active_user
+    description: >
+      The single source of truth for the "active serve user" behavioral
+      definition (epic DATA-1359), one row per user. A user is an active serve
+      user when they completed Serve onboarding by sending an SMS poll AND have
+      pledged. This is the behavioral half of the People Served cohort; the office
+      half (Serve-ICP) and the internal-email exclusion are applied at
+      int__serve_district_resolution, where the office and owner email live. Reads
+      staging + intermediate only (never an analytics mart) so the cohort flag it
+      feeds stays below the analytics layer, with no dependency cycle into
+      int__serve_block_coverage. "Pledged" is any pledged campaign from
+      source-staging campaigns, which on the serve cohort is identical to the
+      stricter "latest candidacy pledged" notion (proven: zero membership delta).
+    columns:
+      - name: user_id
+        description: Product-DB user id (primary key).
+        data_tests:
+          - unique
+          - not_null
+      - name: has_sent_sms_poll
+        description: >
+          Sent at least one 'Serve Onboarding - SMS Poll Sent' event (the final
+          onboarding step), from int__amplitude_user_milestones.
+        data_tests:
+          - not_null
+      - name: has_pledged
+        description: >
+          Owns at least one pledged campaign (details:pledged) in source-staging
+          campaigns.
+        data_tests:
+          - not_null
+      - name: is_active_serve_user
+        description: >
+          has_sent_sms_poll AND has_pledged: the behavioral gate of the People
+          Served active cohort (combined with Serve-ICP and non-internal email
+          downstream at the resolver).
+        data_tests:
+          - not_null
+
   - name: int__serve_district_resolution
     description: >
       Resolves each serve org to its L2 district: the serve-cohort entry point
@@ -3178,6 +3217,10 @@ models:
       is_statewide (reported separately downstream), and is_internal_email.
       Rows are never excluded here; pending cohort decisions are var-driven
       filters plus flags, and flagged rows flow through for downstream review.
+      Carries in_people_served_cohort (epic DATA-1359): the active People Served
+      cohort gate -- active serve user (int__serve_active_user) AND Serve-ICP
+      office (int__icp_offices, a unique join) AND not internal email -- as a flag,
+      never a row exclusion.
     columns:
       - name: organization_slug
         description: Serve org identifier (primary key)
@@ -3296,6 +3339,29 @@ models:
           count toward the public metric is a pending product decision, so
           flag, never exclude (the serve_cohort_exclude_internal_email_orgs
           var flips the filter).
+        data_tests:
+          - not_null
+      - name: is_active_serve_user
+        description: >
+          Carried from int__serve_active_user: the owner sent an SMS poll AND
+          pledged (the behavioral half of the cohort). False when the owner has no
+          active-user row.
+        data_tests:
+          - not_null
+      - name: icp_office_serve
+        description: >
+          Carried from int__icp_offices (unique join on ballotready_position_id):
+          the office meets Serve ICP. False when the position id is null, stale, or
+          missing -- an observable non-ICP miss, never a silent drop.
+        data_tests:
+          - not_null
+      - name: in_people_served_cohort
+        description: >
+          The active People Served cohort gate: is_active_serve_user AND
+          icp_office_serve AND not is_internal_email. Flag only -- out-of-cohort
+          officials still flow through. Drives both count_once
+          (int__serve_block_coverage active union) and the count-multiple variants
+          (people_served district_level filter).
         data_tests:
           - not_null
     data_tests:
@@ -3427,7 +3493,9 @@ models:
       district types as the substrate (get_l2_major_district_columns), so count-once <=
       count-multiple holds. served_set is 'all' (served by any cohort district) or one
       of the substrate's L2 district types; statewide officials are read from the exact T5
-      'State' rows in people_served, not here.
+      'State' rows in people_served, not here. served_voters_active is the same count
+      restricted to the active cohort (in_people_served_cohort on the resolver); active
+      <= all block-for-block.
     columns:
       - name: block_geoid
         description: 15-char zero-padded 2020 census block GEOID
@@ -3441,6 +3509,17 @@ models:
           - not_null
       - name: served_voters
         description: Distinct cohort-served voters in this block for this served_set
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: served_voters_active
+        description: >
+          Distinct ACTIVE-cohort-served voters in this block for this served_set
+          (in_people_served_cohort). A subset of served_voters, so <= served_voters
+          and <= total_voters.
         data_tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -3467,3 +3546,7 @@ models:
           name: serve_block_coverage_served_le_total
           arguments:
             expression: "served_voters <= total_voters"
+      - dbt_utils.expression_is_true:
+          name: serve_block_coverage_active_le_served
+          arguments:
+            expression: "served_voters_active <= served_voters"
