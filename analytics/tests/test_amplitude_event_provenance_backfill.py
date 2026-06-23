@@ -544,6 +544,27 @@ def test_run_git_log_streams_lines_on_success(tmp_path):
     assert any("base" in line for line in lines)
 
 
+def test_git_grep_present_text_raises_on_fatal_error(tmp_path):
+    # A bad ref makes `git grep` exit 2+ (fatal). That must raise, not return an empty
+    # dump indistinguishable from "no matches" -- which would map every event to absent
+    # at HEAD, write them all as "removed", and advance the watermark on a corrupted CSV.
+    repo = _init_repo_one_commit(tmp_path)
+    with pytest.raises(subprocess.CalledProcessError):
+        bf.git_grep_present_text(repo, ["base"], ["f.txt"], ref="no-such-ref-abc123")
+
+
+def test_git_grep_present_text_returns_empty_on_no_match(tmp_path):
+    # Exit 1 (no matches) is not an error: return an empty dump, do not raise.
+    repo = _init_repo_one_commit(tmp_path)
+    assert bf.git_grep_present_text(repo, ["nope-not-present"], ["f.txt"], ref="HEAD") == ""
+
+
+def test_git_grep_present_text_returns_matching_lines(tmp_path):
+    # Exit 0: the matching lines come back.
+    repo = _init_repo_one_commit(tmp_path)
+    assert "base" in bf.git_grep_present_text(repo, ["base"], ["f.txt"], ref="HEAD")
+
+
 def test_git_fetch_raises_on_failure(tmp_path):
     # No 'origin' remote configured -> `git fetch origin develop` fails; must abort, not continue.
     repo = _init_repo_one_commit(tmp_path)

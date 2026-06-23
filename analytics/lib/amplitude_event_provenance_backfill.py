@@ -451,13 +451,20 @@ def git_grep_present_text(root: str, events: Sequence[str], paths: Sequence[str]
     """Dump of ``ref`` lines containing any known literal, via one fixed-string git grep.
 
     ``-F`` treats each event as a literal; ``-h`` drops filenames. git grep exits 1
-    when nothing matches (an empty dump), which is not an error here.
+    when nothing matches (an empty dump), which is not an error here; it exits 2+ on a
+    real failure (bad ref, repo corruption, permission denied). We must raise on 2+:
+    swallowing it returns an empty dump indistinguishable from "no matches", so every
+    event would map to absent at HEAD, be written as ``removed``, and the watermark would
+    advance on a fully corrupted CSV with no error signal -- the same silent-corruption
+    risk ``run_git_log`` guards against.
     """
     patterns: list[str] = []
     for e in events:
         patterns += ["-e", e]
     argv = ["git", "-C", root, "grep", "-F", "-h", "--no-color", *patterns, ref, "--", *paths]
     proc = subprocess.run(argv, capture_output=True, text=True)
+    if proc.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(proc.returncode, argv, stderr=proc.stderr)
     return proc.stdout
 
 
