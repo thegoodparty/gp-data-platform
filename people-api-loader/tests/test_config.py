@@ -56,3 +56,13 @@ def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = LoaderConfig.from_env()
     assert cfg.mart_fqns["Voter"] == "goodparty_data_catalog.dbt.m_people_api__voter"
     assert set(cfg.mart_fqns) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
+
+
+def test_databricks_warehouse_id_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOADER_DATABRICKS_WAREHOUSE_ID", "wh-123")
+    assert LoaderConfig.from_env().databricks_warehouse_id == "wh-123"
+
+
+def test_databricks_warehouse_id_defaults_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LOADER_DATABRICKS_WAREHOUSE_ID", raising=False)
+    assert LoaderConfig.from_env().databricks_warehouse_id == ""

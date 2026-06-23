@@ -1,5 +1,10 @@
 version: 2
 
+# DATA-1906 pre-unload gate: run `dbt test --select m_people_api__voter m_people_api__district`
+# (all severity=error) before the loader `unload` step. Covers the column tests below plus the
+# singular row-count/state-coverage test in
+# tests/assert_people_api_voter_rowcount_and_state_coverage.sql. The Airflow DAG (DATA-1913) and
+# runbook (DATA-1914) sequence this selection ahead of unload.
 models:
   - name: m_people_api__district
     description: >

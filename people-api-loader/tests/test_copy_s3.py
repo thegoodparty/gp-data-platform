@@ -49,6 +49,11 @@ def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.Monke
     import_params = next(p for s, p in conn.executed if "table_import_from_s3" in s)
     assert import_params["table"] == 'public."Voter"'
     assert import_params["columns"] == _COLS
+    # CSV (tab-delimited) — pairs with the unload's Spark CSV writer (quote/escape '"', NULL '').
+    assert (
+        import_params["options"]
+        == "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
+    )
 
 
 def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) -> None:
