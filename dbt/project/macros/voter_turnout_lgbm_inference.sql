@@ -64,13 +64,22 @@ _CATEGORICAL_FEATURES = [
     "ConsumerData_Education_of_Person",
 ]
 
-_BOOLEAN_FLAG_COLS = [
-    "ConsumerDataLL_Gun_Owner",
+# String indicator columns: L2 stores these as 'Y' / null (or 'Yes' for Gun_Owner).
+# Must use string equality, not = TRUE — a string column tested as boolean always
+# evaluates FALSE in Spark SQL and would silently produce 0.0 for every precinct.
+_Y_INDICATOR_COLS = [
     "ConsumerData_Donor_Charitable_Causes",
     "ConsumerData_Donor_Political_Conservative",
     "ConsumerData_Donor_Political_Liberal",
     "ConsumerData_Political_Donor_State_Level",
     "ConsumerData_Current_Affairs_Politics",
+]
+# Gun_Owner uses 'Yes' instead of 'Y'
+_YES_INDICATOR_COLS = [
+    "ConsumerDataLL_Gun_Owner",
+]
+# Actual boolean columns in L2 — safe to check with = TRUE
+_BOOLEAN_FLAG_COLS = [
     "Cell_Phone_Number_Available",
     "Landline_Phone_Number_Available",
     "Phone_Number_Available",
@@ -160,7 +169,7 @@ def _detect_election_cols(l2_columns, max_vote_history_year):
 
 
 def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
-                              max_vote_history_year):
+                              l2_collection_year):
     # to_date with explicit format handles L2's MM/dd/yyyy string storage.
     # COALESCE with TRY_CAST also handles staging tables where the column
     # is already DATE type.
@@ -175,10 +184,13 @@ def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
         f"{_NH_VT_PRECINCT}                                             AS Precinct",
         f"CAST(COUNT(*) AS DOUBLE)                                      AS n_voters",
 
-        # Age and registration tenure at inference year
-        (f"CAST(AVG(CAST({inference_year} - YEAR({_safe_date('Voters_BirthDate')}) AS DOUBLE)) AS DOUBLE)"
+        # Age and registration tenure as of Nov 1 of the inference year — matches
+        # training which used DATEDIFF(MAKE_DATE(target_year, 11, 1), col) / 365.25.
+        (f"CAST(AVG(DATEDIFF(MAKE_DATE({inference_year}, 11, 1),"
+         f"                  {_safe_date('Voters_BirthDate')}) / 365.25) AS DOUBLE)"
          f"                                                               AS age"),
-        (f"CAST(AVG(CAST({inference_year} - YEAR({_safe_date('Voters_CalculatedRegDate')}) AS DOUBLE)) AS DOUBLE)"
+        (f"CAST(AVG(DATEDIFF(MAKE_DATE({inference_year}, 11, 1),"
+         f"                  {_safe_date('Voters_CalculatedRegDate')}) / 365.25) AS DOUBLE)"
          f"                                                               AS reg_for"),
 
         # Residential mobility signals
@@ -203,13 +215,27 @@ def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
 
         f"CAST({inference_year} AS DOUBLE)                              AS target_year",
 
-        # Length of residence adjusted forward to inference year.
-        # Training used: col - (L2_collection_year - target_year).
-        # At inference: col - (max_vote_history_year - inference_year).
+        # Length of residence projected to inference year. L2 records length as of
+        # collection date (l2_collection_year = datetime.now().year at run time).
+        # Training applied col - (CURRENT_YEAR - target_year); same formula here.
         (f"CAST(AVG(ConsumerData_Length_Of_Residence_Code"
-         f"         - ({max_vote_history_year} - {inference_year})) AS DOUBLE)"
+         f"         - ({l2_collection_year} - {inference_year})) AS DOUBLE)"
          f"                                                               AS ConsumerData_Length_Of_Residence_Code"),
     ]
+
+    for col in _Y_INDICATOR_COLS:
+        if col in l2_col_set:
+            exprs.append(
+                f"CAST(AVG(CASE WHEN `{col}` = 'Y' THEN 1.0 ELSE 0.0 END) AS DOUBLE)"
+                f"  AS `{col}`"
+            )
+
+    for col in _YES_INDICATOR_COLS:
+        if col in l2_col_set:
+            exprs.append(
+                f"CAST(AVG(CASE WHEN `{col}` = 'Yes' THEN 1.0 ELSE 0.0 END) AS DOUBLE)"
+                f"  AS `{col}`"
+            )
 
     for col in _BOOLEAN_FLAG_COLS:
         if col in l2_col_set:
@@ -409,7 +435,7 @@ def model(dbt, session):
 
     for inference_year in inference_years:
         precinct_df = _build_precinct_features(
-            session, l2_col_set, election_cols, inference_year, max_vote_history_year
+            session, l2_col_set, election_cols, inference_year, current_year
         )
         pdf = precinct_df.toPandas()
 
