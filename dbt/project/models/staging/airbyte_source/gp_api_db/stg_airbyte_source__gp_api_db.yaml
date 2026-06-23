@@ -1,4 +1,160 @@
 models:
+  - name: stg_airbyte_source__gp_api_db_annotation
+    description: >
+      Annotation records (notes, chats, bug reports) attached to EO Meeting
+      Briefing artifacts. One row per annotation.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the annotation"
+        data_tests:
+          - not_null
+          - unique
+      - name: kind
+        description: "Type of annotation: note, chat, bug_report, or review"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["note", "chat", "bug_report", "review"]
+      - name: author_user_id
+        description: "Foreign key to the user who authored the annotation"
+        data_tests:
+          - not_null
+      - name: resource_id
+        description: "ID of the annotated resource (e.g. a meeting briefing)"
+        data_tests:
+          - not_null
+      - name: resource_type
+        description: "Type of the annotated resource"
+        data_tests:
+          - not_null
+      - name: note_id
+        description: "Foreign key to annotation_note when kind = note"
+      - name: chat_conversation_id
+        description: "Foreign key to chat_conversation when kind = chat"
+      - name: annotation_bug_report_id
+        description: "Foreign key to annotation_bug_report when kind = bug_report"
+      - name: annotation_review_id
+        description: "Foreign key to annotation_review"
+  - name: stg_airbyte_source__gp_api_db_annotation_bug_report
+    description: raw data load from gp_api_db postgres db from table `annotation_bug_report`
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the bug report"
+        data_tests:
+          - not_null
+          - unique
+      - name: description
+        description: "Free-text description of the reported bug"
+      - name: submitted_at
+        description: "Timestamp when the bug report was submitted"
+  - name: stg_airbyte_source__gp_api_db_annotation_note
+    description: raw data load from gp_api_db postgres db from table `annotation_note`
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the note"
+        data_tests:
+          - not_null
+          - unique
+      - name: body
+        description: "Free-text body of the note"
+      - name: created_at
+        description: "Timestamp when the note was created"
+      - name: updated_at
+        description: "Timestamp when the note was last updated"
+  - name: stg_airbyte_source__gp_api_db_annotation_note_attachment
+    description: raw data load from gp_api_db postgres db from table `annotation_note_attachment`
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the attachment"
+        data_tests:
+          - not_null
+          - unique
+      - name: note_id
+        description: "Foreign key to the annotation_note this attachment belongs to"
+        data_tests:
+          - not_null
+      - name: storage_key
+        description: "Storage key/path for the attachment file"
+      - name: file_name
+        description: "Original file name of the attachment"
+      - name: mime_type
+        description: "MIME type of the attachment"
+      - name: size_bytes
+        description: "Size of the attachment in bytes"
+      - name: ocr_status
+        description: "OCR processing status: pending, processing, completed, failed, or skipped"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["pending", "processing", "completed", "failed", "skipped"]
+      - name: ocr_text
+        description: "Extracted text from OCR processing"
+      - name: ocr_error
+        description: "Error message if OCR processing failed"
+      - name: ocr_completed_at
+        description: "Timestamp when OCR processing completed"
+      - name: created_at
+        description: "Timestamp when the attachment was created"
+  - name: stg_airbyte_source__gp_api_db_annotation_review
+    description: raw data load from gp_api_db postgres db from table `annotation_review`
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the review"
+        data_tests:
+          - not_null
+          - unique
+      - name: body
+        description: "Free-text body of the review"
+      - name: reviewer_email
+        description: "Email of the reviewer"
+      - name: reviewer_clerk_sub
+        description: "Clerk subject identifier of the reviewer"
+      - name: created_at
+        description: "Timestamp when the review was created"
+      - name: updated_at
+        description: "Timestamp when the review was last updated"
+  - name: stg_airbyte_source__gp_api_db_artifact_feedback
+    description: >
+      Positive/negative feedback submitted on EO Meeting Briefing artifacts.
+      One row per (submitter, briefing, artifact) feedback submission.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the feedback submission"
+        data_tests:
+          - not_null
+          - unique
+      - name: feedback
+        description: "Feedback value: positive or negative"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["positive", "negative"]
+      - name: comment
+        description: "Optional free-text comment accompanying the feedback"
+      - name: artifact_id
+        description: "ID of the artifact the feedback is about"
+        data_tests:
+          - not_null
+      - name: artifact_type
+        description: "Type of the artifact (e.g. agenda_item)"
+        data_tests:
+          - not_null
+      - name: briefing_id
+        description: "Foreign key to the meeting_briefing"
+        data_tests:
+          - not_null
+      - name: organization_slug
+        description: "Foreign key to the organization"
+        data_tests:
+          - not_null
+      - name: submitter_user_id
+        description: "Foreign key to the user who submitted the feedback"
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp when the feedback was created"
+      - name: updated_at
+        description: "Timestamp when the feedback was last updated"
   - name: stg_airbyte_source__gp_api_db_campaign
     description: raw data load from gp_api_db postgres db from table `campaign`
     columns:
@@ -28,6 +184,94 @@ models:
       - name: top_issue_id
         data_tests:
           - not_null
+  - name: stg_airbyte_source__gp_api_db_chat_conversation
+    description: >
+      Chat conversations collected from EO Meeting Briefings. One row per
+      conversation.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the conversation"
+        data_tests:
+          - not_null
+          - unique
+      - name: scope
+        description: "Scope of the conversation"
+      - name: title
+        description: "Title of the conversation"
+      - name: anchor
+        description: "Anchor reference locating the conversation within its resource"
+      - name: owner_user_id
+        description: "Foreign key to the user who owns the conversation"
+        data_tests:
+          - not_null
+      - name: organization_slug
+        description: "Foreign key to the organization"
+      - name: deleted_at
+        description: "Timestamp when the conversation was soft-deleted, if any"
+      - name: created_at
+        description: "Timestamp when the conversation was created"
+      - name: updated_at
+        description: "Timestamp when the conversation was last updated"
+  - name: stg_airbyte_source__gp_api_db_chat_message
+    description: raw data load from gp_api_db postgres db from table `chat_message`
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the message"
+        data_tests:
+          - not_null
+          - unique
+      - name: conversation_id
+        description: "Foreign key to the chat_conversation this message belongs to"
+        data_tests:
+          - not_null
+      - name: role
+        description: "Role of the message author: user, assistant, system, or tool"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["user", "assistant", "system", "tool"]
+      - name: content
+        description: "Text content of the message"
+      - name: client_message_id
+        description: "Optional client-supplied idempotency key for the send attempt"
+      - name: created_at
+        description: "Timestamp when the message was created"
+  - name: stg_airbyte_source__gp_api_db_meeting_briefing
+    description: >
+      EO Meeting Briefing artifacts generated for an elected office and meeting
+      date. One row per briefing.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the briefing"
+        data_tests:
+          - not_null
+          - unique
+      - name: elected_office_id
+        description: "Foreign key to the elected_office this briefing was generated for"
+        data_tests:
+          - not_null
+      - name: experiment_run_id
+        description: "Foreign key to the experiment run that produced the briefing"
+        data_tests:
+          - not_null
+      - name: meeting_date
+        description: "Date of the meeting the briefing covers"
+        data_tests:
+          - not_null
+      - name: meeting_time
+        description: "Time of the meeting the briefing covers"
+      - name: meeting_timezone
+        description: "Timezone of the meeting time"
+      - name: artifact
+        description: "JSON artifact payload for the briefing"
+      - name: artifact_bucket
+        description: "Storage bucket holding the briefing artifact"
+      - name: artifact_key
+        description: "Storage key/path of the briefing artifact"
+      - name: created_at
+        description: "Timestamp when the briefing was created"
+      - name: updated_at
+        description: "Timestamp when the briefing was last updated"
   - name: stg_airbyte_source__gp_api_db_domain
     description: raw data load from gp_api_db postgres db from table `domain`
     columns:
