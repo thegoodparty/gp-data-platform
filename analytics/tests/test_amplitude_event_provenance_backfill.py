@@ -425,6 +425,7 @@ def test_run_backfill_writes_csv_and_state(monkeypatch, tmp_path):
     assert csv_path.exists()
     assert bf.read_watermark(str(state_path))["last_processed_sha"] == "headsha"
     assert set(bf.read_provenance_rows(str(csv_path))) == {"Event A", "Event B"}
+    assert bf.read_provenance_rows(str(csv_path))["Event A"]["instrumented_date"] == "2025-02-01"
 
 
 # --------------------------------------------------------------------------- #
@@ -809,6 +810,40 @@ def test_run_refresh_advances_watermark_when_nothing_changed(monkeypatch, tmp_pa
     assert {r["event_type"] for r in rows} == {"Event A", "Event B"}
     assert all(r["updated_at"].startswith("2025-") for r in rows)  # nothing restamped
     assert bf.read_watermark(str(state_path))["last_processed_sha"] == "newsha"
+
+
+def test_run_refresh_warns_when_universe_event_missing_from_csv(monkeypatch, tmp_path, capsys):
+    # CSV has only Event A; universe has Event A + Event C (brand-new, not in CSV).
+    # Refresh with an empty window should: warn about the missing event, and NOT add Event C.
+    csv_path = tmp_path / "prov.csv"
+    bf.write_provenance(
+        [
+            _row(
+                "Event A",
+                instrumented_commit="aaaa",
+                instrumented_date="2025-02-01",
+                last_code_change_date="2025-02-01",
+                updated_at="2025-02-01T00:00:00",
+            )
+        ],
+        str(csv_path),
+    )
+    state_path = tmp_path / "state.json"
+    bf.write_watermark(str(state_path), "oldsha", "origin/develop", 10, "2025-04-01T00:00:00")
+    # Universe has two events; CSV has only one.
+    cur = FakeCursor(["Event A", "Event C"])
+    monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter([]))  # empty window
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: "")
+    monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "newsha")
+    monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
+    monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 10)
+
+    rows = bf.run_refresh(cur, "/root", None, DT, csv_path=str(csv_path), state_path=str(state_path))
+
+    # (i) The missing event is NOT added (limitation holds).
+    assert {r["event_type"] for r in rows} == {"Event A"}
+    # (ii) A warning is emitted to stderr mentioning the divergence.
+    assert "absent from the CSV" in capsys.readouterr().err
 
 
 def test_write_provenance_writes_sorted_header_and_rows(tmp_path):

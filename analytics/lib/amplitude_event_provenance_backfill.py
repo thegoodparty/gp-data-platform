@@ -395,7 +395,7 @@ def present_at_head(events: Sequence[str], grep_text: str) -> dict[str, bool]:
 
 
 # --------------------------------------------------------------------------- #
-# SQL builders (pure)
+# Git argv builder (pure)
 # --------------------------------------------------------------------------- #
 
 
@@ -682,6 +682,11 @@ def run_refresh(
     Reads the whole CSV, replaces only the events that changed in the window (giving them a
     fresh updated_at), carries every other row forward verbatim, and rewrites the full sorted
     CSV. Always advances the watermark file so the next run resumes from HEAD.
+
+    Limitation: a refresh only adds/updates events that changed in the ``last_sha..ref``
+    window. Events that are new to (or removed from) the universe but did NOT net-change in
+    that window are not added or pruned until a full backfill -- delete the state file and
+    re-run to resync.
     """
     updated_at = now.replace(tzinfo=None).isoformat(timespec="seconds")
     watermark = read_watermark(state_path)
@@ -709,6 +714,14 @@ def run_refresh(
     print(f"Affected events in window: {len(affected)}", file=sys.stderr)
 
     existing = read_provenance_rows(csv_path)
+    missing = set(events) - set(existing)
+    if missing:
+        print(
+            f"WARNING: {len(missing)} universe event(s) absent from the CSV; a refresh only adds "
+            f"events that changed in the window. Delete the state file and re-run for a full backfill "
+            f"to resync.",
+            file=sys.stderr,
+        )
     if affected:
         grep_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, ref)
         present = present_at_head(affected, grep_text)
@@ -735,6 +748,9 @@ def run_refresh(
 
 
 def _summarize(rows: Sequence[dict]) -> str:
+    # not_found_in_code counts rows with no instrumentation date: this includes both events
+    # never seen in code AND events present in code whose instrumentation predates the --since
+    # window (the dropped still_in_code column was the only thing that distinguished them).
     present = removed = not_found = 0
     for r in rows:
         if r.get("instrumented_date") is None:
