@@ -668,7 +668,7 @@ models:
               arguments:
                 min_value: 1
       - name: created_at
-        description: "Timestamp the row was first created in this table"
+        description: "Build timestamp (table is fully rebuilt each run, so this tracks the latest build, not a stable first-seen time)"
         tests:
           - not_null
       - name: updated_at

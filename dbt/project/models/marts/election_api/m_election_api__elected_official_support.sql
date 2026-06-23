@@ -1,8 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key="elected_office_id",
+        materialized="table",
         auto_liquid_cluster=true,
         tags=["mart", "election_api", "elected_official_support"],
     )
@@ -181,13 +179,9 @@ select
     office_support.elected_office_id,
     office_support.support_constituents,
     office_support.total_constituents,
-    {% if is_incremental() %} coalesce(existing.created_at, now()) as created_at,
-    {% else %} now() as created_at,
-    {% endif %}
+    -- Full table rebuild each run, so the table reflects current coverage with no
+    -- stale rows for offices that lost their support figure. created_at therefore
+    -- tracks the build time (not a stable first-seen timestamp).
+    current_timestamp() as created_at,
     current_timestamp() as updated_at
 from office_support
-{% if is_incremental() %}
-    left join
-        {{ this }} as existing
-        on office_support.elected_office_id = existing.elected_office_id
-{% endif %}
