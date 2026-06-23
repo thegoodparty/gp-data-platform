@@ -77,8 +77,10 @@ _BOOLEAN_FLAG_COLS = [
     "ConsumerData_Do_Not_Call",
 ]
 
+# Plain numeric columns — cast directly to DOUBLE before AVG.
+# CAST AS DOUBLE required: without it Spark AVG returns DECIMAL(38,18) which
+# pandas 3 represents as StringDtype, causing LightGBM to reject the column.
 _NUMERIC_MEAN_COLS = [
-    "ConsumerData_Length_Of_Residence_Code",
     "ConsumerData_Household_Number_Lines_Of_Credit",
     "ConsumerData_Number_Of_Persons_in_HH",
     "Residence_Families_HHVotersCount",
@@ -87,9 +89,17 @@ _NUMERIC_MEAN_COLS = [
     "ConsumerData_Social_Ranking_Index_by_Individual",
     "ConsumerData_Likely_Income_Ranking_by_Area",
     "ConsumerData_Likely_Educational_Attainment_Ranking_by_Area",
+]
+
+# Dollar-formatted strings in L2 (e.g. '$12500') — strip '$' before casting.
+_DOLLAR_COLS = [
     "ConsumerData_Estimated_Income_Amount",
     "ConsumerData_EstimatedAreaMedianHHIncome",
     "ConsumerData_AreaMedianHousingValue",
+]
+
+# Percent-formatted string in L2 — strip '%' before casting.
+_PCT_COLS = [
     "ConsumerData_AreaPcntHHSpanishSpeaking",
 ]
 
@@ -149,27 +159,56 @@ def _detect_election_cols(l2_columns, max_vote_history_year):
     return result
 
 
-def _build_precinct_features(session, l2_col_set, election_cols, inference_year):
+def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
+                              max_vote_history_year):
+    # to_date with explicit format handles L2's MM/dd/yyyy string storage.
+    # COALESCE with TRY_CAST also handles staging tables where the column
+    # is already DATE type.
+    _safe_date = lambda col: (
+        f"COALESCE(TRY_CAST(`{col}` AS DATE), "
+        f"to_date(CAST(`{col}` AS STRING), 'MM/dd/yyyy'))"
+    )
+
     exprs = [
         f"state_postal_code                                              AS State",
         f"County",
         f"{_NH_VT_PRECINCT}                                             AS Precinct",
         f"CAST(COUNT(*) AS DOUBLE)                                      AS n_voters",
-        (f"CAST(AVG(CAST({inference_year} - YEAR(Voters_BirthDate) AS DOUBLE)) AS DOUBLE)"
+
+        # Age and registration tenure at inference year
+        (f"CAST(AVG(CAST({inference_year} - YEAR({_safe_date('Voters_BirthDate')}) AS DOUBLE)) AS DOUBLE)"
          f"                                                               AS age"),
-        (f"CAST(AVG(CAST({inference_year} - YEAR(Voters_CalculatedRegDate) AS DOUBLE)) AS DOUBLE)"
+        (f"CAST(AVG(CAST({inference_year} - YEAR({_safe_date('Voters_CalculatedRegDate')}) AS DOUBLE)) AS DOUBLE)"
          f"                                                               AS reg_for"),
+
+        # Residential mobility signals
         ("CAST(AVG(CASE WHEN Voters_MovedFrom_Date IS NOT NULL"
          "              THEN 1.0 ELSE 0.0 END) AS DOUBLE)               AS pct_ever_moved"),
+        # Extract year from MM/dd/yyyy string via SUBSTRING — matches training notebook approach
         (f"CAST(AVG(CASE WHEN Voters_MovedFrom_Date IS NOT NULL"
-         f"              THEN CAST({inference_year} - YEAR(Voters_MovedFrom_Date) AS DOUBLE)"
+         f"              THEN CAST({inference_year}"
+         f"                   - CAST(SUBSTRING(CAST(Voters_MovedFrom_Date AS STRING), 7, 4) AS INT)"
+         f"                   AS DOUBLE)"
          f"              ELSE NULL END) AS DOUBLE)"
          f"                                                               AS years_since_moved_at_target"),
-        ("CAST(AVG(CASE WHEN LOWER(Voters_Active) = 'active'"
-         "              THEN 1.0 ELSE 0.0 END) AS DOUBLE)               AS Voters_Active"),
+
+        # Voters_Active: L2 raw uses 'A'/'I'; some staging tables normalise to 'active'/'inactive'
+        ("CAST(AVG(CASE WHEN UPPER(Voters_Active) IN ('A', 'ACTIVE')   THEN 1.0"
+         "              WHEN UPPER(Voters_Active) IN ('I', 'INACTIVE') THEN 0.0"
+         "              ELSE NULL END) AS DOUBLE)                        AS Voters_Active"),
+
+        # FECDonors: null means never donated — treat as 0 before averaging
         ("CAST(AVG(COALESCE(CAST(FECDonors_NumberOfDonations AS DOUBLE), 0.0)) AS DOUBLE)"
          "                                                               AS FECDonors_NumberOfDonations"),
+
         f"CAST({inference_year} AS DOUBLE)                              AS target_year",
+
+        # Length of residence adjusted forward to inference year.
+        # Training used: col - (L2_collection_year - target_year).
+        # At inference: col - (max_vote_history_year - inference_year).
+        (f"CAST(AVG(ConsumerData_Length_Of_Residence_Code"
+         f"         - ({max_vote_history_year} - {inference_year})) AS DOUBLE)"
+         f"                                                               AS ConsumerData_Length_Of_Residence_Code"),
     ]
 
     for col in _BOOLEAN_FLAG_COLS:
@@ -183,6 +222,18 @@ def _build_precinct_features(session, l2_col_set, election_cols, inference_year)
         if col in l2_col_set:
             exprs.append(
                 f"CAST(AVG(CAST(`{col}` AS DOUBLE)) AS DOUBLE)  AS `{col}`"
+            )
+
+    for col in _DOLLAR_COLS:
+        if col in l2_col_set:
+            exprs.append(
+                f"CAST(AVG(CAST(REPLACE(`{col}`, '$', '') AS DOUBLE)) AS DOUBLE)  AS `{col}`"
+            )
+
+    for col in _PCT_COLS:
+        if col in l2_col_set:
+            exprs.append(
+                f"CAST(AVG(CAST(REPLACE(`{col}`, '%', '') AS DOUBLE)) AS DOUBLE)  AS `{col}`"
             )
 
     for col in _CATEGORICAL_FEATURES:
@@ -261,17 +312,30 @@ def _build_district_membership(session, l2_col_set, district_types):
 def _predict_precinct(pdf, booster, cat_map, model_slug, model_version, inference_year):
     feat_names = booster.feature_name_
 
+    # Add NaN placeholders for any features the model expects but L2 lacks
     for feat in feat_names:
         if feat not in pdf.columns:
             pdf[feat] = np.nan
 
     X = pdf[feat_names].copy()
 
+    # Integer-encode categoricals using saved cat_map.
+    # Values absent from training become NaN — LightGBM treats these as missing.
     for feat, categories in cat_map.items():
         if feat not in X.columns:
             continue
         cat_idx = {v: i for i, v in enumerate(categories)}
         X[feat] = X[feat].map(cat_idx)
+
+    # Coerce any remaining non-numeric columns (e.g. State, County if present in
+    # feat_names, or Arrow-backed StringDtype categoricals not in cat_map) to float.
+    # pd.api.types.is_numeric_dtype catches both object and StringDtype — the latter
+    # is returned by Arrow-backed reads on Databricks and is missed by dtype == object.
+    still_str = [c for c in X.columns if not pd.api.types.is_numeric_dtype(X[c])]
+    if still_str:
+        print(f"WARNING: coercing {len(still_str)} non-numeric feature columns to NaN: {still_str}")
+        for c in still_str:
+            X[c] = pd.to_numeric(X[c], errors="coerce")
 
     result = pdf[["State", "County", "Precinct", "n_voters"]].copy()
     result["p_hat"]          = booster._Booster.predict(
@@ -344,7 +408,9 @@ def model(dbt, session):
     result_parts = []
 
     for inference_year in inference_years:
-        precinct_df = _build_precinct_features(session, l2_col_set, election_cols, inference_year)
+        precinct_df = _build_precinct_features(
+            session, l2_col_set, election_cols, inference_year, max_vote_history_year
+        )
         pdf = precinct_df.toPandas()
 
         for slug in _year_to_model_slugs(inference_year):
@@ -356,6 +422,13 @@ def model(dbt, session):
                 model_version  = model_family,
                 inference_year = inference_year,
             )
+
+            # Convert Arrow-backed StringDtype columns (State, County, Precinct) to
+            # plain object dtype before createDataFrame — Spark cannot convert
+            # ChunkedArray from the Arrow-backed string representation.
+            for col in pred_pdf.columns:
+                if not pd.api.types.is_numeric_dtype(pred_pdf[col]):
+                    pred_pdf[col] = pred_pdf[col].astype(object)
 
             preds_spark = session.createDataFrame(
                 pred_pdf[["State", "County", "Precinct", "n_voters",
@@ -381,7 +454,7 @@ def model(dbt, session):
                   AND p.Precinct = m.Precinct
                 GROUP BY
                     p.inference_year, p.election_code, p.State,
-                    m.district_type, m.district_name, p.model_version
+                    m.district_type, m.district_name, p.model_family
             """))
 
     return reduce(lambda a, b: a.unionByName(b), result_parts)
