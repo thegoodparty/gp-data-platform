@@ -4,8 +4,9 @@ Walks the omni git history over the instrumentation paths and writes one provena
 Amplitude ``event_type`` to a CSV committed in this repo
 (``analytics/data/amplitude_event_provenance.csv``), plus a sidecar JSON watermark
 (``..._state.json``) recording the last processed commit SHA. With no watermark it does a full
-backfill; with one it walks ``git log <lastSHA>..origin/develop``, updates only the events that
-changed, carries the rest forward, and advances the watermark.
+backfill; with one it walks ``git log <lastSHA>..origin/develop``, updates the events that
+changed, carries the rest forward, onboards any universe events absent from the CSV via a
+full-history pickaxe walk, and advances the watermark.
 
 It READS the omni working tree's git history (``--repo`` / ``OMNI_REPO``) and the Amplitude
 Govern event universe from Databricks (``airbyte_source.amplitude_taxonomy_event_type``, the one
@@ -408,16 +409,22 @@ def present_at_head(events: Sequence[str], grep_text: str) -> dict[str, bool]:
 
 
 def build_git_log_argv(
-    root: str, since: str | None, paths: Sequence[str], ref: str | None = None
+    root: str, since: str | None, paths: Sequence[str], ref: str | None = None, pickaxe: str | None = None
 ) -> list[str]:
-    """argv for the single ``git log -p`` pass over the instrumentation paths.
+    """argv for a ``git log -p`` pass over the instrumentation paths.
 
     ``ref`` (e.g. ``origin/develop``) bounds the walk to a revision; placed before the ``--``
-    so git reads it as a rev, not a path. None walks HEAD (current checkout).
+    so git reads it as a rev, not a path. None walks HEAD (current checkout). ``pickaxe`` adds
+    ``-S<literal>`` so the walk streams only the commits that changed that literal's occurrence
+    count -- far cheaper than the full diff stream, and the count-change semantics match our
+    net-add / net-remove attribution exactly. ``-S`` is a fixed string by default, so quotes and
+    spaces in an event name are matched literally.
     """
     argv = ["git", "-C", root, "log", "-p", "--date=short", _GIT_LOG_FORMAT]
     if since:
         argv += ["--since", since]
+    if pickaxe is not None:
+        argv.append(f"-S{pickaxe}")
     if ref:
         argv.append(ref)
     return [*argv, "--", *paths]
@@ -428,14 +435,17 @@ def build_git_log_argv(
 # --------------------------------------------------------------------------- #
 
 
-def run_git_log(root: str, since: str | None, paths: Sequence[str], ref: str | None = None) -> Iterator[str]:
-    """Stream the single ``git log -p`` pass line-by-line (the diff stream is large).
+def run_git_log(
+    root: str, since: str | None, paths: Sequence[str], ref: str | None = None, pickaxe: str | None = None
+) -> Iterator[str]:
+    """Stream a ``git log -p`` pass line-by-line (the diff stream is large).
 
     A non-zero exit (bad ref, corrupt repo) raises ``CalledProcessError`` once the stream
     is exhausted: otherwise a failed log parses as an empty history and we would MERGE a
-    table of all-null provenance rows with no error signal.
+    table of all-null provenance rows with no error signal. ``pickaxe`` restricts the walk
+    to commits that changed a single literal's count (see ``build_git_log_argv``).
     """
-    argv = build_git_log_argv(root, since, paths, ref)
+    argv = build_git_log_argv(root, since, paths, ref, pickaxe)
     proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     assert proc.stdout is not None
     try:
@@ -682,6 +692,36 @@ def run_backfill(
     return rows
 
 
+def attribute_events_from_history(
+    root: str,
+    events: Sequence[str],
+    since: str | None,
+    ref: str,
+    updated_at: str,
+    pr_resolver: Callable[[str], str | None] | None = None,
+    paths: Sequence[str] = INSTRUMENTATION_PATHS,
+) -> list[dict]:
+    """Full-history provenance rows for a specific set of events, via per-event pickaxe walks.
+
+    Used to onboard universe events absent from the CSV during a refresh: events new to the
+    Govern taxonomy but instrumented before the watermark, which the bounded ``last_sha..ref``
+    window never sees. Each event gets a ``git log -S<literal>`` walk that streams only the
+    commits changing its count, so onboarding a handful of events does not pay the full
+    ``git log -p`` walk. Attribution then reuses the same ``build_provenance_row`` /
+    ``present_at_head`` / ``resolve_pr_gaps`` path as the backfill, so an onboarded row matches
+    what a full backfill would produce.
+    """
+    acc: dict[str, dict] = {}
+    for event in events:
+        lines = run_git_log(root, since, paths, ref, pickaxe=event)
+        acc.update(parse_git_log(lines, compile_event_pattern([event])))
+    grep_text = git_grep_present_text(root, events, paths, ref)
+    present = present_at_head(events, grep_text)
+    rows = [build_provenance_row(e, acc.get(e), present.get(e), updated_at) for e in events]
+    resolve_pr_gaps(rows, pr_resolver)
+    return rows
+
+
 def run_refresh(
     cursor: Any,
     root: str,
@@ -698,10 +738,11 @@ def run_refresh(
     fresh updated_at), carries every other row forward verbatim, and rewrites the full sorted
     CSV. Always advances the watermark file so the next run resumes from HEAD.
 
-    Limitation: a refresh only adds/updates events that changed in the ``last_sha..ref``
-    window. Events that are new to (or removed from) the universe but did NOT net-change in
-    that window are not added or pruned until a full backfill -- delete the state file and
-    re-run to resync.
+    New universe events absent from the CSV are onboarded in the same run via
+    ``attribute_events_from_history`` (full-history pickaxe attribution), so a routine refresh
+    covers both existing-event updates and brand-new events without a manual full backfill.
+    Events removed from the universe are left in the CSV (their provenance is kept); a full
+    rebuild from scratch is delete-the-state-file-and-re-run.
     """
     updated_at = now.replace(tzinfo=None).isoformat(timespec="seconds")
     watermark = read_watermark(state_path)
@@ -729,31 +770,40 @@ def run_refresh(
     print(f"Affected events in window: {len(affected)}", file=sys.stderr)
 
     existing = read_provenance_rows(csv_path)
-    missing = set(events) - set(existing)
-    if missing:
-        print(
-            f"WARNING: {len(missing)} universe event(s) absent from the CSV; a refresh only adds "
-            f"events that changed in the window. Delete the state file and re-run for a full backfill "
-            f"to resync.",
-            file=sys.stderr,
-        )
-    if affected:
-        grep_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, ref)
-        present = present_at_head(affected, grep_text)
+    missing = sorted(set(events) - set(existing))
+
+    # Existing CSV events that changed in the window: cheap windowed update. (Events that are
+    # both new to the CSV and changed in-window are excluded here and onboarded below from full
+    # history, which is the more accurate attribution.)
+    affected_existing = [ev for ev in affected if ev not in set(missing)]
+    if affected_existing:
+        grep_text = git_grep_present_text(root, affected_existing, INSTRUMENTATION_PATHS, ref)
+        present = present_at_head(affected_existing, grep_text)
         # Presence at the watermark distinguishes a genuinely new event (absent before the
         # window -> the window's net-add is its true instrumentation) from one whose
         # instrumentation predates the window (present before it -> the net-add is a
         # spurious edit, so merge_provenance_entry must not stamp a false instrumented date).
-        before_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, last_sha)
-        present_before = present_at_head(affected, before_text)
+        before_text = git_grep_present_text(root, affected_existing, INSTRUMENTATION_PATHS, last_sha)
+        present_before = present_at_head(affected_existing, before_text)
         updated_rows: list[dict] = []
-        for ev in affected:
+        for ev in affected_existing:
             merged = merge_provenance_entry(existing.get(ev), acc[ev], present_before.get(ev, False))
             updated_rows.append(build_provenance_row(ev, merged, present.get(ev), updated_at))
         _, filled = resolve_pr_gaps(updated_rows, pr_resolver)
         if pr_resolver is not None:
             print(f"Merge-walk PR backfill: filled {filled} *_pr gaps", file=sys.stderr)
         for row in updated_rows:
+            existing[row["event_type"]] = row
+
+    # New universe events absent from the CSV: instrumented before the watermark, so invisible
+    # to the window. Onboard them from full history so a routine refresh needs no full backfill.
+    if missing:
+        print(
+            f"Onboarding {len(missing)} new universe event(s) absent from the CSV "
+            f"via full-history attribution ...",
+            file=sys.stderr,
+        )
+        for row in attribute_events_from_history(root, missing, since, ref, updated_at, pr_resolver):
             existing[row["event_type"]] = row
 
     rows = list(existing.values())

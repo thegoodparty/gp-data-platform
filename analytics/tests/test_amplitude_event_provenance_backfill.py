@@ -320,6 +320,15 @@ def test_build_git_log_argv_walks_the_deploy_ref():
     assert argv.index("origin/develop") < argv.index("--")
 
 
+def test_build_git_log_argv_adds_pickaxe_before_ref():
+    argv = build_git_log_argv(
+        "/repo", "2024-06-01", ["packages/gp-webapp"], ref="origin/develop", pickaxe='Click "Upload"'
+    )
+    # -S<literal> is one argv element (fixed string), placed before the ref and the pathspec.
+    assert '-SClick "Upload"' in argv
+    assert argv.index('-SClick "Upload"') < argv.index("origin/develop") < argv.index("--")
+
+
 def test_present_at_head_marks_found_literals():
     grep_text = "  a: 'Event A',\n  c: 'Event C',"
     present = present_at_head(["Event A", "Event B", "Event C"], grep_text)
@@ -845,9 +854,10 @@ def test_run_refresh_advances_watermark_when_nothing_changed(monkeypatch, tmp_pa
     assert bf.read_watermark(str(state_path))["last_processed_sha"] == "newsha"
 
 
-def test_run_refresh_warns_when_universe_event_missing_from_csv(monkeypatch, tmp_path, capsys):
-    # CSV has only Event A; universe has Event A + Event C (brand-new, not in CSV).
-    # Refresh with an empty window should: warn about the missing event, and NOT add Event C.
+def test_run_refresh_onboards_new_universe_event_via_full_history(monkeypatch, tmp_path):
+    # CSV has only Event A; universe has Event A + Event C (new to the taxonomy, instrumented
+    # before the watermark so it never appears in the window). The refresh must onboard Event C
+    # from full history, not skip it -- no manual full backfill required.
     csv_path = tmp_path / "prov.csv"
     bf.write_provenance(
         [
@@ -863,20 +873,67 @@ def test_run_refresh_warns_when_universe_event_missing_from_csv(monkeypatch, tmp
     )
     state_path = tmp_path / "state.json"
     bf.write_watermark(str(state_path), "oldsha", "origin/develop", 10, "2025-04-01T00:00:00")
-    # Universe has two events; CSV has only one.
     cur = FakeCursor(["Event A", "Event C"])
-    monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter([]))  # empty window
-    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: "")
+
+    # The window walk (no pickaxe) is empty; the onboarding pickaxe walk for Event C returns its
+    # historical add commit. present_at_head sees Event C in the code at HEAD.
+    def fake_log(*a, **k):
+        if k.get("pickaxe") == "Event C":
+            return iter([_header("c1", "c1", "2025-01-15", "feat: add C (#5)"), '+  EVENTS.C  // "Event C"'])
+        return iter([])
+
+    monkeypatch.setattr(bf, "run_git_log", fake_log)
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '"Event C"')
     monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "newsha")
     monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
     monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 10)
 
     rows = bf.run_refresh(cur, "/root", None, DT, csv_path=str(csv_path), state_path=str(state_path))
 
-    # (i) The missing event is NOT added (limitation holds).
-    assert {r["event_type"] for r in rows} == {"Event A"}
-    # (ii) A warning is emitted to stderr mentioning the divergence.
-    assert "absent from the CSV" in capsys.readouterr().err
+    by = {r["event_type"]: r for r in rows}
+    assert set(by) == {"Event A", "Event C"}  # Event C onboarded, not skipped
+    assert by["Event C"]["instrumented_commit"] == "c1"
+    assert by["Event C"]["instrumented_date"] == "2025-01-15"
+    assert by["Event C"]["instrumented_pr"] == "5"  # parsed from the commit subject
+    assert by["Event C"]["retired_commit"] is None  # present at HEAD
+    assert by["Event A"]["updated_at"] == "2025-02-01T00:00:00"  # existing row carried forward
+    assert bf.read_watermark(str(state_path))["last_processed_sha"] == "newsha"
+
+
+def test_attribute_events_from_history_finds_instrumentation_via_pickaxe(tmp_path):
+    # Real repo: a literal introduced in a later commit must be found by the -S pickaxe walk and
+    # attributed (instrumented date + PR from the subject), with no full-diff walk.
+    repo = str(tmp_path)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@x",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@x",
+    }
+    subprocess.run(["git", "-C", repo, "init", "-q", "-b", "main"], check=True, env=env)
+    (tmp_path / "app.ts").write_text("// nothing yet\n")
+    subprocess.run(["git", "-C", repo, "add", "."], check=True, capture_output=True, env=env)
+    subprocess.run(
+        ["git", "-C", repo, "commit", "-q", "-m", "base"], check=True, capture_output=True, env=env
+    )
+    (tmp_path / "app.ts").write_text('trackEvent(EVENTS.X)  // "Event X"\n')
+    subprocess.run(["git", "-C", repo, "add", "."], check=True, capture_output=True, env=env)
+    subprocess.run(
+        ["git", "-C", repo, "commit", "-q", "-m", "feat: add X (#7)"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+    rows = bf.attribute_events_from_history(
+        repo, ["Event X"], None, "HEAD", "2026-06-23T00:00:00", paths=["app.ts"]
+    )
+
+    row = {r["event_type"]: r for r in rows}["Event X"]
+    assert row["instrumented_date"]  # found via pickaxe, not None
+    assert row["instrumented_pr"] == "7"
+    assert row["retired_commit"] is None  # still present at HEAD
 
 
 def test_run_refresh_does_not_fabricate_instrumented_for_predates_window_event(monkeypatch, tmp_path):

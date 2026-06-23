@@ -34,7 +34,7 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 ## Notes
 
 - **Idempotent and self-catching-up.** The watermark is the last processed commit SHA, so a missed or failed run is harmless: the next successful run walks a larger window and catches up. There is no need to backfill a skipped day.
-- **Refresh limitation.** A refresh only adds or updates events that changed in the window. A brand-new universe event whose instrumentation predates the watermark is not added automatically; the run logs a `WARNING: … absent from the CSV`. To fully resync, delete `analytics/data/amplitude_event_provenance_state.json` and run again for a full backfill.
+- **New and removed events.** A refresh covers both existing-event updates (the windowed walk) and brand-new events. A universe event absent from the CSV is onboarded in the same run via full-history attribution (logged as `Onboarding N new universe event(s) ...`), so new Govern events need no manual full backfill. Events removed from the universe are left in the CSV, since their provenance is worth keeping. Deleting `analytics/data/amplitude_event_provenance_state.json` and re-running is only needed for a clean rebuild from scratch.
 
 ## Troubleshooting
 
@@ -42,7 +42,7 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 - `DATABRICKS_HTTP_PATH is not set` → the scheduled (non-interactive) shell did not load `~/.zshrc`; set `DATABRICKS_HTTP_PATH` (and `OMNI_REPO`) via a `~/.claude/settings.json` env block or `~/.zshenv`. See the Scheduled-shell environment note in Prerequisites.
 - `ERROR: pass --repo or set OMNI_REPO …` → `OMNI_REPO` is not set in the run's environment (same non-interactive-shell cause as above).
 - `git fetch … failed` → the omni checkout's remote is unreachable or its credentials lapsed; the script aborts rather than walking stale `origin/develop` state.
-- `WARNING: N universe event(s) absent from the CSV` → see the refresh-limitation note above; resync with a full backfill if the gap matters.
+- `Onboarding N new universe event(s) ...` → informational, not an error: the refresh found N universe events not yet in the CSV and is attributing them from full history. This is expected whenever Govern gains events.
 
 ## Test run (no commit, no PR)
 
