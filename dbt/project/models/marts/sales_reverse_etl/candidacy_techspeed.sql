@@ -11,7 +11,8 @@
 -- tracking-key
 -- inputs (election_year, election_stage), gp_candidacy_id (internal backstop),
 -- is_keyable,
--- and last_activity_at. Materialized as a view in mart_reverse_etl (dbt_project.yml).
+-- and last_activity_at. Materialized as a view in mart_sales_reverse_etl
+-- (dbt_project.yml).
 --
 -- Design: .tickets/DATA-1523/46_layer1_models_design.md. Validation:
 -- 40_stream3_validation.md.
