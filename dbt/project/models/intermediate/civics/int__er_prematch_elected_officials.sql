@@ -289,5 +289,11 @@ select
                     else coalesce(seat_designator, '')
                 end
             )
-    end as official_office_norm
+    end as official_office_norm,
+    -- office_category alone (mayor/council/clerk/...), so the matcher still has
+    -- a positive office signal when official_office_name is all stop-words and
+    -- official_office_norm collapses to null (e.g. a bare "Mayor" vs "Mayor of
+    -- Springfield"). Computed from official_office_name via the same macro, so it
+    -- is comparable across all sources.
+    office_category
 from keyed

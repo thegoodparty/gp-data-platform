@@ -49,6 +49,13 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         # At-Large". Null for offices with no distinctive locality, so sparse
         # offices stay neutral.
         cl.ExactMatch("official_office_norm"),
+        # office_category alone (mayor/council/clerk/...) supplies a positive
+        # office signal even when official_office_norm is null -- i.e. an
+        # all-stop-word office name like a bare "Mayor", where the JaroWinkler on
+        # official_office_name also falls below threshold. Derived from
+        # official_office_name via office_match_keys, so it is comparable across
+        # ballotready_techspeed / gp_api / ddhq.
+        cl.ExactMatch("office_category"),
         cl.ExactMatch("district_identifier"),
         cl.ExactMatch("office_type"),
         cl.ExactMatch("office_level"),
@@ -151,6 +158,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         "candidate_office",
         "office_type",
         "office_level",
+        "office_category",
         "ballotready_position_id",
         "term_start_date",
     ],
@@ -168,6 +176,7 @@ ELECTED_OFFICIAL_CONFIG = EntityConfig(
         "gamma_ballotready_position_id",
         "gamma_term_start_date",
         "gamma_official_office_norm",
+        "gamma_office_category",
     ],
     false_negative_group_cols=["source_name", "state", "office_level"],
 )
