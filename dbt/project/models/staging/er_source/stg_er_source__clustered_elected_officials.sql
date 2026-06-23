@@ -1,17 +1,26 @@
 -- ddhq_votes arrives with the DDHQ source when the matcha cluster is re-run and
 -- the er_source table reloaded. Detect it at run time so this model (and the
 -- support score downstream) keeps building in the window before that reload:
--- present -> pass through; absent -> emit null.
+-- present -> pass through; absent (or table not yet created) -> emit null.
+-- Resolve the relation first (get_relation returns none safely when the table
+-- is absent); only inspect columns on a real relation, since
+-- get_columns_in_relation raises on a missing table on Databricks. Mirrors the
+-- pattern in macros/l2/l2_uniform_schema_preflight.sql.
 {% set src = source("er_source", "clustered_elected_officials") %}
 {% set has_ddhq_votes = false %}
 {% if execute %}
-    {% set src_cols = (
-        adapter.get_columns_in_relation(src)
-        | map(attribute="name")
-        | map("lower")
-        | list
+    {% set src_relation = adapter.get_relation(
+        database=src.database, schema=src.schema, identifier=src.identifier
     ) %}
-    {% set has_ddhq_votes = "ddhq_votes" in src_cols %}
+    {% if src_relation is not none %}
+        {% set src_cols = (
+            adapter.get_columns_in_relation(src_relation)
+            | map(attribute="name")
+            | map("lower")
+            | list
+        ) %}
+        {% set has_ddhq_votes = "ddhq_votes" in src_cols %}
+    {% endif %}
 {% endif %}
 
 with
