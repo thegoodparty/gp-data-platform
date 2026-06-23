@@ -94,11 +94,15 @@ def run(
     per_state_row_counts: dict[str, int] = {}
     files: list[UnloadFile] = []
     if not skip_submit:
-        count_resp = run_statement(
-            cfg, unload_sql.count_by_state_statement(mart_fqn), warehouse_id=cfg.databricks_warehouse_id
-        )
-        for row in count_resp.result.data_array or []:
-            per_state_row_counts[row[0]] = int(row[1])
+        # The per-state count is a full GROUP BY scan of the mart and only feeds the persisted
+        # full-run manifest (it's validate's baseline). A --state run doesn't persist a manifest,
+        # so skip the scan there rather than count all 51 states for a one-state run.
+        if state_filter is None:
+            count_resp = run_statement(
+                cfg, unload_sql.count_by_state_statement(mart_fqn), warehouse_id=cfg.databricks_warehouse_id
+            )
+            for row in count_resp.result.data_array or []:
+                per_state_row_counts[row[0]] = int(row[1])
         s3_client = s3(cfg)  # built once, reused across states
         for state in states:
             files.extend(_list_state_files(s3_client, cfg.s3_bucket, prefix, state))

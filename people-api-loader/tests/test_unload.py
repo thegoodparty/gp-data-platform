@@ -95,6 +95,8 @@ def test_unload_state_filter_submits_one_state_and_writes_no_manifest(
     # a state-filtered run must NOT persist the canonical manifest (would poison a later
     # full run's skip-guard into returning a partial as complete)
     assert wrote == []
+    # and skips the full-mart per-state count (a --state run doesn't need it)
+    assert not any("GROUP BY" in s for s in submitted)
 
 
 def test_unload_skip_submit_builds_no_calls(monkeypatch: pytest.MonkeyPatch) -> None:
