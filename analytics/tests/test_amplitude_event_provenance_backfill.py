@@ -846,10 +846,30 @@ def test_read_provenance_rows_empty_when_file_absent(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# parse_args --refresh flag
+# parse_args / default paths / _summarize
 # --------------------------------------------------------------------------- #
 
 
-def test_parse_args_refresh_flag_defaults_false_and_sets_true():
-    assert bf.parse_args([]).refresh is False
-    assert bf.parse_args(["--refresh"]).refresh is True
+def test_parse_args_defaults_to_data_dir_paths():
+    args = bf.parse_args([])
+    assert args.csv == bf.DEFAULT_CSV_PATH
+    assert args.state == bf.DEFAULT_STATE_PATH
+    assert not hasattr(args, "refresh")
+    assert not hasattr(args, "schema")
+
+
+def test_default_paths_live_under_analytics_data():
+    assert bf.DEFAULT_CSV_PATH.endswith("analytics/data/amplitude_event_provenance.csv")
+    assert bf.DEFAULT_STATE_PATH.endswith("analytics/data/amplitude_event_provenance_state.json")
+
+
+def test_summarize_counts_from_null_pattern():
+    rows = [
+        _row("Present", instrumented_date="2025-02-01"),
+        _row("Removed", instrumented_date="2025-02-01", retired_date="2026-01-01"),
+        _row("NotFound"),
+    ]
+    out = bf._summarize(rows)
+    assert "present=1" in out
+    assert "removed=1" in out
+    assert "not_found_in_code=1" in out

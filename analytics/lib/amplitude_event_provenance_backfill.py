@@ -1,51 +1,29 @@
-"""One-time backfill: build the initial git-provenance table for Amplitude events (DATA-2007).
+"""Build and maintain the git-provenance dataset for Amplitude events (DATA-2014).
 
-Walks the omni git history ONCE over the instrumentation paths and writes one
-provenance row per Amplitude ``event_type`` to a Databricks landing table via an
-idempotent MERGE, plus a commit-SHA watermark so DATA-2006's incremental updater
-can resume with ``git log <lastSHA>..HEAD``.
+Walks the omni git history over the instrumentation paths and writes one provenance row per
+Amplitude ``event_type`` to a CSV committed in this repo
+(``analytics/data/amplitude_event_provenance.csv``), plus a sidecar JSON watermark
+(``..._state.json``) recording the last processed commit SHA. With no watermark it does a full
+backfill; with one it walks ``git log <lastSHA>..origin/develop``, updates only the events that
+changed, carries the rest forward, and advances the watermark.
 
-DATA-2007 shipped the one-time backfill; DATA-2014 adds the watermark-bounded ``--refresh``
-path (read the SHA watermark, walk ``git log <lastSHA>..origin/develop``, MERGE only affected
-events, advance the watermark; full backfill when no watermark exists). Neither writes back to
-Amplitude. DATA-2005 builds ``stg__amplitude_event_provenance`` over the table this produces.
+It READS the omni working tree's git history (``--repo`` / ``OMNI_REPO``) and the Amplitude
+Govern event universe from Databricks (``airbyte_source.amplitude_taxonomy_event_type``, the one
+Databricks read), and WRITES the CSV + JSON into this repo. It never writes back to Amplitude.
 
-Cross-repo by nature: it READS the omni working tree's git history (``--repo`` /
-``OMNI_REPO``) and WRITES this repo's Databricks data layer (via the analytics
-``databricks_conn`` profile auth -- no PAT).
-
-Extraction note: ``trackEvent(...)`` in omni is called with *constant references*
-(``trackEvent(EVENTS.ServeOnboarding.SwornInCompleted)``), not string literals. The
-event-type strings live as VALUES in the ``EVENTS`` map
-(packages/gp-webapp/helpers/analyticsHelper.ts) and a few gp-api type/string files.
-So we do not parse ``trackEvent('...')``; instead we anchor on the authoritative event
-universe (``airbyte_source.amplitude_taxonomy_event_type``, ~434 events synced directly
-from Amplitude Govern) and match those literals against added/removed diff lines in a
-single ``git log -p`` pass.
-
-Deploy-ref anchored: the walk, the HEAD-presence grep, and PR attribution all target the
-deployed default branch (``origin/develop``, fetched first), so provenance reflects what
-shipped rather than whatever branch the local checkout is on.
-
-PR attribution is pure git, matching omni's merge-commit workflow: a commit's own subject
-rarely carries a PR ref, so for any gap we walk the ancestry path to the merge commit that
-introduced it (``Merge pull request #N from ...``) and parse that. (The GitHub
-``commits/{sha}/pulls`` REST endpoint was evaluated and returns nothing for this repo.)
-
-The landing schema is env-configurable (airflow_source in prod, --schema private_tristan for
-local dev; see ``resolve_schema``).
+Extraction note: ``trackEvent(...)`` in omni is called with *constant references*, so we anchor
+on the authoritative event universe and match those literals against added/removed diff lines in
+a single ``git log -p`` pass. Deploy-ref anchored (``origin/develop``, fetched first). PR
+attribution is pure git via the merge-commit ancestry walk.
 
 Usage::
 
-    # prod (orchestrated, lands in airflow_source):
+    # incremental refresh (full backfill on first run, when no state file exists):
     cd analytics && uv run python lib/amplitude_event_provenance_backfill.py \\
         --repo ~/Documents/0_goodparty/0_repos/omni
-    # local dev (writable schema):
+    # custom output locations (e.g. for a dry run):
     cd analytics && uv run python lib/amplitude_event_provenance_backfill.py \\
-        --repo ~/Documents/0_goodparty/0_repos/omni --schema private_tristan
-    # scheduled refresh (incremental; full backfill on first run):
-    cd analytics && uv run python lib/amplitude_event_provenance_backfill.py \\
-        --repo ~/Documents/0_goodparty/0_repos/omni --refresh
+        --repo ~/Documents/0_goodparty/0_repos/omni --csv /tmp/prov.csv --state /tmp/state.json
 """
 
 from __future__ import annotations
@@ -755,9 +733,15 @@ def run_refresh(
 
 
 def _summarize(rows: Sequence[dict]) -> str:
-    instrumented = sum(1 for r in rows if r.get("instrumented_commit"))
-    retired = sum(1 for r in rows if r.get("retired_commit"))
-    return f"{len(rows)} rows (instrumented={instrumented}, retired={retired})"
+    present = removed = not_found = 0
+    for r in rows:
+        if r.get("instrumented_date") is None:
+            not_found += 1
+        elif r.get("retired_date") is None:
+            present += 1
+        else:
+            removed += 1
+    return f"{len(rows)} rows (present={present}, removed={removed}, not_found_in_code={not_found})"
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -768,14 +752,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=DEFAULT_SINCE,
         help=f"Lower-bound git history (default {DEFAULT_SINCE}). 'all' walks full history.",
     )
-    p.add_argument("--table", default=None, help="Full landing table name (deprecated; write goes to CSV).")
     p.add_argument(
-        "--state-table", default=None, help="Full state table name (deprecated; state goes to JSON)."
+        "--csv", default=DEFAULT_CSV_PATH, help="Output provenance CSV (default analytics/data/...)."
     )
     p.add_argument(
-        "--ref",
-        default=DEPLOY_REF,
-        help=f"Deploy ref to attribute against (default {DEPLOY_REF}).",
+        "--state", default=DEFAULT_STATE_PATH, help="Watermark JSON sidecar (default analytics/data/...)."
+    )
+    p.add_argument(
+        "--ref", default=DEPLOY_REF, help=f"Deploy ref to attribute against (default {DEPLOY_REF})."
     )
     p.add_argument(
         "--no-fetch",
@@ -787,11 +771,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="Skip the merge-walk PR backfill; *_pr stays whatever the commit subject yielded.",
     )
-    p.add_argument(
-        "--refresh",
-        action="store_true",
-        help="Incremental watermark-bounded refresh (full backfill if no watermark exists).",
-    )
     return p.parse_args(argv)
 
 
@@ -799,6 +778,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv if argv is not None else sys.argv[1:])
     root = resolve_omni_repo(args.repo, dict(os.environ))
     since = None if args.since == "all" else args.since
+    print(f"Provenance CSV: {args.csv}", file=sys.stderr)
 
     if not args.no_fetch:
         print(f"Fetching {args.ref} ...", file=sys.stderr)
@@ -810,19 +790,20 @@ def main(argv: Sequence[str] | None = None) -> None:
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            runner = run_refresh if args.refresh else run_backfill
-            rows = runner(
+            rows = run_refresh(
                 cursor,
                 root,
                 since,
                 datetime.now(UTC),
+                csv_path=args.csv,
+                state_path=args.state,
                 ref=args.ref,
                 pr_resolver=pr_resolver,
             )
     finally:
         connection.close()
     print(_summarize(rows), file=sys.stderr)
-    print(f"Wrote provenance to {DEFAULT_CSV_PATH}", file=sys.stderr)
+    print(f"Wrote {args.csv} and watermark {args.state}", file=sys.stderr)
 
 
 if __name__ == "__main__":
