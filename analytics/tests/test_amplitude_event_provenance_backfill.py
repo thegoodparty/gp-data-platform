@@ -821,6 +821,16 @@ def test_write_provenance_writes_sorted_header_and_rows(tmp_path):
     assert lines[2].startswith("Event B,")
 
 
+def test_write_provenance_uses_lf_line_endings(tmp_path):
+    # The csv default is CRLF; we force LF so the committed file matches the repo's
+    # mixed-line-ending hook and regenerating it produces no spurious diff.
+    csv_path = tmp_path / "prov.csv"
+    bf.write_provenance([_row("Event A")], str(csv_path))
+    raw = csv_path.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw.count(b"\n") == 2  # header + one row
+
+
 def test_write_provenance_renders_none_as_empty_field(tmp_path):
     csv_path = tmp_path / "prov.csv"
     bf.write_provenance([_row("Event A")], str(csv_path))

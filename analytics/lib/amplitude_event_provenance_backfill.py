@@ -549,13 +549,15 @@ def write_provenance(rows: Sequence[dict], csv_path: str = DEFAULT_CSV_PATH) -> 
 
     Full rewrite (the dataset is ~434 rows): a deterministic column and row order keeps the
     committed file's git diffs minimal. Nulls render as empty fields. The csv module quotes
-    event names containing commas or apostrophes correctly.
+    event names containing commas or apostrophes correctly. ``lineterminator="\\n"`` forces
+    LF (the csv default is CRLF), so the committed file matches the repo's line-ending hook
+    and regenerating it produces no spurious diff.
     """
     ordered = sorted(rows, key=lambda r: r["event_type"])
     path = Path(csv_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=PROVENANCE_COLUMNS, extrasaction="ignore")
+        writer = csv.DictWriter(fh, fieldnames=PROVENANCE_COLUMNS, extrasaction="ignore", lineterminator="\n")
         writer.writeheader()
         for row in ordered:
             writer.writerow({c: ("" if row.get(c) is None else row[c]) for c in PROVENANCE_COLUMNS})
