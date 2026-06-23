@@ -3,14 +3,14 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 ## Prerequisites
 
 - **Omni checkout.** `OMNI_REPO` must be set to a local omni checkout (machine-specific; keep it in `~/.zshrc`, not committed). The script resolves `--repo` else `$OMNI_REPO`, expands `~`, and aborts if the path is unset or not a git checkout. It fetches `origin/develop` itself, so the checkout only needs a reachable remote, not a clean working tree.
-- **Databricks access.** One read per run (the event universe from `airbyte_source.amplitude_taxonomy_event_type`). Auth is the Databricks SDK profile in `~/.databrickscfg` (default profile `tristana_goodparty`; refresh with `databricks auth login --profile tristana_goodparty`). `DATABRICKS_HTTP_PATH` must be set. No PAT.
+- **Databricks access.** One read per run (the event universe from `airbyte_source.amplitude_taxonomy_event_type`). Auth resolves the executor's default Databricks SDK profile in `~/.databrickscfg` (whoever runs it; refresh with `databricks auth login`, or `databricks auth login --profile <name>` for a named profile). `DATABRICKS_HTTP_PATH` must be set. No PAT.
 - **Git/PR access.** `gh` authenticated and push access to the repo, since the run opens a PR. Never push to `main`.
 - **Python env.** Run from `analytics/` via `uv` (the subproject's own env), per the repo's multi-venv setup.
 
 ## Steps
 
 1. **Preflight. Stop loudly on any failure; never commit a half-run.**
-   - `databricks auth profiles` shows `Valid: YES` for the default profile. If not, stop and report that re-auth is needed (`databricks auth login --profile tristana_goodparty`). An expired token is the most common unattended failure.
+   - `databricks auth profiles` shows `Valid: YES` for the executor's default profile. If not, stop and report that re-auth is needed (`databricks auth login`, or `--profile <name>` for a named profile). An expired token is the most common unattended failure.
    - `OMNI_REPO` is set and `"$OMNI_REPO/.git"` exists. (The script also checks this, but failing here gives a cleaner message.)
 2. **Branch.** From an up-to-date `main`, create `chore/refresh-event-provenance-<YYYY-MM-DD>`. Do the work on the branch, not on `main`.
 3. **Run the refresh.**
@@ -37,7 +37,7 @@ Regenerate the committed Amplitude event git-provenance dataset and open a PR wi
 
 ## Troubleshooting
 
-- Databricks auth / token-refresh error → the profile's OAuth token is stale; run `databricks auth login --profile tristana_goodparty`. This needs a browser, so it cannot be done by the unattended run; the run fails loudly and waits for the next scheduled run after you re-auth.
+- Databricks auth / token-refresh error → the executor's OAuth token is stale; run `databricks auth login` (or `--profile <name>`). This needs a browser, so it cannot be done by the unattended run; the run fails loudly and waits for the next scheduled run after you re-auth.
 - `ERROR: pass --repo or set OMNI_REPO …` → `OMNI_REPO` is not set in the run's environment.
 - `git fetch … failed` → the omni checkout's remote is unreachable or its credentials lapsed; the script aborts rather than walking stale `origin/develop` state.
 - `WARNING: N universe event(s) absent from the CSV` → see the refresh-limitation note above; resync with a full backfill if the gap matters.
