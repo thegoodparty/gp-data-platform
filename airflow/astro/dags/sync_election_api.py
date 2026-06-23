@@ -542,15 +542,10 @@ def sync_election_api():
         @task
         def load_staging() -> int:
             catalog = Variable.get("databricks_catalog")
-            # TEMPORARY (dev test): read the new model from the dev schema
-            # dbt_hugh, where it lives before promotion. REVERT to
-            # DATABRICKS_SCHEMA ("dbt") before merge so this matches the other
-            # sync tables.
-            source_schema = "dbt_hugh"
             col_list = ", ".join(EOS_COLUMNS)
             query = (
                 f"SELECT {col_list} "
-                f"FROM `{catalog}`.`{source_schema}`."
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
                 f"`m_election_api__elected_official_support`"
             )
             # ~1.1k rows; no partitioning needed (one small result fits easily).
