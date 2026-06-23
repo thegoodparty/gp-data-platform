@@ -1,31 +1,6 @@
--- ddhq_votes arrives with the DDHQ source when the matcha cluster is re-run and
--- the er_source table reloaded. Detect it at run time so this model (and the
--- support score downstream) keeps building in the window before that reload:
--- present -> pass through; absent (or table not yet created) -> emit null.
--- Resolve the relation first (get_relation returns none safely when the table
--- is absent); only inspect columns on a real relation, since
--- get_columns_in_relation raises on a missing table on Databricks. Mirrors the
--- pattern in macros/l2/l2_uniform_schema_preflight.sql.
-{% set src = source("er_source", "clustered_elected_officials") %}
-{% set has_ddhq_votes = false %}
-{% if execute %}
-    {% set src_relation = adapter.get_relation(
-        database=src.database, schema=src.schema, identifier=src.identifier
-    ) %}
-    {% if src_relation is not none %}
-        {% set src_cols = (
-            adapter.get_columns_in_relation(src_relation)
-            | map(attribute="name")
-            | map("lower")
-            | list
-        ) %}
-        {% set has_ddhq_votes = "ddhq_votes" in src_cols %}
-    {% endif %}
-{% endif %}
-
 with
 
-    source as (select * from {{ src }}),
+    source as (select * from {{ source("er_source", "clustered_elected_officials") }}),
 
     renamed as (
 
@@ -59,9 +34,8 @@ with
             cast(gp_api_campaign_id as bigint) as gp_api_campaign_id,
             gp_api_elected_office_id,
             gp_api_organization_slug,
-            {% if has_ddhq_votes %} cast(ddhq_votes as bigint) as ddhq_votes
-            {% else %} cast(null as bigint) as ddhq_votes
-            {% endif %}
+            -- DDHQ general-winner votes for ddhq-source rows (null for others)
+            cast(ddhq_votes as bigint) as ddhq_votes
 
         from source
 
