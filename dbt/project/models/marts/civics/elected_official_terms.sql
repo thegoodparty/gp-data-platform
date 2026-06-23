@@ -34,7 +34,9 @@ with
 
     -- DDHQ general-winner votes resolved to the gp-api office via the matcha
     -- cluster (1 row per gp_api_elected_office_id; no fan-out on the bridge key).
-    ddhq_votes as (select * from {{ ref("int__civics_elected_office_ddhq_votes") }})
+    ddhq_votes as (
+        select * from {{ ref("int__civics_elected_official_ddhq_matched_votes") }}
+    )
 
 select
     -- PK (term-grain canonical UUID, from BR intermediate)

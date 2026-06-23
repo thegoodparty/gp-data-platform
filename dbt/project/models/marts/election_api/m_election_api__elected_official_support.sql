@@ -22,7 +22,7 @@
 -- Correct for multi-seat offices (the official's own votes, not the race top
 -- winner). For gp_api offices with no BallotReady term (absent from the
 -- BR-spine terms mart) the same figure is read from the civics intermediate
--- int__civics_elected_office_ddhq_votes as a supplement.
+-- int__civics_elected_official_ddhq_matched_votes as a supplement.
 -- 2. per_position (FALLBACK): a position-level figure from each office's most
 -- recent GENERAL win in the civics data, scoped to elections from 2026 onward
 -- (the repo-wide HubSpot->BallotReady candidate-provenance cutover). Multi-
@@ -139,7 +139,7 @@ with
         select
             dv.gp_api_elected_office_id as elected_office_id,
             dv.ddhq_winning_votes as votes_received
-        from {{ ref("int__civics_elected_office_ddhq_votes") }} as dv
+        from {{ ref("int__civics_elected_official_ddhq_matched_votes") }} as dv
         left join
             terms_votes as tv on tv.elected_office_id = dv.gp_api_elected_office_id
         where tv.elected_office_id is null
