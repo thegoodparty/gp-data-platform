@@ -687,9 +687,21 @@ def test_merge_keeps_existing_instrumented_when_window_only_removes():
 
 def test_merge_new_event_takes_window_instrumented():
     new_entry = {"instrumented": COMMIT_E, "retired": None, "last_change": COMMIT_E}
-    merged = bf.merge_provenance_entry(None, new_entry)
+    merged = bf.merge_provenance_entry(None, new_entry, present_before_window=False)
     assert merged["instrumented"]["commit"] == "eeee"
     assert merged["retired"] is None
+
+
+def test_merge_predates_window_event_does_not_take_window_instrumented():
+    # An event with no recorded instrumentation that was ALREADY present before the window
+    # (its true instrumentation predates --since). A window net-add here is a spurious edit,
+    # not an introduction, so instrumentation must stay null rather than be stamped with the
+    # window's too-recent date.
+    existing_blank = {**_EXISTING_B, "instrumented_commit": None, "instrumented_date": None}
+    new_entry = {"instrumented": COMMIT_E, "retired": None, "last_change": COMMIT_E}
+    merged = bf.merge_provenance_entry(existing_blank, new_entry, present_before_window=True)
+    assert merged["instrumented"] is None
+    assert merged["last_change"]["commit"] == "eeee"  # the edit still advances last_change
 
 
 def test_merge_readd_preserves_original_instrumented_and_advances_last_change():
@@ -844,6 +856,46 @@ def test_run_refresh_warns_when_universe_event_missing_from_csv(monkeypatch, tmp
     assert {r["event_type"] for r in rows} == {"Event A"}
     # (ii) A warning is emitted to stderr mentioning the divergence.
     assert "absent from the CSV" in capsys.readouterr().err
+
+
+def test_run_refresh_does_not_fabricate_instrumented_for_predates_window_event(monkeypatch, tmp_path):
+    # Event P is in the CSV with blank instrumentation (its true instrumentation predates the
+    # original --since window) but is present in code. Event Q is genuinely new (not in CSV).
+    # A window commit net-adds both literals -- a spurious edit for P, a real introduction for Q.
+    csv_path = tmp_path / "prov.csv"
+    bf.write_provenance(
+        [_row("Event P", last_code_change_date=None, updated_at="2025-02-01T00:00:00")],
+        str(csv_path),
+    )
+    state_path = tmp_path / "state.json"
+    bf.write_watermark(str(state_path), "oldsha", "origin/develop", 10, "2025-04-01T00:00:00")
+    stream = [
+        _header("p1", "p1", "2026-06-10", "feat: edit P, add Q (#7)"),
+        '+  trackEvent(EVENTS.P)  // "Event P"',
+        '+  trackEvent(EVENTS.Q)  // "Event Q"',
+    ]
+    monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter(stream))
+
+    # The 4th positional arg is the grep ref: at the watermark (oldsha) P already exists and Q
+    # does not; at HEAD both exist.
+    def fake_grep(*a, **k):
+        return '"Event P"' if a[3] == "oldsha" else '"Event P" "Event Q"'
+
+    monkeypatch.setattr(bf, "git_grep_present_text", fake_grep)
+    monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "newsha")
+    monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
+    monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 11)
+    cur = FakeCursor(["Event P", "Event Q"])
+
+    rows = bf.run_refresh(cur, "/root", None, DT, csv_path=str(csv_path), state_path=str(state_path))
+
+    by = {r["event_type"]: r for r in rows}
+    # P: no false instrumentation stamped; the edit still advances last_code_change_date.
+    assert by["Event P"]["instrumented_commit"] is None
+    assert by["Event P"]["instrumented_date"] is None
+    assert by["Event P"]["last_code_change_date"] == "2026-06-10"
+    # Q: genuinely new in the window -> takes the window's instrumentation.
+    assert by["Event Q"]["instrumented_commit"] == "p1"
 
 
 def test_write_provenance_writes_sorted_header_and_rows(tmp_path):

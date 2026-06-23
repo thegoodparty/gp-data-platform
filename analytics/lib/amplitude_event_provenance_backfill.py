@@ -291,12 +291,18 @@ def _pseudo_commit(commit: str | None, pr: str | None, date: str | None) -> dict
     return {"commit": commit, "pr": pr, "date": date}
 
 
-def merge_provenance_entry(existing_row: dict | None, new_entry: dict) -> dict:
+def merge_provenance_entry(
+    existing_row: dict | None, new_entry: dict, present_before_window: bool = False
+) -> dict:
     """Combine an event's existing table row with its new-window accumulator entry.
 
     The window only contains commits newer than the watermark, so:
       - instrumented: the existing (older) instrumentation wins; the window's add is used
-        only when the row had no instrumentation yet (genuinely new event).
+        only when the row had no instrumentation yet AND the event was absent before the
+        window (a genuinely new event). If the event was already present at the watermark
+        (``present_before_window``) its true instrumentation predates the window and is not
+        visible in it -- the window's net-add is a spurious edit, so instrumentation stays
+        null rather than being stamped with a false, too-recent date.
       - retired: the window's removal wins (it is the latest); else the existing retired is
         carried forward. ``build_provenance_row`` still clears retired unless the event is
         absent at HEAD, so a re-add naturally drops a stale retired.
@@ -308,6 +314,8 @@ def merge_provenance_entry(existing_row: dict | None, new_entry: dict) -> dict:
             existing_row["instrumented_pr"],
             existing_row["instrumented_date"],
         )
+    elif present_before_window:
+        instrumented = None
     else:
         instrumented = new_entry["instrumented"]
 
@@ -725,9 +733,15 @@ def run_refresh(
     if affected:
         grep_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, ref)
         present = present_at_head(affected, grep_text)
+        # Presence at the watermark distinguishes a genuinely new event (absent before the
+        # window -> the window's net-add is its true instrumentation) from one whose
+        # instrumentation predates the window (present before it -> the net-add is a
+        # spurious edit, so merge_provenance_entry must not stamp a false instrumented date).
+        before_text = git_grep_present_text(root, affected, INSTRUMENTATION_PATHS, last_sha)
+        present_before = present_at_head(affected, before_text)
         updated_rows: list[dict] = []
         for ev in affected:
-            merged = merge_provenance_entry(existing.get(ev), acc[ev])
+            merged = merge_provenance_entry(existing.get(ev), acc[ev], present_before.get(ev, False))
             updated_rows.append(build_provenance_row(ev, merged, present.get(ev), updated_at))
         _, filled = resolve_pr_gaps(updated_rows, pr_resolver)
         if pr_resolver is not None:
