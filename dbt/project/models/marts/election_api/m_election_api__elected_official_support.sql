@@ -15,18 +15,19 @@
 -- The product shows support_constituents / total_constituents.
 --
 -- support_constituents is taken by precedence:
--- 1. cluster_ddhq (PRIMARY): the DDHQ general-winner record clustered to the
--- official by the matcha elected_official entity resolution (fuzzy name +
--- office + an election-cycle date comparison). This is the official's OWN
--- votes, so it is correct for multi-seat offices (no top-winner over-
--- attribution) and is the single DDHQ-matching path -- all office-name
--- normalization now lives in the matcher (the prematch's official_office_norm
--- via the office_match_keys macro), not in a separate supplement here.
+-- 1. The official's OWN DDHQ winning votes, read from the civics
+-- elected_official_terms mart (ddhq_winning_votes). Civics resolves the DDHQ
+-- winner to each office via the matcha elected_official entity resolution, so
+-- this layer builds on the civics mart rather than the ER staging cluster.
+-- Correct for multi-seat offices (the official's own votes, not the race top
+-- winner). For gp_api offices with no BallotReady term (absent from the
+-- BR-spine terms mart) the same figure is read from the civics intermediate
+-- int__civics_elected_official_ddhq_votes as a supplement.
 -- 2. per_position (FALLBACK): a position-level figure from each office's most
 -- recent GENERAL win in the civics data, scoped to elections from 2026 onward
 -- (the repo-wide HubSpot->BallotReady candidate-provenance cutover). Multi-
--- seat offices use the top winner by votes. Used only where the cluster has
--- no match. The office is read from election_stage, not the elected-officials
+-- seat offices use the top winner by votes. Used only where there is no DDHQ
+-- match. The office is read from election_stage, not the elected-officials
 -- roster, so every 2026+ general winner is covered.
 --
 -- Population: every metric column is populated and positive. The civics path
@@ -42,7 +43,7 @@ with
             and lower(election_stage) like '%general%'
             -- 2026+ only: the civics path is scoped to the post-cutover window.
             -- Earlier (Nov 2025) general results reach the model via the DDHQ
-            -- cluster (cluster_ddhq), not this path.
+            -- votes from civics (terms_votes / gp_only_votes), not this path.
             and election_stage_date >= date '2026-01-01'
     ),
 
@@ -112,43 +113,52 @@ with
             = 1
     ),
 
-    -- ===== Primary source: the DDHQ winner clustered to the official by the
-    -- matcha elected_official entity resolution =====
-    -- The matcha Splink matcher resolves each gp_api elected_office to its DDHQ
-    -- general-winner record (fuzzy name + office + state, with the election-cycle
-    -- date comparison picking the right term). The clustered DDHQ row carries the
-    -- official's OWN votes (ddhq_votes). One row per elected_office_id (the
-    -- official's most recent winning cycle).
-    cluster_ddhq as (
+    -- ===== Primary source: the official's own DDHQ votes, read from the civics
+    -- elected_official_terms mart =====
+    -- The matcha elected_official entity resolution links each gp_api office to
+    -- its DDHQ general-winner record; civics resolves that to ddhq_winning_votes
+    -- (the official's OWN votes) and surfaces it on elected_official_terms. We
+    -- read it from there so the election_api layer builds on the civics mart
+    -- rather than reaching into the ER staging cluster. One row per office (the
+    -- terms mart may carry several BR terms for one office, all sharing the same
+    -- ddhq_winning_votes, so max() collapses them without changing the value).
+    terms_votes as (
         select
-            g.gp_api_elected_office_id as elected_office_id,
-            d.ddhq_votes as votes_received
-        from {{ ref("stg_er_source__clustered_elected_officials") }} as g
-        inner join
-            {{ ref("stg_er_source__clustered_elected_officials") }} as d
-            on g.cluster_id = d.cluster_id
-            and d.source_name = 'ddhq'
-            and d.ddhq_votes is not null
-        where g.source_name = 'gp_api' and g.gp_api_elected_office_id is not null
-        qualify
-            row_number() over (
-                partition by g.gp_api_elected_office_id
-                order by d.term_start_date desc nulls last, d.ddhq_votes desc
-            )
-            = 1
+            gp_api_elected_office_id as elected_office_id,
+            max(ddhq_winning_votes) as votes_received
+        from {{ ref("elected_official_terms") }}
+        where gp_api_elected_office_id is not null and ddhq_winning_votes is not null
+        group by gp_api_elected_office_id
+    ),
+
+    -- gp_api-only supplement: elected_official_terms is BR-spine, so offices with
+    -- no BallotReady term are absent. Read their DDHQ votes from the civics
+    -- intermediate directly (the same source that feeds terms), only for offices
+    -- not already covered above.
+    gp_only_votes as (
+        select
+            dv.gp_api_elected_office_id as elected_office_id,
+            dv.ddhq_winning_votes as votes_received
+        from {{ ref("int__civics_elected_official_ddhq_votes") }} as dv
+        left join
+            terms_votes as tv on tv.elected_office_id = dv.gp_api_elected_office_id
+        where tv.elected_office_id is null
     ),
 
     -- Fan out to one row per gp-api elected_office instance. Each office maps to
     -- a single position via organization.position_id -> Position.id.
-    -- support_constituents is the official's own DDHQ votes from the cluster
-    -- where present, else the position-level civics figure. total_constituents
-    -- is the position's L2 voter count. The join keys are unique, so there is no
-    -- fan-out beyond one row per elected_office_id. Offices with no support
-    -- figure from either source are dropped.
+    -- support_constituents is the official's own DDHQ votes (from the civics
+    -- terms mart, else the gp_api-only supplement), falling back to the
+    -- position-level civics general-win figure. total_constituents is the
+    -- position's L2 voter count. The join keys are unique, so there is no fan-out
+    -- beyond one row per elected_office_id. Offices with no support figure from
+    -- any source are dropped.
     office_support as (
         select
             eo.id as elected_office_id,
-            coalesce(cd.votes_received, pp.votes_received) as support_constituents,
+            coalesce(
+                tv.votes_received, gv.votes_received, pp.votes_received
+            ) as support_constituents,
             pos_l2.icp_voter_count as total_constituents
         from {{ ref("stg_airbyte_source__gp_api_db_elected_office") }} as eo
         inner join
@@ -156,13 +166,14 @@ with
             on eo.organization_slug = org.slug
         inner join
             {{ ref("m_election_api__position") }} as pos on org.position_id = pos.id
-        left join cluster_ddhq as cd on cd.elected_office_id = eo.id
+        left join terms_votes as tv on tv.elected_office_id = eo.id
+        left join gp_only_votes as gv on gv.elected_office_id = eo.id
         left join per_position as pp on pp.br_position_id = pos.br_database_id
         left join
             {{ ref("positions") }} as pos_l2
             on pos_l2.br_position_database_id = pos.br_database_id
         where
-            coalesce(cd.votes_received, pp.votes_received) > 0
+            coalesce(tv.votes_received, gv.votes_received, pp.votes_received) > 0
             and pos_l2.icp_voter_count > 0
     )
 

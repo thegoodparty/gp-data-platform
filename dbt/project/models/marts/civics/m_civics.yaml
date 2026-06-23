@@ -1915,6 +1915,18 @@ models:
         description: |
           Audit: |bridge.br_term_start_date − bridge.sworn_in_date| in days.
           Lower is a closer date match. NULL when either date is NULL.
+      - name: ddhq_winning_votes
+        description: |
+          The official's own DDHQ general-election winning votes, resolved to
+          this office via the matcha elected_official entity resolution
+          (int__civics_elected_official_ddhq_votes). NULL when the office did not
+          match a DDHQ winner. Feeds the election_api support score.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+              config:
+                where: "ddhq_winning_votes is not null"
 
       - name: is_win_icp
         description: >

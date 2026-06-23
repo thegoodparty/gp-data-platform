@@ -2990,6 +2990,30 @@ models:
       - name: hubspot_company_id
         description: HubSpot company ID for the matched campaign (alias of campaigns.hubspot_id).
 
+  - name: int__civics_elected_official_ddhq_votes
+    description: |
+      DDHQ general-winner votes resolved to each gp-api elected office via the
+      matcha elected_official entity resolution: the DDHQ winner record that
+      shares a Splink cluster with the gp_api office carries the official's own
+      winning votes. One row per gp_api_elected_office_id (most recent winning
+      cycle). The single place the cluster -> DDHQ-votes link lives;
+      elected_official_terms surfaces it and the election_api support score reads
+      it from there, with this model as the gp_api-only supplement for offices
+      with no BallotReady term.
+    columns:
+      - name: gp_api_elected_office_id
+        description: gp-api elected_office UUID. Primary key.
+        data_tests:
+          - not_null
+          - unique
+      - name: ddhq_winning_votes
+        description: The official's own DDHQ general-election winning votes.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
   - name: int__civics_elected_official_gp_api_person
     description: |
       Person-grain rollup of gp-api elected officials. One row per
