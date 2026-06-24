@@ -530,6 +530,12 @@ def model(dbt, session):
             session, l2_col_set, election_cols, inference_year, current_year,
             "{{ state_code }}", catalog, models_schema
         )
+        # NOTE FOR FUTURE AGENTS: pulling the full precinct feature DataFrame into
+        # driver memory via toPandas() is safe at per-state grain (largest states
+        # are ~15k precincts). If this pipeline is ever changed to aggregate
+        # nationwide rather than per-state, replace this call with a write to a
+        # persisted intermediate Delta table (e.g. catalog.private_schema.precinct_features_tmp),
+        # then read it back with spark.table() before calling toPandas() to avoid OOM.
         pdf = precinct_df.toPandas()
 
         for slug in _year_to_model_slugs(inference_year):
