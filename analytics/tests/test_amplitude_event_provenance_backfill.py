@@ -381,14 +381,14 @@ def test_build_git_log_argv_adds_pickaxe_before_ref():
 
 def test_build_git_log_argv_excludes_test_files():
     argv = build_git_log_argv("/repo", None, INSTRUMENTATION_PATHS, ref="origin/develop")
-    joined = " ".join(argv)
     assert ":(exclude,glob)packages/**/*.test.*" in argv
+    assert ":(exclude,glob)packages/**/*.spec.*" in argv
     assert ":(exclude,glob)packages/**/__tests__/**" in argv
     # source roots still present
     assert "packages/gp-webapp" in argv
     assert "packages/gp-api" in argv
     # excludes come after the -- separator with the rest of the pathspec
-    assert "--" in joined
+    assert "--" in argv
 
 
 def test_present_at_head_marks_found_literals():
