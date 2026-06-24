@@ -152,7 +152,7 @@ Onboarding - Party Step: Click Submit,onboarding_party_step_click_submit,1170c27
 Onboarding - Path To Victory Completed,onboarding_path_to_victory_completed,37bdbd6185ef7e74127482d6f2c69943a0fc2bfc,1790,2026-05-05,,,,2026-05-05,2026-06-23T16:53:54
 Onboarding - Path To Victory Errored,onboarding_path_to_victory_errored,37bdbd6185ef7e74127482d6f2c69943a0fc2bfc,1790,2026-05-05,,,,2026-05-05,2026-06-23T16:53:54
 Onboarding - Path To Victory Updated,onboarding_path_to_victory_updated,37bdbd6185ef7e74127482d6f2c69943a0fc2bfc,1790,2026-05-05,,,,2026-05-05,2026-06-23T16:53:54
-Onboarding - Pledge Completed,onboarding_pledge_completed,37bdbd6185ef7e74127482d6f2c69943a0fc2bfc,1790,2026-05-05,,,,2026-05-05,2026-06-23T16:53:54
+Onboarding - Pledge Completed,onboarding_pledge_completed,37bdbd6185ef7e74127482d6f2c69943a0fc2bfc,1790,2026-05-05,,,,2026-06-24,2026-06-24T18:31:10
 Onboarding - Pledge Step: Click Ask a Question,onboarding_pledge_step_click_ask_a_question,1170c2777b41a1baf9f50650655aa705fdf7bbb3,,2025-02-26,,,,2025-02-26,2026-06-23T16:53:54
 Onboarding - Pledge Step: Click Submit,onboarding_pledge_step_click_submit,1170c2777b41a1baf9f50650655aa705fdf7bbb3,,2025-02-26,,,,2025-02-26,2026-06-23T16:53:54
 Onboarding - Registration Completed,onboarding_registration_completed,703131cfff639170bd836b12c6d00c13e1fc1432,708,2025-06-18,,,,2025-06-18,2026-06-23T16:53:54
@@ -205,7 +205,7 @@ Outreach - View Accessed,outreach_view_accessed,334568cc8a740eadaa6578acb4699e66
 P2P Upgrade - Modal: Click Button,p2p_upgrade_modal_click_button,2b9f22689ccc9e29678a4482de65a62db2e1d322,946,2025-09-09,,,,2025-09-09,2026-06-23T16:53:54
 P2P Upgrade - Modal: Exit,p2p_upgrade_modal_exit,2b9f22689ccc9e29678a4482de65a62db2e1d322,946,2025-09-09,,,,2025-09-09,2026-06-23T16:53:54
 P2P Upgrade - Modal: Modal Shown,p2p_upgrade_modal_modal_shown,2b9f22689ccc9e29678a4482de65a62db2e1d322,946,2025-09-09,,,,2025-09-09,2026-06-23T16:53:54
-Page,page,a1e5ff46199301c71153b531950bc30ee11bf791,,2024-06-08,,,,2026-06-20,2026-06-23T16:53:54
+Page,page,a1e5ff46199301c71153b531950bc30ee11bf791,,2024-06-08,,,,2026-06-24,2026-06-24T18:31:10
 Page Viewed,page_viewed,,,,,,,,2026-06-23T16:53:54
 Payment - Completed,payment_completed,25a465774e01692e3283ad7eb15abc7452d75fc5,1113,2025-11-04,,,,2026-02-08,2026-06-23T16:53:54
 Payment - Review and Pay Screen Viewed,payment_review_and_pay_screen_viewed,25a465774e01692e3283ad7eb15abc7452d75fc5,1113,2025-11-04,,,,2025-11-04,2026-06-23T16:53:54
@@ -329,10 +329,13 @@ Schedule Text Campaign: Submit,schedule_text_campaign_submit,1170c2777b41a1baf9f
 Scroll Depth,scroll_depth,,,,,,,,2026-06-23T16:53:54
 Segment Consent Preference Updated,segment_consent_preference_updated,,,,,,,,2026-06-23T16:53:54
 Serve Onboarding - Add Image Viewed,serve_onboarding_add_image_viewed,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
+Serve Onboarding - BR Suggestion Changed,serve_onboarding_br_suggestion_changed,4cc1cb142febe9084e5dde6771d6bdbd29f25e46,198,2026-06-18,,,,2026-06-18,2026-06-24T18:31:10
 Serve Onboarding - Constituency Profile Viewed,serve_onboarding_constituency_profile_viewed,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
 Serve Onboarding - Getting Started Viewed,serve_onboarding_getting_started_viewed,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
 Serve Onboarding - Magic Link Activated,serve_onboarding_magic_link_activated,4cc1cb142febe9084e5dde6771d6bdbd29f25e46,198,2026-06-18,,,,2026-06-18,2026-06-23T16:53:54
+Serve Onboarding - Magic Link Sent,serve_onboarding_magic_link_sent,4cc1cb142febe9084e5dde6771d6bdbd29f25e46,198,2026-06-18,0457c312a51f110b32f82d85c2b2103969f8e8a5,349,2026-06-24,2026-06-24,2026-06-24T18:31:10
 Serve Onboarding - Meet Your Constituents Viewed,serve_onboarding_meet_your_constituents_viewed,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
+Serve Onboarding - Net New Completed,serve_onboarding_net_new_completed,4cc1cb142febe9084e5dde6771d6bdbd29f25e46,198,2026-06-18,,,,2026-06-24,2026-06-24T18:31:10
 Serve Onboarding - Poll Image Uploaded,serve_onboarding_poll_image_uploaded,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
 Serve Onboarding - Poll Preview Viewed,serve_onboarding_poll_preview_viewed,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
 Serve Onboarding - Poll Strategy Viewed,serve_onboarding_poll_strategy_viewed,3f61c919fcb19db7270362a4767ab98ed1a10a88,1022,2025-10-09,,,,2025-10-09,2026-06-23T16:53:54
@@ -357,7 +360,7 @@ Sign In: Click Create Account,sign_in_click_create_account,1170c2777b41a1baf9f50
 Sign In: Click Forgot Password,sign_in_click_forgot_password,1170c2777b41a1baf9f50650655aa705fdf7bbb3,,2025-02-26,,,,2025-02-26,2026-06-23T16:53:54
 Sign Up Clicked,sign_up_clicked,,,,,,,,2026-06-23T16:53:54
 Sign Up: Click Login,sign_up_click_login,1170c2777b41a1baf9f50650655aa705fdf7bbb3,,2025-02-26,,,,2025-02-26,2026-06-23T16:53:54
-Viewed,viewed,703131cfff639170bd836b12c6d00c13e1fc1432,708,2025-06-18,,,,2026-06-19,2026-06-23T16:53:54
+Viewed,viewed,703131cfff639170bd836b12c6d00c13e1fc1432,708,2025-06-18,,,,2026-06-24,2026-06-24T18:31:10
 Viewed /elections/ak/tanana-city-school-district,viewed_elections_ak_tanana_city_school_district,,,,,,,,2026-06-23T16:53:54
 Viewed /elections/chippewa-county-clerk/145f1d,viewed_elections_chippewa_county_clerk_145f1d,,,,,,,,2026-06-23T16:53:54
 Viewed /elections/ia/red-oak-community-school-district,viewed_elections_ia_red_oak_community_school_district,,,,,,,,2026-06-23T16:53:54
@@ -423,13 +426,13 @@ gtm.init_consent,gtm_init_consent,,,,,,,,2026-06-23T16:53:54
 gtm.js,gtm_js,,,,,,,,2026-06-23T16:53:54
 likelihood-to-cancel,likelihood_to_cancel,,,,,,,,2026-06-23T16:53:54
 onboarding_complete,onboarding_complete,650f61b4990c565bb4dff96419754e338ab088c2,,2024-08-26,,,,2026-06-18,2026-06-23T16:53:54
-page,page,bcc9c195b46c214cb83ce829a49c8ab2b1fdffbf,,2024-06-05,,,,2026-06-22,2026-06-23T16:53:54
+page,page,bcc9c195b46c214cb83ce829a49c8ab2b1fdffbf,,2024-06-05,,,,2026-06-24,2026-06-24T18:31:10
 page viewed,page_viewed,,,,,,,,2026-06-23T16:53:54
 page_view,page_view,abc192c40633b5bb1a9da10936bfcd433f621366,1268,2025-12-18,3ea4ebae6647d4a36c2e78cfb5da7eb706749b57,1551,2026-03-12,2026-03-12,2026-06-23T16:53:54
 pro_upgrade_complete,pro_upgrade_complete,650f61b4990c565bb4dff96419754e338ab088c2,,2024-08-26,,,,2026-05-08,2026-06-23T16:53:54
 question_complete,question_complete,650f61b4990c565bb4dff96419754e338ab088c2,,2024-08-26,,,,2025-12-17,2026-06-23T16:53:54
 schedule_campaign_image_too_large,schedule_campaign_image_too_large,4bed7aad64c8a8212e618db564bcb28ad2b9be5e,338,2024-10-30,,,,2024-10-30,2026-06-23T16:53:54
-screen,screen,a53d6050d2cf19c71a89fcbbef716951cdd12c22,,2024-06-13,,,,2026-06-22,2026-06-23T16:53:54
+screen,screen,a53d6050d2cf19c71a89fcbbef716951cdd12c22,,2024-06-13,,,,2026-06-24,2026-06-24T18:31:10
 session_end,session_end,,,,,,,,2026-06-23T16:53:54
 session_start,session_start,,,,,,,,2026-06-23T16:53:54
 usersnap_submission,usersnap_submission,634a1c354de73cca6e6a0393dbdd0ac6dc3c7ae2,293,2024-10-04,e256bd33a54df1a412dcbe055be41d284f5ce195,1495,2026-03-02,2026-03-02,2026-06-23T16:53:54
