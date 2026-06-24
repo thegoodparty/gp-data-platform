@@ -110,8 +110,10 @@ with
         -- version matches the candidacy from its own election cycle.
         -- Falls back to campaign_id alone when election_date is NULL to avoid
         -- silently dropping candidacy data for campaigns with missing dates.
+        -- DATA-1938: read candidacy_scored (candidacy + broad civics viability)
+        -- so viability_score reflects the new civics scorer.
         left join
-            {{ ref("candidacy") }} cand
+            {{ ref("candidacy_scored") }} cand
             on c.campaign_id = cand.product_campaign_id
             and (
                 c.election_date = cand.general_election_date or c.election_date is null
