@@ -148,14 +148,16 @@ def test_find_events_ignores_non_instrumentation_token_positions():
 
 
 def test_find_events_context_still_prefers_longest():
+    # Distinct from the map-value longest-first test: backtick-quoted call argument.
     pattern = compile_event_pattern(["Completed", "Pledge Completed"])
-    line = "  pledge: 'Pledge Completed',"
+    line = "  trackEvent(`Pledge Completed`)"
     assert find_events(line, pattern) == {"Pledge Completed"}
 
 
 def test_find_events_context_matches_multiple_on_one_line():
+    # Distinct from the double-quoted map test: a call-arg and a map-value on one line.
     pattern = compile_event_pattern(["pro_upgrade_complete", "onboarding_complete"])
-    line = '  PRO: "pro_upgrade_complete", ONB: "onboarding_complete",'
+    line = "  trackEvent('pro_upgrade_complete'); ONB: 'onboarding_complete',"
     assert find_events(line, pattern) == {"pro_upgrade_complete", "onboarding_complete"}
 
 
