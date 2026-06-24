@@ -174,6 +174,28 @@ def test_find_events_matches_single_word_literal_at_quote_boundaries():
     assert find_events(line, pattern) == {"page", "Viewed"}
 
 
+def test_find_events_matches_line_leading_wrapped_literal():
+    # Prettier wraps long map values / call args so the literal sits on its own line,
+    # preceded only by whitespace -- the : or ( is on the previous line.
+    pattern = compile_event_pattern(["Campaign Plan V2 - Opposition Research Generation Started"])
+    line = "      'Campaign Plan V2 - Opposition Research Generation Started',"
+    assert find_events(line, pattern) == {"Campaign Plan V2 - Opposition Research Generation Started"}
+
+
+def test_find_events_matches_literal_in_multiline_dump():
+    # present_at_head feeds a multi-line git-grep dump; re.MULTILINE makes ^ match each
+    # line start, so a line-leading literal anywhere in the dump is found, while a bare
+    # (unquoted) token like Playwright's `page` receiver is not.
+    pattern = compile_event_pattern(["Briefing Assistant - Agenda Created", "page"])
+    dump = (
+        "      this.analytics.track(\n"
+        "        userId,\n"
+        "        'Briefing Assistant - Agenda Created',\n"
+        "      page.getByText('x')\n"
+    )
+    assert find_events(dump, pattern) == {"Briefing Assistant - Agenda Created"}
+
+
 # --------------------------------------------------------------------------- #
 # parse_git_log -- the single-pass history walk
 # --------------------------------------------------------------------------- #
@@ -389,6 +411,11 @@ def test_build_git_log_argv_excludes_test_files():
     assert "packages/gp-api" in argv
     # excludes come after the -- separator with the rest of the pathspec
     assert "--" in argv
+
+
+def test_build_git_log_argv_excludes_data_files():
+    argv = build_git_log_argv("/repo", None, INSTRUMENTATION_PATHS, ref="origin/develop")
+    assert ":(exclude,glob)packages/**/*.csv" in argv
 
 
 def test_present_at_head_marks_found_literals():

@@ -41,16 +41,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-# Source roots walked for instrumentation, with test files excluded so a test-only
-# reference to an event (e.g. expect(track).toHaveBeenCalledWith('E'), a call-arg
-# context match) does not register as an instrumentation change. git log and git grep
-# both honor :(exclude) magic pathspecs.
+# Source roots walked for instrumentation, with test files and seed-data CSVs excluded.
+# Test files are excluded so a test-only reference to an event (e.g.
+# expect(track).toHaveBeenCalledWith('E'), a call-arg context match) does not register
+# as an instrumentation change. Seed-data CSV rows (e.g. ``"Page","Page",...`` for the
+# city named Page) are line-leading quoted literals and would otherwise be mistaken for
+# instrumentation by the widened matcher; event instrumentation never lives in .csv, so
+# excluding them is safe and surgical. git log and git grep both honor :(exclude) magic
+# pathspecs.
 INSTRUMENTATION_PATHS = [
     "packages/gp-webapp",
     "packages/gp-api",
     ":(exclude,glob)packages/**/*.test.*",
     ":(exclude,glob)packages/**/*.spec.*",
     ":(exclude,glob)packages/**/__tests__/**",
+    ":(exclude,glob)packages/**/*.csv",
 ]
 
 # Events came online in Amplitude ~2025-05; the EVENTS map + segment wiring landed
@@ -126,12 +131,18 @@ def slugify_event(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-# An event literal counts as instrumentation only when it is a quoted string in a
-# map-value position (``Key: 'Event'``) or a call-argument position (``track('Event')``)
-# -- i.e. immediately preceded by ``:`` or ``(`` (with optional whitespace) and a quote.
-# This excludes the bare-token false positives (Playwright ``page``/``Page``, testing-
-# library ``screen``, ARIA values, route arrays, comment prose) that a substring match hit.
-_INSTRUMENTATION_PREFIX = r"[:(]\s*"
+# An event literal counts as instrumentation when it is a quoted string that is either
+# (a) in a map-value / call-argument position -- immediately preceded by ``:`` or ``(``
+# (``Key: 'Event'``, ``track('Event')``) -- or (b) line-leading (only whitespace before the
+# opening quote). Case (b) is required because Prettier wraps long declarations so the literal
+# sits on its own line (``Key:\n  'Event'``, ``track(\n  userId,\n  'Event',``); the ``:``/``(``
+# is then on the previous line, invisible to a per-line match. ``re.MULTILINE`` makes ``^``
+# match each line start in the multi-line git-grep dump ``present_at_head`` passes in.
+# The bare-token false positives (Playwright ``page``/``Page``, testing-library ``screen``,
+# ARIA values, route arrays, comment prose) are never a line-leading quoted literal, so they
+# stay excluded. Seed-data CSV rows (``"Page","Page",...``) ARE line-leading quoted literals;
+# they are excluded at the path level (see INSTRUMENTATION_PATHS), not here.
+_INSTRUMENTATION_PREFIX = r"(?:[:(]\s*|^\s*)"
 _QUOTE_CLASS = "['\"`]"  # straight single, double, backtick
 
 
@@ -142,13 +153,17 @@ def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     contains (regex alternation is ordered + non-overlapping left-to-right),
     which stops a short literal from being double-counted inside a longer one.
 
-    Each alternate must appear as a quoted string in an instrumentation context
-    (map value ``Key: 'Event'`` or call argument ``track('Event')``); the event
-    name is capture group 1 so ``find_events`` returns the name, not the quotes.
+    Each alternate must appear as a quoted string in an instrumentation context:
+    either a map-value / call-argument position (immediately preceded by ``:`` or
+    ``(``) or a line-leading position (only whitespace before the opening quote).
+    The line-leading case is needed because Prettier wraps long declarations so the
+    literal sits on its own line with the ``:``/``(`` on the previous line.
+    ``re.MULTILINE`` makes ``^`` match each line start in multi-line git-grep dumps.
+    The event name is capture group 1 so ``find_events`` returns the name, not the quotes.
     """
     ordered = sorted(set(events), key=len, reverse=True)
     alternation = "|".join(re.escape(e) for e in ordered)
-    return re.compile(rf"{_INSTRUMENTATION_PREFIX}{_QUOTE_CLASS}({alternation}){_QUOTE_CLASS}")
+    return re.compile(rf"{_INSTRUMENTATION_PREFIX}{_QUOTE_CLASS}({alternation}){_QUOTE_CLASS}", re.MULTILINE)
 
 
 def find_events(text: str, pattern: re.Pattern[str]) -> set[str]:
