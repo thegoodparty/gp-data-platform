@@ -41,8 +41,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-# Instrumentation packages whose history defines when an event was added/removed.
-INSTRUMENTATION_PATHS = ["packages/gp-webapp", "packages/gp-api"]
+# Source roots walked for instrumentation, with test files excluded so a test-only
+# reference to an event (e.g. expect(track).toHaveBeenCalledWith('E'), a call-arg
+# context match) does not register as an instrumentation change. git log and git grep
+# both honor :(exclude) magic pathspecs.
+INSTRUMENTATION_PATHS = [
+    "packages/gp-webapp",
+    "packages/gp-api",
+    ":(exclude,glob)packages/**/*.test.*",
+    ":(exclude,glob)packages/**/*.spec.*",
+    ":(exclude,glob)packages/**/__tests__/**",
+]
 
 # Events came online in Amplitude ~2025-05; the EVENTS map + segment wiring landed
 # ~2025-02. Bounding the walk here skips the large pre-2024 scaffold-era diffs while

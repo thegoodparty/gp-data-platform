@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import amplitude_event_provenance_backfill as bf
 import pytest
 from amplitude_event_provenance_backfill import (
+    INSTRUMENTATION_PATHS,
     build_git_log_argv,
     build_provenance_row,
     classify_code_status,
@@ -376,6 +377,18 @@ def test_build_git_log_argv_adds_pickaxe_before_ref():
     # -S<literal> is one argv element (fixed string), placed before the ref and the pathspec.
     assert '-SClick "Upload"' in argv
     assert argv.index('-SClick "Upload"') < argv.index("origin/develop") < argv.index("--")
+
+
+def test_build_git_log_argv_excludes_test_files():
+    argv = build_git_log_argv("/repo", None, INSTRUMENTATION_PATHS, ref="origin/develop")
+    joined = " ".join(argv)
+    assert ":(exclude,glob)packages/**/*.test.*" in argv
+    assert ":(exclude,glob)packages/**/__tests__/**" in argv
+    # source roots still present
+    assert "packages/gp-webapp" in argv
+    assert "packages/gp-api" in argv
+    # excludes come after the -- separator with the rest of the pathspec
+    assert "--" in joined
 
 
 def test_present_at_head_marks_found_literals():
