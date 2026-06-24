@@ -69,9 +69,13 @@ with
         from coverage c
         join block_pop p on c.block_geoid = p.block_geoid
         group by c.served_set
-        -- drop types with no active voters so the active office_type set matches
-        -- the count-multiple active set (the ordering invariant needs all four
-        -- variants present per (cohort, office_type))
+        -- drop types with no active voters so the active office_type set matches the
+        -- count-multiple active set (the ordering invariant needs all four variants per
+        -- (cohort, office_type)). count_once and count-multiple gate office_type
+        -- independently but share one L2-unpivot lineage, so the two sets are identical
+        -- by construction; assert_people_served_cohort_contract verifies it and FAILS
+        -- CLOSED on any divergence. Do NOT instead subset count_once to the cm set --
+        -- that would silently drop real served population from the headline.
         having sum(c.served_voters_active) > 0
     ),
 
