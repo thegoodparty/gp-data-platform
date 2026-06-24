@@ -29,14 +29,27 @@
 -- exact T5
 -- 'State'
 -- rows in people_served and reported separately (TDD 4.5), avoiding a basis mix.
+--
+-- ACTIVE COHORT (epic DATA-1359): served_voters_active is the parallel
+-- distinct-served-voter count restricted to the active People Served cohort
+-- (in_people_served_cohort on the resolver) -- the SAME single L2 scan, just a second
+-- membership flag carried through. Active cohort districts are a subset of all cohort
+-- districts, so served_voters_active <= served_voters block-for-block. people_served
+-- reads served_voters for cohort='all' and served_voters_active for cohort='active'.
 with
     cohort_districts as (
-        select distinct
+        -- one row per cohort district; is_active_district = 1 when ANY active org
+        -- (in_people_served_cohort) resolves to it
+        select
             state,
             l2_district_type as district_type,
-            normalized_district_name as district_name
+            normalized_district_name as district_name,
+            max(
+                case when in_people_served_cohort then 1 else 0 end
+            ) as is_active_district
         from {{ ref("int__serve_district_resolution") }}
         where resolution_path != 'unresolved' and not is_statewide
+        group by state, l2_district_type, normalized_district_name
     ),
 
     state_fips as (
@@ -76,7 +89,8 @@ with
             and trim({{ normalize_l2_district_name("district_value") }}) != ''
     ),
 
-    -- per (block, voter, type): is this voter in a cohort district of this type?
+    -- per (block, voter, type): is this voter in a cohort district of this type, and
+    -- in an ACTIVE cohort district of this type?
     voter_type as (
         select
             u.block_geoid,
@@ -84,7 +98,10 @@ with
             u.district_type,
             max(
                 case when c.district_type is not null then 1 else 0 end
-            ) as served_this_type
+            ) as served_this_type,
+            max(
+                case when c.is_active_district = 1 then 1 else 0 end
+            ) as served_this_type_active
         from unpivoted u
         join state_fips sf on left(u.block_geoid, 2) = sf.fips_code
         left join
@@ -95,42 +112,61 @@ with
         group by u.block_geoid, u.lalvoterid, u.district_type
     ),
 
-    -- per (block, voter): served by ANY cohort district (the cross-type union)
+    -- per (block, voter): served by ANY cohort district / any ACTIVE cohort district
     voter_any as (
-        select block_geoid, lalvoterid, max(served_this_type) as served_any
+        select
+            block_geoid,
+            lalvoterid,
+            max(served_this_type) as served_any,
+            max(served_this_type_active) as served_any_active
         from voter_type
         group by block_geoid, lalvoterid
     ),
 
-    -- block denominator + the cohort-wide served-voter union
+    -- block denominator + the cohort-wide served-voter unions (all + active)
     block_all as (
-        select block_geoid, count(*) as total_voters, sum(served_any) as served_voters
+        select
+            block_geoid,
+            count(*) as total_voters,
+            sum(served_any) as served_voters,
+            sum(served_any_active) as served_voters_active
         from voter_any
         group by block_geoid
     ),
 
-    -- per (block, type): voters served by a cohort district of that type
+    -- per (block, type): voters served by a cohort district of that type (all + active)
     block_by_type as (
         select
             block_geoid,
             district_type as served_set,
-            sum(served_this_type) as served_voters
+            sum(served_this_type) as served_voters,
+            sum(served_this_type_active) as served_voters_active
         from voter_type
         group by block_geoid, district_type
         having sum(served_this_type) > 0
     ),
 
     coverage as (
-        select block_geoid, 'all' as served_set, served_voters, total_voters
+        select
+            block_geoid,
+            'all' as served_set,
+            served_voters,
+            served_voters_active,
+            total_voters
         from block_all
         where served_voters > 0
 
         union all
 
-        select t.block_geoid, t.served_set, t.served_voters, b.total_voters
+        select
+            t.block_geoid,
+            t.served_set,
+            t.served_voters,
+            t.served_voters_active,
+            b.total_voters
         from block_by_type t
         join block_all b on t.block_geoid = b.block_geoid
     )
 
-select block_geoid, served_set, served_voters, total_voters
+select block_geoid, served_set, served_voters, served_voters_active, total_voters
 from coverage

@@ -646,6 +646,22 @@ models:
         data_tests:
           - not_null
 
+      - name: has_pledged
+        description: >
+          TRUE if the user owns at least one pledged campaign. From
+          int__serve_active_user (epic DATA-1359).
+        data_tests:
+          - not_null
+
+      - name: is_active_serve_user
+        description: >
+          TRUE if the user is an active serve user (sent an SMS poll AND pledged):
+          the behavioral gate of the People Served active cohort, shared with the
+          epic via int__serve_active_user. Combine with Serve-ICP and non-internal
+          email (applied at the resolver) for the full cohort.
+        data_tests:
+          - not_null
+
       - name: serve_getting_started_at
         description: >
           Earliest timestamp for 'Serve Onboarding - Getting Started Viewed'.
@@ -1460,9 +1476,13 @@ models:
   - name: people_served
     description: >
       The People Served metrics (DATA-1993, epic DATA-1359): one row per
-      (metric_variant, office_type). count_once is the distinct-person union (from
-      int__serve_block_coverage); the count_multiple variants are sums off the substrate
-      via district_census_stats. Ordering holds within every office_type: count_once <=
+      (cohort, metric_variant, office_type). cohort is 'all' (every resolved serve
+      org) or 'active' (the active People Served cohort: in_people_served_cohort);
+      'active' is the canonical North Star and BOTH are present, so BI consumers MUST
+      filter or group by cohort -- omitting it double-counts. count_once is the
+      distinct-person union (from int__serve_block_coverage); the count_multiple
+      variants are sums off the substrate via district_census_stats. Ordering holds
+      within every (cohort, office_type): count_once <=
       count_multiple_per_district <= per_seat <= per_org. office_type is 'all' (the local
       cohort-wide North Star headline) or one of the substrate's L2 district types, PLUS 'State'
       for statewide officials, which are read from the EXACT T5 'State' census totals and
@@ -1473,6 +1493,20 @@ models:
       official_constituents; the conservative reading excludes them. Thin by design;
       variants may migrate to the dbt semantic layer.
     columns:
+      - name: cohort
+        description: >
+          'all' (every resolved serve org -- the broad reading) or 'active' (the
+          active People Served cohort: in_people_served_cohort = active serve user
+          AND Serve-ICP office AND not internal). 'active' is the canonical North
+          Star; 'all' is retained for comparison. No statewide office is Serve-ICP,
+          so cohort='active' carries no office_type='State' rows.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - all
+                  - active
       - name: metric_variant
         description: >
           count_once (distinct people) or count_multiple_per_district / per_seat / per_org.
@@ -1506,15 +1540,26 @@ models:
       - dbt_utils.unique_combination_of_columns:
           name: people_served_unique_key
           arguments:
-            combination_of_columns: [metric_variant, office_type]
+            combination_of_columns: [cohort, metric_variant, office_type]
       - dbt_utils.expression_is_true:
-          name: people_served_north_star_sanity_band
+          name: people_served_north_star_sanity_band_all
           arguments:
             expression: "people_served between 30000000 and 90000000"
           config:
-            # wide catastrophic-breakage guard on the local North Star (currently ~56M);
-            # the ordering invariant (singular test) is the hard correctness check.
-            where: "metric_variant = 'count_once' and office_type = 'all'"
+            # wide catastrophic-breakage guard on the BROAD local North Star
+            # (currently ~65M); the ordering invariant (singular test) is the hard
+            # correctness check.
+            where: "cohort = 'all' and metric_variant = 'count_once' and office_type = 'all'"
+            severity: warn
+      - dbt_utils.expression_is_true:
+          name: people_served_north_star_sanity_band_active
+          arguments:
+            expression: "people_served between 5000000 and 25000000"
+          config:
+            # wide catastrophic-breakage guard on the ACTIVE local North Star
+            # (count_once, de-duplicated, below the ~14.1M additive per_district);
+            # headline HELD until DATA-2018, so this is only a breakage guard.
+            where: "cohort = 'active' and metric_variant = 'count_once' and office_type = 'all'"
             severity: warn
 
   - name: official_constituents
@@ -1558,6 +1603,13 @@ models:
           - not_null
       - name: is_geo_seat
         description: Carried from the resolver (the jurisdiction-vs-electoral-seat flag).
+      - name: in_people_served_cohort
+        description: >
+          Carried from the resolver: the official is in the active People Served
+          cohort (active serve user AND Serve-ICP office AND not internal). Flag
+          only -- every official is kept regardless.
+        data_tests:
+          - not_null
       - name: constituents
         description: >
           The district population the official serves

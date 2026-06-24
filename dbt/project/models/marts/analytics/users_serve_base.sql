@@ -21,6 +21,7 @@
 with
     users as (select * from {{ ref("goodparty_data_catalog", "users") }}),
     milestones as (select * from {{ ref("int__amplitude_user_milestones") }}),
+    active_user as (select * from {{ ref("int__serve_active_user") }}),
 
     -- Get most recent Serve activity timestamp per user for Active EO flag.
     serve_latest as (
@@ -58,6 +59,13 @@ with
             -- Connect to Poll (DATA-1499)
             m.first_sms_poll_sent_at,
             (m.first_sms_poll_sent_at is not null) as has_sent_sms_poll,
+
+            -- Active People Served cohort definition (epic DATA-1359), sourced from
+            -- the single source of truth int__serve_active_user so the dashboard and
+            -- the epic share one definition. has_sent_sms_poll above is the same value
+            -- (same milestone upstream), kept on its funnel derivation.
+            coalesce(au.has_pledged, false) as has_pledged,
+            coalesce(au.is_active_serve_user, false) as is_active_serve_user,
 
             -- Serve Onboarding Funnel timestamps
             m.serve_getting_started_at,
@@ -109,6 +117,7 @@ with
 
         from users u
         left join milestones m on u.user_id = m.user_id
+        left join active_user au on u.user_id = au.user_id
         left join serve_latest s on u.user_id = s.user_id
     )
 

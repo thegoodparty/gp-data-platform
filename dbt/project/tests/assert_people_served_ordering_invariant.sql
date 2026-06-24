@@ -1,15 +1,18 @@
--- The People Served invariant (DATA-1993): within every office_type, all four metric
--- variants are PRESENT and count_once <= count_multiple_per_district <= per_seat <=
--- per_org. count-once dedups people; each count-multiple variant can only re-count them
--- (a per-district sum >= a distinct union; per-seat >= per-district and per-org >=
--- per-seat because 1 <= n_seats <= n_orgs per district). Strict on presence too: every
--- office_type ('all', each L2 type, and 'State') carries all four variants by
--- construction, so a missing one is a build bug -- the null-tolerant form would hide
--- it.
--- Returns offending office_types; empty = pass.
+-- The People Served invariant (DATA-1993, epic DATA-1359): within every (cohort,
+-- office_type), all four metric variants are PRESENT and count_once <=
+-- count_multiple_per_district <= per_seat <= per_org. count-once dedups people; each
+-- count-multiple variant can only re-count them (a per-district sum >= a distinct
+-- union;
+-- per-seat >= per-district and per-org >= per-seat because 1 <= n_seats <= n_orgs per
+-- district). Strict on presence too: every (cohort, office_type) that appears carries
+-- all
+-- four variants by construction, so a missing one is a build bug -- the null-tolerant
+-- form would hide it.
+-- Returns offending (cohort, office_type)s; empty = pass.
 with
     p as (
         select
+            cohort,
             office_type,
             max(case when metric_variant = 'count_once' then people_served end) as co,
             max(
@@ -29,7 +32,7 @@ with
                 end
             ) as cmo
         from {{ ref("people_served") }}
-        group by office_type
+        group by cohort, office_type
     )
 
 select
