@@ -133,15 +133,34 @@ Set on the Astro deployment (Environment Manager):
   config; assert the connection targets the forwarded port when tunneling.
 - Non-prod end-to-end run (the acceptance criterion), gated on the dependencies below.
 
+## S3 VPC endpoint (in scope — `gp-terraform-dataplatform`)
+
+Aurora's `aws_s3.table_import_from_s3` (the `copy` step) reads from S3. Without an S3
+Gateway VPC endpoint in the prod VPC, that traffic round-trips the NAT gateway —
+bandwidth-limited and costly at 220M-row scale. The TDD flags it missing (line 99), and
+DATA-1856's scope did not include it, so it is still needed.
+
+- **Where:** `gp-terraform-dataplatform` (the infra repo where DATA-1856/1905 land), as a
+  small, separate change — NOT bolted onto #38, which is already in review.
+- **What:** an `aws_vpc_endpoint` of type `Gateway` for `com.amazonaws.<region>.s3`,
+  associated with the prod VPC's private route tables.
+- **Inputs needed (real values live in the private infra repo):** the prod VPC id and the
+  private route-table ids for the DB subnets (`10.0.4.0/22`, `10.0.12.0/22`). Likely new
+  variables / data sources, since the repo does not yet reference the prod VPC.
+- **Verify-first ("if needed"):** confirm an S3 gateway endpoint does not already exist on
+  that VPC before creating, to avoid a duplicate.
+
 ## Dependencies / handoffs (out of scope for this ticket)
 
-- **S3 VPC endpoint** — TDD flags it missing (line 99); needed for Aurora's server-side S3
-  import to be efficient. Infra/admin item.
 - **DATA-1905 (#38)** merged and applied so the bucket + `rds-s3-import` role exist; env
   vars set per the DATA-1905 comment on DATA-1913.
 - A **dev bucket / Databricks path** for the non-prod run (the Terraform creates the prod
   bucket only).
-- The loader's **cross-account role + bastion SG rule** confirmed for the worker (DATA-1856).
+- The loader's **cross-account role + bastion SG rule** for the worker (DATA-1856). Note:
+  DATA-1856 is marked done and says its SG / subnet group / worker IAM role land in
+  `gp-terraform-dataplatform`, but those resources were not visible in the repo during #38.
+  Confirm they exist (committed or applied) before the non-prod run, since the worker IAM
+  role and bastion SG rule are what make the DAG's bastion connectivity work.
 
 ## Acceptance
 
