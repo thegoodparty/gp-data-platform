@@ -39,7 +39,7 @@ import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 # Instrumentation packages whose history defines when an event was added/removed.
 INSTRUMENTATION_PATHS = ["packages/gp-webapp", "packages/gp-api"]
@@ -155,7 +155,14 @@ _HEADER_PREFIX = "\x00"
 _FIELD_SEP = "\x1f"
 _GIT_LOG_FORMAT = "--format=%x00%H%x1f%h%x1f%ad%x1f%at%x1f%s"
 
-Commit = dict[str, str | None]
+
+class Commit(TypedDict):
+    commit: str
+    short: str
+    date: str
+    ts: str
+    subject: str
+    pr: str | None
 
 
 def _commit_from_header(line: str) -> Commit:
@@ -608,8 +615,10 @@ def read_provenance_rows(csv_path: str = DEFAULT_CSV_PATH) -> dict[str, dict]:
     out: dict[str, dict] = {}
     with path.open(newline="", encoding="utf-8") as fh:
         for raw in csv.DictReader(fh):
-            row = {c: (raw.get(c) or None) for c in PROVENANCE_COLUMNS}
-            out[row["event_type"]] = row
+            event_type = raw.get("event_type")
+            if not event_type:
+                continue
+            out[event_type] = {c: (raw.get(c) or None) for c in PROVENANCE_COLUMNS}
     return out
 
 
