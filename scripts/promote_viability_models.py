@@ -5,6 +5,13 @@ Run once after this PR merges, before the new dbt model is executed.
 Safe to re-run: skips copy if @prod alias already points at a version
 promoted from the same sandbox source URI (tracked via a model version tag).
 
+NOTE (DATA-1938): the dbt scorer int__civics_viability_scoring loads models by
+LATEST registered version, NOT by the @prod alias, so this script's essential
+job for that pipeline is the sandbox -> model_predictions COPY. The @prod alias
+it also sets is not required by the dbt scorer (kept for explicit-promotion
+consumers). How research-to-dbt model promotion should work going forward
+(copy + grant + versioning) is an open process question.
+
 Requires env vars: DATABRICKS_HOST, DATABRICKS_TOKEN
 """
 

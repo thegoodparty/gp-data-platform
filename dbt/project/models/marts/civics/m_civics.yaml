@@ -807,11 +807,17 @@ models:
       - dbt_utils.expression_is_true:
           name: candidacy_scored_score_label_consistent
           arguments:
-            # The numeric score and its label must always agree on presence
-            # (both set or both null) -- guards against pairing a new score with
-            # an old label if the unit-gating ever breaks. Verified 0 violations
-            # on prod candidacy before adding this test.
-            expression: "(viability_score is null) = (score_viability_automated is null)"
+            # The label must match the numeric band (and both must be null
+            # together) -- guards against pairing a score with the wrong label
+            # if the unit-gating or a band cutoff ever drifts. Verified 0
+            # violations on prod candidacy before adding this test.
+            expression: >
+              (viability_score is null and score_viability_automated is null)
+              or (viability_score >= 0 and viability_score < 1 and score_viability_automated = 'No Chance')
+              or (viability_score >= 1 and viability_score < 2 and score_viability_automated = 'Unlikely to Win')
+              or (viability_score >= 2 and viability_score < 3 and score_viability_automated = 'Has a Chance')
+              or (viability_score >= 3 and viability_score < 4 and score_viability_automated = 'Likely to Win')
+              or (viability_score >= 4 and score_viability_automated = 'Frontrunner')
 
   - name: candidate
     description: >
