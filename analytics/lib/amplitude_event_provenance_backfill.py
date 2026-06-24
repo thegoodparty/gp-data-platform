@@ -117,6 +117,15 @@ def slugify_event(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# An event literal counts as instrumentation only when it is a quoted string in a
+# map-value position (``Key: 'Event'``) or a call-argument position (``track('Event')``)
+# -- i.e. immediately preceded by ``:`` or ``(`` (with optional whitespace) and a quote.
+# This excludes the bare-token false positives (Playwright ``page``/``Page``, testing-
+# library ``screen``, ARIA values, route arrays, comment prose) that a substring match hit.
+_INSTRUMENTATION_PREFIX = r"[:(]\s*"
+_QUOTE_CLASS = "['\"`]"  # straight single, double, backtick
+
+
 def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     """Compile one alternation regex over the known event_type literals.
 
@@ -124,17 +133,13 @@ def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     contains (regex alternation is ordered + non-overlapping left-to-right),
     which stops a short literal from being double-counted inside a longer one.
 
-    Each alternate is bounded by non-alphanumeric lookarounds so a single-word
-    literal (``page``, ``screen``, ``Viewed``) does not match as a substring of a
-    compound identifier (``pageTitle``, ``screenWidth``, ``isViewed``). The
-    surrounding quote delimiters of a real event literal satisfy the bounds; the
-    bound is alphanumeric (not ``\\b``) so literals that begin or end with
-    punctuation still match. The single-word-inside-snake_case case (``page`` in
-    ``page_view``) stays handled by the longest-first, non-overlapping ordering.
+    Each alternate must appear as a quoted string in an instrumentation context
+    (map value ``Key: 'Event'`` or call argument ``track('Event')``); the event
+    name is capture group 1 so ``find_events`` returns the name, not the quotes.
     """
     ordered = sorted(set(events), key=len, reverse=True)
-    anchored = (rf"(?<![A-Za-z0-9]){re.escape(e)}(?![A-Za-z0-9])" for e in ordered)
-    return re.compile("|".join(anchored))
+    alternation = "|".join(re.escape(e) for e in ordered)
+    return re.compile(rf"{_INSTRUMENTATION_PREFIX}{_QUOTE_CLASS}({alternation}){_QUOTE_CLASS}")
 
 
 def find_events(text: str, pattern: re.Pattern[str]) -> set[str]:

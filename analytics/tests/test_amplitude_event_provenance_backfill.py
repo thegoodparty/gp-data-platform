@@ -124,6 +124,41 @@ def test_find_events_matches_double_quoted_and_multiple():
     assert find_events(line, pattern) == {"pro_upgrade_complete", "onboarding_complete"}
 
 
+def test_find_events_matches_map_value_and_call_arg_contexts():
+    pattern = compile_event_pattern(["page", "Onboarding Started"])
+    map_line = "  PageEvent: 'page',"
+    call_line = "  trackEvent('Onboarding Started')"
+    assert find_events(map_line, pattern) == {"page"}
+    assert find_events(call_line, pattern) == {"Onboarding Started"}
+
+
+def test_find_events_ignores_non_instrumentation_token_positions():
+    # The real-world false positives that motivated this change.
+    pattern = compile_event_pattern(["page", "Page", "screen", "Viewed"])
+    lines = [
+        "      page.getByText('Filing Address')",  # Playwright call receiver
+        "  fireEvent.click(screen.getByTestId('x'))",  # testing-library
+        "import { type Page } from '@playwright/test'",  # type import
+        '      aria-current="page"',  # ARIA value (preceded by =)
+        "      path: ['page'],",  # route array (: then [)
+        '  // the "Viewed" event fires once on view',  # comment prose
+    ]
+    for line in lines:
+        assert find_events(line, pattern) == set(), line
+
+
+def test_find_events_context_still_prefers_longest():
+    pattern = compile_event_pattern(["Completed", "Pledge Completed"])
+    line = "  pledge: 'Pledge Completed',"
+    assert find_events(line, pattern) == {"Pledge Completed"}
+
+
+def test_find_events_context_matches_multiple_on_one_line():
+    pattern = compile_event_pattern(["pro_upgrade_complete", "onboarding_complete"])
+    line = '  PRO: "pro_upgrade_complete", ONB: "onboarding_complete",'
+    assert find_events(line, pattern) == {"pro_upgrade_complete", "onboarding_complete"}
+
+
 def test_find_events_ignores_single_word_literal_inside_compound_identifier():
     pattern = compile_event_pattern(["page", "screen", "Viewed"])
     line = "  const pageTitle = screenWidth; const ok = isViewed;"
@@ -430,12 +465,12 @@ def test_run_backfill_writes_csv_and_state(monkeypatch, tmp_path):
     cur = FakeCursor(["Event A", "Event B"])
     stream = [
         _header("a1", "a1", "2025-02-01", "feat: add A (#1)"),
-        '+  trackEvent(EVENTS.X)  // "Event A"',
+        '+  X: "Event A",',
         _header("b1", "b1", "2025-03-01", "feat: add B (#2)"),
-        '+  trackEvent(EVENTS.Y)  // "Event B"',
+        '+  Y: "Event B",',
     ]
     monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter(stream))
-    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '"Event A" "Event B"')
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '  X: "Event A",\n  Y: "Event B",')
     monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "headsha")
     monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
     monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 7)
@@ -831,10 +866,10 @@ def test_run_refresh_updates_affected_and_carries_forward_unaffected(monkeypatch
     # Window net-removes Event A only.
     stream = [
         _header("z9", "z9", "2026-06-18", "feat: remove A (#9)"),
-        '-  trackEvent(EVENTS.X)  // "Event A"',
+        '-  X: "Event A",',
     ]
     monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter(stream))
-    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '"Event B"')  # A gone, B present
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '  Y: "Event B",')  # A gone, B present
     monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "newsha")
     monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
     monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 11)
@@ -891,11 +926,11 @@ def test_run_refresh_onboards_new_universe_event_via_full_history(monkeypatch, t
     # historical add commit. present_at_head sees Event C in the code at HEAD.
     def fake_log(*a, **k):
         if k.get("pickaxe") == "Event C":
-            return iter([_header("c1", "c1", "2025-01-15", "feat: add C (#5)"), '+  EVENTS.C  // "Event C"'])
+            return iter([_header("c1", "c1", "2025-01-15", "feat: add C (#5)"), '+  C: "Event C",'])
         return iter([])
 
     monkeypatch.setattr(bf, "run_git_log", fake_log)
-    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '"Event C"')
+    monkeypatch.setattr(bf, "git_grep_present_text", lambda *a, **k: '  C: "Event C",')
     monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "newsha")
     monkeypatch.setattr(bf, "git_head_ref", lambda *a, **k: "origin/develop")
     monkeypatch.setattr(bf, "git_commit_count", lambda *a, **k: 10)
@@ -929,7 +964,7 @@ def test_attribute_events_from_history_finds_instrumentation_via_pickaxe(tmp_pat
     subprocess.run(
         ["git", "-C", repo, "commit", "-q", "-m", "base"], check=True, capture_output=True, env=env
     )
-    (tmp_path / "app.ts").write_text('trackEvent(EVENTS.X)  // "Event X"\n')
+    (tmp_path / "app.ts").write_text('  X: "Event X",\n')
     subprocess.run(["git", "-C", repo, "add", "."], check=True, capture_output=True, env=env)
     subprocess.run(
         ["git", "-C", repo, "commit", "-q", "-m", "feat: add X (#7)"],
@@ -961,15 +996,15 @@ def test_run_refresh_does_not_fabricate_instrumented_for_predates_window_event(m
     bf.write_watermark(str(state_path), "oldsha", "origin/develop", 10, "2025-04-01T00:00:00")
     stream = [
         _header("p1", "p1", "2026-06-10", "feat: edit P, add Q (#7)"),
-        '+  trackEvent(EVENTS.P)  // "Event P"',
-        '+  trackEvent(EVENTS.Q)  // "Event Q"',
+        '+  P: "Event P",',
+        '+  Q: "Event Q",',
     ]
     monkeypatch.setattr(bf, "run_git_log", lambda *a, **k: iter(stream))
 
     # The 4th positional arg is the grep ref: at the watermark (oldsha) P already exists and Q
     # does not; at HEAD both exist.
     def fake_grep(*a, **k):
-        return '"Event P"' if a[3] == "oldsha" else '"Event P" "Event Q"'
+        return '  P: "Event P",' if a[3] == "oldsha" else '  P: "Event P",\n  Q: "Event Q",'
 
     monkeypatch.setattr(bf, "git_grep_present_text", fake_grep)
     monkeypatch.setattr(bf, "git_head_sha", lambda *a, **k: "newsha")
