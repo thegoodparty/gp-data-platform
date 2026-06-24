@@ -90,7 +90,16 @@ with
             ) as title_text,
             o.user_email,
             coalesce(au.is_active_serve_user, false) as is_active_serve_user,
-            coalesce(i.icp_office_serve, false) as icp_office_serve
+            coalesce(i.icp_office_serve, false) as icp_office_serve,
+            -- int__icp_offices returns NULL icp_office_serve for a MATCHED position
+            -- whose L2 district has no voter count in the aggregations table (unknown,
+            -- not confirmed non-ICP). The coalesce above treats unknown as non-ICP
+            -- (conservative: an unconfirmed office is not admitted to the cohort), so
+            -- carry the distinction here for observability -- an excluded official can
+            -- then be diagnosed as a data gap vs a true non-ICP.
+            (
+                o.ballotready_position_id is not null and i.icp_office_serve is null
+            ) as icp_office_serve_unknown
         from serve_orgs o
         left join districts d on coalesce(o.override_district_id, o.district_id) = d.id
         left join crosswalk x on o.ballotready_position_id = x.br_database_id
@@ -208,14 +217,19 @@ with
             -- observability so a cohort miss is debuggable rather than silent
             is_active_serve_user,
             icp_office_serve,
+            icp_office_serve_unknown,
 
             -- in_people_served_cohort (epic DATA-1359): the active People Served
             -- cohort gate -- active serve user (sent SMS poll AND pledged) AND a
             -- Serve-ICP office AND not an internal/test account. Flag only, never a
             -- row exclusion: out-of-cohort officials still flow through for the
-            -- broad 'all' rollups and the per-official surface. A null/stale/missing
-            -- BallotReady position id leaves icp_office_serve false (an observable
-            -- non-ICP miss); a user with no active-user row is non-active. Drives
+            -- broad 'all' rollups and the per-official surface. A missing BallotReady
+            -- position id (no linked office) or a confirmed non-ICP office leaves
+            -- icp_office_serve false; a matched office whose L2 voter count is unknown
+            -- is also excluded but flagged via icp_office_serve_unknown (a data gap,
+            -- not
+            -- a confirmed non-ICP); a user with no active-user row is non-active.
+            -- Drives
             -- both count_once (block-coverage active union) and the count-multiple
             -- variants (people_served district_level filter).
             (

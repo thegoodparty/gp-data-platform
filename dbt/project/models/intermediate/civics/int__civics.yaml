@@ -3356,8 +3356,19 @@ models:
       - name: icp_office_serve
         description: >
           Carried from int__icp_offices (unique join on ballotready_position_id):
-          the office meets Serve ICP. False when the position id is null, stale, or
-          missing -- an observable non-ICP miss, never a silent drop.
+          the office meets Serve ICP. False when the office is confirmed non-ICP, when
+          the position id is null/missing (no linked office), or when the office's L2
+          voter count is unknown (that last case is also flagged by
+          icp_office_serve_unknown).
+        data_tests:
+          - not_null
+      - name: icp_office_serve_unknown
+        description: >
+          The org has a BallotReady position that matched int__icp_offices but the
+          office's L2 voter count is absent, so int__icp_offices returned a null
+          serve-ICP determination (unknown, not confirmed non-ICP). icp_office_serve
+          coalesces this to false (conservative exclusion); this flag keeps the data
+          gap observable so a cohort miss is diagnosable as unknown vs true non-ICP.
         data_tests:
           - not_null
       - name: in_people_served_cohort
