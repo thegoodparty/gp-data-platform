@@ -49,6 +49,8 @@ Both are recomputed from durable, version-agnostic events, not the stored `is_on
 
 Raw "any Win-product Amplitude evidence" (≥1 candidate-attributed event) reads high (~79% for Nov-2025) but is heavily padded by the one-off registration event `Onboarding - User Created`: ~45% of that cohort had *only* that single event and nothing else. When characterizing engagement, report **"engaged beyond account creation"** (≥2 distinct candidate-attributed events, ~34% for Nov-2025) alongside raw any-evidence — the former is the meaningful floor, the latter is barely above "registered."
 
+The signup-anchored, forward-window analog is **"one-and-done"**: signed up but produced zero candidate-attributed activity on any calendar day *after* the signup day (anchor `users_win_candidacy.user_created_at`, version-agnostic). For the 2026 signup cohort (≥14d tenure, N=4,123, *verified 2026-06-09; drifts*): **one-and-done = 67.6%** under the hygiene filter, **73.1%** under `is_win`-only attribution; only ~3% have zero events at all (so it is behavioral, not a coverage gap). The complement — "returned after signup day" — is ~32%, vs ~97% on any-evidence: a registered / has-any-activity count overstates real adoption by roughly 3x. This is population-wide across acquisition channels, not a paid-signup composition artifact.
+
 ## Amplitude event landscape
 
 ### The modeling layers
