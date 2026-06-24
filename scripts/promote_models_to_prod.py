@@ -39,6 +39,11 @@ SRC_SCHEMA  = "private_nigel"
 DST_CATALOG = "goodparty_data_catalog"
 DST_SCHEMA  = "model_predictions"
 
+# The precinct opportunity table used by inference to determine 1/0/NULL vote history encoding.
+# Lives in sandbox during development; must be promoted alongside models so inference can read it.
+PRECINCT_OPP_SRC = f"{SRC_CATALOG}.sandbox.turnout_historical_precincts"
+PRECINCT_OPP_DST = f"{DST_CATALOG}.{DST_SCHEMA}.turnout_historical_precincts"
+
 SLUGS = [
     "presidential_lag3",
     "midterm",
@@ -59,8 +64,38 @@ SRC_VERSIONS = {
 
 # ── Step 1: Install LightGBM on the all-purpose cluster ──────────────────────
 
+def copy_precinct_opportunity_table() -> None:
+    """Copy turnout_historical_precincts from sandbox to model_predictions."""
+    print(f"\n[1/4] Copying precinct opportunity table...")
+    print(f"  {PRECINCT_OPP_SRC} → {PRECINCT_OPP_DST}")
+
+    r = requests.post(f"{HOST}/api/2.1/jobs/runs/submit", headers=H, json={
+        "run_name": "copy_turnout_historical_precincts",
+        "existing_cluster_id": ALL_PURPOSE_CLUSTER_ID,
+        "notebook_task": {
+            "notebook_path": None,  # not applicable; use spark_python_task instead
+        },
+    })
+    # Use SQL API since this is a simple CTAS — simpler than a notebook run.
+    wh_id = "18583d8b081c6486"
+    sql = f"CREATE OR REPLACE TABLE {PRECINCT_OPP_DST} AS SELECT * FROM {PRECINCT_OPP_SRC}"
+    r = requests.post(f"{HOST}/api/2.0/sql/statements", headers=H, json={
+        "warehouse_id": wh_id,
+        "statement": sql,
+        "wait_timeout": "120s",
+    }, timeout=150)
+    r.raise_for_status()
+    result = r.json()
+    status = result.get("status", {}).get("state")
+    if status != "SUCCEEDED":
+        raise RuntimeError(
+            f"Failed to copy precinct opportunity table: {result.get('status')}"
+        )
+    print("  done.")
+
+
 def install_lightgbm_on_cluster(cluster_id: str, version: str) -> None:
-    print(f"\n[1/3] Installing lightgbm=={version} on cluster {cluster_id}...")
+    print(f"\n[2/4] Installing lightgbm=={version} on cluster {cluster_id}...")
 
     # Check current state — install API requires a running cluster.
     r = requests.get(f"{HOST}/api/2.0/clusters/get", headers=H,
@@ -106,7 +141,7 @@ def install_lightgbm_on_cluster(cluster_id: str, version: str) -> None:
 
 def promote_models(client: mlflow.MlflowClient) -> dict[str, str]:
     """Register each slug under DST and return {slug: new_version}."""
-    print("\n[2/3] Registering model versions under model_predictions...")
+    print("\n[3/4] Registering model versions under model_predictions...")
     new_versions = {}
 
     for slug in SLUGS:
@@ -138,7 +173,7 @@ def promote_models(client: mlflow.MlflowClient) -> dict[str, str]:
 # ── Step 3: Tag and alias ─────────────────────────────────────────────────────
 
 def tag_and_alias(client: mlflow.MlflowClient, new_versions: dict[str, str]) -> None:
-    print("\n[3/3] Setting tags and @production alias...")
+    print("\n[4/4] Setting tags and @production alias...")
 
     for slug, version in new_versions.items():
         dst_name = f"{DST_CATALOG}.{DST_SCHEMA}.voter_turnout_model_{slug}"
@@ -157,6 +192,7 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("Set DATABRICKS_TOKEN environment variable.")
 
+    copy_precinct_opportunity_table()
     install_lightgbm_on_cluster(ALL_PURPOSE_CLUSTER_ID, LIGHTGBM_VERSION)
 
     mlflow.set_tracking_uri(HOST)

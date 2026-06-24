@@ -119,6 +119,15 @@ _NH_VT_PRECINCT = """
     END
 """
 
+# States that hold odd-year elections statewide — eligible non-voters in odd-year
+# AnyElection_ columns always get 0 here (no per-precinct opportunity check needed).
+# Mirrors ODD_YEAR_OPPORTUNITY_STATES in the training notebook.
+_ODD_YEAR_OPPORTUNITY_STATES = frozenset([
+    'AL', 'CO', 'CT', 'GA', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'MA',
+    'MI', 'MS', 'MT', 'NE', 'NH', 'NJ', 'NM', 'NY', 'NC', 'OH', 'OR', 'PA',
+    'UT', 'VA', 'VT', 'WA', 'WI',
+])
+
 
 def _year_to_model_slugs(year):
     # If a needed slug has no @production model, the pipeline fails here — intentionally.
@@ -169,7 +178,7 @@ def _detect_election_cols(l2_columns, max_vote_history_year):
 
 
 def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
-                              l2_collection_year):
+                              l2_collection_year, state_code, catalog, models_schema):
     # to_date with explicit format handles L2's MM/dd/yyyy string storage.
     # COALESCE with TRY_CAST also handles staging tables where the column
     # is already DATE type.
@@ -177,6 +186,57 @@ def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
         f"COALESCE(TRY_CAST(`{col}` AS DATE), "
         f"to_date(CAST(`{col}` AS STRING), 'MM/dd/yyyy'))"
     )
+
+    # ── Vote history eligibility setup ────────────────────────────────────────
+    # Odd-year AnyElection/OtherElection columns in states without statewide odd-year
+    # elections require a per-precinct opportunity check against turnout_historical_precincts.
+    # All other columns can determine eligibility from column prefix + year alone.
+    in_opportunity_state = state_code in _ODD_YEAR_OPPORTUNITY_STATES
+
+    odd_nonop_years = sorted({
+        year
+        for col_name, prefix, year in election_cols
+        if col_name in l2_col_set
+        and prefix in ('AnyElection', 'OtherElection')
+        and year % 2 == 1
+        and not in_opportunity_state
+        and 1 <= inference_year - year <= 12
+    })
+
+    # For non-opportunity states with odd-year local columns, pre-build a
+    # precinct-level opportunity flag table and enrich _l2 with it via a subquery.
+    # The subquery avoids column-name ambiguity in the GROUP BY.
+    if odd_nonop_years:
+        opp_col_exprs = ", ".join(
+            f"MAX(CASE WHEN election_year_str = 'AnyElection_{y}'"
+            f"          OR election_year_str = 'OtherElection_{y}' THEN 1 ELSE 0 END)"
+            f" AS opp_{y}"
+            for y in odd_nonop_years
+        )
+        year_filter = " OR ".join(
+            f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')"
+            for y in odd_nonop_years
+        )
+        session.sql(f"""
+            SELECT County, Precinct, {opp_col_exprs}
+            FROM {catalog}.{models_schema}.turnout_historical_precincts
+            WHERE State = '{state_code}' AND ({year_filter})
+            GROUP BY County, Precinct
+        """).createOrReplaceTempView("_hp_opp")
+
+        opp_select = ", ".join(
+            f"COALESCE(hp.opp_{y}, 0) AS opp_{y}"
+            for y in odd_nonop_years
+        )
+        from_clause = (
+            f"(SELECT l2.*, {opp_select}"
+            f" FROM _l2 AS l2"
+            f" LEFT JOIN _hp_opp AS hp"
+            f"   ON l2.County = hp.County"
+            f"  AND CAST(l2.Precinct AS STRING) = hp.Precinct) AS _enriched"
+        )
+    else:
+        from_clause = "_l2"
 
     exprs = [
         f"state_postal_code                                              AS State",
@@ -196,10 +256,12 @@ def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
         # Residential mobility signals
         ("CAST(AVG(CASE WHEN Voters_MovedFrom_Date IS NOT NULL"
          "              THEN 1.0 ELSE 0.0 END) AS DOUBLE)               AS pct_ever_moved"),
-        # Extract year from MM/dd/yyyy string via SUBSTRING — matches training notebook approach
+        # Use _safe_date to extract the year — handles both DATE-typed staging columns
+        # (where CAST AS STRING gives yyyy-MM-dd, breaking SUBSTRING-based year extraction)
+        # and raw L2 MM/dd/yyyy strings. Training used the MM/dd/yyyy path only.
         (f"CAST(AVG(CASE WHEN Voters_MovedFrom_Date IS NOT NULL"
          f"              THEN CAST({inference_year}"
-         f"                   - CAST(SUBSTRING(CAST(Voters_MovedFrom_Date AS STRING), 7, 4) AS INT)"
+         f"                   - YEAR({_safe_date('Voters_MovedFrom_Date')})"
          f"                   AS DOUBLE)"
          f"              ELSE NULL END) AS DOUBLE)"
          f"                                                               AS years_since_moved_at_target"),
@@ -266,22 +328,52 @@ def _build_precinct_features(session, l2_col_set, election_cols, inference_year,
         if col in l2_col_set:
             exprs.append(f"mode(`{col}`)  AS `{col}`")
 
+    # ── Vote history columns ───────────────────────────────────────────────────
+    # Replicates the 8-branch CASE from training's vote_history_sql (valued CTE):
+    #   1. voted = 'Y'                              → 1
+    #   2. BirthDate IS NULL                        → NULL
+    #   3. age < 18 at election year                → NULL
+    #   4. registered after election year           → NULL
+    #   5. General_ or Primary_                     → 0  (always held)
+    #   6. even year                                → 0  (even-year local opportunity assumed)
+    #   7. state in ODD_YEAR_OPPORTUNITY_STATES     → 0  (statewide odd-year elections)
+    #   8. precinct had opportunity (from table)    → 0  (odd-year local precinct check)
+    #   else                                        → NULL
+    # Branches 5–8 are resolved at Python generation time where possible; only
+    # branch 8 requires a JOIN to turnout_historical_precincts (pre-built above).
     for col_name, prefix, year in election_cols:
         if col_name not in l2_col_set:
             continue
         lag = inference_year - year
         if lag < 1 or lag > 12:
             continue
+
+        if prefix in ('General', 'Primary'):
+            eligible_nonvoter_sql = "ELSE 0.0"                          # branch 5
+        elif year % 2 == 0:
+            eligible_nonvoter_sql = "ELSE 0.0"                          # branch 6
+        elif in_opportunity_state:
+            eligible_nonvoter_sql = "ELSE 0.0"                          # branch 7
+        else:
+            # Branch 8: non-opportunity state, odd year — check precinct
+            eligible_nonvoter_sql = f"WHEN opp_{year} = 1 THEN 0.0 ELSE NULL"
+
         exprs.append(
-            f"CAST(AVG(CASE WHEN `{col_name}` = 'Y' THEN 1.0"
-            f"              WHEN `{col_name}` IS NULL THEN NULL"
-            f"              ELSE 0.0 END) AS DOUBLE)"
+            f"CAST(AVG("
+            f"  CASE WHEN `{col_name}` = 'Y' THEN 1.0"
+            f"       WHEN {_safe_date('Voters_BirthDate')} IS NULL THEN NULL"
+            f"       WHEN ({year} - YEAR({_safe_date('Voters_BirthDate')})) < 18 THEN NULL"
+            f"       WHEN `Voters_CalculatedRegDate` IS NOT NULL"
+            f"            AND YEAR({_safe_date('Voters_CalculatedRegDate')}) > {year} THEN NULL"
+            f"       {eligible_nonvoter_sql}"
+            f"  END"
+            f") AS DOUBLE)"
             f"  AS `{prefix}_Minus{lag}`"
         )
 
     return session.sql(
         f"SELECT {', '.join(exprs)}"
-        f" FROM _l2"
+        f" FROM {from_clause}"
         f" GROUP BY state_postal_code, County, {_NH_VT_PRECINCT}"
     )
 
@@ -292,7 +384,7 @@ def _build_district_membership(session, l2_col_set, district_types):
         raise ValueError("No district columns found in L2 schema")
 
     n = len(valid_cols)
-    stack_args = ", ".join(f"'{dt}', `{dt}`" for dt in valid_cols)
+    stack_args = ", ".join(f"'{dt}', CAST(`{dt}` AS STRING)" for dt in valid_cols)
 
     return session.sql(f"""
         WITH precinct_totals AS (
@@ -435,7 +527,8 @@ def model(dbt, session):
 
     for inference_year in inference_years:
         precinct_df = _build_precinct_features(
-            session, l2_col_set, election_cols, inference_year, current_year
+            session, l2_col_set, election_cols, inference_year, current_year,
+            "{{ state_code }}", catalog, models_schema
         )
         pdf = precinct_df.toPandas()
 
