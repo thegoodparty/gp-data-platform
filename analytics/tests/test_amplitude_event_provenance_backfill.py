@@ -124,6 +124,18 @@ def test_find_events_matches_double_quoted_and_multiple():
     assert find_events(line, pattern) == {"pro_upgrade_complete", "onboarding_complete"}
 
 
+def test_find_events_ignores_single_word_literal_inside_compound_identifier():
+    pattern = compile_event_pattern(["page", "screen", "Viewed"])
+    line = "  const pageTitle = screenWidth; const ok = isViewed;"
+    assert find_events(line, pattern) == set()
+
+
+def test_find_events_matches_single_word_literal_at_quote_boundaries():
+    pattern = compile_event_pattern(["page", "Viewed"])
+    line = "  EVT: 'page', OTHER: 'Viewed',"
+    assert find_events(line, pattern) == {"page", "Viewed"}
+
+
 # --------------------------------------------------------------------------- #
 # parse_git_log -- the single-pass history walk
 # --------------------------------------------------------------------------- #

@@ -123,9 +123,18 @@ def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     Sorted longest-first so a longer event name wins over a shorter one it
     contains (regex alternation is ordered + non-overlapping left-to-right),
     which stops a short literal from being double-counted inside a longer one.
+
+    Each alternate is bounded by non-alphanumeric lookarounds so a single-word
+    literal (``page``, ``screen``, ``Viewed``) does not match as a substring of a
+    compound identifier (``pageTitle``, ``screenWidth``, ``isViewed``). The
+    surrounding quote delimiters of a real event literal satisfy the bounds; the
+    bound is alphanumeric (not ``\\b``) so literals that begin or end with
+    punctuation still match. The single-word-inside-snake_case case (``page`` in
+    ``page_view``) stays handled by the longest-first, non-overlapping ordering.
     """
     ordered = sorted(set(events), key=len, reverse=True)
-    return re.compile("|".join(re.escape(e) for e in ordered))
+    anchored = (rf"(?<![A-Za-z0-9]){re.escape(e)}(?![A-Za-z0-9])" for e in ordered)
+    return re.compile("|".join(anchored))
 
 
 def find_events(text: str, pattern: re.Pattern[str]) -> set[str]:
