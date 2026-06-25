@@ -203,6 +203,16 @@ def test_find_events_tolerates_whitespace_inside_quotes():
     pattern = compile_event_pattern(["Pro Upgrade - Committee Check Page: Click Upload"])
     line = "      ClickUpload: 'Pro Upgrade - Committee Check Page: Click Upload ',"
     assert find_events(line, pattern) == {"Pro Upgrade - Committee Check Page: Click Upload"}
+    # leading whitespace inside the quotes is tolerated symmetrically
+    lead = "      ClickUpload: '  Pro Upgrade - Committee Check Page: Click Upload',"
+    assert find_events(lead, pattern) == {"Pro Upgrade - Committee Check Page: Click Upload"}
+
+
+def test_compile_event_pattern_has_single_capture_group():
+    # find_events relies on findall returning the event name, which holds only while the
+    # pattern has exactly one capturing group (the alternation). A second group would make
+    # findall return tuples and silently corrupt results.
+    assert compile_event_pattern(["Some Event", "page"]).groups == 1
 
 
 def test_find_events_whitespace_tolerance_does_not_overmatch_adjacent_text():

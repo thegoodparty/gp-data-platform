@@ -138,6 +138,9 @@ def slugify_event(name: str) -> str:
 # sits on its own line (``Key:\n  'Event'``, ``track(\n  userId,\n  'Event',``); the ``:``/``(``
 # is then on the previous line, invisible to a per-line match. ``re.MULTILINE`` makes ``^``
 # match each line start in the multi-line git-grep dump ``present_at_head`` passes in.
+# Note (b) matches ANY line-leading quoted literal, not only wrapped declarations -- a
+# Prettier-wrapped array element or a leading-quote comment line can also match; this is
+# accepted because the full-rebuild validation gate re-checks every event's attribution.
 # The bare-token false positives (Playwright ``page``/``Page``, testing-library ``screen``,
 # ARIA values, route arrays, comment prose) are never a line-leading quoted literal, so they
 # stay excluded. Seed-data CSV rows (``"Page","Page",...``) ARE line-leading quoted literals;
