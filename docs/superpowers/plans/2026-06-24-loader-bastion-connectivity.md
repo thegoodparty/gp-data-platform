@@ -8,7 +8,9 @@
 
 **Tech Stack:** Python 3.14, uv, psycopg v3 (`psycopg.conninfo`), `sshtunnel`, `paramiko`, pytest, ruff (line length 110), ty.
 
-**Working directory for all commands:** `people-api-loader/` (its own uv env — `cd people-api-loader` first; `uv run …`).
+**Working directory for all commands:** `people-api-loader/` (its own uv env — `cd people-api-loader` first).
+
+**NOTE on the dev toolchain:** `pytest`, `ruff`, and `ty` live in the `dev` *extra* (`[project.optional-dependencies] dev`), which plain `uv sync` does NOT install (and will prune). Use `uv sync --extra dev` and run tooling as `uv run --extra dev <cmd>` (e.g. `uv run --extra dev pytest -v`). The bare `uv sync`/`uv run` shown in the steps below must include `--extra dev`.
 
 ---
 
