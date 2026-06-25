@@ -41,8 +41,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict
 
-# Instrumentation packages whose history defines when an event was added/removed.
-INSTRUMENTATION_PATHS = ["packages/gp-webapp", "packages/gp-api"]
+# Source roots walked for instrumentation, with test files and seed-data CSVs excluded.
+# Test files are excluded so a test-only reference to an event (e.g.
+# expect(track).toHaveBeenCalledWith('E'), a call-arg context match) does not register
+# as an instrumentation change. Seed-data CSV rows (e.g. ``"Page","Page",...`` for the
+# city named Page) are line-leading quoted literals and would otherwise be mistaken for
+# instrumentation by the widened matcher; event instrumentation never lives in .csv, so
+# excluding them is safe and surgical. git log and git grep both honor :(exclude) magic
+# pathspecs.
+INSTRUMENTATION_PATHS = [
+    "packages/gp-webapp",
+    "packages/gp-api",
+    ":(exclude,glob)packages/**/*.test.*",
+    ":(exclude,glob)packages/**/*.spec.*",
+    ":(exclude,glob)packages/**/__tests__/**",
+    ":(exclude,glob)packages/**/*.csv",
+]
 
 # Events came online in Amplitude ~2025-05; the EVENTS map + segment wiring landed
 # ~2025-02. Bounding the walk here skips the large pre-2024 scaffold-era diffs while
@@ -117,6 +131,25 @@ def slugify_event(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# An event literal counts as instrumentation when it is a quoted string that is either
+# (a) in a map-value / call-argument position -- immediately preceded by ``:`` or ``(``
+# (``Key: 'Event'``, ``track('Event')``) -- or (b) line-leading (only whitespace before the
+# opening quote). Case (b) is required because Prettier wraps long declarations so the literal
+# sits on its own line (``Key:\n  'Event'``, ``track(\n  userId,\n  'Event',``); the ``:``/``(``
+# is then on the previous line, invisible to a per-line match. ``re.MULTILINE`` makes ``^``
+# match each line start in the multi-line git-grep dump ``present_at_head`` passes in.
+# Note (b) matches ANY line-leading quoted literal, not only wrapped declarations -- a
+# Prettier-wrapped array element or a leading-quote comment line can also match; this is
+# accepted because the full-rebuild validation gate re-checks every event's attribution.
+# The bare-token false positives (Playwright ``page``/``Page``, testing-library ``screen``,
+# ARIA values, route arrays, comment prose) are never a line-leading quoted literal, so they
+# stay excluded. Seed-data CSV rows (``"Page","Page",...``) ARE line-leading quoted literals;
+# they are excluded at the path level (see INSTRUMENTATION_PATHS), not here.
+_INSTRUMENTATION_PREFIX = r"(?:[:(]\s*|^\s*)"
+_QUOTE_CLASS = "['\"`]"  # straight single, double, backtick
+_INQUOTE_PAD = r"[ \t]*"  # tolerate stray spaces/tabs inside the quotes from source typos
+
+
 def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     """Compile one alternation regex over the known event_type literals.
 
@@ -124,17 +157,27 @@ def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     contains (regex alternation is ordered + non-overlapping left-to-right),
     which stops a short literal from being double-counted inside a longer one.
 
-    Each alternate is bounded by non-alphanumeric lookarounds so a single-word
-    literal (``page``, ``screen``, ``Viewed``) does not match as a substring of a
-    compound identifier (``pageTitle``, ``screenWidth``, ``isViewed``). The
-    surrounding quote delimiters of a real event literal satisfy the bounds; the
-    bound is alphanumeric (not ``\\b``) so literals that begin or end with
-    punctuation still match. The single-word-inside-snake_case case (``page`` in
-    ``page_view``) stays handled by the longest-first, non-overlapping ordering.
+    Each alternate must appear as a quoted string in an instrumentation context:
+    either a map-value / call-argument position (immediately preceded by ``:`` or
+    ``(``) or a line-leading position (only whitespace before the opening quote).
+    The line-leading case is needed because Prettier wraps long declarations so the
+    literal sits on its own line with the ``:``/``(`` on the previous line.
+    ``re.MULTILINE`` makes ``^`` match each line start in multi-line git-grep dumps.
+
+    The capture group wraps only the alternation (not the padding), so the returned
+    name is always the trimmed taxonomy name -- not the typo'd source literal. The
+    ``_INQUOTE_PAD`` (``[ \\t]*``) around the capture group tolerates stray leading/
+    trailing horizontal whitespace inside the quotes from source typos (e.g.
+    ``analyticsHelper.ts``: ``'Pro Upgrade - Committee Check Page: Click Upload '``
+    with a trailing space). ``[ \\t]*`` (horizontal only) is used instead of ``\\s*``
+    so it never spans newlines and matches across lines in a multi-line git-grep dump.
     """
     ordered = sorted(set(events), key=len, reverse=True)
-    anchored = (rf"(?<![A-Za-z0-9]){re.escape(e)}(?![A-Za-z0-9])" for e in ordered)
-    return re.compile("|".join(anchored))
+    alternation = "|".join(re.escape(e) for e in ordered)
+    return re.compile(
+        rf"{_INSTRUMENTATION_PREFIX}{_QUOTE_CLASS}{_INQUOTE_PAD}({alternation}){_INQUOTE_PAD}{_QUOTE_CLASS}",
+        re.MULTILINE,
+    )
 
 
 def find_events(text: str, pattern: re.Pattern[str]) -> set[str]:
