@@ -1,12 +1,6 @@
-{{
-    config(
-        materialized="table",
-        auto_liquid_cluster=true,
-        tags=["mart", "election_api", "elected_official_support"],
-    )
-}}
-
 -- Election API Elected_Office_Support table.
+-- Materialized as a table (marts default) so each run reflects current coverage
+-- with no stale rows for offices that lose their support figure.
 -- Grain: one row per gp-api elected_office instance (elected_office_id), tied to
 -- a user/official. support_constituents is the official's general-election
 -- winning votes; total_constituents is their office's L2 registered-voter count.
@@ -140,7 +134,7 @@ with
         from {{ ref("int__civics_elected_official_ddhq_matched_votes") }} as dv
         left join
             terms_votes as tv on tv.elected_office_id = dv.gp_api_elected_office_id
-        where tv.elected_office_id is null
+        where dv.gp_api_elected_office_id is not null and tv.elected_office_id is null
     ),
 
     -- Fan out to one row per gp-api elected_office instance. Each office maps to

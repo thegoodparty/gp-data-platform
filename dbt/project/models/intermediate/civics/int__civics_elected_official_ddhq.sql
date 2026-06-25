@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "ddhq"]) }}
-
 -- DDHQ election results -> Civics mart elected_officials schema (a third ER
 -- source alongside ballotready_techspeed and gp_api). Grain: one row per DDHQ
 -- general WINNER with a numeric vote tally (candidate_id + ddhq_race_id). A

@@ -32,10 +32,13 @@ with
         select * from {{ ref("int__civics_elected_official_gp_api_bridge") }}
     ),
 
-    -- DDHQ general-winner votes resolved to the gp-api office via the matcha
-    -- cluster (1 row per gp_api_elected_office_id; no fan-out on the bridge key).
+    -- DDHQ general-winner votes matched to this BR term via the matcha cluster
+    -- (BR-keyed rows only; 1 per br_office_holder_id, so no fan-out). Attached to
+    -- every official, not just gp-api ones.
     ddhq_votes as (
-        select * from {{ ref("int__civics_elected_official_ddhq_matched_votes") }}
+        select br_office_holder_id, ddhq_winning_votes
+        from {{ ref("int__civics_elected_official_ddhq_matched_votes") }}
+        where br_office_holder_id is not null
     )
 
 select
@@ -147,4 +150,4 @@ select
 from br_terms as br
 left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
 left join gp_api_bridge as gp on br.br_office_holder_id = gp.br_office_holder_id
-left join ddhq_votes as dv on gp.gp_api_elected_office_id = dv.gp_api_elected_office_id
+left join ddhq_votes as dv on br.br_office_holder_id = dv.br_office_holder_id
