@@ -38,24 +38,31 @@ def _patch(monkeypatch: pytest.MonkeyPatch, captured: dict, *, bastion: bool) ->
 def test_connect_prod_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     _patch(monkeypatch, captured, bastion=False)
-    cfg = cast(LoaderConfig, SimpleNamespace(db_conn_param="people-db-connection-string-dev"))
+    cfg = cast(
+        LoaderConfig,
+        SimpleNamespace(db_conn_param="people-db-connection-string-dev", bastion_enabled=False),
+    )
     with db.connect_prod(cfg) as conn:
         assert conn == "CONN"
     assert captured["name"] == "people-db-connection-string-dev"
-    parts = conninfo_to_dict(captured["conninfo"])
-    assert parts["host"] == "rds.internal"
-    assert parts["port"] == "5432"
+    # Direct path passes the SSM connection string through byte-for-byte (no rewrite).
+    assert captured["conninfo"] == "host=rds.internal dbname=d user=u port=5432"
 
 
 def test_connect_prod_tunneled(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     _patch(monkeypatch, captured, bastion=True)
-    cfg = cast(LoaderConfig, SimpleNamespace(db_conn_param="people-db-connection-string-dev"))
+    cfg = cast(
+        LoaderConfig,
+        SimpleNamespace(db_conn_param="people-db-connection-string-dev", bastion_enabled=True),
+    )
     with db.connect_prod(cfg) as conn:
         assert conn == "CONN"
     assert captured["target"] == ("rds.internal", 5432)
     parts = conninfo_to_dict(captured["conninfo"])
-    assert parts["host"] == "127.0.0.1"
+    # Dial the local forward via hostaddr; keep the real host for TLS SNI / cert verification.
+    assert parts["hostaddr"] == "127.0.0.1"
+    assert parts["host"] == "rds.internal"
     assert parts["port"] == "54321"
 
 
@@ -64,7 +71,10 @@ def test_connect_new_uses_run_dated_conn_param(monkeypatch: pytest.MonkeyPatch) 
     _patch(monkeypatch, captured, bastion=False)
     cfg = cast(
         LoaderConfig,
-        SimpleNamespace(new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}"),
+        SimpleNamespace(
+            new_conn_param=lambda rd: f"people-db-connection-string-dev-{rd}",
+            bastion_enabled=False,
+        ),
     )
     with db.connect_new(cfg, "20260616") as conn:
         assert conn == "CONN"

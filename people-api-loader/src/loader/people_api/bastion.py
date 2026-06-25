@@ -15,8 +15,12 @@ from typing import TYPE_CHECKING
 import paramiko
 from sshtunnel import SSHTunnelForwarder
 
+from loader.core.log import get_logger
+
 if TYPE_CHECKING:
     from loader.people_api.config import LoaderConfig
+
+log = get_logger(__name__)
 
 # paramiko >=3 dropped DSSKey (DSA deprecated), but sshtunnel still references it
 # during host-key discovery. Match the legacy postgres_utils shim.
@@ -59,7 +63,14 @@ def open_tunnel(cfg: LoaderConfig, target_host: str, target_port: int) -> Iterat
         set_keepalive=30,
     )
     tunnel.start()
+    log.info(
+        "bastion.tunnel_open",
+        local_port=tunnel.local_bind_port,
+        target_host=target_host,
+        target_port=target_port,
+    )
     try:
         yield ("127.0.0.1", tunnel.local_bind_port)
     finally:
         tunnel.stop()
+        log.info("bastion.tunnel_closed", target_host=target_host)

@@ -32,11 +32,19 @@ if TYPE_CHECKING:
 def _connect(cfg: LoaderConfig, param_name: str, *, autocommit: bool) -> Iterator[Connection]:
     """Open a psycopg connection from an SSM connection string, via the bastion if configured."""
     conninfo = get_ssm_parameter(cfg, param_name)
+    if not cfg.bastion_enabled:
+        # Direct: hand the SSM connection string to psycopg unchanged.
+        with psycopg.connect(conninfo, autocommit=autocommit, connect_timeout=30) as conn:
+            yield conn
+        return
+    # Tunneled: forward to the real host/port, then dial the local forward via `hostaddr`
+    # while keeping the original `host` so TLS SNI / cert verification still validates against
+    # the RDS hostname (not 127.0.0.1). This keeps sslmode=verify-* connection strings working.
     parts = conninfo_to_dict(conninfo)
     target_host = str(parts.get("host") or "")
     target_port = int(parts.get("port") or 5432)
-    with open_tunnel(cfg, target_host, target_port) as (host, port):
-        tunneled = make_conninfo(conninfo, host=host, port=str(port))
+    with open_tunnel(cfg, target_host, target_port) as (local_host, local_port):
+        tunneled = make_conninfo(conninfo, hostaddr=local_host, port=str(local_port))
         with psycopg.connect(tunneled, autocommit=autocommit, connect_timeout=30) as conn:
             yield conn
 
