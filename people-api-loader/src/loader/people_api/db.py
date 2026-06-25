@@ -18,8 +18,10 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import psycopg
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from loader.core.aws import get_ssm_parameter
+from loader.people_api.bastion import open_tunnel
 from loader.people_api.config import LoaderConfig
 
 if TYPE_CHECKING:
@@ -28,10 +30,15 @@ if TYPE_CHECKING:
 
 @contextmanager
 def _connect(cfg: LoaderConfig, param_name: str, *, autocommit: bool) -> Iterator[Connection]:
-    """Open a psycopg connection from an SSM SecureString connection string."""
+    """Open a psycopg connection from an SSM connection string, via the bastion if configured."""
     conninfo = get_ssm_parameter(cfg, param_name)
-    with psycopg.connect(conninfo, autocommit=autocommit, connect_timeout=30) as conn:
-        yield conn
+    parts = conninfo_to_dict(conninfo)
+    target_host = str(parts.get("host", ""))
+    target_port = int(parts.get("port", 5432))
+    with open_tunnel(cfg, target_host, target_port) as (host, port):
+        tunneled = make_conninfo(conninfo, host=host, port=str(port))
+        with psycopg.connect(tunneled, autocommit=autocommit, connect_timeout=30) as conn:
+            yield conn
 
 
 @contextmanager
