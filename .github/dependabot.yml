@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "pip"
     directory: "/"
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -30,6 +31,7 @@ updates:
 
   - package-ecosystem: "pip"
     directory: "/airflow/astro"
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -58,6 +60,7 @@ updates:
 
   - package-ecosystem: "pip"
     directory: "/dbt"
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
