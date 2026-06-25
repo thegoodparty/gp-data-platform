@@ -339,3 +339,42 @@ git commit -m "chore(airflow): lint fixes for loader DAG"
 - **Cosmos auth (Task 4 Step 1).** OAuth M2M vs token determines the profile mapping; confirm against the live `databricks` connection before finalizing.
 - **dbt project path.** `_DBT_PROJECT_DIR` must match where the image places `dbt/project`. Verify in Task 4 Step 3.
 - This plan does not run the pipeline end-to-end; that needs the DATA-1905 bucket applied, a dev bucket/Databricks path, and the S3 VPC endpoint (Plan C). DAG parse/render is the acceptance here.
+
+## Post-execution outcome (what shipped vs the plan)
+
+Implemented and pushed on `feat/DATA-1913-loader-dag`. Divergences from the draft above, all
+verified locally (real-Airflow DagBag parse: clean, 9 tasks, gate upstream of `unload`):
+
+- **Cosmos imports:** `from cosmos.operators.local import DbtTestLocalOperator` (not
+  `cosmos.operators`); profile mapping is `DatabricksOauthProfileMapping` (the `databricks`
+  connection is OAuth M2M — host/client_id/client_secret come from the connection).
+- **Env delivery simplified:** `_loader_env()` carries only the bastion fields (from the
+  `gp_bastion_host` connection, runtime-templated so parse never hits the metastore). All
+  other `LOADER_*` infra config is set as **deployment env vars** and reaches the `loader`
+  subprocess via `append_env=True` and the Cosmos gate via `os.environ` — one source.
+- **Gate profile args:** `schema` from `LOADER_DBT_SCHEMA` (default `dbt`) and `http_path`
+  from `LOADER_DATABRICKS_WAREHOUSE_ID`, read at parse time (env, not Variables).
+- **Local dep:** only `astronomer-cosmos` is locked into `airflow/` (the DAG parses with it);
+  `dbt-databricks` has no py3.14 stable release for uv to lock, so it lives only in the Astro
+  image (`astro/requirements.txt`) and is used at task runtime.
+- **No pytest DAG test in `astro/tests/`:** sibling tests stub `airflow` in `sys.modules`,
+  which breaks a real-`DagBag` test. DAG integrity is covered by `.astro/test_dag_integrity_default.py`
+  + `astro dev parse`.
+
+## Deployment items (resolve on Astro dev)
+
+1. **Ship the dbt project into the image** at `_DBT_PROJECT_DIR` (`/usr/local/airflow/dbt/project`).
+   The Astro `Dockerfile` does not copy it and `dbt/project` is outside the `airflow/astro`
+   build context. Options: a Dockerfile `RUN git clone … #subdirectory=dbt/project` (parallel to
+   the loader's pip-from-git), a pre-`astro deploy` copy step, or set `LOADER_DBT_PROJECT_DIR`
+   to wherever it lands. Without this the gate fails at runtime.
+2. **Deployment env vars** (Astro Environment Manager): `LOADER_S3_BUCKET`,
+   `LOADER_S3_IMPORT_ROLE_ARN`, `LOADER_AWS_ACCOUNT_ID`, `LOADER_DATABRICKS_WAREHOUSE_ID`,
+   `LOADER_VPC_ID`, `LOADER_DB_SUBNET_GROUP`, `LOADER_SECURITY_GROUP_ID`, `LOADER_KMS_KEY_ARN`,
+   `LOADER_DBT_SCHEMA` (`dbt` prod / `dbt_staging` dev). See the DATA-1905 comment on DATA-1913.
+3. **Connections:** `gp_bastion_host` (host/login + `extra.private_key`; the key must be
+   **unencrypted** — the loader's `_load_key` has no passphrase support) and `databricks`
+   (OAuth M2M: client_id/client_secret/host). Confirm `DatabricksOauthProfileMapping` reads them.
+4. **AWS credentials:** the worker assumes `gp-people-rds-admin-prod` cross-account for boto3.
+5. **Loader git pin** in `astro/requirements.txt` tracks the feature branch for dev; change to a
+   tag/SHA before merge.
