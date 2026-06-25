@@ -59,7 +59,20 @@ def _step(task_id: str, subcommand: str) -> BashOperator:
     tags=["people-api", "loader", "DATA-1640"],
 )
 def load_people_api_v2():
-    _step("inspect_prod", "inspect-prod")
+    inspect_prod = _step("inspect_prod", "inspect-prod")
+    unload = _step("unload", "unload")
+    provision = _step("provision", "provision")
+    create_schema = _step("create_schema", "create-schema")
+    copy = _step("copy", "copy")
+    build_indexes = _step("build_indexes", "build-indexes")
+    resize = _step("resize", "resize")
+    validate = _step("validate", "validate")
+
+    # unload + provision run in parallel after inspect-prod; both feed create-schema; then
+    # the serial load chain. (The dbt gate between inspect_prod and unload is added in Task 4.)
+    inspect_prod >> [unload, provision]
+    [unload, provision] >> create_schema
+    create_schema >> copy >> build_indexes >> resize >> validate
 
 
 load_people_api_v2()
