@@ -12,6 +12,8 @@ dependencies = [
     "structlog>=24.4",
     "rich>=13.9",
     "tenacity>=9.0",
+    "sshtunnel>=0.4.0",
+    "paramiko>=3.4.0",
 ]
 
 [project.optional-dependencies]
