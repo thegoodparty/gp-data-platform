@@ -101,6 +101,13 @@ class LoaderConfig(BaseLoaderConfig):
     kms_key_arn: str
     s3_import_role_arn: str
 
+    # Bastion (SSH) for reaching Postgres from outside the VPC (Astro worker).
+    # Empty host = connect directly (local/VPN runs).
+    bastion_host: str
+    bastion_port: int
+    bastion_user: str
+    bastion_private_key: str
+
     # New cluster defaults
     engine_version: str
     load_instance_class: str
@@ -154,6 +161,10 @@ class LoaderConfig(BaseLoaderConfig):
             security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
             kms_key_arn=os.environ.get("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
             s3_import_role_arn=os.environ.get("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
+            bastion_host=os.environ.get("LOADER_BASTION_HOST", ""),
+            bastion_port=int(os.environ.get("LOADER_BASTION_PORT", "22")),
+            bastion_user=os.environ.get("LOADER_BASTION_USER", ""),
+            bastion_private_key=os.environ.get("LOADER_BASTION_PRIVATE_KEY", ""),
             engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
@@ -161,6 +172,10 @@ class LoaderConfig(BaseLoaderConfig):
             mart_fqns=mart_fqns,
             _tags=tags,
         )
+
+    @property
+    def bastion_enabled(self) -> bool:
+        return bool(self.bastion_host)
 
     def export_prefix(self, run_date: str) -> str:
         return f"voter_export_{run_date}"
