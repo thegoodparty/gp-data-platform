@@ -51,7 +51,7 @@ def _step(task_id: str, subcommand: str) -> BashOperator:
 
 
 # dbt project shipped in the Astro image; override via env if the build places it elsewhere.
-_DBT_PROJECT_DIR = os.environ.get("LOADER_DBT_PROJECT_DIR", "/usr/local/airflow/dbt/project")
+_DBT_PROJECT_DIR = os.getenv("LOADER_DBT_PROJECT_DIR", "/usr/local/airflow/dbt/project")
 
 
 def _voter_gate_profile() -> ProfileConfig:
@@ -61,14 +61,14 @@ def _voter_gate_profile() -> ProfileConfig:
     warehouse) come from deployment env vars, read at parse time because the ProfileConfig is
     constructed during DAG parsing (Airflow Variables would require the metastore).
     """
-    warehouse_id = os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", "")
+    warehouse_id = os.getenv("LOADER_DATABRICKS_WAREHOUSE_ID", "")
     return ProfileConfig(
         profile_name="default",
         target_name="loader",
         profile_mapping=DatabricksOauthProfileMapping(
             conn_id="databricks",
             profile_args={
-                "schema": os.environ.get("LOADER_DBT_SCHEMA", "dbt"),
+                "schema": os.getenv("LOADER_DBT_SCHEMA", "dbt"),
                 "http_path": f"/sql/1.0/warehouses/{warehouse_id}",
             },
         ),
@@ -80,7 +80,7 @@ def _voter_gate_profile() -> ProfileConfig:
     schedule="@monthly",
     start_date=pendulum_datetime(2026, 6, 1, tz="UTC"),
     catchup=False,
-    default_args={"retries": 1, "retry_delay": duration(minutes=5)},
+    default_args={"retries": 3, "retry_delay": duration(minutes=5)},
     tags=["people-api", "loader", "DATA-1640"],
 )
 def load_people_api():

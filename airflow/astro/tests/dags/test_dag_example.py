@@ -72,3 +72,17 @@ def test_dag_retries(dag_id, dag, fileloc):
     Test if a DAG has retries set
     """
     assert dag.default_args.get("retries", None) >= 2, f"{dag_id} in {fileloc} must have task retries >= 2."
+
+
+# DAG objects are built at collection time (real Airflow), before sibling tests stub
+# `airflow` in sys.modules — so reading task structure here is safe.
+_DAGS_BY_ID = {d[0]: d[1] for d in get_dags()}
+
+
+def test_load_people_api_sequence():
+    """The loader DAG gates unload/provision on the dbt test and ends resize -> validate."""
+    dag = _DAGS_BY_ID.get("load_people_api")
+    assert dag is not None, "load_people_api DAG not found in the DagBag"
+    assert "dbt_test_voter_gate" in {t.task_id for t in dag.get_task("unload").upstream_list}
+    assert "dbt_test_voter_gate" in {t.task_id for t in dag.get_task("provision").upstream_list}
+    assert "resize" in {t.task_id for t in dag.get_task("validate").upstream_list}
