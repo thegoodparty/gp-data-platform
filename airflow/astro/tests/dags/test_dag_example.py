@@ -46,7 +46,15 @@ def get_dags():
     return [(k, v, strip_path_prefix(v.fileloc)) for k, v in dag_bag.dags.items()]
 
 
-@pytest.mark.parametrize("rel_path,rv", get_import_errors(), ids=[x[0] for x in get_import_errors()])
+# Built once at collection time (real Airflow), before sibling tests stub `airflow` in
+# sys.modules — so reading DAG structure here is safe. Reused across the tests below to avoid
+# rebuilding the DagBag per parametrize/ids call.
+_IMPORT_ERRORS = get_import_errors()
+_ALL_DAGS = get_dags()
+_DAGS_BY_ID = {d[0]: d[1] for d in _ALL_DAGS}
+
+
+@pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
     """Test for import errors on a file"""
     if rel_path and rv:
@@ -56,7 +64,7 @@ def test_file_imports(rel_path, rv):
 APPROVED_TAGS: dict[str, str] = {}
 
 
-@pytest.mark.parametrize("dag_id,dag,fileloc", get_dags(), ids=[x[2] for x in get_dags()])
+@pytest.mark.parametrize("dag_id,dag,fileloc", _ALL_DAGS, ids=[x[2] for x in _ALL_DAGS])
 def test_dag_tags(dag_id, dag, fileloc):
     """
     Test if a DAG is tagged and if those TAGs are in the approved list
@@ -66,17 +74,12 @@ def test_dag_tags(dag_id, dag, fileloc):
         assert not set(dag.tags) - APPROVED_TAGS
 
 
-@pytest.mark.parametrize("dag_id,dag, fileloc", get_dags(), ids=[x[2] for x in get_dags()])
+@pytest.mark.parametrize("dag_id,dag, fileloc", _ALL_DAGS, ids=[x[2] for x in _ALL_DAGS])
 def test_dag_retries(dag_id, dag, fileloc):
     """
     Test if a DAG has retries set
     """
     assert dag.default_args.get("retries", None) >= 2, f"{dag_id} in {fileloc} must have task retries >= 2."
-
-
-# DAG objects are built at collection time (real Airflow), before sibling tests stub
-# `airflow` in sys.modules — so reading task structure here is safe.
-_DAGS_BY_ID = {d[0]: d[1] for d in get_dags()}
 
 
 def test_load_people_api_sequence():

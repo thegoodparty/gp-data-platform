@@ -10,15 +10,11 @@ from loader.people_api.config import LoaderConfig
 
 
 def _cfg(**kw) -> LoaderConfig:
-    base = dict(
-        bastion_host="",
-        bastion_port=22,
-        bastion_user="",
-        bastion_private_key="",
-        bastion_enabled=False,
-    )
-    base.update(kw)
-    return cast(LoaderConfig, SimpleNamespace(**base))
+    fields = {"bastion_host": "", "bastion_port": 22, "bastion_user": "", "bastion_private_key": ""}
+    fields.update(kw)
+    ns = SimpleNamespace(**fields)
+    ns.bastion_enabled = bool(ns.bastion_host)  # mirror the real LoaderConfig.bastion_enabled property
+    return cast(LoaderConfig, ns)
 
 
 def test_no_bastion_yields_target_unchanged():
@@ -45,12 +41,7 @@ def test_bastion_yields_localhost(monkeypatch):
     monkeypatch.setattr(bastion, "SSHTunnelForwarder", _FakeTunnel)
     monkeypatch.setattr(bastion, "_load_key", lambda pem: "PKEY")
 
-    cfg = _cfg(
-        bastion_host="b",
-        bastion_user="u",
-        bastion_private_key="PEM",
-        bastion_enabled=True,
-    )
+    cfg = _cfg(bastion_host="b", bastion_user="u", bastion_private_key="PEM")
     with bastion.open_tunnel(cfg, "rds.internal", 5432) as (host, port):
         assert (host, port) == ("127.0.0.1", 54321)
     assert started == {"remote": ("rds.internal", 5432), "started": True, "stopped": True}

@@ -22,30 +22,26 @@ from cosmos.profiles import DatabricksOauthProfileMapping
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
-
-def _loader_env() -> dict[str, str]:
-    """Bastion fields for the loader's SSH tunnel, from the gp_bastion_host connection.
-
-    Templated so they resolve at task runtime (not DAG parse — parse must not touch the
-    metastore). The rest of the loader's config (LOADER_S3_BUCKET, LOADER_S3_IMPORT_ROLE_ARN,
-    LOADER_AWS_ACCOUNT_ID, LOADER_DATABRICKS_WAREHOUSE_ID, VPC/subnet/SG/KMS) is set as
-    deployment env vars in the Astro Environment Manager and reaches the `loader` subprocess
-    via append_env=True — consistent with the loader's native env-var config and with the
-    Cosmos gate's os.environ reads below.
-    """
-    return {
-        "LOADER_BASTION_HOST": "{{ conn.gp_bastion_host.host }}",
-        "LOADER_BASTION_PORT": "{{ conn.gp_bastion_host.port or 22 }}",
-        "LOADER_BASTION_USER": "{{ conn.gp_bastion_host.login }}",
-        "LOADER_BASTION_PRIVATE_KEY": "{{ conn.gp_bastion_host.extra_dejson.get('private_key', '') }}",
-    }
+# Bastion fields for the loader's SSH tunnel, sourced from the gp_bastion_host connection.
+# These are Jinja templates resolved at task runtime (not DAG parse — parse must not touch the
+# metastore). The rest of the loader's config (LOADER_S3_BUCKET, LOADER_S3_IMPORT_ROLE_ARN,
+# LOADER_AWS_ACCOUNT_ID, LOADER_DATABRICKS_WAREHOUSE_ID, VPC/subnet/SG/KMS) is set as deployment
+# env vars in the Astro Environment Manager and reaches the `loader` subprocess via
+# append_env=True — consistent with the loader's native env-var config and the Cosmos gate's
+# os.getenv reads below. Static, so it's built once at import.
+_LOADER_ENV: dict[str, str] = {
+    "LOADER_BASTION_HOST": "{{ conn.gp_bastion_host.host }}",
+    "LOADER_BASTION_PORT": "{{ conn.gp_bastion_host.port or 22 }}",
+    "LOADER_BASTION_USER": "{{ conn.gp_bastion_host.login }}",
+    "LOADER_BASTION_PRIVATE_KEY": "{{ conn.gp_bastion_host.extra_dejson.get('private_key', '') }}",
+}
 
 
 def _step(task_id: str, subcommand: str) -> BashOperator:
     return BashOperator(
         task_id=task_id,
         bash_command=f"loader {subcommand} --date {{{{ ds_nodash }}}}",
-        env=_loader_env(),
+        env=_LOADER_ENV,
         append_env=True,
     )
 
