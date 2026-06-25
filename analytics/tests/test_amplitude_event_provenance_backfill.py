@@ -196,6 +196,22 @@ def test_find_events_matches_literal_in_multiline_dump():
     assert find_events(dump, pattern) == {"Briefing Assistant - Agenda Created"}
 
 
+def test_find_events_tolerates_whitespace_inside_quotes():
+    # A source typo can leave stray space inside the quotes (e.g. analyticsHelper.ts
+    # 'Pro Upgrade - Committee Check Page: Click Upload '); the literal still denotes the
+    # taxonomy event, so match it and return the trimmed taxonomy name (no trailing space).
+    pattern = compile_event_pattern(["Pro Upgrade - Committee Check Page: Click Upload"])
+    line = "      ClickUpload: 'Pro Upgrade - Committee Check Page: Click Upload ',"
+    assert find_events(line, pattern) == {"Pro Upgrade - Committee Check Page: Click Upload"}
+
+
+def test_find_events_whitespace_tolerance_does_not_overmatch_adjacent_text():
+    # The in-quote padding is horizontal whitespace only and must not let a short name
+    # match when the quoted literal actually contains additional words.
+    pattern = compile_event_pattern(["page"])
+    assert find_events("  EVT: 'page extra',", pattern) == set()
+
+
 # --------------------------------------------------------------------------- #
 # parse_git_log -- the single-pass history walk
 # --------------------------------------------------------------------------- #

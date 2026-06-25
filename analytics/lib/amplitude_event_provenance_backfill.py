@@ -144,6 +144,7 @@ def slugify_event(name: str) -> str:
 # they are excluded at the path level (see INSTRUMENTATION_PATHS), not here.
 _INSTRUMENTATION_PREFIX = r"(?:[:(]\s*|^\s*)"
 _QUOTE_CLASS = "['\"`]"  # straight single, double, backtick
+_INQUOTE_PAD = r"[ \t]*"  # tolerate stray spaces/tabs inside the quotes from source typos
 
 
 def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
@@ -159,11 +160,21 @@ def compile_event_pattern(events: Iterable[str]) -> re.Pattern[str]:
     The line-leading case is needed because Prettier wraps long declarations so the
     literal sits on its own line with the ``:``/``(`` on the previous line.
     ``re.MULTILINE`` makes ``^`` match each line start in multi-line git-grep dumps.
-    The event name is capture group 1 so ``find_events`` returns the name, not the quotes.
+
+    The capture group wraps only the alternation (not the padding), so the returned
+    name is always the trimmed taxonomy name -- not the typo'd source literal. The
+    ``_INQUOTE_PAD`` (``[ \\t]*``) around the capture group tolerates stray leading/
+    trailing horizontal whitespace inside the quotes from source typos (e.g.
+    ``analyticsHelper.ts``: ``'Pro Upgrade - Committee Check Page: Click Upload '``
+    with a trailing space). ``[ \\t]*`` (horizontal only) is used instead of ``\\s*``
+    so it never spans newlines and matches across lines in a multi-line git-grep dump.
     """
     ordered = sorted(set(events), key=len, reverse=True)
     alternation = "|".join(re.escape(e) for e in ordered)
-    return re.compile(rf"{_INSTRUMENTATION_PREFIX}{_QUOTE_CLASS}({alternation}){_QUOTE_CLASS}", re.MULTILINE)
+    return re.compile(
+        rf"{_INSTRUMENTATION_PREFIX}{_QUOTE_CLASS}{_INQUOTE_PAD}({alternation}){_INQUOTE_PAD}{_QUOTE_CLASS}",
+        re.MULTILINE,
+    )
 
 
 def find_events(text: str, pattern: re.Pattern[str]) -> set[str]:
