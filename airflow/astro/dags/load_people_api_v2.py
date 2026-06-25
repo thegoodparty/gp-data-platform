@@ -12,28 +12,28 @@ metastore.
 
 from __future__ import annotations
 
+import os
+
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import dag
+from cosmos import ProfileConfig
+from cosmos.operators.local import DbtTestLocalOperator
+from cosmos.profiles import DatabricksOauthProfileMapping
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
 
 def _loader_env() -> dict[str, str]:
-    """Templated LOADER_* env for the loader CLI, resolved at task runtime (not parse time).
+    """Bastion fields for the loader's SSH tunnel, from the gp_bastion_host connection.
 
-    Infra config comes from Airflow Variables (set in the Astro Environment Manager); the
-    bastion fields come from the gp_bastion_host connection and feed the loader's SSH tunnel.
+    Templated so they resolve at task runtime (not DAG parse — parse must not touch the
+    metastore). The rest of the loader's config (LOADER_S3_BUCKET, LOADER_S3_IMPORT_ROLE_ARN,
+    LOADER_AWS_ACCOUNT_ID, LOADER_DATABRICKS_WAREHOUSE_ID, VPC/subnet/SG/KMS) is set as
+    deployment env vars in the Astro Environment Manager and reaches the `loader` subprocess
+    via append_env=True — consistent with the loader's native env-var config and with the
+    Cosmos gate's os.environ reads below.
     """
     return {
-        "LOADER_ENV": "{{ var.value.get('loader_env', 'dev') }}",
-        "LOADER_S3_BUCKET": "{{ var.value.get('loader_s3_bucket', '') }}",
-        "LOADER_S3_IMPORT_ROLE_ARN": "{{ var.value.get('loader_s3_import_role_arn', '') }}",
-        "LOADER_AWS_ACCOUNT_ID": "{{ var.value.get('loader_aws_account_id', '') }}",
-        "LOADER_DATABRICKS_WAREHOUSE_ID": "{{ var.value.get('loader_databricks_warehouse_id', '') }}",
-        "LOADER_VPC_ID": "{{ var.value.get('loader_vpc_id', '') }}",
-        "LOADER_DB_SUBNET_GROUP": "{{ var.value.get('loader_db_subnet_group', '') }}",
-        "LOADER_SECURITY_GROUP_ID": "{{ var.value.get('loader_security_group_id', '') }}",
-        "LOADER_KMS_KEY_ARN": "{{ var.value.get('loader_kms_key_arn', '') }}",
         "LOADER_BASTION_HOST": "{{ conn.gp_bastion_host.host }}",
         "LOADER_BASTION_PORT": "{{ conn.gp_bastion_host.port or 22 }}",
         "LOADER_BASTION_USER": "{{ conn.gp_bastion_host.login }}",
@@ -50,6 +50,31 @@ def _step(task_id: str, subcommand: str) -> BashOperator:
     )
 
 
+# dbt project shipped in the Astro image; override via env if the build places it elsewhere.
+_DBT_PROJECT_DIR = os.environ.get("LOADER_DBT_PROJECT_DIR", "/usr/local/airflow/dbt/project")
+
+
+def _voter_gate_profile() -> ProfileConfig:
+    """dbt profile for the voter gate, built from the `databricks` (OAuth M2M) connection.
+
+    host / client_id / client_secret come from the connection; schema and http_path (the SQL
+    warehouse) come from deployment env vars, read at parse time because the ProfileConfig is
+    constructed during DAG parsing (Airflow Variables would require the metastore).
+    """
+    warehouse_id = os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", "")
+    return ProfileConfig(
+        profile_name="default",
+        target_name="loader",
+        profile_mapping=DatabricksOauthProfileMapping(
+            conn_id="databricks",
+            profile_args={
+                "schema": os.environ.get("LOADER_DBT_SCHEMA", "dbt"),
+                "http_path": f"/sql/1.0/warehouses/{warehouse_id}",
+            },
+        ),
+    )
+
+
 @dag(
     dag_id="load_people_api_v2",
     schedule="@monthly",
@@ -60,6 +85,12 @@ def _step(task_id: str, subcommand: str) -> BashOperator:
 )
 def load_people_api_v2():
     inspect_prod = _step("inspect_prod", "inspect-prod")
+    dbt_test_voter_gate = DbtTestLocalOperator(
+        task_id="dbt_test_voter_gate",
+        project_dir=_DBT_PROJECT_DIR,
+        profile_config=_voter_gate_profile(),
+        select=["m_people_api__voter"],  # voter schema tests + the DATA-1906 singular gate test
+    )
     unload = _step("unload", "unload")
     provision = _step("provision", "provision")
     create_schema = _step("create_schema", "create-schema")
@@ -68,9 +99,9 @@ def load_people_api_v2():
     resize = _step("resize", "resize")
     validate = _step("validate", "validate")
 
-    # unload + provision run in parallel after inspect-prod; both feed create-schema; then
-    # the serial load chain. (The dbt gate between inspect_prod and unload is added in Task 4.)
-    inspect_prod >> [unload, provision]
+    # dbt gate must pass before unload; unload + provision then run in parallel and both feed
+    # create-schema; then the serial load chain.
+    inspect_prod >> dbt_test_voter_gate >> [unload, provision]
     [unload, provision] >> create_schema
     create_schema >> copy >> build_indexes >> resize >> validate
 
