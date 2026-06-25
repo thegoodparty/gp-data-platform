@@ -15,80 +15,10 @@
   North Logan) and office types (council vs school board) apart.
 #}
 {% macro office_match_keys(col) %}
-    array_sort(
-        filter(
-            array_except(
-                split(regexp_replace(lower(trim({{ col }})), '[^a-z0-9]+', ' '), ' '),
-                array(
-                    'city',
-                    'town',
-                    'township',
-                    'twp',
-                    'county',
-                    'council',
-                    'councilor',
-                    'councillor',
-                    'alderman',
-                    'selectman',
-                    'board',
-                    'education',
-                    'school',
-                    'schools',
-                    'district',
-                    'commission',
-                    'commissioner',
-                    'trustee',
-                    'trustees',
-                    'mayor',
-                    'clerk',
-                    'treasurer',
-                    'supervisor',
-                    'member',
-                    'members',
-                    'committee',
-                    'municipal',
-                    'public',
-                    'authority',
-                    'at',
-                    'large',
-                    'seat',
-                    'ward',
-                    'post',
-                    'place',
-                    'group',
-                    'division',
-                    'zone',
-                    'precinct',
-                    'of',
-                    'the',
-                    'village',
-                    'borough',
-                    'local',
-                    'high',
-                    'area',
-                    'unified',
-                    'community',
-                    'consolidated',
-                    'regional',
-                    'position',
-                    'and',
-                    'for',
-                    'i',
-                    'ii',
-                    'iii',
-                    'iv',
-                    'v',
-                    'vi',
-                    'vii',
-                    'viii',
-                    'ix',
-                    'x',
-                    ''
-                )
-            ),
-            x -> x rlike '^[a-z0-9]'
-        )
-    ) as locality_key,
+    -- locality_key: distinctive place tokens, sorted. Reuses office_name_tokens
+    -- as the single tokenizer/stop-word list (shared with the candidacy and
+    -- elected_official matchers), rather than maintaining a second copy here.
+    array_sort({{ office_name_tokens(col) }}) as locality_key,
     case
         when lower({{ col }}) rlike 'school|education'
         then 'school'

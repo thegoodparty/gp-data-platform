@@ -15,12 +15,13 @@ with
             -- Councilor / Councillor / Council all classify as council
             ('Beverly Councilor At Large', 'beverly', 'council', 'atlarge'),
             ('Beverly City Council At-Large', 'beverly', 'council', 'atlarge'),
-            -- Numbered seat beats the at-large fallback. The seat digit also
-            -- stays in locality_key (digit tokens are kept), sorted first.
-            ('Acworth City Council At-large Post 4', '4 acworth', 'council', '4'),
+            -- Numbered seat beats the at-large fallback. The seat number is a
+            -- pure-digit token, which the shared tokenizer drops from locality;
+            -- seat_designator carries it.
+            ('Acworth City Council At-large Post 4', 'acworth', 'council', '4'),
             -- Keyword + number, and trailing-number fallback
-            ('Hondo City Council Ward 3', '3 hondo', 'council', '3'),
-            ('Topeka City Council 7', '7 topeka', 'council', '7'),
+            ('Hondo City Council Ward 3', 'hondo', 'council', '3'),
+            ('Topeka City Council 7', 'topeka', 'council', '7'),
             -- Village/town board -> legislative (council) category
             (
                 'Carpentersville Village Board',
