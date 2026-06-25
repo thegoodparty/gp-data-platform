@@ -33,8 +33,8 @@ def _connect(cfg: LoaderConfig, param_name: str, *, autocommit: bool) -> Iterato
     """Open a psycopg connection from an SSM connection string, via the bastion if configured."""
     conninfo = get_ssm_parameter(cfg, param_name)
     parts = conninfo_to_dict(conninfo)
-    target_host = str(parts.get("host", ""))
-    target_port = int(parts.get("port", 5432))
+    target_host = str(parts.get("host") or "")
+    target_port = int(parts.get("port") or 5432)
     with open_tunnel(cfg, target_host, target_port) as (host, port):
         tunneled = make_conninfo(conninfo, host=host, port=str(port))
         with psycopg.connect(tunneled, autocommit=autocommit, connect_timeout=30) as conn:

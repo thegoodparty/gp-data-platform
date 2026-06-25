@@ -27,7 +27,7 @@ if not hasattr(paramiko, "DSSKey"):
         def from_private_key_file(*a: object, **kw: object) -> None:
             raise paramiko.SSHException("DSA not supported")
 
-    paramiko.DSSKey = _DSSKeyStub  # type: ignore[attr-defined]
+    paramiko.DSSKey = _DSSKeyStub  # ty: ignore[unresolved-attribute]
 
 
 def _load_key(pem: str) -> paramiko.PKey:
