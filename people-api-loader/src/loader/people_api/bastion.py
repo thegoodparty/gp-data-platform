@@ -34,11 +34,11 @@ if not hasattr(paramiko, "DSSKey"):
     paramiko.DSSKey = _DSSKeyStub  # ty: ignore[unresolved-attribute]
 
 
-def _load_key(pem: str) -> paramiko.PKey:
-    """Load a private key from PEM material, trying each supported key type."""
+def _load_key(pem: str, passphrase: str = "") -> paramiko.PKey:
+    """Load a private key from PEM material (optionally passphrase-protected), trying each type."""
     for cls in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
         try:
-            return cls.from_private_key(StringIO(pem))  # type: ignore[attr-defined]
+            return cls.from_private_key(StringIO(pem), password=passphrase or None)  # type: ignore[attr-defined]
         except (paramiko.SSHException, ValueError):
             continue
     raise ValueError("Could not load bastion SSH key with any supported key type")
@@ -58,7 +58,7 @@ def open_tunnel(cfg: LoaderConfig, target_host: str, target_port: int) -> Iterat
     tunnel = SSHTunnelForwarder(
         (cfg.bastion_host, cfg.bastion_port),
         ssh_username=cfg.bastion_user,
-        ssh_pkey=_load_key(cfg.bastion_private_key),
+        ssh_pkey=_load_key(cfg.bastion_private_key, cfg.bastion_private_key_passphrase),
         remote_bind_address=(target_host, target_port),
         set_keepalive=30,
     )

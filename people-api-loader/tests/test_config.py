@@ -73,12 +73,14 @@ def test_bastion_defaults_empty(monkeypatch: pytest.MonkeyPatch) -> None:
         "LOADER_BASTION_HOST",
         "LOADER_BASTION_USER",
         "LOADER_BASTION_PRIVATE_KEY",
+        "LOADER_BASTION_KEY_PASSPHRASE",
         "LOADER_BASTION_PORT",
     ):
         monkeypatch.delenv(var, raising=False)
     cfg = LoaderConfig.from_env()
     assert cfg.bastion_host == ""
     assert cfg.bastion_port == 22
+    assert cfg.bastion_private_key_passphrase == ""
     assert cfg.bastion_enabled is False
 
 

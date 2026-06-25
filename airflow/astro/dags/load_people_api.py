@@ -34,6 +34,7 @@ _LOADER_ENV: dict[str, str] = {
     "LOADER_BASTION_PORT": "{{ conn.gp_bastion_host.port or 22 }}",
     "LOADER_BASTION_USER": "{{ conn.gp_bastion_host.login }}",
     "LOADER_BASTION_PRIVATE_KEY": "{{ conn.gp_bastion_host.extra_dejson.get('private_key', '') }}",
+    "LOADER_BASTION_KEY_PASSPHRASE": "{{ conn.gp_bastion_host.extra_dejson.get('private_key_passphrase', '') }}",
 }
 
 

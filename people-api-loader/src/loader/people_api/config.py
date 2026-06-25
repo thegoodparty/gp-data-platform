@@ -107,6 +107,7 @@ class LoaderConfig(BaseLoaderConfig):
     bastion_port: int
     bastion_user: str
     bastion_private_key: str
+    bastion_private_key_passphrase: str
 
     # New cluster defaults
     engine_version: str
@@ -165,6 +166,7 @@ class LoaderConfig(BaseLoaderConfig):
             bastion_port=int(os.environ.get("LOADER_BASTION_PORT", "22")),
             bastion_user=os.environ.get("LOADER_BASTION_USER", ""),
             bastion_private_key=os.environ.get("LOADER_BASTION_PRIVATE_KEY", ""),
+            bastion_private_key_passphrase=os.environ.get("LOADER_BASTION_KEY_PASSPHRASE", ""),
             engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),

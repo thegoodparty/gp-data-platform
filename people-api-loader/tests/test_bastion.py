@@ -10,7 +10,13 @@ from loader.people_api.config import LoaderConfig
 
 
 def _cfg(**kw) -> LoaderConfig:
-    fields = {"bastion_host": "", "bastion_port": 22, "bastion_user": "", "bastion_private_key": ""}
+    fields = {
+        "bastion_host": "",
+        "bastion_port": 22,
+        "bastion_user": "",
+        "bastion_private_key": "",
+        "bastion_private_key_passphrase": "",
+    }
     fields.update(kw)
     ns = SimpleNamespace(**fields)
     ns.bastion_enabled = bool(ns.bastion_host)  # mirror the real LoaderConfig.bastion_enabled property
@@ -39,7 +45,7 @@ def test_bastion_yields_localhost(monkeypatch):
             started["stopped"] = True
 
     monkeypatch.setattr(bastion, "SSHTunnelForwarder", _FakeTunnel)
-    monkeypatch.setattr(bastion, "_load_key", lambda pem: "PKEY")
+    monkeypatch.setattr(bastion, "_load_key", lambda pem, passphrase="": "PKEY")
 
     cfg = _cfg(bastion_host="b", bastion_user="u", bastion_private_key="PEM")
     with bastion.open_tunnel(cfg, "rds.internal", 5432) as (host, port):
