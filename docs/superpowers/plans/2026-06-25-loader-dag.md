@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create the Astro/Airflow DAG `load_people_api_v2.py` that runs the People-API voter refresh by invoking the loader CLI step-by-step on the Astro worker, gated by a Cosmos dbt test.
+**Goal:** Create the Astro/Airflow DAG `load_people_api.py` that runs the People-API voter refresh by invoking the loader CLI step-by-step on the Astro worker, gated by a Cosmos dbt test.
 
 **Architecture:** A thin sequencer. The loader is installed on the Astro worker image (pip-from-git), and each pipeline step is one `BashOperator` running `loader <step> --date {{ ds_nodash }}`. Parallelism stays inside the loader (TDD 4.5). State between steps flows through the loader's own S3 manifests (no Airflow xcom). Postgres is reached through `gp_bastion_host` over SSH — the DAG bridges that Airflow connection into the loader's `LOADER_BASTION_*` env vars (the SSH-tunnel support landed in Plan A). The `dbt test` gate is a Cosmos `DbtTestLocalOperator` scoped to the voter models.
 
@@ -50,14 +50,14 @@ git commit -m "feat(airflow): add people-api-loader + cosmos/dbt deps to Astro i
 ### Task 2: Loader-env helper + DAG skeleton (parse-tested)
 
 **Files:**
-- Create: `airflow/astro/dags/load_people_api_v2.py`
-- Create: `airflow/astro/tests/dags/test_load_people_api_v2.py`
+- Create: `airflow/astro/dags/load_people_api.py`
+- Create: `airflow/astro/tests/dags/test_load_people_api.py`
 
 The helper bridges the `gp_bastion_host` Airflow connection into the loader's `LOADER_BASTION_*` env vars (Plan A reads these), and carries the loader's infra config from Airflow Variables. Steps that don't touch Postgres still receive the env harmlessly (the loader only opens the tunnel when it connects).
 
 - [ ] **Step 1: Write the failing DAG-parse test**
 
-Create `airflow/astro/tests/dags/test_load_people_api_v2.py`:
+Create `airflow/astro/tests/dags/test_load_people_api.py`:
 
 ```python
 """The loader DAG parses and exposes the expected steps in order."""
@@ -70,7 +70,7 @@ from airflow.models import DagBag
 def _dag():
     bag = DagBag(dag_folder="dags", include_examples=False)
     assert bag.import_errors == {}, bag.import_errors
-    dag = bag.get_dag("load_people_api_v2")
+    dag = bag.get_dag("load_people_api")
     assert dag is not None
     return dag
 
@@ -94,12 +94,12 @@ def test_step_sequence():
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api_v2.py -v`
-Expected: FAIL — `load_people_api_v2` not found (DAG doesn't exist yet).
+Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api.py -v`
+Expected: FAIL — `load_people_api` not found (DAG doesn't exist yet).
 
 - [ ] **Step 3: Create the DAG with the env helper and a single placeholder task**
 
-Create `airflow/astro/dags/load_people_api_v2.py`:
+Create `airflow/astro/dags/load_people_api.py`:
 
 ```python
 """People-API voter refresh (DATA-1913).
@@ -159,29 +159,29 @@ def _step(task_id: str, subcommand: str) -> BashOperator:
 
 
 @dag(
-    dag_id="load_people_api_v2",
+    dag_id="load_people_api",
     schedule="@monthly",
     start_date=pendulum_datetime(2026, 6, 1, tz="UTC"),
     catchup=False,
     default_args={"retries": 1, "retry_delay": duration(minutes=5)},
     tags=["people-api", "loader", "DATA-1640"],
 )
-def load_people_api_v2():
+def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
 
 
-load_people_api_v2()
+load_people_api()
 ```
 
 - [ ] **Step 4: Run the test to verify import passes (sequence test still fails)**
 
-Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api_v2.py::test_dag_imports_clean -v`
+Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api.py::test_dag_imports_clean -v`
 Expected: PASS. (`test_step_sequence` still fails — only one task so far.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add airflow/astro/dags/load_people_api_v2.py airflow/astro/tests/dags/test_load_people_api_v2.py
+git add airflow/astro/dags/load_people_api.py airflow/astro/tests/dags/test_load_people_api.py
 git commit -m "feat(airflow): loader DAG skeleton + bastion-env helper"
 ```
 
@@ -190,14 +190,14 @@ git commit -m "feat(airflow): loader DAG skeleton + bastion-env helper"
 ### Task 3: Wire the full BashOperator step sequence
 
 **Files:**
-- Modify: `airflow/astro/dags/load_people_api_v2.py`
+- Modify: `airflow/astro/dags/load_people_api.py`
 
 - [ ] **Step 1: Add the remaining steps and dependencies**
 
-Replace the body of `load_people_api_v2()` (keep the gate slot empty for Task 4 — it is added there):
+Replace the body of `load_people_api()` (keep the gate slot empty for Task 4 — it is added there):
 
 ```python
-def load_people_api_v2():
+def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
     unload = _step("unload", "unload")
     provision = _step("provision", "provision")
@@ -217,13 +217,13 @@ def load_people_api_v2():
 
 - [ ] **Step 2: Run the sequence test (the gate assertion still fails — added in Task 4)**
 
-Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api_v2.py::test_dag_imports_clean -v`
+Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api.py::test_dag_imports_clean -v`
 Expected: PASS (imports clean with all 8 loader steps).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add airflow/astro/dags/load_people_api_v2.py
+git add airflow/astro/dags/load_people_api.py
 git commit -m "feat(airflow): sequence the loader steps in the DAG"
 ```
 
@@ -232,7 +232,7 @@ git commit -m "feat(airflow): sequence the loader steps in the DAG"
 ### Task 4: dbt test gate via Cosmos
 
 **Files:**
-- Modify: `airflow/astro/dags/load_people_api_v2.py`
+- Modify: `airflow/astro/dags/load_people_api.py`
 
 The DATA-1906 gate runs dbt tests on the voter models before `unload`. Use Cosmos's
 `DbtTestLocalOperator` (test-only, no model rebuild) scoped to the voter mart.
@@ -247,7 +247,7 @@ mapping before writing config:
 
 - [ ] **Step 2: Add the Cosmos gate (token-auth form shown; adjust per Step 1)**
 
-Add near the top of `load_people_api_v2.py`:
+Add near the top of `load_people_api.py`:
 
 ```python
 from cosmos import ProfileConfig
@@ -273,7 +273,7 @@ def _voter_gate_profile() -> ProfileConfig:
     )
 ```
 
-In `load_people_api_v2()`, add the gate task and rewire `inspect_prod >> gate >> [unload, provision]`:
+In `load_people_api()`, add the gate task and rewire `inspect_prod >> gate >> [unload, provision]`:
 
 ```python
     dbt_test_voter_gate = DbtTestLocalOperator(
@@ -296,13 +296,13 @@ Confirm `airflow/astro/Dockerfile` copies the dbt project to `_DBT_PROJECT_DIR` 
 
 - [ ] **Step 4: Run the full DAG test**
 
-Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api_v2.py -v`
+Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api.py -v`
 Expected: PASS — imports clean, all 9 tasks present, gate upstream of `unload`, `resize >> validate`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add airflow/astro/dags/load_people_api_v2.py
+git add airflow/astro/dags/load_people_api.py
 git commit -m "feat(airflow): add Cosmos dbt-test voter gate before unload"
 ```
 
@@ -314,12 +314,12 @@ git commit -m "feat(airflow): add Cosmos dbt-test voter gate before unload"
 
 - [ ] **Step 1: Parse + render the DAG**
 
-Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api_v2.py -v` and, if available, `astro dev parse`.
+Run: `cd airflow/astro && uv run pytest tests/dags/test_load_people_api.py -v` and, if available, `astro dev parse`.
 Expected: all tests pass; no DAG import errors.
 
 - [ ] **Step 2: Lint**
 
-Run: `cd airflow/astro && uv run ruff check dags/load_people_api_v2.py tests/dags/test_load_people_api_v2.py`
+Run: `cd airflow/astro && uv run ruff check dags/load_people_api.py tests/dags/test_load_people_api.py`
 Expected: clean (fix and re-run if not).
 
 - [ ] **Step 3: Commit any fixes**
