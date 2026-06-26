@@ -88,16 +88,26 @@ sources:
           results have not yet been reported. One row per ddhq_race_id.
       - name: gp_api_db_annotation
         description: raw data load from gp_api_db postgres db from table `annotation`
+      # EO annotation/feedback tables are written sporadically and can go >31d
+      # without a new row, so freshness is disabled to stop them going STALE.
       - name: gp_api_db_annotation_bug_report
         description: raw data load from gp_api_db postgres db from table `annotation_bug_report`
+        config:
+          freshness: null
       - name: gp_api_db_annotation_note
         description: raw data load from gp_api_db postgres db from table `annotation_note`
+        config:
+          freshness: null
       - name: gp_api_db_annotation_note_attachment
         description: raw data load from gp_api_db postgres db from table `annotation_note_attachment`
+        config:
+          freshness: null
       - name: gp_api_db_annotation_review
         description: raw data load from gp_api_db postgres db from table `annotation_review`
       - name: gp_api_db_artifact_feedback
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
+        config:
+          freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_chat_conversation
