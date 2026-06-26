@@ -58,7 +58,8 @@ _ALL_DAGS = get_dags()
 # means real Airflow (before the sibling airflow stub) and no metastore dependency.
 _LOADER_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "load_people_api.py")
 with suppress_logging("airflow"):
-    _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE, include_examples=False).get_dag("load_people_api")
+    # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
+    _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE, include_examples=False).dags.get("load_people_api")
 
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
