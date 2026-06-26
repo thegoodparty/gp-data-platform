@@ -518,17 +518,31 @@ models:
 
       - name: candidacy_result
         description: >
-          Overall outcome of the candidacy, rolled up across stages via
-          per-provider precedence (DDHQ uses general-runoff > general >
-          primary-runoff > primary fallback). When the general stage has no
-          result yet, this column may fall back to the primary outcome, so a
-          value of 'Won' or 'Lost' here does NOT necessarily mean the candidate
-          won or lost their general election. For stage-aware analysis, use
-          `latest_stage_reached` and `latest_stage_result` instead.
+          Stage-aware overall outcome of the candidacy, taken from the deepest
+          DECIDED stage and qualified so a non-terminal result is never mistaken
+          for a seat result. A result decided at the race's FINAL stage (the
+          deepest stage that exists for the race in `election_stage`) stays bare
+          ('Won' / 'Lost' = won/lost the seat); a result decided at an earlier
+          stage is suffixed (e.g. 'Won Primary', 'Lost Primary', 'Won Primary
+          Runoff'). Because the final stage is read from the race structure, a
+          primary win in a single-stage / decisive race (no general exists) is a
+          seat win and stays bare 'Won'. When the candidacy has advanced to a
+          runoff that has not been called yet, the value is 'Runoff' rather than a
+          stale Won/Lost from the prior stage. Falls back to the provider-rolled
+          outcome only when no in-context candidacy_stage row exists (e.g. the
+          2025 HubSpot archive). NULL when a stage has been reached but nothing
+          has been decided yet. KNOWN GAP: a jurisdiction where a majority at the
+          primary wins the seat outright while a general is still scheduled is
+          treated as 'Won Primary', not 'Won' (DATA-2042 follow-up). For the
+          plain "will they serve?" question use `is_elected`; for "did they win
+          the general?" use `general_election_result`; for raw funnel position use
+          `latest_stage_reached` / `latest_stage_result`.
           Values:
-          - Won: Candidate won at the latest reached stage
-          - Lost: Candidate lost at the latest reached stage
-          - Runoff: Election resulted in a runoff
+          - Won / Lost: won/lost the race's final stage (the seat)
+          - Won Primary / Lost Primary: won/lost the primary; seat not yet decided
+          - Won Primary Runoff / Lost Primary Runoff: won/lost a primary runoff
+          - Runoff Primary: primary resulted in a (primary) runoff
+          - Runoff: in a general runoff (or its outcome not yet called)
           - Withdrew: Candidate withdrew from the race
           - Not on Ballot: Candidate was not on the ballot
           - Cannot Determine: Result could not be determined
@@ -540,12 +554,34 @@ models:
                     "Won",
                     "Lost",
                     "Runoff",
+                    "Won Primary",
+                    "Lost Primary",
+                    "Runoff Primary",
+                    "Won Primary Runoff",
+                    "Lost Primary Runoff",
                     "Withdrew",
                     "Not on Ballot",
                     "Cannot Determine",
                   ]
               config:
                 where: "candidacy_result is not null"
+
+      - name: is_elected
+        description: >
+          Whether the candidacy won the seat and will therefore serve. TRUE only
+          on a confirmed win at the race's final stage (candidacy_result =
+          'Won', including decisive single-stage primaries). FALSE on a terminal
+          non-win (Lost, Lost Primary, Lost Primary Runoff, Withdrew, Not on
+          Ballot). NULL while the outcome is still undecided — advanced past a
+          primary (Won Primary / Won Primary Runoff), in a runoff (Runoff /
+          Runoff Primary), or no result captured yet. Shares the same KNOWN GAP
+          as candidacy_result for majority-at-primary jurisdictions.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+              config:
+                where: "is_elected is not null"
 
       - name: general_election_result
         description: >
@@ -555,7 +591,8 @@ models:
           'general runoff', else null. Use this column to answer "did the
           candidate win their general?" — primary-only outcomes do not
           contaminate the value. Null when no general-cycle result has been
-          captured (regardless of whether the candidate ran a primary).
+          captured, including while a deeper general-cycle stage has been
+          reached but not yet decided (e.g. a general runoff awaiting a call).
         data_tests:
           - accepted_values:
               arguments:
@@ -570,13 +607,16 @@ models:
 
       - name: latest_stage_reached
         description: >
-          The deepest election stage for which a result has been captured in
-          `candidacy_stage`. Funnel order: primary < primary runoff < general <
-          general runoff. Paired with `latest_stage_result` (both columns are
-          sourced from the same `candidacy_stage` row). Null when no stage has
-          a captured result yet. Use `general_election_result` for the common
-          "did they win the general?" question; use this pair when funnel
-          position itself matters.
+          The deepest election stage the candidacy has REACHED in
+          `candidacy_stage` — including a stage that has a row but no result yet
+          (an upcoming general, or a runoff not yet called). Funnel order:
+          primary < primary runoff < general < general runoff. Paired with
+          `latest_stage_result` (both columns are sourced from the same
+          `candidacy_stage` row), so this can be non-null while
+          `latest_stage_result` is null when the reached stage is undecided.
+          Null only when no in-context stage row exists. Use
+          `general_election_result` for the common "did they win the general?"
+          question; use this pair when funnel position itself matters.
         data_tests:
           - accepted_values:
               arguments:
@@ -595,7 +635,9 @@ models:
       - name: latest_stage_result
         description: >
           The captured result at `latest_stage_reached`, sourced from the same
-          `candidacy_stage` row. Null when no stage has a captured result.
+          `candidacy_stage` row. Null when no stage row exists, or when the
+          deepest reached stage has not been decided yet (a reached-but-pending
+          stage).
         data_tests:
           - accepted_values:
               arguments:
