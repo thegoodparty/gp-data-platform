@@ -571,12 +571,15 @@ models:
         description: >
           Whether the candidacy won the seat and will therefore serve. TRUE only
           on a confirmed win at the race's final stage (candidacy_result =
-          'Won', including decisive single-stage primaries). FALSE on a terminal
+          'Won', including decisive single-stage primaries). FALSE on a known
           non-win (Lost, Lost Primary, Lost Primary Runoff, Withdrew, Not on
-          Ballot). NULL while the outcome is still undecided — advanced past a
-          primary (Won Primary / Won Primary Runoff), in a runoff (Runoff /
-          Runoff Primary), or no result captured yet. Shares the same KNOWN GAP
-          as candidacy_result for majority-at-primary jurisdictions.
+          Ballot). NULL when the outcome is not known to be a win or a loss:
+          still undecided — advanced past a primary (Won Primary / Won Primary
+          Runoff), in a runoff (Runoff / Runoff Primary), no result captured yet
+          — or indeterminate ('Cannot Determine'). NULL is deliberately not
+          treated as a loss, so a 'Cannot Determine' candidacy is never silently
+          counted under `is_elected = false`. Shares the same KNOWN GAP as
+          candidacy_result for majority-at-primary jurisdictions.
         data_tests:
           - accepted_values:
               arguments:

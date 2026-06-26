@@ -341,7 +341,12 @@ with
             gp_election_id,
             max({{ election_stage_funnel_rank("stage_type") }}) as race_max_stage_rank
         from {{ ref("election_stage") }}
-        where gp_election_id is not null
+        -- Exclude result-less stage placeholders: a NULL stage_type ranks 0 via
+        -- the macro's else arm, which would make race_max_stage_rank 0 for an
+        -- all-placeholder race and spuriously promote any decided stage to a bare
+        -- seat result. Mirrors the `election_stage is not null` guard in
+        -- candidacy_stages_in_context.
+        where gp_election_id is not null and stage_type is not null
         group by gp_election_id
     ),
 
@@ -494,10 +499,14 @@ with
 select
     *,
     -- Did the candidacy win the seat (and will therefore serve)? TRUE only on a
-    -- confirmed win at the race's final stage; FALSE on a terminal non-win; NULL
-    -- while the outcome is still undecided (advanced past a primary, in a runoff,
-    -- or no result captured yet). Derived from the final candidacy_result, which
-    -- is unambiguous here because final_candidacy exposes no rival column.
+    -- confirmed win at the race's final stage; FALSE on a known non-win; NULL
+    -- when the outcome is not known to be a win or a loss — still undecided
+    -- (advanced past a primary, in a runoff, no result captured yet) OR
+    -- indeterminate ('Cannot Determine'). NULL deliberately is not "lost": we
+    -- only assert FALSE when a candidate is known not to have won the seat, so a
+    -- 'Cannot Determine' is not silently counted as a loss. Derived from the
+    -- final candidacy_result, which is unambiguous here because final_candidacy
+    -- exposes no rival column.
     case
         when candidacy_result = 'Won'
         then true
