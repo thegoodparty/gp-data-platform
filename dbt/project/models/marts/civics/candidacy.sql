@@ -388,14 +388,19 @@ with
             case
                 when latest.latest_stage_reached is null
                 then deduplicated.candidacy_result
+                -- Advanced to an uncalled runoff: report the runoff rather than a
+                -- stale prior-stage result. A pending primary runoff keeps its
+                -- cycle suffix ('Runoff Primary'), matching the decided primary
+                -- path; a pending general runoff reads bare 'Runoff'.
                 when
                     latest.latest_stage_result is null
-                    and latest.latest_stage_reached in (
-                        'general runoff',
-                        'general special runoff',
-                        'primary runoff',
-                        'primary special runoff'
-                    )
+                    and latest.latest_stage_reached
+                    in ('primary runoff', 'primary special runoff')
+                then 'Runoff Primary'
+                when
+                    latest.latest_stage_result is null
+                    and latest.latest_stage_reached
+                    in ('general runoff', 'general special runoff')
                 then 'Runoff'
                 -- Decided at (or beyond) the race's deepest known stage: seat outcome.
                 -- race_max_stage_rank is NULL when the race structure is unknown

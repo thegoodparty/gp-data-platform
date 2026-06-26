@@ -56,12 +56,14 @@ with
         group by user_id
     ),
 
-    -- General-election winners (fallback signal if "winner" needs to mean
-    -- literal election winners rather than Win-org users).
-    user_won_general as (
+    -- Seat winners (fallback signal if "winner" needs to mean literal election
+    -- winners rather than Win-org users). Uses the canonical `is_elected` flag
+    -- from civics.candidacy so "won" means won the seat at the race's final
+    -- stage — including decisive single-stage primaries, which a
+    -- general_election_result check would miss.
+    user_won as (
         select
-            cd.prod_db_user_id as gp_user_id,
-            max(cy.general_election_result = 'Won') as has_won_general_election
+            cd.prod_db_user_id as gp_user_id, bool_or(cy.is_elected) as has_won_election
         from {{ ref("candidate") }} cd
         join {{ ref("candidacy") }} cy on cd.gp_candidate_id = cy.gp_candidate_id
         where cd.prod_db_user_id is not null
@@ -212,7 +214,7 @@ with
             coalesce(uo.has_win_org, false) as has_win_org,
             coalesce(uo.has_serve_org, false) as has_serve_org,
             -- "Win or Serve product user" — NOT literal election winner; see
-            -- has_won_general_election below.
+            -- has_won_election below.
             (
                 coalesce(uo.has_win_org, false) or coalesce(uo.has_serve_org, false)
             ) as is_winner_or_eo,
@@ -250,8 +252,8 @@ with
             st.contact_type_raw,
             st.candidate_type,
 
-            -- General-election-winner sub-segment
-            coalesce(ug.has_won_general_election, false) as has_won_general_election,
+            -- Seat-winner sub-segment (won the seat at the race's final stage)
+            coalesce(uw.has_won_election, false) as has_won_election,
 
             -- Serve funnel state (true transition rates — Serve workflow enabled)
             st.serve_lifecycle_lead_entered_at,
@@ -335,7 +337,7 @@ with
             st.updated_at
         from sales_touched st
         left join user_org_types uo on st.gp_user_id = uo.gp_user_id
-        left join user_won_general ug on st.gp_user_id = ug.gp_user_id
+        left join user_won uw on st.gp_user_id = uw.gp_user_id
     )
 
 -- One row per HubSpot contact, BUT collapsed to one row per gp_user_id

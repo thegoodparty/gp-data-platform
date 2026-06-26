@@ -541,7 +541,8 @@ models:
           - Won / Lost: won/lost the race's final stage (the seat)
           - Won Primary / Lost Primary: won/lost the primary; seat not yet decided
           - Won Primary Runoff / Lost Primary Runoff: won/lost a primary runoff
-          - Runoff Primary: primary resulted in a (primary) runoff
+          - Runoff Primary: in a primary runoff (decided as a runoff, or reached
+            but not yet called)
           - Runoff: in a general runoff (or its outcome not yet called)
           - Withdrew: Candidate withdrew from the race
           - Not on Ballot: Candidate was not on the ballot

@@ -1367,7 +1367,12 @@ models:
         data_tests: [not_null]
       - name: win_activated_user_hs_flag
         data_tests: [not_null]
-      - name: has_won_general_election
+      - name: has_won_election
+        description: >
+          Whether the user won the seat in any of their candidacies (won the
+          race's final stage, including decisive single-stage primaries).
+          Sourced from civics.candidacy.is_elected. Renamed from
+          has_won_general_election, which only counted general-cycle wins.
         data_tests: [not_null]
       - name: gp_user_id
         description: Resolved product-DB user_id via candidate.prod_db_user_id.
