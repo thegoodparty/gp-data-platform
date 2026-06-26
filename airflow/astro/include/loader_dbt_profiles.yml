@@ -1,0 +1,21 @@
+# dbt profile for the load_people_api Cosmos gate (DATA-1913).
+#
+# Authenticates with the people-api-loader service principal via OAuth M2M, reading the SAME
+# env vars as the loader's databricks-sdk (DATABRICKS_HOST / DATABRICKS_CLIENT_ID /
+# DATABRICKS_CLIENT_SECRET) so a single OAuth credential is used across every process. dbt
+# resolves env_var() at task runtime. The profile name `default` matches dbt_project.yml's
+# `profile:` key. Ships to /usr/local/airflow/include/ in the Astro image.
+default:
+  target: loader
+  outputs:
+    loader:
+      type: databricks
+      # dbt-databricks wants the bare host (no scheme); DATABRICKS_HOST is the full URL.
+      host: "{{ env_var('DATABRICKS_HOST') | replace('https://', '') | replace('http://', '') }}"
+      http_path: "/sql/1.0/warehouses/{{ env_var('LOADER_DATABRICKS_WAREHOUSE_ID') }}"
+      auth_type: oauth
+      client_id: "{{ env_var('DATABRICKS_CLIENT_ID') }}"
+      client_secret: "{{ env_var('DATABRICKS_CLIENT_SECRET') }}"
+      catalog: "{{ env_var('LOADER_DBT_CATALOG', 'goodparty_data_catalog') }}"
+      schema: "{{ env_var('LOADER_DBT_SCHEMA', 'dbt') }}"
+      threads: 4

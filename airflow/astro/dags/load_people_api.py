@@ -18,7 +18,6 @@ from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import dag
 from cosmos import ProfileConfig
 from cosmos.operators.local import DbtTestLocalOperator
-from cosmos.profiles import DatabricksOauthProfileMapping
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -47,29 +46,23 @@ def _step(task_id: str, subcommand: str) -> BashOperator:
     )
 
 
-# dbt project shipped in the Astro image; override via env if the build places it elsewhere.
+# dbt project + profile shipped in the Astro image; override via env if placed elsewhere.
 _DBT_PROJECT_DIR = os.getenv("LOADER_DBT_PROJECT_DIR", "/usr/local/airflow/dbt/project")
+_DBT_PROFILES_YML = os.getenv("LOADER_DBT_PROFILES_YML", "/usr/local/airflow/include/loader_dbt_profiles.yml")
 
 
 def _voter_gate_profile() -> ProfileConfig:
-    """dbt profile for the voter gate, built from the `databricks` (OAuth M2M) connection.
+    """dbt profile for the voter gate.
 
-    host / client_id / client_secret come from the connection; schema and http_path (the SQL
-    warehouse) come from deployment env vars, read at parse time because the ProfileConfig is
-    constructed during DAG parsing (Airflow Variables would require the metastore).
+    Uses a committed profiles.yml that authenticates via OAuth M2M from the same env vars as the
+    loader's databricks-sdk (DATABRICKS_HOST / DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET) —
+    one OAuth credential (the people-api-loader SP) across every process, no Airflow connection.
+    dbt resolves the env vars (host, warehouse http_path, schema) at task runtime.
     """
-    warehouse_id = os.getenv("LOADER_DATABRICKS_WAREHOUSE_ID", "")
     return ProfileConfig(
         profile_name="default",
         target_name="loader",
-        profile_mapping=DatabricksOauthProfileMapping(
-            # databricks (prod) vs databricks_dev — selected per deployment; defaults to prod.
-            conn_id=os.getenv("LOADER_DATABRICKS_CONN_ID", "databricks"),
-            profile_args={
-                "schema": os.getenv("LOADER_DBT_SCHEMA", "dbt"),
-                "http_path": f"/sql/1.0/warehouses/{warehouse_id}",
-            },
-        ),
+        profiles_yml_filepath=_DBT_PROFILES_YML,
     )
 
 
