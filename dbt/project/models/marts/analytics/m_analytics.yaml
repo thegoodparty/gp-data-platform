@@ -977,8 +977,8 @@ models:
         description: >
           Stage-aware overall result of the candidacy (passed through from
           civics.candidacy). Primary-cycle outcomes are suffixed (e.g. 'Won
-          Primary') so they are not mistaken for a general (seat) result; bare
-          'Won'/'Lost' mean won/lost the general. Values: Won, Lost, Runoff, Won
+          Primary') so they are not mistaken for a seat result; bare
+          'Won'/'Lost' mean won/lost the race's final stage (the seat). Values: Won, Lost, Runoff, Won
           Primary, Lost Primary, Runoff Primary, Won Primary Runoff, Lost Primary
           Runoff, Withdrew, Not on Ballot, Cannot Determine.
         data_tests:
@@ -1101,8 +1101,8 @@ models:
         description: >
           Stage-aware overall result of the candidacy (passed through from
           civics.candidacy). Primary-cycle outcomes are suffixed (e.g. 'Won
-          Primary') so they are not mistaken for a general (seat) result; bare
-          'Won'/'Lost' mean won/lost the general. Values: Won, Lost, Runoff, Won
+          Primary') so they are not mistaken for a seat result; bare
+          'Won'/'Lost' mean won/lost the race's final stage (the seat). Values: Won, Lost, Runoff, Won
           Primary, Lost Primary, Runoff Primary, Won Primary Runoff, Lost Primary
           Runoff, Withdrew, Not on Ballot, Cannot Determine.
         data_tests:

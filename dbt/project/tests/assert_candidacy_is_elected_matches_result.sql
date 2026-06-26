@@ -14,15 +14,17 @@ where
         and is_elected is not false
     )
     or (
-        (
-            candidacy_result is null
-            or candidacy_result in (
-                'Won Primary',
-                'Won Primary Runoff',
-                'Runoff',
-                'Runoff Primary',
-                'Cannot Determine'
-            )
+        -- Everything that is neither the TRUE value nor a FALSE value must be
+        -- NULL. Expressed as the complement of the two sets above (rather than
+        -- enumerating the undecided values) so a newly added candidacy_result
+        -- value can't silently slip through with a non-NULL is_elected.
+        coalesce(candidacy_result, '__null__') not in (
+            'Won',
+            'Lost',
+            'Lost Primary',
+            'Lost Primary Runoff',
+            'Withdrew',
+            'Not on Ballot'
         )
         and is_elected is not null
     )

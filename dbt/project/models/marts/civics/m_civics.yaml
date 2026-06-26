@@ -580,8 +580,6 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
-              config:
-                where: "is_elected is not null"
 
       - name: general_election_result
         description: >
