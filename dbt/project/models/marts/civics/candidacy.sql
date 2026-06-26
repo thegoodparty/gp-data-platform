@@ -262,26 +262,7 @@ with
             cs.election_stage,
             cs.election_result,
             cs.updated_at,
-            case
-                cs.election_stage
-                when 'general runoff'
-                then 4
-                when 'general special runoff'
-                then 4
-                when 'general'
-                then 3
-                when 'general special'
-                then 3
-                when 'primary runoff'
-                then 2
-                when 'primary special runoff'
-                then 2
-                when 'primary'
-                then 1
-                when 'primary special'
-                then 1
-                else 0
-            end as stage_rank
+            {{ election_stage_funnel_rank("cs.election_stage") }} as stage_rank
         from {{ ref("candidacy_stage") }} as cs
         left join
             {{ ref("election_stage") }} as es
@@ -358,28 +339,7 @@ with
     election_final_stage as (
         select
             gp_election_id,
-            max(
-                case
-                    stage_type
-                    when 'general runoff'
-                    then 4
-                    when 'general special runoff'
-                    then 4
-                    when 'general'
-                    then 3
-                    when 'general special'
-                    then 3
-                    when 'primary runoff'
-                    then 2
-                    when 'primary special runoff'
-                    then 2
-                    when 'primary'
-                    then 1
-                    when 'primary special'
-                    then 1
-                    else 0
-                end
-            ) as race_max_stage_rank
+            max({{ election_stage_funnel_rank("stage_type") }}) as race_max_stage_rank
         from {{ ref("election_stage") }}
         where gp_election_id is not null
         group by gp_election_id
@@ -438,6 +398,12 @@ with
                     )
                 then 'Runoff'
                 -- Decided at (or beyond) the race's deepest known stage: seat outcome.
+                -- race_max_stage_rank is NULL when the race structure is unknown
+                -- (NULL gp_election_id, no election_final_stage match); the
+                -- comparison is then UNKNOWN and control falls through. That is
+                -- intentional: with no race structure we will not promote an
+                -- unconfirmed primary win to a bare seat 'Won'; it stays
+                -- 'Won Primary' (is_elected NULL) via the suffix branch below.
                 when decided.decided_stage_rank >= race.race_max_stage_rank
                 then decided.decided_result
                 -- Decided earlier than the race's final stage: not yet a seat outcome.
