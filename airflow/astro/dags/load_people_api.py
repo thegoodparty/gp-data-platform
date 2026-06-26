@@ -87,6 +87,7 @@ def load_people_api():
         project_dir=_DBT_PROJECT_DIR,
         profile_config=_voter_gate_profile(),
         select=["m_people_api__voter"],  # voter schema tests + the DATA-1906 singular gate test
+        install_deps=True,  # the dbt project has packages.yml; run `dbt deps` before testing
     )
     unload = _step("unload", "unload")
     provision = _step("provision", "provision")
