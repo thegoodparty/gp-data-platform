@@ -63,7 +63,8 @@ def _voter_gate_profile() -> ProfileConfig:
         profile_name="default",
         target_name="loader",
         profile_mapping=DatabricksOauthProfileMapping(
-            conn_id="databricks",
+            # databricks (prod) vs databricks_dev — selected per deployment; defaults to prod.
+            conn_id=os.getenv("LOADER_DATABRICKS_CONN_ID", "databricks"),
             profile_args={
                 "schema": os.getenv("LOADER_DBT_SCHEMA", "dbt"),
                 "http_path": f"/sql/1.0/warehouses/{warehouse_id}",
