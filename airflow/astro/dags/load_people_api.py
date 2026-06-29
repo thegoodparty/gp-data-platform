@@ -17,7 +17,7 @@ import os
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import dag
 from cosmos import ProfileConfig
-from cosmos.operators.local import DbtTestLocalOperator
+from cosmos.operators.virtualenv import DbtTestVirtualenvOperator
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
@@ -76,12 +76,16 @@ def _voter_gate_profile() -> ProfileConfig:
 )
 def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
-    dbt_test_voter_gate = DbtTestLocalOperator(
+    dbt_test_voter_gate = DbtTestVirtualenvOperator(
         task_id="dbt_test_voter_gate",
         project_dir=_DBT_PROJECT_DIR,
         profile_config=_voter_gate_profile(),
         select=["m_people_api__voter"],  # voter schema tests + the DATA-1906 singular gate test
         install_deps=True,  # the dbt project has packages.yml; run `dbt deps` before testing
+        # Run dbt in an isolated venv: dbt-databricks pins databricks-sdk <0.105, which conflicts
+        # with the image's databricks-sdk >=0.117. py_system_site_packages stays False (default)
+        # so the venv is fully isolated from the image's SDK.
+        py_requirements=["dbt-databricks>=1.8,<2.0"],
     )
     unload = _step("unload", "unload")
     provision = _step("provision", "provision")
