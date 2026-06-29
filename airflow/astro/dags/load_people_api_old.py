@@ -66,7 +66,7 @@ DISTRICT_STATS_COLUMNS = [
 
 
 @dag(
-    dag_id="load_people_api_old",  # deprecated district/stats loader; superseded by load_people_api (DATA-1913)
+    dag_id="load_people_api_old",  # deprecated district/stats loader; superseded by load_people_api
     start_date=datetime(2026, 3, 2),
     schedule="@daily",
     max_consecutive_failed_dag_runs=5,

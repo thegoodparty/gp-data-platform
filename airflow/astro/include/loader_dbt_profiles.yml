@@ -1,4 +1,4 @@
-# dbt profile for the load_people_api Cosmos gate (DATA-1913).
+# dbt profile for the load_people_api Cosmos gate.
 #
 # Authenticates with the people-api-loader service principal via OAuth M2M, reading the SAME
 # env vars as the loader's databricks-sdk (DATABRICKS_HOST / DATABRICKS_CLIENT_ID /

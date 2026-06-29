@@ -9,11 +9,11 @@ databricks-sdk>=0.117.0,<1.0.0
 psycopg2-binary>=2.9.12,<3.0.0
 sshtunnel>=0.4.0,<1.0.0
 
-# People-API loader CLI (DATA-1913) — installed from this monorepo's subdirectory so the
+# People-API loader CLI — installed from this monorepo's subdirectory so the
 # `loader` console script is on PATH for the load_people_api DAG's BashOperators.
 # Pin to a tag/SHA before merge; during PR dev this tracks the feature branch.
 people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@feat/DATA-1913-loader-dag#subdirectory=people-api-loader
-# dbt test gate via Cosmos (DATA-1906 voter gate). Only cosmos goes in the image; dbt-core +
+# dbt test gate via Cosmos (the voter gate). Only cosmos goes in the image; dbt-core +
 # dbt-databricks run in an isolated venv (Cosmos VIRTUALENV mode), because dbt-databricks pins
 # databricks-sdk <0.105 which conflicts with the image's databricks-sdk >=0.117.
 astronomer-cosmos>=1.7,<2.0

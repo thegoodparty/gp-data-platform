@@ -1,13 +1,12 @@
-"""People-API voter refresh (DATA-1913).
+"""People-API voter refresh.
 
 Thin sequencer over the loader CLI (installed on the worker image). Each step is a
 BashOperator running `loader <step> --date {{ ds_nodash }}`; parallelism lives in the
 loader, and inter-step state flows through the loader's S3 manifests (no Airflow xcom).
 
 Postgres is reached via the gp_bastion_host SSH tunnel — the loader's LOADER_BASTION_*
-env vars (Plan A) are populated from the gp_bastion_host connection. All LOADER_* env
-values are Jinja templates resolved at task runtime, so DAG parsing never touches the
-metastore.
+env vars are populated from the gp_bastion_host connection. All LOADER_* env values are
+Jinja templates resolved at task runtime, so DAG parsing never touches the metastore.
 """
 
 from __future__ import annotations
@@ -72,7 +71,7 @@ def _voter_gate_profile() -> ProfileConfig:
     start_date=pendulum_datetime(2026, 6, 1, tz="UTC"),
     catchup=False,
     default_args={"retries": 3, "retry_delay": duration(minutes=5)},
-    tags=["people-api", "loader", "DATA-1640"],
+    tags=["people-api", "loader"],
 )
 def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
@@ -80,7 +79,7 @@ def load_people_api():
         task_id="dbt_test_voter_gate",
         project_dir=_DBT_PROJECT_DIR,
         profile_config=_voter_gate_profile(),
-        select=["m_people_api__voter"],  # voter schema tests + the DATA-1906 singular gate test
+        select=["m_people_api__voter"],  # voter schema tests + the singular gate test
         install_deps=True,  # the dbt project has packages.yml; run `dbt deps` before testing
         # Run dbt in an isolated venv: dbt-databricks pins databricks-sdk <0.105, which conflicts
         # with the image's databricks-sdk >=0.117. py_system_site_packages stays False (default)

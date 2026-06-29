@@ -15,7 +15,7 @@ dependencies = [
     "databricks-sdk>=0.114.0,<1.0.0",
     "psycopg2-binary>=2.9.12,<3.0.0",
     "sshtunnel>=0.4.0,<1.0.0",
-    # dbt-in-Airflow gate for load_people_api_v2 (DATA-1913). Only the cosmos package is
+    # dbt-in-Airflow gate for load_people_api. Only the cosmos package is
     # needed to PARSE the DAG (the dbt-databricks adapter is invoked at task runtime and is
     # installed in the Astro image via astro/requirements.txt — it has no py3.14 stable
     # release yet, so it is not locked into this dev env).

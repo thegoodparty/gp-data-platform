@@ -44,7 +44,7 @@ DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
 DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
 DEFAULT_KMS_KEY_ARN = _PLACEHOLDER
 DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
-# Durable rds-s3-import role (created once by platform/DATA-1856, not per run). provision
+# Durable rds-s3-import role (created once by platform IaC, not per run). provision
 # references and attaches it via PassRole; it does not create it.
 DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
