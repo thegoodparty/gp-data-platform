@@ -472,7 +472,8 @@ models:
       metadata, one row per event_type. Renamed from int__amplitude_event_taxonomy
       (DATA-2005). Pattern-based so new event_types in known families classify
       automatically. Does not compute a staleness verdict; code-presence provenance
-      lives as a repo CSV (analytics/data/amplitude_event_provenance.csv, DATA-2014)
+      lives as a CSV in the omni repo
+      (packages/runbooks/scripts/python/instrumentation_data/amplitude_event_provenance.csv, DATA-2014)
       and the relevance / up-to-dateness judgment is made at check time by an agent
       or the health monitor reconciling that CSV with this table. family is
       authoritative for classification; govern_category is descriptive metadata only.
