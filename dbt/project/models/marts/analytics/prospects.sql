@@ -57,13 +57,30 @@ with
     ),
 
     -- Seat winners (fallback signal if "winner" needs to mean literal election
-    -- winners rather than Win-org users). Uses the canonical `is_elected` flag
-    -- from civics.candidacy so "won" means won the seat at the race's final
-    -- stage — including decisive single-stage primaries, which a
-    -- general_election_result check would miss.
+    -- winners rather than Win-org users). Derived from
+    -- civics.candidacy.candidacy_result, where a bare 'Won' means won the seat at
+    -- the race's final stage (including decisive single-stage primaries). Three-
+    -- valued: TRUE if any candidacy won the seat; FALSE if all are known non-wins;
+    -- NULL if every outcome is still unknown (advanced past a primary, in a
+    -- runoff, no result captured, or 'Cannot Determine').
     user_won as (
         select
-            cd.prod_db_user_id as gp_user_id, bool_or(cy.is_elected) as has_won_election
+            cd.prod_db_user_id as gp_user_id,
+            max(
+                case
+                    when cy.candidacy_result = 'Won'
+                    then true
+                    when
+                        cy.candidacy_result in (
+                            'Lost',
+                            'Lost Primary',
+                            'Lost Primary Runoff',
+                            'Withdrew',
+                            'Not on Ballot'
+                        )
+                    then false
+                end
+            ) as has_won_election
         from {{ ref("candidate") }} cd
         join {{ ref("candidacy") }} cy on cd.gp_candidate_id = cy.gp_candidate_id
         where cd.prod_db_user_id is not null
@@ -252,12 +269,12 @@ with
             st.contact_type_raw,
             st.candidate_type,
 
-            -- Seat-winner sub-segment. Three-valued, consistent with
-            -- candidacy.is_elected: TRUE = won a seat at the race's final stage;
-            -- FALSE = no candidacies at all (join miss), or has candidacies all
-            -- decided without a win; NULL = has candidacies but every outcome is
-            -- still unknown (pending / Cannot Determine). Keying off the join
-            -- match avoids collapsing "outcome unknown" into "confirmed non-win".
+            -- Seat-winner sub-segment, derived from candidacy.candidacy_result.
+            -- Three-valued: TRUE = won a seat at the race's final stage; FALSE =
+            -- no candidacies at all (join miss), or has candidacies all decided
+            -- without a win; NULL = has candidacies but every outcome is still
+            -- unknown (pending / Cannot Determine). Keying off the join match
+            -- avoids collapsing "outcome unknown" into "confirmed non-win".
             case
                 when uw.gp_user_id is null then false else uw.has_won_election
             end as has_won_election,

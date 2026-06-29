@@ -348,176 +348,143 @@ with
         -- candidacy_stages_in_context.
         where gp_election_id is not null and stage_type is not null
         group by gp_election_id
-    ),
-
-    final_candidacy as (
-        select
-            deduplicated.gp_candidacy_id,
-            deduplicated.gp_candidate_id,
-            deduplicated.gp_election_id,
-            deduplicated.product_campaign_id,
-            deduplicated.hubspot_contact_id,
-            deduplicated.hubspot_company_ids,
-            deduplicated.candidate_id_source,
-            deduplicated.party_affiliation,
-            deduplicated.is_incumbent,
-            deduplicated.is_open_seat,
-            deduplicated.candidate_office,
-            deduplicated.official_office_name,
-            deduplicated.office_level,
-            -- DATA-1972: positioned rows inherit the canonical office_type from the
-            -- position crosswalk whenever it classifies the position (non-Other).
-            -- A per-source value survives when the crosswalk can only say 'Other',
-            -- so a clean source value is never downgraded; rows without a position
-            -- (e.g. 2025 HubSpot archive, TS-without-position) keep the per-source
-            -- value; remaining blanks fill with the crosswalk's 'Other'.
-            coalesce(
-                nullif(pos_ot.office_type, 'Other'),
-                deduplicated.office_type,
-                pos_ot.office_type
-            ) as office_type,
-            -- Stage-aware overall outcome. A result decided at the race's FINAL stage
-            -- is
-            -- a seat outcome and stays bare ('Won' = won the seat / will serve). A
-            -- result
-            -- decided at an earlier stage is suffixed (" Primary" / " Primary
-            -- Runoff") so
-            -- it is never mistaken for a seat win, and a candidacy that has advanced
-            -- to a
-            -- still-uncalled runoff reads as 'Runoff' rather than a stale Won/Lost from
-            -- the prior stage. A decided primary IS the seat outcome when the race
-            -- has no
-            -- deeper stage (decisive / single-stage race), so it stays bare too. Falls
-            -- back to the provider-rolled result only when there is no in-context stage
-            -- row.
-            case
-                when latest.latest_stage_reached is null
-                then deduplicated.candidacy_result
-                -- Advanced to an uncalled runoff: report the runoff rather than a
-                -- stale prior-stage result. A pending primary runoff keeps its
-                -- cycle suffix ('Runoff Primary'), matching the decided primary
-                -- path; a pending general runoff reads bare 'Runoff'.
-                when
-                    latest.latest_stage_result is null
-                    and latest.latest_stage_reached
-                    in ('primary runoff', 'primary special runoff')
-                then 'Runoff Primary'
-                when
-                    latest.latest_stage_result is null
-                    and latest.latest_stage_reached
-                    in ('general runoff', 'general special runoff')
-                then 'Runoff'
-                -- Decided at (or beyond) the race's deepest known stage: seat outcome.
-                -- race_max_stage_rank is NULL when the race structure is unknown
-                -- (NULL gp_election_id, no election_final_stage match); the
-                -- comparison is then UNKNOWN and control falls through. That is
-                -- intentional: with no race structure we will not promote an
-                -- unconfirmed primary win to a bare seat 'Won'; it stays
-                -- 'Won Primary' (is_elected NULL) via the suffix branch below.
-                when decided.decided_stage_rank >= race.race_max_stage_rank
-                then decided.decided_result
-                -- Decided earlier than the race's final stage: not yet a seat outcome.
-                when
-                    decided.decided_result in ('Won', 'Lost', 'Runoff')
-                    and decided.decided_stage in ('primary', 'primary special')
-                then decided.decided_result || ' Primary'
-                when
-                    decided.decided_result in ('Won', 'Lost')
-                    and decided.decided_stage
-                    in ('primary runoff', 'primary special runoff')
-                then decided.decided_result || ' Primary Runoff'
-                else decided.decided_result
-            end as candidacy_result,
-            case
-                when
-                    latest.latest_stage_reached in (
-                        'general',
-                        'general runoff',
-                        'general special',
-                        'general special runoff'
-                    )
-                then latest.latest_stage_result
-            end as general_election_result,
-            latest.latest_stage_reached,
-            latest.latest_stage_result,
-            deduplicated.is_pledged,
-            deduplicated.is_verified,
-            deduplicated.verification_status_reason,
-            deduplicated.is_partisan,
-            deduplicated.primary_election_date,
-            deduplicated.primary_runoff_election_date,
-            deduplicated.general_election_date,
-            deduplicated.general_runoff_election_date,
-            deduplicated.br_position_database_id,
-            deduplicated.viability_score,
-            deduplicated.win_number,
-            deduplicated.win_number_model,
-            {{
-                win_icp_date_gate(
-                    icp_attribute="icp.icp_office_win",
-                    primary_date="deduplicated.primary_election_date",
-                    primary_runoff_date="deduplicated.primary_runoff_election_date",
-                    general_date="deduplicated.general_election_date",
-                    general_runoff_date="deduplicated.general_runoff_election_date",
-                    effective_date="icp.icp_win_effective_date",
-                )
-            }} as is_win_icp,
-            icp.icp_office_serve as is_serve_icp,
-            {{
-                win_icp_date_gate(
-                    icp_attribute="icp.icp_win_supersize",
-                    primary_date="deduplicated.primary_election_date",
-                    primary_runoff_date="deduplicated.primary_runoff_election_date",
-                    general_date="deduplicated.general_election_date",
-                    general_runoff_date="deduplicated.general_runoff_election_date",
-                    effective_date="icp.icp_win_effective_date",
-                )
-            }} as is_win_supersize_icp,
-            deduplicated.score_viability_automated,
-            deduplicated.source_systems,
-            deduplicated.created_at,
-            deduplicated.updated_at
-
-        from deduplicated
-        left join
-            {{ ref("int__icp_offices") }} as icp
-            on deduplicated.br_position_database_id = icp.br_database_position_id
-        left join
-            {{ ref("int__civics_position_office_type") }} as pos_ot
-            on deduplicated.br_position_database_id = pos_ot.br_position_database_id
-        left join
-            latest_stage_per_candidacy as latest
-            on deduplicated.gp_candidacy_id = latest.gp_candidacy_id
-        left join
-            last_decided_stage_per_candidacy as decided
-            on deduplicated.gp_candidacy_id = decided.gp_candidacy_id
-        left join
-            election_final_stage as race
-            on deduplicated.gp_election_id = race.gp_election_id
     )
 
 select
-    *,
-    -- Did the candidacy win the seat (and will therefore serve)? TRUE only on a
-    -- confirmed win at the race's final stage; FALSE on a known non-win; NULL
-    -- when the outcome is not known to be a win or a loss — still undecided
-    -- (advanced past a primary, in a runoff, no result captured yet) OR
-    -- indeterminate ('Cannot Determine'). NULL deliberately is not "lost": we
-    -- only assert FALSE when a candidate is known not to have won the seat, so a
-    -- 'Cannot Determine' is not silently counted as a loss. Derived from the
-    -- final candidacy_result, which is unambiguous here because final_candidacy
-    -- exposes no rival column.
+    deduplicated.gp_candidacy_id,
+    deduplicated.gp_candidate_id,
+    deduplicated.gp_election_id,
+    deduplicated.product_campaign_id,
+    deduplicated.hubspot_contact_id,
+    deduplicated.hubspot_company_ids,
+    deduplicated.candidate_id_source,
+    deduplicated.party_affiliation,
+    deduplicated.is_incumbent,
+    deduplicated.is_open_seat,
+    deduplicated.candidate_office,
+    deduplicated.official_office_name,
+    deduplicated.office_level,
+    -- DATA-1972: positioned rows inherit the canonical office_type from the
+    -- position crosswalk whenever it classifies the position (non-Other).
+    -- A per-source value survives when the crosswalk can only say 'Other',
+    -- so a clean source value is never downgraded; rows without a position
+    -- (e.g. 2025 HubSpot archive, TS-without-position) keep the per-source
+    -- value; remaining blanks fill with the crosswalk's 'Other'.
+    coalesce(
+        nullif(pos_ot.office_type, 'Other'),
+        deduplicated.office_type,
+        pos_ot.office_type
+    ) as office_type,
+    -- Stage-aware overall outcome. A result decided at the race's FINAL stage
+    -- is
+    -- a seat outcome and stays bare ('Won' = won the seat / will serve). A
+    -- result
+    -- decided at an earlier stage is suffixed (" Primary" / " Primary
+    -- Runoff") so
+    -- it is never mistaken for a seat win, and a candidacy that has advanced
+    -- to a
+    -- still-uncalled runoff reads as 'Runoff' rather than a stale Won/Lost from
+    -- the prior stage. A decided primary IS the seat outcome when the race
+    -- has no
+    -- deeper stage (decisive / single-stage race), so it stays bare too. Falls
+    -- back to the provider-rolled result only when there is no in-context stage
+    -- row.
     case
-        when candidacy_result = 'Won'
-        then true
+        when latest.latest_stage_reached is null
+        then deduplicated.candidacy_result
+        -- Advanced to an uncalled runoff: report the runoff rather than a
+        -- stale prior-stage result. A pending primary runoff keeps its
+        -- cycle suffix ('Runoff Primary'), matching the decided primary
+        -- path; a pending general runoff reads bare 'Runoff'.
         when
-            candidacy_result in (
-                'Lost',
-                'Lost Primary',
-                'Lost Primary Runoff',
-                'Withdrew',
-                'Not on Ballot'
+            latest.latest_stage_result is null
+            and latest.latest_stage_reached
+            in ('primary runoff', 'primary special runoff')
+        then 'Runoff Primary'
+        when
+            latest.latest_stage_result is null
+            and latest.latest_stage_reached
+            in ('general runoff', 'general special runoff')
+        then 'Runoff'
+        -- Decided at (or beyond) the race's deepest known stage: seat outcome.
+        -- race_max_stage_rank is NULL when the race structure is unknown
+        -- (NULL gp_election_id, no election_final_stage match); the
+        -- comparison is then UNKNOWN and control falls through. That is
+        -- intentional: with no race structure we will not promote an
+        -- unconfirmed primary win to a bare seat 'Won'; it stays
+        -- 'Won Primary' via the suffix branch below.
+        when decided.decided_stage_rank >= race.race_max_stage_rank
+        then decided.decided_result
+        -- Decided earlier than the race's final stage: not yet a seat outcome.
+        when
+            decided.decided_result in ('Won', 'Lost', 'Runoff')
+            and decided.decided_stage in ('primary', 'primary special')
+        then decided.decided_result || ' Primary'
+        when
+            decided.decided_result in ('Won', 'Lost')
+            and decided.decided_stage in ('primary runoff', 'primary special runoff')
+        then decided.decided_result || ' Primary Runoff'
+        else decided.decided_result
+    end as candidacy_result,
+    case
+        when
+            latest.latest_stage_reached in (
+                'general', 'general runoff', 'general special', 'general special runoff'
             )
-        then false
-    end as is_elected
-from final_candidacy
+        then latest.latest_stage_result
+    end as general_election_result,
+    latest.latest_stage_reached,
+    latest.latest_stage_result,
+    deduplicated.is_pledged,
+    deduplicated.is_verified,
+    deduplicated.verification_status_reason,
+    deduplicated.is_partisan,
+    deduplicated.primary_election_date,
+    deduplicated.primary_runoff_election_date,
+    deduplicated.general_election_date,
+    deduplicated.general_runoff_election_date,
+    deduplicated.br_position_database_id,
+    deduplicated.viability_score,
+    deduplicated.win_number,
+    deduplicated.win_number_model,
+    {{
+        win_icp_date_gate(
+            icp_attribute="icp.icp_office_win",
+            primary_date="deduplicated.primary_election_date",
+            primary_runoff_date="deduplicated.primary_runoff_election_date",
+            general_date="deduplicated.general_election_date",
+            general_runoff_date="deduplicated.general_runoff_election_date",
+            effective_date="icp.icp_win_effective_date",
+        )
+    }} as is_win_icp,
+    icp.icp_office_serve as is_serve_icp,
+    {{
+        win_icp_date_gate(
+            icp_attribute="icp.icp_win_supersize",
+            primary_date="deduplicated.primary_election_date",
+            primary_runoff_date="deduplicated.primary_runoff_election_date",
+            general_date="deduplicated.general_election_date",
+            general_runoff_date="deduplicated.general_runoff_election_date",
+            effective_date="icp.icp_win_effective_date",
+        )
+    }} as is_win_supersize_icp,
+    deduplicated.score_viability_automated,
+    deduplicated.source_systems,
+    deduplicated.created_at,
+    deduplicated.updated_at
+
+from deduplicated
+left join
+    {{ ref("int__icp_offices") }} as icp
+    on deduplicated.br_position_database_id = icp.br_database_position_id
+left join
+    {{ ref("int__civics_position_office_type") }} as pos_ot
+    on deduplicated.br_position_database_id = pos_ot.br_position_database_id
+left join
+    latest_stage_per_candidacy as latest
+    on deduplicated.gp_candidacy_id = latest.gp_candidacy_id
+left join
+    last_decided_stage_per_candidacy as decided
+    on deduplicated.gp_candidacy_id = decided.gp_candidacy_id
+left join
+    election_final_stage as race on deduplicated.gp_election_id = race.gp_election_id
