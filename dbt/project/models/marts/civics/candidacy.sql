@@ -335,7 +335,7 @@ with
     -- a primary win is a seat win rather than merely advancing. NOTE: this keys
     -- off the stages BallotReady has loaded for the race, so it does not capture
     -- jurisdictions where a majority at the primary wins the seat outright while
-    -- a general is still scheduled (DATA-2042 follow-up).
+    -- a general is still scheduled (a known follow-up).
     election_final_stage as (
         select
             gp_election_id,
