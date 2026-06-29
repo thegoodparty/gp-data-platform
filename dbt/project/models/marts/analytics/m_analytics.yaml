@@ -820,8 +820,8 @@ models:
         data_tests:
           # warn, not error: one pre-existing campaign has null user_* fields
           # (a known data-quality gap in `campaigns`, present in prod). It only
-          # blocks on a full-refresh rebuild of this downstream model, which
-          # DATA-2042 triggers; the real fix belongs in `campaigns`, not here.
+          # blocks on a full-refresh rebuild of this downstream model; the real
+          # fix belongs in `campaigns`, not here.
           - not_null:
               config:
                 severity: warn
