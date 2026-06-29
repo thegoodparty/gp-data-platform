@@ -176,18 +176,6 @@ seeds:
                 select br_database_id
                 from {{ ref('m_election_api__race') }}
               )
-      - name: slug
-        description: election-api race slug (for documentation only, not used in joins)
-        data_tests:
-          - not_null
-      - name: filing_office_address
-        description: Corrected filing office address
-        data_tests:
-          - not_null
-      - name: reason
-        description: Why this override is needed
-        data_tests:
-          - not_null
 
   - name: icp_normalized_position_names
     description: >
