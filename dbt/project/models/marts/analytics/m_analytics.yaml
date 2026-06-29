@@ -989,16 +989,14 @@ models:
 
       - name: candidacy_result
         description: >
-          Stage-aware overall result of the candidacy (passed through from
-          civics.candidacy). Primary-cycle outcomes are suffixed (e.g. 'Won
-          Primary') so they are not mistaken for a seat result; bare
-          'Won'/'Lost' mean won/lost the race's final stage (the seat). Values: Won, Lost, Runoff, Won
-          Primary, Lost Primary, Runoff Primary, Won Primary Runoff, Lost Primary
-          Runoff, Withdrew, Not on Ballot, Cannot Determine.
+          The candidacy's final outcome (passed through from civics.candidacy):
+          'Won' = won the seat, 'Lost' = eliminated, 'Runoff' = in a runoff,
+          NULL = outcome not yet determined. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff', 'Won Primary', 'Lost Primary', 'Runoff Primary', 'Won Primary Runoff', 'Lost Primary Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
 
       - name: viability_score
         description: Model-generated viability rating for the candidacy
@@ -1113,16 +1111,14 @@ models:
 
       - name: candidacy_result
         description: >
-          Stage-aware overall result of the candidacy (passed through from
-          civics.candidacy). Primary-cycle outcomes are suffixed (e.g. 'Won
-          Primary') so they are not mistaken for a seat result; bare
-          'Won'/'Lost' mean won/lost the race's final stage (the seat). Values: Won, Lost, Runoff, Won
-          Primary, Lost Primary, Runoff Primary, Won Primary Runoff, Lost Primary
-          Runoff, Withdrew, Not on Ballot, Cannot Determine.
+          The candidacy's final outcome (passed through from civics.candidacy):
+          'Won' = won the seat, 'Lost' = eliminated, 'Runoff' = in a runoff,
+          NULL = outcome not yet determined. Values: Won, Lost, Runoff, Withdrew,
+          Not on Ballot, Cannot Determine.
         data_tests:
           - accepted_values:
               arguments:
-                values: ['Won', 'Lost', 'Runoff', 'Won Primary', 'Lost Primary', 'Runoff Primary', 'Won Primary Runoff', 'Lost Primary Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
+                values: ['Won', 'Lost', 'Runoff', 'Withdrew', 'Not on Ballot', 'Cannot Determine']
 
       - name: is_pledged
         description: Whether the candidate has taken the GoodParty pledge

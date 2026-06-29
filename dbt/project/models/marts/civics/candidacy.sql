@@ -375,56 +375,68 @@ select
         deduplicated.office_type,
         pos_ot.office_type
     ) as office_type,
-    -- Stage-aware overall outcome. A result decided at the race's FINAL stage
-    -- is
-    -- a seat outcome and stays bare ('Won' = won the seat / will serve). A
-    -- result
-    -- decided at an earlier stage is suffixed (" Primary" / " Primary
-    -- Runoff") so
-    -- it is never mistaken for a seat win, and a candidacy that has advanced
-    -- to a
-    -- still-uncalled runoff reads as 'Runoff' rather than a stale Won/Lost from
-    -- the prior stage. A decided primary IS the seat outcome when the race
-    -- has no
-    -- deeper stage (decisive / single-stage race), so it stays bare too. Falls
-    -- back to the provider-rolled result only when there is no in-context stage
-    -- row.
+    -- candidacy_result is the single column for the candidacy's FINAL outcome,
+    -- populated only once that outcome is settled:
+    -- 'Won'    - won the seat (won the race's final / deciding stage, including
+    -- a decisive single-stage primary).
+    -- 'Lost'   - eliminated: a decided loss at any stage (a loss never
+    -- advances), or a terminal Withdrew / Not on Ballot.
+    -- 'Runoff' - currently in a runoff that has not been called yet.
+    -- NULL     - outcome not yet determined: won an earlier stage and advanced
+    -- (e.g. won the primary, general pending), or the race structure
+    -- is unknown. The "won the primary" detail lives in
+    -- latest_stage_reached / latest_stage_result.
+    -- Falls back to the provider-rolled value only when there is no in-context
+    -- candidacy_stage row (e.g. the 2025 HubSpot archive, which already carries a
+    -- terminal result).
     case
         when latest.latest_stage_reached is null
         then deduplicated.candidacy_result
-        -- Advanced to an uncalled runoff: report the runoff rather than a
-        -- stale prior-stage result. A pending primary runoff keeps its
-        -- cycle suffix ('Runoff Primary'), matching the decided primary
-        -- path; a pending general runoff reads bare 'Runoff'.
+        -- In a runoff (reached but uncalled, or the latest decided result sent
+        -- the race to one): in progress, not a final outcome. Evaluated before
+        -- the loss branch so a first-round result that advanced to a runoff is
+        -- not mistaken for elimination.
         when
             latest.latest_stage_result is null
-            and latest.latest_stage_reached
-            in ('primary runoff', 'primary special runoff')
-        then 'Runoff Primary'
-        when
-            latest.latest_stage_result is null
-            and latest.latest_stage_reached
-            in ('general runoff', 'general special runoff')
+            and latest.latest_stage_reached in (
+                'general runoff',
+                'general special runoff',
+                'primary runoff',
+                'primary special runoff'
+            )
         then 'Runoff'
-        -- Decided at (or beyond) the race's deepest known stage: seat outcome.
-        -- race_max_stage_rank is NULL when the race structure is unknown
-        -- (NULL gp_election_id, no election_final_stage match); the
-        -- comparison is then UNKNOWN and control falls through. That is
-        -- intentional: with no race structure we will not promote an
-        -- unconfirmed primary win to a bare seat 'Won'; it stays
-        -- 'Won Primary' via the suffix branch below.
-        when decided.decided_stage_rank >= race.race_max_stage_rank
+        when decided.decided_result = 'Runoff'
+        then 'Runoff'
+        -- A decided loss eliminates the candidacy at any stage; Withdrew / Not on
+        -- Ballot are likewise terminal.
+        when decided.decided_result = 'Lost'
+        then 'Lost'
+        when decided.decided_result in ('Withdrew', 'Not on Ballot')
         then decided.decided_result
-        -- Decided earlier than the race's final stage: not yet a seat outcome.
+        -- Won the seat. A win at the general cycle is the deciding outcome on
+        -- its own (any general-runoff stage is a contingency this winner is not
+        -- in — if they were, the pending-runoff branch above would have fired).
+        -- A primary-cycle win counts as a seat win only when the primary IS the
+        -- race's final stage (a decisive single-stage race, race_max = 1); an
+        -- ordinary primary win that still has a general ahead is not final. When
+        -- the race structure is unknown (NULL race_max_stage_rank) a primary win
+        -- stays NULL rather than claim an unconfirmed seat.
         when
-            decided.decided_result in ('Won', 'Lost', 'Runoff')
-            and decided.decided_stage in ('primary', 'primary special')
-        then decided.decided_result || ' Primary'
-        when
-            decided.decided_result in ('Won', 'Lost')
-            and decided.decided_stage in ('primary runoff', 'primary special runoff')
-        then decided.decided_result || ' Primary Runoff'
-        else decided.decided_result
+            decided.decided_result = 'Won'
+            and (
+                decided.decided_stage in (
+                    'general',
+                    'general runoff',
+                    'general special',
+                    'general special runoff'
+                )
+                or decided.decided_stage_rank >= race.race_max_stage_rank
+            )
+        then 'Won'
+        -- Outcome not yet determined (won an earlier primary-cycle stage and
+        -- advanced, reached a pending non-runoff stage, or no result captured):
+        -- no final outcome.
+        else null
     end as candidacy_result,
     case
         when

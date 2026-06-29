@@ -70,14 +70,7 @@ with
                 case
                     when cy.candidacy_result = 'Won'
                     then true
-                    when
-                        cy.candidacy_result in (
-                            'Lost',
-                            'Lost Primary',
-                            'Lost Primary Runoff',
-                            'Withdrew',
-                            'Not on Ballot'
-                        )
+                    when cy.candidacy_result in ('Lost', 'Withdrew', 'Not on Ballot')
                     then false
                 end
             ) as has_won_election

@@ -518,36 +518,31 @@ models:
 
       - name: candidacy_result
         description: >
-          Stage-aware overall outcome of the candidacy, taken from the deepest
-          DECIDED stage and qualified so a non-terminal result is never mistaken
-          for a seat result. A result decided at the race's FINAL stage (the
-          deepest stage that exists for the race in `election_stage`) stays bare
-          ('Won' / 'Lost' = won/lost the seat); a result decided at an earlier
-          stage is suffixed (e.g. 'Won Primary', 'Lost Primary', 'Won Primary
-          Runoff'). Because the final stage is read from the race structure, a
-          primary win in a single-stage / decisive race (no general exists) is a
-          seat win and stays bare 'Won'. When the candidacy has advanced to a
-          runoff that has not been called yet, the value is 'Runoff' rather than a
-          stale Won/Lost from the prior stage. Falls back to the provider-rolled
-          outcome only when no in-context candidacy_stage row exists (e.g. the
-          2025 HubSpot archive). NULL when a stage has been reached but nothing
-          has been decided yet. KNOWN GAP: a jurisdiction where a majority at the
-          primary wins the seat outright while a general is still scheduled is
-          treated as 'Won Primary', not 'Won' (DATA-2042 follow-up). To answer
-          "did they win the seat / will they serve?", filter `candidacy_result =
-          'Won'`; for "did they win the general?" use `general_election_result`;
-          for raw funnel position use `latest_stage_reached` /
-          `latest_stage_result`.
+          The candidacy's FINAL outcome — populated only once the outcome is
+          settled. 'Won' = won the seat (won the race's final / deciding stage,
+          read from the race structure in `election_stage`, including a decisive
+          single-stage primary). 'Lost' = eliminated (a decided loss at any
+          stage, since a loss never advances, or a terminal Withdrew / Not on
+          Ballot). 'Runoff' = currently in a runoff that has not been called.
+          NULL when the outcome is not yet determined — the candidacy won an
+          earlier stage and advanced (e.g. won the primary while the general is
+          pending), or the race structure is unknown. Falls back to the
+          provider-rolled outcome only when no in-context candidacy_stage row
+          exists (e.g. the 2025 HubSpot archive). KNOWN GAP: a jurisdiction where
+          a majority at the primary wins the seat outright while a general is
+          still scheduled reads NULL (not 'Won') until the general resolves
+          (DATA-2042 follow-up). To answer "did they win the seat / will they
+          serve?", filter `candidacy_result = 'Won'`; for "did they win the
+          general?" use `general_election_result`; for funnel position (including
+          a primary win that has not reached a final outcome) use
+          `latest_stage_reached` / `latest_stage_result`.
           Values:
-          - Won / Lost: won/lost the race's final stage (the seat)
-          - Won Primary / Lost Primary: won/lost the primary; seat not yet decided
-          - Won Primary Runoff / Lost Primary Runoff: won/lost a primary runoff
-          - Runoff Primary: in a primary runoff (decided as a runoff, or reached
-            but not yet called)
-          - Runoff: in a general runoff (or its outcome not yet called)
+          - Won: won the seat (the race's final / deciding stage)
+          - Lost: eliminated (lost a stage, withdrew, or not on ballot)
+          - Runoff: in a runoff whose outcome is not yet called
           - Withdrew: Candidate withdrew from the race
           - Not on Ballot: Candidate was not on the ballot
-          - Cannot Determine: Result could not be determined
+          - Cannot Determine: Result could not be determined (provider fallback)
         data_tests:
           - accepted_values:
               arguments:
@@ -556,11 +551,6 @@ models:
                     "Won",
                     "Lost",
                     "Runoff",
-                    "Won Primary",
-                    "Lost Primary",
-                    "Runoff Primary",
-                    "Won Primary Runoff",
-                    "Lost Primary Runoff",
                     "Withdrew",
                     "Not on Ballot",
                     "Cannot Determine",
