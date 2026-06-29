@@ -69,7 +69,9 @@ with
             pro.election_result as primary_runoff_election_result,
             gro.election_result as general_runoff_election_result
 
-        from {{ ref("candidacy") }} cand
+        -- DATA-1938: candidacy_scored = candidacy + broad civics viability, so
+        -- viability_score reflects the new civics scorer.
+        from {{ ref("candidacy_scored") }} cand
 
         -- Candidate
         left join
