@@ -252,8 +252,15 @@ with
             st.contact_type_raw,
             st.candidate_type,
 
-            -- Seat-winner sub-segment (won the seat at the race's final stage)
-            coalesce(uw.has_won_election, false) as has_won_election,
+            -- Seat-winner sub-segment. Three-valued, consistent with
+            -- candidacy.is_elected: TRUE = won a seat at the race's final stage;
+            -- FALSE = no candidacies at all (join miss), or has candidacies all
+            -- decided without a win; NULL = has candidacies but every outcome is
+            -- still unknown (pending / Cannot Determine). Keying off the join
+            -- match avoids collapsing "outcome unknown" into "confirmed non-win".
+            case
+                when uw.gp_user_id is null then false else uw.has_won_election
+            end as has_won_election,
 
             -- Serve funnel state (true transition rates — Serve workflow enabled)
             st.serve_lifecycle_lead_entered_at,
