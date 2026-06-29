@@ -663,10 +663,6 @@ models:
           null, which forced solo-ingested TechSpeed candidacies onto the
           weaker viabilitynoopponentdata fallback in
           int__civics_viability_scoring.
-        data_tests:
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: "number_of_opponents is null or try_cast(number_of_opponents as int) >= 0"
 
       - name: has_ddhq_match
         description: Whether there is a DDHQ match (always false for TechSpeed)
@@ -684,6 +680,16 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+    data_tests:
+      # Well-formedness of the DATA-1938 opponent count: null or a non-negative
+      # integer string (opponents = number_of_candidates - 1, so >= 0). Model
+      # level rather than column level so the expression can reference the
+      # column by name without the column-test macro prepending the column.
+      - dbt_utils.expression_is_true:
+          name: civics_election_techspeed_opponents_well_formed
+          arguments:
+            expression: "number_of_opponents is null or try_cast(number_of_opponents as int) >= 0"
 
   - name: int__civics_candidacy_stage_techspeed
     description: >
