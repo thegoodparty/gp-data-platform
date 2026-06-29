@@ -54,10 +54,10 @@ SLUGS = [
 # Pin source version numbers explicitly so the PR diff shows exactly what is
 # being promoted.  Update these after each retrain.
 SRC_VERSIONS = {
-    "presidential_lag3":   1,
-    "midterm":             2,
-    "even_year_local":     3,
-    "off_year_local_lag2": 2,
+    "presidential_lag3":   2,
+    "midterm":             3,
+    "even_year_local":     4,
+    "off_year_local_lag2": 4,
 }
 
 
