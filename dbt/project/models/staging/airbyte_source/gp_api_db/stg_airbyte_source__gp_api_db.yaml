@@ -290,6 +290,10 @@ models:
         description: "Pipeline stage the run reached"
       - name: status
         description: "Terminal status of the run (e.g. COMPLETED, FAILED)"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["COMPLETED", "FAILED"]
       - name: priority
         description: "Scheduling priority of the run"
       - name: data_quality
@@ -300,16 +304,33 @@ models:
         description: "JSON parameters the run was invoked with"
       - name: cost_usd
         description: "Cost of the run in USD"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: duration_seconds
         description: "Wall-clock duration of the run in seconds"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: resume_attempts
         description: "Number of times the run has been resumed"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: artifact_bucket
         description: "Storage bucket holding the run artifact"
       - name: artifact_key
         description: "Storage key/path of the run artifact"
       - name: organization_slug
         description: "Foreign key to the organization the run was generated for"
+        data_tests:
+          - not_null
       - name: created_at
         description: "Timestamp when the run was created"
       - name: updated_at
@@ -328,6 +349,8 @@ models:
           - unique
       - name: organization_slug
         description: "Foreign key to the organization the issue belongs to"
+        data_tests:
+          - not_null
       - name: list
         description: "Name of the list the issue belongs to"
       - name: rank
