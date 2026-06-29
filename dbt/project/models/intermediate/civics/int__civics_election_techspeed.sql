@@ -148,7 +148,20 @@ with
             cast(null as date) as term_start_date,
             -- Keep boolean type to match BallotReady election intermediate
             is_uncontested,
-            cast(null as string) as number_of_opponents,
+            -- DATA-1938: carry the TechSpeed opponent count instead of
+            -- hardcoding null. number_of_candidates is the count of candidates
+            -- in the race from the TechSpeed source; opponents = candidates - 1.
+            -- Kept as a string to match the BR/DDHQ/2025 election models and the
+            -- scorer's string handling (int__civics_viability_scoring). Empty,
+            -- non-numeric, and < 1 counts fall to null (a race has >= 1
+            -- candidate). The representative-row pick already collapses to one
+            -- row per election, so this is per-election with no fan-out.
+            cast(
+                case
+                    when try_cast(number_of_candidates as int) >= 1
+                    then try_cast(number_of_candidates as int) - 1
+                end as string
+            ) as number_of_opponents,
             is_open_seat,
             false as has_ddhq_match,
             -- BR-derived from br_race_id when TS captures one. Surfaces the

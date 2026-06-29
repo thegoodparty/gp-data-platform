@@ -654,6 +654,20 @@ models:
               arguments:
                 min_value: 0
 
+      - name: number_of_opponents
+        description: >
+          Opponent count for the race (number_of_candidates - 1 from the
+          TechSpeed source), stored as a string to match the BR/DDHQ/2025
+          election models and the scorer's parsing. Null when the source count
+          is missing, non-numeric, or < 1. DATA-1938: previously hardcoded
+          null, which forced solo-ingested TechSpeed candidacies onto the
+          weaker viabilitynoopponentdata fallback in
+          int__civics_viability_scoring.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "number_of_opponents is null or try_cast(number_of_opponents as int) >= 0"
+
       - name: has_ddhq_match
         description: Whether there is a DDHQ match (always false for TechSpeed)
 
