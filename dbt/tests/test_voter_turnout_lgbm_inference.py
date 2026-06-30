@@ -19,6 +19,8 @@ from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import
     _opp_view_sql,
     _parse_state_allowlist,
     _predict_precinct,
+    _read_model_family_tag,
+    _select_cat_map_path,
     _year_to_model_slugs,
 )
 
@@ -178,3 +180,40 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
     assert out["model_family"].iloc[0] == "FamX"
     assert out["inference_year"].iloc[0] == 2026
     assert {"State", "County", "Precinct", "n_voters"}.issubset(out.columns)
+
+
+def test_select_cat_map_path_returns_single_match():
+    only = "/tmp/model/tmpAbC_categorical_feature_map.json"
+    assert _select_cat_map_path([only]) == only
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        [],  # none found -> fail loud (missing artifact)
+        [
+            "/tmp/model/a_categorical_feature_map.json",
+            "/tmp/model/b_categorical_feature_map.json",
+        ],  # ambiguous -> fail loud rather than guess a possibly-wrong encoding
+    ],
+)
+def test_select_cat_map_path_raises_unless_exactly_one(paths):
+    with pytest.raises(ValueError):
+        _select_cat_map_path(paths)
+
+
+def test_read_model_family_tag_returns_value():
+    tags = {
+        "model_family": "precinct_level_lgbm_votehistory_socioecondemopolgeo",
+        "lightgbm_version": "4.6.0",
+    }
+    assert (
+        _read_model_family_tag(tags, "goodparty_data_catalog.model_predictions.voter_turnout_model_midterm")
+        == "precinct_level_lgbm_votehistory_socioecondemopolgeo"
+    )
+
+
+@pytest.mark.parametrize("tags", [None, {}, {"lightgbm_version": "4.6.0"}, {"model_family": ""}])
+def test_read_model_family_tag_raises_when_missing_or_empty(tags):
+    with pytest.raises(ValueError):
+        _read_model_family_tag(tags, "some.model.name")

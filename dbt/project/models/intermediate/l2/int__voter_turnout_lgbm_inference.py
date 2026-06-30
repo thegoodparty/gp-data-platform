@@ -18,7 +18,9 @@ without Spark/MLflow; `model()` executes them. `import mlflow` is deferred into
 `model()` so this module imports in the dbt test env (pyspark + pandas, no mlflow).
 """
 
+import glob
 import json
+import os
 import re
 import tempfile
 from datetime import datetime
@@ -486,6 +488,37 @@ def _assert_consistent_model_family(families_by_slug):
     return next(iter(distinct))
 
 
+def _select_cat_map_path(candidate_paths):
+    """Resolve the single categorical-feature-map file in a model's artifacts.
+
+    The map is logged under model/ (so it travels with copy_model_version) but with a
+    tmp-prefixed filename, so it is located by glob rather than a fixed name. Fail loud on
+    zero or multiple matches: a missing or ambiguous map would silently mis-encode features
+    and corrupt predictions, which is worse than a hard failure.
+    """
+    if len(candidate_paths) != 1:
+        raise ValueError(
+            f"Expected exactly one categorical_feature_map.json in the model artifacts, "
+            f"found {len(candidate_paths)}: {sorted(candidate_paths)}"
+        )
+    return candidate_paths[0]
+
+
+def _read_model_family_tag(registered_model_tags, registered_model_name):
+    """Read the load-bearing model_family from the registered-model tag set at promotion.
+
+    It is stamped on every output row as model_version (part of the election-api id), so a
+    missing tag must fail rather than default — an unset tag would mislabel the whole table.
+    """
+    family = (registered_model_tags or {}).get("model_family")
+    if not family:
+        raise ValueError(
+            f"Registered model {registered_model_name} is missing the required 'model_family' "
+            f"tag. Set it at promotion (the promote script tags each model)."
+        )
+    return family
+
+
 def model(dbt, session):
     import mlflow
     import mlflow.lightgbm
@@ -516,25 +549,28 @@ def model(dbt, session):
     for slug in needed_slugs:
         full_name = f"{catalog}.{models_schema}.voter_turnout_model_{slug}"
         _check_lgbm_version(full_name, client)
-        mv = client.get_model_version_by_alias(full_name, "production")
-        models[slug] = mlflow.lightgbm.load_model(f"models:/{full_name}@production")
+        # model_family is the load-bearing model_version stamped on every row (part of the
+        # election-api id). Read it from the registered-model tag set at promotion, NOT a run
+        # artifact: the validated retrains carry no model_family.json, and a tag travels with
+        # the model (survives copy_model_version) and is version-agnostic. Read per slug so an
+        # inconsistent promotion is caught below, not silently stamped from one slug.
+        registered = client.get_registered_model(full_name)
+        model_families[slug] = _read_model_family_tag(registered.tags, full_name)
+        # Download the @production model once, then load it and resolve its categorical feature
+        # map. The map is logged under model/ (so it travels with copy_model_version) but with
+        # a tmp-prefixed filename, so glob for it rather than assume a fixed artifact path.
+        model_uri = f"models:/{full_name}@production"
         with tempfile.TemporaryDirectory() as tmp:
-            local_cat = mlflow.artifacts.download_artifacts(
-                run_id=mv.run_id,
-                artifact_path=f"{slug}_categorical_feature_map.json",
-                dst_path=tmp,
+            model_dir = mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path=tmp)
+            models[slug] = mlflow.lightgbm.load_model(model_dir)
+            cat_path = _select_cat_map_path(
+                glob.glob(
+                    os.path.join(model_dir, "**", "*categorical_feature_map.json"),
+                    recursive=True,
+                )
             )
-            with open(local_cat) as f:
+            with open(cat_path) as f:
                 cat_maps[slug] = json.load(f)
-            # Read model_family per slug (NOT once) so an inconsistent promotion is caught,
-            # not silently stamped from the first slug onto every row.
-            local_mf = mlflow.artifacts.download_artifacts(
-                run_id=mv.run_id,
-                artifact_path="model_family.json",
-                dst_path=tmp,
-            )
-            with open(local_mf) as f:
-                model_families[slug] = json.load(f)["model_family"]
     # All promoted models must share one model_family — it is stamped on every row as the
     # load-bearing model_version (part of the election-api id). Fail loudly on disagreement.
     model_family = _assert_consistent_model_family(model_families)
