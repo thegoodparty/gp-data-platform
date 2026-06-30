@@ -26,8 +26,9 @@ from pendulum import duration
 # Databricks creds, sourced from a Databricks Airflow connection (OAuth M2M). The conn_id is
 # read at import (env var, parse-safe) and interpolated into Jinja templates that resolve at task
 # runtime. login/password is the standard SP-OAuth storage; the extra_dejson fallback covers
-# connections that stash client_id/client_secret in extras instead. Feeds the loader's
-# databricks-sdk (these BashOperators) and the Cosmos gate (env= below) from one source.
+# connections that stash client_id/client_secret in extras instead. Applied ONLY to the steps that
+# reach Databricks (the unload step + the Cosmos gate) — the other steps are AWS/Postgres only and
+# must not depend on this connection existing.
 _DBX_CONN = os.getenv("LOADER_DATABRICKS_CONN_ID", "databricks")
 _DBX_ENV: dict[str, str] = {
     "DATABRICKS_HOST": f"{{{{ conn.{_DBX_CONN}.host }}}}",
@@ -47,15 +48,14 @@ _LOADER_ENV: dict[str, str] = {
     "LOADER_BASTION_USER": "{{ conn.gp_bastion_host.login }}",
     "LOADER_BASTION_PRIVATE_KEY": "{{ conn.gp_bastion_host.extra_dejson.get('private_key', '') }}",
     "LOADER_BASTION_KEY_PASSPHRASE": "{{ conn.gp_bastion_host.extra_dejson.get('private_key_passphrase', '') }}",
-    **_DBX_ENV,
 }
 
 
-def _step(task_id: str, subcommand: str) -> BashOperator:
+def _step(task_id: str, subcommand: str, *, extra_env: dict[str, str] | None = None) -> BashOperator:
     return BashOperator(
         task_id=task_id,
         bash_command=f"loader {subcommand} --date {{{{ ds_nodash }}}}",
-        env=_LOADER_ENV,
+        env={**_LOADER_ENV, **(extra_env or {})},
         append_env=True,
     )
 
@@ -106,7 +106,7 @@ def load_people_api():
         # so the venv is fully isolated from the image's SDK.
         py_requirements=["dbt-databricks>=1.8,<2.0"],
     )
-    unload = _step("unload", "unload")
+    unload = _step("unload", "unload", extra_env=_DBX_ENV)  # only step that reaches Databricks
     provision = _step("provision", "provision")
     create_schema = _step("create_schema", "create-schema")
     copy = _step("copy", "copy")
