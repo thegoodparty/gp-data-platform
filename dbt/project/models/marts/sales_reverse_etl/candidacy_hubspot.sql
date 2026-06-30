@@ -119,7 +119,7 @@ with
             e.filing_deadline,
             e.seats_available,
             e.election_date
-        from {{ ref("candidacy") }} as cy
+        from {{ ref("candidacy_scored") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
         left join
@@ -235,9 +235,10 @@ select
     f.uploaded as uploaded,
     f._airbyte_extracted_at as _airbyte_extracted_at,
     current_timestamp() as added_to_mart_at,
-    -- viability comes straight from the civics SOT (the TS scoring join recovers zero
-    -- rows on
-    -- this feed's population -- validated in 40_stream3_validation.md).
+    -- Viability comes from candidacy_scored (the broad civics viability source of
+    -- truth; DATA-1938). Its civics scorer is canonical and gap-fills with the prior
+    -- candidacy value, so coverage never regresses and this feed inherits the broad
+    -- scorer's higher fill. Scale is unchanged (0 to 5), so accepted_range still holds.
     b.viability_score as viability_rating_2_0,
     b.score_viability_automated as score_viability_automated,
     coalesce(
