@@ -64,7 +64,14 @@ with
 select
     tbl_race.id,
     tbl_race.created_at,
-    tbl_race.updated_at,
+    -- Bump updated_at when a filing-address override applies so the election-api
+    -- write model's incremental upsert (gated on updated_at) actually picks up
+    -- the corrected value; BallotReady's own updated_at does not change.
+    case
+        when filing_overrides.br_database_id is not null
+        then current_timestamp()
+        else tbl_race.updated_at
+    end as updated_at,
     tbl_race.br_hash_id,
     tbl_race.br_database_id,
     tbl_race.election_date,
@@ -75,7 +82,9 @@ select
         tbl_race.normalized_position_name, '//', '-'
     ) as normalized_position_name,
     tbl_race.position_description,
-    tbl_race.filing_office_address,
+    coalesce(
+        filing_overrides.filing_office_address, tbl_race.filing_office_address
+    ) as filing_office_address,
     tbl_race.filing_phone_number,
     tbl_race.paperwork_instructions,
     tbl_race.filing_requirements,
@@ -118,6 +127,9 @@ left join
 left join
     {{ ref("m_election_api__position") }} as tbl_position
     on tbl_race.br_position_database_id = tbl_position.br_database_id
+left join
+    {{ ref("election_api_race_filing_address_overrides") }} as filing_overrides
+    on tbl_race.br_database_id = filing_overrides.br_database_id
 where
     tbl_race.place_id in (select id from {{ ref("m_election_api__place") }})
     and tbl_race.election_date
