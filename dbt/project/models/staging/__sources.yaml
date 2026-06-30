@@ -116,6 +116,10 @@ sources:
         description: raw data load from gp_api_db postgres db from table `chat_message`
       - name: gp_api_db_meeting_briefing
         description: raw data load from gp_api_db postgres db from table `meeting_briefing`
+      - name: gp_api_db_experiment_run
+        description: raw data load from gp_api_db postgres db from table `experiment_run`
+      - name: gp_api_db_community_issue
+        description: raw data load from gp_api_db postgres db from table `community_issue`
       - name: gp_api_db_campaign_position
         description: raw data load from gp_api_db postgres db from table `campaign_position`
       - name: gp_api_db_domain
