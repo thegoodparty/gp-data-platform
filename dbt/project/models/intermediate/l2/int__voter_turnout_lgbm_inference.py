@@ -592,14 +592,15 @@ def model(dbt, session):
     ]
     session.sql(_build_district_membership_sql(l2_col_set, dist_types)).createOrReplaceTempView("_membership")
 
-    result_parts = []
+    pred_dfs = []
     for inference_year in inference_years:
         odd_op_years = _odd_op_years(election_cols, l2_col_set, inference_year)
         if odd_op_years:
             session.sql(_opp_view_sql(odd_op_years, catalog, precincts_schema)).createOrReplaceTempView(
                 "_hp_opp"
             )
-        # ~206k precincts per year (~150 MB) — toPandas is safe at nationwide scale.
+        # ~206k precincts per year (~150 MB) — toPandas is safe; eagerly materialized here so
+        # the per-year _hp_opp view is consumed before the next year overwrites it.
         pdf = session.sql(
             _build_precinct_features_sql(l2_col_set, election_cols, inference_year, current_year)
         ).toPandas()
@@ -618,44 +619,48 @@ def model(dbt, session):
                 if not pd.api.types.is_numeric_dtype(pred_pdf[c]):
                     pred_pdf[c] = pred_pdf[c].astype(object)
 
-            session.createDataFrame(
-                pred_pdf[
-                    [
-                        "State",
-                        "County",
-                        "Precinct",
-                        "n_voters",
-                        "p_hat",
-                        "model_slug",
-                        "model_family",
-                        "inference_year",
-                        "election_code",
+            pred_dfs.append(
+                session.createDataFrame(
+                    pred_pdf[
+                        [
+                            "State",
+                            "County",
+                            "Precinct",
+                            "n_voters",
+                            "p_hat",
+                            "model_slug",
+                            "model_family",
+                            "inference_year",
+                            "election_code",
+                        ]
                     ]
-                ]
-            ).createOrReplaceTempView("_precinct_preds")
-
-            result_parts.append(
-                session.sql(
-                    """
-                    SELECT
-                        CAST(p.inference_year AS INT)    AS election_year,
-                        p.election_code,
-                        p.State                          AS state,
-                        m.district_type,
-                        m.district_name,
-                        ROUND(SUM(p.p_hat * p.n_voters)) AS ballots_projected,
-                        p.model_family                   AS model_version,
-                        current_timestamp()              AS inference_at
-                    FROM _precinct_preds p
-                    JOIN _membership m
-                      ON  p.State    = m.State
-                      AND p.County   = m.County
-                      AND p.Precinct = m.Precinct
-                    GROUP BY
-                        p.inference_year, p.election_code, p.State,
-                        m.district_type, m.district_name, p.model_family
-                    """
                 )
             )
 
-    return reduce(lambda a, b: a.unionByName(b), result_parts)
+    # Union ALL per-(year, slug) precinct predictions into ONE view, then aggregate ONCE.
+    # Do NOT append per-slug aggregations that each read a reused "_precinct_preds" view:
+    # Spark resolves temp-view names lazily at execution, so every appended DataFrame would
+    # see the LAST iteration's view — collapsing all years/slugs to the final one and
+    # duplicating it. The unique-combination test on this model guards that regression.
+    reduce(lambda a, b: a.unionByName(b), pred_dfs).createOrReplaceTempView("_precinct_preds")
+    return session.sql(
+        """
+        SELECT
+            CAST(p.inference_year AS INT)    AS election_year,
+            p.election_code,
+            p.State                          AS state,
+            m.district_type,
+            m.district_name,
+            ROUND(SUM(p.p_hat * p.n_voters)) AS ballots_projected,
+            p.model_family                   AS model_version,
+            current_timestamp()              AS inference_at
+        FROM _precinct_preds p
+        JOIN _membership m
+          ON  p.State    = m.State
+          AND p.County   = m.County
+          AND p.Precinct = m.Precinct
+        GROUP BY
+            p.inference_year, p.election_code, p.State,
+            m.district_type, m.district_name, p.model_family
+        """
+    )
