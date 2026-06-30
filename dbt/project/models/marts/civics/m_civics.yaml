@@ -986,13 +986,8 @@ models:
         description: Foreign key to candidacy table
         data_tests:
           - not_null
-          # warn-only here (not a count threshold): prod is clean (0 orphans),
-          # but a PR that rebuilds `candidacy` with --full-refresh compares it
-          # against a deferred `candidacy_stage`, so a transient, variable number
-          # of entity-resolution-churn orphans appears (seen anywhere from ~13 to
-          # ~139). That count reflects build-baseline skew, not data quality, so a
-          # fixed threshold is the wrong tool; the test has real teeth in the
-          # scheduled prod build, where it is 0.
+          # warn-only: transient PR-CI build skew (full-refresh candidacy vs
+          # deferred candidacy_stage); clean (0) in the scheduled prod build.
           - relationships:
               arguments:
                 to: ref('candidacy')

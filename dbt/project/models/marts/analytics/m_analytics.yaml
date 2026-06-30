@@ -818,10 +818,8 @@ models:
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
-          # Tolerate a tiny number of null user_* fields (a known pre-existing
-          # data gap in `campaigns`, surfaced only on a full-refresh rebuild of
-          # this downstream model): warn under 10, error at 10+ so a real
-          # regression still blocks. The fix belongs in `campaigns`.
+          # Tolerate a tiny pre-existing data gap in `campaigns` (a few null
+          # user_* rows): warn under 10, error at 10+. Fix belongs in `campaigns`.
           - not_null:
               config:
                 warn_if: ">= 1"
