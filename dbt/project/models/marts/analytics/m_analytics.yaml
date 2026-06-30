@@ -1382,20 +1382,31 @@ models:
         data_tests: [not_null]
       - name: has_won_election
         description: >
-          Whether the user won the seat in any of their candidacies (won the
-          race's final stage, including decisive single-stage primaries).
-          Derived from civics.candidacy.candidacy_result (bare 'Won'), three-
-          valued and only meaningful for users who are candidates: TRUE = won at
-          least one seat; FALSE = a candidate whose candidacies are all decided
-          without a win; NULL = not a candidate (no candidacy — most sales
-          contacts in this contact-grain mart) or a candidate with every outcome
-          still unknown (pending / Cannot Determine). NULL is deliberately not
-          "lost". Renamed from has_won_general_election, which only counted
-          general-cycle wins.
+          Whether the contact won the seat in any of their candidacies (won the
+          race's final stage, including decisive single-stage primaries). Derived
+          from civics.candidacy.candidacy_result (bare 'Won'), OR-merged across
+          the candidate-identity link (gp_candidate_id, which covers BR-sourced
+          candidacies) and the product-user link (prod_db_user_id). Three-valued:
+          TRUE = won at least one seat; FALSE = a candidate whose candidacies are
+          all decided without a win; NULL = no decided outcome yet (pending /
+          Cannot Determine) or not a candidate. NULL is deliberately not "lost";
+          use has_candidacy to tell a pending candidate from a non-candidate.
+          Renamed from has_won_general_election, which only counted general-cycle
+          wins.
         data_tests:
           - accepted_values:
               arguments:
                 values: [true, false]
+
+      - name: has_candidacy
+        description: >
+          Whether the contact is a candidate at all — has at least one candidacy,
+          via the candidate identity (gp_candidate_id, incl. BR-sourced) or the
+          product user (prod_db_user_id). Distinguishes a real candidacy from a
+          non-candidate sales contact, which has_won_election's NULL alone cannot
+          (most prospects are candidates). Non-null boolean.
+        data_tests:
+          - not_null
       - name: gp_user_id
         description: Resolved product-DB user_id via candidate.prod_db_user_id.
         data_tests:

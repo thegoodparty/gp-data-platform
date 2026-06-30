@@ -56,13 +56,13 @@ with
         group by user_id
     ),
 
-    -- Seat winners (fallback signal if "winner" needs to mean literal election
-    -- winners rather than Win-org users). Derived from
-    -- civics.candidacy.candidacy_result, where a bare 'Won' means won the seat at
-    -- the race's final stage. Three-valued: TRUE if any candidacy won the seat;
-    -- FALSE if all are known non-wins;
-    -- NULL if every outcome is still unknown (advanced past a primary, in a
-    -- runoff, no result captured, or 'Cannot Determine').
+    -- Seat-winner signal (fallback if "winner" must mean a literal election
+    -- winner rather than a Win-org user), from candidacy.candidacy_result where a
+    -- bare 'Won' = won the race's final stage. Built two ways and OR-merged in
+    -- the final select so a win is caught whether the candidacy links via the
+    -- candidate identity (gp_candidate_id — covers BR-sourced candidacies) or the
+    -- product user (prod_db_user_id). Three-valued: TRUE = won a seat; FALSE =
+    -- all candidacies decided without a win; NULL = no result yet.
     user_won as (
         select
             cd.prod_db_user_id as gp_user_id,
@@ -78,6 +78,22 @@ with
         join {{ ref("candidacy") }} cy on cd.gp_candidate_id = cy.gp_candidate_id
         where cd.prod_db_user_id is not null
         group by cd.prod_db_user_id
+    ),
+
+    candidate_won as (
+        select
+            gp_candidate_id,
+            max(
+                case
+                    when candidacy_result = 'Won'
+                    then true
+                    when candidacy_result in ('Lost', 'Withdrew', 'Not on Ballot')
+                    then false
+                end
+            ) as has_won_election
+        from {{ ref("candidacy") }}
+        where gp_candidate_id is not null
+        group by gp_candidate_id
     ),
 
     sales_touched as (
@@ -262,13 +278,25 @@ with
             st.contact_type_raw,
             st.candidate_type,
 
-            -- Seat-winner sub-segment, derived from candidacy.candidacy_result.
-            -- Three-valued and only meaningful for users who are candidates:
-            -- TRUE = won a seat; FALSE = a candidate whose candidacies are all
-            -- decided without a win; NULL = not a candidate (no candidacy — most
-            -- sales contacts) or a candidate with every outcome still unknown
-            -- (pending / Cannot Determine). NULL is deliberately not "lost".
-            uw.has_won_election,
+            -- Seat-winner sub-segment. TRUE = won a seat; FALSE = a candidate
+            -- whose candidacies are all decided without a win; NULL = no decided
+            -- outcome (pending / Cannot Determine) or not a candidate. OR-merged
+            -- across the candidate-identity and product-user links so BR-sourced
+            -- candidacies count. Use has_candidacy to tell a pending candidate
+            -- apart from a non-candidate.
+            case
+                when cw.has_won_election or uw.has_won_election
+                then true
+                when cw.has_won_election is false or uw.has_won_election is false
+                then false
+            end as has_won_election,
+            -- Whether the contact is a candidate at all (has any candidacy), via
+            -- the candidate identity or the product user — most prospects are.
+            -- has_won_election's NULL alone can't separate a pending candidate
+            -- from a non-candidate sales contact; this can.
+            (
+                cw.gp_candidate_id is not null or uw.gp_user_id is not null
+            ) as has_candidacy,
 
             -- Serve funnel state (true transition rates — Serve workflow enabled)
             st.serve_lifecycle_lead_entered_at,
@@ -353,6 +381,7 @@ with
         from sales_touched st
         left join user_org_types uo on st.gp_user_id = uo.gp_user_id
         left join user_won uw on st.gp_user_id = uw.gp_user_id
+        left join candidate_won cw on st.gp_candidate_id = cw.gp_candidate_id
     )
 
 -- One row per HubSpot contact, BUT collapsed to one row per gp_user_id
