@@ -309,9 +309,11 @@ with
     ),
 
     -- Deepest stage that has actually been DECIDED (non-null result). Used to
-    -- keep candidacy_result populated with the last known outcome when the
-    -- candidacy has advanced to a still-undecided deeper stage (e.g. won the
-    -- primary while the general is pending -> "Won Primary").
+    -- read the last known outcome when the candidacy has advanced to a
+    -- still-undecided deeper stage. A decided result only becomes the final
+    -- candidacy_result when it lands on the race's terminal (general) stage;
+    -- an interim decided stage (e.g. won the primary while the general is
+    -- pending) leaves candidacy_result NULL.
     last_decided_stage_per_candidacy as (
         select
             gp_candidacy_id,
@@ -395,7 +397,9 @@ select
         -- In a runoff (reached but uncalled, or the latest decided result sent
         -- the race to one): in progress, not a final outcome. Evaluated before
         -- the loss branch so a first-round result that advanced to a runoff is
-        -- not mistaken for elimination.
+        -- not mistaken for elimination. A pending runoff also wins over a
+        -- decided earlier-stage "Won" (~19 contradictory rows): an undecided
+        -- deeper stage means the seat is not settled.
         when
             latest.latest_stage_result is null
             and latest.latest_stage_reached in (
