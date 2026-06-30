@@ -1385,11 +1385,13 @@ models:
           Whether the user won the seat in any of their candidacies (won the
           race's final stage, including decisive single-stage primaries).
           Derived from civics.candidacy.candidacy_result (bare 'Won'), three-
-          valued: TRUE = won at least one seat; FALSE = not a candidate (no
-          candidacies), or all candidacies decided without a win; NULL = has
-          candidacies but every outcome is still unknown (pending / Cannot
-          Determine). NULL is deliberately not "lost". Renamed from
-          has_won_general_election, which only counted general-cycle wins.
+          valued and only meaningful for users who are candidates: TRUE = won at
+          least one seat; FALSE = a candidate whose candidacies are all decided
+          without a win; NULL = not a candidate (no candidacy — most sales
+          contacts in this contact-grain mart) or a candidate with every outcome
+          still unknown (pending / Cannot Determine). NULL is deliberately not
+          "lost". Renamed from has_won_general_election, which only counted
+          general-cycle wins.
         data_tests:
           - accepted_values:
               arguments:

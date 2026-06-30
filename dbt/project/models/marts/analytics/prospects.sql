@@ -263,14 +263,12 @@ with
             st.candidate_type,
 
             -- Seat-winner sub-segment, derived from candidacy.candidacy_result.
-            -- Three-valued: TRUE = won a seat at the race's final stage; FALSE =
-            -- no candidacies at all (join miss), or has candidacies all decided
-            -- without a win; NULL = has candidacies but every outcome is still
-            -- unknown (pending / Cannot Determine). Keying off the join match
-            -- avoids collapsing "outcome unknown" into "confirmed non-win".
-            case
-                when uw.gp_user_id is null then false else uw.has_won_election
-            end as has_won_election,
+            -- Three-valued and only meaningful for users who are candidates:
+            -- TRUE = won a seat; FALSE = a candidate whose candidacies are all
+            -- decided without a win; NULL = not a candidate (no candidacy — most
+            -- sales contacts) or a candidate with every outcome still unknown
+            -- (pending / Cannot Determine). NULL is deliberately not "lost".
+            uw.has_won_election,
 
             -- Serve funnel state (true transition rates — Serve workflow enabled)
             st.serve_lifecycle_lead_entered_at,
