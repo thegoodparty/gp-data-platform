@@ -536,7 +536,10 @@ def model(dbt, session):
     # model_predictions (promoted there alongside the models); dev may override to sandbox.
     precincts_schema = dbt.config.meta_get("voter_turnout_precincts_schema") or "model_predictions"
     state_allowlist = _parse_state_allowlist(dbt.config.meta_get("l2_state_allowlist"))
-    catalog = dbt.config.get("database")
+    # Single catalog across this repo; hardcode it like the sibling model-backed models
+    # (int__civics_viability_scoring / int__techspeed_viability_scoring). dbt.config.get(
+    # "database") returns None for dbt-databricks Python models (see dbt/project/CLAUDE.md).
+    catalog = "goodparty_data_catalog"
 
     current_year = datetime.now().year
     inference_years = [current_year, current_year + 1, current_year + 2]
