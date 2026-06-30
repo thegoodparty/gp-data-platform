@@ -58,28 +58,12 @@ with
 
     -- Seat-winner signal (fallback if "winner" must mean a literal election
     -- winner rather than a Win-org user), from candidacy.candidacy_result where a
-    -- bare 'Won' = won the race's final stage. Built two ways and OR-merged in
-    -- the final select so a win is caught whether the candidacy links via the
+    -- bare 'Won' = won the race's final stage. Computed once per candidate, then
+    -- rolled up to the product user; the two are OR-merged in the final select so
+    -- a win is caught whether the candidacy links to the contact via the
     -- candidate identity (gp_candidate_id — covers BR-sourced candidacies) or the
     -- product user (prod_db_user_id). Three-valued: TRUE = won a seat; FALSE =
     -- all candidacies decided without a win; NULL = no result yet.
-    user_won as (
-        select
-            cd.prod_db_user_id as gp_user_id,
-            max(
-                case
-                    when cy.candidacy_result = 'Won'
-                    then true
-                    when cy.candidacy_result in ('Lost', 'Withdrew', 'Not on Ballot')
-                    then false
-                end
-            ) as has_won_election
-        from {{ ref("candidate") }} cd
-        join {{ ref("candidacy") }} cy on cd.gp_candidate_id = cy.gp_candidate_id
-        where cd.prod_db_user_id is not null
-        group by cd.prod_db_user_id
-    ),
-
     candidate_won as (
         select
             gp_candidate_id,
@@ -94,6 +78,19 @@ with
         from {{ ref("candidacy") }}
         where gp_candidate_id is not null
         group by gp_candidate_id
+    ),
+
+    -- Same signal at the product-user grain, derived from candidate_won so the
+    -- win/loss classification lives in one place (max of the boolean preserves
+    -- the TRUE > FALSE > NULL precedence).
+    user_won as (
+        select
+            cd.prod_db_user_id as gp_user_id,
+            max(cw.has_won_election) as has_won_election
+        from candidate_won cw
+        join {{ ref("candidate") }} cd on cd.gp_candidate_id = cw.gp_candidate_id
+        where cd.prod_db_user_id is not null
+        group by cd.prod_db_user_id
     ),
 
     sales_touched as (
