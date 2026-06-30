@@ -64,3 +64,52 @@ def test_get_ssm_parameter_cold_concurrent_burst_makes_one_call(monkeypatch: pyt
 
     assert fake.calls == 1  # cold burst collapsed to a single API call
     assert results == ["val-conn"] * 64
+
+
+def test_session_without_assume_role_is_plain() -> None:
+    import boto3
+
+    aws._session.cache_clear()
+    s = aws._session(None, "us-west-2")
+    assert isinstance(s, boto3.Session)
+    assert s.region_name == "us-west-2"
+
+
+def test_session_with_assume_role_passes_role_and_external_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    import boto3
+
+    aws._session.cache_clear()
+    captured: dict[str, object] = {}
+
+    class _Fetcher:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def fetch_credentials(self) -> dict[str, str]:  # deferred — never called here
+            raise AssertionError("credentials should be fetched lazily, not at session build")
+
+    monkeypatch.setattr(aws, "AssumeRoleCredentialFetcher", _Fetcher)
+    s = aws._session(None, "us-west-2", "arn:aws:iam::333:role/admin", "ext-123")
+
+    assert isinstance(s, boto3.Session)
+    assert captured["role_arn"] == "arn:aws:iam::333:role/admin"
+    extra = cast(dict, captured["extra_args"])
+    assert extra["ExternalId"] == "ext-123"
+    assert extra["RoleSessionName"] == "people-api-loader"
+
+
+def test_session_assume_role_omits_external_id_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    aws._session.cache_clear()
+    captured: dict[str, object] = {}
+
+    class _Fetcher:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def fetch_credentials(self) -> dict[str, str]:  # deferred — never called here
+            raise AssertionError("credentials should be fetched lazily, not at session build")
+
+    monkeypatch.setattr(aws, "AssumeRoleCredentialFetcher", _Fetcher)
+    aws._session(None, "us-west-2", "arn:aws:iam::333:role/admin", None)
+
+    assert "ExternalId" not in cast(dict, captured["extra_args"])

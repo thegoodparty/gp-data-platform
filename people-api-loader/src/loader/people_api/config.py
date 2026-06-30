@@ -148,6 +148,11 @@ class LoaderConfig(BaseLoaderConfig):
         return cls(
             aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
+            # Cross-account RDS-admin role assumed for all AWS calls (the Astro worker's identity
+            # lives in a different account). Unset for local runs whose ambient creds already have
+            # access. ExternalId is required by the role's trust policy when present.
+            assume_role_arn=os.environ.get("AWS_PEOPLE_API_RDS_ROLE_ARN") or None,
+            assume_role_external_id=os.environ.get("AWS_PEOPLE_API_RDS_EXTERNAL_ID") or None,
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
             databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),

@@ -5,8 +5,11 @@ BashOperator running `loader <step> --date {{ ds_nodash }}`; parallelism lives i
 loader, and inter-step state flows through the loader's S3 manifests (no Airflow xcom).
 
 Postgres is reached via the gp_bastion_host SSH tunnel — the loader's LOADER_BASTION_*
-env vars are populated from the gp_bastion_host connection. All LOADER_* env values are
-Jinja templates resolved at task runtime, so DAG parsing never touches the metastore.
+env vars are populated from the gp_bastion_host connection. The Databricks credentials
+(DATABRICKS_HOST / DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET, OAuth M2M) come from a
+Databricks Airflow connection (LOADER_DATABRICKS_CONN_ID, e.g. databricks_dev), feeding both
+the loader's databricks-sdk and the Cosmos dbt gate from one source. All connection-derived
+values are Jinja templates resolved at task runtime, so DAG parsing never touches the metastore.
 """
 
 from __future__ import annotations
@@ -20,19 +23,31 @@ from cosmos.operators.virtualenv import DbtTestVirtualenvOperator
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
+# Databricks creds, sourced from a Databricks Airflow connection (OAuth M2M). The conn_id is
+# read at import (env var, parse-safe) and interpolated into Jinja templates that resolve at task
+# runtime. login/password is the standard SP-OAuth storage; the extra_dejson fallback covers
+# connections that stash client_id/client_secret in extras instead. Feeds the loader's
+# databricks-sdk (these BashOperators) and the Cosmos gate (env= below) from one source.
+_DBX_CONN = os.getenv("LOADER_DATABRICKS_CONN_ID", "databricks")
+_DBX_ENV: dict[str, str] = {
+    "DATABRICKS_HOST": f"{{{{ conn.{_DBX_CONN}.host }}}}",
+    "DATABRICKS_CLIENT_ID": f"{{{{ conn.{_DBX_CONN}.login or conn.{_DBX_CONN}.extra_dejson.get('client_id', '') }}}}",
+    "DATABRICKS_CLIENT_SECRET": f"{{{{ conn.{_DBX_CONN}.password or conn.{_DBX_CONN}.extra_dejson.get('client_secret', '') }}}}",
+}
+
 # Bastion fields for the loader's SSH tunnel, sourced from the gp_bastion_host connection.
 # These are Jinja templates resolved at task runtime (not DAG parse — parse must not touch the
 # metastore). The rest of the loader's config (LOADER_S3_BUCKET, LOADER_S3_IMPORT_ROLE_ARN,
 # LOADER_AWS_ACCOUNT_ID, LOADER_DATABRICKS_WAREHOUSE_ID, VPC/subnet/SG/KMS) is set as deployment
 # env vars in the Astro Environment Manager and reaches the `loader` subprocess via
-# append_env=True — consistent with the loader's native env-var config and the Cosmos gate's
-# os.getenv reads below. Static, so it's built once at import.
+# append_env=True. Static, so it's built once at import.
 _LOADER_ENV: dict[str, str] = {
     "LOADER_BASTION_HOST": "{{ conn.gp_bastion_host.host }}",
     "LOADER_BASTION_PORT": "{{ conn.gp_bastion_host.port or 22 }}",
     "LOADER_BASTION_USER": "{{ conn.gp_bastion_host.login }}",
     "LOADER_BASTION_PRIVATE_KEY": "{{ conn.gp_bastion_host.extra_dejson.get('private_key', '') }}",
     "LOADER_BASTION_KEY_PASSPHRASE": "{{ conn.gp_bastion_host.extra_dejson.get('private_key_passphrase', '') }}",
+    **_DBX_ENV,
 }
 
 
@@ -53,10 +68,10 @@ _DBT_PROFILES_YML = os.getenv("LOADER_DBT_PROFILES_YML", "/usr/local/airflow/inc
 def _voter_gate_profile() -> ProfileConfig:
     """dbt profile for the voter gate.
 
-    Uses a committed profiles.yml that authenticates via OAuth M2M from the same env vars as the
-    loader's databricks-sdk (DATABRICKS_HOST / DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET) —
-    one OAuth credential (the people-api-loader SP) across every process, no Airflow connection.
-    dbt resolves the env vars (host, warehouse http_path, schema) at task runtime.
+    Uses a committed profiles.yml that authenticates via OAuth M2M from the DATABRICKS_* env vars.
+    Those are injected into the operator's env (see _DBX_ENV) from the same Databricks connection
+    the loader's databricks-sdk uses — one OAuth credential across every process. dbt resolves the
+    env vars (host, client id/secret, warehouse http_path, catalog, schema) at task runtime.
     """
     return ProfileConfig(
         profile_name="default",
@@ -81,6 +96,11 @@ def load_people_api():
         profile_config=_voter_gate_profile(),
         select=["m_people_api__voter"],  # voter schema tests + the singular gate test
         install_deps=True,  # the dbt project has packages.yml; run `dbt deps` before testing
+        # Databricks creds from the same connection as the loader (templated, resolved at runtime).
+        # append_env=True keeps the deployment env vars the profile also needs
+        # (LOADER_DATABRICKS_WAREHOUSE_ID, LOADER_DBT_CATALOG, LOADER_DBT_SCHEMA).
+        env=_DBX_ENV,
+        append_env=True,
         # Run dbt in an isolated venv: dbt-databricks pins databricks-sdk <0.105, which conflicts
         # with the image's databricks-sdk >=0.117. py_system_site_packages stays False (default)
         # so the venv is fully isolated from the image's SDK.
