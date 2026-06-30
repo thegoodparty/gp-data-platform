@@ -272,6 +272,107 @@ models:
         description: "Timestamp when the briefing was created"
       - name: updated_at
         description: "Timestamp when the briefing was last updated"
+  - name: stg_airbyte_source__gp_api_db_experiment_run
+    description: >
+      Experiment runs from the gp-api experiment pipeline. Each row is one run
+      of an experiment (e.g. meeting briefing/schedule generation, opposition
+      research) for an organization, with its status, cost, and artifact
+      pointers. One row per run_id.
+    columns:
+      - name: run_id
+        description: "Primary key - unique identifier for the experiment run"
+        data_tests:
+          - not_null
+          - unique
+      - name: experiment_type
+        description: "Type of experiment (e.g. meeting_briefing, meeting_schedule, opposition_research)"
+      - name: stage
+        description: "Pipeline stage the run reached"
+      - name: status
+        description: "Terminal status of the run (e.g. COMPLETED, FAILED)"
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["COMPLETED", "FAILED"]
+      - name: priority
+        description: "Scheduling priority of the run"
+      - name: data_quality
+        description: "Data quality assessment recorded for the run"
+      - name: error
+        description: "Error message captured when the run failed"
+      - name: params
+        description: "JSON parameters the run was invoked with"
+      - name: cost_usd
+        description: "Cost of the run in USD"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: duration_seconds
+        description: "Wall-clock duration of the run in seconds"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: resume_attempts
+        description: "Number of times the run has been resumed"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: artifact_bucket
+        description: "Storage bucket holding the run artifact"
+      - name: artifact_key
+        description: "Storage key/path of the run artifact"
+      - name: organization_slug
+        description: "Foreign key to the organization the run was generated for"
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp when the run was created"
+      - name: updated_at
+        description: "Timestamp when the run was last updated"
+      - name: resume_scheduled_for
+        description: "Timestamp the run is scheduled to resume at, if any"
+  - name: stg_airbyte_source__gp_api_db_community_issue
+    description: >
+      Community issues surfaced for an organization, ranked and categorized.
+      One row per issue.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the community issue"
+        data_tests:
+          - not_null
+          - unique
+      - name: organization_slug
+        description: "Foreign key to the organization the issue belongs to"
+        data_tests:
+          - not_null
+      - name: list
+        description: "Name of the list the issue belongs to"
+      - name: rank
+        description: "Rank of the issue within its list"
+      - name: category
+        description: "Category the issue is classified under"
+      - name: priority
+        description: "Priority assigned to the issue"
+      - name: title
+        description: "Short title of the issue"
+      - name: summary
+        description: "Summary of the issue"
+      - name: detail
+        description: "Full detail/description of the issue"
+      - name: last_refreshed_run_id
+        description: "Foreign key to the experiment run that last refreshed this issue"
+      - name: created_at
+        description: "Timestamp when the issue was created"
+      - name: updated_at
+        description: "Timestamp when the issue was last updated"
+      - name: archived_at
+        description: "Timestamp when the issue was archived, if any"
   - name: stg_airbyte_source__gp_api_db_domain
     description: raw data load from gp_api_db postgres db from table `domain`
     columns:

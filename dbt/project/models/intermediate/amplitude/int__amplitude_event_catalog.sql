@@ -12,7 +12,8 @@
 
         It intentionally does NOT compute a staleness verdict (is_retired /
         is_unofficial / staleness_reason). Code-presence provenance lives as a CSV
-        in this repo (analytics/data/amplitude_event_provenance.csv, DATA-2014). The
+        in the omni repo (packages/runbooks/scripts/python/instrumentation_data/amplitude_event_provenance.csv,
+        DATA-2014). The
         relevance / up-to-dateness judgment is made at check time by an agent or the
         health monitor (DATA-1952) reconciling that CSV with this table, so a
         live-firing event whose code was removed is never silently marked retired.
