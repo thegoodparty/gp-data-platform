@@ -165,7 +165,11 @@ models:
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
-          - not_null
+          # A few orphaned user_ids (user deleted in product) are expected
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_email
         description: User's email address (primary contact)
@@ -347,7 +351,11 @@ models:
           Whether this organization is a Win (campaign) or Serve (elected office)
           organization.
         data_tests:
-          - not_null
+          # Orgs with no campaign or elected office (incomplete/abandoned) leave this null
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">20"
           - accepted_values:
               arguments:
                 values: ["win", "serve"]
@@ -559,14 +567,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  [
-                    "Won",
-                    "Lost",
-                    "Runoff",
-                    "Withdrew",
-                    "Not on Ballot",
-                  ]
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
 
       - name: latest_stage_reached
         description: >
@@ -599,14 +600,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  [
-                    "Won",
-                    "Lost",
-                    "Runoff",
-                    "Withdrew",
-                    "Not on Ballot",
-                  ]
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
 
       - name: is_pledged
         description: >
@@ -1852,7 +1846,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
+                values:
+                  [
+                    "City",
+                    "Local",
+                    "County",
+                    "Township",
+                    "State",
+                    "Regional",
+                    "Federal",
+                  ]
               config:
                 severity: warn
 
@@ -1904,7 +1907,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Independent", "Nonpartisan", "Democrat", "Republican", "Libertarian", "Green", "Other"]
+                values:
+                  [
+                    "Independent",
+                    "Nonpartisan",
+                    "Democrat",
+                    "Republican",
+                    "Libertarian",
+                    "Green",
+                    "Other",
+                  ]
               config:
                 severity: warn
 
@@ -2153,7 +2165,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
+                values:
+                  [
+                    "City",
+                    "Local",
+                    "County",
+                    "Township",
+                    "State",
+                    "Regional",
+                    "Federal",
+                  ]
               config:
                 severity: warn
 
@@ -2201,7 +2222,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Independent", "Nonpartisan", "Democrat", "Republican", "Libertarian", "Green", "Other"]
+                values:
+                  [
+                    "Independent",
+                    "Nonpartisan",
+                    "Democrat",
+                    "Republican",
+                    "Libertarian",
+                    "Green",
+                    "Other",
+                  ]
               config:
                 severity: warn
 
@@ -2741,7 +2771,8 @@ models:
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [state_postal_code, district_type, district_name]
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
     columns:
       - name: state_postal_code
         description: Two-letter state postal code, derived from the census geoid FIPS prefix (authoritative).
