@@ -165,7 +165,11 @@ models:
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
-          - not_null
+          # A few orphaned user_ids (user deleted in product) are expected
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_email
         description: User's email address (primary contact)
@@ -347,7 +351,11 @@ models:
           Whether this organization is a Win (campaign) or Serve (elected office)
           organization.
         data_tests:
-          - not_null
+          # Orgs with no campaign or elected office (incomplete/abandoned) leave this null
+          - not_null:
+              config:
+                warn_if: ">0"
+                error_if: ">20"
           - accepted_values:
               arguments:
                 values: ["win", "serve"]
@@ -559,14 +567,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  [
-                    "Won",
-                    "Lost",
-                    "Runoff",
-                    "Withdrew",
-                    "Not on Ballot",
-                  ]
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
 
       - name: latest_stage_reached
         description: >
@@ -599,14 +600,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values:
-                  [
-                    "Won",
-                    "Lost",
-                    "Runoff",
-                    "Withdrew",
-                    "Not on Ballot",
-                  ]
+                values: ["Won", "Lost", "Runoff", "Withdrew", "Not on Ballot"]
 
       - name: is_pledged
         description: >
@@ -671,6 +665,10 @@ models:
 
       - name: viability_score
         description: >
+          INTERNAL (DATA-1938): the legacy/base viability value. The sales- and
+          Win-facing BROAD viability lives on candidacy_scored -- read it there,
+          not here. This column stays because candidacy_scored coalesces it in as
+          a gap-filler for rows the new civics scorer cannot score.
           Numeric viability rating (0..5) from the TechSpeed-trained
           MLflow model (int__techspeed_viability_scoring.viability_rating_2_0).
           Populated for TS-sourced candidacies via join in
@@ -685,6 +683,8 @@ models:
 
       - name: score_viability_automated
         description: >
+          INTERNAL (DATA-1938): read the broad label on candidacy_scored, not
+          here (see viability_score above).
           String category derived from viability_score by the MLflow model.
           Values: "No Chance" (score < 1), "Unlikely to Win" (1..2),
           "Has a Chance" (2..3), "Likely to Win" (3..4), "Frontrunner"
@@ -752,6 +752,66 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
+
+  - name: candidacy_scored
+    description: >
+      The candidacy mart with broad civics viability layered on (DATA-1938).
+      This is the sales / Win-facing viability source: consumers read
+      viability_score and score_viability_automated HERE, not on candidacy.
+      Every non-viability column passes through from candidacy unchanged and in
+      the same order (see the candidacy model for their docs). viability_score
+      and score_viability_automated are overridden as a unit -- the new civics
+      scorer (int__civics_viability_scoring) wins where it scored the row, the
+      old candidacy value gap-fills the rest so coverage never regresses. The
+      scorer reads candidacy + election as leaves, so this downstream layer is
+      acyclic.
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key - inherited from candidacy (one row per candidacy).
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: viability_score
+        description: >
+          Numeric viability rating (0..5): the broad civics score
+          (int__civics_viability_scoring.viability_rating_2_0) where available,
+          else the prior candidacy value. NULL only where neither could score.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+      - name: score_viability_automated
+        description: >
+          String category, always consistent with viability_score (same source
+          for a given row). Values: "No Chance" (<1), "Unlikely to Win" (1..2),
+          "Has a Chance" (2..3), "Likely to Win" (3..4), "Frontrunner" (4..5).
+          NULL where viability_score is NULL.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "No Chance"
+                  - "Unlikely to Win"
+                  - "Has a Chance"
+                  - "Likely to Win"
+                  - "Frontrunner"
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: candidacy_scored_score_label_consistent
+          arguments:
+            # The label must match the numeric band (and both must be null
+            # together) -- guards against pairing a score with the wrong label
+            # if the unit-gating or a band cutoff ever drifts. Verified 0
+            # violations on prod candidacy before adding this test.
+            expression: >
+              (viability_score is null and score_viability_automated is null)
+              or (viability_score >= 0 and viability_score < 1 and score_viability_automated = 'No Chance')
+              or (viability_score >= 1 and viability_score < 2 and score_viability_automated = 'Unlikely to Win')
+              or (viability_score >= 2 and viability_score < 3 and score_viability_automated = 'Has a Chance')
+              or (viability_score >= 3 and viability_score < 4 and score_viability_automated = 'Likely to Win')
+              or (viability_score >= 4 and score_viability_automated = 'Frontrunner')
 
   - name: candidate
     description: >
@@ -1786,7 +1846,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
+                values:
+                  [
+                    "City",
+                    "Local",
+                    "County",
+                    "Township",
+                    "State",
+                    "Regional",
+                    "Federal",
+                  ]
               config:
                 severity: warn
 
@@ -1838,7 +1907,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Independent", "Nonpartisan", "Democrat", "Republican", "Libertarian", "Green", "Other"]
+                values:
+                  [
+                    "Independent",
+                    "Nonpartisan",
+                    "Democrat",
+                    "Republican",
+                    "Libertarian",
+                    "Green",
+                    "Other",
+                  ]
               config:
                 severity: warn
 
@@ -2087,7 +2165,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["City", "Local", "County", "Township", "State", "Regional", "Federal"]
+                values:
+                  [
+                    "City",
+                    "Local",
+                    "County",
+                    "Township",
+                    "State",
+                    "Regional",
+                    "Federal",
+                  ]
               config:
                 severity: warn
 
@@ -2135,7 +2222,16 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["Independent", "Nonpartisan", "Democrat", "Republican", "Libertarian", "Green", "Other"]
+                values:
+                  [
+                    "Independent",
+                    "Nonpartisan",
+                    "Democrat",
+                    "Republican",
+                    "Libertarian",
+                    "Green",
+                    "Other",
+                  ]
               config:
                 severity: warn
 
@@ -2675,7 +2771,8 @@ models:
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [state_postal_code, district_type, district_name]
+            combination_of_columns:
+              [state_postal_code, district_type, district_name]
     columns:
       - name: state_postal_code
         description: Two-letter state postal code, derived from the census geoid FIPS prefix (authoritative).

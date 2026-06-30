@@ -3566,3 +3566,61 @@ models:
           name: serve_block_coverage_active_le_served
           arguments:
             expression: "served_voters_active <= served_voters"
+
+  - name: int__civics_viability_scoring
+    description: >
+      Viability scores for all candidacies in the civics mart, produced by an
+      MLflow model waterfall (best-available model wins via COALESCE). Reads the
+      candidacy + election marts as leaves; its output is joined onto the
+      downstream candidacy_scored mart, never back onto candidacy (acyclic).
+      Models load by latest registered version from model_predictions (no @prod
+      alias). Grain: one row per gp_candidacy_id.
+    columns:
+      - name: gp_candidacy_id
+        description: Primary key — foreign key to the candidacy mart.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: viability_rating_2_0
+        description: Viability score on a 0–5 scale (null where no waterfall model could score the row).
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 5
+      - name: score_viability_automated
+        description: Human-readable viability label derived from viability_rating_2_0.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - No Chance
+                  - Unlikely to Win
+                  - Has a Chance
+                  - Likely to Win
+                  - Frontrunner
+      - name: scoring_model
+        description: >
+          Which waterfall model produced this row's surviving (coalesced) score —
+          i.e. the feature-completeness tier (viabilitywithopponentdata = the full
+          9-feature model; the rest are progressively more missing-tolerant
+          fallbacks). Internal provenance; not surfaced on candidacy_scored.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - viabilitywithopponentdata
+                  - viabilitywithoutopenseat
+                  - viabilitynoopponentdata
+                  - viabilitynoincumbency
+                  - viabilitynocandidatedatahs
+      - name: model_version
+        description: >
+          Resolved model_predictions registered version of scoring_model for this
+          row. Latest-version load is a moving pointer, so this records the exact
+          version that scored the row for traceability and a code-pin rollback target.
+      - name: updated_at
+        description: Timestamp when the score was last computed (the dbt run time).
+        data_tests:
+          - not_null

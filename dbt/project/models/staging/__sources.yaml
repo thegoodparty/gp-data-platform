@@ -88,16 +88,26 @@ sources:
           results have not yet been reported. One row per ddhq_race_id.
       - name: gp_api_db_annotation
         description: raw data load from gp_api_db postgres db from table `annotation`
+      # EO annotation/feedback tables are written sporadically and can go >31d
+      # without a new row, so freshness is disabled to stop them going STALE.
       - name: gp_api_db_annotation_bug_report
         description: raw data load from gp_api_db postgres db from table `annotation_bug_report`
+        config:
+          freshness: null
       - name: gp_api_db_annotation_note
         description: raw data load from gp_api_db postgres db from table `annotation_note`
+        config:
+          freshness: null
       - name: gp_api_db_annotation_note_attachment
         description: raw data load from gp_api_db postgres db from table `annotation_note_attachment`
+        config:
+          freshness: null
       - name: gp_api_db_annotation_review
         description: raw data load from gp_api_db postgres db from table `annotation_review`
       - name: gp_api_db_artifact_feedback
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
+        config:
+          freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_chat_conversation
@@ -106,6 +116,10 @@ sources:
         description: raw data load from gp_api_db postgres db from table `chat_message`
       - name: gp_api_db_meeting_briefing
         description: raw data load from gp_api_db postgres db from table `meeting_briefing`
+      - name: gp_api_db_experiment_run
+        description: raw data load from gp_api_db postgres db from table `experiment_run`
+      - name: gp_api_db_community_issue
+        description: raw data load from gp_api_db postgres db from table `community_issue`
       - name: gp_api_db_campaign_position
         description: raw data load from gp_api_db postgres db from table `campaign_position`
       - name: gp_api_db_domain
