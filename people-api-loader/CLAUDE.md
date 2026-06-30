@@ -18,11 +18,11 @@ This repo standardizes on Astral tools and is intentionally not aligned with `gp
 
 CI runs `uv run ruff check`, `uv run ruff format --check`, `uv run ty check`, and `uv run pytest` on every PR.
 
-## Step bodies are stubs by design
+## Pipeline steps
 
-Every file under `src/loader/people_api/steps/` raises `NotImplementedError` with a pointer to its ClickUp ticket (e.g. `DATA-1851` for `copy_s3`). Scaffolding shipped under DATA-1852; bodies land under their own per-step tickets in the [DATA-1640 epic](https://app.clickup.com/t/86ag66jjr). Don't fill in a stub unless that ticket is the task at hand.
+Each step is one module under `src/loader/people_api/steps/` (`inspect_prod`, `unload`, `provision`, `create_schema`, `copy_s3`, `build_indexes`, `resize`, `validate`, `teardown`), invoked as `loader <step> --date <ds_nodash>`. State flows between steps through S3 manifests, not in-process handoff, so each step is independently runnable and re-entrant for a given run date (a step short-circuits if its manifest already exists). The DAG at `gp-data-platform/airflow/astro/dags/load_people_api.py` sequences them, one BashOperator per step.
 
-Stub return-type rule: even when a stub only raises, declare the eventual real return type. The CLI is already wired up against those types, and `ty` will flag the mismatch. See `steps/validate.py` for the pattern.
+Each step's CLI entry point is typed against its real return type, so `ty` enforces the contract between the step and the CLI. See `steps/validate.py` for the pattern.
 
 ## Never
 
