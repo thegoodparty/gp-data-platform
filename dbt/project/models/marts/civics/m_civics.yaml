@@ -983,14 +983,14 @@ models:
           # Transient PR-CI build skew (full-refresh candidacy vs deferred
           # candidacy_stage); clean (0) in dev and the scheduled prod build.
           # Skew runs to a handful (last CI: 13 of ~304k stage rows); a real
-          # FK regression would orphan thousands. Warn on any, error above 100.
+          # FK regression would orphan thousands. Warn on any, error above 30.
           - relationships:
               arguments:
                 to: ref('candidacy')
                 field: gp_candidacy_id
               config:
                 warn_if: ">0"
-                error_if: ">100"
+                error_if: ">30"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
