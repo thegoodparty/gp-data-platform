@@ -818,34 +818,38 @@ models:
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
-          # warn, not error: one pre-existing campaign has null user_* fields
-          # (a known data-quality gap in `campaigns`, present in prod). It only
-          # blocks on a full-refresh rebuild of this downstream model, which a
-          # candidacy change triggers; the real fix belongs in `campaigns`.
+          # Tolerate a tiny number of null user_* fields (a known pre-existing
+          # data gap in `campaigns`, surfaced only on a full-refresh rebuild of
+          # this downstream model): warn under 10, error at 10+ so a real
+          # regression still blocks. The fix belongs in `campaigns`.
           - not_null:
               config:
-                severity: warn
+                warn_if: ">= 1"
+                error_if: ">= 10"
 
       - name: user_email
         description: User's email address (lowercased)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">= 1"
+                error_if: ">= 10"
 
       - name: user_first_name
         description: User's first name (title case)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">= 1"
+                error_if: ">= 10"
 
       - name: user_last_name
         description: User's last name (title case)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">= 1"
+                error_if: ">= 10"
 
       - name: user_phone
         description: User's phone number
@@ -858,7 +862,8 @@ models:
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">= 1"
+                error_if: ">= 10"
 
       - name: campaign_created_at
         description: Timestamp when this campaign was created

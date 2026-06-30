@@ -920,17 +920,17 @@ models:
         description: Foreign key to candidacy table
         data_tests:
           - not_null
-          # warn, not error: prod is clean (0 orphans), but a PR that rebuilds
-          # `candidacy` with --full-refresh compares it against a deferred
-          # `candidacy_stage`, so entity-resolution churn since the last prod
-          # build shows as transient orphans. Warn keeps the signal without
-          # blocking on this build-baseline skew.
+          # Prod is clean (0 orphans); a PR that rebuilds `candidacy` with
+          # --full-refresh compares it against a deferred `candidacy_stage`, so a
+          # few entity-resolution-churn orphans can appear transiently. Warn
+          # under 10; error at 10+ so a genuine referential break still blocks.
           - relationships:
               arguments:
                 to: ref('candidacy')
                 field: gp_candidacy_id
               config:
-                severity: warn
+                warn_if: ">= 1"
+                error_if: ">= 10"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
