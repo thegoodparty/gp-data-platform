@@ -59,8 +59,8 @@ with
     -- Seat winners (fallback signal if "winner" needs to mean literal election
     -- winners rather than Win-org users). Derived from
     -- civics.candidacy.candidacy_result, where a bare 'Won' means won the seat at
-    -- the race's final stage (including decisive single-stage primaries). Three-
-    -- valued: TRUE if any candidacy won the seat; FALSE if all are known non-wins;
+    -- the race's final stage. Three-valued: TRUE if any candidacy won the seat;
+    -- FALSE if all are known non-wins;
     -- NULL if every outcome is still unknown (advanced past a primary, in a
     -- runoff, no result captured, or 'Cannot Determine').
     user_won as (
