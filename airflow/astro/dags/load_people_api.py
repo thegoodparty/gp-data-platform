@@ -23,17 +23,21 @@ from cosmos.operators.virtualenv import DbtTestVirtualenvOperator
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
-# Databricks creds, sourced from a Databricks Airflow connection (OAuth M2M). The conn_id is
-# read at import (env var, parse-safe) and interpolated into Jinja templates that resolve at task
-# runtime. login/password is the standard SP-OAuth storage; the extra_dejson fallback covers
-# connections that stash client_id/client_secret in extras instead. Applied ONLY to the steps that
-# reach Databricks (the unload step + the Cosmos gate) — the other steps are AWS/Postgres only and
-# must not depend on this connection existing.
+# Databricks creds + compute, reused from the SAME Databricks Airflow connection the L2 dbt jobs
+# use (OAuth M2M). The conn_id is read at import (env var, parse-safe — Airflow 3 forbids metastore
+# access at DAG parse) and interpolated into Jinja templates that resolve at task runtime.
+# login/password is the standard SP-OAuth storage; the extra_dejson fallback covers connections that
+# stash client_id/client_secret (and http_path) in extras. Applied ONLY to the steps that reach
+# Databricks (the unload step + the Cosmos gate) — the other steps are AWS/Postgres only and must
+# not depend on this connection existing.
 _DBX_CONN = os.getenv("LOADER_DATABRICKS_CONN_ID", "databricks")
 _DBX_ENV: dict[str, str] = {
     "DATABRICKS_HOST": f"{{{{ conn.{_DBX_CONN}.host }}}}",
     "DATABRICKS_CLIENT_ID": f"{{{{ conn.{_DBX_CONN}.login or conn.{_DBX_CONN}.extra_dejson.get('client_id', '') }}}}",
     "DATABRICKS_CLIENT_SECRET": f"{{{{ conn.{_DBX_CONN}.password or conn.{_DBX_CONN}.extra_dejson.get('client_secret', '') }}}}",
+    # The gate's dbt profile reads this as its http_path, so the gate runs on the connection's own
+    # compute (the L2 all-purpose cluster today) — no separate warehouse id needed for the gate.
+    "DATABRICKS_HTTP_PATH": f"{{{{ conn.{_DBX_CONN}.extra_dejson.get('http_path', '') }}}}",
 }
 
 # Bastion fields for the loader's SSH tunnel, sourced from the gp_bastion_host connection.
