@@ -281,6 +281,14 @@ with
             -- across the candidate-identity and product-user links so BR-sourced
             -- candidacies count. Use has_candidacy to tell a pending candidate
             -- apart from a non-candidate.
+            -- OR (not AND) is deliberate: it lets a FALSE on the single populated
+            -- link classify the ~10.6k contacts that have only one link type; an
+            -- AND would leave those unclassifiable (regressing ~1.8k). The
+            -- trade-off is a rare cross-identity contact (~62) whose two links
+            -- disagree (one all-lost, the other pending) reading FALSE instead of
+            -- NULL. A fully three-valued answer would need a separate has_pending
+            -- signal, since user_won's max(bool) already drops pending under a
+            -- decided loss; not worth it for the volume.
             case
                 when cw.has_won_election or uw.has_won_election
                 then true
