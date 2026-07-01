@@ -582,7 +582,7 @@ models:
 
   - name: users_serve_active
     description: >
-      Canonical gold-layer membership table for "active serve users" (epic
+      Canonical gold-layer membership view for "active serve users" (epic
       DATA-1359): one row per user who completed Serve onboarding by sending
       an SMS poll AND has pledged. Thin projection of int__serve_active_user,
       which owns the definition; exists so dashboards read the definition

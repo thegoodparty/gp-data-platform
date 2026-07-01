@@ -55,9 +55,11 @@ metrics:
     description: >
       Count of active serve users: completed Serve onboarding by sending an
       SMS poll AND pledged. Definition owned by int__serve_active_user,
-      surfaced through users_serve_base; the gold membership table
+      surfaced through users_serve_base; the gold membership view
       users_serve_active exposes the same population for direct dashboard
-      reads.
+      reads. Time series bucket by onboarding-completion date (the metric's
+      aggregation time is first_sms_poll_sent_at), not by pledge or account
+      registration date.
     type: simple
     type_params:
       measure: active_serve_user_count

@@ -3,7 +3,7 @@
 /*
     mart_analytics.users_serve_active
 
-    Canonical gold-layer membership table for "active serve users" (epic
+    Canonical gold-layer membership view for "active serve users" (epic
     DATA-1359): one row per user who completed Serve onboarding by sending an
     SMS poll AND has pledged. A thin projection of int__serve_active_user,
     which owns the definition — no logic lives here, so this mart cannot
