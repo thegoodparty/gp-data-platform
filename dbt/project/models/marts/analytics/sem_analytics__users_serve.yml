@@ -9,14 +9,19 @@ semantic_models:
       the columns.
     model: ref('users_serve_base')
     defaults:
-      agg_time_dimension: registered_at
+      agg_time_dimension: first_sms_poll_sent_at
     entities:
       - name: user
         type: primary
         expr: user_id
     dimensions:
-      - name: registered_at
-        description: When the user account was created.
+      # Serve-native aggregation time. Not registered_at: MetricFlow requires a
+      # (primary entity, dimension) pairing to be unique across semantic models,
+      # and user__registered_at is already owned by users_win. Every user who
+      # contributes to the active count has this timestamp (sending the SMS poll
+      # is a component of the definition).
+      - name: first_sms_poll_sent_at
+        description: When the user completed Serve onboarding by sending their first SMS poll.
         type: time
         type_params:
           time_granularity: day
