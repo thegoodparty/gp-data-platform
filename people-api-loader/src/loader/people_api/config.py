@@ -89,6 +89,9 @@ class LoaderConfig(BaseLoaderConfig):
     db_env: str
     # SSM Parameter Store name holding the Present-cluster connection string (SecureString).
     db_conn_param: str
+    # Optional server-side statement_timeout (ms) applied to each Postgres session; 0 disables it.
+    # A runaway query then fails loudly instead of running unbounded (see db.py).
+    db_statement_timeout_ms: int
 
     # Prod (inspected / validated against)
     prod_cluster_id: str
@@ -170,6 +173,7 @@ class LoaderConfig(BaseLoaderConfig):
             databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
+            db_statement_timeout_ms=int(os.environ.get("LOADER_DB_STATEMENT_TIMEOUT_MS", "0")),
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
             prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
             prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),

@@ -27,14 +27,37 @@ from loader.people_api.config import LoaderConfig
 if TYPE_CHECKING:
     from psycopg import Connection
 
+# TCP keepalives so a dropped connection (e.g. a severed bastion tunnel) surfaces as an error
+# in ~1 min rather than hanging indefinitely on a response that never arrives. connect_timeout
+# only bounds establishing the connection; these bound a silently-dead established one. libpq
+# parameters are string-valued, and we bake them into the conninfo so the connect() call stays
+# a plain (conninfo, autocommit, connect_timeout) form.
+_KEEPALIVE_KW = {
+    "keepalives": "1",
+    "keepalives_idle": "30",
+    "keepalives_interval": "10",
+    "keepalives_count": "5",
+}
+
+
+def _apply_session_settings(conn: Connection, cfg: LoaderConfig) -> None:
+    """Bound server-side query time when configured (LOADER_DB_STATEMENT_TIMEOUT_MS > 0) so a
+    runaway query fails loudly instead of running unbounded. 0 (the default) leaves it unset."""
+    if cfg.db_statement_timeout_ms > 0:
+        # statement_timeout is a session GUC; Postgres SET takes no bind params, so inline the
+        # already-int-coerced value (never user input).
+        set_timeout = f"SET statement_timeout = {int(cfg.db_statement_timeout_ms)}"
+        conn.execute(set_timeout)  # ty: ignore[no-matching-overload]
+
 
 @contextmanager
 def _connect(cfg: LoaderConfig, param_name: str, *, autocommit: bool) -> Iterator[Connection]:
     """Open a psycopg connection from an SSM connection string, via the bastion if configured."""
-    conninfo = get_ssm_parameter(cfg, param_name)
+    conninfo = make_conninfo(get_ssm_parameter(cfg, param_name), **_KEEPALIVE_KW)
     if not cfg.bastion_enabled:
-        # Direct: hand the SSM connection string to psycopg unchanged.
+        # Direct: the SSM connection string, plus the keepalive params baked in above.
         with psycopg.connect(conninfo, autocommit=autocommit, connect_timeout=30) as conn:
+            _apply_session_settings(conn, cfg)
             yield conn
         return
     # Tunneled: forward to the real host/port, then dial the local forward via `hostaddr`
@@ -46,6 +69,7 @@ def _connect(cfg: LoaderConfig, param_name: str, *, autocommit: bool) -> Iterato
     with open_tunnel(cfg, target_host, target_port) as (local_host, local_port):
         tunneled = make_conninfo(conninfo, hostaddr=local_host, port=str(local_port))
         with psycopg.connect(tunneled, autocommit=autocommit, connect_timeout=30) as conn:
+            _apply_session_settings(conn, cfg)
             yield conn
 
 

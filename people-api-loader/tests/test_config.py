@@ -66,6 +66,13 @@ def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert set(cfg.mart_fqns) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
 
 
+def test_statement_timeout_defaults_off_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LOADER_DB_STATEMENT_TIMEOUT_MS", raising=False)
+    assert LoaderConfig.from_env().db_statement_timeout_ms == 0
+    monkeypatch.setenv("LOADER_DB_STATEMENT_TIMEOUT_MS", "1800000")
+    assert LoaderConfig.from_env().db_statement_timeout_ms == 1800000
+
+
 def test_databricks_warehouse_id_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOADER_DATABRICKS_WAREHOUSE_ID", "wh-123")
     assert LoaderConfig.from_env().databricks_warehouse_id == "wh-123"
