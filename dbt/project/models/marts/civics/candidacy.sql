@@ -449,10 +449,13 @@ select
         -- its own (any general-runoff stage is a contingency this winner is not
         -- in — if they were, the pending-runoff branch above would have fired).
         -- A primary-cycle win counts as a seat win only when the primary IS the
-        -- race's final stage (a decisive single-stage race, race_max = 1); an
-        -- ordinary primary win that still has a general ahead is not final. When
-        -- the race structure is unknown (NULL race_max_stage_rank) a primary win
-        -- stays NULL rather than claim an unconfirmed seat.
+        -- race's whole contest: race_max_stage_rank = 1, i.e. the primary is the
+        -- deepest stage the race has. A primary *runoff* win (rank 2) must NOT
+        -- shortcut to 'Won' even when it is the deepest loaded stage (race_max =
+        -- 2), because a runoff by definition means the contest continued and a
+        -- general almost always follows — the >= comparison alone would wrongly
+        -- promote it. When the race structure is unknown (NULL race_max_stage_rank)
+        -- a primary win stays NULL rather than claim an unconfirmed seat.
         when
             decided.decided_result = 'Won'
             and (
@@ -462,7 +465,10 @@ select
                     'general special',
                     'general special runoff'
                 )
-                or decided.decided_stage_rank >= race.race_max_stage_rank
+                or (
+                    decided.decided_stage_rank >= race.race_max_stage_rank
+                    and race.race_max_stage_rank = 1
+                )
             )
         then 'Won'
         -- Outcome not yet determined (won an earlier primary-cycle stage and
