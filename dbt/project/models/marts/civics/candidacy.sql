@@ -343,12 +343,14 @@ with
             gp_election_id,
             max({{ election_stage_funnel_rank("stage_type") }}) as race_max_stage_rank
         from {{ ref("election_stage") }}
-        -- Exclude result-less stage placeholders: a NULL stage_type ranks 0 via
-        -- the macro's else arm, which would make race_max_stage_rank 0 for an
-        -- all-placeholder race and spuriously promote any decided stage to a bare
-        -- seat result. Mirrors the `election_stage is not null` guard in
-        -- candidacy_stages_in_context.
-        where gp_election_id is not null and stage_type is not null
+        -- Only count stages the funnel recognises. The macro's else arm ranks
+        -- both NULL and any unrecognised stage_type as 0, which would make
+        -- race_max_stage_rank 0 for such a race and spuriously promote any
+        -- decided stage to a bare seat result (decided_stage_rank >= 0 is always
+        -- true). Requiring rank > 0 excludes both cases in one guard.
+        where
+            gp_election_id is not null
+            and {{ election_stage_funnel_rank("stage_type") }} > 0
         group by gp_election_id
     )
 
