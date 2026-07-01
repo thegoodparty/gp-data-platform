@@ -62,8 +62,14 @@ with
     -- rolled up to the product user; the two are OR-merged in the final select so
     -- a win is caught whether the candidacy links to the contact via the
     -- candidate identity (gp_candidate_id — covers BR-sourced candidacies) or the
-    -- product user (prod_db_user_id). Three-valued: TRUE = won a seat; FALSE =
-    -- all candidacies decided without a win; NULL = no result yet.
+    -- product user (prod_db_user_id).
+    -- Three-valued: TRUE = won a seat; FALSE = has a decided non-win and no win;
+    -- NULL = no decided outcome at all. A decided loss deliberately takes
+    -- precedence over a still-pending candidacy in a different race: via
+    -- max(), TRUE > FALSE > NULL, so max(false, null) = false. (A candidate who
+    -- lost one race and has another still pending reads FALSE, not NULL — the
+    -- known non-win wins; has_candidacy still flags them as an active candidate.)
+    -- A candidate with only pending candidacies and no decided result stays NULL.
     candidate_won as (
         select
             gp_candidate_id,
@@ -73,6 +79,12 @@ with
                     then true
                     when candidacy_result in ('Lost', 'Withdrew', 'Not on Ballot')
                     then false
+                    -- 'Runoff' (and any NULL/pending result) is not yet decided.
+                    -- Explicit NULL so it reads as pending: on its own it leaves
+                    -- has_won_election NULL, but a decided loss overrides it via
+                    -- max() above. Kept explicit so it isn't mistaken for a gap.
+                    when candidacy_result = 'Runoff'
+                    then null
                 end
             ) as has_won_election
         from {{ ref("candidacy") }}
@@ -276,11 +288,12 @@ with
             st.candidate_type,
 
             -- Seat-winner sub-segment. TRUE = won a seat; FALSE = a candidate
-            -- whose candidacies are all decided without a win; NULL = no decided
-            -- outcome (pending / Cannot Determine) or not a candidate. OR-merged
-            -- across the candidate-identity and product-user links so BR-sourced
-            -- candidacies count. Use has_candidacy to tell a pending candidate
-            -- apart from a non-candidate.
+            -- with a decided non-win and no win (a decided loss takes precedence
+            -- over any still-pending candidacy in another race); NULL = no decided
+            -- outcome at all (all pending / Cannot Determine) or not a candidate.
+            -- OR-merged across the candidate-identity and product-user links so
+            -- BR-sourced candidacies count. Use has_candidacy to tell a pending
+            -- candidate apart from a non-candidate.
             -- OR (not AND) is deliberate: it lets a FALSE on the single populated
             -- link classify the ~10.6k contacts that have only one link type; an
             -- AND would leave those unclassifiable (regressing ~1.8k). The
