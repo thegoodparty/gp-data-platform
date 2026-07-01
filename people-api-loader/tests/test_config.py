@@ -29,6 +29,14 @@ def test_from_env_placeholders_when_unset(monkeypatch: pytest.MonkeyPatch) -> No
     assert cfg.vpc_id == ""
 
 
+def test_from_env_requires_s3_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Public repo: the loader bucket is not hardcoded, so from_env() must fail fast when
+    # LOADER_S3_BUCKET is absent rather than falling back to a stale/wrong default bucket.
+    monkeypatch.delenv("LOADER_S3_BUCKET", raising=False)
+    with pytest.raises(RuntimeError, match="LOADER_S3_BUCKET"):
+        LoaderConfig.from_env()
+
+
 def test_from_env_db_conn_param_defaults_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LOADER_DB_CONN_PARAM", raising=False)
     monkeypatch.setenv("LOADER_ENV", "qa")

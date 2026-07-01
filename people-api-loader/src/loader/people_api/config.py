@@ -20,7 +20,9 @@ from datetime import datetime
 from loader.core.config import BaseLoaderConfig
 
 DEFAULT_AWS_REGION = "us-west-2"
-DEFAULT_S3_BUCKET = "gp-voter-loader"
+# The loader S3 bucket is real infrastructure and this repo is public, so it is NOT hardcoded.
+# It must come from LOADER_S3_BUCKET; from_env() hard-fails if unset. Empty = placeholder.
+DEFAULT_S3_BUCKET = ""
 
 # Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
 # (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
@@ -141,6 +143,16 @@ class LoaderConfig(BaseLoaderConfig):
         # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
         env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
         db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
+        # Loader output bucket is used from the first step (inspect) onward. It is real infra, not
+        # committed to this public repo, so require it explicitly — a clear failure here beats an
+        # opaque S3 AccessDenied/NoSuchBucket later (e.g. against a stale default bucket).
+        s3_bucket = os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET)
+        if not s3_bucket:
+            raise RuntimeError(
+                "LOADER_S3_BUCKET is not set. The loader's S3 bucket is real infrastructure and is "
+                "not committed to this public repo; set LOADER_S3_BUCKET (e.g. on the Astro "
+                "deployment) to the loader bucket."
+            )
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
         mart_schema = os.environ.get("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
@@ -154,7 +166,7 @@ class LoaderConfig(BaseLoaderConfig):
             assume_role_arn=os.environ.get("AWS_PEOPLE_API_RDS_ROLE_ARN") or None,
             assume_role_external_id=os.environ.get("AWS_PEOPLE_API_RDS_EXTERNAL_ID") or None,
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
-            s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
+            s3_bucket=s3_bucket,
             databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
