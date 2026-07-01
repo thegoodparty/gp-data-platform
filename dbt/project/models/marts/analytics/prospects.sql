@@ -295,12 +295,17 @@ with
                 when cw.has_won_election is false or uw.has_won_election is false
                 then false
             end as has_won_election,
-            -- Whether the contact is a candidate at all (has any candidacy), via
-            -- the candidate identity or the product user — most prospects are.
-            -- has_won_election's NULL alone can't separate a pending candidate
-            -- from a non-candidate sales contact; this can.
+            -- Whether the contact is a candidate at all, via the candidate
+            -- identity or the product user — most prospects are. Tests the raw
+            -- st.gp_candidate_id (not cw.gp_candidate_id) so a candidate identity
+            -- with no candidacy row yet in the mart (e.g. a newly onboarded
+            -- gp_api candidate not matched to any BR/TS/DDHQ race) still counts.
+            -- The user side stays keyed on user_won (uw) — a bare product user
+            -- without a candidacy is not a candidate. has_won_election's NULL
+            -- alone can't separate a pending candidate from a non-candidate
+            -- sales contact; this can.
             (
-                cw.gp_candidate_id is not null or uw.gp_user_id is not null
+                st.gp_candidate_id is not null or uw.gp_user_id is not null
             ) as has_candidacy,
 
             -- Serve funnel state (true transition rates — Serve workflow enabled)
