@@ -1,0 +1,58 @@
+semantic_models:
+  - name: users_serve
+    description: >
+      Semantic model over the users_serve_base mart. One row per user (the
+      mart keeps all users so funnel denominators stay correct). Surfaces
+      the governed Serve engagement flags as dimensions. The flag
+      *definitions* are owned by users_serve_base and its upstreams (the
+      active-user flag by int__serve_active_user); this model only exposes
+      the columns.
+    model: ref('users_serve_base')
+    defaults:
+      agg_time_dimension: registered_at
+    entities:
+      - name: user
+        type: primary
+        expr: user_id
+    dimensions:
+      - name: registered_at
+        description: When the user account was created.
+        type: time
+        type_params:
+          time_granularity: day
+      # Governed flags surfaced straight from the mart (definition lives there).
+      - name: is_serve_user
+        description: Serve product user (completed a poll through an elected office).
+        type: categorical
+      - name: is_active_eo
+        description: Viewed the Serve polls dashboard in the trailing 30 days.
+        type: categorical
+      - name: has_sent_sms_poll
+        description: Completed Serve onboarding by sending an SMS poll.
+        type: categorical
+      - name: has_pledged
+        description: Owns at least one pledged campaign.
+        type: categorical
+      - name: is_active_serve_user
+        description: >
+          Active serve user (sent an SMS poll AND pledged) — the behavioral
+          gate of the People Served active cohort.
+        type: categorical
+    measures:
+      - name: active_serve_user_count
+        description: Count of active serve users (sent an SMS poll AND pledged).
+        agg: sum
+        expr: "case when is_active_serve_user then 1 else 0 end"
+
+metrics:
+  - name: active_serve_users
+    label: Active Serve Users
+    description: >
+      Count of active serve users: completed Serve onboarding by sending an
+      SMS poll AND pledged. Definition owned by int__serve_active_user,
+      surfaced through users_serve_base; the gold membership table
+      users_serve_active exposes the same population for direct dashboard
+      reads.
+    type: simple
+    type_params:
+      measure: active_serve_user_count
