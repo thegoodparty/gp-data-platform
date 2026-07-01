@@ -413,6 +413,15 @@ select
         then 'Runoff'
         when decided.decided_result = 'Runoff'
         then 'Runoff'
+        -- Reached a pending non-runoff general stage (result not yet posted): the
+        -- seat is not settled regardless of any earlier decided stage. Evaluated
+        -- before the loss / withdrew branches so a stale primary-cycle decided
+        -- loss does not eliminate a candidacy that has advanced to the general
+        -- (e.g. a top-two / nonpartisan primary where placing 2nd still advances).
+        when
+            latest.latest_stage_result is null
+            and latest.latest_stage_reached in ('general', 'general special')
+        then null
         -- A decided loss eliminates the candidacy at any stage; Withdrew / Not on
         -- Ballot are likewise terminal.
         when decided.decided_result = 'Lost'
