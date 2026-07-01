@@ -68,7 +68,8 @@ with
             score_viability_automated,
             array_compact(
                 array('hubspot', case when has_ddhq_match then 'ddhq' end)
-            ) as source_systems
+            ) as source_systems,
+            true as is_archive
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
@@ -158,7 +159,8 @@ with
                     case when ddhq.gp_candidacy_id is not null then 'ddhq' end,
                     case when gp_api.gp_candidacy_id is not null then 'gp_api' end
                 )
-            ) as source_systems
+            ) as source_systems,
+            false as is_archive
         from {{ ref("int__civics_candidacy_ballotready") }} as br
         full outer join
             {{ ref("int__civics_candidacy_techspeed") }} as ts
@@ -204,7 +206,8 @@ with
             office_type,
             br_position_database_id,
             score_viability_automated,
-            source_systems
+            source_systems,
+            is_archive
         from archive_2025
         union all
         select
@@ -238,7 +241,8 @@ with
             office_type,
             br_position_database_id,
             score_viability_automated,
-            source_systems
+            source_systems,
+            is_archive
         from merged_since_2026
     ),
 
@@ -390,11 +394,23 @@ select
     -- (e.g. won the primary, general pending), or the race structure
     -- is unknown. The "won the primary" detail lives in
     -- latest_stage_reached / latest_stage_result.
-    -- Falls back to the provider-rolled value only when there is no in-context
-    -- candidacy_stage row (e.g. the 2025 HubSpot archive, which already carries a
-    -- terminal result).
+    -- Falls back to the provider-rolled value when there is no in-context
+    -- candidacy_stage row, or for a 2025 archive row whose stage rows carry no
+    -- decided result (the archive field is the authoritative historical outcome).
     case
         when latest.latest_stage_reached is null
+        then deduplicated.candidacy_result
+        -- 2025 archive rows carry an authoritative historical result. Trust it
+        -- (except the indeterminate 'Cannot Determine', which should read NULL)
+        -- before the stage logic can null it out — the archive's candidacy_stage
+        -- rows often have no decided result, which would otherwise fall through to
+        -- a pending-stage or else-null branch. Archive rows whose provider value
+        -- is NULL still fall through to the stage logic, so the ~1.9k archive
+        -- outcomes recovered from matched DDHQ stages are preserved.
+        when
+            deduplicated.is_archive
+            and deduplicated.candidacy_result is not null
+            and deduplicated.candidacy_result <> 'Cannot Determine'
         then deduplicated.candidacy_result
         -- In a runoff (reached but uncalled, or the latest decided result sent
         -- the race to one): in progress, not a final outcome. Evaluated before
