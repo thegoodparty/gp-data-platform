@@ -1529,7 +1529,7 @@ models:
       'State' for the local reading, = 'State' for the statewide breakout. The live 'all'
       numbers include population from a few known wrong-scope matches (requires_review,
       pending the DATA-1989 upstream overrides) -- those officials are flagged on
-      official_constituents; the conservative reading excludes them. Thin by design;
+      int__serve_district_resolution; the conservative reading excludes them. Thin by design;
       variants may migrate to the dbt semantic layer.
     columns:
       - name: cohort

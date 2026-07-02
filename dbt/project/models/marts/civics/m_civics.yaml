@@ -2752,13 +2752,33 @@ models:
 
   - name: district_census_stats
     description: >
-      The universal district population reference: one row per district for every
-      district of the substrate's curated office-bearing types nationwide, plus one
-      clearly-flagged statewide row per state (district_type='State'). A rollup of
-      int__district_census_allocation (the substrate). The first consumer of the
-      Constituents Served substrate (DATA-1359); read by official_constituents.
+      The universal district population reference AND the product-facing district-grain
+      surface (DATA-1359, DATA-2064): one row per district for every district of the
+      substrate's curated office-bearing types nationwide, plus one clearly-flagged
+      statewide row per state (district_type='State'). A rollup of
+      int__district_census_allocation (the substrate).
 
-      Grain: One row per (state_postal_code, district_type, district_name).
+      Grain: one row per (state_postal_code, district_type, district_name). The key is
+      L2 vocabulary: district_name is the normalized L2 name (normalize_l2_district_name);
+      'State' rows carry district_name = state_postal_code. A caller starting from an
+      election-api district id translates via m_election_api__district
+      (state, l2_district_type, l2_district_name) + normalize_l2_district_name -- the
+      exact path int__serve_district_resolution uses. Raw BallotReady names or free-text
+      district strings are NOT keys; resolve them to an election-api district first. A
+      caller already holding the key (e.g. a newly-onboarding official with a known
+      district but no official record) needs no other join.
+
+      Per-official lookup (replaces the deprecated official_constituents mart,
+      DATA-2064): filter int__serve_district_resolution to
+      resolution_path != 'unresolved' FIRST (unresolved rows carry null district keys --
+      a product data gap, not a census miss), then join on
+      (state, l2_district_type, normalized_district_name) =
+      (state_postal_code, district_type, district_name) -- one equi-join, statewide
+      included. A left-join miss AFTER the unresolved filter is the old
+      has_census_match = false (deferred special-district types or name drift -- the
+      documented v1-scope gap, not a defect). This recipe serves engineer/ad-hoc reads;
+      it is not a sanctioned BI path, and the resolver exposes a wider column set than
+      the old mart did, so select columns explicitly.
 
       Population basis differs by district_type. Local rows (the curated types) carry
       voter-block-ALLOCATED population (inferred from blocks with >=1 L2 voter; carry
@@ -2767,7 +2787,8 @@ models:
       district_population across types double-counts, and summing local + statewide
       mixes the two bases -- consumers wanting only local districts filter
       WHERE district_type <> 'State'. v1 is population only; ACS demographics and the
-      validated non-exact-assignment share are phase 2 (DATA-1991).
+      validated non-exact-assignment share are phase 2 (DATA-1991) and will append here
+      at this same grain.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
