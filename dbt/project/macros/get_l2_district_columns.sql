@@ -1,4 +1,6 @@
-{% macro get_l2_district_columns(use_backticks=true, cast_to_string=false) %}
+{% macro get_l2_district_columns(
+    use_backticks=true, cast_to_string=false, table_alias=""
+) %}
     {#-
     Returns a comma-separated list of L2 district columns for use in SELECT statements or UNPIVOT clauses.
     This macro provides all district-related columns from the L2 nationwide uniform dataset.
@@ -8,6 +10,8 @@
                              Set to false for UNPIVOT clauses.
         cast_to_string (bool): Whether to cast columns to STRING. Useful for UNPIVOT when columns have mixed types.
                               Defaults to false.
+        table_alias (str): When set (and use_backticks, not cast_to_string), prefixes each column with
+                              "<alias>." for a SELECT that joins multiple relations. Defaults to "".
 
     Usage:
         SELECT
@@ -285,6 +289,13 @@
                 {%- set _ = column_expressions.append(cast_expr) -%}
             {%- endfor -%}
             {{ column_expressions | join(",\n            ") }}
+        {%- elif table_alias -%}
+            {#- Table-qualify each column, e.g. tbl.`Col` -#}
+            {%- set prefixed = [] -%}
+            {%- for col in district_columns -%}
+                {%- set _ = prefixed.append(table_alias ~ "." ~ col) -%}
+            {%- endfor -%}
+            {{ prefixed | join(",\n            ") }}
         {%- else -%}
             {#- Return columns as-is with aliases -#}
             {{ district_columns | join(",\n            ") }}
