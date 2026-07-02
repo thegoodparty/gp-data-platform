@@ -42,8 +42,9 @@ with
     -- election cycle. win_number is carried here too but has no live source:
     -- BallotReady supplies no win number, and the only values that exist come
     -- from the 2023-2025 HubSpot archive (int__civics_candidacy_2025), whose
-    -- past elections fall outside this mart's forward-looking date filter, so
-    -- win_number is null for every row this mart emits, and consumers fall back
+    -- past elections fall well outside this mart's date window (a 2-month
+    -- grace period at the oldest), so win_number is null for every row this
+    -- mart emits, and consumers fall back
     -- to a computed estimate. Aggregate with any non-null value; downstream Race
     -- rows that share a gp_election_id (i.e. multiple BR race stages for the
     -- same election cycle) will all carry the same values.
@@ -132,8 +133,9 @@ left join
 where
     tbl_race.place_id in (select id from {{ ref("m_election_api__place") }})
     -- 2-month grace period keeps recently-passed races serveable (the campaign
-    -- plan reads races after election day); must match the race filter in
-    -- write__election_api_db.py, which otherwise re-narrows this window
+    -- plan reads races after election day). Keep anchored to the same bounds as
+    -- the race filter in write__election_api_db.py, which otherwise re-narrows
+    -- this window (boundary-day membership differs: between vs strict >)
     and tbl_race.election_date
     between current_date() - interval '2 months' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
