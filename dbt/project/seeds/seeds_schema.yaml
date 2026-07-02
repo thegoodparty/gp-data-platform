@@ -137,6 +137,46 @@ seeds:
                 from {{ ref('m_election_api__district') }}
               )
 
+  - name: election_api_race_filing_address_overrides
+    description: >
+      Manual overrides for the filing office address shown on election-api race
+      pages. BallotReady sometimes supplies the wrong filing address for a
+      position; add a row here keyed on the race br_database_id with the correct
+      address and it takes precedence over the BallotReady value in the
+      election-api race mart. Keyed at race grain (one row per BallotReady race)
+      to match the mart and the displayed page; a future election for the same
+      office gets a new br_database_id and would need its own row.
+    columns:
+      - name: br_database_id
+        description: BallotReady race database ID to override
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__enhanced_race')
+                field: br_database_id
+      - name: slug
+        description: election-api race slug (for documentation only, not used in joins)
+        data_tests:
+          - not_null
+      - name: filing_office_address
+        description: Corrected filing office address
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why this override is needed
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              br_database_id in (
+                select br_database_id
+                from {{ ref('m_election_api__race') }}
+              )
+
   - name: icp_normalized_position_names
     description: >
       BallotReady normalized position names that qualify for ICP flags.
