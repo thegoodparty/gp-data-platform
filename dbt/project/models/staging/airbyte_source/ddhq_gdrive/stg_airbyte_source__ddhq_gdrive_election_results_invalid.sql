@@ -7,9 +7,7 @@
 -- unresolvable_state: race_name does not start with a recognized state name
 --
 with
-    source as (
-        select * from {{ source("airbyte_source", "ddhq_gdrive_election_results") }}
-    ),
+    source as ({{ ddhq_gdrive_election_results_merged() }}),
 
     renamed as (
         select

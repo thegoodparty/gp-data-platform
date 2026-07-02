@@ -78,6 +78,24 @@ sources:
                     regex: "^[A-Z]{2} "
                   config:
                     where: "race_name is not null"
+      - name: ddhq_gdrive_election_results_master
+        description: >
+          One-off consolidated backfill from ddhq google drive (delivered
+          2026-07-01) that re-states all election results through DDHQ's data
+          horizon: it adds the previously-missing October 2025 races and removes
+          canceled/unpublished races. Identical schema to
+          ddhq_gdrive_election_results. This source is not updated going forward;
+          the ddhq_gdrive_election_results_merged macro treats it as authoritative
+          within its coverage window and layers newer rows from the live
+          incremental table on top. See macros/ddhq_gdrive_election_results_merged.sql.
+        columns:
+          - name: race_name
+            data_tests:
+              - dbt_expectations.expect_column_values_to_match_regex:
+                  arguments:
+                    regex: "^[A-Z]{2} "
+                  config:
+                    where: "race_name is not null"
       - name: ddhq_elections_gsheet_reported_races
         description: >
           Race-level data loaded from the DDHQ Elections gsheet for races whose
