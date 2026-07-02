@@ -30,7 +30,9 @@ from pendulum import duration
 # stash client_id/client_secret (and http_path) in extras. Applied ONLY to the steps that reach
 # Databricks (the unload step + the Cosmos gate) — the other steps are AWS/Postgres only and must
 # not depend on this connection existing.
-_DBX_CONN = os.getenv("LOADER_DATABRICKS_CONN_ID", "databricks")
+# `or` (not a getenv default) so an env var that is present-but-empty at parse falls back too,
+# rather than building a broken `conn..host` template.
+_DBX_CONN = os.getenv("LOADER_DATABRICKS_CONN_ID") or "databricks"
 _DBX_ENV: dict[str, str] = {
     "DATABRICKS_HOST": f"{{{{ conn.{_DBX_CONN}.host }}}}",
     "DATABRICKS_CLIENT_ID": f"{{{{ conn.{_DBX_CONN}.login or conn.{_DBX_CONN}.extra_dejson.get('client_id', '') }}}}",
