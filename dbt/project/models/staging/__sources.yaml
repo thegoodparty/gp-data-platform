@@ -80,18 +80,12 @@ sources:
                     where: "race_name is not null"
       - name: ddhq_gdrive_election_results_master
         description: >
-          One-off consolidated backfill from ddhq google drive (delivered
-          2026-07-01) that re-states all election results through DDHQ's data
-          horizon: it adds the previously-missing October 2025 races and removes
-          canceled/unpublished races. Identical schema to
-          ddhq_gdrive_election_results. This source is not updated going forward;
-          the ddhq_gdrive_election_results_merged macro treats it as authoritative
-          within its coverage window and layers newer rows from the live
-          incremental table on top. See macros/ddhq_gdrive_election_results_merged.sql.
+          One-off consolidated backfill (2026-07-01) re-stating all results
+          through DDHQ's horizon; identical schema to ddhq_gdrive_election_results.
+          Merged under the live feed via the ddhq_gdrive_election_results_merged
+          macro. Not updated going forward.
         config:
-          # One-off backfill, never re-synced: suppress the inherited
-          # airbyte_source freshness thresholds so it does not fire permanent
-          # warn/error in freshness jobs.
+          # never re-synced; suppress inherited airbyte_source freshness
           freshness: null
         columns:
           - name: race_name
