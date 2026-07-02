@@ -1,10 +1,14 @@
 # dbt profile for the load_people_api Cosmos gate.
 #
+# MUST be named `profiles.yml` and live in its own directory: Cosmos passes dbt
+# `--profiles-dir <parent-of-profiles_yml_filepath>` and dbt then reads `<dir>/profiles.yml`, so a
+# differently-named file (or a shared dir) is not found. This dedicated dir avoids collisions.
+#
 # Authenticates with the people-api-loader service principal via OAuth M2M, reading the SAME
 # env vars as the loader's databricks-sdk (DATABRICKS_HOST / DATABRICKS_CLIENT_ID /
 # DATABRICKS_CLIENT_SECRET) so a single OAuth credential is used across every process. dbt
 # resolves env_var() at task runtime. The profile name `default` matches dbt_project.yml's
-# `profile:` key. Ships to /usr/local/airflow/include/ in the Astro image.
+# `profile:` key. Ships to /usr/local/airflow/include/loader_dbt/ in the Astro image.
 default:
   target: loader
   outputs:

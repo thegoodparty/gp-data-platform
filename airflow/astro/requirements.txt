@@ -13,7 +13,7 @@ sshtunnel>=0.4.0,<1.0.0
 # `loader` console script is on PATH for the load_people_api DAG's BashOperators.
 # Pin to a tag/SHA before merge; during PR dev this tracks the feature branch.
 # cache-bust: bump this token whenever loader src changes so the image reinstalls branch HEAD
-# (the install layer is keyed on this file; an unchanged file = a stale loader). bust=2026-07-01.5
+# (the install layer is keyed on this file; an unchanged file = a stale loader). bust=2026-07-01.6
 people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@feat/DATA-1913-loader-dag#subdirectory=people-api-loader
 # dbt test gate via Cosmos (the voter gate). Only cosmos goes in the image; dbt-core +
 # dbt-databricks run in an isolated venv (Cosmos VIRTUALENV mode), because dbt-databricks pins

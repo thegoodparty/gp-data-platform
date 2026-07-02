@@ -82,7 +82,9 @@ def _step(task_id: str, subcommand: str, *, extra_env: dict[str, str] | None = N
 
 # dbt project + profile shipped in the Astro image; override via env if placed elsewhere.
 _DBT_PROJECT_DIR = os.getenv("LOADER_DBT_PROJECT_DIR", "/usr/local/airflow/dbt/project")
-_DBT_PROFILES_YML = os.getenv("LOADER_DBT_PROFILES_YML", "/usr/local/airflow/include/loader_dbt_profiles.yml")
+# Must be a file named `profiles.yml` in its own dir: Cosmos runs dbt with
+# `--profiles-dir <this file's parent>`, and dbt reads `<dir>/profiles.yml`.
+_DBT_PROFILES_YML = os.getenv("LOADER_DBT_PROFILES_YML", "/usr/local/airflow/include/loader_dbt/profiles.yml")
 
 
 def _voter_gate_profile() -> ProfileConfig:
