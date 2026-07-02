@@ -312,11 +312,13 @@ models:
                 field: "candidate_id"
                 config:
                   where: "ddhq_candidate_id is not null"
-                  # warn: this legacy mart carries ddhq_candidate_id from a frozen
-                  # Gemini match snapshot; a few reference candidates the DDHQ
-                  # master backfill removed as 0-vote drop-outs. Expected dangling
-                  # refs on an unconsumed mart, not a pipeline break.
-                  severity: warn
+                  # This legacy mart carries ddhq_candidate_id from a frozen Gemini
+                  # match snapshot; a handful reference candidates the DDHQ master
+                  # backfill re-keyed or removed, so they no longer resolve to a
+                  # current result row. Expected drift on an unconsumed mart: warn
+                  # on the known handful, error only if it becomes systemic.
+                  warn_if: ">0"
+                  error_if: ">20"
       - name: ddhq_candidate_party
         description: Candidate party from DDHQ
         data_type: varchar
@@ -542,9 +544,11 @@ models:
       - name: _airbyte_extracted_at
         description: Timestamp when the record was extracted from Airbyte
         tests:
-          # warn: the DDHQ master backfill re-states 2025 election-stages, a
-          # handful of which resolve a null extraction timestamp here. Metadata
-          # nullness on an unconsumed legacy mart, not a data-quality break.
+          # The DDHQ master backfill re-states 2025 election-stages; a handful
+          # resolve a null extraction timestamp here (frozen-snapshot join miss).
+          # Metadata nullness on an unconsumed legacy mart: warn on the known
+          # handful, error only if it becomes systemic.
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">100"
