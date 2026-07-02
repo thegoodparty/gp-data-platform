@@ -46,7 +46,13 @@ with
             {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation
         from elected_offices as eo
         inner join latest_campaigns as c on eo.campaign_id = c.campaign_id
-        left join users as u on eo.user_id = u.user_id
+        -- INNER join: a gp-api elected official must have a live user. Drops
+        -- orphan offices whose user was deleted from gp-api (gp_api_user_id would
+        -- otherwise not resolve to users, breaking the elected_officials ->
+        -- users relationship test and leaving every user_* field null). Same
+        -- deleted-user class as the campaigns orphan filter; surfaces under
+        -- --full-refresh.
+        inner join users as u on eo.user_id = u.user_id
         left join br_position as brp on c.ballotready_position_id = brp.database_id
         where not coalesce(c.is_demo, false)
     ),

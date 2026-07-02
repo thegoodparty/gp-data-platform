@@ -613,3 +613,75 @@ models:
               arguments:
                 to: ref('m_election_api__candidacy')
                 field: id
+
+  - name: m_election_api__elected_official_support
+    description: >
+      Support metrics for the product's elected offices, one row per gp-api
+      elected_office instance (elected_office_id, tied to a user/official). Feeds
+      the Election API Elected_Office_Support table; the product displays
+      support_constituents / total_constituents.
+
+      support_constituents is taken by precedence: (1) the official's OWN DDHQ
+      winning votes, from the DDHQ winner clustered to the office by the matcha
+      elected_official entity resolution (primary); else (2) a position-level
+      figure from the office's most recent 2026+ GENERAL win in the civics data
+      (multi-seat offices use the top winner by votes). All DDHQ office-name
+      matching lives in the matcher (the prematch official_office_norm key), not a
+      separate supplement here. Only offices with a coherent vote tally and an L2
+      voter count are present; offices with no support figure are dropped.
+
+      Grain: One row per elected_office_id.
+
+      Source note: support_constituents (winning votes) is DDHQ via the matcha
+      cluster (the official's own votes), falling back to the civics 2026+
+      general-win path; total_constituents is the L2 district voter count from the
+      positions mart.
+    columns:
+      - name: elected_office_id
+        description: >
+          gp-api elected_office instance UUID (the office as held by a specific
+          user/official). Primary key. Not an enforced FK — elected_office is owned
+          by gp-api, not the Election API.
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: support_constituents
+        description: >
+          Winning votes for this office in its most recent general election. The
+          official's OWN votes from the matcha DDHQ cluster where matched, else the
+          position-level civics figure (multi-seat offices use the top winner by
+          votes). Always populated and positive.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: total_constituents
+        description: >
+          L2 district voter count (registered voters in the office's district),
+          from the positions mart. The product shows support_constituents /
+          total_constituents. Always populated and positive.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: created_at
+        description: "Build timestamp (table is fully rebuilt each run, so this tracks the latest build, not a stable first-seen time)"
+        tests:
+          - not_null
+      - name: updated_at
+        description: "Timestamp the row was last refreshed"
+        tests:
+          - not_null
+    tests:
+      # Real data-quality signal: a winner cannot receive more votes than there
+      # are registered voters in the district. Violations indicate an upstream L2
+      # position-to-district match that resolved to too small a district.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "support_constituents <= total_constituents"
+          name: eos_support_never_exceeds_total_constituents
+          config:
+            severity: warn

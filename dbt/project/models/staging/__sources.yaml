@@ -1607,21 +1607,25 @@ sources:
       - name: clustered_elected_officials
         description: >
           Cluster assignments from the elected officials entity resolution pipeline.
-          Match groups bridging gp-api elected-office records to BR+TS terms. Cluster grain
-          is term (one row per BR+TS term or gp-api elected-office record). Mart owns person
-          rollup via br_candidate_id, and term selection within a multi-term cluster via
-          sworn_in_date proximity to term_start_date. Uses 0.95 match probability threshold
-          with post-prediction filters for office compatibility.
+          Match groups bridging gp-api elected-office records to BR+TS terms and DDHQ
+          general winners. Cluster grain is term (one row per BR+TS term, gp-api
+          elected-office record, or DDHQ winning result). Mart owns person rollup via
+          br_candidate_id, and term selection within a multi-term cluster via
+          sworn_in_date proximity to term_start_date. DDHQ rows carry ddhq_votes (the
+          official's own winning votes) and use election_date as term_start_date so the
+          date comparison links them to the right cycle. Uses 0.95 match probability
+          threshold with post-prediction filters for office compatibility.
 
       - name: pairwise_elected_officials
         description: >
           Scored elected official pairs from Splink prediction (threshold: 0.01 match
           probability), after post-prediction filters for office compatibility. Each row is a
           pair of elected official records with Splink match weights, match probabilities,
-          per-comparison gamma levels (including office_type, office_level, and
-          ballotready_position_id), and Bayes factors. Includes 11 comparisons vs 9 for
-          candidacy stages (adds office_type, office_level, and ballotready_position_id;
-          drops election_date).
+          per-comparison gamma levels (including office_type, office_level,
+          ballotready_position_id, and the term_start_date election-cycle comparison), and
+          Bayes factors. Includes 12 comparisons vs 9 for candidacy stages (adds
+          office_type, office_level, ballotready_position_id, and a term_start_date date
+          comparison that links DDHQ winners to the correct office cycle).
 
       - name: clustered_election_stages
         description: >

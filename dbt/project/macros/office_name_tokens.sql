@@ -134,7 +134,32 @@
             'for',
             'no',
             'odd',
-            'unexpired'
+            'unexpired',
+            -- Place/seat descriptors folded in from the former office_match_keys
+            -- stop list so office_match_keys can reuse this tokenizer. Keep in
+            -- sync with OFFICE_STOP_WORDS in the matcha repo's scripts/constants.py.
+            'township',
+            'twp',
+            'borough',
+            'regional',
+            'community',
+            'area',
+            'local',
+            'high',
+            'authority',
+            'committee',
+            'members',
+            'schools',
+            'trustees',
+            'councillor',
+            'post',
+            'place',
+            'group',
+            'division',
+            -- hyphenated at-large (tokens split on space, so the hyphen is
+            -- preserved); the seat keyword captures the at-large signal separately
+            'at-large',
+            'atlarge'
         )
     )
 {% endmacro %}

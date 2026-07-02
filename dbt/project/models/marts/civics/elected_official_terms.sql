@@ -22,6 +22,15 @@ with
 
     gp_api_bridge as (
         select * from {{ ref("int__civics_elected_official_gp_api_bridge") }}
+    ),
+
+    -- DDHQ general-winner votes matched to this BR term via the matcha cluster
+    -- (BR-keyed rows only; 1 per br_office_holder_id, so no fan-out). Attached to
+    -- every official, not just gp-api ones.
+    ddhq_votes as (
+        select br_office_holder_id, ddhq_winning_votes
+        from {{ ref("int__civics_elected_official_ddhq_matched_votes") }}
+        where br_office_holder_id is not null
     )
 
 select
@@ -111,6 +120,11 @@ select
     gp.hubspot_company_id,
     gp.days_to_sworn_in,
 
+    -- DDHQ general-winner votes for this office (the official's own votes,
+    -- resolved via the matcha cluster). NULL when the office did not match a
+    -- DDHQ winner. Feeds the election_api support score.
+    dv.ddhq_winning_votes,
+
     -- source_systems: join-based per the candidacy mart convention. BR is always
     -- present (this mart is BR-spine); TS is added when the term has a
     -- direct ts_officeholder_id match; gp_api when the bridge attached a record.
@@ -128,3 +142,4 @@ select
 from br_terms as br
 left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
 left join gp_api_bridge as gp on br.br_office_holder_id = gp.br_office_holder_id
+left join ddhq_votes as dv on br.br_office_holder_id = dv.br_office_holder_id
