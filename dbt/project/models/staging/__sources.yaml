@@ -1147,15 +1147,6 @@ sources:
       - name: l2_expired_voters_loads
         description: Load metadata for the l2_expired_voters DAG. One row per successful DAG run, written only after all batch inserts complete. Used by the DAG for idempotency checks.
 
-  - name: historical
-    schema: historical
-    description: Raw data loaded from historical schema, having past records of interest
-    tables:
-      - name: ballotready_records_sent_to_hubspot
-        description: raw data load from ballotready records sent to hubspot
-      - name: ballotready_records_sent_to_techspeed
-        description: raw data load from ballotready records sent to techspeed
-
 
   - name: model_predictions
     schema: model_predictions
