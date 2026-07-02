@@ -1,5 +1,5 @@
 {# Column documentation for serve_agent_voters.
-   Auto-generated from seeds/serve_agent_voters_columns.csv, whose
+   Auto-generated from seeds/l2_column_classification.csv, whose
    descriptions are sourced from L2's own data dictionaries
    (per-state uniform data dictionary; sandbox.haystaq_data_dictionary). #}
 

@@ -68,6 +68,9 @@ models:
         +schema: mart_serve_agents
         +materialized: view
         +tags: ["mart", "serve_agents"]
+      win_agents:
+        +schema: mart_win_agents
+        +materialized: view
     write:
       write__people_api_db:
         # Disabled due to performance issues (timing out)

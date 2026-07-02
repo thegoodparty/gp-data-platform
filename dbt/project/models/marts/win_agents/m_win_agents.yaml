@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: win_agent_voters
+    description: >
+      Full-signal voter dataset for the Win product's AI agents, from
+      int__l2_nationwide_uniform_w_haystaq. Mirrors serve_agent_voters but
+      removes PII only: partisan and commercial fields are retained. Exposed
+      columns are the l2_column_classification registry minus the identity_pii
+      and operational families.
+    columns:
+      - name: voter_key
+        description: >
+          SHA-256 hash of LALVOTERID, identical to serve_agent_voters.voter_key
+          so the two files can be joined without exposing the raw L2 id.
+        data_tests:
+          - not_null
+          - unique
+      - name: state_postal_code
+        description: Two-letter USPS state postal code the voter is registered in.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_be_in_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"

@@ -13,7 +13,7 @@ models:
       models) is removed; commercial / consumer-lifestyle attributes are excluded. Only
       non-partisan civic, geographic/district, demographic, household, turnout, and non-partisan
       Haystaq issue-model fields are exposed. The exposed column set is governed by the
-      serve_agent_voters_columns seed (is_available flag) and selected dynamically at build
+      l2_column_classification seed (is_available flag) and selected dynamically at build
       time.
     columns:
       - name: voter_key
@@ -1652,13 +1652,13 @@ models:
         description: '{{ doc("sav_hs_aliens_governenment_disclosed_all") }}'
 
 seeds:
-  - name: serve_agent_voters_columns
+  - name: l2_column_classification
     description: >
-      Column-access contract for serve_agent_voters: one row per column in
+      L2 column classification registry: one row per column in
       int__l2_nationwide_uniform_w_haystaq with its family, description, and an is_available
-      flag. serve_agent_voters reads this seed at build time and exposes exactly the columns
-      where is_available is true. To add or retract a field, flip is_available and rebuild; no
-      model SQL change is needed.
+      flag. serve_agent_voters exposes the columns where is_available is true; win_agent_voters
+      exposes every family except identity_pii and operational. Change a column's classification
+      here and rebuild; no model SQL change is needed.
     columns:
       - name: column_name
         description: "Source column name in int__l2_nationwide_uniform_w_haystaq."
