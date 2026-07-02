@@ -83,8 +83,7 @@ with
     ),
 
     -- Join ICP and pre-compute the effective-date guard once so icp_win and
-    -- icp_win_supersize stay DRY in the final SELECT. The guard mirrors
-    -- m_ballotready_internal__records_sent_to_hubspot: positions with a
+    -- icp_win_supersize stay DRY in the final SELECT. Positions with a
     -- win_effective_date only count for elections on/after that date.
     contacts_with_icp as (
         select
