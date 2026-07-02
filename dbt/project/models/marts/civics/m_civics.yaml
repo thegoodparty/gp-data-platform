@@ -2794,6 +2794,10 @@ models:
           arguments:
             combination_of_columns:
               [state_postal_code, district_type, district_name]
+      - dbt_utils.expression_is_true:
+          name: district_census_stats_state_rows_use_postal_code_name
+          arguments:
+            expression: "district_type <> 'State' or district_name = state_postal_code"
     columns:
       - name: state_postal_code
         description: Two-letter state postal code, derived from the census geoid FIPS prefix (authoritative).
