@@ -78,6 +78,23 @@ sources:
                     regex: "^[A-Z]{2} "
                   config:
                     where: "race_name is not null"
+      - name: ddhq_gdrive_election_results_master
+        description: >
+          One-off consolidated backfill (2026-07-01) re-stating all results
+          through DDHQ's horizon; identical schema to ddhq_gdrive_election_results.
+          Merged under the live feed via the ddhq_gdrive_election_results_merged
+          macro. Not updated going forward.
+        config:
+          # never re-synced; suppress inherited airbyte_source freshness
+          freshness: null
+        columns:
+          - name: race_name
+            data_tests:
+              - dbt_expectations.expect_column_values_to_match_regex:
+                  arguments:
+                    regex: "^[A-Z]{2} "
+                  config:
+                    where: "race_name is not null"
       - name: ddhq_elections_gsheet_reported_races
         description: >
           Race-level data loaded from the DDHQ Elections gsheet for races whose
