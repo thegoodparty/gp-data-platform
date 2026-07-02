@@ -1,59 +1,7 @@
-{{ config(materialized="view") }}
-
-/*
-    int__amplitude_user_milestones
-
-    Purpose:
-        User-grain intermediate model that aggregates milestone events from Amplitude.
-        Includes all users with at least one milestone event.
-        Not scoped to registration-event users.
-        Pre-bakes milestone columns used by downstream analytics marts.
-
-    Grain:
-        One row per user_id (BIGINT).
-
-    Source:
-        {{ ref('stg_airbyte_source__amplitude_api_events') }}
-
-    Event -> column mapping:
-        - Onboarding - Registration Completed
-            -> amplitude_registration_completed_at
-            -> registration_country
-        - Dashboard - Candidate Dashboard Viewed
-            -> first_dashboard_viewed_at
-            -> last_dashboard_viewed_at
-            -> dashboard_view_count
-        - onboarding_complete
-            -> onboarding_completed_at
-        - Voter Outreach - Campaign Completed
-            -> first_campaign_sent_at
-            -> total_campaigns_sent
-            -> total_recipient_count
-        - pro_upgrade_complete
-            -> pro_upgrade_completed_at
-        - Serve Onboarding - Getting Started Viewed
-            -> serve_getting_started_at
-        - Serve Onboarding - Constituency Profile Viewed
-            -> serve_constituency_profile_at
-        - Serve Onboarding - Poll Value Props Viewed
-            -> serve_poll_value_props_at
-        - Serve Onboarding - Poll Strategy Viewed
-            -> serve_poll_strategy_at
-        - Serve Onboarding - Add Image Viewed
-            -> serve_add_image_at
-        - Serve Onboarding - Poll Preview Viewed
-            -> serve_poll_preview_at
-        - Serve Onboarding - SMS Poll Sent
-            -> first_sms_poll_sent_at
-
-    Onboarding CVR definition note:
-        Authoritative KPI is Registration Completed -> Dashboard Viewed within 14 days,
-        US segment only. The 14-day and US logic is applied downstream in
-        analytics_users, not in this intermediate model.
-
-    Important:
-        Event names are case-sensitive and must match Amplitude exactly.
-*/
+-- User-grain aggregation of Amplitude milestone events. Includes every user
+-- with at least one milestone event, not just registration-event users.
+-- Grain: one row per user_id.
+-- Event names are case-sensitive and must match Amplitude exactly.
 with
     milestone_events as (
         select
@@ -80,9 +28,9 @@ with
             and try_cast(user_id as bigint) is not null
             -- This is a bespoke milestone pick (specific named lifecycle events),
             -- not a taxonomy family, so the list stays explicit here. The
-            -- single-source classifier is int__amplitude_event_catalog
-            -- (DATA-1945); a singular test (assert_milestone_events_classified)
-            -- guards that every event below classifies to a non-'other' family.
+            -- single-source classifier is int__amplitude_event_catalog; a singular
+            -- test (assert_milestone_events_classified) guards that every event
+            -- below classifies to a non-'other' family.
             and event_type in (
                 'Onboarding - Registration Completed',
                 'onboarding_complete',

@@ -32,7 +32,6 @@ select
     position.is_appointed,
     position.updated_at,
 
-    -- ICP-Office-Win Flag
     case
         when
             position.is_judicial
@@ -46,7 +45,6 @@ select
         else true
     end as icp_office_win,
 
-    -- ICP-Office-Serve Flag
     case
         when
             position.is_judicial
@@ -61,7 +59,6 @@ select
         else true
     end as icp_office_serve,
 
-    -- ICP-Win-Supersize Flag
     -- Large offices (>100K voters) that meet all other ICP criteria
     -- These need separate consideration outside the standard Win process
     case

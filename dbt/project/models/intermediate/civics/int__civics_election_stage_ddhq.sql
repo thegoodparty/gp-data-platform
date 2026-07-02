@@ -1,9 +1,5 @@
--- DDHQ → Civics mart election_stage
--- Derived from: int__civics_candidacy_stage_ddhq
---
--- Grain: One row per DDHQ race (gp_election_stage_id / ddhq_race_id)
---
--- Aggregates from candidate-level candidacy_stage rows to race-level.
+-- DDHQ election_stage rows for the Civics mart, aggregated from candidate-level
+-- candidacy_stage rows to one row per DDHQ race.
 with
     source as (select * from {{ ref("int__civics_candidacy_stage_ddhq") }}),
 

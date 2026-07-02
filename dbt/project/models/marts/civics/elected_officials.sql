@@ -17,7 +17,7 @@
 -- bridge-resolved one), avoiding gp_api duplication across BR people in
 -- the same cluster.
 --
--- ICP flags are NOT exposed at person grain (per Hugh's commit 8c22079).
+-- ICP flags are NOT exposed at person grain.
 -- Term-grain ICP remains on elected_official_terms.
 {# Shared columns where all three providers contribute; precedence BR > TS > gp_api.
    party_affiliation is in the chain too but written explicitly below because
@@ -48,7 +48,7 @@
     "tier",
 ] -%}
 
-{# TS-wins phone with BR fallback (validated DATA-1731) #}
+{# TS-wins phone with BR fallback #}
 {%- set ts_wins_cols = ["phone"] -%}
 
 with
@@ -119,7 +119,7 @@ with
             gp.gp_api_party_affiliation,
             gp.hubspot_contact_id,
 
-            -- source_systems: join-based per Dan's preference + candidacy convention
+            -- source_systems: join-based, matching candidacy convention
             array_compact(
                 array(
                     case

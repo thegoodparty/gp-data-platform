@@ -1,10 +1,3 @@
-{{
-    config(
-        materialized="table",
-        tags=["mart", "election_api", "issue", "haystaq", "district_top_issues"],
-    )
-}}
-
 {#-
     District-level Haystaq issue scores per L2 district. Covers every L2
     district with an `is_matched = true` row in the LLM L2-to-BallotReady

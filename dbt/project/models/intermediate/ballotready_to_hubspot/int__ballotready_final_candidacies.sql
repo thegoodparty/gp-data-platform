@@ -4,7 +4,6 @@
         incremental_strategy="merge",
         unique_key="id",
         auto_liquid_cluster=true,
-        tags=["intermediate", "ballotready"],
     )
 }}
 -- Creates the final set of BallotReady candidacies to be uploaded to HubSpot

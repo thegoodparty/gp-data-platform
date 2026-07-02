@@ -1,18 +1,8 @@
-{{ config(materialized="table", tags=["civics", "techspeed"]) }}
-
 -- TechSpeed office holders -> Civics mart elected_officials schema
 -- Source: stg_airbyte_source__techspeed_gdrive_officeholders
---
--- Grain: One row per officeholder-position (current snapshot, deduplicated).
---
--- Key differences from BallotReady EO model:
--- - ts_officeholder_id is NOT a person-level PK (reused across people)
--- - UUID uses composite key: ts_officeholder_id + position_id + office_name_clean
--- - No term dates (TechSpeed doesn't track terms)
--- - State requires clean_states join (mixed format + blanks)
--- - Multi-delivery dedup via ROW_NUMBER on date_processed_date
--- - Schema is narrower (omits BR-only columns); merge model owns alignment
---
+-- Grain: one row per officeholder-position (current snapshot, deduplicated).
+-- ts_officeholder_id is NOT a person-level PK (reused across people), so the UUID
+-- uses a composite key: ts_officeholder_id + position_id + office_name_clean.
 with
     clean_states as (select * from {{ ref("clean_states") }}),
 
@@ -23,7 +13,7 @@ with
     with_clean_state as (
         select
             oh.*,
-            -- Normalized office_name for dedup + UUID consistency
+            -- Normalize office_name for dedup + UUID consistency
             trim(office_name) as office_name_clean,
             -- State: nullify blanks so not_null test catches unresolved rows
             nullif(
@@ -47,8 +37,7 @@ with
             -- candidate_office: TS-native approach (matches int__techspeed_candidates)
             initcap(trim(office_normalized)) as candidate_office,
             initcap(trim(level)) as office_level_derived,
-            -- office_type: TS-native case normalization map (covers all 34 source
-            -- variants)
+            -- TS-native case normalization map (covers all 34 source variants)
             case
                 when
                     lower(trim(office_type))
@@ -80,7 +69,6 @@ with
                 then initcap(trim(office_type))
                 else 'Other'
             end as office_type_derived,
-            -- party_affiliation: via parse_party_affiliation macro
             -- NULL guard mirrors BR EO model; prevents NULL/blank → 'Other'
             case
                 when nullif(trim(party), '') is null

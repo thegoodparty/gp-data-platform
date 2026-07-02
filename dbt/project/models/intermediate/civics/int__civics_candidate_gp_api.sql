@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "gp_api"]) }}
-
 -- Product DB users -> Civics mart candidate schema.
 -- Grain: one row per user with campaign_count > 0. Schema aligns with
 -- int__civics_candidate_ballotready / _techspeed for the downstream union.

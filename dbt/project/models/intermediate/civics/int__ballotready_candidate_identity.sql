@@ -1,16 +1,9 @@
 -- Canonical BallotReady candidate identity inputs, one row per br_candidate_id.
---
--- gp_candidate_id is a salted UUID over (first_name, last_name, state,
--- birth_date, email, phone). BallotReady S3 data is at the candidacy-stage
--- grain, and a person's email (occasionally name/phone) varies across their
--- candidacy rows. Both int__civics_candidate_ballotready and
--- int__civics_candidacy_ballotready feed gp_candidate_id, and each previously
--- picked its own representative value (per-row vs any_value over a rollup), so
--- the same person resolved to different ids and the candidate was orphaned
--- from its candidacies. This model picks one deterministic value per
--- br_candidate_id so both consumers hash identical inputs.
---
--- Grain: one row per br_candidate_id.
+-- Picks one deterministic identity value per br_candidate_id so both consumers
+-- (int__civics_candidate_ballotready, int__civics_candidacy_ballotready) hash
+-- identical gp_candidate_id inputs; otherwise a person resolves to different
+-- ids and gets orphaned from their candidacies (S3 email/name/phone vary across
+-- a person's candidacy rows).
 with
     candidacies as (
         select *

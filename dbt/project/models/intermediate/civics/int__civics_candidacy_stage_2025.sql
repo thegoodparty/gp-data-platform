@@ -1,5 +1,3 @@
-{{ config(tags=["archive"]) }}
-
 -- Historical archive of candidacy stages from elections on or before 2025-12-31.
 -- Grain: one row per (candidacy, stage_type) where the candidacy carries a
 -- non-null date for that stage. DDHQ is an optional attribute join; HubSpot-

@@ -1,9 +1,4 @@
-{{ config(materialized="view", tags=["intermediate", "ballotready"]) }}
-
--- First step in extracting of BallotReady data for updating to hubspot
--- This file reads new ballotReady data and applies relevant field transformations
--- Select the difference between the current BallotReady data and the previous
--- BallotReady data
+-- First step extracting new BallotReady candidacies for HubSpot upload.
 with
     br_new as (
         select *
@@ -251,10 +246,7 @@ with
             candidacy_created_at,
             candidacy_updated_at
         from br_new
-        -- what follows is the core substance of who is being selected for uploading
-        -- to HubSpot
         where
-            -- separate the records with both phones and emails
             phone <> ''
             and email <> ''
             -- remove any major party candidates

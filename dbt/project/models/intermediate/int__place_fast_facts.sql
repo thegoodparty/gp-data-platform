@@ -3,7 +3,6 @@
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
-        tags=["intermediate", "ballotready", "place_fast_facts"],
     )
 }}
 
@@ -70,8 +69,7 @@ with
     -- for an
     -- all-null-population state (VI, 194 rows) and drops the whole state; MIN(prefix)
     -- picks a
-    -- stray whose prefix sorts below the real one (TN's KY stray 21 < 47). (PR #443
-    -- delegate review.)
+    -- stray whose prefix sorts below the real one (TN's KY stray 21 < 47).
     state_fips_prefixes as (
         select state_id, state_fips_prefix
         from
@@ -83,7 +81,7 @@ with
                 from {{ ref("stg_airbyte_source__ballotready_s3_uscities_v1_77") }}
                 -- exclude null county_fips: a (state, NULL) bucket could otherwise
                 -- win the mode, making the prefix NULL, which the join below reads
-                -- as "no match" and silently drops the whole state. (PR #443 review.)
+                -- as "no match" and silently drops the whole state.
                 where county_fips is not null
                 group by state_id, substring(county_fips, 1, 2)
             ) counts
@@ -98,7 +96,7 @@ with
 
     -- One row per (state, normalized county name) for the G5420 county match. Two
     -- correctness
-    -- rules beyond a plain dedup (DATA-1950 PR #443 Codex + delegate review):
+    -- rules beyond a plain dedup:
     -- 1. order by county_fips ASC (not population): when a county shares its name
     -- with an
     -- independent city in the same state (Baltimore, St. Louis MO, Richmond / Roanoke /

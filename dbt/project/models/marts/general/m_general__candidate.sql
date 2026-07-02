@@ -4,7 +4,6 @@
         unique_key=["gp_candidacy_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
-        tags=["mart", "general", "candidacy", "hubspot"],
     )
 }}
 

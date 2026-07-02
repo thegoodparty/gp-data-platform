@@ -1,6 +1,4 @@
 -- Historical tracking table for BallotReady records sent to HubSpot
--- This table maintains an audit trail of all candidates that have been processed
--- for HubSpot upload, including fuzzy match results and viability scores
 with
     br_fuzzy_deduped as (
         select * from {{ ref("int__ballotready_candidates_fuzzy_deduped") }}
@@ -12,7 +10,6 @@ with
 
     icp_offices as (select * from {{ ref("int__icp_offices") }}),
 
-    -- Combine fuzzy match results with final candidacies
     combined_records as (
         select
             fc.id,
@@ -107,7 +104,6 @@ select
     phone,
     email,
     city,
-    -- Apply district transformation here (from notebook)
     case
         when district like '%, %'
         then left(district, position(', ' in district) - 1)
@@ -124,7 +120,6 @@ select
     uncontested,
     number_of_candidates,
     candidate_slug,
-    -- Fuzzy match fields
     match_type,
     fuzzy_match_score,
     fuzzy_matched_hubspot_candidate_code,
@@ -133,9 +128,7 @@ select
     fuzzy_matched_last_name,
     fuzzy_matched_state,
     fuzzy_matched_office_type,
-    -- Viability score placeholder
     viability_score,
-    -- ICP flags
     icp_win,
     icp_serve,
     icp_win_supersize,

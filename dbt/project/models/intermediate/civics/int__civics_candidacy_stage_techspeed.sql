@@ -1,18 +1,10 @@
-{{ config(materialized="table", tags=["civics", "techspeed"]) }}
-
--- TechSpeed candidates → Civics mart candidacy_stage schema
--- Source: stg_airbyte_source__techspeed_gdrive_candidates
---
--- Grain: One row per candidacy stage (candidate + election stage)
---
--- Each candidate with both primary and general dates produces TWO rows.
--- Links to int__civics_candidacy_techspeed (gp_candidacy_id) and
--- int__civics_election_stage_techspeed (gp_election_stage_id).
+-- TechSpeed candidates → Civics mart candidacy_stage schema.
+-- Grain: one row per candidacy stage. A candidate with both primary and
+-- general dates produces two rows.
 with
     source as (
         select
             ts.* except (state),
-            -- Aliases for consistency
             state_postal_code as state,
             cast(null as string) as seat_name,
             -- Generate candidate code inline (was provided by _clean)
@@ -70,7 +62,7 @@ with
     ),
 
     canonical_candidacy as (
-        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- BR-priority ordering — see int__civics_candidacy_techspeed.sql
         -- for full rationale. Mirrors the dedupe used by sibling TS intermediates
         -- so candidate / candidacy / candidacy_stage / election / election_stage
         -- all pick the same canonical for the same ts_source_candidate_id (else
@@ -175,7 +167,6 @@ with
         where election_date is not null
     ),
 
-    -- Only include stages with valid candidacy and election_stage references
     valid_candidacies as (
         select gp_candidacy_id from {{ ref("int__civics_candidacy_techspeed") }}
     ),

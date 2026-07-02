@@ -9,7 +9,7 @@ since L2 data loads monthly.
         unique_key="LALVOTERID",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=True,
-        tags=["mart", "people_api", "voter", "monthly"],
+        tags=["monthly"],
     )
 }}
 

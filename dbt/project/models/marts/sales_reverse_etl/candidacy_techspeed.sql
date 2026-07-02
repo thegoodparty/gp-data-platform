@@ -1,25 +1,16 @@
 -- Civics -> TechSpeed sendable mart (reverse-ETL flow `candidacy_techspeed`).
---
--- Replaces m_ballotready_internal__records_sent_to_techspeed. Sends missing-contact,
--- non-major-party, future-election candidacies that are not already in HubSpot and that
--- TechSpeed does not already have data on, for phone/email enrichment.
+-- Sends missing-contact, non-major-party, future-election candidacies not already in
+-- HubSpot and that TechSpeed does not already have, for phone/email enrichment.
 --
 -- Output preserves the legacy 42-column shape and order so the TechSpeed import is
 -- unchanged; 24 BallotReady-specific columns are null-filled (partner-confirmed
 -- unused).
--- Appended: the deterministic match-back key (candidate_code), the reverse-ETL
--- tracking-key
--- inputs (election_year, election_stage), gp_candidacy_id (internal backstop),
--- is_keyable,
--- and last_activity_at. Materialized as a view in mart_sales_reverse_etl
--- (dbt_project.yml).
+-- Appended: match-back key (candidate_code), reverse-ETL tracking-key inputs
+-- (election_year, election_stage), gp_candidacy_id, is_keyable, last_activity_at.
 --
--- Design: .tickets/DATA-1523/46_layer1_models_design.md. Validation:
--- 40_stream3_validation.md.
 -- WINDOW: 16-day rolling on greatest(created_at, updated_at) -- interim/manual-era
--- dedup;
--- the reverse-ETL sent_log anti-join replaces it later (the ALREADY-SENT swap point
--- below).
+-- dedup; the reverse-ETL sent_log anti-join replaces it later (the ALREADY-SENT swap
+-- point below).
 with
     civics_base as (
         select
@@ -95,7 +86,7 @@ with
                         and hs.br_candidacy_id = try_cast(br_int.br_candidacy_id as int)
                     )
             )
-            -- ALREADY-SENT FILTER (pluggable swap point): reverse-ETL (DATA-1840)
+            -- ALREADY-SENT FILTER (pluggable swap point): reverse-ETL
             -- replaces this
             -- single predicate with a sent_log anti-join. Today: exclude any
             -- candidacy TechSpeed
@@ -162,7 +153,7 @@ select
     cast(b.updated_at as string) as candidacy_updated_at,
     current_timestamp() as upload_datetime,
 
-    -- === appended: match-back key + reverse-ETL key inputs + recency (DATA-1523) ===
+    -- === appended: match-back key + reverse-ETL key inputs + recency ===
     -- 4-part deterministic slug (no city) -- matches the reverse-ETL sent_log
     -- tracking key.
     {{
@@ -173,9 +164,7 @@ select
     candidate_code is not null as is_keyable,
     -- election_year / election_stage = the nearest-upcoming stage (reverse-ETL dedup
     -- grain),
-    -- deliberately distinct from election_day's legacy prefer-general date. Reconcile
-    -- the
-    -- exact CASE with spec_techspeed_tracking.md before the sent_log goes live.
+    -- deliberately distinct from election_day's legacy prefer-general date.
     year(
         coalesce(
             case

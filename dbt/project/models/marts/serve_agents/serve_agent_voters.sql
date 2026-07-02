@@ -1,6 +1,5 @@
 -- serve_agent_voters: de-identified, non-partisan voter dataset for the Serve
--- product's AI agents (DATA-2003, TDD DATA-1977). One row per voter, a proxy for
--- a constituent.
+-- product's AI agents. One row per voter, a proxy for a constituent.
 --
 -- The exposed projection is governed by the serve_agent_voters_columns seed: this
 -- model reads it at build time and selects exactly the columns flagged

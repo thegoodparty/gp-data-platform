@@ -1,16 +1,10 @@
-{{ config(tags=["archive"]) }}
-
--- Archived HubSpot companies with contacts from 2025 snapshot
--- Uses companies as the base table and joins contacts via the companies.contacts field
--- Prioritizes company field values over contact field values
--- Includes contacts without associated companies
+-- Archived HubSpot companies with contacts from 2025 snapshot.
+-- Prioritizes company field values over contact field values.
 with
-    -- Extract contact IDs from the companies.contacts JSON array field
     companies_with_contacts as (
         select
             tbl_companies.id as company_id,
             tbl_companies.*,
-            -- Parse the contacts array and extract individual contact IDs
             explode(
                 from_json(tbl_companies.contacts, 'array<string>')
             ) as contact_id_extracted
@@ -18,7 +12,6 @@ with
         where tbl_companies.contacts is not null and tbl_companies.contacts != '[]'
     ),
 
-    -- Companies without contacts (will be included with null contact data)
     companies_without_contacts as (
         select
             tbl_companies.id as company_id,
@@ -28,7 +21,6 @@ with
         where tbl_companies.contacts is null or tbl_companies.contacts = '[]'
     ),
 
-    -- Join companies to contacts, ranking by updated_at for disambiguation
     companies_joined_contacts as (
         select
             cwc.company_id,
@@ -245,7 +237,6 @@ with
             on tbl_gp_db_campaign.id = tbl_gp_db_ptv.campaign_id
     ),
 
-    -- Companies without contacts - create rows with null contact data
     companies_no_contacts_joined as (
         select
             cwoc.company_id,
@@ -390,7 +381,6 @@ with
             on tbl_gp_db_campaign.id = tbl_gp_db_ptv.campaign_id
     ),
 
-    -- Contacts without associated companies
     contacts_without_companies as (
         select
             null as company_id,
@@ -458,8 +448,6 @@ with
         where tbl_contacts.companies is null or tbl_contacts.companies = '[]'
     ),
 
-    -- Union all sources: companies with contacts, companies without, contacts without
-    -- companies
     all_records as (
         select *
         from companies_joined_contacts
@@ -472,7 +460,6 @@ with
         from contacts_without_companies
     ),
 
-    -- Final deduplication by gp_candidacy_id
     ranked_final as (
         select
             *,
