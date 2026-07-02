@@ -21,14 +21,13 @@ HERE = Path(__file__).parent
 CSV = HERE / "output" / "elected_officials_hubspot_export.csv"
 CAT = "goodparty_data_catalog"
 
-# Per-method sample sizes (stratified, not proportional to volume).
+# Per-method sample sizes across the four deterministic tiers (stratified, not
+# proportional to volume; over-weights the smaller tiers to stress-test them).
 QUOTA = {
-    "fuzzy_splink": 10,
-    "name_state": 10,
-    "phone_lastname": 10,
-    "br_candidacy_id": 7,
-    "gp_api_user": 6,
-    "email": 7,
+    "email": 17,
+    "phone_lastname": 15,
+    "br_candidacy_id": 10,
+    "gp_api_user": 8,
 }
 
 

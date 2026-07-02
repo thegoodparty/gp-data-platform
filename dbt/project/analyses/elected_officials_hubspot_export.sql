@@ -73,6 +73,7 @@ with
             id as hubspot_contact_id,
             lower(trim(email)) as email_norm,
             {{ clean_phone_number("phone") }} as phone_norm,
+            lower(trim(first_name)) as first_name_norm,
             lower(trim(last_name)) as last_name_norm,
             cast(br_candidacy_id as string) as br_candidacy_id,
             coalesce(last_contacted_at, updated_at) as contact_last_activity
@@ -101,7 +102,9 @@ with
 
         union all
 
-        -- L1: HubSpot br_candidacy_id -> person
+        -- L1: HubSpot br_candidacy_id -> person. Last-name agreement guard: a
+        -- mis-populated br_candidacy_id on the HubSpot side can point at the
+        -- wrong person's candidacy, so require the surnames to agree.
         select
             eo.gp_elected_official_id,
             hs.hubspot_contact_id,
@@ -110,7 +113,10 @@ with
             hs.contact_last_activity
         from eo
         join cand_bridge as cb on eo.br_candidate_id = cb.br_candidate_id
-        join hs on hs.br_candidacy_id = cb.br_candidacy_id
+        join
+            hs
+            on hs.br_candidacy_id = cb.br_candidacy_id
+            and lower(trim(eo.last_name)) = hs.last_name_norm
 
         union all
 
@@ -127,8 +133,11 @@ with
 
         union all
 
-        -- L3: exact normalized phone AND last-name agreement (phone alone is
-        -- unsafe: shared office/central lines)
+        -- L3: exact normalized phone AND last-name agreement, plus a first-name
+        -- agreement guard (shared phone + surname across different first names,
+        -- e.g. two relatives on one line, otherwise slips through). First names
+        -- must share an initial or be prefix-compatible, which keeps nickname
+        -- variants (jim/james, rob/robert) but drops true mismatches.
         select
             eo.gp_elected_official_id,
             hs.hubspot_contact_id,
@@ -140,6 +149,11 @@ with
             hs
             on {{ clean_phone_number("eo.phone") }} = hs.phone_norm
             and lower(trim(eo.last_name)) = hs.last_name_norm
+            and (
+                left(lower(trim(eo.first_name)), 1) = left(hs.first_name_norm, 1)
+                or hs.first_name_norm like lower(trim(eo.first_name)) || '%'
+                or lower(trim(eo.first_name)) like hs.first_name_norm || '%'
+            )
         where hs.phone_norm is not null
     ),
 
