@@ -25,7 +25,11 @@
     from {{ source("airbyte_source", "ddhq_gdrive_election_results") }} as i
     where
         cast(i.date as date) > (
-            select max(cast(date as date))
+            -- coalesce guards the empty-master case: an empty master makes
+            -- max() NULL, and `date > NULL` is UNKNOWN, which would silently
+            -- drop every incremental row. Flooring to 1900-01-01 instead lets
+            -- the full incremental feed through (master contributes nothing).
+            select coalesce(max(cast(date as date)), cast('1900-01-01' as date))
             from {{ source("airbyte_source", "ddhq_gdrive_election_results_master") }}
         )
 {% endmacro %}

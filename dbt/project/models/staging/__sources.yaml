@@ -88,6 +88,11 @@ sources:
           the ddhq_gdrive_election_results_merged macro treats it as authoritative
           within its coverage window and layers newer rows from the live
           incremental table on top. See macros/ddhq_gdrive_election_results_merged.sql.
+        config:
+          # One-off backfill, never re-synced: suppress the inherited
+          # airbyte_source freshness thresholds so it does not fire permanent
+          # warn/error in freshness jobs.
+          freshness: null
         columns:
           - name: race_name
             data_tests:
