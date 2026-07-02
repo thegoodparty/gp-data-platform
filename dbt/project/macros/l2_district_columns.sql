@@ -340,7 +340,7 @@
 
 
 {% macro get_l2_district_columns(
-    scope="all", use_backticks=true, cast_to_string=false
+    scope="all", use_backticks=true, cast_to_string=false, table_alias=""
 ) %}
     {#-
     The same list as SQL text for SELECT or UNPIVOT.
@@ -352,16 +352,22 @@
         cast_to_string (bool): cast each column to STRING, which UNPIVOT needs
                                for uniform types. Ignored when use_backticks is
                                false.
+        table_alias (str): qualifies each backticked name as `<alias>.`Col``, for
+                           a SELECT that joins more than one relation. Ignored
+                           when use_backticks is false or cast_to_string is true.
 
     Usage:
         select {{ get_l2_district_columns(cast_to_string=true) }} from ...
         ... unpivot (v for c in ({{ get_l2_district_columns(use_backticks=false) }}))
+        select {{ get_l2_district_columns(table_alias="v") }} from ... as v join ...
     -#}
     {%- set out = [] -%}
     {%- for c in get_l2_district_types(scope=scope) -%}
         {%- if not use_backticks -%} {%- do out.append(c) -%}
         {%- elif cast_to_string -%}
             {%- do out.append("cast(`" ~ c ~ "` as string) as `" ~ c ~ "`") -%}
+        {%- elif table_alias -%}
+            {%- do out.append(table_alias ~ ".`" ~ c ~ "`") -%}
         {%- else -%} {%- do out.append("`" ~ c ~ "`") -%}
         {%- endif -%}
     {%- endfor -%}
