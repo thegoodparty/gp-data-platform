@@ -63,17 +63,18 @@ with
 select
     tbl_race.id,
     tbl_race.created_at,
-    -- Bump updated_at when a filing-address override applies, or when the
-    -- place mart re-slugged this race's place (slug disambiguation), so the
-    -- election-api write model's incremental upsert (gated on updated_at)
-    -- actually picks up the corrected value; BallotReady's own updated_at
-    -- does not change in either case.
+    -- Bump updated_at when a filing-address override applies (BallotReady's
+    -- own updated_at does not change), and otherwise ride the place row's
+    -- updated_at: the place mart bumps it whenever a slug changes
+    -- (disambiguation in either direction), so every dependent race clears
+    -- the election-api write model's incremental gate (updated_at greater
+    -- than the postgres max) in the same run and republishes its rebuilt
+    -- slug and place_id. Comparing slugs instead would miss a place moving
+    -- back from a suffixed slug to a clean one.
     case
         when filing_overrides.br_database_id is not null
         then current_timestamp()
-        when tbl_place.slug <> replace(tbl_race.place_name_slug, '-ccd', '')
-        then current_timestamp()
-        else tbl_race.updated_at
+        else greatest(tbl_race.updated_at, tbl_place.updated_at)
     end as updated_at,
     tbl_race.br_hash_id,
     tbl_race.br_database_id,
