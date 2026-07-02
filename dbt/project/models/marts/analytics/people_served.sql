@@ -14,8 +14,9 @@
 -- statewide office is Serve-ICP, so cohort='active' has no 'State' rows.
 --
 -- The live 'all' numbers include population from known wrong-scope matches
--- (requires_review); those rows are carried + flagged on official_constituents, NOT
--- filtered here (fix upstream). Tightening to cohort='active' drops most on its own.
+-- (requires_review); those rows are carried + flagged on
+-- int__serve_district_resolution, NOT filtered here (fix upstream). Tightening to
+-- cohort='active' drops most on its own.
 -- seat = a distinct namespaced position/office id with an org_slug fallback,
 -- guaranteeing 1 <= n_seats <= n_orgs per district.
 with

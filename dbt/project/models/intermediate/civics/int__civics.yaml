@@ -3419,8 +3419,7 @@ models:
       (LEFT 12) and tract_geoid (LEFT 11) are carried for GROUP BY rollups
       (coarser grains are never stored as rows, so no cross-grain
       double-count). Counts only, PII-free. Depends on L2 + census only (no
-      election-api edge). Consumed by people_served, official_constituents, and
-      district_census_stats.
+      election-api edge). Consumed by people_served and district_census_stats.
     columns:
       - name: block_geoid
         description: 15-char zero-padded 2020 census block GEOID

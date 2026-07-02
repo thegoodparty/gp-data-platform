@@ -3,8 +3,8 @@
 -- decennial census population allocated to that district within that block.
 -- The split fraction is the within-(block, district_type) L2 voter share
 -- (pct_of_geo); the magnitude is decennial block population, NEVER voter
--- counts. Every consumer (people_served, official_constituents,
--- district_census_stats) reads this table.
+-- counts. Every consumer (people_served, district_census_stats) reads this
+-- table.
 --
 -- Block grain ONLY. block_group_geoid (LEFT 12) and tract_geoid (LEFT 11) are
 -- carried so consumers roll up with a GROUP BY; coarser grains are never
