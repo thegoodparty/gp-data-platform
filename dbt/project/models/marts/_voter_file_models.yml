@@ -1,19 +1,23 @@
+# Shared documentation for the L2 voter-file models. The full column list is
+# defined once as a YAML anchor on the upstream w_haystaq model and reused by the
+# serve and win voter files. Column descriptions come from the shared l2col_ doc
+# blocks in _l2_voter_column_docs.md. Per-column tests live as singular tests in
+# tests/ (a column anchor cannot carry per-model tests, and voter_key does not
+# exist upstream).
 version: 2
 
 models:
-  - name: win_agent_voters
-    description: >
-      Full-signal voter dataset for the Win product's AI agents, from
-      int__l2_nationwide_uniform_w_haystaq. Mirrors serve_agent_voters but
-      removes PII only: partisan and commercial fields are retained. Exposed
-      columns are the l2_column_classification registry minus the identity_pii
-      and operational families.
-    columns:
-      - name: voter_key
+  - name: int__l2_nationwide_uniform_w_haystaq
+    description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
+    config:
+      tags: ["monthly"]
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        # optional: comma/space-separated list like "AK,AL" for iterative runs
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+    columns: &l2_voter_columns
+      - name: "voter_key"
         description: '{{ doc("l2col_voter_key") }}'
-        data_tests:
-          - not_null
-          - unique
       - name: "2001_State_House_District"
         description: '{{ doc("l2col_2001_State_House_District") }}'
       - name: "2001_State_Legislative_District"
@@ -42,6 +46,16 @@ models:
         description: '{{ doc("l2col_4H_Livestock_District") }}'
       - name: "AbsenteeTypes_Description"
         description: '{{ doc("l2col_AbsenteeTypes_Description") }}'
+      - name: "AddressDistricts_Change_Changed_CD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_CD") }}'
+      - name: "AddressDistricts_Change_Changed_County"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_County") }}'
+      - name: "AddressDistricts_Change_Changed_HD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_HD") }}'
+      - name: "AddressDistricts_Change_Changed_LD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_LD") }}'
+      - name: "AddressDistricts_Change_Changed_SD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_SD") }}'
       - name: "Airport_District"
         description: '{{ doc("l2col_Airport_District") }}'
       - name: "Annexation_District"
@@ -84,6 +98,8 @@ models:
         description: '{{ doc("l2col_Assessment_District") }}'
       - name: "Bay_Area_Rapid_Transit"
         description: '{{ doc("l2col_Bay_Area_Rapid_Transit") }}'
+      - name: "BirthDateConfidence_Description"
+        description: '{{ doc("l2col_BirthDateConfidence_Description") }}'
       - name: "Board_of_Education_District"
         description: '{{ doc("l2col_Board_of_Education_District") }}'
       - name: "Board_of_Education_SubDistrict"
@@ -96,6 +112,8 @@ models:
         description: '{{ doc("l2col_Borough_Ward") }}'
       - name: "Career_Center"
         description: '{{ doc("l2col_Career_Center") }}'
+      - name: "Cell_Phone_Number_Available"
+        description: '{{ doc("l2col_Cell_Phone_Number_Available") }}'
       - name: "Cemetery_District"
         description: '{{ doc("l2col_Cemetery_District") }}'
       - name: "Central_Committee_District"
@@ -358,6 +376,8 @@ models:
         description: '{{ doc("l2col_ConsumerData_Do_It_Yourself_Lifestyle_Committed_Choice") }}'
       - name: "ConsumerData_Do_It_Yourselfers_Typical_Choice"
         description: '{{ doc("l2col_ConsumerData_Do_It_Yourselfers_Typical_Choice") }}'
+      - name: "ConsumerData_Do_Not_Call"
+        description: '{{ doc("l2col_ConsumerData_Do_Not_Call") }}'
       - name: "ConsumerData_Donor_Animal_Welfare"
         description: '{{ doc("l2col_ConsumerData_Donor_Animal_Welfare") }}'
       - name: "ConsumerData_Donor_Arts_Cultural"
@@ -542,6 +562,40 @@ models:
         description: '{{ doc("l2col_ConsumerData_LikelyRecentEmployment_Standardized_Title") }}'
       - name: "ConsumerData_Luggage_Buyer"
         description: '{{ doc("l2col_ConsumerData_Luggage_Buyer") }}'
+      - name: "ConsumerData_MAID_Available"
+        description: '{{ doc("l2col_ConsumerData_MAID_Available") }}'
+      - name: "ConsumerData_MAID_IP1"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP1") }}'
+      - name: "ConsumerData_MAID_IP2"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP2") }}'
+      - name: "ConsumerData_MAID_IP3"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP3") }}'
+      - name: "ConsumerData_MAID_IP4"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP4") }}'
+      - name: "ConsumerData_MAID_IP5"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP5") }}'
+      - name: "ConsumerData_MAID_IP_Available"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP_Available") }}'
+      - name: "ConsumerData_MAID_MAID1"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID1") }}'
+      - name: "ConsumerData_MAID_MAID1_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID1_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID2"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID2") }}'
+      - name: "ConsumerData_MAID_MAID2_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID2_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID3"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID3") }}'
+      - name: "ConsumerData_MAID_MAID3_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID3_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID4"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID4") }}'
+      - name: "ConsumerData_MAID_MAID4_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID4_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID5"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID5") }}'
+      - name: "ConsumerData_MAID_MAID5_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID5_Cell_Phone_System") }}'
       - name: "ConsumerData_Mail_Order_Buyer"
         description: '{{ doc("l2col_ConsumerData_Mail_Order_Buyer") }}'
       - name: "ConsumerData_Mail_Responder"
@@ -948,6 +1002,10 @@ models:
         description: '{{ doc("l2col_Geological_Hazard_Abatement_District") }}'
       - name: "Hamlet_Community_Area"
         description: '{{ doc("l2col_Hamlet_Community_Area") }}'
+      - name: "haystaq_flags_loaded_at"
+        description: '{{ doc("l2col_haystaq_flags_loaded_at") }}'
+      - name: "haystaq_scores_loaded_at"
+        description: '{{ doc("l2col_haystaq_scores_loaded_at") }}'
       - name: "Health_District"
         description: '{{ doc("l2col_Health_District") }}'
       - name: "hf_2025_government_shutdown_fault"
@@ -2174,8 +2232,12 @@ models:
         description: '{{ doc("l2col_Judicial_Superior_Court_District") }}'
       - name: "Judicial_Supreme_Court_District"
         description: '{{ doc("l2col_Judicial_Supreme_Court_District") }}'
+      - name: "LALVOTERID"
+        description: '{{ doc("l2col_LALVOTERID") }}'
       - name: "Land_Commission"
         description: '{{ doc("l2col_Land_Commission") }}'
+      - name: "Landline_Phone_Number_Available"
+        description: '{{ doc("l2col_Landline_Phone_Number_Available") }}'
       - name: "Landscaping_and_Lighting_Assessment_District"
         description: '{{ doc("l2col_Landscaping_and_Lighting_Assessment_District") }}'
       - name: "Law_Enforcement_District"
@@ -2194,10 +2256,46 @@ models:
         description: '{{ doc("l2col_Library_SubDistrict") }}'
       - name: "Lighting_District"
         description: '{{ doc("l2col_Lighting_District") }}'
+      - name: "loaded_at"
+        description: '{{ doc("l2col_loaded_at") }}'
       - name: "Local_Hospital_District"
         description: '{{ doc("l2col_Local_Hospital_District") }}'
       - name: "Local_Park_District"
         description: '{{ doc("l2col_Local_Park_District") }}'
+      - name: "Mailing_Addresses_AddressLine"
+        description: '{{ doc("l2col_Mailing_Addresses_AddressLine") }}'
+      - name: "Mailing_Addresses_ApartmentNum"
+        description: '{{ doc("l2col_Mailing_Addresses_ApartmentNum") }}'
+      - name: "Mailing_Addresses_ApartmentType"
+        description: '{{ doc("l2col_Mailing_Addresses_ApartmentType") }}'
+      - name: "Mailing_Addresses_CassErrStatCode"
+        description: '{{ doc("l2col_Mailing_Addresses_CassErrStatCode") }}'
+      - name: "Mailing_Addresses_CheckDigit"
+        description: '{{ doc("l2col_Mailing_Addresses_CheckDigit") }}'
+      - name: "Mailing_Addresses_City"
+        description: '{{ doc("l2col_Mailing_Addresses_City") }}'
+      - name: "Mailing_Addresses_Designator"
+        description: '{{ doc("l2col_Mailing_Addresses_Designator") }}'
+      - name: "Mailing_Addresses_DPBC"
+        description: '{{ doc("l2col_Mailing_Addresses_DPBC") }}'
+      - name: "Mailing_Addresses_ExtraAddressLine"
+        description: '{{ doc("l2col_Mailing_Addresses_ExtraAddressLine") }}'
+      - name: "Mailing_Addresses_HouseNumber"
+        description: '{{ doc("l2col_Mailing_Addresses_HouseNumber") }}'
+      - name: "Mailing_Addresses_PrefixDirection"
+        description: '{{ doc("l2col_Mailing_Addresses_PrefixDirection") }}'
+      - name: "Mailing_Addresses_State"
+        description: '{{ doc("l2col_Mailing_Addresses_State") }}'
+      - name: "Mailing_Addresses_StreetName"
+        description: '{{ doc("l2col_Mailing_Addresses_StreetName") }}'
+      - name: "Mailing_Addresses_SuffixDirection"
+        description: '{{ doc("l2col_Mailing_Addresses_SuffixDirection") }}'
+      - name: "Mailing_Addresses_Zip"
+        description: '{{ doc("l2col_Mailing_Addresses_Zip") }}'
+      - name: "Mailing_Addresses_ZipPlus4"
+        description: '{{ doc("l2col_Mailing_Addresses_ZipPlus4") }}'
+      - name: "Mailing_Families_FamilyID"
+        description: '{{ doc("l2col_Mailing_Families_FamilyID") }}'
       - name: "Maintenance_District"
         description: '{{ doc("l2col_Maintenance_District") }}'
       - name: "Master_Plan_District"
@@ -2282,6 +2380,8 @@ models:
         description: '{{ doc("l2col_Park_SubDistrict") }}'
       - name: "Parties_Description"
         description: '{{ doc("l2col_Parties_Description") }}'
+      - name: "Phone_Number_Available"
+        description: '{{ doc("l2col_Phone_Number_Available") }}'
       - name: "Planning_Area_District"
         description: '{{ doc("l2col_Planning_Area_District") }}'
       - name: "Police_District"
@@ -2444,18 +2544,62 @@ models:
         description: '{{ doc("l2col_Republican_Area") }}'
       - name: "Republican_Convention_Member"
         description: '{{ doc("l2col_Republican_Convention_Member") }}'
+      - name: "Residence_Addresses_AddressLine"
+        description: '{{ doc("l2col_Residence_Addresses_AddressLine") }}'
+      - name: "Residence_Addresses_ApartmentNum"
+        description: '{{ doc("l2col_Residence_Addresses_ApartmentNum") }}'
+      - name: "Residence_Addresses_ApartmentType"
+        description: '{{ doc("l2col_Residence_Addresses_ApartmentType") }}'
+      - name: "Residence_Addresses_CassErrStatCode"
+        description: '{{ doc("l2col_Residence_Addresses_CassErrStatCode") }}'
+      - name: "Residence_Addresses_CensusBlock"
+        description: '{{ doc("l2col_Residence_Addresses_CensusBlock") }}'
       - name: "Residence_Addresses_CensusBlockGroup"
         description: '{{ doc("l2col_Residence_Addresses_CensusBlockGroup") }}'
       - name: "Residence_Addresses_CensusTract"
         description: '{{ doc("l2col_Residence_Addresses_CensusTract") }}'
+      - name: "Residence_Addresses_CheckDigit"
+        description: '{{ doc("l2col_Residence_Addresses_CheckDigit") }}'
       - name: "Residence_Addresses_City"
         description: '{{ doc("l2col_Residence_Addresses_City") }}'
+      - name: "Residence_Addresses_Complete_Census_Geocode"
+        description: '{{ doc("l2col_Residence_Addresses_Complete_Census_Geocode") }}'
       - name: "Residence_Addresses_Density"
         description: '{{ doc("l2col_Residence_Addresses_Density") }}'
+      - name: "Residence_Addresses_Designator"
+        description: '{{ doc("l2col_Residence_Addresses_Designator") }}'
+      - name: "Residence_Addresses_DPBC"
+        description: '{{ doc("l2col_Residence_Addresses_DPBC") }}'
+      - name: "Residence_Addresses_ExtraAddressLine"
+        description: '{{ doc("l2col_Residence_Addresses_ExtraAddressLine") }}'
+      - name: "Residence_Addresses_HouseNumber"
+        description: '{{ doc("l2col_Residence_Addresses_HouseNumber") }}'
+      - name: "Residence_Addresses_Latitude"
+        description: '{{ doc("l2col_Residence_Addresses_Latitude") }}'
+      - name: "Residence_Addresses_LatLongAccuracy"
+        description: '{{ doc("l2col_Residence_Addresses_LatLongAccuracy") }}'
+      - name: "Residence_Addresses_Longitude"
+        description: '{{ doc("l2col_Residence_Addresses_Longitude") }}'
+      - name: "Residence_Addresses_PrefixDirection"
+        description: '{{ doc("l2col_Residence_Addresses_PrefixDirection") }}'
+      - name: "Residence_Addresses_Property_Home_Square_Footage"
+        description: '{{ doc("l2col_Residence_Addresses_Property_Home_Square_Footage") }}'
+      - name: "Residence_Addresses_Property_Land_Square_Footage"
+        description: '{{ doc("l2col_Residence_Addresses_Property_Land_Square_Footage") }}'
+      - name: "Residence_Addresses_Property_Type"
+        description: '{{ doc("l2col_Residence_Addresses_Property_Type") }}'
       - name: "Residence_Addresses_State"
         description: '{{ doc("l2col_Residence_Addresses_State") }}'
+      - name: "Residence_Addresses_StreetName"
+        description: '{{ doc("l2col_Residence_Addresses_StreetName") }}'
+      - name: "Residence_Addresses_SuffixDirection"
+        description: '{{ doc("l2col_Residence_Addresses_SuffixDirection") }}'
       - name: "Residence_Addresses_Zip"
         description: '{{ doc("l2col_Residence_Addresses_Zip") }}'
+      - name: "Residence_Addresses_ZipPlus4"
+        description: '{{ doc("l2col_Residence_Addresses_ZipPlus4") }}'
+      - name: "Residence_Families_FamilyID"
+        description: '{{ doc("l2col_Residence_Families_FamilyID") }}'
       - name: "Residence_Families_HHVotersCount"
         description: '{{ doc("l2col_Residence_Families_HHVotersCount") }}'
       - name: "Residence_HHGender_Description"
@@ -2486,6 +2630,8 @@ models:
         description: '{{ doc("l2col_School_Facilities_Improvement_District") }}'
       - name: "School_Subdistrict"
         description: '{{ doc("l2col_School_Subdistrict") }}'
+      - name: "SEQUENCE"
+        description: '{{ doc("l2col_SEQUENCE") }}'
       - name: "Service_Area_District"
         description: '{{ doc("l2col_Service_Area_District") }}'
       - name: "Sewer_District"
@@ -2506,17 +2652,14 @@ models:
         description: '{{ doc("l2col_Special_Tax_District") }}'
       - name: "State_Board_of_Equalization"
         description: '{{ doc("l2col_State_Board_of_Equalization") }}'
+      - name: "state_from_lalvoterid"
+        description: '{{ doc("l2col_state_from_lalvoterid") }}'
       - name: "State_House_District"
         description: '{{ doc("l2col_State_House_District") }}'
       - name: "State_Legislative_District"
         description: '{{ doc("l2col_State_Legislative_District") }}'
       - name: "state_postal_code"
         description: '{{ doc("l2col_state_postal_code") }}'
-        data_tests:
-          - not_null
-          - dbt_expectations.expect_column_distinct_values_to_be_in_set:
-              arguments:
-                value_set: "{{ get_us_states_list(include_DC=true, include_US=false) }}"
       - name: "State_Senate_District"
         description: '{{ doc("l2col_State_Senate_District") }}'
       - name: "Storm_Water_District"
@@ -2571,18 +2714,48 @@ models:
         description: '{{ doc("l2col_Voters_Active") }}'
       - name: "Voters_Age"
         description: '{{ doc("l2col_Voters_Age") }}'
+      - name: "Voters_BirthDate"
+        description: '{{ doc("l2col_Voters_BirthDate") }}'
       - name: "Voters_CalculatedRegDate"
         description: '{{ doc("l2col_Voters_CalculatedRegDate") }}'
+      - name: "Voters_CountyVoterID"
+        description: '{{ doc("l2col_Voters_CountyVoterID") }}'
       - name: "Voters_FIPS"
         description: '{{ doc("l2col_Voters_FIPS") }}'
+      - name: "Voters_FirstName"
+        description: '{{ doc("l2col_Voters_FirstName") }}'
       - name: "Voters_Gender"
         description: '{{ doc("l2col_Voters_Gender") }}'
+      - name: "Voters_LastName"
+        description: '{{ doc("l2col_Voters_LastName") }}'
+      - name: "Voters_MiddleName"
+        description: '{{ doc("l2col_Voters_MiddleName") }}'
+      - name: "Voters_MovedFrom_Date"
+        description: '{{ doc("l2col_Voters_MovedFrom_Date") }}'
       - name: "Voters_MovedFrom_Party_Description"
         description: '{{ doc("l2col_Voters_MovedFrom_Party_Description") }}'
+      - name: "Voters_MovedFrom_State"
+        description: '{{ doc("l2col_Voters_MovedFrom_State") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceEvenYearGeneral"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceEvenYearGeneral") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceEvenYearGeneralAndPrimary"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceEvenYearGeneralAndPrimary") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceEvenYearPrimary"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceEvenYearPrimary") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceMinorElection"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceMinorElection") }}'
+      - name: "Voters_NameSuffix"
+        description: '{{ doc("l2col_Voters_NameSuffix") }}'
       - name: "Voters_OfficialRegDate"
         description: '{{ doc("l2col_Voters_OfficialRegDate") }}'
       - name: "Voters_PlaceOfBirth"
         description: '{{ doc("l2col_Voters_PlaceOfBirth") }}'
+      - name: "Voters_SequenceOddEven"
+        description: '{{ doc("l2col_Voters_SequenceOddEven") }}'
+      - name: "Voters_SequenceZigZag"
+        description: '{{ doc("l2col_Voters_SequenceZigZag") }}'
+      - name: "Voters_StateVoterID"
+        description: '{{ doc("l2col_Voters_StateVoterID") }}'
       - name: "Voters_VotingPerformanceEvenYearGeneral"
         description: '{{ doc("l2col_Voters_VotingPerformanceEvenYearGeneral") }}'
       - name: "Voters_VotingPerformanceEvenYearGeneralAndPrimary"
@@ -2591,6 +2764,24 @@ models:
         description: '{{ doc("l2col_Voters_VotingPerformanceEvenYearPrimary") }}'
       - name: "Voters_VotingPerformanceMinorElection"
         description: '{{ doc("l2col_Voters_VotingPerformanceMinorElection") }}'
+      - name: "VoterTelephones_CellConfidenceCode"
+        description: '{{ doc("l2col_VoterTelephones_CellConfidenceCode") }}'
+      - name: "VoterTelephones_CellPhoneFormatted"
+        description: '{{ doc("l2col_VoterTelephones_CellPhoneFormatted") }}'
+      - name: "VoterTelephones_CellPhoneOnly"
+        description: '{{ doc("l2col_VoterTelephones_CellPhoneOnly") }}'
+      - name: "VoterTelephones_CellPhoneUnformatted"
+        description: '{{ doc("l2col_VoterTelephones_CellPhoneUnformatted") }}'
+      - name: "VoterTelephones_Landline7Digit"
+        description: '{{ doc("l2col_VoterTelephones_Landline7Digit") }}'
+      - name: "VoterTelephones_LandlineAreaCode"
+        description: '{{ doc("l2col_VoterTelephones_LandlineAreaCode") }}'
+      - name: "VoterTelephones_LandlineConfidenceCode"
+        description: '{{ doc("l2col_VoterTelephones_LandlineConfidenceCode") }}'
+      - name: "VoterTelephones_LandlineFormatted"
+        description: '{{ doc("l2col_VoterTelephones_LandlineFormatted") }}'
+      - name: "VoterTelephones_LandlineUnformatted"
+        description: '{{ doc("l2col_VoterTelephones_LandlineUnformatted") }}'
       - name: "Wastewater_District"
         description: '{{ doc("l2col_Wastewater_District") }}'
       - name: "Water_Agency"
@@ -2619,3 +2810,52 @@ models:
         description: '{{ doc("l2col_Water_SubDistrict") }}'
       - name: "Weed_District"
         description: '{{ doc("l2col_Weed_District") }}'
+
+  - name: serve_agent_voters
+    description: >
+      De-identified voter dataset for the Serve product's AI agents (DATA-2003, TDD DATA-1977).
+      One row per voter (a proxy for a constituent), sourced from
+      int__l2_nationwide_uniform_w_haystaq (L2 national voter file + Haystaq issue models).
+      Curated for analytical, aggregate queries by an AI agent serving an elected official's
+      chief of staff. All direct identifiers and PII (names, street addresses, phone numbers,
+      exact geocode, date of birth, device IDs) are removed; all partisanship (party
+      registration, partisan modeled scores, political-donor and candidate/ideology Haystaq
+      models) is removed; commercial / consumer-lifestyle attributes are excluded. Only
+      non-partisan civic, geographic/district, demographic, household, turnout, and non-partisan
+      Haystaq issue-model fields are exposed. The exposed column set is governed by the
+      l2_column_classification seed (is_available flag) and selected dynamically at build
+      time. Column docs come from the shared l2col_ blocks via the anchored list, so entries
+      for columns this model does not expose are superfluous and ignored.
+    columns: *l2_voter_columns
+
+  - name: win_agent_voters
+    description: >
+      Full-signal voter dataset for the Win product's AI agents, from
+      int__l2_nationwide_uniform_w_haystaq. Mirrors serve_agent_voters but
+      removes PII only: partisan and commercial fields are retained. Exposed
+      columns are the l2_column_classification registry minus the identity_pii
+      and operational families. Column docs come from the shared l2col_ blocks via
+      the anchored list; entries for unexposed columns are superfluous and ignored.
+    columns: *l2_voter_columns
+
+seeds:
+  - name: l2_column_classification
+    description: >
+      L2 column classification registry: one row per column in
+      int__l2_nationwide_uniform_w_haystaq with its family, description, and an is_available
+      flag. serve_agent_voters exposes the columns where is_available is true; win_agent_voters
+      exposes every family except identity_pii and operational. Change a column's classification
+      here and rebuild; no model SQL change is needed.
+    columns:
+      - name: column_name
+        description: "Source column name in int__l2_nationwide_uniform_w_haystaq."
+      - name: data_type
+        description: "Databricks data type of the source column."
+      - name: family
+        description: "Classification family (e.g. district, demographic, household, turnout, haystaq_issue, identity_pii, partisan, commercial)."
+      - name: description
+        description: "Human/agent-facing description, sourced from L2's data dictionaries."
+      - name: is_available
+        description: "Whether the column is exposed to the Serve agent (true/false)."
+      - name: reasoning
+        description: "Why the column is included or excluded."
