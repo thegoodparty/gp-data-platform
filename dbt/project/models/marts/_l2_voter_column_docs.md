@@ -6,7 +6,7 @@
    Reference a block as {{ doc("l2col_<column_name>") }}. #}
 
 {% docs l2col_voter_key %}
-Stable pseudonymous voter key: SHA-256 hash of L2's LALVOTERID. Uniquely identifies a voter for counting/joining without exposing the underlying L2 identifier. Shared across the serve and win voter files. One row per voter.
+Stable pseudonymous voter key: SHA-256 hash of L2's LALVOTERID. Uniquely identifies a voter within a dataset for counting and aggregation without exposing the underlying L2 identifier. One row per voter. Joining across the serve and win voter files is subject to data-governance approval (DATA-2003), since the win file carries partisan and commercial fields that the serve product withholds.
 {% enddocs %}
 
 {% docs l2col_2001_State_House_District %}

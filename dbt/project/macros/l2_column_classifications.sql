@@ -19,7 +19,7 @@
         {%- set results = run_query(
             "select column_name from "
             ~ ref(classification_seed)
-            ~ " where lower(cast(family as string)) in ("
+            ~ " where family is not null and lower(cast(family as string)) in ("
             ~ (quoted | join(", "))
             ~ ") order by column_name"
         ) -%}
@@ -43,7 +43,7 @@
         {%- set results = run_query(
             "select column_name from "
             ~ ref(classification_seed)
-            ~ " where lower(cast(family as string)) not in ("
+            ~ " where family is not null and lower(cast(family as string)) not in ("
             ~ (quoted | join(", "))
             ~ ") order by column_name"
         ) -%}
