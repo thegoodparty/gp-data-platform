@@ -1229,6 +1229,8 @@ sources:
         description: Segment identify calls linking anonymous IDs to known users
       - name: onboarding_user_created
         description: Segment event fired when a new user completes onboarding
+      - name: peerly_identity_id_created
+        description: Segment event fired when a Peerly identity ID is created for 10DLC compliance
       - name: poll_results_synthesis_complete
         description: Segment event fired when poll results synthesis completes
       - name: tracks
