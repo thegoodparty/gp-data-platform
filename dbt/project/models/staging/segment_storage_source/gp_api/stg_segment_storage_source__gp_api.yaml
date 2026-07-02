@@ -55,3 +55,39 @@ models:
         description: Timestamp when Segment received the event
         data_tests:
           - not_null
+
+  - name: stg_segment_storage_source__gp_api_peerly_identity_id_created
+    description: Segment event fired when a Peerly identity ID is created for 10DLC compliance
+    columns:
+      - name: id
+        description: Unique identifier for the event
+        data_tests:
+          - not_null
+          - unique
+      - name: event
+        description: Name of the tracked event, always peerly_identity_id_created
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["peerly_identity_id_created"]
+      - name: campaign_id
+        description: GoodParty campaign (candidacy) ID the Peerly identity belongs to
+        data_tests:
+          - not_null
+      - name: user_id
+        description: Segment user ID associated with the event
+        data_tests:
+          - not_null
+      - name: peerly_identity_id
+        description: Peerly identity ID created for the campaign's 10DLC registration
+        data_tests:
+          - not_null
+      - name: timestamp
+        description: Timestamp when the event occurred
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null
