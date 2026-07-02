@@ -131,8 +131,11 @@ left join
     on tbl_race.br_database_id = filing_overrides.br_database_id
 where
     tbl_race.place_id in (select id from {{ ref("m_election_api__place") }})
+    -- 2-month grace period keeps recently-passed races serveable (the campaign
+    -- plan reads races after election day); must match the race filter in
+    -- write__election_api_db.py, which otherwise re-narrows this window
     and tbl_race.election_date
-    between current_date() - interval '1 day' and current_date() + interval '2 years'
+    between current_date() - interval '2 months' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
     -- depends on; a Race with no matching Position can't serve the
     -- campaign-strategy-context endpoint (no projected_turnout, no district
