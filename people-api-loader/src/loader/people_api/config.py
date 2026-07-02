@@ -20,7 +20,9 @@ from datetime import datetime
 from loader.core.config import BaseLoaderConfig
 
 DEFAULT_AWS_REGION = "us-west-2"
-DEFAULT_S3_BUCKET = "gp-voter-loader"
+# The loader S3 bucket is real infrastructure and this repo is public, so it is NOT hardcoded.
+# It must come from LOADER_S3_BUCKET; from_env() hard-fails if unset. Empty = placeholder.
+DEFAULT_S3_BUCKET = ""
 
 # Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
 # (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
@@ -44,7 +46,7 @@ DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
 DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
 DEFAULT_KMS_KEY_ARN = _PLACEHOLDER
 DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
-# Durable rds-s3-import role (created once by platform/DATA-1856, not per run). provision
+# Durable rds-s3-import role (created once by platform IaC, not per run). provision
 # references and attaches it via PassRole; it does not create it.
 DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
@@ -87,6 +89,9 @@ class LoaderConfig(BaseLoaderConfig):
     db_env: str
     # SSM Parameter Store name holding the Present-cluster connection string (SecureString).
     db_conn_param: str
+    # Optional server-side statement_timeout (ms) applied to each Postgres session; 0 disables it.
+    # A runaway query then fails loudly instead of running unbounded (see db.py).
+    db_statement_timeout_ms: int
 
     # Prod (inspected / validated against)
     prod_cluster_id: str
@@ -100,6 +105,14 @@ class LoaderConfig(BaseLoaderConfig):
     security_group_id: str
     kms_key_arn: str
     s3_import_role_arn: str
+
+    # Bastion (SSH) for reaching Postgres from outside the VPC (Astro worker).
+    # Empty host = connect directly (local/VPN runs).
+    bastion_host: str
+    bastion_port: int
+    bastion_user: str
+    bastion_private_key: str
+    bastion_private_key_passphrase: str
 
     # New cluster defaults
     engine_version: str
@@ -133,6 +146,16 @@ class LoaderConfig(BaseLoaderConfig):
         # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
         env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
         db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
+        # Loader output bucket is used from the first step (inspect) onward. It is real infra, not
+        # committed to this public repo, so require it explicitly — a clear failure here beats an
+        # opaque S3 AccessDenied/NoSuchBucket later (e.g. against a stale default bucket).
+        s3_bucket = os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET)
+        if not s3_bucket:
+            raise RuntimeError(
+                "LOADER_S3_BUCKET is not set. The loader's S3 bucket is real infrastructure and is "
+                "not committed to this public repo; set LOADER_S3_BUCKET (e.g. on the Astro "
+                "deployment) to the loader bucket."
+            )
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
         mart_schema = os.environ.get("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
@@ -140,11 +163,17 @@ class LoaderConfig(BaseLoaderConfig):
         return cls(
             aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
+            # Cross-account RDS-admin role assumed for all AWS calls (the Astro worker's identity
+            # lives in a different account). Unset for local runs whose ambient creds already have
+            # access. ExternalId is required by the role's trust policy when present.
+            assume_role_arn=os.environ.get("AWS_PEOPLE_API_RDS_ROLE_ARN") or None,
+            assume_role_external_id=os.environ.get("AWS_PEOPLE_API_RDS_EXTERNAL_ID") or None,
             account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
-            s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
+            s3_bucket=s3_bucket,
             databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
+            db_statement_timeout_ms=int(os.environ.get("LOADER_DB_STATEMENT_TIMEOUT_MS", "0")),
             prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
             prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
             prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
@@ -154,6 +183,11 @@ class LoaderConfig(BaseLoaderConfig):
             security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
             kms_key_arn=os.environ.get("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
             s3_import_role_arn=os.environ.get("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
+            bastion_host=os.environ.get("LOADER_BASTION_HOST", ""),
+            bastion_port=int(os.environ.get("LOADER_BASTION_PORT", "22")),
+            bastion_user=os.environ.get("LOADER_BASTION_USER", ""),
+            bastion_private_key=os.environ.get("LOADER_BASTION_PRIVATE_KEY", ""),
+            bastion_private_key_passphrase=os.environ.get("LOADER_BASTION_KEY_PASSPHRASE", ""),
             engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
@@ -161,6 +195,10 @@ class LoaderConfig(BaseLoaderConfig):
             mart_fqns=mart_fqns,
             _tags=tags,
         )
+
+    @property
+    def bastion_enabled(self) -> bool:
+        return bool(self.bastion_host)
 
     def export_prefix(self, run_date: str) -> str:
         return f"voter_export_{run_date}"

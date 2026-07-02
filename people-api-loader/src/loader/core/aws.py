@@ -9,6 +9,8 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 import boto3
+import botocore.session
+from botocore.credentials import AssumeRoleCredentialFetcher, DeferredRefreshableCredentials
 from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
@@ -34,12 +36,37 @@ def ignore_client_errors(*codes: str) -> Iterator[None]:
 
 
 @cache
-def _session(profile: str | None, region: str) -> boto3.Session:
-    return boto3.Session(profile_name=profile, region_name=region)
+def _session(
+    profile: str | None,
+    region: str,
+    assume_role_arn: str | None = None,
+    external_id: str | None = None,
+) -> boto3.Session:
+    base = boto3.Session(profile_name=profile, region_name=region)
+    if not assume_role_arn:
+        return base
+    # Assume the target role with auto-refreshing credentials. Loader runs (provision + the
+    # parallel copy/index fan-out) can outlast the default 1h assume-role TTL, so static creds
+    # would expire mid-run; DeferredRefreshableCredentials re-assumes on expiry transparently.
+    botocore_base = base._session
+    extra_args: dict[str, str] = {"RoleSessionName": "people-api-loader"}
+    if external_id:
+        extra_args["ExternalId"] = external_id
+    fetcher = AssumeRoleCredentialFetcher(
+        client_creator=botocore_base.create_client,
+        source_credentials=botocore_base.get_credentials(),
+        role_arn=assume_role_arn,
+        extra_args=extra_args,
+    )
+    creds = DeferredRefreshableCredentials(method="assume-role", refresh_using=fetcher.fetch_credentials)
+    assumed = botocore.session.Session()
+    assumed._credentials = creds
+    assumed.set_config_variable("region", region)
+    return boto3.Session(botocore_session=assumed)
 
 
 def session(cfg: BaseLoaderConfig) -> boto3.Session:
-    return _session(cfg.aws_profile, cfg.aws_region)
+    return _session(cfg.aws_profile, cfg.aws_region, cfg.assume_role_arn, cfg.assume_role_external_id)
 
 
 def s3(cfg: BaseLoaderConfig) -> BaseClient:
