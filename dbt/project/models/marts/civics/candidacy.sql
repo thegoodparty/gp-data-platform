@@ -68,7 +68,8 @@ with
             score_viability_automated,
             array_compact(
                 array('hubspot', case when has_ddhq_match then 'ddhq' end)
-            ) as source_systems
+            ) as source_systems,
+            true as is_archive
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
@@ -158,7 +159,8 @@ with
                     case when ddhq.gp_candidacy_id is not null then 'ddhq' end,
                     case when gp_api.gp_candidacy_id is not null then 'gp_api' end
                 )
-            ) as source_systems
+            ) as source_systems,
+            false as is_archive
         from {{ ref("int__civics_candidacy_ballotready") }} as br
         full outer join
             {{ ref("int__civics_candidacy_techspeed") }} as ts
@@ -204,7 +206,8 @@ with
             office_type,
             br_position_database_id,
             score_viability_automated,
-            source_systems
+            source_systems,
+            is_archive
         from archive_2025
         union all
         select
@@ -238,7 +241,8 @@ with
             office_type,
             br_position_database_id,
             score_viability_automated,
-            source_systems
+            source_systems,
+            is_archive
         from merged_since_2026
     ),
 
@@ -257,7 +261,12 @@ with
     -- mart row. The equality predicates are NULL-tolerant: when either side
     -- lacks context (common for 2025 archive rows), the stage row is kept.
     candidacy_stages_in_context as (
-        select cs.gp_candidacy_id, cs.election_stage, cs.election_result, cs.updated_at
+        select
+            cs.gp_candidacy_id,
+            cs.election_stage,
+            cs.election_result,
+            cs.updated_at,
+            {{ election_stage_funnel_rank("cs.election_stage") }} as stage_rank
         from {{ ref("candidacy_stage") }} as cs
         left join
             {{ ref("election_stage") }} as es
@@ -275,12 +284,17 @@ with
                 or d.br_position_database_id is null
                 or es.br_position_id = d.br_position_database_id
             )
-        where cs.election_result is not null and cs.election_stage is not null
+        where cs.election_stage is not null
     ),
 
-    -- Picks the deepest captured stage per candidacy; updated_at breaks ties
-    -- when a candidacy has multiple rows for the same stage (a known
-    -- candidacy_stage data-quality issue tracked separately).
+    -- Deepest stage the candidacy has REACHED. Unlike the decided rollup below,
+    -- this keeps stages that have a candidacy_stage row but no result yet (an
+    -- upcoming general, or a runoff that has not been called). Ordering: deepest
+    -- stage first; within a stage prefer a row that already carries a result;
+    -- updated_at breaks remaining ties (a known candidacy_stage data-quality
+    -- issue tracked separately). This is what `latest_stage_reached` /
+    -- `latest_stage_result` expose, so the pair can surface a still-undecided
+    -- stage (result NULL) that the candidacy has advanced to.
     latest_stage_per_candidacy as (
         select
             gp_candidacy_id,
@@ -291,29 +305,57 @@ with
             row_number() over (
                 partition by gp_candidacy_id
                 order by
-                    case
-                        election_stage
-                        when 'general runoff'
-                        then 4
-                        when 'general special runoff'
-                        then 4
-                        when 'general'
-                        then 3
-                        when 'general special'
-                        then 3
-                        when 'primary runoff'
-                        then 2
-                        when 'primary special runoff'
-                        then 2
-                        when 'primary'
-                        then 1
-                        when 'primary special'
-                        then 1
-                        else 0
-                    end desc,
+                    stage_rank desc,
+                    case when election_result is not null then 1 else 0 end desc,
                     updated_at desc nulls last
             )
             = 1
+    ),
+
+    -- Deepest stage that has actually been DECIDED (non-null result). Used to
+    -- read the last known outcome when the candidacy has advanced to a
+    -- still-undecided deeper stage. A decided result only becomes the final
+    -- candidacy_result when it lands on the race's terminal (general) stage;
+    -- an interim decided stage (e.g. won the primary while the general is
+    -- pending) leaves candidacy_result NULL.
+    last_decided_stage_per_candidacy as (
+        select
+            gp_candidacy_id,
+            election_stage as decided_stage,
+            election_result as decided_result,
+            stage_rank as decided_stage_rank
+        from candidacy_stages_in_context
+        where election_result is not null
+        qualify
+            row_number() over (
+                partition by gp_candidacy_id
+                order by stage_rank desc, updated_at desc nulls last
+            )
+            = 1
+    ),
+
+    -- Deepest stage that EXISTS for the whole race (across all candidacies),
+    -- from election_stage. This tells us whether a decided primary is actually
+    -- the deciding contest: when the race has no general (e.g. unopposed or a
+    -- single-stage local race), the deepest race stage is the primary itself, so
+    -- a primary win is a seat win rather than merely advancing. NOTE: this keys
+    -- off the stages BallotReady has loaded for the race, so it does not capture
+    -- jurisdictions where a majority at the primary wins the seat outright while
+    -- a general is still scheduled (a known follow-up).
+    election_final_stage as (
+        select
+            gp_election_id,
+            max({{ election_stage_funnel_rank("stage_type") }}) as race_max_stage_rank
+        from {{ ref("election_stage") }}
+        -- Only count stages the funnel recognises. The macro's else arm ranks
+        -- both NULL and any unrecognised stage_type as 0, which would make
+        -- race_max_stage_rank 0 for such a race and spuriously promote any
+        -- decided stage to a bare seat result (decided_stage_rank >= 0 is always
+        -- true). Requiring rank > 0 excludes both cases in one guard.
+        where
+            gp_election_id is not null
+            and {{ election_stage_funnel_rank("stage_type") }} > 0
+        group by gp_election_id
     )
 
 select
@@ -341,7 +383,99 @@ select
         deduplicated.office_type,
         pos_ot.office_type
     ) as office_type,
-    deduplicated.candidacy_result,
+    -- candidacy_result is the single column for the candidacy's FINAL outcome,
+    -- populated only once that outcome is settled:
+    -- 'Won'    - won the seat (won the race's final / deciding stage, including
+    -- a decisive single-stage primary).
+    -- 'Lost'   - eliminated: a decided loss at any stage (a loss never
+    -- advances), or a terminal Withdrew / Not on Ballot.
+    -- 'Runoff' - currently in a runoff that has not been called yet.
+    -- NULL     - outcome not yet determined: won an earlier stage and advanced
+    -- (e.g. won the primary, general pending), or the race structure
+    -- is unknown. The "won the primary" detail lives in
+    -- latest_stage_reached / latest_stage_result.
+    -- Falls back to the provider-rolled value when there is no in-context
+    -- candidacy_stage row, or for a 2025 archive row whose stage rows carry no
+    -- decided result (the archive field is the authoritative historical outcome).
+    case
+        when latest.latest_stage_reached is null
+        then deduplicated.candidacy_result
+        -- 2025 archive rows carry an authoritative historical result. Trust it
+        -- (except the indeterminate 'Cannot Determine', which should read NULL)
+        -- before the stage logic can null it out — the archive's candidacy_stage
+        -- rows often have no decided result, which would otherwise fall through to
+        -- a pending-stage or else-null branch. Archive rows whose provider value
+        -- is NULL still fall through to the stage logic, so the ~1.9k archive
+        -- outcomes recovered from matched DDHQ stages are preserved.
+        when
+            deduplicated.is_archive
+            and deduplicated.candidacy_result is not null
+            and deduplicated.candidacy_result <> 'Cannot Determine'
+        then deduplicated.candidacy_result
+        -- In a runoff (reached but uncalled, or the latest decided result sent
+        -- the race to one): in progress, not a final outcome. Evaluated before
+        -- the loss branch so a first-round result that advanced to a runoff is
+        -- not mistaken for elimination. A pending runoff also wins over a
+        -- decided earlier-stage "Won" (~19 contradictory rows): an undecided
+        -- deeper stage means the seat is not settled.
+        when
+            latest.latest_stage_result is null
+            and latest.latest_stage_reached in (
+                'general runoff',
+                'general special runoff',
+                'primary runoff',
+                'primary special runoff'
+            )
+        then 'Runoff'
+        -- Reached a pending non-runoff general stage (result not yet posted): the
+        -- seat is not settled regardless of any earlier decided stage. Evaluated
+        -- before the decided-Runoff / loss / withdrew branches so a stale
+        -- primary-cycle result does not pre-empt a candidacy that has advanced to
+        -- the general (e.g. a top-two / nonpartisan primary where placing 2nd
+        -- still advances, or a primary-cycle 'Runoff' since superseded).
+        when
+            latest.latest_stage_result is null
+            and latest.latest_stage_reached in ('general', 'general special')
+        then null
+        when decided.decided_result = 'Runoff'
+        then 'Runoff'
+        -- A decided loss eliminates the candidacy at any stage; Withdrew / Not on
+        -- Ballot are likewise terminal.
+        when decided.decided_result = 'Lost'
+        then 'Lost'
+        when decided.decided_result in ('Withdrew', 'Not on Ballot')
+        then decided.decided_result
+        -- Won the seat. A win at the general cycle is the deciding outcome on
+        -- its own (any general-runoff stage is a contingency this winner is not
+        -- in — if they were, the pending-runoff branch above would have fired).
+        -- A primary-cycle win counts as a seat win only when the primary IS the
+        -- race's whole contest: race_max_stage_rank = 1, i.e. the primary is the
+        -- deepest stage the race has. A primary *runoff* win (rank 2) must NOT
+        -- shortcut to 'Won' even when it is the deepest loaded stage (race_max =
+        -- 2), because a runoff by definition means the contest continued and a
+        -- general almost always follows — the >= comparison alone would wrongly
+        -- promote it. When the race structure is unknown (NULL race_max_stage_rank)
+        -- a primary win stays NULL rather than claim an unconfirmed seat.
+        when
+            decided.decided_result = 'Won'
+            and (
+                decided.decided_stage in (
+                    'general',
+                    'general runoff',
+                    'general special',
+                    'general special runoff'
+                )
+                or (
+                    decided.decided_stage_rank >= race.race_max_stage_rank
+                    and race.race_max_stage_rank = 1
+                )
+            )
+        then 'Won'
+        -- Outcome not yet determined (won an earlier primary-cycle stage and
+        -- advanced, reached a pending non-runoff stage, or no result captured):
+        -- no final outcome.
+        else null
+    end as candidacy_result,
     case
         when
             latest.latest_stage_reached in (
@@ -399,3 +533,8 @@ left join
 left join
     latest_stage_per_candidacy as latest
     on deduplicated.gp_candidacy_id = latest.gp_candidacy_id
+left join
+    last_decided_stage_per_candidacy as decided
+    on deduplicated.gp_candidacy_id = decided.gp_candidacy_id
+left join
+    election_final_stage as race on deduplicated.gp_election_id = race.gp_election_id

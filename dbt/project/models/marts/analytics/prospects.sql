@@ -56,14 +56,51 @@ with
         group by user_id
     ),
 
-    -- General-election winners (fallback signal if "winner" needs to mean
-    -- literal election winners rather than Win-org users).
-    user_won_general as (
+    -- Seat-winner signal (fallback if "winner" must mean a literal election
+    -- winner rather than a Win-org user), from candidacy.candidacy_result where a
+    -- bare 'Won' = won the race's final stage. Computed once per candidate, then
+    -- rolled up to the product user; the two are OR-merged in the final select so
+    -- a win is caught whether the candidacy links to the contact via the
+    -- candidate identity (gp_candidate_id — covers BR-sourced candidacies) or the
+    -- product user (prod_db_user_id).
+    -- Three-valued: TRUE = won a seat; FALSE = has a decided non-win and no win;
+    -- NULL = no decided outcome at all. A decided loss deliberately takes
+    -- precedence over a still-pending candidacy in a different race: via
+    -- max(), TRUE > FALSE > NULL, so max(false, null) = false. (A candidate who
+    -- lost one race and has another still pending reads FALSE, not NULL — the
+    -- known non-win wins; has_candidacy still flags them as an active candidate.)
+    -- A candidate with only pending candidacies and no decided result stays NULL.
+    candidate_won as (
+        select
+            gp_candidate_id,
+            max(
+                case
+                    when candidacy_result = 'Won'
+                    then true
+                    when candidacy_result in ('Lost', 'Withdrew', 'Not on Ballot')
+                    then false
+                    -- 'Runoff' (and any NULL/pending result) is not yet decided.
+                    -- Explicit NULL so it reads as pending: on its own it leaves
+                    -- has_won_election NULL, but a decided loss overrides it via
+                    -- max() above. Kept explicit so it isn't mistaken for a gap.
+                    when candidacy_result = 'Runoff'
+                    then null
+                end
+            ) as has_won_election
+        from {{ ref("candidacy") }}
+        where gp_candidate_id is not null
+        group by gp_candidate_id
+    ),
+
+    -- Same signal at the product-user grain, derived from candidate_won so the
+    -- win/loss classification lives in one place (max of the boolean preserves
+    -- the TRUE > FALSE > NULL precedence).
+    user_won as (
         select
             cd.prod_db_user_id as gp_user_id,
-            max(cy.general_election_result = 'Won') as has_won_general_election
-        from {{ ref("candidate") }} cd
-        join {{ ref("candidacy") }} cy on cd.gp_candidate_id = cy.gp_candidate_id
+            max(cw.has_won_election) as has_won_election
+        from candidate_won cw
+        join {{ ref("candidate") }} cd on cd.gp_candidate_id = cw.gp_candidate_id
         where cd.prod_db_user_id is not null
         group by cd.prod_db_user_id
     ),
@@ -212,7 +249,7 @@ with
             coalesce(uo.has_win_org, false) as has_win_org,
             coalesce(uo.has_serve_org, false) as has_serve_org,
             -- "Win or Serve product user" — NOT literal election winner; see
-            -- has_won_general_election below.
+            -- has_won_election below.
             (
                 coalesce(uo.has_win_org, false) or coalesce(uo.has_serve_org, false)
             ) as is_winner_or_eo,
@@ -250,8 +287,39 @@ with
             st.contact_type_raw,
             st.candidate_type,
 
-            -- General-election-winner sub-segment
-            coalesce(ug.has_won_general_election, false) as has_won_general_election,
+            -- Seat-winner sub-segment. TRUE = won a seat; FALSE = a candidate
+            -- with a decided non-win and no win (a decided loss takes precedence
+            -- over any still-pending candidacy in another race); NULL = no decided
+            -- outcome at all (all pending / Cannot Determine) or not a candidate.
+            -- OR-merged across the candidate-identity and product-user links so
+            -- BR-sourced candidacies count. Use has_candidacy to tell a pending
+            -- candidate apart from a non-candidate.
+            -- OR (not AND) is deliberate: it lets a FALSE on the single populated
+            -- link classify the ~10.6k contacts that have only one link type; an
+            -- AND would leave those unclassifiable (regressing ~1.8k). The
+            -- trade-off is a rare cross-identity contact (~62) whose two links
+            -- disagree (one all-lost, the other pending) reading FALSE instead of
+            -- NULL. A fully three-valued answer would need a separate has_pending
+            -- signal, since user_won's max(bool) already drops pending under a
+            -- decided loss; not worth it for the volume.
+            case
+                when cw.has_won_election or uw.has_won_election
+                then true
+                when cw.has_won_election is false or uw.has_won_election is false
+                then false
+            end as has_won_election,
+            -- Whether the contact is a candidate at all, via the candidate
+            -- identity or the product user — most prospects are. Tests the raw
+            -- st.gp_candidate_id (not cw.gp_candidate_id) so a candidate identity
+            -- with no candidacy row yet in the mart (e.g. a newly onboarded
+            -- gp_api candidate not matched to any BR/TS/DDHQ race) still counts.
+            -- The user side stays keyed on user_won (uw) — a bare product user
+            -- without a candidacy is not a candidate. has_won_election's NULL
+            -- alone can't separate a pending candidate from a non-candidate
+            -- sales contact; this can.
+            (
+                st.gp_candidate_id is not null or uw.gp_user_id is not null
+            ) as has_candidacy,
 
             -- Serve funnel state (true transition rates — Serve workflow enabled)
             st.serve_lifecycle_lead_entered_at,
@@ -335,7 +403,8 @@ with
             st.updated_at
         from sales_touched st
         left join user_org_types uo on st.gp_user_id = uo.gp_user_id
-        left join user_won_general ug on st.gp_user_id = ug.gp_user_id
+        left join user_won uw on st.gp_user_id = uw.gp_user_id
+        left join candidate_won cw on st.gp_candidate_id = cw.gp_candidate_id
     )
 
 -- One row per HubSpot contact, BUT collapsed to one row per gp_user_id
