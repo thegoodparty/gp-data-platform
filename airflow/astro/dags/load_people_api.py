@@ -20,9 +20,19 @@ import os
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import dag
 from cosmos import ProfileConfig
-from cosmos.operators.virtualenv import DbtTestVirtualenvOperator, prepare_virtualenv
+from cosmos.operators import virtualenv as cosmos_virtualenv
+from cosmos.operators.virtualenv import DbtTestVirtualenvOperator
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
+
+# dbt (dbt-core / mashumaro) has no Python 3.14 support yet — on the image's 3.14 it fails at import
+# with `mashumaro.exceptions.UnserializableField: Field "schema" ... not serializable`. The loader
+# requires 3.14 and shares this image, so keep the image on 3.14 and build ONLY the dbt gate's
+# ephemeral Cosmos venv on 3.12. Cosmos reads this module constant when creating the venv
+# (`uv venv --python <PY_INTERPRETER>`); uv resolves a managed 3.12 (cached after first use). This is
+# the only DAG using Cosmos venv operators, and patching the constant is more robust than subclassing
+# (which risks not surviving operator serialization). See _prepare_virtualenv in cosmos.
+cosmos_virtualenv.PY_INTERPRETER = "3.12"
 
 # Databricks creds + compute, reused from the SAME connection the L2 dbt jobs use (OAuth M2M).
 # WHICH connection is chosen at task RUNTIME from the shared `databricks_conn_id` Airflow Variable
@@ -75,27 +85,6 @@ _DBT_PROJECT_DIR = os.getenv("LOADER_DBT_PROJECT_DIR", "/usr/local/airflow/dbt/p
 _DBT_PROFILES_YML = os.getenv("LOADER_DBT_PROFILES_YML", "/usr/local/airflow/include/loader_dbt_profiles.yml")
 
 
-class _DbtGateVirtualenvOperator(DbtTestVirtualenvOperator):
-    """DbtTestVirtualenvOperator that builds its ephemeral venv on Python 3.12.
-
-    dbt (dbt-core / mashumaro) has no Python 3.14 support yet — on 3.14 it fails to import with
-    `mashumaro.exceptions.UnserializableField: Field "schema" ... not serializable`. The loader
-    requires 3.14 and shares this image, so we keep the image on 3.14 and pin ONLY this gate's venv
-    to 3.12. Cosmos otherwise creates it with `uv venv --python python3` (= the image's 3.14); uv
-    resolves a managed 3.12 instead (managed-python is enabled in the image; cached after first use).
-    """
-
-    def _prepare_virtualenv(self) -> str:
-        self.log.info("Creating the dbt gate virtualenv on Python 3.12 at `%s`", self.virtualenv_dir)
-        return prepare_virtualenv(
-            venv_directory=str(self.virtualenv_dir),
-            python_bin="3.12",
-            system_site_packages=self.py_system_site_packages,
-            requirements=self.py_requirements,
-            pip_install_options=self.pip_install_options,
-        )
-
-
 def _voter_gate_profile() -> ProfileConfig:
     """dbt profile for the voter gate.
 
@@ -121,7 +110,7 @@ def _voter_gate_profile() -> ProfileConfig:
 )
 def load_people_api():
     inspect_prod = _step("inspect_prod", "inspect-prod")
-    dbt_test_voter_gate = _DbtGateVirtualenvOperator(
+    dbt_test_voter_gate = DbtTestVirtualenvOperator(
         task_id="dbt_test_voter_gate",
         project_dir=_DBT_PROJECT_DIR,
         profile_config=_voter_gate_profile(),
