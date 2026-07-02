@@ -55,6 +55,14 @@ dbt show --inline "select distinct candidate_office from {{ ref('int__civics_can
 
 ## Code Conventions
 
+- Keep comments brief and explain *why*, not *what*. The SQL already says what
+  it does; a comment should capture non-obvious rationale, business rules, or
+  data caveats. Skip long headers, background, and ticket references.
+- Don't override materializations or add tags in a top-level `{{ config() }}`
+  block unless it's clearly necessary and a deliberate exception to the
+  directory-level config in `dbt_project.yml`. Materialization and tags default
+  from `dbt_project.yml`; a per-model override should be the rare, justified case
+  (e.g. a large table that needs incremental, or a thin view over a big table).
 - Most dbt tests do *not* need a `config.where: some_column_is_not_null`. For
   instance, accepted_values tests will work fine with nulls without this
   config.

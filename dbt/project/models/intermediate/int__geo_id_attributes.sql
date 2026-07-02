@@ -4,7 +4,6 @@
         incremental_strategy="merge",
         unique_key="geo_id",
         on_schema_change="fail",
-        tags=["intermediate", "ballotready", "geo_id_attributes"],
     )
 }}
 

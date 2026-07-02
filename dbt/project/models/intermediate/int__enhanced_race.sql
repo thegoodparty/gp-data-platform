@@ -4,7 +4,6 @@
         incremental_strategy="merge",
         unique_key="id",
         auto_liquid_cluster=true,
-        tags=["intermediate", "ballotready", "enhanced_race"],
     )
 }}
 

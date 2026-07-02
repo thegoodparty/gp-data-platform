@@ -1,5 +1,3 @@
-{{ config(tags=["archive"]) }}
-
 -- Historical archive of election stages from elections on or before 2025-12-31.
 -- Two parallel grains, unioned:
 -- 1) DDHQ-matched: one row per ddhq_race_id. Preserves pre-PR

@@ -1,32 +1,23 @@
-{{ config(materialized="table", tags=["civics", "serve"]) }}
-
--- int__serve_district_resolution: resolves each serve org to its L2 district
--- (override-first via election-api, crosswalk fallback). The serve-cohort
--- entry point onto the District/Census substrate: a downstream consumer of the
--- substrate, not part of it, so the election-api dependency is quarantined here
--- and never pulls into the substrate build.
+-- Resolves each serve org to its L2 district (override-first via election-api,
+-- LLM crosswalk fallback). The serve-cohort entry point onto the District/Census
+-- substrate: a downstream consumer, so the election-api dependency is quarantined
+-- here and never pulls into the substrate build.
 --
--- One row per serve org (organizations mart, organization_type = 'serve'),
--- resolving each org to the L2 district its official serves (DATA-1988, epic
--- DATA-1359): downstream models join the resolved (state, l2_district_type,
--- normalized_district_name) tuple to L2-derived tables to count the people
--- who live in each official's jurisdiction.
+-- One row per serve org (organizations mart, organization_type = 'serve'):
+-- downstream models join the resolved (state, l2_district_type,
+-- normalized_district_name) tuple to L2-derived tables to count the people who
+-- live in each official's jurisdiction.
 --
--- Resolution is override-first: the org's own election-api district record
--- (coalesce(override_district_id, district_id), which bakes in the manual
--- override corrections made through the product) wins; the LLM
--- position->district crosswalk is the fallback for orgs with a BallotReady
--- position but no district row. Orgs resolving through neither path carry
--- resolution_path = 'unresolved' (mostly custom free-text positions - a
--- product fix, not a pipeline fix).
+-- Override-first: the org's own election-api district record
+-- (coalesce(override_district_id, district_id), baking in manual product
+-- overrides) wins; the LLM position->district crosswalk is the fallback for orgs
+-- with a BallotReady position but no district row. Orgs matching neither carry
+-- resolution_path = 'unresolved' (mostly custom free-text positions).
 --
--- Rows are never excluded here. Pending product decisions (ever-serve vs
--- currently-active cohort, internal-email orgs in or out) surface as flag
--- columns plus var-driven filters so a decision is a parameter flip, not a
--- rewrite. requires_review marks deterministic container-mismatch rules (a
--- local office resolved to a too-large containing district); is_geo_seat
--- marks the jurisdiction-vs-electoral-seat semantics question. Flagged rows
--- flow through; downstream consumers decide what to do with them.
+-- Rows are never excluded here: pending product decisions surface as flag
+-- columns plus var-driven filters, so a decision is a parameter flip, not a
+-- rewrite. requires_review marks container-mismatch rules; is_geo_seat marks the
+-- jurisdiction-vs-electoral-seat question. Flagged rows flow through.
 with
     serve_orgs as (
         -- the cohort predicate lives here and only here: "ever-serve" by
@@ -219,7 +210,7 @@ with
             icp_office_serve,
             icp_office_serve_unknown,
 
-            -- in_people_served_cohort (epic DATA-1359): the active People Served
+            -- in_people_served_cohort: the active People Served
             -- cohort gate -- active serve user (sent SMS poll AND pledged) AND a
             -- Serve-ICP office AND not an internal/test account. Flag only, never a
             -- row exclusion: out-of-cohort officials still flow through for the

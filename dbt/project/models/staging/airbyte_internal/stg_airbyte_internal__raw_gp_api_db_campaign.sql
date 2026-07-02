@@ -62,7 +62,6 @@ with
         from parsed
     ),
 
-    -- Keep the latest snapshot for each distinct campaign version
     deduplicated as (
         select *
         from versioned

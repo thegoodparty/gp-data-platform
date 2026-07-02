@@ -1,5 +1,3 @@
-{{ config(materialized="view") }}
-
 /*
     int__amplitude_serve_activity
 

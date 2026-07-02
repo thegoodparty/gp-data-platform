@@ -1,10 +1,3 @@
-{{
-    config(
-        materialized="view",
-        tags=["intermediate", "ballotready", "position_place_mapping"],
-    )
-}}
-
 with
     exploded_table as (
         select

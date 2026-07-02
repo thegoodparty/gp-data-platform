@@ -2,12 +2,10 @@
     config(
         materialized="table",
         auto_liquid_cluster=true,
-        tags=["intermediate", "gp_ai", "election_match"],
     )
 }}
 
--- DEPRECATED (DATA-1834): Frozen snapshot of DDHQ-HubSpot AI election match results.
--- Previously a Python model that fetched parquet from S3 via gp-ai API.
+-- DEPRECATED: Frozen snapshot of DDHQ-HubSpot AI election match results.
 -- Now sources from the Dec 2, 2025 manual snapshot — the same data that was
 -- already in production (no API run ever succeeded; fallback was always active).
 -- Splink modelling replaces this pipeline going forward.

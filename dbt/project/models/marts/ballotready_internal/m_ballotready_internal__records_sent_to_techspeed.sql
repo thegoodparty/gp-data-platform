@@ -1,13 +1,4 @@
-{{
-    config(
-        materialized="table",
-        tags=["mart", "ballotready", "techspeed", "historical"],
-    )
-}}
-
--- Historical tracking table for BallotReady records sent to TechSpeed
--- This table maintains an audit trail of all candidates that have been sent
--- to TechSpeed for data enrichment (missing phone/email)
+-- Audit trail of BallotReady records sent to TechSpeed for contact enrichment.
 with
     br_for_techspeed as (
         select

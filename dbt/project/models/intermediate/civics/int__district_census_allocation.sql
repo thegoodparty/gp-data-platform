@@ -1,6 +1,4 @@
-{{ config(materialized="table", tags=["intermediate", "civics", "substrate"]) }}
-
--- int__district_census_allocation: THE SUBSTRATE (DATA-1992). One row per
+-- int__district_census_allocation: THE SUBSTRATE. One row per
 -- (census block, district_type, normalized district_name) carrying the 2020
 -- decennial census population allocated to that district within that block.
 -- The split fraction is the within-(block, district_type) L2 voter share
@@ -42,7 +40,7 @@ with
             -- a precise geographic-overlap measure. The validated per-district
             -- non-exact-assignment SHARE (the accuracy story) is computed at
             -- block-group grain in the demographic layer (phase 2), where
-            -- splitting is real; at block grain it is mostly noise (TDD App B.2).
+            -- splitting is real; at block grain it is mostly noise.
             count(*) over (partition by m.block_geoid, m.district_type)
             > 1 as is_non_exact,
             m.loaded_at

@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "gp_api"]) }}
-
 -- Product DB campaigns -> Civics mart candidacy_stage rows.
 -- Grain: one row per latest-version gp_api campaign whose pledge resolves
 -- to a BR election stage. BR-stage resolution prefers PD's pledged race

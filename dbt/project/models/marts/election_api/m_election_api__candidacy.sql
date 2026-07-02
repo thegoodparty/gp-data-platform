@@ -3,7 +3,6 @@
         materialized="table",
         unique_key="id",
         auto_liquid_cluster=true,
-        tags=["mart", "election_api", "candidacy"],
     )
 }}
 
@@ -160,7 +159,7 @@ with
     -- Downstream consumer (LLM-driven onboarding campaign planner) needs every
     -- candidate in the race regardless of party; the prior major-party filter
     -- excluded Democrat / Republican / Conservative Party / Progressive / DCP
-    -- and has been dropped per DATA-1922.
+    -- and has been dropped.
     person_with_slug as (
         select
             id,

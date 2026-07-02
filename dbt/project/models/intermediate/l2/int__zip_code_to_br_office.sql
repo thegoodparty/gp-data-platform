@@ -10,7 +10,6 @@
             "district_name",
             "br_database_id",
         ],
-        tags=["intermediate", "l2", "ballotready", "zip_code"],
     )
 }}
 
@@ -79,7 +78,7 @@ with
         left join
             {{ ref("stg_airbyte_source__ballotready_api_race") }} as tbl_br_race
             on tbl_br_position.database_id = tbl_br_race.position.databaseid
-        -- DATA-1986: the LLM BR Office <-> L2 District matcher uses
+        -- The LLM BR Office <-> L2 District matcher uses
         -- l2_district_type='State' as a fallback bucket, so non-statewide
         -- positions also land there (district/circuit/appellate judges,
         -- state-legislative districts, water/community special districts).
@@ -93,7 +92,6 @@ with
                 tbl_br_position.mtfcc = 'G4000'
                 and not coalesce(tbl_br_position.is_retention, false)
             )
-        -- dedup to the latest race per BR position per zip+district
         qualify
             row_number() over (
                 partition by

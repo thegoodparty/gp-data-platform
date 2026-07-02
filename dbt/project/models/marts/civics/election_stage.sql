@@ -2,7 +2,7 @@
 -- 2025 HubSpot archive UNION 2026+ 3-way FOJ over BR + TS + DDHQ joined on
 -- gp_election_stage_id, with a left-join membership lookup that appends
 -- 'gp_api' to source_systems for stages any PD candidacy_stage maps to.
--- gp_api int models adopt BR's natural gp_election_stage_id whenever Task 1's
+-- gp_api int models adopt BR's natural gp_election_stage_id whenever the gp_api
 -- filter passes, so the membership lookup hits BR's spine row directly.
 -- Per-column precedence rules: see the election_stage model description in
 -- m_civics.yaml. Notable exceptions: total_votes_cast is BR-first only when
@@ -139,7 +139,7 @@ with
         -- gp_api participation marker. No new int model at election_stage grain
         -- (per design: gp_api contributes no field values BR/TS/DDHQ don't
         -- already author better here). gp_api stages adopt BR's natural
-        -- gp_election_stage_id (Task 1 filter ensures ballotready_position_id),
+        -- gp_election_stage_id (the gp_api filter ensures ballotready_position_id),
         -- so this lookup hits BR's spine row directly.
         select distinct gp_election_stage_id
         from {{ ref("int__civics_candidacy_stage_gp_api") }}

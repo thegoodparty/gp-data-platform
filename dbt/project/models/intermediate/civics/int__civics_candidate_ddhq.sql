@@ -1,10 +1,6 @@
--- DDHQ → Civics mart candidate
--- Derived from: int__civics_candidacy_stage_ddhq
---
--- Grain: One row per unique person (deduplicated on gp_candidate_id)
---
--- CRITICAL: UUID fields MUST match int__civics_candidate_2025.sql pattern
--- to ensure same person from different sources gets same gp_candidate_id
+-- DDHQ candidate rows for the Civics mart (one row per person, deduped on
+-- gp_candidate_id). UUID fields MUST match int__civics_candidate_2025 so the
+-- same person from different sources gets the same gp_candidate_id.
 with
     deduplicated as (
         select *

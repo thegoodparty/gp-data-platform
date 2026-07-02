@@ -164,7 +164,7 @@ with
         inner join non_br_clusters using (cluster_id)
         where
             cw.source_name = 'techspeed'
-            -- DATA-1523: skip (ts_source_candidate_id, election_date)
+            -- Skip (ts_source_candidate_id, election_date)
             -- combos already produced by ts_stage_matches above. This guards
             -- against ts_key_unique_in_crosswalk failures when a single
             -- TS person has two distinct candidacies on the same election

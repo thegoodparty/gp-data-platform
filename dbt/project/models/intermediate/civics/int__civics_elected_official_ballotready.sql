@@ -1,8 +1,5 @@
--- BallotReady office holders -> Civics mart elected_officials schema
--- Source: stg_airbyte_source__ballotready_s3_office_holders_v3
---
--- Grain: One row per office-holder term.
---
+-- BallotReady office holders -> Civics mart elected_officials schema.
+-- Grain: one row per office-holder term.
 with
     office_holders as (
         select * from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
@@ -31,8 +28,8 @@ with
 
     elected_officials as (
         select
-            -- TERM-grain canonical UUID (renamed from gp_elected_official_id).
-            -- Salt + source unchanged so UUID values are bit-identical.
+            -- TERM-grain canonical UUID. Salt + source unchanged so UUID values
+            -- are bit-identical.
             {{
                 generate_salted_uuid(
                     fields=[
@@ -43,8 +40,8 @@ with
             }} as gp_elected_official_term_id,
 
             -- PERSON-grain canonical UUID. NULL for vacancy terms (no person).
-            -- Salt 'elected_official' matches the mart's existing convention so
-            -- UUIDs are stable as we move generation from mart to intermediate.
+            -- Salt 'elected_official' matches the mart's convention so UUIDs
+            -- stay stable.
             case
                 when br_candidate_id is not null
                 then

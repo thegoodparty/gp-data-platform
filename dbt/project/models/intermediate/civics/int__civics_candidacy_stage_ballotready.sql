@@ -1,9 +1,6 @@
 -- BallotReady candidacy stages → Civics mart candidacy_stage schema
 -- Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections)
---
--- Grain: One row per candidacy stage (candidacy + election stage)
---
--- Each row in the BR S3 data IS a candidacy stage (candidate in a specific race).
+-- Grain: one row per candidacy stage. Each BR S3 row IS a candidacy stage.
 with
     candidacies as (
         select *
@@ -31,7 +28,6 @@ with
             initcap(candidacies.level) as office_level,
             {{ extract_city_from_office_name("candidacies.position_name") }} as city,
             {{ extract_district_geographic("candidacies.position_name") }} as district,
-            -- Parse party from parties JSON
             {{ parse_party_affiliation("candidacies.parties") }} as party_affiliation,
             br_position.partisan_type
         from candidacies
@@ -66,7 +62,6 @@ with
     candidacy_stages as (
         select
             -- gp_candidacy_stage_id = hash(gp_candidacy_id, br_race_id)
-            -- First compute gp_candidacy_id inline
             {{
                 generate_salted_uuid(
                     fields=[
@@ -102,7 +97,6 @@ with
             }}
             as gp_candidacy_stage_id,
 
-            -- gp_election_stage_id from br_race_id
             {{ generate_salted_uuid(fields=["s.br_race_id"]) }} as gp_election_stage_id,
 
             cast(s.br_candidacy_id as string) as br_candidacy_id,
@@ -111,7 +105,6 @@ with
             cast(s.br_race_id as string) as source_race_id,
             s.party_affiliation as candidate_party,
 
-            -- is_winner
             case
                 when s.election_result in ('WON', 'GENERAL_WIN', 'PRIMARY_WIN')
                 then true
@@ -120,7 +113,6 @@ with
                 else null
             end as is_winner,
 
-            -- election_result mapped to standard values
             case
                 when s.election_result in ('WON', 'GENERAL_WIN')
                 then 'Won'

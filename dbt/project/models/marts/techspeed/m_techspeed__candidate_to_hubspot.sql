@@ -1,13 +1,7 @@
 /*
-This model must be materialized as a view because it contains columns with spaces and special characters
-in their names (e.g., "Candidate ID Source", "First Name", "Party Affiliation", etc.).
-
-Database tables typically cannot have column names with spaces or special characters, but views can
-handle these column aliases. This allows us to maintain the exact column naming requirements
-for downstream systems (like HubSpot) while working within database constraints.
-
-If this were materialized as a table, the column names would need to be converted to valid
-database identifiers (e.g., snake_case), which would break the expected schema for HubSpot integration.
+Materialized as a view because the output columns have spaces and special
+characters (e.g. "Candidate ID Source") that HubSpot needs but table
+identifiers cannot hold.
 */
 {{ config(materialized="view") }}
 
@@ -156,7 +150,6 @@ with
             f._airbyte_extracted_at,
             current_timestamp as added_to_mart_at,
             f._ab_source_file_url,
-            -- Add viability scores
             v.viability_rating_2_0,
             v.score_viability_automated,
             -- ICP flags: use BallotReady ICP offices when available, fall

@@ -1,14 +1,7 @@
--- BallotReady elections → Civics mart election schema
--- Source: int__civics_election_stage_ballotready (rolled up from API race +
--- election + position tables)
---
--- Grain: One row per election (position + election date)
---
--- An "election" represents the full cycle for a specific position in a specific
--- year, encompassing all stages (primary, general, runoff). We roll up from
--- election stages, using gp_election_id as the grouping key. This ensures that
--- positions with only a primary or runoff (no general race yet) are still
--- included.
+-- BallotReady elections → Civics mart election schema.
+-- Grain: one row per election (position + election date), rolled up from
+-- election stages on gp_election_id. Rolling up ensures positions with only a
+-- primary or runoff (no general race yet) are still included.
 with
     stages as (select * from {{ ref("int__civics_election_stage_ballotready") }}),
 
