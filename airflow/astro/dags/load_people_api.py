@@ -5,11 +5,12 @@ BashOperator running `loader <step> --date {{ ds_nodash }}`; parallelism lives i
 loader, and inter-step state flows through the loader's S3 manifests (no Airflow xcom).
 
 Postgres is reached via the gp_bastion_host SSH tunnel — the loader's LOADER_BASTION_*
-env vars are populated from the gp_bastion_host connection. The Databricks credentials
-(DATABRICKS_HOST / DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET, OAuth M2M) come from a
-Databricks Airflow connection (LOADER_DATABRICKS_CONN_ID, e.g. databricks_dev), feeding both
-the loader's databricks-sdk and the Cosmos dbt gate from one source. All connection-derived
-values are Jinja templates resolved at task runtime, so DAG parsing never touches the metastore.
+env vars are populated from the gp_bastion_host connection. The Databricks credentials +
+http_path (DATABRICKS_HOST / DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET / DATABRICKS_HTTP_PATH,
+OAuth M2M) come from the same Databricks Airflow connection the L2 dbt jobs use, chosen at runtime
+from the shared `databricks_conn_id` Airflow Variable, feeding both the loader's databricks-sdk and
+the Cosmos dbt gate from one source. All connection- and Variable-derived values are Jinja templates
+resolved at task runtime, so DAG parsing never touches the metastore.
 """
 
 from __future__ import annotations
@@ -23,23 +24,26 @@ from cosmos.operators.virtualenv import DbtTestVirtualenvOperator
 from pendulum import datetime as pendulum_datetime
 from pendulum import duration
 
-# Databricks creds + compute, reused from the SAME Databricks Airflow connection the L2 dbt jobs
-# use (OAuth M2M). The conn_id is read at import (env var, parse-safe — Airflow 3 forbids metastore
-# access at DAG parse) and interpolated into Jinja templates that resolve at task runtime.
-# login/password is the standard SP-OAuth storage; the extra_dejson fallback covers connections that
-# stash client_id/client_secret (and http_path) in extras. Applied ONLY to the steps that reach
-# Databricks (the unload step + the Cosmos gate) — the other steps are AWS/Postgres only and must
-# not depend on this connection existing.
-# `or` (not a getenv default) so an env var that is present-but-empty at parse falls back too,
-# rather than building a broken `conn..host` template.
-_DBX_CONN = os.getenv("LOADER_DATABRICKS_CONN_ID") or "databricks"
+# Databricks creds + compute, reused from the SAME connection the L2 dbt jobs use (OAuth M2M).
+# WHICH connection is chosen at task RUNTIME from the shared `databricks_conn_id` Airflow Variable
+# (per-deployment overridable: databricks_dev on dev, databricks on prod), NOT from a parse-time env
+# var — Astro does not expose deployment env vars to the DAG processor at parse, so os.getenv there
+# returns empty. `var.value.get(...)` reads the Variable and `conn.get(...)` fetches the connection,
+# both at runtime; `{% set c %}` resolves it once per value. login/password is the standard SP-OAuth
+# storage; the extra_dejson fallback covers connections that stash client_id/secret (and http_path)
+# in extras. Applied ONLY to the steps that reach Databricks (the unload step + the Cosmos gate).
+_DBX_CONN_EXPR = "conn.get(var.value.get('databricks_conn_id', 'databricks'))"
 _DBX_ENV: dict[str, str] = {
-    "DATABRICKS_HOST": f"{{{{ conn.{_DBX_CONN}.host }}}}",
-    "DATABRICKS_CLIENT_ID": f"{{{{ conn.{_DBX_CONN}.login or conn.{_DBX_CONN}.extra_dejson.get('client_id', '') }}}}",
-    "DATABRICKS_CLIENT_SECRET": f"{{{{ conn.{_DBX_CONN}.password or conn.{_DBX_CONN}.extra_dejson.get('client_secret', '') }}}}",
+    "DATABRICKS_HOST": "{% set c = " + _DBX_CONN_EXPR + " %}{{ c.host }}",
+    "DATABRICKS_CLIENT_ID": "{% set c = "
+    + _DBX_CONN_EXPR
+    + " %}{{ c.login or c.extra_dejson.get('client_id', '') }}",
+    "DATABRICKS_CLIENT_SECRET": "{% set c = "
+    + _DBX_CONN_EXPR
+    + " %}{{ c.password or c.extra_dejson.get('client_secret', '') }}",
     # The gate's dbt profile reads this as its http_path, so the gate runs on the connection's own
     # compute (the L2 all-purpose cluster today) — no separate warehouse id needed for the gate.
-    "DATABRICKS_HTTP_PATH": f"{{{{ conn.{_DBX_CONN}.extra_dejson.get('http_path', '') }}}}",
+    "DATABRICKS_HTTP_PATH": "{% set c = " + _DBX_CONN_EXPR + " %}{{ c.extra_dejson.get('http_path', '') }}",
 }
 
 # Bastion fields for the loader's SSH tunnel, sourced from the gp_bastion_host connection.
