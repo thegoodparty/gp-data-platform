@@ -1,7 +1,6 @@
 {{
     config(
         auto_liquid_cluster=true,
-        tags=["intermediate", "candidacy", "contest", "hubspot"],
     )
 }}
 

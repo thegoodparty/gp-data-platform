@@ -3,7 +3,6 @@
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="database_id",
-        tags=["intermediate", "ballotready", "position_fast_facts"],
     )
 }}
 

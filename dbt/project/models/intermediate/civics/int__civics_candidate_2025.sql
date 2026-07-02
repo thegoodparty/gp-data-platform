@@ -1,5 +1,3 @@
-{{ config(tags=["archive"]) }}
-
 -- Historical archive of candidates from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)

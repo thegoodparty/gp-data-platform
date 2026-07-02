@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "techspeed"]) }}
-
 -- TechSpeed candidates → Civics mart candidacy schema
 -- Source: stg_airbyte_source__techspeed_gdrive_candidates (preserves candidacy-stage
 -- grain)
@@ -95,7 +93,7 @@ with
     -- Deduped to one row per source_candidate_id — all stages of a matched
     -- candidacy share the same BR candidacy/candidate/election IDs.
     canonical_candidacy as (
-        -- DATA-1523: when a ts_source_candidate_id has both a BR-anchored
+        -- When a ts_source_candidate_id has both a BR-anchored
         -- row (from ts_stage_matches) and a non-BR row (from
         -- non_br_cluster_matches) in the crosswalk, prefer BR. Without the
         -- explicit BR-priority order, the UUID tiebreak picks arbitrarily

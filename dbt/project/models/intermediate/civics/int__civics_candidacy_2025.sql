@@ -1,5 +1,3 @@
-{{ config(tags=["archive"]) }}
-
 -- Historical archive of candidacies from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Uses companies-based model for better coverage (joins via companies.contacts field)
@@ -118,7 +116,6 @@ with
             on tbl_companies.gp_candidacy_id = tbl_ddhq_match.gp_candidacy_id
     ),
 
-    -- Filter to elections on or before 2025-12-31
     -- INNER JOIN to candidates excludes companies without contacts and contacts
     -- that deduplicate to another candidate
     archived_candidacies as (
@@ -161,7 +158,6 @@ select
     official_office_name,
     office_level,
     office_type,
-    -- Normalize candidacy_result: empty strings to NULL, Won/Lost General to Won/Lost
     case
         when candidacy_result = ''
         then null

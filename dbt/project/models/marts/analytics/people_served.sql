@@ -1,44 +1,23 @@
-{{ config(materialized="table", tags=["marts", "analytics", "serve"]) }}
-
--- people_served (DATA-1993, epic DATA-1359): the People Served metrics, one row per
--- (cohort, metric_variant, office_type). count-once is the distinct-person union from
--- int__serve_block_coverage; count-multiple variants are pure sums off the substrate
--- via district_census_stats. Scoped to the substrate's office-bearing district types,
--- so
--- count-once <= count_multiple_per_district <= per_seat <= per_org by construction
--- (a distinct union is <= a sum; a per-district sum <= per-seat <= per-org because
--- 1 <= n_seats <= n_orgs per district).
+-- people_served: the People Served metrics, one row per (cohort, metric_variant,
+-- office_type). count-once is the distinct-person union from int__serve_block_coverage;
+-- count-multiple variants are pure sums off the substrate via district_census_stats.
+-- Invariant (by construction):
+-- count-once <= count_multiple_per_district <= per_seat <= per_org.
 --
--- cohort: 'all' (every resolved serve org -- the broad reading) or 'active' (the active
--- People Served cohort: in_people_served_cohort = active serve user AND Serve-ICP
--- office
--- AND not internal). 'active' is the canonical North Star; 'all' is retained for the
--- broad comparison. The single resolver flag in_people_served_cohort drives BOTH paths:
--- count-once reads served_voters_active from block-coverage, count-multiple adds the
--- flag to the district_level filter, so all four variants share one active universe.
+-- cohort: 'all' (every resolved serve org) or 'active' (in_people_served_cohort =
+-- active serve user AND Serve-ICP office AND not internal). 'active' is the North Star.
+-- The single resolver flag in_people_served_cohort drives both count paths.
 --
--- office_type: 'all' (the cohort-wide local rollup -- the North Star headline) or one
--- of
--- the substrate's local types, PLUS 'State' for STATEWIDE officials. Statewide is
--- read from T5's
--- EXACT 'State' census rows and reported SEPARATELY (TDD 4.5): it is never folded
--- into the
--- local 'all' rollup (which would mix population bases and swamp the local story). The
--- deduped local+statewide union is intentionally not a stored column (set-relative; a
--- fresh
--- query -- TDD 4.2). No statewide office is Serve-ICP, so cohort='active' has no
--- 'State'
--- rows.
+-- office_type: 'all' (the cohort-wide local rollup, the headline) or a local type,
+-- PLUS 'State' for STATEWIDE officials. Statewide is read from T5's exact 'State'
+-- census rows and reported separately (never folded into the local 'all' rollup). No
+-- statewide office is Serve-ICP, so cohort='active' has no 'State' rows.
 --
--- The live 'all' numbers include population from a few known wrong-scope matches
--- (requires_review, pending the DATA-1989 upstream overrides); the conservative reading
--- excludes them. Those rows are carried + flagged on official_constituents for the
--- product
--- to caveat; they are NOT filtered here (fix upstream, not in the model -- TDD 7.3).
--- Tightening to cohort='active' drops most wrong-scope matches on its own. seat =
--- a distinct namespaced position/office id with an org_slug fallback, guaranteeing
--- 1 <= n_seats <= n_orgs per district. Thin by design: variants may migrate to the dbt
--- semantic layer.
+-- The live 'all' numbers include population from known wrong-scope matches
+-- (requires_review); those rows are carried + flagged on official_constituents, NOT
+-- filtered here (fix upstream). Tightening to cohort='active' drops most on its own.
+-- seat = a distinct namespaced position/office id with an org_slug fallback,
+-- guaranteeing 1 <= n_seats <= n_orgs per district.
 with
     block_pop as (
         select block_geoid, population from {{ ref("stg_census__block_population") }}

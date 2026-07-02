@@ -1,22 +1,8 @@
--- Civics -> HubSpot lead feed (reverse-ETL sendable mart `candidacy_hubspot`).
---
--- Replaces BOTH m_ballotready_internal__records_sent_to_hubspot AND
--- m_techspeed__candidate_to_hubspot with one provider-agnostic civics-sourced feed:
--- one row
--- per gp_candidacy_id regardless of whether BallotReady, TechSpeed, DDHQ, or gp_api
--- identified
--- the candidacy. Ops runs it manually now; the reverse-ETL HubSpot flow (DATA-1840
--- §12) later
--- automates it. Output = the Title-Case HubSpot import contract (fuzzy-match
--- diagnostics
--- dropped; ER replaces them), with owner/Type set for ALL rows and the match-back/key
--- columns
--- appended. Materialized as a view in mart_sales_reverse_etl (dbt_project.yml).
---
--- Design: .tickets/DATA-1523/46_layer1_models_design.md. Validation:
--- 40_stream3_validation.md.
--- WINDOW: 30-day rolling on greatest(created_at, updated_at) -- interim/manual-era
--- recency.
+-- Civics -> HubSpot lead feed (reverse-ETL mart `candidacy_hubspot`). One row per
+-- gp_candidacy_id regardless of whether BallotReady, TechSpeed, DDHQ, or gp_api
+-- identified the candidacy, replacing the per-provider legacy feeds. Output is the
+-- Title-Case HubSpot import contract with owner/Type set for all rows. 30-day rolling
+-- window on greatest(created_at, updated_at).
 with
     icp_ts_offices as (
         select
@@ -236,7 +222,7 @@ select
     f._airbyte_extracted_at as _airbyte_extracted_at,
     current_timestamp() as added_to_mart_at,
     -- Viability comes from candidacy_scored (the broad civics viability source of
-    -- truth; DATA-1938). Its civics scorer is canonical and gap-fills with the prior
+    -- truth). Its civics scorer is canonical and gap-fills with the prior
     -- candidacy value, so coverage never regresses and this feed inherits the broad
     -- scorer's higher fill. Scale is unchanged (0 to 5), so accepted_range still holds.
     b.viability_score as viability_rating_2_0,
@@ -261,7 +247,7 @@ select
     ) as icp_win_supersize,
     'Civics Net New' as lead_source,
 
-    -- === appended: match-back key + reverse-ETL key inputs + recency (DATA-1523) ===
+    -- === appended: match-back key + reverse-ETL key inputs + recency ===
     cast(b.br_candidacy_id as string) as candidacy_id,
     {{
         generate_candidate_code(

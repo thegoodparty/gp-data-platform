@@ -1,5 +1,3 @@
-{{ config(tags=["archive"]) }}
-
 -- Archived HubSpot contacts from 2026-01-22 snapshot
 -- This model uses the archived staging data to ensure historical consistency
 select

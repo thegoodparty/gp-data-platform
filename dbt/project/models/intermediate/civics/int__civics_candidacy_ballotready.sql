@@ -20,7 +20,6 @@ with
         select * from {{ ref("stg_airbyte_source__ballotready_api_position") }}
     ),
 
-    -- Get enriched person data from BallotReady API (has contact info)
     br_person as (select * from {{ ref("int__ballotready_person") }}),
 
     person_emails as (
@@ -31,7 +30,6 @@ with
         where database_id is not null
     ),
 
-    -- Derive fields needed for ID generation at the race (row) level
     candidacies_with_fields as (
         select
             candidacies.*,
@@ -67,7 +65,6 @@ with
             on candidacies.br_candidate_id = person_emails.person_database_id
     ),
 
-    -- Roll up from race-level to candidacy-level
     -- Group by candidate + position + election YEAR (not br_election_id, which
     -- differs between primary and general stages in BallotReady data).
     -- is_special is derived per candidacy via bool_or so the lookup join and
@@ -76,7 +73,6 @@ with
     -- stages have NULL or inconsistent election_name).
     candidacy_rolled_up as (
         select
-            -- Natural key for grouping stages into one candidacy
             br_candidate_id,
             br_position_id,
             year(election_day) as election_year,
@@ -101,7 +97,6 @@ with
             any_value(number_of_seats) as seats_available,
             any_value(_airbyte_extracted_at) as _airbyte_extracted_at,
 
-            -- Extract stage-specific dates (4 stage types)
             max(
                 case when is_primary and not is_runoff then election_day end
             ) as primary_election_date,
@@ -169,11 +164,9 @@ with
             -- consistency with gp_election_id generation in the election models
             coalesce(ged.seats_available, rolled.seats_available) as seats_available,
 
-            -- Parse party from parties JSON
             -- parties format: [{"name"=>"Nonpartisan", "short_name"=>"NP"}]
             {{ parse_party_affiliation("parties") }} as party_affiliation,
 
-            -- Map election_result to candidacy_result
             case
                 when raw_election_result in ('WON', 'GENERAL_WIN')
                 then 'Won'

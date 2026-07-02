@@ -6,7 +6,6 @@ See https://github.com/thegoodparty/people-api/blob/develop/prisma/schema/Distri
 {{
     config(
         materialized="view",
-        tags=["mart", "people_api", "district"],
     )
 }}
 

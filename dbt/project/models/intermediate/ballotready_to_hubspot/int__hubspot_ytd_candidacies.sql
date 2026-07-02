@@ -1,4 +1,3 @@
-{{ config(tags=["intermediate", "hubspot"]) }}
 -- pulling in current year results from hubspot
 select
     id,

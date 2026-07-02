@@ -4,7 +4,6 @@
         unique_key="id",
         on_schema_change="fail",
         auto_liquid_cluster=True,
-        tags=["intermediate", "model_prediction", "voter_turnout"],
     )
 }}
 

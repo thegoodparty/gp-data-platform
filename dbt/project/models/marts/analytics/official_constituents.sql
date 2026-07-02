@@ -1,26 +1,11 @@
-{{ config(materialized="view", tags=["marts", "analytics", "serve"]) }}
+{{ config(materialized="view") }}
 
--- official_constituents (DATA-1993): the Serve per-official display surface -- one row
--- per resolved serve official with the population of the jurisdiction they serve
--- ("your district has N constituents, M registered voters"). A clean read off
--- district_census_stats; unaffected by the count-once dedup. Local officials join on
--- (state, type, normalized name); statewide officials (is_statewide) read the
--- district_type='State' row by state (T5 join contract). Each resolver row uses exactly
--- one branch (the is_statewide guard), and district_census_stats is unique on its key
--- with one 'State' row per state, so there is no fan-out: one row per official.
---
--- Officials whose district is a deferred special-district type or whose name drifted
--- bind
--- nothing -> has_census_match=false, null constituents (a documented v1-scope /
--- re-match
--- gap, not a defect). requires_review is carried through so the product can caveat the
--- known wrong-scope matches (pending the DATA-1989 upstream overrides); flagged rows
--- are
--- NEVER filtered here. The high-undercount flag is deferred to a follow-up (a correct
--- voterless/invisible-population measure needs geographic assignment of zero-voter
--- blocks,
--- out of v1 scope); v1 ships constituents_minus_voters, the honest raw gap. View
--- materialization (a thin always-fresh lookup, like the sibling users_serve_activity).
+-- Serve per-official display surface: one row per resolved serve official with the
+-- population and registered voters of the jurisdiction they serve. Local officials
+-- join district_census_stats on (state, type, normalized name); statewide officials
+-- read the district_type='State' row by state. No fan-out: one row per official.
+-- Officials that bind nothing get has_census_match=false and null constituents (a
+-- documented gap, not a defect); requires_review rows are flagged, never filtered.
 with
     resolver as (
         select *

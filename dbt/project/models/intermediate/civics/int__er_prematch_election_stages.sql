@@ -1,4 +1,4 @@
-{{ config(materialized="view", tags=["civics", "entity_resolution"]) }}
+{{ config(materialized="view") }}
 
 -- Entity Resolution prematch: BallotReady x DDHQ x TechSpeed election stages
 -- (races/contests). Unions race-level records from each source into a
@@ -6,31 +6,6 @@
 --
 -- Grain: One row per source race record (election stage)
 -- Key: unique_id (source_name || '|' || source_id)
---
--- The matcha election_stage entity reads this view. Cluster output lands in
--- goodparty_data_catalog.er_source.er_clustered_election_stages and feeds
--- int__civics_er_canonical_election_stages in a follow-up PR.
---
--- Notes on per-source coverage:
--- - BR has native state (via br_position), is_special, ballotready_position_id.
--- - DDHQ has state_postal_code; is_special is derived from stage_type.
--- ballotready_position_id is NULL for V1 — DDHQ has no native position FK,
--- and the BR position resolution requires the election_stage ER clusters
--- that THIS view is itself seeding (chicken-and-egg). Revisit once
--- int__civics_er_canonical_election_stages exists.
--- - TS has no native state column; we extract the 2-letter prefix from
--- race_name (which TS constructs as `state || ' ' || official_office_name`).
--- is_special is always false (TS does not surface special-election flags).
--- - official_office_name strips the leading 2-letter state prefix on every
--- source. state is already a dedicated ExactMatch comparison, so keeping the
--- prefix inside the office string only inflates Jaro-Winkler on the shared
--- prefix and guarantees a shared locality token (defeating office
--- discrimination across distinct races in the same state).
--- - Office attributes (candidate_office, office_level, office_type,
--- district_raw, district_identifier, seat_name) are carried up from the
--- source election_stage models. district_identifier is parsed from the
--- district string. seat_name is BR-only; the others are populated on all
--- three sources.
 with
     -- BallotReady positions provide state for BR election stages
     br_position as (
@@ -75,7 +50,7 @@ with
             -- so we cannot use ddhq_race_id as the source PK without losing
             -- uniqueness in this view.
             cast(gp_election_stage_id as string) as source_id,
-            -- V1: leave NULL; see header comment.
+            -- V1: leave NULL; DDHQ has no native position FK.
             cast(null as bigint) as ballotready_position_id,
             state_postal_code as state,
             {{ strip_office_name_state_prefix("race_name") }} as official_office_name,

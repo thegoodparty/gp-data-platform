@@ -4,8 +4,6 @@
 -- Source 1: ballotready_techspeed (BR term LEFT JOIN canonical_ids LEFT JOIN raw TS,
 -- with reused-ID guard inside the TS join clause to prevent row explosion).
 -- Source 2: gp_api (with new ballotready_position_id, raw campaign_office_raw).
---
--- Spec: .tickets/data-1731/eo-prematch-rewrite-design-spec-v2.md (v2.2)
 with
     nickname_aliases as (
         -- Normalize the seed with the same alpha-only rule applied to
@@ -45,7 +43,7 @@ with
         left join
             ts_raw as ts
             on cx.ts_officeholder_id = ts.ts_officeholder_id
-            and not coalesce(cx.ts_officeholder_id_is_reused, false)  -- v2.2 Blocker fix: in-join guard
+            and not coalesce(cx.ts_officeholder_id_is_reused, false)  -- in-join guard
     ),
 
     ballotready_techspeed as (
@@ -70,7 +68,7 @@ with
             b.city,
             b.term_start_date,
             b.term_end_date,
-            -- v2.2: ballotready_position_id from BR side
+            -- ballotready_position_id from BR side
             b.br_position_id as ballotready_position_id,
             b.br_office_holder_id,
             b.br_candidate_id,
@@ -102,7 +100,7 @@ with
             g.candidate_office,
             g.office_level,
             g.office_type,
-            -- v2.2: extract district from RAW campaign_office_raw, not normalized
+            -- extract district from RAW campaign_office_raw, not normalized
             -- position_name
             {{ extract_district_raw("g.campaign_office_raw") }} as district_raw,
             {{ extract_district_identifier("g.campaign_office_raw") }}
@@ -111,8 +109,7 @@ with
             -- gp-api phone is already cleaned by clean_phone_number in the
             -- intermediate; pass through
             g.phone,
-            -- v2.2: official_office_name from RAW text (preserves seat/district
-            -- context)
+            -- official_office_name from RAW text (preserves seat/district context)
             trim(g.campaign_office_raw) as official_office_name,
             cast(null as string) as city,
             g.term_start_date,
@@ -131,7 +128,7 @@ with
             nullif(trim(g.first_name), '') is not null
             and nullif(trim(g.last_name), '') is not null
             and g.state is not null
-            -- v2.2: filter null campaign_office at the prematch level (mirrors
+            -- filter null campaign_office at the prematch level (mirrors
             -- candidacy line 266).
             and nullif(trim(g.campaign_office_raw), '') is not null
     ),

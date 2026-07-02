@@ -1,13 +1,7 @@
--- BallotReady election stages → Civics mart election_stage schema
--- Source: BallotReady API (race + election + position tables)
---
--- Grain: One row per election stage (position + election + stage type)
---
--- A BallotReady "race" maps to an "election stage" — each race represents a
--- single stage (primary, general, or runoff) for a position within an election.
---
--- This model is the foundation for int__civics_election_ballotready, which
--- rolls up election stages into elections.
+-- BallotReady election stages → Civics mart election_stage schema.
+-- Grain: one row per election stage. A BallotReady "race" maps to an election
+-- stage: each race is a single stage (primary, general, or runoff) for a
+-- position within an election.
 with
     race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
 
@@ -113,7 +107,6 @@ with
 
     election_stages as (
         select
-            -- gp_election_stage_id from br race database_id
             {{ generate_salted_uuid(fields=["races_with_fields.database_id"]) }}
             as gp_election_stage_id,
 
@@ -127,7 +120,6 @@ with
                 )
             }} as gp_election_id,
 
-            -- BallotReady source identifiers
             cast(races_with_fields.database_id as string) as br_race_id,
             cast(races_with_fields.br_election_database_id as string) as br_election_id,
             races_with_fields.br_position_database_id as br_position_id,
@@ -205,7 +197,6 @@ with
             races_with_fields.updated_at as updated_at
 
         from races_with_fields
-        -- Join to get the general election date for this position + year
         left join
             general_election_dates as ged
             on races_with_fields.br_position_database_id = ged.br_position_database_id

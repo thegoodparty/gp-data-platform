@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "gp_api"]) }}
-
 -- Product DB campaigns -> Civics mart candidacy schema.
 -- Grain: one row per latest-version campaign with an election_date.
 -- Schema aligns with int__civics_candidacy_ballotready for the union.
@@ -53,7 +51,7 @@ with
 
     -- BR stage spine lookup: maps (br_position_id, election_year) →
     -- BR's gp_election_id and all 4 stage dates. Every surviving gp_api
-    -- campaign has ballotready_position_id (Task 1 filter), so this lookup
+    -- campaign has ballotready_position_id, so this lookup
     -- resolves for all gp_api campaigns. The candidacy row reflects the
     -- full election cycle (all calendar stages BR knows about); per-stage
     -- match to a specific PD pledge happens in
@@ -171,7 +169,7 @@ with
 
             -- Prefer BR's natural gp_election_id (via br_stage_spine_lookup)
             -- over the canonical_ids non-BR-cluster derivation: every gp_api
-            -- campaign has ballotready_position_id (Task 1 filter), so
+            -- campaign has ballotready_position_id, so
             -- bss.gp_election_id is always populated and aligns with BR's
             -- election mart row. The non-BR cluster canonical would create a
             -- separate election row that shares br_position_database_id with

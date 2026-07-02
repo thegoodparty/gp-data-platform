@@ -4,7 +4,6 @@
         incremental_strategy="merge",
         unique_key="techspeed_candidate_code",
         on_schema_change="append_new_columns",
-        tags=["intermediate", "techspeed", "hubspot"],
     )
 }}
 

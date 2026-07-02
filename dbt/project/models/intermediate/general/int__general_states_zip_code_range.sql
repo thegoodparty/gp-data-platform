@@ -1,5 +1,3 @@
-{{ config(materialized="view") }}
-
 /*
 View of states and their zip code ranges (inclusive). Zip code ranges are viewed as an array
 with the first element being the lower bound and the second element being the upper bound.

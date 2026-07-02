@@ -2,7 +2,6 @@
     config(
         materialized="table",
         auto_liquid_cluster=true,
-        tags=["mart", "general", "candidacy", "stage"],
     )
 }}
 

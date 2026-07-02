@@ -1,18 +1,5 @@
-{{ config(materialized="table", tags=["civics", "techspeed"]) }}
-
--- TechSpeed candidates → Civics mart election schema
--- Source: stg_airbyte_source__techspeed_gdrive_candidates
---
--- Grain: One row per election (position + election year)
---
--- Uses a representative-row approach (not any_value aggregation) to ensure
--- deterministic output. Picks one candidate per gp_election_id, preferring
--- rows with a general election date and the latest extraction timestamp.
---
--- BR enrichment via br_race_id mirrors int__civics_candidacy_techspeed: same
--- date-coalesce in source so gp_election_id hashing stays consistent with
--- candidacy, and brp.br_gp_election_id as a fallback so TS-only rows whose
--- br_race_id matches a BR election adopt BR's gp_election_id.
+-- TechSpeed candidates → Civics mart election schema.
+-- Grain: one row per election (position + election year).
 with
     br_race_to_position as ({{ br_race_to_position_lookup() }}),
 
@@ -32,7 +19,7 @@ with
     -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical election_id.
     -- Deduped per source_candidate_id; any match for this candidacy gives BR's id.
     canonical_election as (
-        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- BR-priority ordering — see int__civics_candidacy_techspeed.sql
         -- for full rationale. canonical_gp_election_id is NULL for non-BR cluster
         -- rows and populated for BR-anchored rows, so `is null` puts BR-anchored
         -- rows first; ties tiebreak on the existing UUID order.
@@ -148,7 +135,7 @@ with
             cast(null as date) as term_start_date,
             -- Keep boolean type to match BallotReady election intermediate
             is_uncontested,
-            -- DATA-1938: carry the TechSpeed opponent count instead of
+            -- carry the TechSpeed opponent count instead of
             -- hardcoding null. number_of_candidates is the count of candidates
             -- in the race from the TechSpeed source; opponents = candidates - 1.
             -- Kept as a string to match the BR/DDHQ/2025 election models and the

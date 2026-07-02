@@ -3,44 +3,9 @@
 /*
     int__amplitude_event_catalog
 
-    Purpose:
-        Read-only warehouse catalog of Amplitude events: event behavior
-        (family classification, volume, recency) combined with Amplitude Govern
-        metadata, one row per event_type. Renamed from int__amplitude_event_taxonomy
-        (DATA-2005): the model outgrew pure classification once Govern metadata and
-        recency were added.
-
-        It intentionally does NOT compute a staleness verdict (is_retired /
-        is_unofficial / staleness_reason). Code-presence provenance lives as a CSV
-        in the omni repo (packages/runbooks/scripts/python/instrumentation_data/amplitude_event_provenance.csv,
-        DATA-2014). The
-        relevance / up-to-dateness judgment is made at check time by an agent or the
-        health monitor (DATA-1952) reconciling that CSV with this table, so a
-        live-firing event whose code was removed is never silently marked retired.
-
-    Grain:
-        One row per distinct event_type seen in the raw event stream.
-
-    Sources:
-        {{ ref('stg_airbyte_source__amplitude_api_events') }}            (behavior)
-        {{ ref('stg_airbyte_source__amplitude_taxonomy_event_type') }}   (Govern metadata)
-
-    Columns:
-        Classification (macro-derived, authoritative):
-        - event_type        : distinct Amplitude event name (primary key)
-        - family            : product-feature bucket (see amplitude_event_family macro)
-        - is_win            : Win-product candidate-attributed family (family like 'win_%')
-        - is_recurrent      : recurrent activity vs one-off lifecycle milestone
-        Volume / recency:
-        - first_seen_date   : first appearance in the raw stream
-        - last_seen_date    : most recent appearance in the raw stream
-        - event_count       : total occurrences (all-time)
-        - event_count_30d   : occurrences in the trailing 30 days
-        Govern metadata (LEFT JOIN; namespaced govern_*, mostly uncurated today):
-        - govern_category, govern_description, govern_display_name,
-          govern_is_active, govern_is_hidden, govern_tags, govern_owner
-        - in_govern_taxonomy: whether a Govern row matched at all (distinguishes
-                              "not in Govern" from "in Govern but uncurated")
+    Read-only warehouse catalog of Amplitude events: behavior (family
+    classification, volume, recency) joined with Amplitude Govern metadata,
+    one row per event_type.
 
     Notes:
         - Classification is pattern-based, so new event_types in known families

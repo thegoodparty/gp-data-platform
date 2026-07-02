@@ -1,10 +1,4 @@
--- DDHQ → Civics mart candidacy
--- Derived from: int__civics_candidacy_stage_ddhq
---
--- Grain: One row per candidacy (candidate + position + election year)
---
--- Rolls up from candidacy-stage grain: groups by gp_candidacy_id,
--- extracting stage-specific dates and overall candidacy result.
+-- DDHQ → Civics mart candidacy. Grain: one row per candidacy.
 with
     source as (select * from {{ ref("int__civics_candidacy_stage_ddhq") }}),
 
