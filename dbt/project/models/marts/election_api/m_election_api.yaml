@@ -172,6 +172,17 @@ models:
         tests:
           - not_null
           - unique
+      - name: source_updated_at
+        description: >
+          Un-bumped source updated_at, carried separately from updated_at so
+          the model's incremental watermark stays in the source-time domain.
+          updated_at is bumped to wall-clock when a row is new to the mart or
+          its slug changed (the election-api write model's publish gate);
+          gating ingestion on those bumped values would skip later source
+          updates whose BallotReady stamps lag wall-clock. Not published to
+          election-api (the writer's Place upsert selects explicit columns).
+        tests:
+          - not_null
 
   - name: m_election_api__position
     description: "Mart model that serves the Election API"
