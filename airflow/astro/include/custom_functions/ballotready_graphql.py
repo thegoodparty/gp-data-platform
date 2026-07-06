@@ -228,6 +228,10 @@ def build_person_cursor_query(
     ``(changed_at, br_person_id) > (cursor_ts, cursor_id)`` advances safely even
     when many rows share an identical bulk-update timestamp.
     """
+    _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
+    for name, val in (("catalog", catalog), ("dbt_schema", dbt_schema)):
+        if not _IDENTIFIER_RE.match(val):
+            raise ValueError(f"{name} is not a valid SQL identifier: {val!r}")
     candidacies = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_candidacies_v3`"
     office_holders = f"`{catalog}`.`{dbt_schema}`.`stg_airbyte_source__ballotready_s3_office_holders_v3`"
 
