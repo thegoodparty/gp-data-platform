@@ -37,14 +37,20 @@ _DBX_ENV: dict[str, str] = {
     "DATABRICKS_CLIENT_SECRET": "{% set c = "
     + _DBX_CONN_EXPR
     + " %}{{ c.password or c.extra_dejson.get('client_secret', '') }}",
+    # unload's Statement Execution API is warehouse-only; take the warehouse id from the same
+    # connection's http_path (`/sql/1.0/warehouses/<id>` -> last segment). The connection points at
+    # a SQL warehouse (same one the L2 SQL jobs use), so creds AND warehouse come from one source —
+    # no separate LOADER_DATABRICKS_WAREHOUSE_ID env var.
+    "LOADER_DATABRICKS_WAREHOUSE_ID": "{% set c = "
+    + _DBX_CONN_EXPR
+    + " %}{{ c.extra_dejson.get('http_path', '').split('/') | last }}",
 }
 
 # Bastion fields for the loader's SSH tunnel, sourced from the gp_bastion_host connection.
 # These are Jinja templates resolved at task runtime (not DAG parse — parse must not touch the
 # metastore). The rest of the loader's config (LOADER_S3_BUCKET, LOADER_S3_IMPORT_ROLE_ARN,
-# LOADER_AWS_ACCOUNT_ID, LOADER_DATABRICKS_WAREHOUSE_ID, VPC/subnet/SG/KMS) is set as deployment
-# env vars in the Astro Environment Manager and reaches the `loader` subprocess via
-# append_env=True. Static, so it's built once at import.
+# LOADER_AWS_ACCOUNT_ID, VPC/subnet/SG/KMS) is set as deployment env vars in the Astro Environment
+# Manager and reaches the `loader` subprocess via append_env=True. Static, built once at import.
 _LOADER_ENV: dict[str, str] = {
     "LOADER_BASTION_HOST": "{{ conn.gp_bastion_host.host }}",
     "LOADER_BASTION_PORT": "{{ conn.gp_bastion_host.port or 22 }}",
