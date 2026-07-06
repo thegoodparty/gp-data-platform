@@ -289,11 +289,16 @@ models:
       - name: stage
         description: "Pipeline stage the run reached"
       - name: status
-        description: "Terminal status of the run (e.g. COMPLETED, FAILED)"
+        description: >
+          Status of the run. Accepted values are the union of the current
+          ExperimentRunStatus enum (QUEUED, RUNNING, AWAITING_RESUME, COMPLETED,
+          FAILED) plus SUPERSEDED, a legacy value dropped from the enum but still
+          present on historical rows.
         data_tests:
           - accepted_values:
               arguments:
-                values: ["COMPLETED", "FAILED"]
+                values:
+                  ["QUEUED", "RUNNING", "AWAITING_RESUME", "COMPLETED", "FAILED", "SUPERSEDED"]
       - name: priority
         description: "Scheduling priority of the run"
       - name: data_quality
