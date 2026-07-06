@@ -610,9 +610,7 @@ def model(dbt, session):
     for inference_year in inference_years:
         op_years = _op_years(election_cols, l2_col_set, inference_year)
         if op_years:
-            session.sql(_opp_view_sql(op_years, catalog, precincts_schema)).createOrReplaceTempView(
-                "_hp_opp"
-            )
+            session.sql(_opp_view_sql(op_years, catalog, precincts_schema)).createOrReplaceTempView("_hp_opp")
         # ~206k precincts per year (~150 MB) — toPandas is safe; eagerly materialized here so
         # the per-year _hp_opp view is consumed before the next year overwrites it.
         pdf = session.sql(

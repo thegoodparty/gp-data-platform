@@ -9,7 +9,6 @@ must stay inside `model()` (the dbt test env has pyspark + pandas, not mlflow).
 import numpy as np
 import pandas as pd
 import pytest
-
 from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import (
     _OPP_STATES_SQL,
     _assert_consistent_model_family,
