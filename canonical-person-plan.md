@@ -252,6 +252,18 @@ Each item below is intended as one standalone PR that leaves the system consiste
 shippable. Items within a track are sequential; tracks A, B, and C are largely parallel
 until D.
 
+### Operating procedure
+
+- This file is a temporary working plan. It exists in the repo so every session and
+  worktree reads the same spec; delete it once track E lands.
+- Pre-work query results get written back into this file before the dependent PRs start,
+  so later sessions consume facts, not open questions.
+- One PR per work item, implemented in a fresh session that starts by reading this file.
+- Worktrees map to tracks, not PRs. Tracks A, B, and C each get a worktree and can run in
+  parallel. Within a track, PRs stack: each branch is cut from the previous item's branch
+  and PRs merge in order. Track D starts only after B and C merge; D2's parity audit and
+  D4's id swap get manual review before their successors proceed.
+
 ### Pre-work (analysis, no PRs)
 
 Verification queries informing the PRs; do these first:
