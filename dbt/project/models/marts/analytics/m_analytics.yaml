@@ -1486,9 +1486,14 @@ models:
 
   - name: amplitude_events
     description: >
-      Passthrough exposure of stg_airbyte_source__amplitude_api_events
-      into mart_analytics for Sigma BI POV. View materialization, no
-      transformations. Columns documented at the upstream staging model.
+      Exposure of stg_airbyte_source__amplitude_api_events into
+      mart_analytics (Sigma reads marts only), enriched with the governed
+      event taxonomy: family, is_win, and is_recurrent derive from the
+      amplitude_event_taxonomy macros so BI consumers never re-derive
+      serve/win classification from event_type strings. Passthrough columns
+      are documented at the upstream staging model; the event_type-grain
+      catalog (volume, recency, Govern metadata) is
+      int__amplitude_event_catalog, built from the same macros.
 
       Source: stg_airbyte_source__amplitude_api_events.
     columns:
@@ -1497,6 +1502,35 @@ models:
         data_tests:
           - not_null
           - unique
+
+      - name: family
+        description: >
+          Product-feature bucket from the amplitude_event_family macro. Win
+          families are prefixed `win_`; non-Win buckets cover serve,
+          auth/settings, navigation, and anonymous noise. Unmatched
+          event_types fall through to 'other' for triage. Closed set by
+          construction; the accepted_values contract is tested on
+          int__amplitude_event_catalog, which derives from the same macro.
+        data_tests:
+          - not_null
+
+      - name: is_win
+        description: >
+          True for Win-product candidate-attributed families (family like
+          'win_%'); false for serve / cross-product / noise. Event-level
+          filter only — user-level "Win active" questions belong on
+          users_win_activity / users_win_base, not on raw event counts.
+        data_tests:
+          - not_null
+
+      - name: is_recurrent
+        description: >
+          True for recurrent-activity events (vs one-off lifecycle
+          milestones) — exactly the events the Win activity rollups count.
+          Event-level allowlist (amplitude_event_is_recurrent macro), not a
+          pattern. False, never null, when event_type is null.
+        data_tests:
+          - not_null
 
   - name: hubspot_contacts
     description: >
