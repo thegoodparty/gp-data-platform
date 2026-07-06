@@ -82,17 +82,18 @@ with
     -- points at them. Instead, keep one canonical owner on the clean slug
     -- and give every other member a deterministic, stable '-<geoid>' suffix.
     -- Ownership: an incorporated place (mtfcc G4110) wins its slug (the
-    -- place-page URL a user expects); collisions with no incorporated place
-    -- keep the previous winner (latest updated_at) so already-published
-    -- slugs do not churn.
+    -- place-page URL a user expects); all other ties break on the immutable
+    -- id, so ownership never drifts when BallotReady re-touches a member
+    -- (updated_at is a sync timestamp, not a claim to the slug). One-time
+    -- rollout consequence: a contested slug's canonical owner may differ
+    -- from the previously published winner.
     slug_disambiguated as (
         select
             * except (slug),
             case
                 when
                     row_number() over (
-                        partition by slug
-                        order by (mtfcc = 'G4110') desc, updated_at desc, id
+                        partition by slug order by (mtfcc = 'G4110') desc, id
                     )
                     = 1
                 then slug
