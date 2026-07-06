@@ -70,7 +70,9 @@ def test_unload_builds_per_state_sql_and_manifest(monkeypatch: pytest.MonkeyPatc
     manifest = step.run(_CFG, "20260622")
     inserts = [s for s in submitted if "INSERT OVERWRITE DIRECTORY" in s]
     assert len(inserts) == 2
-    assert any("state=FL/" in s and "NULL AS `Mailing_HHGender_Description`" in s for s in inserts)
+    assert any(
+        "state=FL/" in s and "CAST(NULL AS STRING) AS `Mailing_HHGender_Description`" in s for s in inserts
+    )
     assert manifest.status == "complete"
     assert manifest.columns == ["id", "State", "Mailing_HHGender_Description"]
     assert manifest.column_types_pg == {"id": "UUID", "State": "TEXT", "Mailing_HHGender_Description": "TEXT"}
