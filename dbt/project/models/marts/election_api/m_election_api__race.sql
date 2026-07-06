@@ -133,9 +133,9 @@ left join
 where
     tbl_race.place_id in (select id from {{ ref("m_election_api__place") }})
     -- 2-month grace period keeps recently-passed races serveable (the campaign
-    -- plan reads races after election day). Keep anchored to the same bounds as
+    -- plan reads races after election day). Keep the lower bound in sync with
     -- the race filter in write__election_api_db.py, which otherwise re-narrows
-    -- this window (boundary-day membership differs: between vs strict >)
+    -- this window
     and tbl_race.election_date
     between current_date() - interval '2 months' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API

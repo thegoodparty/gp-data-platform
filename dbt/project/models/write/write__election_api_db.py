@@ -570,11 +570,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     position_df: DataFrame = dbt.ref("m_election_api__position")
     projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
-    # keep races from a 2-month post-election grace period through ~2 years out.
-    # Keep anchored to the same bounds as the m_election_api__race window, which
-    # this otherwise re-narrows (boundary-day membership differs: strict > here)
+    # keep races from a 2-month post-election grace period through ~2 years out;
+    # the lower bound matches the m_election_api__race window exactly (keep them
+    # in sync, or this filter re-narrows what the mart emits)
     race_df = race_df.filter(
-        (race_df.election_date > add_months(current_date(), -2))
+        (race_df.election_date >= add_months(current_date(), -2))
         & (race_df.election_date < date_add(current_date(), 2 * 365))
     )
 
