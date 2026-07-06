@@ -3682,3 +3682,55 @@ models:
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
           - not_null
+
+  - name: int__civics_record_first_seen
+    description: >
+      One row per source-native person identifier with the earliest timestamp at
+      which that person is evidenced in the source. The person layer mints a
+      stable gp_person_id from the earliest member of each cluster, so this model
+      decides which member wins. first_seen_at prefers each source's native
+      created timestamp, falling back to Airbyte extraction time only for DDHQ
+      (no native created field). BallotReady has no first-class person record in
+      the S3 feeds, so a BR person's first_seen is the min created timestamp
+      across their candidacy and office-holder rows.
+    columns:
+      - name: source_name
+        description: >
+          Source system and record type. TechSpeed candidates and office holders
+          are distinct native id spaces, so they get distinct source_names.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed_candidate
+                  - techspeed_officeholder
+                  - ddhq
+      - name: source_id
+        description: Source-native person identifier (string), unique within source_name.
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: Earliest timestamp the person is evidenced in the source.
+        data_tests:
+          - not_null
+      - name: ingested_at
+        description: >
+          Min Airbyte extraction time; used only for the first_seen sanity test.
+          Null for HubSpot, whose staging drops _airbyte_extracted_at.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - source_name
+              - source_id
+      - dbt_utils.expression_is_true:
+          name: int__civics_record_first_seen_first_seen_at_lte_ingested_at
+          arguments:
+            expression: "first_seen_at <= ingested_at"
+          config:
+            where: "ingested_at is not null"
+            severity: warn
