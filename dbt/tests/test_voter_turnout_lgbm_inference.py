@@ -180,10 +180,10 @@ def test_predict_precinct_encodes_categoricals_and_outputs_contract():
             "Precinct": ["1", "2"],
             "n_voters": [10.0, 20.0],
             "age": [40.0, 50.0],
-            "Parties_Description": ["D", "R"],  # categorical, integer-encoded via cat_map
+            "Parties_Description": ["Democratic", "Republican"],  # categorical, integer-encoded via cat_map
         }
     )
-    cat_map = {"Parties_Description": ["D", "R", "I"]}
+    cat_map = {"Parties_Description": ["Democratic", "Republican", "Non-Partisan"]}
     booster = _FakeBooster(["age", "Parties_Description"])
     out = _predict_precinct(pdf, booster, cat_map, "midterm", "FamX", 2026)
     assert list(out["p_hat"]) == [0.5, 0.5]
@@ -216,7 +216,7 @@ def test_select_cat_map_path_raises_unless_exactly_one(paths):
 def test_read_model_family_tag_returns_value():
     tags = {
         "model_family": "precinct_level_lgbm_votehistory_socioecondemopolgeo",
-        "lightgbm_version": "4.6.0",
+        "lightgbm_version": "4.3.0",
     }
     assert (
         _read_model_family_tag(tags, "goodparty_data_catalog.model_predictions.voter_turnout_model_midterm")
@@ -224,7 +224,7 @@ def test_read_model_family_tag_returns_value():
     )
 
 
-@pytest.mark.parametrize("tags", [None, {}, {"lightgbm_version": "4.6.0"}, {"model_family": ""}])
+@pytest.mark.parametrize("tags", [None, {}, {"lightgbm_version": "4.3.0"}, {"model_family": ""}])
 def test_read_model_family_tag_raises_when_missing_or_empty(tags):
     with pytest.raises(ValueError):
         _read_model_family_tag(tags, "some.model.name")
