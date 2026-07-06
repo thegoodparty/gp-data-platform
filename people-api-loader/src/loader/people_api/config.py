@@ -137,9 +137,13 @@ class LoaderConfig(BaseLoaderConfig):
         # to `ResourceTag/Environment = dev`, so every resource the loader
         # creates MUST carry `Environment=dev`. At cutover the ops team can
         # re-tag to `Environment=prod` to match the serving-cluster convention.
+        # `managedBy=dataplatform` matches the platform IAM convention: the RDS
+        # create policies condition on `RequestTag/managedBy=dataplatform`, so
+        # loader-created RDS resources must carry it to be authorized.
         tags = {
             "Project": os.environ.get("LOADER_TAG_PROJECT", "gp-api"),
             "Environment": os.environ.get("LOADER_TAG_ENVIRONMENT", "dev"),
+            "managedBy": os.environ.get("LOADER_TAG_MANAGED_BY", "dataplatform"),
         }
 
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
