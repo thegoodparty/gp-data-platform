@@ -66,6 +66,18 @@ def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert set(cfg.mart_fqns) == {"Voter", "District", "DistrictStats", "DistrictVoter"}
 
 
+def test_from_env_strips_surrounding_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A value pasted into the Astro env UI often carries a trailing newline; unstripped it reaches
+    # AWS as a control character (CreateDBCluster rejects them). from_env must strip it.
+    monkeypatch.setenv("LOADER_S3_BUCKET", " gp-people-loader-us-west-2\n")
+    monkeypatch.setenv("LOADER_DB_SUBNET_GROUP", "people-db-subnets\n")
+    monkeypatch.setenv("LOADER_KMS_KEY_ARN", "  arn:aws:kms:us-west-2:333022194791:key/abc \t")
+    cfg = LoaderConfig.from_env()
+    assert cfg.s3_bucket == "gp-people-loader-us-west-2"
+    assert cfg.db_subnet_group == "people-db-subnets"
+    assert cfg.kms_key_arn == "arn:aws:kms:us-west-2:333022194791:key/abc"
+
+
 def test_statement_timeout_defaults_off_and_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LOADER_DB_STATEMENT_TIMEOUT_MS", raising=False)
     assert LoaderConfig.from_env().db_statement_timeout_ms == 0

@@ -19,6 +19,17 @@ from datetime import datetime
 
 from loader.core.config import BaseLoaderConfig
 
+
+def _env(key: str, default: str = "") -> str:
+    """Read an env var with surrounding whitespace stripped.
+
+    Values pasted into the Astro env-var UI commonly carry a trailing newline; unstripped it
+    reaches AWS as a control character (e.g. `CreateDBCluster` rejects "control characters").
+    Not used for the bastion private key, whose surrounding whitespace can be significant.
+    """
+    return os.environ.get(key, default).strip()
+
+
 DEFAULT_AWS_REGION = "us-west-2"
 # The loader S3 bucket is real infrastructure and this repo is public, so it is NOT hardcoded.
 # It must come from LOADER_S3_BUCKET; from_env() hard-fails if unset. Empty = placeholder.
@@ -148,12 +159,12 @@ class LoaderConfig(BaseLoaderConfig):
 
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
         # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
-        env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
-        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
+        env = _env("LOADER_ENV", DEFAULT_DB_ENV)
+        db_conn_param = _env("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
         # Loader output bucket is used from the first step (inspect) onward. It is real infra, not
         # committed to this public repo, so require it explicitly — a clear failure here beats an
         # opaque S3 AccessDenied/NoSuchBucket later (e.g. against a stale default bucket).
-        s3_bucket = os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET)
+        s3_bucket = _env("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET)
         if not s3_bucket:
             raise RuntimeError(
                 "LOADER_S3_BUCKET is not set. The loader's S3 bucket is real infrastructure and is "
@@ -162,38 +173,38 @@ class LoaderConfig(BaseLoaderConfig):
             )
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
-        mart_schema = os.environ.get("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
+        mart_schema = _env("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
         mart_fqns = {pg: f"{mart_schema}.{model}" for pg, model in _MART_MODELS.items()}
         return cls(
-            aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
+            aws_region=_env("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
             # Cross-account RDS-admin role assumed for all AWS calls (the Astro worker's identity
             # lives in a different account). Unset for local runs whose ambient creds already have
             # access. ExternalId is required by the role's trust policy when present.
-            assume_role_arn=os.environ.get("AWS_PEOPLE_API_RDS_ROLE_ARN") or None,
-            assume_role_external_id=os.environ.get("AWS_PEOPLE_API_RDS_EXTERNAL_ID") or None,
-            account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
+            assume_role_arn=(os.environ.get("AWS_PEOPLE_API_RDS_ROLE_ARN") or "").strip() or None,
+            assume_role_external_id=(os.environ.get("AWS_PEOPLE_API_RDS_EXTERNAL_ID") or "").strip() or None,
+            account_id=_env("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
             s3_bucket=s3_bucket,
-            databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
+            databricks_warehouse_id=_env("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
             db_statement_timeout_ms=int(os.environ.get("LOADER_DB_STATEMENT_TIMEOUT_MS", "0")),
-            prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
-            prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
-            prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
+            prod_cluster_id=_env("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
+            prod_db_name=_env("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
+            prod_db_user=_env("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
             prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)),
-            vpc_id=os.environ.get("LOADER_VPC_ID", DEFAULT_VPC_ID),
-            db_subnet_group=os.environ.get("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
-            security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
-            kms_key_arn=os.environ.get("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
-            s3_import_role_arn=os.environ.get("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
-            bastion_host=os.environ.get("LOADER_BASTION_HOST", ""),
+            vpc_id=_env("LOADER_VPC_ID", DEFAULT_VPC_ID),
+            db_subnet_group=_env("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
+            security_group_id=_env("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
+            kms_key_arn=_env("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
+            s3_import_role_arn=_env("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
+            bastion_host=_env("LOADER_BASTION_HOST", ""),
             bastion_port=int(os.environ.get("LOADER_BASTION_PORT", "22")),
-            bastion_user=os.environ.get("LOADER_BASTION_USER", ""),
+            bastion_user=_env("LOADER_BASTION_USER", ""),
             bastion_private_key=os.environ.get("LOADER_BASTION_PRIVATE_KEY", ""),
             bastion_private_key_passphrase=os.environ.get("LOADER_BASTION_KEY_PASSPHRASE", ""),
-            engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
-            load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
+            engine_version=_env("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
+            load_instance_class=_env("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
             serve_max_acu=float(os.environ.get("LOADER_SERVE_MAX_ACU", DEFAULT_SERVE_MAX_ACU)),
             mart_fqns=mart_fqns,
