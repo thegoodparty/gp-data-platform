@@ -19,7 +19,7 @@ import random
 import re
 import time
 from base64 import b64encode
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -125,7 +125,7 @@ def _is_retryable_status(status_code: int) -> bool:
 
 
 def _retry_wait_seconds(
-    headers: dict[str, str],
+    headers: Mapping[str, str],
     attempt: int,
     base_backoff: float,
     max_backoff: float = 60.0,
@@ -161,7 +161,7 @@ def fetch_person_batch(
     filtered out here.
     """
     http = session or requests
-    payload = {
+    payload: dict[str, Any] = {
         "query": PERSON_QUERY,
         "variables": {"ids": [base64_encode_person_id(pid) for pid in person_ids]},
     }
