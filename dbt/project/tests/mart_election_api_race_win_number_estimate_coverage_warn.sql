@@ -8,8 +8,8 @@
 
 -- win_number is structurally null on the election_api race mart: BallotReady
 -- supplies no win number, and the only values that ever existed are HubSpot
--- archive rows for 2023-2025 elections, which the mart's forward-looking date
--- filter excludes. So the win_number_effective the campaign-strategy-context
+-- archive rows for 2023-2025 elections, which the mart's date window
+-- excludes. So the win_number_effective the campaign-strategy-context
 -- endpoint serves is always win_number_estimate, and that estimate is null
 -- whenever a race has no positive Projected_Turnout for its election year.
 --
@@ -37,7 +37,11 @@ with
         left join
             {{ ref("m_election_api__position") }} as tbl_position
             on tbl_race.position_id = tbl_position.id
-        where tbl_position.district_id is not null
+        where
+            tbl_position.district_id is not null
+            -- the mart retains a 2-month grace window of recently-passed races;
+            -- keep this metric scoped to upcoming races as documented above
+            and tbl_race.election_date >= current_date()
     ),
 
     projected_turnout as (

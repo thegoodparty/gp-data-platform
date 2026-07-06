@@ -4,7 +4,7 @@ from datetime import datetime
 
 import psycopg2
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import current_date, date_add, date_sub
+from pyspark.sql.functions import add_months, current_date, date_add
 from pyspark.sql.types import (
     IntegerType,
     StringType,
@@ -570,9 +570,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     position_df: DataFrame = dbt.ref("m_election_api__position")
     projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
-    # filter the race dataframe to only include races that are within 1 day of the current date and 2 years from the current date
+    # keep races from a 2-month post-election grace period through ~2 years out;
+    # the lower bound matches the m_election_api__race window exactly (keep them
+    # in sync, or this filter re-narrows what the mart emits)
     race_df = race_df.filter(
-        (race_df.election_date > date_sub(current_date(), 1))
+        (race_df.election_date >= add_months(current_date(), -2))
         & (race_df.election_date < date_add(current_date(), 2 * 365))
     )
 
@@ -687,7 +689,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             db_schema=db_schema,
         )
 
-    # for the race db, drop rows that have `election_date` more than 1 day ago
+    # for the race db, drop rows with `election_date` more than 2 years past
     _execute_sql_query(
         f"DELETE FROM {db_schema}.\"Race\" WHERE election_date < current_date - interval '2 years'",
         db_host,
