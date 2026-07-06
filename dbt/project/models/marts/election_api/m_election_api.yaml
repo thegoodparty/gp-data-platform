@@ -150,7 +150,13 @@ models:
           - unique
           - is_uuid
       - name: slug
-        description: "Slug of the place"
+        description: >
+          URL slug of the place, globally unique (election-api Place.slug is
+          a unique routing key). When distinct geographies share a raw slug
+          (e.g. a city and a same-named school district), one canonical owner
+          keeps the clean slug — an incorporated place (mtfcc G4110) wins,
+          otherwise the latest-updated row — and every other member carries a
+          deterministic '-<geoid>' suffix instead of being dropped.
         tests:
           - not_null
           - unique
@@ -166,6 +172,17 @@ models:
         tests:
           - not_null
           - unique
+      - name: source_updated_at
+        description: >
+          Un-bumped source updated_at, carried separately from updated_at so
+          the model's incremental watermark stays in the source-time domain.
+          updated_at is bumped to wall-clock when a row is new to the mart or
+          its slug changed (the election-api write model's publish gate);
+          gating ingestion on those bumped values would skip later source
+          updates whose BallotReady stamps lag wall-clock. Not published to
+          election-api (the writer's Place upsert selects explicit columns).
+        tests:
+          - not_null
 
   - name: m_election_api__position
     description: "Mart model that serves the Election API"
@@ -300,6 +317,28 @@ models:
               arguments:
                 to: ref('int__enhanced_race')
                 field: br_database_id
+      - name: place_id
+        description: >
+          UUID of the place the race belongs to. Foreign key to
+          m_election_api__place: the race mart inner-joins the place mart, so
+          every emitted race resolves to a served place (races whose place is
+          not served are dropped rather than shipped with a dangling FK).
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__place')
+                field: id
+      - name: slug
+        description: >
+          Race slug, <place slug>/<position slug>, built from the
+          disambiguated m_election_api__place slug so it always extends the
+          place slug election-api serves. Indexed but not unique in
+          election-api; the place slug is the unique routing key. Consistency
+          with the place slug is guarded by
+          assert_race_slug_prefix_matches_place_slug.
+        tests:
+          - not_null
       - name: position_id
         description: >
           UUID of the BallotReady position the race is for. Foreign key to

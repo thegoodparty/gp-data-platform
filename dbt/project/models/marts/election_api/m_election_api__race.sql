@@ -64,13 +64,18 @@ with
 select
     tbl_race.id,
     tbl_race.created_at,
-    -- Bump updated_at when a filing-address override applies so the election-api
-    -- write model's incremental upsert (gated on updated_at) actually picks up
-    -- the corrected value; BallotReady's own updated_at does not change.
+    -- Bump updated_at when a filing-address override applies (BallotReady's
+    -- own updated_at does not change), and otherwise ride the place row's
+    -- updated_at: the place mart bumps it whenever a slug changes
+    -- (disambiguation in either direction), so every dependent race clears
+    -- the election-api write model's incremental gate (updated_at greater
+    -- than the postgres max) in the same run and republishes its rebuilt
+    -- slug and place_id. Comparing slugs instead would miss a place moving
+    -- back from a suffixed slug to a clean one.
     case
         when filing_overrides.br_database_id is not null
         then current_timestamp()
-        else tbl_race.updated_at
+        else greatest(tbl_race.updated_at, tbl_place.updated_at)
     end as updated_at,
     tbl_race.br_hash_id,
     tbl_race.br_database_id,
@@ -100,14 +105,15 @@ select
     tbl_race.sub_area_value,
     tbl_race.frequency,
     tbl_race.place_id,
-    replace(
-        concat(
-            tbl_race.place_name_slug,
-            '/',
-            {{ slugify("tbl_race.normalized_position_name") }}
-        ),
-        '-ccd',
-        ''
+    -- Build the race slug from the place mart's (slug-disambiguated) place
+    -- slug rather than the raw upstream place_name_slug, so the race slug
+    -- always extends the place slug election-api actually serves. The
+    -- '-ccd' strip on the position part preserves the previous derivation,
+    -- which stripped it from the whole concatenated slug.
+    concat(
+        tbl_place.slug,
+        '/',
+        replace({{ slugify("tbl_race.normalized_position_name") }}, '-ccd', '')
     ) as slug,
     tbl_race.position_names,
     tbl_position.id as position_id,
@@ -118,6 +124,11 @@ select
     tbl_civics.official_office_name,
     tbl_civics.office_level
 from {{ ref("int__enhanced_race") }} as tbl_race
+-- Inner join: a race whose place is absent from the place mart cannot be
+-- served (Race.placeId must resolve), and this is also where the race picks
+-- up the disambiguated place slug.
+inner join
+    {{ ref("m_election_api__place") }} as tbl_place on tbl_race.place_id = tbl_place.id
 left join
     stage_per_br_race as tbl_stage
     on cast(tbl_race.br_database_id as string) = tbl_stage.br_race_id
@@ -131,12 +142,11 @@ left join
     {{ ref("election_api_race_filing_address_overrides") }} as filing_overrides
     on tbl_race.br_database_id = filing_overrides.br_database_id
 where
-    tbl_race.place_id in (select id from {{ ref("m_election_api__place") }})
     -- 2-month grace period keeps recently-passed races serveable (the campaign
     -- plan reads races after election day). Keep the lower bound in sync with
     -- the race filter in write__election_api_db.py, which otherwise re-narrows
     -- this window
-    and tbl_race.election_date
+    tbl_race.election_date
     between current_date() - interval '2 months' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API
     -- depends on; a Race with no matching Position can't serve the

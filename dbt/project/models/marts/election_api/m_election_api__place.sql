@@ -3,6 +3,7 @@
         materialized="incremental",
         incremental_strategy="merge",
         unique_key="id",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
 }}
@@ -26,6 +27,10 @@ with
         from {{ ref("int__enhanced_place_w_parent") }} as tbl_parent
         where tbl_parent.id in (select grandparent_id from grandparent_ids)
     ),
+    -- The full place universe, deliberately not incremental-sliced: slug
+    -- ownership below is a global property of the universe, so it must be
+    -- recomputed over all rows every run. The incremental filter is applied
+    -- to the outcome instead (see the final select).
     enriched_place_and_lineage as (
         select
             tbl_place.id,
@@ -57,41 +62,92 @@ with
                 or tbl_place.id
                 in (select greatgrandparent_id from greatgrandparent_ids)
             )
-            {% if is_incremental() %}
-                and tbl_place.updated_at > (select max(updated_at) from {{ this }})
-            {% endif %}
     ),
-    deduped_by_slug as (
+    -- One row per geography: the upstream place-with-parent model can carry a
+    -- geoid more than once (e.g. fanned out across parent rows). The old
+    -- slug-level dedup collapsed those incidentally; keep that guarantee
+    -- explicit now that slug-collision losers are no longer dropped.
+    deduped_by_geoid as (
         select *
         from enriched_place_and_lineage
-        qualify row_number() over (partition by slug order by updated_at desc) = 1
-    )
-/* may need to also remove parents of the removed places
-    parent_of_removed_places as (
+        qualify
+            row_number() over (
+                partition by geoid order by updated_at desc, id, parent_id
+            )
+            = 1
+    ),
+    -- Distinct geographies can share a slug (e.g. a city and a same-named
+    -- school district). election-api requires Place.slug to be globally
+    -- unique, but dropping the collision losers orphans every race that
+    -- points at them. Instead, keep one canonical owner on the clean slug
+    -- and give every other member a deterministic, stable '-<geoid>' suffix.
+    -- Ownership: an incorporated place (mtfcc G4110) wins its slug (the
+    -- place-page URL a user expects); all other ties break on the immutable
+    -- id, so ownership never drifts when BallotReady re-touches a member
+    -- (updated_at is a sync timestamp, not a claim to the slug). One-time
+    -- rollout consequence: a contested slug's canonical owner may differ
+    -- from the previously published winner.
+    slug_disambiguated as (
         select
-            parent_id
-        from enriched_place_and_lineage
-        qualify row_number() over (partition by parent_id order by updated_at desc) = 1
+            * except (slug),
+            case
+                when
+                    row_number() over (
+                        partition by slug order by (mtfcc = 'G4110') desc, id
+                    )
+                    = 1
+                then slug
+                else concat(slug, '-', geoid)
+            end as slug
+        from deduped_by_geoid
     )
-    and add to the final select statement:
-    where id not in (select parent_id from parent_of_removed_places)
-    */
+
 select
-    id,
-    created_at,
-    updated_at,
-    br_database_id,
-    name,
-    slug,
-    geoid,
-    mtfcc,
-    state,
-    city_largest,
-    county_name,
-    population,
-    density,
-    income_household_median,
-    unemployment_rate,
-    home_value,
-    parent_id
-from deduped_by_slug
+    tbl_place.id,
+    tbl_place.created_at,
+    -- Bump updated_at when a row is new to the mart or its slug changed, so
+    -- the election-api write model's incremental filter (updated_at greater
+    -- than the postgres max) actually publishes it: recovered collision
+    -- losers and re-slugged rows keep a source updated_at that predates the
+    -- watermark and would otherwise never land.
+    {% if is_incremental() %}
+        case
+            when tbl_prev.id is null or tbl_place.slug <> tbl_prev.slug
+            then current_timestamp()
+            else tbl_place.updated_at
+        end as updated_at,
+    {% else %} tbl_place.updated_at,
+    {% endif %}
+    tbl_place.br_database_id,
+    tbl_place.name,
+    tbl_place.slug,
+    tbl_place.geoid,
+    tbl_place.mtfcc,
+    tbl_place.state,
+    tbl_place.city_largest,
+    tbl_place.county_name,
+    tbl_place.population,
+    tbl_place.density,
+    tbl_place.income_household_median,
+    tbl_place.unemployment_rate,
+    tbl_place.home_value,
+    tbl_place.parent_id,
+    -- The un-bumped source timestamp, kept separate so the incremental
+    -- watermark below stays in the source-time domain: bumped updated_at
+    -- values are wall-clock (ahead of BallotReady's event-time stamps by
+    -- days), and gating on them would silently skip later source updates
+    -- whose stamps land inside that gap. Not published: the election-api
+    -- writer's Place upsert selects its columns explicitly.
+    tbl_place.updated_at as source_updated_at
+from slug_disambiguated as tbl_place
+{% if is_incremental() %}
+    left join {{ this }} as tbl_prev on tbl_place.id = tbl_prev.id
+    where
+        tbl_prev.id is null
+        or tbl_place.slug <> tbl_prev.slug
+        -- Per-row coalesce: rows written before source_updated_at existed
+        -- carry their (never-bumped) updated_at; bumped rows contribute
+        -- their source stamp, not the wall-clock bump.
+        or tbl_place.updated_at
+        > (select max(coalesce(source_updated_at, updated_at)) from {{ this }})
+{% endif %}
