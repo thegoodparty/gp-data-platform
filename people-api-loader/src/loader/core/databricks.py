@@ -39,6 +39,21 @@ def _state_str(resp: Any) -> str:
     return getattr(state, "value", state)
 
 
+def _error_detail(resp: Any) -> str:
+    """The Databricks-side failure reason from a terminal statement, or "" if none.
+
+    On FAILED/CANCELED/CLOSED the SDK puts the real cause (e.g. a UC permission or S3 error) in
+    `status.error.{error_code,message}`. Surface it so the raised error is diagnosable rather than
+    just reporting the state + SQL. Defensive against missing attrs / test fakes.
+    """
+    err = getattr(getattr(resp, "status", None), "error", None)
+    if err is None:
+        return ""
+    code = getattr(getattr(err, "error_code", None), "value", getattr(err, "error_code", "")) or ""
+    message = getattr(err, "message", "") or ""
+    return f"{code}: {message}".strip(": ").strip()
+
+
 def run_statement(cfg: BaseLoaderConfig, statement: str, *, warehouse_id: str) -> Any:
     """Submit `statement` to `warehouse_id` and poll to a terminal state.
 
@@ -57,5 +72,9 @@ def run_statement(cfg: BaseLoaderConfig, statement: str, *, warehouse_id: str) -
         resp = api.get_statement(statement_id)
         state = _state_str(resp)
     if state in _TERMINAL_BAD:
-        raise RuntimeError(f"Databricks statement {statement_id} ended {state}: {statement[:120]}")
+        detail = _error_detail(resp)
+        reason = f" — {detail}" if detail else ""
+        raise RuntimeError(
+            f"Databricks statement {statement_id} ended {state}{reason}. SQL: {statement[:200]}"
+        )
     return resp

@@ -64,6 +64,27 @@ def test_run_statement_raises_on_failed(monkeypatch: pytest.MonkeyPatch) -> None
         databricks.run_statement(_CFG, "SELECT bad", warehouse_id="wh-1")
 
 
+def test_run_statement_surfaces_databricks_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A FAILED statement's real cause lives in status.error; the raised error must include it.
+    err = SimpleNamespace(error_code=_state("PERMISSION_DENIED"), message="no WRITE FILES on people-loader")
+
+    class _ApiErr:
+        def execute_statement(self, **kw: object) -> object:
+            return SimpleNamespace(
+                statement_id="s1", status=SimpleNamespace(state=_state("RUNNING"), error=None)
+            )
+
+        def get_statement(self, statement_id: str) -> object:
+            return SimpleNamespace(
+                statement_id=statement_id, status=SimpleNamespace(state=_state("FAILED"), error=err)
+            )
+
+    monkeypatch.setattr(databricks, "workspace_client", lambda cfg: _client(_ApiErr()))
+    monkeypatch.setattr(databricks, "_poll_sleep", lambda: None)
+    with pytest.raises(RuntimeError, match="PERMISSION_DENIED: no WRITE FILES on people-loader"):
+        databricks.run_statement(_CFG, "INSERT OVERWRITE DIRECTORY ...", warehouse_id="wh-1")
+
+
 def test_run_statement_raises_without_warehouse() -> None:
     with pytest.raises(RuntimeError, match="warehouse"):
         databricks.run_statement(_CFG, "SELECT 1", warehouse_id="")
