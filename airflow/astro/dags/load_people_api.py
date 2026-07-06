@@ -74,6 +74,9 @@ def _step(task_id: str, subcommand: str, *, extra_env: dict[str, str] | None = N
     schedule="@monthly",
     start_date=pendulum_datetime(2026, 6, 1, tz="UTC"),
     catchup=False,
+    # Created paused (like the other prod DAGs) so a fresh deploy doesn't auto-fire the current
+    # monthly interval — catchup=False only suppresses historical backfill, not the current period.
+    is_paused_upon_creation=True,
     default_args={"retries": 3, "retry_delay": duration(minutes=5)},
     tags=["people-api", "loader"],
 )
