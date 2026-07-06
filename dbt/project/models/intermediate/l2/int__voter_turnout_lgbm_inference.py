@@ -9,9 +9,17 @@ ballots_projected. Output feeds int__model_prediction_voter_turnout.
 Collapse-specific changes vs the per-state macro (all verified against the
 nationwide table on 2026-06-29):
   - State comes from the real `state_postal_code` column (no lit(state_code)).
-  - The odd-year opportunity logic is ROW-LEVEL (state_postal_code IN (...)).
+  - The odd-year (`AnyElection`) opportunity logic is ROW-LEVEL (state_postal_code IN (...)).
   - The vote-history "voted" test is BOOLEAN (cols are BooleanType nationwide),
     not = 'Y'.
+
+Even-year (`OtherElection`, local) eligibility is guided solely by per-precinct
+opportunity presence in `turnout_historical_precincts` — no state-list shortcut,
+since local election incidence varies precinct-by-precinct, not by state. This
+mirrors the training-side fix (see the training notebook's vote_history_sql).
+Previously this branched on `year % 2 == 0` and blanket-zeroed every even-year
+eligible non-voter nationwide, inflating the `even_year_local` target/feature
+denominator everywhere.
 
 The SQL-building helpers are pure (return SQL strings) so they are unit-tested
 without Spark/MLflow; `model()` executes them. `import mlflow` is deferred into
@@ -181,23 +189,24 @@ def _safe_date(column_name):
     )
 
 
-def _odd_op_years(election_cols, l2_col_set, inference_year):
-    """Odd years (in lag range) with AnyElection/OtherElection cols. For these,
-    NON-opportunity states need a per-precinct opportunity flag; opportunity states
-    short-circuit to 0.0. (Was gated on a scalar per-state flag in the macro.)"""
+def _op_years(election_cols, l2_col_set, inference_year):
+    """Years (in lag range) needing a per-precinct opportunity flag: odd-year
+    AnyElection (non-opportunity-state precincts) and even-year OtherElection
+    (all precincts, no state shortcut). AnyElection is always odd and
+    OtherElection is always even in the nationwide L2 schema, so no explicit
+    parity filter is needed here — the prefix already implies it."""
     return sorted(
         {
             year
             for col_name, prefix, year in election_cols
             if col_name in l2_col_set
             and prefix in ("AnyElection", "OtherElection")
-            and year % 2 == 1
             and 1 <= inference_year - year <= 12
         }
     )
 
 
-def _opp_view_sql(odd_op_years, catalog, precincts_schema):
+def _opp_view_sql(op_years, catalog, precincts_schema):
     """Nationwide opportunity-flag table over ALL states (was WHERE State = one state).
 
     precincts_schema = where turnout_historical_precincts lives. PROD default is
@@ -207,10 +216,10 @@ def _opp_view_sql(odd_op_years, catalog, precincts_schema):
     opp_col_exprs = ", ".join(
         f"MAX(CASE WHEN election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}') "
         f"THEN 1 ELSE 0 END) AS opp_{y}"
-        for y in odd_op_years
+        for y in op_years
     )
     year_filter = " OR ".join(
-        f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')" for y in odd_op_years
+        f"election_year_str IN ('AnyElection_{y}', 'OtherElection_{y}')" for y in op_years
     )
     return f"""
         SELECT State, County, Precinct, {opp_col_exprs}
@@ -225,13 +234,14 @@ def _build_precinct_features_sql(l2_col_set, election_cols, inference_year, l2_c
 
     Collapse changes vs the per-state macro:
       - State from the real `state_postal_code` column (no lit()).
-      - Vote-history eligibility (branches 7/8) is ROW-LEVEL via state_postal_code IN (...).
+      - Odd-year (AnyElection) eligibility is ROW-LEVEL via state_postal_code IN (...).
+      - Even-year (OtherElection) eligibility is precinct-opportunity-only, no state list.
       - The vote-history "voted" test is BOOLEAN (cols are BooleanType), not = 'Y'.
     """
-    odd_op_years = _odd_op_years(election_cols, l2_col_set, inference_year)
-    if odd_op_years:
+    op_years = _op_years(election_cols, l2_col_set, inference_year)
+    if op_years:
         # Enrich _l2 with per-precinct opportunity flags via a (State, County, Precinct) join.
-        opp_select = ", ".join(f"COALESCE(hp.opp_{y}, 0) AS opp_{y}" for y in odd_op_years)
+        opp_select = ", ".join(f"COALESCE(hp.opp_{y}, 0) AS opp_{y}" for y in op_years)
         from_clause = (
             f"(SELECT l2.*, {opp_select} FROM _l2 AS l2"
             f" LEFT JOIN _hp_opp AS hp"
@@ -321,8 +331,13 @@ def _build_precinct_features_sql(l2_col_set, election_cols, inference_year, l2_c
         if column_name in l2_col_set:
             exprs.append(f"mode(`{column_name}`) AS `{column_name}`")
 
-    # Vote-history columns: replicates training's 8-branch eligibility CASE. Branch 1
-    # (voted) is now a BOOLEAN test; branches 7/8 (odd-year opportunity) are ROW-LEVEL.
+    # Vote-history columns: replicates training's eligibility CASE. The "voted" test is
+    # a BOOLEAN (not = 'Y'). Non-voter eligibility branches by prefix, not year parity:
+    #   - General/Primary: always held, eligible non-voter -> 0.
+    #   - AnyElection (odd-year local): opportunity-state shortcut, then per-precinct
+    #     opportunity check, ROW-LEVEL.
+    #   - OtherElection (even-year local): per-precinct opportunity only, no state
+    #     shortcut — local election incidence varies precinct-by-precinct, not by state.
     for col_name, prefix, year in election_cols:
         if col_name not in l2_col_set:
             continue
@@ -331,14 +346,13 @@ def _build_precinct_features_sql(l2_col_set, election_cols, inference_year, l2_c
             continue
 
         if prefix in ("General", "Primary"):
-            eligible_nonvoter_sql = "ELSE 0.0"  # branch 5: always held
-        elif year % 2 == 0:
-            eligible_nonvoter_sql = "ELSE 0.0"  # branch 6: even-year local opportunity assumed
-        else:
-            # branch 7 (opportunity state) then branch 8 (non-op precinct check) — row-level
+            eligible_nonvoter_sql = "ELSE 0.0"
+        elif prefix == "AnyElection":
             eligible_nonvoter_sql = (
                 f"WHEN state_postal_code IN {_OPP_STATES_SQL} THEN 0.0 WHEN opp_{year} = 1 THEN 0.0 ELSE NULL"
             )
+        else:  # OtherElection
+            eligible_nonvoter_sql = f"WHEN opp_{year} = 1 THEN 0.0 ELSE NULL"
 
         exprs.append(
             f"CAST(AVG("
@@ -594,9 +608,9 @@ def model(dbt, session):
 
     pred_dfs = []
     for inference_year in inference_years:
-        odd_op_years = _odd_op_years(election_cols, l2_col_set, inference_year)
-        if odd_op_years:
-            session.sql(_opp_view_sql(odd_op_years, catalog, precincts_schema)).createOrReplaceTempView(
+        op_years = _op_years(election_cols, l2_col_set, inference_year)
+        if op_years:
+            session.sql(_opp_view_sql(op_years, catalog, precincts_schema)).createOrReplaceTempView(
                 "_hp_opp"
             )
         # ~206k precincts per year (~150 MB) — toPandas is safe; eagerly materialized here so

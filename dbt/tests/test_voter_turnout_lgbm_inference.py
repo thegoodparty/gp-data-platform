@@ -9,13 +9,14 @@ must stay inside `model()` (the dbt test env has pyspark + pandas, not mlflow).
 import numpy as np
 import pandas as pd
 import pytest
+
 from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import (
     _OPP_STATES_SQL,
     _assert_consistent_model_family,
     _build_district_membership_sql,
     _build_precinct_features_sql,
     _detect_election_cols,
-    _odd_op_years,
+    _op_years,
     _opp_view_sql,
     _parse_state_allowlist,
     _predict_precinct,
@@ -25,6 +26,8 @@ from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import
 )
 
 # A representative L2 column set: vote-history (boolean nationwide) + keys + a few features.
+# AnyElection is always odd-year, OtherElection is always even-year in the real nationwide
+# schema — kept realistic here since the eligibility branch now routes by prefix, not parity.
 _L2_COLS = {
     "state_postal_code",
     "County",
@@ -42,14 +45,14 @@ _L2_COLS = {
     "General_2024",
     "Primary_2024",
     "AnyElection_2023",
-    "OtherElection_2023",
+    "OtherElection_2024",
     "ConsumerData_Donor_Political_Liberal",  # _Y_INDICATOR (STRING)
 }
 _ELECTION_COLS = [
     ("General_2024", "General", 2024),
     ("Primary_2024", "Primary", 2024),
     ("AnyElection_2023", "AnyElection", 2023),
-    ("OtherElection_2023", "OtherElection", 2023),
+    ("OtherElection_2024", "OtherElection", 2024),
 ]
 
 
@@ -96,20 +99,28 @@ def test_vote_history_uses_boolean_not_y_string():
 
 def test_odd_year_opportunity_is_row_level():
     sql = _build_precinct_features_sql(_L2_COLS, _ELECTION_COLS, 2026, 2026)
-    # odd-year AnyElection/OtherElection eligibility branches on the row's state,
-    # then the per-precinct opportunity flag — not a Python-resolved scalar.
-    assert f"WHEN state_postal_code IN {_OPP_STATES_SQL} THEN 0.0" in sql
-    assert "WHEN opp_2023 = 1 THEN 0.0" in sql
+    # AnyElection (odd-year local) eligibility branches on the row's state, then the
+    # per-precinct opportunity flag — not a Python-resolved scalar.
+    assert f"WHEN state_postal_code IN {_OPP_STATES_SQL} THEN 0.0 WHEN opp_2023 = 1 THEN 0.0 ELSE NULL" in sql
+
+
+def test_even_year_opportunity_has_no_state_shortcut():
+    sql = _build_precinct_features_sql(_L2_COLS, _ELECTION_COLS, 2026, 2026)
+    # OtherElection (even-year local) eligibility is precinct-opportunity-only — no
+    # state-list shortcut, since local election incidence varies precinct-by-precinct.
+    assert "WHEN opp_2024 = 1 THEN 0.0 ELSE NULL" in sql
+    assert f"state_postal_code IN {_OPP_STATES_SQL} THEN 0.0 WHEN opp_2024" not in sql
 
 
 def test_opp_years_and_view_sql():
-    years = _odd_op_years(_ELECTION_COLS, _L2_COLS, 2026)
-    assert years == [2023]
+    years = _op_years(_ELECTION_COLS, _L2_COLS, 2026)
+    assert years == [2023, 2024]
     view = _opp_view_sql(years, "goodparty_data_catalog", "model_predictions")
     assert "model_predictions.turnout_historical_precincts" in view
     assert "GROUP BY State, County, Precinct" in view
     assert "WHERE State =" not in view  # nationwide: no per-state filter
     assert "opp_2023" in view
+    assert "opp_2024" in view
 
 
 # ── Task 3: allowlist + membership ───────────────────────────────────────────
