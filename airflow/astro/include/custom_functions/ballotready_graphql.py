@@ -207,9 +207,10 @@ _ISO_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?$")
 
 def _validate_iso_timestamp(value: str) -> str:
     """Guard the cursor timestamp before inlining it into SQL."""
-    if not _ISO_TIMESTAMP.match(value):
+    try:
+        return datetime.fromisoformat(value).isoformat(sep=" ", timespec="seconds")
+    except ValueError:
         raise ValueError(f"cursor timestamp is not a plain ISO timestamp: {value!r}")
-    return value
 
 
 def build_person_cursor_query(
