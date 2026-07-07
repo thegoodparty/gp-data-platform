@@ -276,6 +276,12 @@ def test_train_model_continues_on_partial_failure(capsys):
 
     mock_linker.training.estimate_parameters_using_expectation_maximisation.side_effect = side_effect
 
+    # All comparisons still have m estimates, so the untrained guard stays quiet.
+    trained_comp = MagicMock()
+    trained_comp.output_column_name = "email"
+    trained_comp._some_m_are_trained = True
+    mock_linker._settings_obj.comparisons = [trained_comp]
+
     result = train_model(mock_linker, CANDIDACY_CONFIG)
 
     assert result == len(CANDIDACY_CONFIG.em_training_blocks) - 1
@@ -291,6 +297,33 @@ def test_train_model_returns_full_count_on_success():
     mock_linker = MagicMock()
     result = train_model(mock_linker, CANDIDACY_CONFIG)
     assert result == len(CANDIDACY_CONFIG.em_training_blocks)
+
+
+def test_train_model_raises_on_untrained_comparison():
+    """Partial EM failure raises if a comparison lost its only training block."""
+    from scripts.pipeline import train_model
+
+    mock_linker = MagicMock()
+    call_count = 0
+
+    def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("EM failed for first block")
+
+    mock_linker.training.estimate_parameters_using_expectation_maximisation.side_effect = side_effect
+
+    untrained_comp = MagicMock()
+    untrained_comp.output_column_name = "email"
+    untrained_comp._some_m_are_trained = False
+    trained_comp = MagicMock()
+    trained_comp.output_column_name = "state"
+    trained_comp._some_m_are_trained = True
+    mock_linker._settings_obj.comparisons = [untrained_comp, trained_comp]
+
+    with pytest.raises(RuntimeError, match="no m estimates"):
+        train_model(mock_linker, CANDIDACY_CONFIG)
 
 
 def test_eo_pipeline_writes_filtered_pairs(tmp_path):
