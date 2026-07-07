@@ -111,13 +111,18 @@ with
     ),
 
     -- BR party is not on the identity model; pull one representative party per
-    -- br_candidate_id from the candidacy feed.
+    -- br_candidate_id from the candidacy feed, gated to the same 2026+ window
+    -- as int__ballotready_candidate_identity so party stays consistent with
+    -- the identity-model contact fields it rides alongside.
     br_party as (
         select
             cast(br_candidate_id as string) as br_candidate_id,
             {{ parse_party_affiliation("parties") }} as party
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where br_candidate_id is not null and parties is not null
+        where
+            br_candidate_id is not null
+            and parties is not null
+            and election_day >= '2026-01-01'
         qualify
             row_number() over (
                 partition by br_candidate_id
