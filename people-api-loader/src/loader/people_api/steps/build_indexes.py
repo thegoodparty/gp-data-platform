@@ -29,27 +29,16 @@ from loader.people_api.schema.schema_spec import indexes_for, primary_key_for
 
 log = get_logger(__name__)
 
-# Default concurrent CREATE INDEX builds. Each builder holds one SSH tunnel to the bastion for
-# the life of its build, so this is also the count of concurrent bastion connections -- keep it
-# modest (well under the bastion's MaxStartups) rather than scaling it with the instance. Cores on
-# the big load box are filled by the per-build parallel WORKERS instead (see max_parallel_workers
-# in _BUILD_SESSION_SQL), which are server-side and open no tunnels. Peak memory is roughly
-# parallelism * maintenance_work_mem (8GB) = ~256 GB, comfortably within the load instance's RAM.
-# Lower it via the CLI --parallelism flag for a smaller load instance to avoid OOM.
+# Default concurrent CREATE INDEX builds. Peak memory is roughly parallelism *
+# maintenance_work_mem (8GB, set below), so 32 is about 256 GB -- sized for the
+# default db.r7g.16xlarge load instance (512 GiB). Lower it via the CLI
+# --parallelism flag for a smaller load instance to avoid OOM.
 _DEFAULT_BUILDERS = 32
 _TARGET_TABLE = "Voter"
 
 _BUILD_SESSION_SQL: tuple[str, ...] = (
     "SET maintenance_work_mem = '8GB'",
     "SET max_parallel_maintenance_workers = 8",
-    # Each build requests 8 maintenance workers, but the instance default caps the TOTAL
-    # concurrent parallel workers at max_parallel_workers = vCPU/2 (96 on the 192-vCPU load
-    # box), which starves the 32 concurrent builds (~1 worker each — measured). max_parallel_workers
-    # is a user-context GUC, so raise it per session to let the builds' workers fill the cores
-    # (32 leaders + ~160 workers). Backed by the instance default max_worker_processes = vCPU*2
-    # = 384 for slots. These are server-side workers, so unlike raising _DEFAULT_BUILDERS this
-    # adds NO bastion tunnels. Retune with DEFAULT_LOAD_INSTANCE_CLASS.
-    "SET max_parallel_workers = 160",
     "SET statement_timeout = 0",
     "SET idle_in_transaction_session_timeout = 0",
 )

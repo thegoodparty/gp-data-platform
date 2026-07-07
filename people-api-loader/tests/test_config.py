@@ -72,15 +72,6 @@ def test_provisioned_identifiers_are_env_scoped(monkeypatch: pytest.MonkeyPatch)
     assert LoaderConfig.from_env().new_cluster_id("20260707") == "gp-people-db-20260707-prod"
 
 
-def test_load_instance_class_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Index building is CPU-bound and fully cached, so the load instance is sized for cores.
-    monkeypatch.setenv("LOADER_S3_BUCKET", "gp-people-loader-us-west-2")
-    monkeypatch.delenv("LOADER_LOAD_INSTANCE_CLASS", raising=False)
-    assert LoaderConfig.from_env().load_instance_class == "db.r8g.48xlarge"
-    monkeypatch.setenv("LOADER_LOAD_INSTANCE_CLASS", "db.r8g.24xlarge")
-    assert LoaderConfig.from_env().load_instance_class == "db.r8g.24xlarge"
-
-
 def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
     import os
 
