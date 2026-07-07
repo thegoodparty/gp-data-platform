@@ -260,12 +260,17 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     else:
         log.info("provision.instance_exists", instance=instance_id)
 
-    _attach_s3_import_role(rds_client, cluster_id, cfg.s3_import_role_arn)
-
     # "Available" via the API, then prove the DB actually accepts connections.
     rds_client.get_waiter("db_instance_available").wait(
         DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
     )
+
+    # Attach the s3-import role only AFTER the cluster is available. add_role_to_db_cluster is
+    # rejected while the cluster is still `creating` (InvalidDBClusterStateFault), so attaching
+    # right after create failed attempt 1 on every fresh cluster and leaned on the DAG's retry to
+    # recover (~5 min wasted, and broken outright if retries were ever 0). The instance-available
+    # waiter implies the cluster is available.
+    _attach_s3_import_role(rds_client, cluster_id, cfg.s3_import_role_arn)
     try:
         with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
             cur.execute("SELECT 1")

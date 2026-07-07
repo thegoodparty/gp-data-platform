@@ -107,6 +107,7 @@ class FakeRds:
         self.clusters.pop(kw["DBClusterIdentifier"], None)
 
     def get_waiter(self, name: str) -> _FakeWaiter:
+        self.calls.append(("waiter", {"name": name}))
         return _FakeWaiter()
 
     def names(self) -> list[str]:
@@ -142,6 +143,22 @@ def test_provision_fails_fast_on_missing_required_env(monkeypatch: pytest.Monkey
     bad = cast(LoaderConfig, SimpleNamespace(**{**vars(_CFG), "db_user": ""}))
     with pytest.raises(RuntimeError, match="LOADER_DB_USER"):
         step.run(bad, "20260616")
+
+
+def test_provision_attaches_role_after_instance_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    # add_role_to_db_cluster is rejected while the cluster is still `creating`
+    # (InvalidDBClusterStateFault), so the role must be attached only AFTER the
+    # db_instance_available waiter — not right after create, which fails attempt 1 on
+    # every fresh cluster and burns a retry.
+    rds_client, ec2_client = FakeRds(), FakeEc2()
+    _patch(monkeypatch, rds_client, ec2_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+
+    step.run(_CFG, "20260616")
+
+    names = rds_client.names()
+    assert "waiter" in names and "role" in names
+    assert names.index("waiter") < names.index("role"), "role attached before the availability waiter"
 
 
 def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
