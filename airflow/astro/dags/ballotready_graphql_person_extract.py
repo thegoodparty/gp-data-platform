@@ -54,11 +54,8 @@ DEFAULT_S3_PREFIX = "ballotready/graphql/persons"
 FETCH_BATCH_SIZE = 100  # persons per GraphQL nodes() call
 
 
-def _format_cursor_ts(value) -> str:
-    """Render a Databricks timestamp as a tz-naive UTC ISO string for the cursor."""
-    if value.tzinfo is not None:
-        value = value.astimezone(UTC).replace(tzinfo=None)
-    return value.isoformat(sep=" ")
+# Moved to include/custom_functions/ballotready_graphql.py — import it from there.
+# from include.custom_functions.ballotready_graphql import _format_cursor_ts
 
 
 @dag(
