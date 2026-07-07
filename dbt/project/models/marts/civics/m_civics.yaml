@@ -2755,3 +2755,141 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
+
+  - name: people
+    description: >
+      Canonical person mart. One row per gp_person_id, derived from the dbt
+      person groups (no probabilistic matching). See canonical-person-plan.md
+      decision 5.
+
+      Identifier columns (br_person_id, gp_api_user_id, hs_contact_id,
+      ddhq_candidate_id, ts_candidate_code) are scalar only when the person
+      group carries exactly one value for that source; a group with zero or
+      more than one value leaves the column NULL. The full multi-valued sets
+      live in person_identifiers. ts_candidate_code is stage-stripped (the
+      primary/general suffix removed); ddhq_candidate_id is the candidate_id
+      portion of the DDHQ candidacy key.
+
+      Attribute precedence:
+        first_name, last_name, email, phone: gp_api > HubSpot > BR > TS > DDHQ
+          (DDHQ carries no email/phone).
+        state, party: BR > HubSpot > TS > DDHQ (gp_api carries neither).
+      Each source contributes from one representative member record (earliest
+      by first_seen_at), so a source's fields stay internally consistent.
+      BR contact/state come from int__ballotready_candidate_identity (2026
+      candidacy grain), BR party from the candidacy feed; officeholder-only or
+      pre-2026 BR persons therefore have sparse attributes. HubSpot state is
+      the raw CRM value and may be a full state name rather than a postal code.
+
+      Role flags derive from the member records, not a stored status:
+        is_candidate: the group contains any candidacy-context member -- a
+          techspeed or ddhq record, a br_candidate_id with at least one
+          candidacies_v3 row, or a gp_api user with a campaign.
+        is_elected_official: the group contains a techspeed_officeholder
+          record, a br_candidate_id with at least one office_holders_v3 row,
+          or a gp_api user with an elected-office record
+          (int__civics_elected_official_gp_api).
+      Resolution status (e.g. CRM contacts unresolved to a BR person) is a
+      query over person_identifiers, not a flag.
+    columns:
+      - name: gp_person_id
+        description: Primary key - stable canonical person identifier.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: br_person_id
+        description: >
+          BallotReady br_candidate_id when the group resolves to exactly one;
+          NULL when zero or ambiguous (>1 in the group).
+      - name: gp_api_user_id
+        description: gp-api user id when unambiguous, else NULL.
+      - name: hs_contact_id
+        description: HubSpot contact id when unambiguous, else NULL.
+      - name: ddhq_candidate_id
+        description: DDHQ candidate_id when unambiguous, else NULL.
+      - name: ts_candidate_code
+        description: Stage-stripped TechSpeed candidate code when unambiguous, else NULL.
+      - name: first_name
+        description: First name, precedence gp_api > HubSpot > BR > TS > DDHQ.
+      - name: last_name
+        description: Last name, same precedence as first_name.
+      - name: email
+        description: Email, precedence gp_api > HubSpot > BR > TS.
+      - name: phone
+        description: Phone, precedence gp_api > HubSpot > BR > TS.
+      - name: state
+        description: State, precedence BR > HubSpot > TS > DDHQ. Format may vary (HubSpot free-text).
+      - name: party
+        description: Party affiliation, precedence BR > HubSpot > TS > DDHQ.
+      - name: first_seen_at
+        description: Earliest source-native created timestamp across the group's members.
+        data_tests:
+          - not_null
+      - name: group_size
+        description: Number of source records in the person group.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: had_conflict
+        description: >
+          True when the group was touched by a within-source (E7) edge that
+          spanned more than one BR person; those conflicting edges are dropped
+          upstream, so the flag is advisory.
+        data_tests:
+          - not_null
+      - name: is_candidate
+        description: See model description for the exact derivation.
+        data_tests:
+          - not_null
+      - name: is_elected_official
+        description: See model description for the exact derivation.
+        data_tests:
+          - not_null
+
+  - name: person_identifiers
+    description: >
+      Long-format map of every source record to its gp_person_id: one row per
+      (gp_person_id, source_name, source_id), the full multi-valued sets behind
+      the scalar identifier columns in people (including records whose scalar
+      column was nulled by within-group ambiguity). See
+      canonical-person-plan.md decision 5.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [gp_person_id, source_name, source_id]
+    columns:
+      - name: gp_person_id
+        description: Foreign key to people.gp_person_id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+      - name: source_name
+        description: Source system of the record (ballotready, gp_api, hubspot, techspeed, techspeed_officeholder, ddhq).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+      - name: source_id
+        description: Native identifier of the record within its source system.
+        data_tests:
+          - not_null
+      - name: record_key
+        description: source_name || '|' || source_id, the person-graph node key.
+        data_tests:
+          - not_null
+          - unique
+      - name: first_seen_at
+        description: Source-native created timestamp of the record.
