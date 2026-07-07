@@ -192,7 +192,7 @@ def fetch_person_batch(
         body = response.json()
         if body.get("errors"):
             raise RuntimeError(f"CivicEngine GraphQL errors: {body['errors']}")
-        nodes = body.get("data", {}).get("nodes", [])
+        nodes = (body.get("data") or {}).get("nodes", [])
         return [node for node in nodes if node]
 
     raise RuntimeError("Unreachable: fetch_person_batch exhausted retries without returning")
