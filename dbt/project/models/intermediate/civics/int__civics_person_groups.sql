@@ -6,30 +6,8 @@
 -- (penultimate == final) proves it. See canonical-person-plan.md decision 1.
 {% set passes = 15 %}
 with
-    -- Node universe: every source record participating in person identity.
-    -- Superset of all edge endpoints (edges join the same source tables).
     nodes as (
-        select distinct 'ballotready|' || cast(br_candidate_id as string) as record_key
-        from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where br_candidate_id is not null
-        union
-        select distinct 'ballotready|' || cast(br_candidate_id as string)
-        from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
-        where br_candidate_id is not null
-        union
-        select 'gp_api|' || cast(id as string)
-        from {{ ref("stg_airbyte_source__gp_api_db_user") }}
-        union
-        select 'hubspot|' || cast(id as string)
-        from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
-        union
-        select distinct 'techspeed_officeholder|' || cast(ts_officeholder_id as string)
-        from {{ ref("int__civics_elected_official_canonical_ids") }}
-        where not ts_officeholder_id_is_reused
-        union
-        select distinct source_name || '|' || source_id
-        from {{ ref("stg_er_source__clustered_candidacy_stages") }}
-        where source_name in ('techspeed', 'ddhq')
+        select record_key, source_name from {{ ref("int__civics_person_nodes") }}
     ),
 
     -- Undirected adjacency with a self-loop per node, conflict edges excluded.
@@ -81,10 +59,11 @@ with
 
 select
     f.record_key,
-    substring_index(f.record_key, '|', 1) as source_name,
+    n.source_name,
     f.person_group_key,
     prev.person_group_key as pass_penultimate_key,
     cg.person_group_key is not null as had_conflict
 from labels_{{ passes }} as f
+inner join nodes as n using (record_key)
 inner join labels_{{ passes - 1 }} as prev using (record_key)
 left join conflict_groups as cg on cg.person_group_key = f.person_group_key
