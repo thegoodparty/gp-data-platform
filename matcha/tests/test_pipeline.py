@@ -326,12 +326,30 @@ def test_duckdb_api_default_when_env_unset(monkeypatch):
 
 def test_duckdb_api_memory_limit_applied(monkeypatch):
     """MATCHA_DUCKDB_MEMORY_LIMIT is applied to the DuckDB connection."""
+    import re
+
     from scripts.pipeline import _duckdb_api
 
     monkeypatch.setenv("MATCHA_DUCKDB_MEMORY_LIMIT", "100MB")
     api = _duckdb_api()
-    limit = api._con.execute("select current_setting('memory_limit')").fetchone()[0]
-    assert limit == "95.3 MiB"  # duckdb normalizes 100MB to MiB
+    limit_str = api._con.execute("select current_setting('memory_limit')").fetchone()[0]
+    # Parse "95.3 MiB", "100.0 MB", etc. into bytes so the assertion is not
+    # tied to a DuckDB-version-specific display format.
+    m = re.fullmatch(r"([\d.]+)\s*(KiB|MiB|GiB|KB|MB|GB)", limit_str)
+    assert m, f"Unexpected memory_limit format: {limit_str!r}"
+    value, unit = float(m.group(1)), m.group(2)
+    multipliers = {
+        "KiB": 1024,
+        "MiB": 1024**2,
+        "GiB": 1024**3,
+        "KB": 1000,
+        "MB": 1_000_000,
+        "GB": 1_000_000_000,
+    }
+    limit_bytes = value * multipliers[unit]
+    assert (
+        abs(limit_bytes - 100_000_000) < 5_000_000
+    ), f"memory_limit {limit_str!r} is not ~100 MB (got {limit_bytes:.0f} bytes)"
 
 
 def test_duckdb_api_memory_limit_invalid(monkeypatch):
