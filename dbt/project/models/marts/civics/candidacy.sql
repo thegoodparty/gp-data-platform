@@ -334,28 +334,73 @@ with
             = 1
     ),
 
-    -- Deepest stage that EXISTS for the whole race (across all candidacies),
-    -- from election_stage. This tells us whether a decided primary is actually
-    -- the deciding contest: when the race has no general (e.g. unopposed or a
-    -- single-stage local race), the deepest race stage is the primary itself, so
-    -- a primary win is a seat win rather than merely advancing. NOTE: this keys
-    -- off the stages BallotReady has loaded for the race, so it does not capture
-    -- jurisdictions where a majority at the primary wins the seat outright while
-    -- a general is still scheduled (a known follow-up).
-    election_final_stage as (
+    -- Deepest stage that EXISTS for a race, from election_stage. This tells us
+    -- whether a decided primary is actually the deciding contest: when the race
+    -- has no general (e.g. unopposed or a single-stage local race), the deepest
+    -- race stage is the primary itself, so a primary win is a seat win rather
+    -- than merely advancing.
+    --
+    -- Grain: (gp_election_id, br_position_id). gp_election_id is NOT guaranteed to
+    -- be one office/race - some span many positions (the largest has 754) - so a
+    -- per-election max would borrow a deeper stage (e.g. a general) from a
+    -- different office and wrongly demote a primary win to NULL. Keying on the
+    -- position avoids that cross-office leak.
+    --
+    -- The `> 0` guard excludes NULL and unrecognised stage_type (the macro ranks
+    -- both 0 via its else arm), which would otherwise zero out the race depth and
+    -- spuriously promote any decided stage (decided_stage_rank >= 0 is always
+    -- true).
+    --
+    -- NOTE: keys off the stages BallotReady has loaded, so it does not capture
+    -- jurisdictions where a majority at the primary wins the seat outright while a
+    -- general is still scheduled (a known follow-up).
+    race_final_stage_by_position as (
+        select
+            gp_election_id,
+            br_position_id,
+            max({{ election_stage_funnel_rank("stage_type") }}) as race_max_stage_rank
+        from {{ ref("election_stage") }}
+        where
+            gp_election_id is not null
+            and br_position_id is not null
+            and {{ election_stage_funnel_rank("stage_type") }} > 0
+        group by gp_election_id, br_position_id
+    ),
+
+    -- Per-election fallback for candidacies with no br_position_database_id (can't
+    -- key on position). This CAN overstate race depth when the election spans
+    -- multiple offices, so it is used ONLY when the candidacy has no position.
+    -- A canonical race/office id would remove the need for it (upstream follow-up).
+    race_final_stage_by_election as (
         select
             gp_election_id,
             max({{ election_stage_funnel_rank("stage_type") }}) as race_max_stage_rank
         from {{ ref("election_stage") }}
-        -- Only count stages the funnel recognises. The macro's else arm ranks
-        -- both NULL and any unrecognised stage_type as 0, which would make
-        -- race_max_stage_rank 0 for such a race and spuriously promote any
-        -- decided stage to a bare seat result (decided_stage_rank >= 0 is always
-        -- true). Requiring rank > 0 excludes both cases in one guard.
         where
             gp_election_id is not null
             and {{ election_stage_funnel_rank("stage_type") }} > 0
         group by gp_election_id
+    ),
+
+    -- Effective race depth per candidacy: position grain when the candidacy has a
+    -- br_position_database_id, else the per-election fallback. A positioned
+    -- candidacy whose position has no ranked stage rows gets NULL, which
+    -- conservatively keeps a primary win NULL rather than promoting it.
+    race_context as (
+        select
+            d.gp_candidacy_id,
+            case
+                when d.br_position_database_id is not null
+                then rp.race_max_stage_rank
+                else re.race_max_stage_rank
+            end as race_max_stage_rank
+        from deduplicated as d
+        left join
+            race_final_stage_by_position as rp
+            on rp.gp_election_id = d.gp_election_id
+            and rp.br_position_id = d.br_position_database_id
+        left join
+            race_final_stage_by_election as re on re.gp_election_id = d.gp_election_id
     )
 
 select
@@ -394,12 +439,17 @@ select
     -- (e.g. won the primary, general pending), or the race structure
     -- is unknown. The "won the primary" detail lives in
     -- latest_stage_reached / latest_stage_result.
-    -- Falls back to the provider-rolled value when there is no in-context
-    -- candidacy_stage row, or for a 2025 archive row whose stage rows carry no
-    -- decided result (the archive field is the authoritative historical outcome).
+    -- Falls back to the provider-rolled value only for 2025 archive rows (the
+    -- archive field is the authoritative historical outcome). For non-archive
+    -- rows we do NOT trust the provider rollup: it can be a premature primary win
+    -- (BallotReady rolls PRIMARY_WIN -> 'Won'), and a missing in-context stage
+    -- often means the candidacy's own stage row was filtered out by the
+    -- election/position context join rather than that no outcome exists. Asserting
+    -- a final result from the rollup there reintroduces the exact over-count this
+    -- model removes, so return NULL until in-context stage data proves finality.
     case
         when latest.latest_stage_reached is null
-        then deduplicated.candidacy_result
+        then case when deduplicated.is_archive then deduplicated.candidacy_result end
         -- 2025 archive rows carry an authoritative historical result. Trust it
         -- (except the indeterminate 'Cannot Determine', which should read NULL)
         -- before the stage logic can null it out — the archive's candidacy_stage
@@ -536,5 +586,4 @@ left join
 left join
     last_decided_stage_per_candidacy as decided
     on deduplicated.gp_candidacy_id = decided.gp_candidacy_id
-left join
-    election_final_stage as race on deduplicated.gp_election_id = race.gp_election_id
+left join race_context as race on deduplicated.gp_candidacy_id = race.gp_candidacy_id
