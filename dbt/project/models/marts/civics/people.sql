@@ -25,7 +25,7 @@ with
             end as ddhq_id_val,
             case
                 when ci.source_name = 'techspeed'
-                then regexp_replace(source_id, '__(primary|general|runoff)$', '')
+                then {{ strip_ts_stage_suffix("source_id") }}
             end as ts_code_val
         from {{ ref("int__civics_person_canonical_ids") }} as ci
         left join {{ ref("int__civics_person_groups") }} as pg using (record_key)
