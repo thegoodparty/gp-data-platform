@@ -2,8 +2,9 @@
 -- candidacy-stage clusters carry >1 distinct br_candidate_id (~108 of 70,960,
 -- 0.15% per plan finding 9); propagation resolves each such group to its min
 -- br_candidate_id and this test flags the residual. Warn on the known set,
--- error on a regression that would indicate an edge bug.
-{{ config(severity="warn", error_if="> 200") }}
+-- error on a regression that would indicate an edge bug. No severity
+-- override: severity warn would disable error_if entirely.
+{{ config(warn_if="!= 0", error_if="> 200") }}
 
 with
     br_records as (

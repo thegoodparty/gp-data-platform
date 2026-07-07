@@ -3190,6 +3190,35 @@ models:
           config:
             where: "gp_api_campaign_id is not null"
 
+  - name: int__civics_person_nodes
+    description: >
+      Person record universe. One row per record_key (source_name || '|' ||
+      source_id) participating in person identity: BR persons (all-time
+      candidacies + officeholder terms), gp_api users, HubSpot contacts,
+      non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
+      Also unions in the cluster- and bridge-derived gp_api user ids so every
+      edge endpoint is guaranteed a label seed in the propagation. See
+      canonical-person-plan.md decision 1.
+    columns:
+      - name: record_key
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+
   - name: int__civics_person_edges
     description: >
       Deterministic person edges. One row per typed edge between two record
@@ -3207,12 +3236,12 @@ models:
       # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
       # (DDHQ candidate_id reuse). Excluded from propagation and flagged. Warn
       # on any; error on a large jump that would signal an E7-keying regression.
+      # No severity override: severity warn would disable error_if entirely.
       - dbt_utils.expression_is_true:
           name: person_edges_conflict_count_warn
           arguments:
             expression: "not is_conflict"
           config:
-            severity: warn
             warn_if: ">0"
             error_if: ">200"
     columns:
@@ -3220,10 +3249,20 @@ models:
         description: Lower of the two endpoint record keys (source_name || '|' || source_id).
         data_tests:
           - not_null
+          # Every endpoint must exist in the node universe; a missing endpoint
+          # silently drops a propagation neighbor in one direction.
+          - relationships:
+              arguments:
+                to: ref('int__civics_person_nodes')
+                field: record_key
       - name: record_key_2
         description: Higher of the two endpoint record keys.
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_person_nodes')
+                field: record_key
       - name: edge_type
         description: Trust-ordered edge provenance.
         data_tests:
@@ -3246,18 +3285,19 @@ models:
 
   - name: int__civics_person_groups
     description: >
-      Person groups. One row per record_key with its person_group_key: the min
-      record_key reachable over the non-conflicting edges, via min-label
-      propagation across 12 unrolled passes (Spark SQL, no recursion). Pass
-      count exceeds the largest component's diameter; convergence is tested
-      (penultimate pass == final). had_conflict rolls up E7 conflict edges to
-      the group. See canonical-person-plan.md decision 1.
+      Person groups. One row per int__civics_person_nodes record_key with its
+      person_group_key: the min record_key reachable over the non-conflicting
+      edges, via min-label propagation across 15 unrolled passes (Spark SQL,
+      no recursion). Pass count exceeds the largest component's diameter with
+      headroom; convergence is tested (penultimate pass == final).
+      had_conflict rolls up E7 conflict edges to the group (both endpoints).
+      See canonical-person-plan.md decision 1.
     tests:
       # Propagation converged: the last two passes agree for every record.
       - dbt_utils.expression_is_true:
           name: person_groups_converged
           arguments:
-            expression: "pass_penultimate_key = pass_final_key"
+            expression: "person_group_key = pass_penultimate_key"
       # At most one distinct br_candidate_id per group. ~108 known cluster
       # conflicts resolve to the min br_candidate_id (plan decision 1); warn
       # on the known set, error on a regression. See the singular test
