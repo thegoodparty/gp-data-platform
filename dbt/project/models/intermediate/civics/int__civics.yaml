@@ -3682,3 +3682,105 @@ models:
         description: Timestamp when the score was last computed (the dbt run time).
         data_tests:
           - not_null
+
+  - name: int__civics_person_source_ballotready
+    description: >
+      BallotReady person projection for the canonical-person layer. One row per
+      br_candidate_id, reconstructed from the S3 candidacy and office-holder
+      feeds. first_seen_at is the earliest created timestamp across both and
+      drives the earliest-member gp_person_id mint. All-time. The BR API Person
+      object layers in as the attribute authority once its staging lands (A2).
+    columns:
+      - name: source_name
+        description: Constant 'ballotready'.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ballotready"]
+      - name: source_id
+        description: Native BR person id (br_candidate_id, as string).
+        data_tests:
+          - not_null
+          - unique
+      - name: br_candidate_id
+        description: Native BR person id; equal to source_id.
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: Earliest created timestamp across the person's candidacy and term rows.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_source_techspeed_candidate
+    description: >
+      TechSpeed candidate person projection. One row per candidate identity code
+      (generate_candidate_code, 5-arg). TechSpeed has no native candidate id, so
+      the code fragments a person across offices/cities by construction;
+      cross-code identity is resolved by the probabilistic person layer.
+      All-time. first_seen_at is the earliest parsed date_processed.
+    columns:
+      - name: source_name
+        description: Constant 'techspeed_candidate'.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["techspeed_candidate"]
+      - name: source_id
+        description: TechSpeed candidate identity code; equal to techspeed_candidate_code.
+        data_tests:
+          - not_null
+          - unique
+      - name: first_seen_at
+        description: Earliest parsed date_processed across the code's rows.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_source_techspeed_officeholder
+    description: >
+      TechSpeed office-holder person projection. One row per ts_officeholder_id.
+      br_candidate_id carries the deterministic BR person link, suppressed for
+      ids flagged reused across different people. All-time; first_seen_at is the
+      earliest parsed date_processed.
+    columns:
+      - name: source_name
+        description: Constant 'techspeed_officeholder'.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["techspeed_officeholder"]
+      - name: source_id
+        description: Native TechSpeed office-holder id (ts_officeholder_id).
+        data_tests:
+          - not_null
+          - unique
+      - name: first_seen_at
+        description: Earliest parsed date_processed across the id's rows.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_source_ddhq
+    description: >
+      DDHQ candidate person projection. One row per DDHQ candidate_id, which is
+      per-race/per-cycle rather than a durable person id; cross-cycle identity is
+      resolved by the probabilistic person layer. All-time. DDHQ has no native
+      created field, so first_seen_at falls back to the Airbyte extraction time.
+    columns:
+      - name: source_name
+        description: Constant 'ddhq'.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ddhq"]
+      - name: source_id
+        description: Native DDHQ candidate id (candidate_id, as string).
+        data_tests:
+          - not_null
+          - unique
+      - name: first_seen_at
+        description: Earliest Airbyte extraction time across the candidate_id's rows.
+        data_tests:
+          - not_null
