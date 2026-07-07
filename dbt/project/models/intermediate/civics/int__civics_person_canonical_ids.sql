@@ -62,22 +62,22 @@ with
         group by 1
     ),
 
-    -- techspeed / ddhq candidacy records: first_seen_at rides the prematch row
-    -- where source_id is built, so unique_id equals record_key (a lookup, not a
-    -- reconstruction).
+    -- techspeed candidacy records: first_seen_at rides the prematch row where
+    -- source_id is built (already a min over delivery duplicates), so
+    -- unique_id equals record_key -- a lookup, not a reconstruction.
     vendor_first_seen as (
         select unique_id as record_key, first_seen_at
         from {{ ref("int__er_prematch_candidacy_stages") }}
-        where source_name in ('techspeed', 'ddhq')
+        where source_name = 'techspeed'
     ),
 
-    -- Fallbacks for vendor records that survive in the stale cluster table but
-    -- have no prematch row (~184 ddhq today, 0 techspeed). Keyed lookup first,
-    -- so a ddhq record still in staging (e.g. dropped by a prematch filter)
-    -- gets its own row's extract time; records absent from staging entirely
-    -- fall back to their source's min extract time. All deterministic -- never
-    -- current_timestamp. DDHQ ships as one master CSV, so today all its
-    -- extract times share one value.
+    -- ddhq: per-record min extract time, keyed on the native ids that sit in
+    -- the same staging row as the timestamp (candidate_id + race_id = the
+    -- source_id components). Preferred over the prematch row, which carries a
+    -- single row's extract time and would lose min semantics if staging ever
+    -- held multiple extractions. Also covers stale cluster records with no
+    -- prematch row (~184 today). Deterministic -- never current_timestamp.
+    -- DDHQ ships as one master CSV, so today all extract times share one value.
     ddhq_extracts as (
         select
             'ddhq|'
@@ -90,6 +90,8 @@ with
         group by 1
     ),
 
+    -- Scalar last resorts: vendor records absent from staging entirely take
+    -- their source's min extract time.
     ddhq_load_date as (
         select min(_airbyte_extracted_at) as first_seen_at
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
