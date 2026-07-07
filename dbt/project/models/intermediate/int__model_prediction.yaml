@@ -38,3 +38,15 @@ models:
             - election_year
             - election_code
             - model_version
+    # API invariant (DATA-2015): exactly one row per natural key, regardless of
+    # model_version. The election-api consumer (projectedTurnout.service.ts) does
+    # not disambiguate model_version, so a second version per (district, year, code)
+    # would double-serve. This fails loudly if the carve/supersession ever regresses.
+    - dbt_utils.unique_combination_of_columns:
+        arguments:
+          combination_of_columns:
+            - state
+            - district_type
+            - district_name
+            - election_year
+            - election_code
