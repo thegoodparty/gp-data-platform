@@ -1,8 +1,9 @@
 -- Canonical person mart. One row per gp_person_id. Identifier columns are
 -- scalar only when the group carries exactly one value for that source; the
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
--- gp_api > HubSpot > BR > TS > DDHQ for contact fields, BR > others for civic
--- fields. Role flags derive from the member records, not from a stored status.
+-- gp_api > HubSpot > BR > TS > TS officeholder > DDHQ for contact fields,
+-- BR > others for civic fields. Role flags derive from the member records,
+-- not from a stored status.
 -- See canonical-person-plan.md decision 5.
 with
     records as (
@@ -120,7 +121,9 @@ with
         qualify
             row_number() over (
                 partition by br_candidate_id
-                order by coalesce(candidacy_updated_at, _airbyte_extracted_at) desc
+                order by
+                    coalesce(candidacy_updated_at, _airbyte_extracted_at) desc,
+                    parties asc
             )
             = 1
     ),
@@ -189,6 +192,37 @@ with
             row_number() over (
                 partition by r.gp_person_id
                 order by r.first_seen_at asc nulls last, r.source_id
+            )
+            = 1
+    ),
+
+    -- TS officeholder attributes: without this tier, officeholder-only groups
+    -- (which the mart flags is_elected_official) would carry no attributes at
+    -- all. Extra tie-breaks dedupe multiple staging rows per officeholder id.
+    ts_officeholder_attrs as (
+        select
+            r.gp_person_id,
+            nullif(trim(o.first_name), '') as first_name,
+            nullif(trim(o.last_name), '') as last_name,
+            nullif(trim(o.email), '') as email,
+            nullif(trim(o.phone_clean), '') as phone,
+            nullif(trim(o.state), '') as state,
+            nullif(trim(o.party), '') as party
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }} as o
+            on cast(o.ts_officeholder_id as string) = r.source_id
+        where r.source_name = 'techspeed_officeholder'
+        qualify
+            row_number() over (
+                partition by r.gp_person_id
+                order by
+                    r.first_seen_at asc nulls last,
+                    r.source_id,
+                    o.date_processed_date desc nulls last,
+                    o.email asc nulls last,
+                    o.phone_clean asc nulls last,
+                    o.last_name asc nulls last
             )
             = 1
     ),
@@ -264,19 +298,29 @@ select
     ids.ddhq_candidate_id,
     ids.ts_candidate_code,
 
-    -- Contact attributes: gp_api > HubSpot > BR > TS > DDHQ.
+    -- Contact attributes: gp_api > HubSpot > BR > TS > TS officeholder > DDHQ.
     coalesce(
-        ga.first_name, ha.first_name, ba.first_name, ta.first_name, da.first_name
+        ga.first_name,
+        ha.first_name,
+        ba.first_name,
+        ta.first_name,
+        toa.first_name,
+        da.first_name
     ) as first_name,
     coalesce(
-        ga.last_name, ha.last_name, ba.last_name, ta.last_name, da.last_name
+        ga.last_name,
+        ha.last_name,
+        ba.last_name,
+        ta.last_name,
+        toa.last_name,
+        da.last_name
     ) as last_name,
-    coalesce(ga.email, ha.email, ba.email, ta.email) as email,
-    coalesce(ga.phone, ha.phone, ba.phone, ta.phone) as phone,
+    coalesce(ga.email, ha.email, ba.email, ta.email, toa.email) as email,
+    coalesce(ga.phone, ha.phone, ba.phone, ta.phone, toa.phone) as phone,
 
     -- Civic attributes: BR > others.
-    coalesce(ba.state, ha.state, ta.state, da.state) as state,
-    coalesce(ba.party, ha.party, ta.party, da.party) as party,
+    coalesce(ba.state, ha.state, ta.state, toa.state, da.state) as state,
+    coalesce(ba.party, ha.party, ta.party, toa.party, da.party) as party,
 
     pb.first_seen_at,
     pb.group_size,
@@ -291,4 +335,5 @@ left join gp_api_attrs as ga using (gp_person_id)
 left join hubspot_attrs as ha using (gp_person_id)
 left join br_attrs as ba using (gp_person_id)
 left join ts_attrs as ta using (gp_person_id)
+left join ts_officeholder_attrs as toa using (gp_person_id)
 left join ddhq_attrs as da using (gp_person_id)

@@ -2771,9 +2771,10 @@ models:
       portion of the DDHQ candidacy key.
 
       Attribute precedence:
-        first_name, last_name, email, phone: gp_api > HubSpot > BR > TS > DDHQ
-          (DDHQ carries no email/phone).
-        state, party: BR > HubSpot > TS > DDHQ (gp_api carries neither).
+        first_name, last_name, email, phone: gp_api > HubSpot > BR > TS >
+          TS officeholder > DDHQ (DDHQ carries no email/phone).
+        state, party: BR > HubSpot > TS > TS officeholder > DDHQ (gp_api
+          carries neither).
       Each source contributes from one representative member record (earliest
       by first_seen_at), so a source's fields stay internally consistent.
       BR contact/state come from int__ballotready_candidate_identity (2026
@@ -2811,17 +2812,17 @@ models:
       - name: ts_candidate_code
         description: Stage-stripped TechSpeed candidate code when unambiguous, else NULL.
       - name: first_name
-        description: First name, precedence gp_api > HubSpot > BR > TS > DDHQ.
+        description: First name, precedence gp_api > HubSpot > BR > TS > TS officeholder > DDHQ.
       - name: last_name
         description: Last name, same precedence as first_name.
       - name: email
-        description: Email, precedence gp_api > HubSpot > BR > TS.
+        description: Email, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: phone
-        description: Phone, precedence gp_api > HubSpot > BR > TS.
+        description: Phone, precedence gp_api > HubSpot > BR > TS > TS officeholder.
       - name: state
-        description: State, precedence BR > HubSpot > TS > DDHQ. Format may vary (HubSpot free-text).
+        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Format may vary (HubSpot free-text).
       - name: party
-        description: Party affiliation, precedence BR > HubSpot > TS > DDHQ.
+        description: Party affiliation, precedence BR > HubSpot > TS > TS officeholder > DDHQ.
       - name: first_seen_at
         description: Earliest source-native created timestamp across the group's members.
         data_tests:
@@ -2887,9 +2888,10 @@ models:
         data_tests:
           - not_null
       - name: record_key
-        description: source_name || '|' || source_id, the person-graph node key.
+        description: >
+          source_name || '|' || source_id, the person-graph node key. Unique by
+          construction; the combination test above covers the grain.
         data_tests:
           - not_null
-          - unique
       - name: first_seen_at
         description: Source-native created timestamp of the record.
