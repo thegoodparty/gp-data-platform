@@ -32,7 +32,7 @@ class _FakeStmtApi:
         return SimpleNamespace(statement_id=statement_id, status=SimpleNamespace(state=_state(s)))
 
 
-def _client(api: _FakeStmtApi) -> object:
+def _client(api: object) -> object:
     return SimpleNamespace(statement_execution=api)
 
 

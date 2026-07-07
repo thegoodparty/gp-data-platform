@@ -18,9 +18,9 @@ _CFG = cast(
         engine_version="16.8",
         db_subnet_group="subnets",
         security_group_id="sg-x",
-        prod_db_user="people_admin",
-        prod_db_name="people_prod",
-        prod_db_port=5432,
+        db_user="people_admin",
+        db_name="people_prod",
+        db_port=5432,
         kms_key_arn="arn:kms",
         load_instance_class="db.r7g.16xlarge",
         s3_import_role_arn="arn:aws:iam::1:role/rds-s3-import",
@@ -133,6 +133,15 @@ def _patch(monkeypatch: pytest.MonkeyPatch, rds_client: FakeRds, ec2_client: Fak
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn()))
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     return captured
+
+
+def test_provision_fails_fast_on_missing_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A blank provision infra var should raise a clear, named error before any AWS call, not an
+    # opaque "MasterUsername must not be blank" from CreateDBCluster.
+    monkeypatch.setattr(step, "read_manifest", lambda *a, **k: None)
+    bad = cast(LoaderConfig, SimpleNamespace(**{**vars(_CFG), "db_user": ""}))
+    with pytest.raises(RuntimeError, match="LOADER_DB_USER"):
+        step.run(bad, "20260616")
 
 
 def test_provision_creates_cluster_and_writes_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

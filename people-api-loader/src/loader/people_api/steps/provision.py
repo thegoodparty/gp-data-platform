@@ -135,6 +135,21 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         )
         return existing
 
+    # Fail fast (with the env-var names) if any provision-only infra value is unset, rather than
+    # surfacing them one at a time as opaque AWS errors (e.g. "MasterUsername must not be blank").
+    required = {
+        "LOADER_DB_USER": cfg.db_user,
+        "LOADER_DB_NAME": cfg.db_name,
+        "LOADER_DB_SUBNET_GROUP": cfg.db_subnet_group,
+        "LOADER_SECURITY_GROUP_ID": cfg.security_group_id,
+        "LOADER_KMS_KEY_ARN": cfg.kms_key_arn,
+        "LOADER_VPC_ID": cfg.vpc_id,
+        "LOADER_S3_IMPORT_ROLE_ARN": cfg.s3_import_role_arn,
+    }
+    missing = sorted(name for name, value in required.items() if not value)
+    if missing:
+        raise RuntimeError(f"provision requires these env vars, which are unset/blank: {', '.join(missing)}")
+
     cluster_id = cfg.new_cluster_id(run_date)
     instance_id = cfg.new_writer_instance_id(run_date)
     load_pg = cfg.new_load_param_group(run_date)
@@ -166,9 +181,9 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             EngineVersion=cfg.engine_version,
             DBSubnetGroupName=cfg.db_subnet_group,
             VpcSecurityGroupIds=[cfg.security_group_id],
-            MasterUsername=cfg.prod_db_user,
+            MasterUsername=cfg.db_user,
             MasterUserPassword=password,
-            DatabaseName=cfg.prod_db_name,
+            DatabaseName=cfg.db_name,
             StorageEncrypted=True,
             KmsKeyId=cfg.kms_key_arn,
             DBClusterParameterGroupName=load_pg,
@@ -186,8 +201,8 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         # (plaintext fallback) and the cluster's default param group does not set rds.force_ssl.
         endpoint = created["DBCluster"]["Endpoint"]
         conninfo = (
-            f"postgresql://{cfg.prod_db_user}:{quote(password, safe='')}"
-            f"@{endpoint}:{cfg.prod_db_port}/{cfg.prod_db_name}?sslmode=require"
+            f"postgresql://{cfg.db_user}:{quote(password, safe='')}"
+            f"@{endpoint}:{cfg.db_port}/{cfg.db_name}?sslmode=require"
         )
         try:
             put_ssm_parameter(cfg, conn_param, conninfo)

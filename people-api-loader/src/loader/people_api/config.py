@@ -49,9 +49,9 @@ CONN_PARAM_PREFIX = "people-db-connection-string"
 # provision is still a stub). Empty placeholders are the out-of-the-box default.
 _PLACEHOLDER = ""
 DEFAULT_PROD_CLUSTER_ID = _PLACEHOLDER
-DEFAULT_PROD_DB_NAME = _PLACEHOLDER
-DEFAULT_PROD_DB_USER = _PLACEHOLDER
-DEFAULT_PROD_DB_PORT = 5432
+DEFAULT_DB_NAME = _PLACEHOLDER
+DEFAULT_DB_USER = _PLACEHOLDER
+DEFAULT_DB_PORT = 5432
 DEFAULT_VPC_ID = _PLACEHOLDER
 DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
 DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
@@ -104,11 +104,13 @@ class LoaderConfig(BaseLoaderConfig):
     # A runaway query then fails loudly instead of running unbounded (see db.py).
     db_statement_timeout_ms: int
 
-    # Prod (inspected / validated against)
+    # The Present/serving cluster inspected + validated against.
     prod_cluster_id: str
-    prod_db_name: str
-    prod_db_user: str
-    prod_db_port: int
+    # DB identity for the provisioned cluster's master user/db (matches the serving cluster so the
+    # API connects the same way), plus the port used in its connection string.
+    db_name: str
+    db_user: str
+    db_port: int
 
     # VPC / security
     vpc_id: str
@@ -190,9 +192,9 @@ class LoaderConfig(BaseLoaderConfig):
             db_conn_param=db_conn_param,
             db_statement_timeout_ms=int(os.environ.get("LOADER_DB_STATEMENT_TIMEOUT_MS", "0")),
             prod_cluster_id=_env("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
-            prod_db_name=_env("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
-            prod_db_user=_env("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
-            prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)),
+            db_name=_env("LOADER_DB_NAME", DEFAULT_DB_NAME),
+            db_user=_env("LOADER_DB_USER", DEFAULT_DB_USER),
+            db_port=int(os.environ.get("LOADER_DB_PORT", DEFAULT_DB_PORT)),
             vpc_id=_env("LOADER_VPC_ID", DEFAULT_VPC_ID),
             db_subnet_group=_env("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
             security_group_id=_env("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
