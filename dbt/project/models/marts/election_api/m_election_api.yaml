@@ -275,7 +275,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral"]
+                values: ["General", "LocalOrMunicipal", "ConsolidatedGeneral", "Primary"]
       - name: model_version
         description: The model version
         tests:
