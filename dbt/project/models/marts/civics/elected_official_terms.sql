@@ -31,6 +31,11 @@ with
         select br_office_holder_id, ddhq_winning_votes
         from {{ ref("int__civics_elected_official_ddhq_matched_votes") }}
         where br_office_holder_id is not null
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     )
 
 select
@@ -39,6 +44,10 @@ select
 
     -- Person FK (from BR intermediate; NULL for vacancies)
     br.gp_elected_official_id,
+
+    -- Canonical person. min over the person ids reached by br_candidate_id
+    -- and the bridged gp_api_user_id (one person by construction).
+    least(bp.gp_person_id, gpp.gp_person_id) as gp_person_id,
 
     -- Source IDs
     br.br_office_holder_id,
@@ -143,3 +152,8 @@ from br_terms as br
 left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
 left join gp_api_bridge as gp on br.br_office_holder_id = gp.br_office_holder_id
 left join ddhq_votes as dv on br.br_office_holder_id = dv.br_office_holder_id
+left join
+    person_ids as bp
+    on bp.record_key = 'ballotready|' || cast(br.br_candidate_id as string)
+left join
+    person_ids as gpp on gpp.record_key = 'gp_api|' || cast(gp.gp_api_user_id as string)

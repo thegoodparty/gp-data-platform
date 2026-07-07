@@ -138,7 +138,25 @@ with
             gp
             on coalesce(br.gp_elected_official_id, ts.gp_elected_official_id)
             = gp.gp_elected_official_id
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     )
 
-select *
+-- gp_person_id: min over the person ids reached by br_candidate_id,
+-- gp_api_user_id, and hubspot_contact_id (one person by construction; min
+-- guards residual multi-source disagreement).
+select
+    merged.*, least(bp.gp_person_id, gpp.gp_person_id, hp.gp_person_id) as gp_person_id
 from merged
+left join
+    person_ids as bp
+    on bp.record_key = 'ballotready|' || cast(merged.br_candidate_id as string)
+left join
+    person_ids as gpp
+    on gpp.record_key = 'gp_api|' || cast(merged.gp_api_user_id as string)
+left join
+    person_ids as hp
+    on hp.record_key = 'hubspot|' || cast(merged.hubspot_contact_id as string)

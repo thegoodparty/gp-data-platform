@@ -97,7 +97,13 @@ with
         left join organization_stats os on u.id = os.user_id
         left join campaign_stats cs on u.id = cs.user_id
         left join poll_users pu on u.id = pu.user_id
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     )
 
-select *
+select final.*, p.gp_person_id
 from final
+left join person_ids as p on p.record_key = 'gp_api|' || cast(final.user_id as string)

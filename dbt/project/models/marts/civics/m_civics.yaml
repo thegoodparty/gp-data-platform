@@ -14,6 +14,14 @@ models:
           - unique
           - not_null
 
+      - name: gp_person_id
+        description: Canonical person (FK to people.gp_person_id), via gp_api|user_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: email
         description: User's email address (primary contact, unique identifier)
 
@@ -426,6 +434,17 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the product campaign's user, and the
+          candidacy's stage rows.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: gp_candidate_id
         description: Foreign key to candidate table
@@ -841,6 +860,17 @@ models:
           - not_null
           - is_uuid
 
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the prod_db user, and the candidate's
+          candidacies.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: hubspot_contact_id
         description: >
           Contact ID from HubSpot CRM linking this candidate to a HubSpot
@@ -932,19 +962,33 @@ models:
 
   - name: candidacy_stage
     description: >
-      Candidacy stage mart. Union of 2025 HubSpot archive and 2026+ merged
-      BallotReady + TechSpeed + DDHQ + gp_api via Splink cluster_id-based
-      4-way FOJ. Each provider is wrapped with its cluster_id from
-      stg_er_source__clustered_candidacy_stages, then joined on
-      coalesce(cluster_id, 'self_' || gp_candidacy_stage_id).
+      Candidacy stage mart, in two eras (see canonical-person-plan.md
+      decision 4).
 
-      Provider precedence (2026+ branch):
-        gp_api > BR > TS > DDHQ for candidate_name, source_candidate_id,
-          candidate_party, election_stage_date, created_at, updated_at.
-        DDHQ wins for results: is_winner, election_result,
-          election_result_source, votes_received, is_uncontested.
-        BR/TS only for match_confidence, match_reasoning,
-          match_top_candidates, has_match (LLM-match metadata).
+      2026+: 4-way Splink cluster_id-based FOJ over BallotReady + TechSpeed +
+      DDHQ + gp_api. Each provider is wrapped with its cluster_id from
+      stg_er_source__clustered_candidacy_stages, then joined on
+      coalesce(cluster_id, 'self_' || gp_candidacy_stage_id). Provider
+      precedence: gp_api > BR > TS > DDHQ for candidate_name,
+      source_candidate_id, candidate_party, election_stage_date, created_at,
+      updated_at; DDHQ wins for results (is_winner, election_result,
+      election_result_source, votes_received, is_uncontested); BR/TS only for
+      the LLM-match metadata (match_confidence, match_reasoning,
+      match_top_candidates, has_match).
+
+      <=2025: the HubSpot archive is the spine. BR / DDHQ / TS candidacy-stage
+      rows for the same person-stage merge into the archive row (matched via
+      gp_person_id + election_stage_date + election_stage, since HubSpot is not
+      in candidacy-stage ER) with HubSpot-first display precedence
+      (HubSpot > DDHQ > BR > TS) on candidate_name, is_winner, election_result,
+      election_result_source. The era merge is contained to this mart: the BR
+      and DDHQ candidacy / election / election_stage / candidate intermediates
+      stay 2026-gated, so an archive-uncovered <=2025 FOJ row survives
+      standalone only when both its gp_candidacy_id and gp_election_stage_id are
+      real mart FKs (TechSpeed, whose grains are already all-time, qualifies as
+      today; BR / DDHQ <=2025 rows only ever enrich an archive row). Their
+      standalone all-time expansion is a later PR. source_systems lists every
+      contributing source.
 
       Diagnostic columns (per-provider natural keys, populated only when
       that provider is in the cluster): br_candidacy_id,
@@ -958,6 +1002,20 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Resolved from the row's
+          native keys (br_candidacy_id -> BR person, ts_source_candidate_id,
+          ddhq keys, gp_api_campaign_id -> user) for FOJ rows, and from the
+          HubSpot contact for archive rows. Deterministic min when a row's
+          sources reach more than one person (a warn test tracks that). NULL for
+          <=2025 vendor rows not yet in the person universe (pre-swap).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: gp_candidacy_id
         description: Foreign key to candidacy table
@@ -1753,6 +1811,17 @@ models:
               config:
                 where: "gp_elected_official_id is not null"
 
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by br_candidate_id and the bridged gp_api_user_id. NULL for
+          vacancy terms.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: br_office_holder_id
         description: BallotReady term-level row PK (OfficeHolder.databaseId)
         data_tests:
@@ -2129,6 +2198,16 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by br_candidate_id, gp_api_user_id, and hubspot_contact_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: br_candidate_id
         description: |
