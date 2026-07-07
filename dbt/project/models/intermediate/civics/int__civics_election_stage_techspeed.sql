@@ -1,4 +1,4 @@
--- TechSpeed candidates → Civics mart election_stage schema (2026+ elections).
+-- TechSpeed candidates → Civics mart election_stage schema
 -- Source: stg_airbyte_source__techspeed_gdrive_candidates
 -- Grain: one row per election stage (race + stage type).
 --
@@ -96,24 +96,23 @@ with
             br_election_dates as bed on brp.br_gp_election_id = bed.br_gp_election_id
     ),
 
-    -- Determine stage type: a 2026+ primary takes priority over general.
-    -- Must stay identical to int__civics_candidacy_stage_techspeed so the
-    -- gp_election_stage_id hash inputs (stage_type, stage_election_date)
-    -- align between the two models.
+    -- Determine stage type: primary takes priority over general. If TechSpeed
+    -- populates both dates (or BR enrichment fills in the missing one), the
+    -- candidate is at the primary stage.
     with_stage as (
         select
             *,
             case
-                when primary_election_date_parsed >= '2026-01-01'
+                when primary_election_date_parsed is not null
                 then 'primary'
                 else 'general'
             end as stage_type,
             case
-                when primary_election_date_parsed >= '2026-01-01'
+                when primary_election_date_parsed is not null
                 then primary_election_date_parsed
                 else general_election_date_parsed
             end as stage_election_date,
-            stage_type = 'primary' as is_primary
+            primary_election_date_parsed is not null as is_primary
         from source
         where
             coalesce(primary_election_date_parsed, general_election_date_parsed)
@@ -124,11 +123,6 @@ with
             between 1900 and 2050
     ),
 
-    -- 2026 gate at stage grain, mirroring int__civics_candidacy_stage_techspeed:
-    -- without it, pre-2026 TS stages reach the election_stage mart as orphans
-    -- (their candidacy stages are gated out).
-    gated_stage as (select * from with_stage where stage_election_date >= '2026-01-01'),
-
     -- canonical_gp_election_stage_id: stage-grain join (only populated if THIS
     -- specific race's stage was clustered).
     -- canonical_gp_election_id: candidacy-grain join, then propagated across
@@ -137,19 +131,19 @@ with
     -- gp_election_id alignment between the two models.
     with_stage_and_canonical as (
         select
-            gated_stage.*,
+            with_stage.*,
             xw_stage.canonical_gp_election_stage_id,
             max(xw_cand.canonical_gp_election_id) over (
                 partition by {{ generate_gp_election_id() }}
             ) as canonical_gp_election_id
-        from gated_stage
+        from with_stage
         left join
             canonical_stage as xw_stage
-            on gated_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
-            and gated_stage.stage_election_date = xw_stage.ts_stage_election_date
+            on with_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
+            and with_stage.stage_election_date = xw_stage.ts_stage_election_date
         left join
             canonical_candidacy as xw_cand
-            on gated_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
+            on with_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
     ),
 
     -- Aggregate to race-level (one row per race + stage, not per candidate)

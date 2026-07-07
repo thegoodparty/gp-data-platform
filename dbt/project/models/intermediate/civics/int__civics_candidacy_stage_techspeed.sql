@@ -1,4 +1,4 @@
--- TechSpeed candidates → Civics mart candidacy_stage schema (2026+ elections).
+-- TechSpeed candidates → Civics mart candidacy_stage schema.
 -- Grain: one row per candidacy stage. A candidate with both primary and
 -- general dates produces two rows.
 with
@@ -20,22 +20,19 @@ with
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
     ),
 
-    -- Determine stage type: a 2026+ primary takes priority over general (the
-    -- candidate hasn't advanced yet). A pre-2026 primary belongs to the
-    -- archive era, so a row carrying one alongside a 2026+ general is
-    -- represented by its general stage rather than dropped wholesale by the
-    -- gate below (no such rows exist today; defensive). Must stay identical
-    -- to int__civics_election_stage_techspeed so stage IDs align.
+    -- Determine stage type: primary takes priority over general. If TechSpeed
+    -- populates both dates, the candidate is at the primary stage (they haven't
+    -- advanced yet). Only if no primary date exists do we treat it as general.
     with_stage as (
         select
             *,
             case
-                when primary_election_date_parsed >= '2026-01-01'
+                when primary_election_date_parsed is not null
                 then 'primary'
                 else 'general'
             end as stage_type,
             case
-                when primary_election_date_parsed >= '2026-01-01'
+                when primary_election_date_parsed is not null
                 then primary_election_date_parsed
                 else general_election_date_parsed
             end as stage_election_date
@@ -48,11 +45,6 @@ with
             )
             between 1900 and 2050
     ),
-
-    -- 2026 gate at stage grain, matching BR's/DDHQ's per-row election_day/
-    -- election_date gates; keeps the HubSpot archive the sole <=2025 outcome
-    -- authority in the candidacy_stage mart.
-    gated_stage as (select * from with_stage where stage_election_date >= '2026-01-01'),
 
     -- ER crosswalk — joined twice below:
     -- (1) stage grain: canonical stage/election_stage IDs only apply to the
@@ -164,14 +156,14 @@ with
             _airbyte_extracted_at as created_at,
             _airbyte_extracted_at as updated_at
 
-        from gated_stage
+        from with_stage
         left join
             canonical_stage as xw_stage
-            on gated_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
-            and gated_stage.stage_election_date = xw_stage.ts_stage_election_date
+            on with_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
+            and with_stage.stage_election_date = xw_stage.ts_stage_election_date
         left join
             canonical_candidacy as xw_cand
-            on gated_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
+            on with_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
         where election_date is not null
     ),
 
