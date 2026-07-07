@@ -2052,6 +2052,14 @@ models:
                   - Regional
                   - Federal
 
+      - name: first_seen_at
+        description: >
+          Source-native record timestamp for the person id mint. Populated only
+          for techspeed (min processing date across delivery duplicates, airbyte
+          extract as parse fallback) and ddhq (airbyte extract time); null for
+          ballotready and gp_api, whose values are computed in
+          int__civics_person_canonical_ids from their native person-grain ids.
+
   - name: int__er_prematch_elected_officials
     description: >
       Entity resolution prematch table at term grain. Two sources:
@@ -3288,7 +3296,7 @@ models:
       source_id) via generate_salted_uuid([source_name, source_id], salt=person),
       so first-in wins uniformly and the id survives a later record joining the
       group. first_seen_at is computed inline where each record's native id and
-      source timestamp share a row. See canonical-person-plan.md decision 2.
+      source timestamp share a row.
     columns:
       - name: record_key
         description: Primary key. source_name || '|' || source_id for the source record.
@@ -3306,7 +3314,9 @@ models:
       - name: first_seen_at
         description: >
           Earliest source-native timestamp for the record. Drives the mint.
-          Deterministic and full-refresh safe (never current_timestamp).
+          Derived from source data only (never current_timestamp), so a full
+          refresh reproduces it; the ddhq value can still shift if Airbyte
+          re-extracts the master CSV. The snapshot is the churn detector.
         data_tests:
           - not_null
       - name: minting_source_name

@@ -4,7 +4,7 @@
 -- later record (e.g. a BR row) joins a group minted from a gp_api user.
 -- first_seen_at is computed inline where each record's native id and source
 -- timestamp share a row -- never reconstructed and re-joined (the centralized
--- attempt failed that way). See canonical-person-plan.md decision 2.
+-- attempt failed that way: join drift, coverage gaps, inherited filters).
 with
     groups as (
         select record_key, source_name, person_group_key
@@ -12,17 +12,15 @@ with
     ),
 
     -- BallotReady: earliest creation across both S3 feeds, keyed on the person
-    -- grain (br_candidate_id). Cast because candidacy_created_at is un-cast in
-    -- staging and must union with the timestamp office_holder_created_at.
+    -- grain (br_candidate_id).
     br_created as (
         select
             cast(br_candidate_id as string) as br_candidate_id,
-            cast(candidacy_created_at as timestamp) as created_at
+            candidacy_created_at as created_at
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where br_candidate_id is not null
         union all
-        select
-            cast(br_candidate_id as string), cast(office_holder_created_at as timestamp)
+        select cast(br_candidate_id as string), office_holder_created_at
         from {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }}
         where br_candidate_id is not null
     ),
@@ -37,8 +35,7 @@ with
 
     gp_api_first_seen as (
         select
-            'gp_api|' || cast(id as string) as record_key,
-            cast(created_at as timestamp) as first_seen_at
+            'gp_api|' || cast(id as string) as record_key, created_at as first_seen_at
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
@@ -72,11 +69,24 @@ with
         where source_name in ('techspeed', 'ddhq')
     ),
 
-    -- Deterministic fallback for the ~184 ddhq records that survive in the
-    -- stale cluster table but whose source rows have churned out of both the
-    -- prematch and ddhq staging. DDHQ ships as a single CSV with one shared
-    -- extract time (finding 5), so this is the exact value in-prematch ddhq
-    -- rows already carry -- full-refresh safe, never current_timestamp.
+    -- Fallbacks for ddhq records that survive in the stale cluster table but
+    -- have no prematch row (~184 today). Keyed lookup first, so a record still
+    -- in staging (e.g. dropped by a prematch filter) gets its own row's extract
+    -- time; records absent from staging entirely fall back to the source's min
+    -- extract time. Both are deterministic -- never current_timestamp. DDHQ
+    -- ships as one master CSV, so today all extract times share one value.
+    ddhq_extracts as (
+        select
+            'ddhq|'
+            || cast(candidate_id as string)
+            || '_'
+            || cast(ddhq_race_id as string) as record_key,
+            min(_airbyte_extracted_at) as first_seen_at
+        from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+        where candidate_id is not null and ddhq_race_id is not null
+        group by 1
+    ),
+
     ddhq_load_date as (
         select min(_airbyte_extracted_at) as first_seen_at
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
@@ -107,10 +117,12 @@ with
             substring_index(g.record_key, '|', -1) as source_id,
             coalesce(
                 fs.first_seen_at,
+                de.first_seen_at,
                 case when g.source_name = 'ddhq' then dl.first_seen_at end
             ) as first_seen_at
         from groups as g
         left join first_seen as fs using (record_key)
+        left join ddhq_extracts as de using (record_key)
         cross join ddhq_load_date as dl
     ),
 

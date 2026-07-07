@@ -145,6 +145,13 @@ with
             email_source,
             source_url,
             date_processed,
+            -- Deliveries mix ISO and US date formats (same parse rule as the
+            -- officeholders staging).
+            coalesce(
+                try_cast(date_processed as date),
+                try_to_date(date_processed, 'MM/dd/yyyy'),
+                try_to_date(date_processed, 'M/d/yyyy')
+            ) as date_processed_date,
 
             -- Social / web
             nullif(trim(website_url), '') as website_url,
