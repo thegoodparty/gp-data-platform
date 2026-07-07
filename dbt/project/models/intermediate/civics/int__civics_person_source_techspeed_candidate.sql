@@ -1,11 +1,10 @@
 -- TechSpeed candidate person projection: one row per candidate identity code.
 -- TechSpeed exposes no native candidate id, so identity keys off
--- generate_candidate_code (same 5-arg form the candidacy-stage prematch uses),
--- which makes candidacy_source_ids join back to the candidacy-stage layer.
--- The code fragments a person across offices and cities by construction;
--- cross-code person identity is left to the probabilistic person layer
--- (canonical-person plan, pre-work finding 4). All-time. first_seen_at is the
--- earliest date_processed (parsed inline; candidate staging keeps it raw).
+-- generate_candidate_code (the same 5-arg form the candidacy-stage models use),
+-- which keeps candidacy_source_ids joinable to the candidacy-stage layer. The
+-- code varies by office and city, so a person running for multiple offices
+-- resolves to several codes here. first_seen_at is the earliest date_processed
+-- (parsed inline; candidate staging keeps it raw).
 with
     ts as (
         select

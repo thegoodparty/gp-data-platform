@@ -1,16 +1,11 @@
--- BallotReady person projection for the canonical-person layer: one row per
--- br_candidate_id (the native BR person id). A BR person has no first-class
--- record in the S3 feeds, so identity is reconstructed from their candidacy
--- (candidacies_v3) and office-holder (office_holders_v3) rows. first_seen_at is
--- the earliest created timestamp across both, which drives the earliest-member
--- gp_person_id mint (canonical-person plan, decision 4).
+-- BallotReady person projection: one row per br_candidate_id, the native BR
+-- person id. BallotReady has no first-class person record in the S3 feeds, so
+-- identity is reconstructed from a person's candidacy (candidacies_v3) and
+-- office-holder (office_holders_v3) rows. first_seen_at is the earliest created
+-- timestamp across both.
 --
--- All-time: no election-day filter. A person's older candidacies and terms are
--- exactly the signal the person layer uses to resolve them (decision 9).
---
--- The BR API Person object (richer bio/contacts) is the intended authority for
--- these attributes; it layers in once its staging lands (track A2). Until then
--- attributes come from the S3 rows only.
+-- No election-day filter: a person's older candidacies and terms are useful
+-- signal when resolving them across sources.
 with
     candidacy_members as (
         select

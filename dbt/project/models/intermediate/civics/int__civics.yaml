@@ -3685,11 +3685,9 @@ models:
 
   - name: int__civics_person_source_ballotready
     description: >
-      BallotReady person projection for the canonical-person layer. One row per
-      br_candidate_id, reconstructed from the S3 candidacy and office-holder
-      feeds. first_seen_at is the earliest created timestamp across both and
-      drives the earliest-member gp_person_id mint. All-time. The BR API Person
-      object layers in as the attribute authority once its staging lands (A2).
+      BallotReady person projection. One row per br_candidate_id, reconstructed
+      from the S3 candidacy and office-holder feeds. first_seen_at is the
+      earliest created timestamp across both. All-time.
     columns:
       - name: source_name
         description: Constant 'ballotready'.

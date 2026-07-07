@@ -1,9 +1,9 @@
 -- DDHQ candidate person projection: one row per DDHQ candidate_id. candidate_id
--- is per-race/per-cycle, not a durable person id (pre-work finding 1): it can
--- span several races within a cycle and is occasionally reused across people,
--- so cross-cycle person identity is left to the probabilistic layer. DDHQ has
--- no native created field, so first_seen_at falls back to the Airbyte
--- extraction time (canonical-person plan, decision 4). All-time.
+-- is per-race/per-cycle rather than a durable person id: it can span several
+-- races within a cycle and is occasionally reused across people, so cross-cycle
+-- person identity is resolved by the probabilistic person layer, not here. DDHQ
+-- has no native created field, so first_seen_at falls back to the Airbyte
+-- extraction time.
 with
     ddhq as (
         select
