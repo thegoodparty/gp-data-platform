@@ -183,18 +183,17 @@ with
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type,
-            -- Earliest processing date on this row; airbyte extract fills gaps
-            -- where date_processed did not parse. Feeds the person mint.
-            coalesce(
-                cast(
-                    coalesce(
-                        try_cast(ts.date_processed as date),
-                        try_to_date(ts.date_processed, 'MM/dd/yyyy'),
-                        try_to_date(ts.date_processed, 'M/d/yyyy')
-                    ) as timestamp
-                ),
-                ts._airbyte_extracted_at
-            ) as first_seen_at
+            -- Earliest processing date across all delivery rows for this
+            -- candidate-stage (windows evaluate before qualify), so the value
+            -- is deterministic whichever duplicate the dedupe keeps. Airbyte
+            -- extract fills gaps where date_processed did not parse. Feeds the
+            -- person mint.
+            min(
+                coalesce(
+                    cast(ts.date_processed_date as timestamp), ts._airbyte_extracted_at
+                )
+            ) over (partition by ts.techspeed_candidate_code, ts.election_stage)
+            as first_seen_at
         from ts_with_stage as ts
         -- Dedupe: staging is not deduplicated, keep first appearance per
         -- candidate-stage to avoid duplicate source_ids
