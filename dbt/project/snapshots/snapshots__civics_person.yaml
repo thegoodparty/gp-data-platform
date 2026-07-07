@@ -1,0 +1,19 @@
+snapshots:
+  - name: snapshot__int__civics_person_canonical_ids
+    relation: ref('int__civics_person_canonical_ids')
+    description: >
+      Snapshot of the person id mint so gp_person_id assignment is diffable across
+      runs. check strategy on the assignment columns (no native updated_at); a
+      change means a record was re-minted or moved groups.
+    config:
+      tags:
+        - civics
+        - person
+        - snapshot
+      unique_key: record_key
+      strategy: check
+      check_cols:
+        - person_group_key
+        - gp_person_id
+        - minting_source_name
+        - minting_source_id
