@@ -158,6 +158,7 @@ _SLUG_ELECTION_CODE = {
     "midterm": "General",
     "even_year_local": "Local_or_Municipal",
     "off_year_local_lag2": "Local_or_Municipal",
+    "even_year_primary": "Primary",
 }
 
 
@@ -166,9 +167,9 @@ def _year_to_model_slugs(year):
     if year % 2 != 0:
         return ["off_year_local_lag2"]
     elif year % 4 == 2:
-        return ["midterm", "even_year_local"]
+        return ["midterm", "even_year_local", "even_year_primary"]
     else:
-        return ["presidential_lag3", "even_year_local"]
+        return ["presidential_lag3", "even_year_local", "even_year_primary"]
 
 
 def _detect_election_cols(l2_columns, max_vote_history_year):

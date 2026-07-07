@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import (
     _OPP_STATES_SQL,
+    _SLUG_ELECTION_CODE,
     _assert_consistent_model_family,
     _build_district_membership_sql,
     _build_precinct_features_sql,
@@ -59,14 +60,22 @@ _ELECTION_COLS = [
 @pytest.mark.parametrize(
     "year,expected",
     [
-        (2026, ["midterm", "even_year_local"]),  # even, year % 4 == 2
-        (2028, ["presidential_lag3", "even_year_local"]),  # even, year % 4 == 0
+        (2026, ["midterm", "even_year_local", "even_year_primary"]),  # even, year % 4 == 2
+        (2028, ["presidential_lag3", "even_year_local", "even_year_primary"]),  # even, year % 4 == 0
         (2027, ["off_year_local_lag2"]),  # odd
         (2025, ["off_year_local_lag2"]),  # odd
     ],
 )
 def test_year_to_model_slugs(year, expected):
     assert _year_to_model_slugs(year) == expected
+
+
+@pytest.mark.parametrize("year", [2024, 2025, 2026, 2027, 2028, 2029, 2030])
+def test_every_routed_slug_has_an_election_code(year):
+    # Every slug _year_to_model_slugs can return must have an entry in
+    # _SLUG_ELECTION_CODE, or _predict_precinct KeyErrors in production.
+    for slug in _year_to_model_slugs(year):
+        assert slug in _SLUG_ELECTION_CODE, f"{slug} (routed for {year}) has no election_code mapping"
 
 
 def test_detect_election_cols_filters_future_years():
