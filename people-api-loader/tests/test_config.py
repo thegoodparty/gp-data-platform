@@ -55,6 +55,23 @@ def test_from_env_db_conn_param_full_override(monkeypatch: pytest.MonkeyPatch) -
     assert LoaderConfig.from_env().db_conn_param == "custom/param/name"
 
 
+def test_provisioned_identifiers_are_env_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Dev and prod provision into the SAME AWS account, and `provision` is idempotent by name,
+    # so a same-date run in the other env would adopt this env's cluster (cross-env contamination)
+    # unless the dated identifiers carry the env. The conn param is already env-scoped; these four
+    # must match. Convention: gp-people-db-{date}-{env}[-role].
+    monkeypatch.setenv("LOADER_S3_BUCKET", "gp-people-loader-us-west-2")
+    monkeypatch.setenv("LOADER_ENV", "dev")
+    cfg = LoaderConfig.from_env()
+    assert cfg.new_cluster_id("20260707") == "gp-people-db-20260707-dev"
+    assert cfg.new_writer_instance_id("20260707") == "gp-people-db-20260707-dev-writer"
+    assert cfg.new_load_param_group("20260707") == "gp-people-db-20260707-dev-load"
+    assert cfg.new_serve_param_group("20260707") == "gp-people-db-20260707-dev-serve"
+    # prod uses the same builders with a different env, so the names cannot collide.
+    monkeypatch.setenv("LOADER_ENV", "prod")
+    assert LoaderConfig.from_env().new_cluster_id("20260707") == "gp-people-db-20260707-prod"
+
+
 def test_people_api_mart_fqns_default(monkeypatch: pytest.MonkeyPatch) -> None:
     import os
 

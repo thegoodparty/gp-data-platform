@@ -220,21 +220,25 @@ class LoaderConfig(BaseLoaderConfig):
     def export_prefix(self, run_date: str) -> str:
         return f"voter_export_{run_date}"
 
+    # Dated identifiers are env-scoped (gp-people-db-{date}-{env}[-role]). Dev and prod provision
+    # into the same AWS account and `provision` is idempotent by name, so an un-scoped name would
+    # let a same-date run in the other env adopt this env's cluster — cross-env contamination, not
+    # just a clash. The conn param (below) has always been env-scoped; these mirror it.
     def new_cluster_id(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}"
+        return f"gp-people-db-{run_date}-{self.db_env}"
 
     def new_writer_instance_id(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}-writer"
+        return f"{self.new_cluster_id(run_date)}-writer"
 
     def new_conn_param(self, run_date: str) -> str:
         """SSM SecureString name for the provisioned cluster's connection string."""
         return f"{CONN_PARAM_PREFIX}-{self.db_env}-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}-load"
+        return f"{self.new_cluster_id(run_date)}-load"
 
     def new_serve_param_group(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}-serve"
+        return f"{self.new_cluster_id(run_date)}-serve"
 
 
 def require_run_date(run_date: str) -> str:
