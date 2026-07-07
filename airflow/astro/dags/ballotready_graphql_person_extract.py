@@ -34,12 +34,12 @@ Election, OfficeHolder) will land in their own DAGs.
 """
 
 import logging
-from datetime import UTC
 
 from airflow.sdk import BaseHook, Param, Variable, dag, get_current_context, task
 from include.custom_functions.ballotready_graphql import (
     chunked,
     fetch_person_batch,
+    format_cursor_ts,
     get_person_ids_to_fetch,
     read_cursor,
     write_cursor,
@@ -52,10 +52,6 @@ t_log = logging.getLogger("airflow.task")
 
 DEFAULT_S3_PREFIX = "ballotready/graphql/persons"
 FETCH_BATCH_SIZE = 100  # persons per GraphQL nodes() call
-
-
-# Moved to include/custom_functions/ballotready_graphql.py — import it from there.
-# from include.custom_functions.ballotready_graphql import _format_cursor_ts
 
 
 @dag(
@@ -170,7 +166,7 @@ def ballotready_graphql_person_extract():
             bucket,
             cursor_key,
             aws_conn_id,
-            source_changed_at=_format_cursor_ts(last_changed_at),
+            source_changed_at=format_cursor_ts(last_changed_at),
             br_person_id=last_id,
             dag_run_id=dag_run_id,
         )
@@ -179,7 +175,7 @@ def ballotready_graphql_person_extract():
             "persons_requested": len(person_ids),
             "persons_written": persons_written,
             "batches": batches,
-            "cursor_source_changed_at": _format_cursor_ts(last_changed_at),
+            "cursor_source_changed_at": format_cursor_ts(last_changed_at),
             "cursor_br_person_id": last_id,
         }
         t_log.info("Extraction complete: %s", summary)

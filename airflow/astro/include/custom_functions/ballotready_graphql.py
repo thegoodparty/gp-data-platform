@@ -20,7 +20,7 @@ import re
 import time
 from base64 import b64encode
 from collections.abc import Iterator, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -215,6 +215,18 @@ def _validate_iso_timestamp(value: str) -> str:
         return datetime.fromisoformat(value).isoformat(sep=" ", timespec="microseconds")
     except ValueError:
         raise ValueError(f"cursor timestamp is not a plain ISO timestamp: {value!r}") from None
+
+
+def format_cursor_ts(value: datetime) -> str:
+    """Render a Databricks timestamp as a tz-naive UTC ISO string for the cursor.
+
+    Databricks may return tz-aware datetimes whose offset follows the session
+    timezone; normalize to UTC and drop the tzinfo so the stored cursor round-trips
+    through ``_validate_iso_timestamp``.
+    """
+    if value.tzinfo is not None:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    return value.isoformat(sep=" ")
 
 
 def build_person_cursor_query(

@@ -1,7 +1,7 @@
 """Tests for the BallotReady GraphQL extraction helpers."""
 
 from base64 import b64decode
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +13,7 @@ from include.custom_functions.ballotready_graphql import (
     build_person_cursor_query,
     chunked,
     fetch_person_batch,
+    format_cursor_ts,
     get_person_ids_to_fetch,
     persons_to_ndjson,
     read_cursor,
@@ -135,6 +136,29 @@ class TestFetchPersonBatch:
         with pytest.raises(RuntimeError, match="GraphQL errors"):
             fetch_person_batch([1], "tok", session=session)
 
+    def test_null_data_returns_empty(self):
+        # A valid GraphQL response with data: null must not raise AttributeError.
+        session = MagicMock()
+        session.post.return_value = _response(200, {"data": None})
+        assert fetch_person_batch([1], "tok", session=session) == []
+
+
+# ---------------------------------------------------------------------------
+# Cursor timestamp formatting
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCursorTs:
+    def test_tz_naive_passthrough(self):
+        assert format_cursor_ts(datetime(2026, 1, 15, 10, 0, 0)) == "2026-01-15 10:00:00"
+
+    def test_utc_aware_drops_tzinfo(self):
+        assert format_cursor_ts(datetime(2026, 1, 15, 10, 0, 0, tzinfo=UTC)) == "2026-01-15 10:00:00"
+
+    def test_non_utc_aware_normalized_to_utc(self):
+        est = timezone(timedelta(hours=-5))
+        assert format_cursor_ts(datetime(2026, 1, 15, 10, 0, 0, tzinfo=est)) == "2026-01-15 15:00:00"
+
 
 # ---------------------------------------------------------------------------
 # Cursor query
@@ -225,6 +249,16 @@ class TestS3Io:
         hook.read_key.return_value = '{"source_changed_at": "2026-01-01 00:00:00", "br_person_id": 9}'
         with patch.object(ballotready_graphql, "_s3_hook", return_value=hook):
             assert read_cursor("bucket", "k", "aws") == ("2026-01-01 00:00:00", 9)
+
+    def test_read_cursor_partial_state_raises(self):
+        hook = MagicMock()
+        hook.check_for_key.return_value = True
+        hook.read_key.return_value = '{"source_changed_at": "2026-01-01 00:00:00"}'
+        with (
+            patch.object(ballotready_graphql, "_s3_hook", return_value=hook),
+            pytest.raises(ValueError, match="partial state"),
+        ):
+            read_cursor("bucket", "k", "aws")
 
     def test_write_cursor_serializes_state(self):
         hook = MagicMock()
