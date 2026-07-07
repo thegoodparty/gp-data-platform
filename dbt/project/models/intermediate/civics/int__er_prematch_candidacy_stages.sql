@@ -29,11 +29,7 @@ with
     br_staging as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where
-            election_day >= '2026-01-01'
-            and first_name is not null
-            and last_name is not null
-            and state is not null
+        where first_name is not null and last_name is not null and state is not null
     ),
 
     br_position as (
@@ -141,11 +137,7 @@ with
             end as election_date
         from ts_staging
         where
-            coalesce(primary_election_date_parsed, general_election_date_parsed)
-            >= '2026-01-01'
-            and year(
-                coalesce(primary_election_date_parsed, general_election_date_parsed)
-            )
+            year(coalesce(primary_election_date_parsed, general_election_date_parsed))
             between 1900 and 2050
     ),
 
@@ -207,7 +199,6 @@ with
             and candidate_first_name is not null
             and candidate_last_name is not null
             and election_date is not null
-            and election_date >= '2026-01-01'
             and state_postal_code is not null
     ),
 
@@ -259,8 +250,7 @@ with
         select *
         from {{ ref("campaigns") }}
         where
-            election_date >= '2026-01-01'
-            and nullif(trim(campaign_state), '') is not null
+            nullif(trim(campaign_state), '') is not null
             and not coalesce(is_demo, false)
             and is_latest_version
             and nullif(trim(user_first_name), '') is not null
@@ -269,7 +259,7 @@ with
     ),
 
     -- BR race spine for resolving election_stage by br_race_id. Excludes
-    -- disabled races and pre-2026 elections.
+    -- disabled races.
     br_race as (
         select
             race.database_id as br_race_id,
@@ -283,9 +273,7 @@ with
         inner join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
             on race.election.databaseid = election.database_id
-        where
-            not coalesce(race.is_disabled, false)
-            and election.election_day >= '2026-01-01'
+        where not coalesce(race.is_disabled, false)
     ),
 
     gp_api_with_office as (

@@ -97,8 +97,15 @@ CANDIDACY_CONFIG = EntityConfig(
             " r.last_name) >= 0.88",
             sql_dialect="duckdb",
         ),
-        block_on("phone"),
-        block_on("email"),
+        # Election-year guard on the two contact-only rules: phone/email carry no
+        # date or race term, so on the all-time cohort they would block every
+        # cross-year pair sharing a number/address. The same-stage post-filter
+        # (gamma_election_date > 0) already drops any surviving cross-date pair,
+        # so this is behavior-preserving for the single-year cohort and only
+        # prevents cross-year pair explosion. election_date is a string here, so
+        # substr(...,1,4) is the year (year() needs a DATE).
+        block_on("phone", "substr(election_date, 1, 4)"),
+        block_on("email", "substr(election_date, 1, 4)"),
     ],
     additional_columns_to_retain=[
         "source_name",
@@ -123,10 +130,13 @@ CANDIDACY_CONFIG = EntityConfig(
     ],
     em_training_blocks=[
         ("last_name", "state", "election_date"),
-        ("first_name",),
-        ("email",),
+        # Election-year guard on the date-less blocks (mirrors the phone/email
+        # blocking rules): behavior-preserving on the single-year cohort, keeps
+        # EM training pairs from spanning years on the all-time cohort.
+        ("first_name", "substr(election_date, 1, 4)"),
+        ("email", "substr(election_date, 1, 4)"),
         ("state", "election_date", "last_name"),
-        ("last_name", "state", "office_level"),
+        ("last_name", "state", "office_level", "substr(election_date, 1, 4)"),
     ],
     predict_threshold=0.01,
     cluster_threshold=0.95,
