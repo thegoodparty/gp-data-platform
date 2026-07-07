@@ -113,12 +113,21 @@ _PCT_COLS = [
     "ConsumerData_AreaPcntHHSpanishSpeaking",
 ]
 
-_NH_VT_PRECINCT = """
-    CASE WHEN state_postal_code IN ('NH', 'VT')
-         THEN COALESCE(Town_Ward, City_Ward, Town_District, City)
-         ELSE CAST(Precinct AS STRING)
+
+def _nh_vt_precinct(qualifier=""):
+    """Precinct key: NH/VT use ward/town names (their raw Precinct is mostly NULL);
+    everywhere else the raw precinct. qualifier prefixes column refs so the same
+    expression works inside multi-table joins (e.g. "l2.")."""
+    q = qualifier
+    return f"""
+    CASE WHEN {q}state_postal_code IN ('NH', 'VT')
+         THEN COALESCE({q}Town_Ward, {q}City_Ward, {q}Town_District, {q}City)
+         ELSE CAST({q}Precinct AS STRING)
     END
 """
+
+
+_NH_VT_PRECINCT = _nh_vt_precinct()
 
 # States that hold odd-year elections statewide — eligible non-voters in odd-year
 # AnyElection_ columns always get 0 (no per-precinct opportunity check needed).
@@ -249,12 +258,15 @@ def _build_precinct_features_sql(l2_col_set, election_cols, inference_year, l2_c
     if op_years:
         # Enrich _l2 with per-precinct opportunity flags via a (State, County, Precinct) join.
         opp_select = ", ".join(f"COALESCE(hp.opp_{y}, 0) AS opp_{y}" for y in op_years)
+        # Precinct must use the same NH/VT ward key as the SELECT/membership:
+        # turnout_historical_precincts carries ward names for NH/VT, whose raw
+        # Precinct is mostly NULL and would never match.
         from_clause = (
             f"(SELECT l2.*, {opp_select} FROM _l2 AS l2"
             f" LEFT JOIN _hp_opp AS hp"
             f"   ON l2.state_postal_code = hp.State"  # nationwide: join on state too
             f"  AND l2.County = hp.County"
-            f"  AND CAST(l2.Precinct AS STRING) = hp.Precinct) AS _enriched"
+            f"  AND {_nh_vt_precinct('l2.')} = hp.Precinct) AS _enriched"
         )
     else:
         from_clause = "_l2"

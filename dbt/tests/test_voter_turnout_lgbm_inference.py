@@ -122,6 +122,28 @@ def test_opp_years_and_view_sql():
     assert "opp_2024" in view
 
 
+def test_opp_join_uses_nh_vt_precinct_key():
+    sql = _build_precinct_features_sql(_L2_COLS, _ELECTION_COLS, 2026, 2026)
+    # The _hp_opp join must key precincts the same way the SELECT and membership
+    # do: NH/VT ward-coalesce, raw Precinct elsewhere. Joining on raw Precinct
+    # alone would never match NH/VT (their raw Precinct is mostly NULL and the
+    # opportunity table carries ward names), silently zeroing their opp flags.
+    assert "COALESCE(l2.Town_Ward, l2.City_Ward, l2.Town_District, l2.City)" in sql
+    assert "CAST(l2.Precinct AS STRING) = hp.Precinct" not in sql
+
+
+def test_no_op_years_reads_l2_directly():
+    # Only always-held election types in the lag window -> no opportunity years ->
+    # the features SQL reads _l2 directly: no _hp_opp join, no opp_ columns.
+    cols = {c for c in _L2_COLS if c not in ("AnyElection_2023", "OtherElection_2024")}
+    election_cols = [("General_2024", "General", 2024), ("Primary_2024", "Primary", 2024)]
+    assert _op_years(election_cols, cols, 2026) == []
+    sql = _build_precinct_features_sql(cols, election_cols, 2026, 2026)
+    assert "FROM _l2 GROUP BY" in sql
+    assert "_hp_opp" not in sql
+    assert "opp_" not in sql
+
+
 # ── Task 3: allowlist + membership ───────────────────────────────────────────
 def test_parse_state_allowlist():
     assert _parse_state_allowlist(None) is None
