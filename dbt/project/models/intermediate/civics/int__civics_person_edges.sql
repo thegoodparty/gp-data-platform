@@ -19,7 +19,11 @@ with
     ),
 
     contacts as (
-        select id, goodparty_user_id, br_candidacy_id
+        select
+            id,
+            cast(id as string) as id_string,
+            goodparty_user_id,
+            cast(br_candidacy_id as string) as br_candidacy_id
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
     ),
 
@@ -30,8 +34,22 @@ with
     ),
 
     clustered as (
-        select cluster_id, source_id, source_name, br_candidacy_id
+        select
+            cluster_id,
+            source_id,
+            source_name,
+            br_candidacy_id,
+            split(source_id, '__')[0] as gp_api_campaign_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }}
+    ),
+
+    -- gp_api user <-> BR person via the elected-official bridge (E6 and the
+    -- E7 conflict pre-filter both consume this).
+    bridge as (
+        select distinct
+            gp_api_user_id, cast(br_candidate_id as string) as br_candidate_id
+        from {{ ref("int__civics_elected_official_gp_api_bridge") }}
+        where gp_api_user_id is not null and br_candidate_id is not null
     ),
 
     -- E1/E2: HubSpot contact <-> gp_api user via bidirectional native ids.
@@ -47,18 +65,16 @@ with
             'gp_api|' || cast(u.id as string),
             'hubspot|' || cast(u.hubspot_contact_id as string)
         from users as u
-        inner join contacts as c on cast(c.id as string) = u.hubspot_contact_id
+        inner join contacts as c on c.id_string = u.hubspot_contact_id
     ),
 
     -- E3: HubSpot contact br_candidacy_id -> BR candidacy -> br_candidate_id.
     e3 as (
         select
-            'hubspot|' || cast(c.id as string) as rk_a,
+            'hubspot|' || c.id_string as rk_a,
             'ballotready|' || cand.br_candidate_id as rk_b
         from contacts as c
-        inner join
-            candidacies as cand
-            on cand.br_candidacy_id = cast(c.br_candidacy_id as string)
+        inner join candidacies as cand on cand.br_candidacy_id = c.br_candidacy_id
     ),
 
     -- E4: ts_officeholder_id == br_office_holder_id -> br_candidate_id.
@@ -83,7 +99,7 @@ with
         union
         select cc.cluster_id, 'gp_api|' || cast(camp.user_id as string)
         from clustered as cc
-        inner join campaigns as camp on camp.campaign_id = split(cc.source_id, '__')[0]
+        inner join campaigns as camp on camp.campaign_id = cc.gp_api_campaign_id
         where cc.source_name = 'gp_api'
         union
         select cluster_id, 'techspeed|' || source_id
@@ -112,9 +128,8 @@ with
     e6 as (
         select
             'gp_api|' || cast(gp_api_user_id as string) as rk_a,
-            'ballotready|' || cast(br_candidate_id as string) as rk_b
-        from {{ ref("int__civics_elected_official_gp_api_bridge") }}
-        where gp_api_user_id is not null and br_candidate_id is not null
+            'ballotready|' || br_candidate_id as rk_b
+        from bridge
     ),
 
     -- E7: within-source vendor keys. TS records sharing a stage-stripped
@@ -127,7 +142,7 @@ with
         select
             'techspeed' as source_name,
             source_id,
-            regexp_replace(source_id, '__(primary|general|runoff)$', '') as e7_key
+            {{ strip_ts_stage_suffix("source_id") }} as e7_key
         from clustered
         where source_name = 'techspeed'
         union all
@@ -136,15 +151,27 @@ with
         where source_name = 'ddhq'
     ),
 
-    -- Distinct br_candidate_ids each vendor record reaches through its cluster.
+    -- Distinct br_candidate_ids each vendor record reaches through its
+    -- cluster: directly via a BR co-member, or via a gp_api co-member that
+    -- resolves to a BR person through the elected-official bridge.
     vendor_cluster_br as (
-        select distinct cc.source_name, cc.source_id, cand.br_candidate_id
+        select cc.source_name, cc.source_id, cand.br_candidate_id
         from clustered as cc
         inner join
             clustered as br
             on br.cluster_id = cc.cluster_id
             and br.source_name = 'ballotready'
         inner join candidacies as cand on cand.br_candidacy_id = br.br_candidacy_id
+        where cc.source_name in ('techspeed', 'ddhq')
+        union
+        select cc.source_name, cc.source_id, b.br_candidate_id
+        from clustered as cc
+        inner join
+            clustered as gp
+            on gp.cluster_id = cc.cluster_id
+            and gp.source_name = 'gp_api'
+        inner join campaigns as camp on camp.campaign_id = gp.gp_api_campaign_id
+        inner join bridge as b on b.gp_api_user_id = camp.user_id
         where cc.source_name in ('techspeed', 'ddhq')
     ),
 
