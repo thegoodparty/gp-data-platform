@@ -105,6 +105,20 @@ with
         group by cd.prod_db_user_id
     ),
 
+    -- Same signal at the HubSpot-contact grain, across ALL candidate records for
+    -- the contact. candidate_picked resolves only ONE candidate per contact (to
+    -- keep gp_user_id unique), so a win on another candidate record for the same
+    -- contact would be missed by the candidate-identity path alone. This rolls up
+    -- every linked candidate so the win is caught regardless of which one was
+    -- picked. Same TRUE > FALSE > NULL precedence via max().
+    contact_won as (
+        select cd.hubspot_contact_id, max(cw.has_won_election) as has_won_election
+        from candidate_won cw
+        join {{ ref("candidate") }} cd on cd.gp_candidate_id = cw.gp_candidate_id
+        where cd.hubspot_contact_id is not null
+        group by cd.hubspot_contact_id
+    ),
+
     sales_touched as (
         select
             c.*,
@@ -291,21 +305,26 @@ with
             -- with a decided non-win and no win (a decided loss takes precedence
             -- over any still-pending candidacy in another race); NULL = no decided
             -- outcome at all (all pending / Cannot Determine) or not a candidate.
-            -- OR-merged across the candidate-identity and product-user links so
-            -- BR-sourced candidacies count. Use has_candidacy to tell a pending
+            -- OR-merged across three links so a win is caught however the winning
+            -- candidacy attaches: the picked candidate identity (cw), the product
+            -- user (uw), and a rollup across ALL candidate records for the HubSpot
+            -- contact (con) — the last covers wins on a candidate row other than
+            -- the one candidate_picked chose. Use has_candidacy to tell a pending
             -- candidate apart from a non-candidate.
-            -- OR (not AND) is deliberate: it lets a FALSE on the single populated
-            -- link classify the ~10.6k contacts that have only one link type; an
-            -- AND would leave those unclassifiable (regressing ~1.8k). The
-            -- trade-off is a rare cross-identity contact (~62) whose two links
-            -- disagree (one all-lost, the other pending) reading FALSE instead of
-            -- NULL. A fully three-valued answer would need a separate has_pending
-            -- signal, since user_won's max(bool) already drops pending under a
-            -- decided loss; not worth it for the volume.
+            -- OR (not AND) is deliberate: it lets a FALSE on a single populated
+            -- link classify contacts that have only one link type; an AND would
+            -- leave those unclassifiable. The trade-off is a rare cross-identity
+            -- contact whose links disagree (one all-lost, the other pending)
+            -- reading FALSE instead of NULL. A fully three-valued answer would
+            -- need a separate has_pending signal, since max(bool) already drops
+            -- pending under a decided loss; not worth it for the volume.
             case
-                when cw.has_won_election or uw.has_won_election
+                when cw.has_won_election or uw.has_won_election or con.has_won_election
                 then true
-                when cw.has_won_election is false or uw.has_won_election is false
+                when
+                    cw.has_won_election is false
+                    or uw.has_won_election is false
+                    or con.has_won_election is false
                 then false
             end as has_won_election,
             -- Whether the contact is a candidate at all, via the candidate
@@ -405,6 +424,7 @@ with
         left join user_org_types uo on st.gp_user_id = uo.gp_user_id
         left join user_won uw on st.gp_user_id = uw.gp_user_id
         left join candidate_won cw on st.gp_candidate_id = cw.gp_candidate_id
+        left join contact_won con on st.id = con.hubspot_contact_id
     )
 
 -- One row per HubSpot contact, BUT collapsed to one row per gp_user_id
