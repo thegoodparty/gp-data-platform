@@ -1,8 +1,7 @@
 """Helpers for the ballotready_graphql_person_extract DAG.
 
 Extracts BallotReady (CivicEngine) GraphQL Person objects and lands them raw in
-S3. S3 is the durable source of truth; downstream loading (dbt/Airbyte) rebuilds
-Databricks from these files.
+S3.
 
 Person identity is the integer databaseId, which the civics pipeline knows as
 ``br_candidate_id``. The CivicEngine ``people`` query cannot filter by

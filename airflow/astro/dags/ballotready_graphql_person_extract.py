@@ -2,9 +2,7 @@
 ## BallotReady GraphQL Person extraction
 
 Extracts CivicEngine (BallotReady) GraphQL Person objects and lands them raw in
-S3 as newline-delimited JSON. S3 is the source of truth; downstream loading
-(dbt/Airbyte) rebuilds Databricks. The DAG never writes Databricks — it only
-reads staging to decide which persons to fetch.
+S3 as newline-delimited JSON.
 
 The `people` query can't filter by created/updated time, so persons are fetched
 by id via `nodes(ids:)`. A keyset cursor `(source_changed_at, br_person_id)` is
@@ -15,9 +13,6 @@ cursor. The first run sweeps oldest→newest in `max_persons` batches; once caug
 up it only pulls newly-changed persons. A person edited without any
 candidacy/office-holder change is picked up on the next feed refresh or via
 `full_reload`.
-
-This is the Person extraction; other BallotReady GraphQL objects (Race,
-Election, OfficeHolder) will land in their own DAGs.
 
 ### Parameters
 - `full_reload` — ignore the cursor and re-sweep the entire universe.
