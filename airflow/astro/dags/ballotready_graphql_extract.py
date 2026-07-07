@@ -22,7 +22,6 @@ feeds, which carry BR's own created/updated timestamps:
 The first run (no cursor) sweeps the universe oldest→newest in `max_persons`
 batches; once caught up it only pulls newly-changed persons, so it is safe to run
 at any time. A person edited without any candidacy/office-holder change is picked
-A person edited without any candidacy/office-holder change is picked
 up on BR's next feed refresh or via `full_reload`.
 
 ### Parameters

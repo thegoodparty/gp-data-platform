@@ -152,13 +152,26 @@ class TestBuildPersonCursorQuery:
         assert "greatest(" in sql
 
     def test_keyset_predicate_and_limit(self):
+        # Sub-second precision is preserved so the keyset tiebreak stays exact.
         sql = build_person_cursor_query(
-            "cat", "sch", after_changed_at="2026-01-15 10:00:00", after_person_id=42, limit=1000
+            "cat", "sch", after_changed_at="2026-01-15 10:00:00.453000", after_person_id=42, limit=1000
         )
-        assert "source_changed_at > TIMESTAMP '2026-01-15 10:00:00'" in sql
-        assert "source_changed_at = TIMESTAMP '2026-01-15 10:00:00' AND br_person_id > 42" in sql
+        assert "source_changed_at > TIMESTAMP '2026-01-15 10:00:00.453000'" in sql
+        assert "source_changed_at = TIMESTAMP '2026-01-15 10:00:00.453000' AND br_person_id > 42" in sql
         assert "LIMIT 1000" in sql
         assert "ORDER BY source_changed_at ASC, br_person_id ASC" in sql
+
+    def test_normalizes_seconds_to_microseconds(self):
+        sql = build_person_cursor_query(
+            "cat", "sch", after_changed_at="2026-01-15 10:00:00", after_person_id=1, limit=None
+        )
+        assert "TIMESTAMP '2026-01-15 10:00:00.000000'" in sql
+
+    def test_rejects_invalid_identifier(self):
+        with pytest.raises(ValueError, match="valid SQL identifier"):
+            build_person_cursor_query(
+                "cat", "sch; DROP", after_changed_at=None, after_person_id=None, limit=None
+            )
 
     def test_rejects_non_timestamp_cursor(self):
         with pytest.raises(ValueError, match="ISO timestamp"):

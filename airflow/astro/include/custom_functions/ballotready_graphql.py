@@ -202,15 +202,19 @@ def fetch_person_batch(
 # Cursor: which person ids to fetch this run (keyset over the S3 feeds)
 # ---------------------------------------------------------------------------
 
-_ISO_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?$")
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 def _validate_iso_timestamp(value: str) -> str:
-    """Guard the cursor timestamp before inlining it into SQL."""
+    """Validate and canonicalize the cursor timestamp before inlining it into SQL.
+
+    Preserves sub-second precision so the keyset cursor's tiebreak stays exact
+    when many rows share the same second.
+    """
     try:
-        return datetime.fromisoformat(value).isoformat(sep=" ", timespec="seconds")
+        return datetime.fromisoformat(value).isoformat(sep=" ", timespec="microseconds")
     except ValueError:
-        raise ValueError(f"cursor timestamp is not a plain ISO timestamp: {value!r}")
+        raise ValueError(f"cursor timestamp is not a plain ISO timestamp: {value!r}") from None
 
 
 def build_person_cursor_query(
@@ -228,7 +232,6 @@ def build_person_cursor_query(
     ``(changed_at, br_person_id) > (cursor_ts, cursor_id)`` advances safely even
     when many rows share an identical bulk-update timestamp.
     """
-    _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
     for name, val in (("catalog", catalog), ("dbt_schema", dbt_schema)):
         if not _IDENTIFIER_RE.match(val):
             raise ValueError(f"{name} is not a valid SQL identifier: {val!r}")
