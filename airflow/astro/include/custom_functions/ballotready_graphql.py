@@ -209,12 +209,17 @@ def _validate_iso_timestamp(value: str) -> str:
     """Validate and canonicalize the cursor timestamp before inlining it into SQL.
 
     Preserves sub-second precision so the keyset cursor's tiebreak stays exact
-    when many rows share the same second.
+    when many rows share the same second. A tz-aware value (e.g. a hand-seeded
+    cursor with a ``+00:00`` offset) is normalized to UTC-naive so the emitted
+    string is a bare Databricks ``TIMESTAMP`` literal with no offset.
     """
     try:
-        return datetime.fromisoformat(value).isoformat(sep=" ", timespec="microseconds")
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         raise ValueError(f"cursor timestamp is not a plain ISO timestamp: {value!r}") from None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+    return parsed.isoformat(sep=" ", timespec="microseconds")
 
 
 def format_cursor_ts(value: datetime) -> str:

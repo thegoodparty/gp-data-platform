@@ -14,6 +14,13 @@ models:
       - name: br_race_id
         data_tests:
           - not_null
+      - name: candidacy_created_at
+        description: Anchors the ballotready_graphql_person_extract cursor; must stay populated so greatest(created, updated) never yields null.
+        data_tests:
+          - not_null
+      - name: candidacy_updated_at
+        data_tests:
+          - not_null
       - name: election_result
         data_tests:
           - accepted_values:
@@ -57,6 +64,13 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: office_holder_created_at
+        description: Anchors the ballotready_graphql_person_extract cursor; must stay populated so greatest(created, updated) never yields null.
+        data_tests:
+          - not_null
+      - name: office_holder_updated_at
+        data_tests:
+          - not_null
       - name: br_position_tier
         description: >
           BallotReady's research-tier classification (integer 1-5) for the

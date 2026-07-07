@@ -191,6 +191,15 @@ class TestBuildPersonCursorQuery:
         )
         assert "TIMESTAMP '2026-01-15 10:00:00.000000'" in sql
 
+    def test_tz_aware_cursor_normalized_to_utc_naive(self):
+        # A hand-seeded cursor with an offset must not leak the offset into the
+        # SQL TIMESTAMP literal (Databricks rejects it).
+        sql = build_person_cursor_query(
+            "cat", "sch", after_changed_at="2026-01-15T10:00:00-05:00", after_person_id=1, limit=None
+        )
+        assert "TIMESTAMP '2026-01-15 15:00:00.000000'" in sql
+        assert "+" not in sql.split("TIMESTAMP")[1].split("'")[1]
+
     def test_rejects_invalid_identifier(self):
         with pytest.raises(ValueError, match="valid SQL identifier"):
             build_person_cursor_query(
