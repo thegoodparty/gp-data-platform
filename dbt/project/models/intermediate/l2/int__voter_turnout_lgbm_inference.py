@@ -21,6 +21,13 @@ Previously this branched on `year % 2 == 0` and blanket-zeroed every even-year
 eligible non-voter nationwide, inflating the `even_year_local` target/feature
 denominator everywhere.
 
+Opportunity affects FEATURES only; predictions are intentionally emitted for
+EVERY precinct, including ones whose history shows no even-year local elections
+(their lag features are NULL). Each row answers the hypothetical "if such an
+election were held here, what would turnout be?" so the product can serve
+BallotReady-asserted or user-entered races in places history says are unlikely
+(research decision, 2026-07-07). Do not add an opportunity gate on output rows.
+
 The SQL-building helpers are pure (return SQL strings) so they are unit-tested
 without Spark/MLflow; `model()` executes them. `import mlflow` is deferred into
 `model()` so this module imports in the dbt test env (pyspark + pandas, no mlflow).
