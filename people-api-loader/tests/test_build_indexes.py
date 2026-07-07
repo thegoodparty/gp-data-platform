@@ -30,6 +30,17 @@ _IDXS = [
 ]
 
 
+def test_build_session_raises_parallel_workers() -> None:
+    # The load instance defaults max_parallel_workers to only vCPU/2, which caps the total
+    # maintenance workers across all concurrent builds (leaving cores idle on the big box).
+    # Raise it per session (a user-context GUC, like max_parallel_maintenance_workers) so the
+    # 32 concurrent builds' workers can fill the instance. Server-side workers => no extra
+    # bastion tunnels; backed by the instance default max_worker_processes (vCPU*2) for slots.
+    joined = " ".join(step._BUILD_SESSION_SQL)
+    assert "SET max_parallel_workers = " in joined
+    assert "SET max_parallel_maintenance_workers = 8" in joined
+
+
 def test_rewrite_injects_if_not_exists() -> None:
     assert "CREATE INDEX IF NOT EXISTS" in step._rewrite_index_sql(
         'CREATE INDEX "x" ON public."Voter" ("Active");'

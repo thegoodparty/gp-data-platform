@@ -64,7 +64,12 @@ DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 # Load-phase instance. Prod is serverless, but we use provisioned for load
 # (see PLAN_LOADER.md "Provisioned-vs-Serverless"). Resize step flips this.
-DEFAULT_LOAD_INSTANCE_CLASS = "db.r7g.16xlarge"
+# Sized for cores: build-indexes is CPU-bound and fully buffer-cached (measured ~98% CPU,
+# ~0 read IOPS on the whole Voter table), so index wall-clock scales ~linearly with vCPU.
+# r8g.48xlarge = 192 vCPU / 1.5 TiB (Graviton4). Its vCPU-scaled defaults also lift
+# max_parallel_workers to 96 and max_worker_processes to 384 for free (build_indexes then
+# raises max_parallel_workers further per session to fill all cores).
+DEFAULT_LOAD_INSTANCE_CLASS = "db.r8g.48xlarge"
 DEFAULT_SERVE_MIN_ACU = 0.5
 DEFAULT_SERVE_MAX_ACU = 128.0
 DEFAULT_ENGINE_VERSION = "16.8"
