@@ -60,10 +60,25 @@ _LOADER_ENV: dict[str, str] = {
 }
 
 
-def _step(task_id: str, subcommand: str, *, extra_env: dict[str, str] | None = None) -> BashOperator:
+# copy opens one SSH tunnel per file, so its --parallelism is also the count of concurrent SSH
+# handshakes against the bastion. The loader default (128) overruns the bastion sshd's MaxStartups
+# (default 10:30:100), which resets most connections ("Error reading SSH protocol banner"). Cap it to
+# a value that stays under MaxStartups' unauthenticated-connection start threshold. Follow-up: pool
+# and reuse a small number of tunnels in the loader so throughput isn't bounded by this.
+_COPY_PARALLELISM = 8
+
+
+def _step(
+    task_id: str,
+    subcommand: str,
+    *,
+    extra_env: dict[str, str] | None = None,
+    extra_args: str = "",
+) -> BashOperator:
+    args = f" {extra_args}" if extra_args else ""
     return BashOperator(
         task_id=task_id,
-        bash_command=f"loader {subcommand} --date {{{{ ds_nodash }}}}",
+        bash_command=f"loader {subcommand} --date {{{{ ds_nodash }}}}{args}",
         env={**_LOADER_ENV, **(extra_env or {})},
         append_env=True,
     )
@@ -97,7 +112,7 @@ def load_people_api():
     unload = _step("unload", "unload", extra_env=_DBX_ENV)  # only loader step that reaches Databricks
     provision = _step("provision", "provision")
     create_schema = _step("create_schema", "create-schema")
-    copy = _step("copy", "copy")
+    copy = _step("copy", "copy", extra_args=f"--parallelism {_COPY_PARALLELISM}")
     build_indexes = _step("build_indexes", "build-indexes")
     resize = _step("resize", "resize")
     validate = _step("validate", "validate")
