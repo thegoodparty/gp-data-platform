@@ -139,9 +139,11 @@ def test_build_settings_candidacy():
 
 
 def test_build_settings_elected_official():
-    """EO build_settings has 11 comparisons (no election_date, adds office_type + office_level + ballotready_position_id)."""
+    """EO build_settings has 13 comparisons (office_type + office_level +
+    ballotready_position_id + term_start_date date comparison + normalized
+    office)."""
     settings = build_settings(ELECTED_OFFICIAL_CONFIG)
-    assert len(settings.comparisons) == 11
+    assert len(settings.comparisons) == 13
 
 
 # ── E2E Smoke Test ──
@@ -167,6 +169,24 @@ def test_eo_pipeline_smoke(tmp_path):
     # EO-specific retained columns present in clustered output
     for col in ["source_name", "office_type", "office_level"]:
         assert col in clustered_df.columns, f"Missing retained column: {col}"
+
+
+def test_eo_pipeline_smoke_ddhq_clusters_with_official(tmp_path):
+    """The ddhq source links to its gp_api official by name + office + cycle, and
+    its ddhq_votes survive into the clustered output (the support-score path)."""
+    df = pd.read_csv(Path(__file__).parent / "dummy_data_elected.csv", dtype=str)
+    _, clustered_df = run(input_df=df, output_dir=tmp_path, config=ELECTED_OFFICIAL_CONFIG)
+
+    ddhq_row = clustered_df.loc[clustered_df["unique_id"] == "ddhq_100"]
+    gp_row = clustered_df.loc[clustered_df["unique_id"] == "gp_100"]
+    assert len(ddhq_row) == 1, "ddhq_100 not in clustered output"
+    assert len(gp_row) == 1, "gp_100 not in clustered output"
+    assert (
+        ddhq_row.iloc[0]["cluster_id"] == gp_row.iloc[0]["cluster_id"]
+    ), "ddhq_100 should cluster with gp_100 (same official, office variant + cycle)"
+    assert (
+        str(ddhq_row.iloc[0]["ddhq_votes"]) == "8200"
+    ), "ddhq_votes should pass through to the clustered DDHQ row"
 
 
 def test_eo_pipeline_smoke_synonym_match(tmp_path):

@@ -654,6 +654,16 @@ models:
               arguments:
                 min_value: 0
 
+      - name: number_of_opponents
+        description: >
+          Opponent count for the race (number_of_candidates - 1 from the
+          TechSpeed source), stored as a string to match the BR/DDHQ/2025
+          election models and the scorer's parsing. Null when the source count
+          is missing, non-numeric, or < 1. DATA-1938: previously hardcoded
+          null, which forced solo-ingested TechSpeed candidacies onto the
+          weaker viabilitynoopponentdata fallback in
+          int__civics_viability_scoring.
+
       - name: has_ddhq_match
         description: Whether there is a DDHQ match (always false for TechSpeed)
 
@@ -670,6 +680,16 @@ models:
       - name: updated_at
         data_tests:
           - not_null
+
+    data_tests:
+      # Well-formedness of the DATA-1938 opponent count: null or a non-negative
+      # integer string (opponents = number_of_candidates - 1, so >= 0). Model
+      # level rather than column level so the expression can reference the
+      # column by name without the column-test macro prepending the column.
+      - dbt_utils.expression_is_true:
+          name: civics_election_techspeed_opponents_well_formed
+          arguments:
+            expression: "number_of_opponents is null or try_cast(number_of_opponents as int) >= 0"
 
   - name: int__civics_candidacy_stage_techspeed
     description: >
@@ -2081,6 +2101,7 @@ models:
                   - techspeed
                   - ballotready_techspeed
                   - gp_api
+                  - ddhq
 
       - name: source_id
         description: >
@@ -2989,6 +3010,44 @@ models:
       - name: hubspot_company_id
         description: HubSpot company ID for the matched campaign (alias of campaigns.hubspot_id).
 
+  - name: int__civics_elected_official_ddhq_matched_votes
+    description: |
+      DDHQ general-winner votes matched to each elected official via the matcha
+      elected_official entity resolution: a DDHQ winner that shares a Splink
+      cluster (and surname) with the official's BallotReady term and/or gp-api
+      office carries that official's own winning votes. Long format: one row per
+      matched record, keyed by EITHER br_office_holder_id (BR term) OR
+      gp_api_elected_office_id (gp-api office), the other being NULL. BR rows feed
+      elected_official_terms (every official, not just gp-api ones); gp-api rows
+      feed the election_api support score, including gp_api-only offices with no
+      BR term.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (br_office_holder_id is not null)
+              != (gp_api_elected_office_id is not null)
+    columns:
+      - name: br_office_holder_id
+        description: BR officeholder/term id. NULL on gp-api rows.
+        data_tests:
+          - unique:
+              config:
+                where: "br_office_holder_id is not null"
+      - name: gp_api_elected_office_id
+        description: gp-api elected_office UUID. NULL on BR rows.
+        data_tests:
+          - unique:
+              config:
+                where: "gp_api_elected_office_id is not null"
+      - name: ddhq_winning_votes
+        description: The official's own DDHQ general-election winning votes.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
   - name: int__civics_elected_official_gp_api_person
     description: |
       Person-grain rollup of gp-api elected officials. One row per
@@ -3399,8 +3458,7 @@ models:
       (LEFT 12) and tract_geoid (LEFT 11) are carried for GROUP BY rollups
       (coarser grains are never stored as rows, so no cross-grain
       double-count). Counts only, PII-free. Depends on L2 + census only (no
-      election-api edge). Consumed by people_served, official_constituents, and
-      district_census_stats.
+      election-api edge). Consumed by people_served and district_census_stats.
     columns:
       - name: block_geoid
         description: 15-char zero-padded 2020 census block GEOID

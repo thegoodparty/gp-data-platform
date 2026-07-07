@@ -8,15 +8,6 @@
     conversion rates with correct denominators.
 
     Grain: One row per user_id.
-
-    Source:
-        mart_civics.users + int__amplitude_user_milestones + users_serve_activity.
-
-    Metric columns:
-        - Prospect Activation Rate: is_serve_user + eo_activated_at
-        - Connect to Poll: has_sent_sms_poll
-        - Active EOs: is_active_eo (trailing 30d)
-        - Serve Onboarding Funnel: step completion timestamps + boolean flags
 */
 with
     users as (select * from {{ ref("goodparty_data_catalog", "users") }}),
@@ -56,13 +47,14 @@ with
                 false
             ) as is_active_eo,
 
-            -- Connect to Poll (DATA-1499)
+            -- Connect to Poll
             m.first_sms_poll_sent_at,
             (m.first_sms_poll_sent_at is not null) as has_sent_sms_poll,
 
-            -- Active People Served cohort definition (epic DATA-1359), sourced from
+            -- Active People Served cohort definition, sourced from
             -- the single source of truth int__serve_active_user so the dashboard and
-            -- the epic share one definition. has_sent_sms_poll above is the same value
+            -- downstream share one definition. has_sent_sms_poll above is the same
+            -- value
             -- (same milestone upstream), kept on its funnel derivation.
             coalesce(au.has_pledged, false) as has_pledged,
             coalesce(au.is_active_serve_user, false) as is_active_serve_user,

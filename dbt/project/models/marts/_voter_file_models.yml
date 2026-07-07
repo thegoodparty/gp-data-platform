@@ -1,0 +1,2861 @@
+# Shared documentation for the L2 voter-file models. The full column list is
+# defined once as a YAML anchor on the upstream w_haystaq model and reused by the
+# serve and win voter files. Column descriptions come from the shared l2col_ doc
+# blocks in _l2_voter_column_docs.md. Per-column tests live as singular tests in
+# tests/ (a column anchor cannot carry per-model tests, and voter_key does not
+# exist upstream).
+version: 2
+
+models:
+  - name: int__l2_nationwide_uniform_w_haystaq
+    description: "Nationwide uniform voter file data with Haystaq flags and scores joined on LALVOTERID"
+    config:
+      tags: ["monthly"]
+      meta:
+        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
+        # optional: comma/space-separated list like "AK,AL" for iterative runs
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+    columns: &l2_voter_columns
+      - name: "voter_key"
+        description: '{{ doc("l2col_voter_key") }}'
+      - name: "2001_State_House_District"
+        description: '{{ doc("l2col_2001_State_House_District") }}'
+      - name: "2001_State_Legislative_District"
+        description: '{{ doc("l2col_2001_State_Legislative_District") }}'
+      - name: "2001_State_Senate_District"
+        description: '{{ doc("l2col_2001_State_Senate_District") }}'
+      - name: "2001_US_Congressional_District"
+        description: '{{ doc("l2col_2001_US_Congressional_District") }}'
+      - name: "2010_State_House_District"
+        description: '{{ doc("l2col_2010_State_House_District") }}'
+      - name: "2010_State_Legislative_District"
+        description: '{{ doc("l2col_2010_State_Legislative_District") }}'
+      - name: "2010_State_Senate_District"
+        description: '{{ doc("l2col_2010_State_Senate_District") }}'
+      - name: "2010_US_Congressional_District"
+        description: '{{ doc("l2col_2010_US_Congressional_District") }}'
+      - name: "2024_Proposed_Congressional_District"
+        description: '{{ doc("l2col_2024_Proposed_Congressional_District") }}'
+      - name: "2024_Proposed_State_House_District"
+        description: '{{ doc("l2col_2024_Proposed_State_House_District") }}'
+      - name: "2024_Proposed_State_Legislative_District"
+        description: '{{ doc("l2col_2024_Proposed_State_Legislative_District") }}'
+      - name: "2024_Proposed_State_Senate_District"
+        description: '{{ doc("l2col_2024_Proposed_State_Senate_District") }}'
+      - name: "4H_Livestock_District"
+        description: '{{ doc("l2col_4H_Livestock_District") }}'
+      - name: "AbsenteeTypes_Description"
+        description: '{{ doc("l2col_AbsenteeTypes_Description") }}'
+      - name: "AddressDistricts_Change_Changed_CD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_CD") }}'
+      - name: "AddressDistricts_Change_Changed_County"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_County") }}'
+      - name: "AddressDistricts_Change_Changed_HD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_HD") }}'
+      - name: "AddressDistricts_Change_Changed_LD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_LD") }}'
+      - name: "AddressDistricts_Change_Changed_SD"
+        description: '{{ doc("l2col_AddressDistricts_Change_Changed_SD") }}'
+      - name: "Airport_District"
+        description: '{{ doc("l2col_Airport_District") }}'
+      - name: "Annexation_District"
+        description: '{{ doc("l2col_Annexation_District") }}'
+      - name: "AnyElection_2001"
+        description: '{{ doc("l2col_AnyElection_2001") }}'
+      - name: "AnyElection_2003"
+        description: '{{ doc("l2col_AnyElection_2003") }}'
+      - name: "AnyElection_2005"
+        description: '{{ doc("l2col_AnyElection_2005") }}'
+      - name: "AnyElection_2007"
+        description: '{{ doc("l2col_AnyElection_2007") }}'
+      - name: "AnyElection_2009"
+        description: '{{ doc("l2col_AnyElection_2009") }}'
+      - name: "AnyElection_2011"
+        description: '{{ doc("l2col_AnyElection_2011") }}'
+      - name: "AnyElection_2013"
+        description: '{{ doc("l2col_AnyElection_2013") }}'
+      - name: "AnyElection_2015"
+        description: '{{ doc("l2col_AnyElection_2015") }}'
+      - name: "AnyElection_2017"
+        description: '{{ doc("l2col_AnyElection_2017") }}'
+      - name: "AnyElection_2019"
+        description: '{{ doc("l2col_AnyElection_2019") }}'
+      - name: "AnyElection_2021"
+        description: '{{ doc("l2col_AnyElection_2021") }}'
+      - name: "AnyElection_2023"
+        description: '{{ doc("l2col_AnyElection_2023") }}'
+      - name: "AnyElection_2025"
+        description: '{{ doc("l2col_AnyElection_2025") }}'
+      - name: "AnyElection_2027"
+        description: '{{ doc("l2col_AnyElection_2027") }}'
+      - name: "AnyElection_2029"
+        description: '{{ doc("l2col_AnyElection_2029") }}'
+      - name: "Aquatic_Center_District"
+        description: '{{ doc("l2col_Aquatic_Center_District") }}'
+      - name: "Aquatic_District"
+        description: '{{ doc("l2col_Aquatic_District") }}'
+      - name: "Assessment_District"
+        description: '{{ doc("l2col_Assessment_District") }}'
+      - name: "Bay_Area_Rapid_Transit"
+        description: '{{ doc("l2col_Bay_Area_Rapid_Transit") }}'
+      - name: "BirthDateConfidence_Description"
+        description: '{{ doc("l2col_BirthDateConfidence_Description") }}'
+      - name: "Board_of_Education_District"
+        description: '{{ doc("l2col_Board_of_Education_District") }}'
+      - name: "Board_of_Education_SubDistrict"
+        description: '{{ doc("l2col_Board_of_Education_SubDistrict") }}'
+      - name: "Bonds_District"
+        description: '{{ doc("l2col_Bonds_District") }}'
+      - name: "Borough"
+        description: '{{ doc("l2col_Borough") }}'
+      - name: "Borough_Ward"
+        description: '{{ doc("l2col_Borough_Ward") }}'
+      - name: "Career_Center"
+        description: '{{ doc("l2col_Career_Center") }}'
+      - name: "Cell_Phone_Number_Available"
+        description: '{{ doc("l2col_Cell_Phone_Number_Available") }}'
+      - name: "Cemetery_District"
+        description: '{{ doc("l2col_Cemetery_District") }}'
+      - name: "Central_Committee_District"
+        description: '{{ doc("l2col_Central_Committee_District") }}'
+      - name: "Chemical_Control_District"
+        description: '{{ doc("l2col_Chemical_Control_District") }}'
+      - name: "City"
+        description: '{{ doc("l2col_City") }}'
+      - name: "City_Council_Commissioner_District"
+        description: '{{ doc("l2col_City_Council_Commissioner_District") }}'
+      - name: "City_Mayoral_District"
+        description: '{{ doc("l2col_City_Mayoral_District") }}'
+      - name: "City_School_District"
+        description: '{{ doc("l2col_City_School_District") }}'
+      - name: "City_Ward"
+        description: '{{ doc("l2col_City_Ward") }}'
+      - name: "Coast_Water_District"
+        description: '{{ doc("l2col_Coast_Water_District") }}'
+      - name: "College_Board_District"
+        description: '{{ doc("l2col_College_Board_District") }}'
+      - name: "Committee_Super_District"
+        description: '{{ doc("l2col_Committee_Super_District") }}'
+      - name: "Communications_District"
+        description: '{{ doc("l2col_Communications_District") }}'
+      - name: "Community_College"
+        description: '{{ doc("l2col_Community_College") }}'
+      - name: "Community_College_At_Large"
+        description: '{{ doc("l2col_Community_College_At_Large") }}'
+      - name: "Community_College_Commissioner_District"
+        description: '{{ doc("l2col_Community_College_Commissioner_District") }}'
+      - name: "Community_College_SubDistrict"
+        description: '{{ doc("l2col_Community_College_SubDistrict") }}'
+      - name: "Community_Council_District"
+        description: '{{ doc("l2col_Community_Council_District") }}'
+      - name: "Community_Council_SubDistrict"
+        description: '{{ doc("l2col_Community_Council_SubDistrict") }}'
+      - name: "Community_Facilities_District"
+        description: '{{ doc("l2col_Community_Facilities_District") }}'
+      - name: "Community_Facilities_SubDistrict"
+        description: '{{ doc("l2col_Community_Facilities_SubDistrict") }}'
+      - name: "Community_Hospital_District"
+        description: '{{ doc("l2col_Community_Hospital_District") }}'
+      - name: "Community_Planning_Area"
+        description: '{{ doc("l2col_Community_Planning_Area") }}'
+      - name: "Community_Service_District"
+        description: '{{ doc("l2col_Community_Service_District") }}'
+      - name: "Community_Service_SubDistrict"
+        description: '{{ doc("l2col_Community_Service_SubDistrict") }}'
+      - name: "Congressional_Township"
+        description: '{{ doc("l2col_Congressional_Township") }}'
+      - name: "Conservation_District"
+        description: '{{ doc("l2col_Conservation_District") }}'
+      - name: "Conservation_SubDistrict"
+        description: '{{ doc("l2col_Conservation_SubDistrict") }}'
+      - name: "Consolidated_Water_District"
+        description: '{{ doc("l2col_Consolidated_Water_District") }}'
+      - name: "ConsumerData_AccessibilityHandicapFlag"
+        description: '{{ doc("l2col_ConsumerData_AccessibilityHandicapFlag") }}'
+      - name: "ConsumerData_Active_Motorcycle"
+        description: '{{ doc("l2col_ConsumerData_Active_Motorcycle") }}'
+      - name: "ConsumerData_Active_Nascar"
+        description: '{{ doc("l2col_ConsumerData_Active_Nascar") }}'
+      - name: "ConsumerData_Active_Snow_Skiing"
+        description: '{{ doc("l2col_ConsumerData_Active_Snow_Skiing") }}'
+      - name: "ConsumerData_Active_Tennis"
+        description: '{{ doc("l2col_ConsumerData_Active_Tennis") }}'
+      - name: "ConsumerData_African_American_Professional_in_Household"
+        description: '{{ doc("l2col_ConsumerData_African_American_Professional_in_Household") }}'
+      - name: "ConsumerData_Apparel_Childrens"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Childrens") }}'
+      - name: "ConsumerData_Apparel_Infant_Toddlers"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Infant_Toddlers") }}'
+      - name: "ConsumerData_Apparel_Mens"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Mens") }}'
+      - name: "ConsumerData_Apparel_Mens_Big_Tall"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Mens_Big_Tall") }}'
+      - name: "ConsumerData_Apparel_Petite"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Petite") }}'
+      - name: "ConsumerData_Apparel_Womens"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Womens") }}'
+      - name: "ConsumerData_Apparel_Womens_Plus_Size"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Womens_Plus_Size") }}'
+      - name: "ConsumerData_Apparel_Young_Mens"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Young_Mens") }}'
+      - name: "ConsumerData_Apparel_Young_Womens"
+        description: '{{ doc("l2col_ConsumerData_Apparel_Young_Womens") }}'
+      - name: "ConsumerData_AreaMedianEducationYears"
+        description: '{{ doc("l2col_ConsumerData_AreaMedianEducationYears") }}'
+      - name: "ConsumerData_AreaMedianHousingValue"
+        description: '{{ doc("l2col_ConsumerData_AreaMedianHousingValue") }}'
+      - name: "ConsumerData_AreaPcntHHMarriedCoupleNoChild"
+        description: '{{ doc("l2col_ConsumerData_AreaPcntHHMarriedCoupleNoChild") }}'
+      - name: "ConsumerData_AreaPcntHHMarriedCoupleWithChild"
+        description: '{{ doc("l2col_ConsumerData_AreaPcntHHMarriedCoupleWithChild") }}'
+      - name: "ConsumerData_AreaPcntHHSpanishSpeaking"
+        description: '{{ doc("l2col_ConsumerData_AreaPcntHHSpanishSpeaking") }}'
+      - name: "ConsumerData_AreaPcntHHWithChildren"
+        description: '{{ doc("l2col_ConsumerData_AreaPcntHHWithChildren") }}'
+      - name: "ConsumerData_Arts_And_Antiques"
+        description: '{{ doc("l2col_ConsumerData_Arts_And_Antiques") }}'
+      - name: "ConsumerData_Arts_Art"
+        description: '{{ doc("l2col_ConsumerData_Arts_Art") }}'
+      - name: "ConsumerData_Arts_Int"
+        description: '{{ doc("l2col_ConsumerData_Arts_Int") }}'
+      - name: "ConsumerData_Assimilation_Status"
+        description: '{{ doc("l2col_ConsumerData_Assimilation_Status") }}'
+      - name: "ConsumerData_Auto_Buy_Interest"
+        description: '{{ doc("l2col_ConsumerData_Auto_Buy_Interest") }}'
+      - name: "ConsumerData_Auto_Make_1"
+        description: '{{ doc("l2col_ConsumerData_Auto_Make_1") }}'
+      - name: "ConsumerData_Auto_Make_2"
+        description: '{{ doc("l2col_ConsumerData_Auto_Make_2") }}'
+      - name: "ConsumerData_Auto_Model_1"
+        description: '{{ doc("l2col_ConsumerData_Auto_Model_1") }}'
+      - name: "ConsumerData_Auto_Model_2"
+        description: '{{ doc("l2col_ConsumerData_Auto_Model_2") }}'
+      - name: "ConsumerData_Auto_Work"
+        description: '{{ doc("l2col_ConsumerData_Auto_Work") }}'
+      - name: "ConsumerData_Auto_Year_1"
+        description: '{{ doc("l2col_ConsumerData_Auto_Year_1") }}'
+      - name: "ConsumerData_Auto_Year_2"
+        description: '{{ doc("l2col_ConsumerData_Auto_Year_2") }}'
+      - name: "ConsumerData_Automotive_Buff"
+        description: '{{ doc("l2col_ConsumerData_Automotive_Buff") }}'
+      - name: "ConsumerData_Autoparts_Accessories"
+        description: '{{ doc("l2col_ConsumerData_Autoparts_Accessories") }}'
+      - name: "ConsumerData_Aviation_Int"
+        description: '{{ doc("l2col_ConsumerData_Aviation_Int") }}'
+      - name: "ConsumerData_BedroomsCount"
+        description: '{{ doc("l2col_ConsumerData_BedroomsCount") }}'
+      - name: "ConsumerData_Boating_Sailing"
+        description: '{{ doc("l2col_ConsumerData_Boating_Sailing") }}'
+      - name: "ConsumerData_Book_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Book_Buyer") }}'
+      - name: "ConsumerData_Book_Reader"
+        description: '{{ doc("l2col_ConsumerData_Book_Reader") }}'
+      - name: "ConsumerData_Books_Magazines"
+        description: '{{ doc("l2col_ConsumerData_Books_Magazines") }}'
+      - name: "ConsumerData_Books_Music_Audio"
+        description: '{{ doc("l2col_ConsumerData_Books_Music_Audio") }}'
+      - name: "ConsumerData_Books_Music_Books"
+        description: '{{ doc("l2col_ConsumerData_Books_Music_Books") }}'
+      - name: "ConsumerData_Broader_Living"
+        description: '{{ doc("l2col_ConsumerData_Broader_Living") }}'
+      - name: "ConsumerData_Business_Owner"
+        description: '{{ doc("l2col_ConsumerData_Business_Owner") }}'
+      - name: "ConsumerData_Camping_Hiking"
+        description: '{{ doc("l2col_ConsumerData_Camping_Hiking") }}'
+      - name: "ConsumerData_Career_Improvement"
+        description: '{{ doc("l2col_ConsumerData_Career_Improvement") }}'
+      - name: "ConsumerData_Career_Int"
+        description: '{{ doc("l2col_ConsumerData_Career_Int") }}'
+      - name: "ConsumerData_CBSA"
+        description: '{{ doc("l2col_ConsumerData_CBSA") }}'
+      - name: "ConsumerData_CBSA_Code"
+        description: '{{ doc("l2col_ConsumerData_CBSA_Code") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_00_02") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02_Female"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_00_02_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02_Male"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_00_02_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_00_02_Unknown"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_00_02_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_03_05") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05_Female"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_03_05_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05_Male"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_03_05_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_03_05_Unknown"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_03_05_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_06_10") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10_Female"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_06_10_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10_Male"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_06_10_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_06_10_Unknown"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_06_10_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_11_15") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15_Female"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_11_15_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15_Male"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_11_15_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_11_15_Unknown"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_11_15_Unknown") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_16_17") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17_Female"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_16_17_Female") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17_Male"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_16_17_Male") }}'
+      - name: "ConsumerData_Children_in_HH_Age_16_17_Unknown"
+        description: '{{ doc("l2col_ConsumerData_Children_in_HH_Age_16_17_Unknown") }}'
+      - name: "ConsumerData_Childrens_Babycare"
+        description: '{{ doc("l2col_ConsumerData_Childrens_Babycare") }}'
+      - name: "ConsumerData_Childrens_Back_To_School"
+        description: '{{ doc("l2col_ConsumerData_Childrens_Back_To_School") }}'
+      - name: "ConsumerData_Childrens_General"
+        description: '{{ doc("l2col_ConsumerData_Childrens_General") }}'
+      - name: "ConsumerData_Childrens_Learning_Toys"
+        description: '{{ doc("l2col_ConsumerData_Childrens_Learning_Toys") }}'
+      - name: "ConsumerData_Christian_Families"
+        description: '{{ doc("l2col_ConsumerData_Christian_Families") }}'
+      - name: "ConsumerData_Collect_Special_Foods_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Collect_Special_Foods_Buyer") }}'
+      - name: "ConsumerData_Collectibles_Antiques"
+        description: '{{ doc("l2col_ConsumerData_Collectibles_Antiques") }}'
+      - name: "ConsumerData_Collectibles_Arts"
+        description: '{{ doc("l2col_ConsumerData_Collectibles_Arts") }}'
+      - name: "ConsumerData_Collectibles_Coins"
+        description: '{{ doc("l2col_ConsumerData_Collectibles_Coins") }}'
+      - name: "ConsumerData_Collectibles_General"
+        description: '{{ doc("l2col_ConsumerData_Collectibles_General") }}'
+      - name: "ConsumerData_Collectibles_Sports_Memorabilia"
+        description: '{{ doc("l2col_ConsumerData_Collectibles_Sports_Memorabilia") }}'
+      - name: "ConsumerData_Collectibles_Stamps"
+        description: '{{ doc("l2col_ConsumerData_Collectibles_Stamps") }}'
+      - name: "ConsumerData_Collector_Avid"
+        description: '{{ doc("l2col_ConsumerData_Collector_Avid") }}'
+      - name: "ConsumerData_Common_Living"
+        description: '{{ doc("l2col_ConsumerData_Common_Living") }}'
+      - name: "ConsumerData_Computer_Home_Office"
+        description: '{{ doc("l2col_ConsumerData_Computer_Home_Office") }}'
+      - name: "ConsumerData_Conservative_Republican_Flag"
+        description: '{{ doc("l2col_ConsumerData_Conservative_Republican_Flag") }}'
+      - name: "ConsumerData_Conservative_Republican_Score"
+        description: '{{ doc("l2col_ConsumerData_Conservative_Republican_Score") }}'
+      - name: "ConsumerData_Consumer_Electronics"
+        description: '{{ doc("l2col_ConsumerData_Consumer_Electronics") }}'
+      - name: "ConsumerData_Cooking_Enthusiast"
+        description: '{{ doc("l2col_ConsumerData_Cooking_Enthusiast") }}'
+      - name: "ConsumerData_Cooking_General"
+        description: '{{ doc("l2col_ConsumerData_Cooking_General") }}'
+      - name: "ConsumerData_Cosmetics_Beauty"
+        description: '{{ doc("l2col_ConsumerData_Cosmetics_Beauty") }}'
+      - name: "ConsumerData_CRA_Income_Classification_Code"
+        description: '{{ doc("l2col_ConsumerData_CRA_Income_Classification_Code") }}'
+      - name: "ConsumerData_Craft_Int"
+        description: '{{ doc("l2col_ConsumerData_Craft_Int") }}'
+      - name: "ConsumerData_Crafts_Hobbies_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Crafts_Hobbies_Buyer") }}'
+      - name: "ConsumerData_Credit_Rating"
+        description: '{{ doc("l2col_ConsumerData_Credit_Rating") }}'
+      - name: "ConsumerData_CSA"
+        description: '{{ doc("l2col_ConsumerData_CSA") }}'
+      - name: "ConsumerData_CSA_Code"
+        description: '{{ doc("l2col_ConsumerData_CSA_Code") }}'
+      - name: "ConsumerData_Cultural_Arts_Living"
+        description: '{{ doc("l2col_ConsumerData_Cultural_Arts_Living") }}'
+      - name: "ConsumerData_Current_Affairs_Politics"
+        description: '{{ doc("l2col_ConsumerData_Current_Affairs_Politics") }}'
+      - name: "ConsumerData_Dieting_Weightloss"
+        description: '{{ doc("l2col_ConsumerData_Dieting_Weightloss") }}'
+      - name: "ConsumerData_Disabled_In_HH"
+        description: '{{ doc("l2col_ConsumerData_Disabled_In_HH") }}'
+      - name: "ConsumerData_Do_It_Yourself_Lifestyle_Committed_Choice"
+        description: '{{ doc("l2col_ConsumerData_Do_It_Yourself_Lifestyle_Committed_Choice") }}'
+      - name: "ConsumerData_Do_It_Yourselfers_Typical_Choice"
+        description: '{{ doc("l2col_ConsumerData_Do_It_Yourselfers_Typical_Choice") }}'
+      - name: "ConsumerData_Do_Not_Call"
+        description: '{{ doc("l2col_ConsumerData_Do_Not_Call") }}'
+      - name: "ConsumerData_Donor_Animal_Welfare"
+        description: '{{ doc("l2col_ConsumerData_Donor_Animal_Welfare") }}'
+      - name: "ConsumerData_Donor_Arts_Cultural"
+        description: '{{ doc("l2col_ConsumerData_Donor_Arts_Cultural") }}'
+      - name: "ConsumerData_Donor_By_Mail"
+        description: '{{ doc("l2col_ConsumerData_Donor_By_Mail") }}'
+      - name: "ConsumerData_Donor_Charitable_Causes"
+        description: '{{ doc("l2col_ConsumerData_Donor_Charitable_Causes") }}'
+      - name: "ConsumerData_Donor_Childrens_Causes"
+        description: '{{ doc("l2col_ConsumerData_Donor_Childrens_Causes") }}'
+      - name: "ConsumerData_Donor_Community_Charity"
+        description: '{{ doc("l2col_ConsumerData_Donor_Community_Charity") }}'
+      - name: "ConsumerData_Donor_Environmental"
+        description: '{{ doc("l2col_ConsumerData_Donor_Environmental") }}'
+      - name: "ConsumerData_Donor_Environmental_Issues"
+        description: '{{ doc("l2col_ConsumerData_Donor_Environmental_Issues") }}'
+      - name: "ConsumerData_Donor_Health_Institution"
+        description: '{{ doc("l2col_ConsumerData_Donor_Health_Institution") }}'
+      - name: "ConsumerData_Donor_International_Aid"
+        description: '{{ doc("l2col_ConsumerData_Donor_International_Aid") }}'
+      - name: "ConsumerData_Donor_Political_Conservative"
+        description: '{{ doc("l2col_ConsumerData_Donor_Political_Conservative") }}'
+      - name: "ConsumerData_Donor_Political_Liberal"
+        description: '{{ doc("l2col_ConsumerData_Donor_Political_Liberal") }}'
+      - name: "ConsumerData_Donor_Veterans"
+        description: '{{ doc("l2col_ConsumerData_Donor_Veterans") }}'
+      - name: "ConsumerData_Dwelling_Type"
+        description: '{{ doc("l2col_ConsumerData_Dwelling_Type") }}'
+      - name: "ConsumerData_Education_of_Person"
+        description: '{{ doc("l2col_ConsumerData_Education_of_Person") }}'
+      - name: "ConsumerData_Education_Online"
+        description: '{{ doc("l2col_ConsumerData_Education_Online") }}'
+      - name: "ConsumerData_Electronics_Computers"
+        description: '{{ doc("l2col_ConsumerData_Electronics_Computers") }}'
+      - name: "ConsumerData_Electronics_Movies_Int"
+        description: '{{ doc("l2col_ConsumerData_Electronics_Movies_Int") }}'
+      - name: "ConsumerData_Equestrian_Int"
+        description: '{{ doc("l2col_ConsumerData_Equestrian_Int") }}'
+      - name: "ConsumerData_Estimated_Income_Amount"
+        description: '{{ doc("l2col_ConsumerData_Estimated_Income_Amount") }}'
+      - name: "ConsumerData_EstimatedAreaMedianHHIncome"
+        description: '{{ doc("l2col_ConsumerData_EstimatedAreaMedianHHIncome") }}'
+      - name: "ConsumerData_Exercise_Aerobic"
+        description: '{{ doc("l2col_ConsumerData_Exercise_Aerobic") }}'
+      - name: "ConsumerData_Exercise_Enthusiast"
+        description: '{{ doc("l2col_ConsumerData_Exercise_Enthusiast") }}'
+      - name: "ConsumerData_Exercise_Health_Grouping"
+        description: '{{ doc("l2col_ConsumerData_Exercise_Health_Grouping") }}'
+      - name: "ConsumerData_Exercise_Running_Jogging"
+        description: '{{ doc("l2col_ConsumerData_Exercise_Running_Jogging") }}'
+      - name: "ConsumerData_Exercise_Walking"
+        description: '{{ doc("l2col_ConsumerData_Exercise_Walking") }}'
+      - name: "ConsumerData_Female_Merch_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Female_Merch_Buyer") }}'
+      - name: "ConsumerData_Females_in_HH_18_24"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_18_24") }}'
+      - name: "ConsumerData_Females_in_HH_25_34"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_25_34") }}'
+      - name: "ConsumerData_Females_in_HH_35_44"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_35_44") }}'
+      - name: "ConsumerData_Females_in_HH_45_54"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_45_54") }}'
+      - name: "ConsumerData_Females_in_HH_55_64"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_55_64") }}'
+      - name: "ConsumerData_Females_in_HH_65_74"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_65_74") }}'
+      - name: "ConsumerData_Females_in_HH_75_Plus"
+        description: '{{ doc("l2col_ConsumerData_Females_in_HH_75_Plus") }}'
+      - name: "ConsumerData_Fisher"
+        description: '{{ doc("l2col_ConsumerData_Fisher") }}'
+      - name: "ConsumerData_Food_Wines"
+        description: '{{ doc("l2col_ConsumerData_Food_Wines") }}'
+      - name: "ConsumerData_Foods_Natural"
+        description: '{{ doc("l2col_ConsumerData_Foods_Natural") }}'
+      - name: "ConsumerData_Games_Board_Puzzles"
+        description: '{{ doc("l2col_ConsumerData_Games_Board_Puzzles") }}'
+      - name: "ConsumerData_Games_PC_Games"
+        description: '{{ doc("l2col_ConsumerData_Games_PC_Games") }}'
+      - name: "ConsumerData_Games_Video"
+        description: '{{ doc("l2col_ConsumerData_Games_Video") }}'
+      - name: "ConsumerData_Gaming_Casino"
+        description: '{{ doc("l2col_ConsumerData_Gaming_Casino") }}'
+      - name: "ConsumerData_Gaming_Int"
+        description: '{{ doc("l2col_ConsumerData_Gaming_Int") }}'
+      - name: "ConsumerData_Gardening"
+        description: '{{ doc("l2col_ConsumerData_Gardening") }}'
+      - name: "ConsumerData_Gardening_Farming_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Gardening_Farming_Buyer") }}'
+      - name: "ConsumerData_Generations_In_HH"
+        description: '{{ doc("l2col_ConsumerData_Generations_In_HH") }}'
+      - name: "ConsumerData_Golf_Enthusiast"
+        description: '{{ doc("l2col_ConsumerData_Golf_Enthusiast") }}'
+      - name: "ConsumerData_Grandchildren_Int"
+        description: '{{ doc("l2col_ConsumerData_Grandchildren_Int") }}'
+      - name: "ConsumerData_Health_And_Beauty"
+        description: '{{ doc("l2col_ConsumerData_Health_And_Beauty") }}'
+      - name: "ConsumerData_Health_Medical"
+        description: '{{ doc("l2col_ConsumerData_Health_Medical") }}'
+      - name: "ConsumerData_High_End_Appliances"
+        description: '{{ doc("l2col_ConsumerData_High_End_Appliances") }}'
+      - name: "ConsumerData_High_Tech_Leader"
+        description: '{{ doc("l2col_ConsumerData_High_Tech_Leader") }}'
+      - name: "ConsumerData_Highbrow_Living"
+        description: '{{ doc("l2col_ConsumerData_Highbrow_Living") }}'
+      - name: "ConsumerData_Hispanic_Country_Code"
+        description: '{{ doc("l2col_ConsumerData_Hispanic_Country_Code") }}'
+      - name: "ConsumerData_History_Military"
+        description: '{{ doc("l2col_ConsumerData_History_Military") }}'
+      - name: "ConsumerData_Home_And_Garden"
+        description: '{{ doc("l2col_ConsumerData_Home_And_Garden") }}'
+      - name: "ConsumerData_Home_Decor_Enthusiast"
+        description: '{{ doc("l2col_ConsumerData_Home_Decor_Enthusiast") }}'
+      - name: "ConsumerData_Home_Est_Current_Value_Code"
+        description: '{{ doc("l2col_ConsumerData_Home_Est_Current_Value_Code") }}'
+      - name: "ConsumerData_Home_Furnishings_Decor"
+        description: '{{ doc("l2col_ConsumerData_Home_Furnishings_Decor") }}'
+      - name: "ConsumerData_Home_Improvement"
+        description: '{{ doc("l2col_ConsumerData_Home_Improvement") }}'
+      - name: "ConsumerData_Home_Living"
+        description: '{{ doc("l2col_ConsumerData_Home_Living") }}'
+      - name: "ConsumerData_Home_Mortgage_Amount"
+        description: '{{ doc("l2col_ConsumerData_Home_Mortgage_Amount") }}'
+      - name: "ConsumerData_Home_Mortgage_Amount_Code"
+        description: '{{ doc("l2col_ConsumerData_Home_Mortgage_Amount_Code") }}'
+      - name: "ConsumerData_Home_Purchase_Date"
+        description: '{{ doc("l2col_ConsumerData_Home_Purchase_Date") }}'
+      - name: "ConsumerData_Home_Purchase_Price"
+        description: '{{ doc("l2col_ConsumerData_Home_Purchase_Price") }}'
+      - name: "ConsumerData_Home_Purchase_Price_Code"
+        description: '{{ doc("l2col_ConsumerData_Home_Purchase_Price_Code") }}'
+      - name: "ConsumerData_Home_Purchase_Year"
+        description: '{{ doc("l2col_ConsumerData_Home_Purchase_Year") }}'
+      - name: "ConsumerData_Home_Swimming_Pool"
+        description: '{{ doc("l2col_ConsumerData_Home_Swimming_Pool") }}'
+      - name: "ConsumerData_Homeowner_Probability_Model"
+        description: '{{ doc("l2col_ConsumerData_Homeowner_Probability_Model") }}'
+      - name: "ConsumerData_House_Plants"
+        description: '{{ doc("l2col_ConsumerData_House_Plants") }}'
+      - name: "ConsumerData_Household_Net_Worth"
+        description: '{{ doc("l2col_ConsumerData_Household_Net_Worth") }}'
+      - name: "ConsumerData_Household_Number_Lines_Of_Credit"
+        description: '{{ doc("l2col_ConsumerData_Household_Number_Lines_Of_Credit") }}'
+      - name: "ConsumerData_Hunter"
+        description: '{{ doc("l2col_ConsumerData_Hunter") }}'
+      - name: "ConsumerData_Hunting_Shooting"
+        description: '{{ doc("l2col_ConsumerData_Hunting_Shooting") }}'
+      - name: "ConsumerData_Inferred_HH_Rank"
+        description: '{{ doc("l2col_ConsumerData_Inferred_HH_Rank") }}'
+      - name: "ConsumerData_Invest_Active"
+        description: '{{ doc("l2col_ConsumerData_Invest_Active") }}'
+      - name: "ConsumerData_Invest_Stock_Securities"
+        description: '{{ doc("l2col_ConsumerData_Invest_Stock_Securities") }}'
+      - name: "ConsumerData_Investing_Finance_Grouping"
+        description: '{{ doc("l2col_ConsumerData_Investing_Finance_Grouping") }}'
+      - name: "ConsumerData_Investments"
+        description: '{{ doc("l2col_ConsumerData_Investments") }}'
+      - name: "ConsumerData_Investments_Foreign"
+        description: '{{ doc("l2col_ConsumerData_Investments_Foreign") }}'
+      - name: "ConsumerData_Investments_Personal"
+        description: '{{ doc("l2col_ConsumerData_Investments_Personal") }}'
+      - name: "ConsumerData_Investments_Realestate"
+        description: '{{ doc("l2col_ConsumerData_Investments_Realestate") }}'
+      - name: "ConsumerData_Jewelry_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Jewelry_Buyer") }}'
+      - name: "ConsumerData_Language_Code"
+        description: '{{ doc("l2col_ConsumerData_Language_Code") }}'
+      - name: "ConsumerData_Length_Of_Residence_Code"
+        description: '{{ doc("l2col_ConsumerData_Length_Of_Residence_Code") }}'
+      - name: "ConsumerData_Lifestyle_Passion_Collectibles"
+        description: '{{ doc("l2col_ConsumerData_Lifestyle_Passion_Collectibles") }}'
+      - name: "ConsumerData_Likely_Educational_Attainment_Ranking_by_Area"
+        description: '{{ doc("l2col_ConsumerData_Likely_Educational_Attainment_Ranking_by_Area") }}'
+      - name: "ConsumerData_Likely_Income_Ranking_by_Area"
+        description: '{{ doc("l2col_ConsumerData_Likely_Income_Ranking_by_Area") }}'
+      - name: "ConsumerData_LikelyRecentEmployment_Company_Name"
+        description: '{{ doc("l2col_ConsumerData_LikelyRecentEmployment_Company_Name") }}'
+      - name: "ConsumerData_LikelyRecentEmployment_Executive_Department"
+        description: '{{ doc("l2col_ConsumerData_LikelyRecentEmployment_Executive_Department") }}'
+      - name: "ConsumerData_LikelyRecentEmployment_Executive_Level"
+        description: '{{ doc("l2col_ConsumerData_LikelyRecentEmployment_Executive_Level") }}'
+      - name: "ConsumerData_LikelyRecentEmployment_Standardized_Title"
+        description: '{{ doc("l2col_ConsumerData_LikelyRecentEmployment_Standardized_Title") }}'
+      - name: "ConsumerData_Luggage_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Luggage_Buyer") }}'
+      - name: "ConsumerData_MAID_Available"
+        description: '{{ doc("l2col_ConsumerData_MAID_Available") }}'
+      - name: "ConsumerData_MAID_IP1"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP1") }}'
+      - name: "ConsumerData_MAID_IP2"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP2") }}'
+      - name: "ConsumerData_MAID_IP3"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP3") }}'
+      - name: "ConsumerData_MAID_IP4"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP4") }}'
+      - name: "ConsumerData_MAID_IP5"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP5") }}'
+      - name: "ConsumerData_MAID_IP_Available"
+        description: '{{ doc("l2col_ConsumerData_MAID_IP_Available") }}'
+      - name: "ConsumerData_MAID_MAID1"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID1") }}'
+      - name: "ConsumerData_MAID_MAID1_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID1_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID2"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID2") }}'
+      - name: "ConsumerData_MAID_MAID2_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID2_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID3"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID3") }}'
+      - name: "ConsumerData_MAID_MAID3_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID3_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID4"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID4") }}'
+      - name: "ConsumerData_MAID_MAID4_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID4_Cell_Phone_System") }}'
+      - name: "ConsumerData_MAID_MAID5"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID5") }}'
+      - name: "ConsumerData_MAID_MAID5_Cell_Phone_System"
+        description: '{{ doc("l2col_ConsumerData_MAID_MAID5_Cell_Phone_System") }}'
+      - name: "ConsumerData_Mail_Order_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Mail_Order_Buyer") }}'
+      - name: "ConsumerData_Mail_Responder"
+        description: '{{ doc("l2col_ConsumerData_Mail_Responder") }}'
+      - name: "ConsumerData_Male_Merch_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Male_Merch_Buyer") }}'
+      - name: "ConsumerData_Males_in_HH_18_24"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_18_24") }}'
+      - name: "ConsumerData_Males_in_HH_25_34"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_25_34") }}'
+      - name: "ConsumerData_Males_in_HH_35_44"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_35_44") }}'
+      - name: "ConsumerData_Males_in_HH_45_54"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_45_54") }}'
+      - name: "ConsumerData_Males_in_HH_55_64"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_55_64") }}'
+      - name: "ConsumerData_Males_in_HH_65_74"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_65_74") }}'
+      - name: "ConsumerData_Males_in_HH_75_Plus"
+        description: '{{ doc("l2col_ConsumerData_Males_in_HH_75_Plus") }}'
+      - name: "ConsumerData_Marital_Status"
+        description: '{{ doc("l2col_ConsumerData_Marital_Status") }}'
+      - name: "ConsumerData_Membership_Club"
+        description: '{{ doc("l2col_ConsumerData_Membership_Club") }}'
+      - name: "ConsumerData_Military_Memorabilia_Weapons"
+        description: '{{ doc("l2col_ConsumerData_Military_Memorabilia_Weapons") }}'
+      - name: "ConsumerData_Moderate_Democrat_Flag"
+        description: '{{ doc("l2col_ConsumerData_Moderate_Democrat_Flag") }}'
+      - name: "ConsumerData_Moderate_Democrat_Score"
+        description: '{{ doc("l2col_ConsumerData_Moderate_Democrat_Score") }}'
+      - name: "ConsumerData_Moderate_Republican_Flag"
+        description: '{{ doc("l2col_ConsumerData_Moderate_Republican_Flag") }}'
+      - name: "ConsumerData_Moderate_Republican_Score"
+        description: '{{ doc("l2col_ConsumerData_Moderate_Republican_Score") }}'
+      - name: "ConsumerData_Motorcycle_Make_1"
+        description: '{{ doc("l2col_ConsumerData_Motorcycle_Make_1") }}'
+      - name: "ConsumerData_Motorcycle_Model_1"
+        description: '{{ doc("l2col_ConsumerData_Motorcycle_Model_1") }}'
+      - name: "ConsumerData_Movie_Collector"
+        description: '{{ doc("l2col_ConsumerData_Movie_Collector") }}'
+      - name: "ConsumerData_MSA"
+        description: '{{ doc("l2col_ConsumerData_MSA") }}'
+      - name: "ConsumerData_MSA_Code"
+        description: '{{ doc("l2col_ConsumerData_MSA_Code") }}'
+      - name: "ConsumerData_Music_Avid_Listener"
+        description: '{{ doc("l2col_ConsumerData_Music_Avid_Listener") }}'
+      - name: "ConsumerData_Music_Collector"
+        description: '{{ doc("l2col_ConsumerData_Music_Collector") }}'
+      - name: "ConsumerData_Music_Home_Stereo"
+        description: '{{ doc("l2col_ConsumerData_Music_Home_Stereo") }}'
+      - name: "ConsumerData_Musical_Instruments"
+        description: '{{ doc("l2col_ConsumerData_Musical_Instruments") }}'
+      - name: "ConsumerData_News_Financial"
+        description: '{{ doc("l2col_ConsumerData_News_Financial") }}'
+      - name: "ConsumerData_Number_Of_Adults_in_HH"
+        description: '{{ doc("l2col_ConsumerData_Number_Of_Adults_in_HH") }}'
+      - name: "ConsumerData_Number_Of_Children_in_HH"
+        description: '{{ doc("l2col_ConsumerData_Number_Of_Children_in_HH") }}'
+      - name: "ConsumerData_Number_Of_Persons_in_HH"
+        description: '{{ doc("l2col_ConsumerData_Number_Of_Persons_in_HH") }}'
+      - name: "ConsumerData_Occupation_Group"
+        description: '{{ doc("l2col_ConsumerData_Occupation_Group") }}'
+      - name: "ConsumerData_Occupation_of_Person"
+        description: '{{ doc("l2col_ConsumerData_Occupation_of_Person") }}'
+      - name: "ConsumerData_Online_Buyer"
+        description: '{{ doc("l2col_ConsumerData_Online_Buyer") }}'
+      - name: "ConsumerData_Opportunity_Seekers"
+        description: '{{ doc("l2col_ConsumerData_Opportunity_Seekers") }}'
+      - name: "ConsumerData_Outdoor_Enthusiast"
+        description: '{{ doc("l2col_ConsumerData_Outdoor_Enthusiast") }}'
+      - name: "ConsumerData_Outdoor_Grouping"
+        description: '{{ doc("l2col_ConsumerData_Outdoor_Grouping") }}'
+      - name: "ConsumerData_Outdoor_Sports_Lover"
+        description: '{{ doc("l2col_ConsumerData_Outdoor_Sports_Lover") }}'
+      - name: "ConsumerData_Parenting_Int"
+        description: '{{ doc("l2col_ConsumerData_Parenting_Int") }}'
+      - name: "ConsumerData_PASS_Prospector_Home_Value_Mortgage_File"
+        description: '{{ doc("l2col_ConsumerData_PASS_Prospector_Home_Value_Mortgage_File") }}'
+      - name: "ConsumerData_Pets_Cats"
+        description: '{{ doc("l2col_ConsumerData_Pets_Cats") }}'
+      - name: "ConsumerData_Pets_Dogs"
+        description: '{{ doc("l2col_ConsumerData_Pets_Dogs") }}'
+      - name: "ConsumerData_Pets_Multi"
+        description: '{{ doc("l2col_ConsumerData_Pets_Multi") }}'
+      - name: "ConsumerData_Photography_Int"
+        description: '{{ doc("l2col_ConsumerData_Photography_Int") }}'
+      - name: "ConsumerData_Photography_Video_Equip"
+        description: '{{ doc("l2col_ConsumerData_Photography_Video_Equip") }}'
+      - name: "ConsumerData_Political_Donor_State_Level"
+        description: '{{ doc("l2col_ConsumerData_Political_Donor_State_Level") }}'
+      - name: "ConsumerData_Presence_Of_CC"
+        description: '{{ doc("l2col_ConsumerData_Presence_Of_CC") }}'
+      - name: "ConsumerData_Presence_Of_Children_in_HH"
+        description: '{{ doc("l2col_ConsumerData_Presence_Of_Children_in_HH") }}'
+      - name: "ConsumerData_Presence_Of_Gold_Plat_CC"
+        description: '{{ doc("l2col_ConsumerData_Presence_Of_Gold_Plat_CC") }}'
+      - name: "ConsumerData_Presence_Of_Premium_CC"
+        description: '{{ doc("l2col_ConsumerData_Presence_Of_Premium_CC") }}'
+      - name: "ConsumerData_Presence_Of_Upscale_Retail_CC"
+        description: '{{ doc("l2col_ConsumerData_Presence_Of_Upscale_Retail_CC") }}'
+      - name: "ConsumerData_Professional_Living"
+        description: '{{ doc("l2col_ConsumerData_Professional_Living") }}'
+      - name: "ConsumerData_Progressive_Democrat_Flag"
+        description: '{{ doc("l2col_ConsumerData_Progressive_Democrat_Flag") }}'
+      - name: "ConsumerData_Progressive_Democrat_Score"
+        description: '{{ doc("l2col_ConsumerData_Progressive_Democrat_Score") }}'
+      - name: "ConsumerData_Reading_Audio_Books"
+        description: '{{ doc("l2col_ConsumerData_Reading_Audio_Books") }}'
+      - name: "ConsumerData_Reading_General"
+        description: '{{ doc("l2col_ConsumerData_Reading_General") }}'
+      - name: "ConsumerData_Reading_Mags"
+        description: '{{ doc("l2col_ConsumerData_Reading_Mags") }}'
+      - name: "ConsumerData_Reading_Sci_Fi"
+        description: '{{ doc("l2col_ConsumerData_Reading_Sci_Fi") }}'
+      - name: "ConsumerData_Religion_Code"
+        description: '{{ doc("l2col_ConsumerData_Religion_Code") }}'
+      - name: "ConsumerData_Religious_Contributor"
+        description: '{{ doc("l2col_ConsumerData_Religious_Contributor") }}'
+      - name: "ConsumerData_Religious_Inspiration"
+        description: '{{ doc("l2col_ConsumerData_Religious_Inspiration") }}'
+      - name: "ConsumerData_Religious_Mags"
+        description: '{{ doc("l2col_ConsumerData_Religious_Mags") }}'
+      - name: "ConsumerData_Reserved_01"
+        description: '{{ doc("l2col_ConsumerData_Reserved_01") }}'
+      - name: "ConsumerData_Reserved_02"
+        description: '{{ doc("l2col_ConsumerData_Reserved_02") }}'
+      - name: "ConsumerData_Reserved_03"
+        description: '{{ doc("l2col_ConsumerData_Reserved_03") }}'
+      - name: "ConsumerData_Reserved_04"
+        description: '{{ doc("l2col_ConsumerData_Reserved_04") }}'
+      - name: "ConsumerData_Reserved_05"
+        description: '{{ doc("l2col_ConsumerData_Reserved_05") }}'
+      - name: "ConsumerData_Reserved_06"
+        description: '{{ doc("l2col_ConsumerData_Reserved_06") }}'
+      - name: "ConsumerData_Reserved_07"
+        description: '{{ doc("l2col_ConsumerData_Reserved_07") }}'
+      - name: "ConsumerData_Reserved_08"
+        description: '{{ doc("l2col_ConsumerData_Reserved_08") }}'
+      - name: "ConsumerData_Reserved_09"
+        description: '{{ doc("l2col_ConsumerData_Reserved_09") }}'
+      - name: "ConsumerData_Reserved_10"
+        description: '{{ doc("l2col_ConsumerData_Reserved_10") }}'
+      - name: "ConsumerData_Reserved_11"
+        description: '{{ doc("l2col_ConsumerData_Reserved_11") }}'
+      - name: "ConsumerData_Reserved_12"
+        description: '{{ doc("l2col_ConsumerData_Reserved_12") }}'
+      - name: "ConsumerData_Reserved_13"
+        description: '{{ doc("l2col_ConsumerData_Reserved_13") }}'
+      - name: "ConsumerData_Reserved_14"
+        description: '{{ doc("l2col_ConsumerData_Reserved_14") }}'
+      - name: "ConsumerData_RoomsCount"
+        description: '{{ doc("l2col_ConsumerData_RoomsCount") }}'
+      - name: "ConsumerData_RoomsOfficeFlag"
+        description: '{{ doc("l2col_ConsumerData_RoomsOfficeFlag") }}'
+      - name: "ConsumerData_RUS_Code"
+        description: '{{ doc("l2col_ConsumerData_RUS_Code") }}'
+      - name: "ConsumerData_Science_Space"
+        description: '{{ doc("l2col_ConsumerData_Science_Space") }}'
+      - name: "ConsumerData_Scuba_Diving"
+        description: '{{ doc("l2col_ConsumerData_Scuba_Diving") }}'
+      - name: "ConsumerData_Self_Improvement"
+        description: '{{ doc("l2col_ConsumerData_Self_Improvement") }}'
+      - name: "ConsumerData_Senior_Adult_In_HH"
+        description: '{{ doc("l2col_ConsumerData_Senior_Adult_In_HH") }}'
+      - name: "ConsumerData_Sewing_Knitting_Needlework"
+        description: '{{ doc("l2col_ConsumerData_Sewing_Knitting_Needlework") }}'
+      - name: "ConsumerData_Single_Parent_in_Household"
+        description: '{{ doc("l2col_ConsumerData_Single_Parent_in_Household") }}'
+      - name: "ConsumerData_Smoking"
+        description: '{{ doc("l2col_ConsumerData_Smoking") }}'
+      - name: "ConsumerData_Social_Ranking_Index_by_Area"
+        description: '{{ doc("l2col_ConsumerData_Social_Ranking_Index_by_Area") }}'
+      - name: "ConsumerData_Social_Ranking_Index_by_Individual"
+        description: '{{ doc("l2col_ConsumerData_Social_Ranking_Index_by_Individual") }}'
+      - name: "ConsumerData_SOHO_Indicator"
+        description: '{{ doc("l2col_ConsumerData_SOHO_Indicator") }}'
+      - name: "ConsumerData_Sports_Auto_Motorcycle_Racing"
+        description: '{{ doc("l2col_ConsumerData_Sports_Auto_Motorcycle_Racing") }}'
+      - name: "ConsumerData_Sports_Baseball"
+        description: '{{ doc("l2col_ConsumerData_Sports_Baseball") }}'
+      - name: "ConsumerData_Sports_Basketball"
+        description: '{{ doc("l2col_ConsumerData_Sports_Basketball") }}'
+      - name: "ConsumerData_Sports_Football"
+        description: '{{ doc("l2col_ConsumerData_Sports_Football") }}'
+      - name: "ConsumerData_Sports_Grouping"
+        description: '{{ doc("l2col_ConsumerData_Sports_Grouping") }}'
+      - name: "ConsumerData_Sports_Hockey"
+        description: '{{ doc("l2col_ConsumerData_Sports_Hockey") }}'
+      - name: "ConsumerData_Sports_Leisure"
+        description: '{{ doc("l2col_ConsumerData_Sports_Leisure") }}'
+      - name: "ConsumerData_Sports_Soccer"
+        description: '{{ doc("l2col_ConsumerData_Sports_Soccer") }}'
+      - name: "ConsumerData_Sports_TV_Sports"
+        description: '{{ doc("l2col_ConsumerData_Sports_TV_Sports") }}'
+      - name: "ConsumerData_Sporty_Living"
+        description: '{{ doc("l2col_ConsumerData_Sporty_Living") }}'
+      - name: "ConsumerData_StateIncomeDecile"
+        description: '{{ doc("l2col_ConsumerData_StateIncomeDecile") }}'
+      - name: "ConsumerData_Sweepstakes_Int"
+        description: '{{ doc("l2col_ConsumerData_Sweepstakes_Int") }}'
+      - name: "ConsumerData_TaxAssessedValueTotal"
+        description: '{{ doc("l2col_ConsumerData_TaxAssessedValueTotal") }}'
+      - name: "ConsumerData_TaxMarketValueTotal"
+        description: '{{ doc("l2col_ConsumerData_TaxMarketValueTotal") }}'
+      - name: "ConsumerData_Theater_Performing_Arts"
+        description: '{{ doc("l2col_ConsumerData_Theater_Performing_Arts") }}'
+      - name: "ConsumerData_Time_Zone"
+        description: '{{ doc("l2col_ConsumerData_Time_Zone") }}'
+      - name: "ConsumerData_Travel_Cruises"
+        description: '{{ doc("l2col_ConsumerData_Travel_Cruises") }}'
+      - name: "ConsumerData_Travel_Domestic"
+        description: '{{ doc("l2col_ConsumerData_Travel_Domestic") }}'
+      - name: "ConsumerData_Travel_Grouping"
+        description: '{{ doc("l2col_ConsumerData_Travel_Grouping") }}'
+      - name: "ConsumerData_Travel_Int"
+        description: '{{ doc("l2col_ConsumerData_Travel_Int") }}'
+      - name: "ConsumerData_Travel_Intl"
+        description: '{{ doc("l2col_ConsumerData_Travel_Intl") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_18_24"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_18_24") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_25_34"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_25_34") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_35_44"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_35_44") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_45_54"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_45_54") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_55_64"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_55_64") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_65_74"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_65_74") }}'
+      - name: "ConsumerData_Unknown_Gender_in_HH_75_Plus"
+        description: '{{ doc("l2col_ConsumerData_Unknown_Gender_in_HH_75_Plus") }}'
+      - name: "ConsumerData_Upscale_Living"
+        description: '{{ doc("l2col_ConsumerData_Upscale_Living") }}'
+      - name: "ConsumerData_Value_Hunter"
+        description: '{{ doc("l2col_ConsumerData_Value_Hunter") }}'
+      - name: "ConsumerData_Veteran_In_HH"
+        description: '{{ doc("l2col_ConsumerData_Veteran_In_HH") }}'
+      - name: "ConsumerData_Woodwork"
+        description: '{{ doc("l2col_ConsumerData_Woodwork") }}'
+      - name: "ConsumerData_Working_Woman"
+        description: '{{ doc("l2col_ConsumerData_Working_Woman") }}'
+      - name: "ConsumerData_Young_Adult_In_HH"
+        description: '{{ doc("l2col_ConsumerData_Young_Adult_In_HH") }}'
+      - name: "ConsumerDataLL_Gun_Owner"
+        description: '{{ doc("l2col_ConsumerDataLL_Gun_Owner") }}'
+      - name: "ConsumerDataLL_Gun_Owner_Concealed_Permit"
+        description: '{{ doc("l2col_ConsumerDataLL_Gun_Owner_Concealed_Permit") }}'
+      - name: "ConsumerDataLL_Veteran"
+        description: '{{ doc("l2col_ConsumerDataLL_Veteran") }}'
+      - name: "Control_Zone_District"
+        description: '{{ doc("l2col_Control_Zone_District") }}'
+      - name: "Corrections_District"
+        description: '{{ doc("l2col_Corrections_District") }}'
+      - name: "County"
+        description: '{{ doc("l2col_County") }}'
+      - name: "County_Board_of_Education_District"
+        description: '{{ doc("l2col_County_Board_of_Education_District") }}'
+      - name: "County_Board_of_Education_SubDistrict"
+        description: '{{ doc("l2col_County_Board_of_Education_SubDistrict") }}'
+      - name: "County_Commissioner_District"
+        description: '{{ doc("l2col_County_Commissioner_District") }}'
+      - name: "County_Community_College_District"
+        description: '{{ doc("l2col_County_Community_College_District") }}'
+      - name: "County_Fire_District"
+        description: '{{ doc("l2col_County_Fire_District") }}'
+      - name: "County_Hospital_District"
+        description: '{{ doc("l2col_County_Hospital_District") }}'
+      - name: "County_Legislative_District"
+        description: '{{ doc("l2col_County_Legislative_District") }}'
+      - name: "County_Library_District"
+        description: '{{ doc("l2col_County_Library_District") }}'
+      - name: "County_Memorial_District"
+        description: '{{ doc("l2col_County_Memorial_District") }}'
+      - name: "County_Paramedic_District"
+        description: '{{ doc("l2col_County_Paramedic_District") }}'
+      - name: "County_Service_Area"
+        description: '{{ doc("l2col_County_Service_Area") }}'
+      - name: "County_Service_Area_SubDistrict"
+        description: '{{ doc("l2col_County_Service_Area_SubDistrict") }}'
+      - name: "County_Sewer_District"
+        description: '{{ doc("l2col_County_Sewer_District") }}'
+      - name: "County_Superintendent_of_Schools_District"
+        description: '{{ doc("l2col_County_Superintendent_of_Schools_District") }}'
+      - name: "County_Supervisorial_District"
+        description: '{{ doc("l2col_County_Supervisorial_District") }}'
+      - name: "County_Unified_School_District"
+        description: '{{ doc("l2col_County_Unified_School_District") }}'
+      - name: "County_Water_District"
+        description: '{{ doc("l2col_County_Water_District") }}'
+      - name: "County_Water_Landowner_District"
+        description: '{{ doc("l2col_County_Water_Landowner_District") }}'
+      - name: "County_Water_SubDistrict"
+        description: '{{ doc("l2col_County_Water_SubDistrict") }}'
+      - name: "CountyEthnic_Description"
+        description: '{{ doc("l2col_CountyEthnic_Description") }}'
+      - name: "CountyEthnic_LALEthnicCode"
+        description: '{{ doc("l2col_CountyEthnic_LALEthnicCode") }}'
+      - name: "Democratic_Convention_Member"
+        description: '{{ doc("l2col_Democratic_Convention_Member") }}'
+      - name: "Democratic_Zone"
+        description: '{{ doc("l2col_Democratic_Zone") }}'
+      - name: "Designated_Market_Area_DMA"
+        description: '{{ doc("l2col_Designated_Market_Area_DMA") }}'
+      - name: "District_Attorney"
+        description: '{{ doc("l2col_District_Attorney") }}'
+      - name: "Drainage_District"
+        description: '{{ doc("l2col_Drainage_District") }}'
+      - name: "Education_Commission_District"
+        description: '{{ doc("l2col_Education_Commission_District") }}'
+      - name: "Educational_Service_District"
+        description: '{{ doc("l2col_Educational_Service_District") }}'
+      - name: "Educational_Service_Subdistrict"
+        description: '{{ doc("l2col_Educational_Service_Subdistrict") }}'
+      - name: "Election_Commissioner_District"
+        description: '{{ doc("l2col_Election_Commissioner_District") }}'
+      - name: "Elementary_School_District"
+        description: '{{ doc("l2col_Elementary_School_District") }}'
+      - name: "Elementary_School_SubDistrict"
+        description: '{{ doc("l2col_Elementary_School_SubDistrict") }}'
+      - name: "Emergency_Communication_911_District"
+        description: '{{ doc("l2col_Emergency_Communication_911_District") }}'
+      - name: "Emergency_Communication_911_SubDistrict"
+        description: '{{ doc("l2col_Emergency_Communication_911_SubDistrict") }}'
+      - name: "Enterprise_Zone_District"
+        description: '{{ doc("l2col_Enterprise_Zone_District") }}'
+      - name: "Ethnic_Description"
+        description: '{{ doc("l2col_Ethnic_Description") }}'
+      - name: "EthnicGroups_EthnicGroup1Desc"
+        description: '{{ doc("l2col_EthnicGroups_EthnicGroup1Desc") }}'
+      - name: "Exempted_Village_School_District"
+        description: '{{ doc("l2col_Exempted_Village_School_District") }}'
+      - name: "EXT_District"
+        description: '{{ doc("l2col_EXT_District") }}'
+      - name: "Facilities_Improvement_District"
+        description: '{{ doc("l2col_Facilities_Improvement_District") }}'
+      - name: "FECDonors_AvgDonation"
+        description: '{{ doc("l2col_FECDonors_AvgDonation") }}'
+      - name: "FECDonors_AvgDonation_Range"
+        description: '{{ doc("l2col_FECDonors_AvgDonation_Range") }}'
+      - name: "FECDonors_LastDonationDate"
+        description: '{{ doc("l2col_FECDonors_LastDonationDate") }}'
+      - name: "FECDonors_NumberOfDonations"
+        description: '{{ doc("l2col_FECDonors_NumberOfDonations") }}'
+      - name: "FECDonors_PrimaryRecipientOfContributions"
+        description: '{{ doc("l2col_FECDonors_PrimaryRecipientOfContributions") }}'
+      - name: "FECDonors_TotalDonationsAmount"
+        description: '{{ doc("l2col_FECDonors_TotalDonationsAmount") }}'
+      - name: "FECDonors_TotalDonationsAmt_Range"
+        description: '{{ doc("l2col_FECDonors_TotalDonationsAmt_Range") }}'
+      - name: "Fire_District"
+        description: '{{ doc("l2col_Fire_District") }}'
+      - name: "Fire_Maintenance_District"
+        description: '{{ doc("l2col_Fire_Maintenance_District") }}'
+      - name: "Fire_Protection_District"
+        description: '{{ doc("l2col_Fire_Protection_District") }}'
+      - name: "Fire_Protection_SubDistrict"
+        description: '{{ doc("l2col_Fire_Protection_SubDistrict") }}'
+      - name: "Fire_Protection_Tax_Measure_District"
+        description: '{{ doc("l2col_Fire_Protection_Tax_Measure_District") }}'
+      - name: "Fire_Service_Area_District"
+        description: '{{ doc("l2col_Fire_Service_Area_District") }}'
+      - name: "Fire_SubDistrict"
+        description: '{{ doc("l2col_Fire_SubDistrict") }}'
+      - name: "Flood_Control_Zone"
+        description: '{{ doc("l2col_Flood_Control_Zone") }}'
+      - name: "Forest_Preserve"
+        description: '{{ doc("l2col_Forest_Preserve") }}'
+      - name: "Garbage_District"
+        description: '{{ doc("l2col_Garbage_District") }}'
+      - name: "General_2000"
+        description: '{{ doc("l2col_General_2000") }}'
+      - name: "General_2002"
+        description: '{{ doc("l2col_General_2002") }}'
+      - name: "General_2004"
+        description: '{{ doc("l2col_General_2004") }}'
+      - name: "General_2006"
+        description: '{{ doc("l2col_General_2006") }}'
+      - name: "General_2008"
+        description: '{{ doc("l2col_General_2008") }}'
+      - name: "General_2010"
+        description: '{{ doc("l2col_General_2010") }}'
+      - name: "General_2012"
+        description: '{{ doc("l2col_General_2012") }}'
+      - name: "General_2014"
+        description: '{{ doc("l2col_General_2014") }}'
+      - name: "General_2016"
+        description: '{{ doc("l2col_General_2016") }}'
+      - name: "General_2018"
+        description: '{{ doc("l2col_General_2018") }}'
+      - name: "General_2020"
+        description: '{{ doc("l2col_General_2020") }}'
+      - name: "General_2022"
+        description: '{{ doc("l2col_General_2022") }}'
+      - name: "General_2024"
+        description: '{{ doc("l2col_General_2024") }}'
+      - name: "General_2026"
+        description: '{{ doc("l2col_General_2026") }}'
+      - name: "General_2028"
+        description: '{{ doc("l2col_General_2028") }}'
+      - name: "General_2030"
+        description: '{{ doc("l2col_General_2030") }}'
+      - name: "Geological_Hazard_Abatement_District"
+        description: '{{ doc("l2col_Geological_Hazard_Abatement_District") }}'
+      - name: "Hamlet_Community_Area"
+        description: '{{ doc("l2col_Hamlet_Community_Area") }}'
+      - name: "haystaq_flags_loaded_at"
+        description: '{{ doc("l2col_haystaq_flags_loaded_at") }}'
+      - name: "haystaq_scores_loaded_at"
+        description: '{{ doc("l2col_haystaq_scores_loaded_at") }}'
+      - name: "Health_District"
+        description: '{{ doc("l2col_Health_District") }}'
+      - name: "hf_2025_government_shutdown_fault"
+        description: '{{ doc("l2col_hf_2025_government_shutdown_fault") }}'
+      - name: "hf_2028_horserace_support"
+        description: '{{ doc("l2col_hf_2028_horserace_support") }}'
+      - name: "hf_abortion_pro"
+        description: '{{ doc("l2col_hf_abortion_pro") }}'
+      - name: "hf_activism"
+        description: '{{ doc("l2col_hf_activism") }}'
+      - name: "hf_affordability_changed_what_you_buy"
+        description: '{{ doc("l2col_hf_affordability_changed_what_you_buy") }}'
+      - name: "hf_affordable_housing_gov"
+        description: '{{ doc("l2col_hf_affordable_housing_gov") }}'
+      - name: "hf_age_limit"
+        description: '{{ doc("l2col_hf_age_limit") }}'
+      - name: "hf_age_limit_dem"
+        description: '{{ doc("l2col_hf_age_limit_dem") }}'
+      - name: "hf_alien_disclosure_govt"
+        description: '{{ doc("l2col_hf_alien_disclosure_govt") }}'
+      - name: "hf_amazon_worker_treatment"
+        description: '{{ doc("l2col_hf_amazon_worker_treatment") }}'
+      - name: "hf_aoc"
+        description: '{{ doc("l2col_hf_aoc") }}'
+      - name: "hf_aoc_dem"
+        description: '{{ doc("l2col_hf_aoc_dem") }}'
+      - name: "hf_area_identity"
+        description: '{{ doc("l2col_hf_area_identity") }}'
+      - name: "hf_artificial_intelligence"
+        description: '{{ doc("l2col_hf_artificial_intelligence") }}'
+      - name: "hf_attends_church"
+        description: '{{ doc("l2col_hf_attends_church") }}'
+      - name: "hf_attitude_towards_unions"
+        description: '{{ doc("l2col_hf_attitude_towards_unions") }}'
+      - name: "hf_autonomous_vehicles"
+        description: '{{ doc("l2col_hf_autonomous_vehicles") }}'
+      - name: "hf_bernie"
+        description: '{{ doc("l2col_hf_bernie") }}'
+      - name: "hf_bernie_dem"
+        description: '{{ doc("l2col_hf_bernie_dem") }}'
+      - name: "hf_buttigieg"
+        description: '{{ doc("l2col_hf_buttigieg") }}'
+      - name: "hf_buttigieg_dem"
+        description: '{{ doc("l2col_hf_buttigieg_dem") }}'
+      - name: "hf_campaign_finance_reform"
+        description: '{{ doc("l2col_hf_campaign_finance_reform") }}'
+      - name: "hf_candidate_female_prefer"
+        description: '{{ doc("l2col_hf_candidate_female_prefer") }}'
+      - name: "hf_candidate_mail"
+        description: '{{ doc("l2col_hf_candidate_mail") }}'
+      - name: "hf_candidate_minority_prefer"
+        description: '{{ doc("l2col_hf_candidate_minority_prefer") }}'
+      - name: "hf_capitalism_believe"
+        description: '{{ doc("l2col_hf_capitalism_believe") }}'
+      - name: "hf_casino"
+        description: '{{ doc("l2col_hf_casino") }}'
+      - name: "hf_charity_giving"
+        description: '{{ doc("l2col_hf_charity_giving") }}'
+      - name: "hf_charter_schools"
+        description: '{{ doc("l2col_hf_charter_schools") }}'
+      - name: "hf_china_foreign_policy"
+        description: '{{ doc("l2col_hf_china_foreign_policy") }}'
+      - name: "hf_christian_values"
+        description: '{{ doc("l2col_hf_christian_values") }}'
+      - name: "hf_civil_liberties"
+        description: '{{ doc("l2col_hf_civil_liberties") }}'
+      - name: "hf_climate_change"
+        description: '{{ doc("l2col_hf_climate_change") }}'
+      - name: "hf_college_admissions_race"
+        description: '{{ doc("l2col_hf_college_admissions_race") }}'
+      - name: "hf_community_integration"
+        description: '{{ doc("l2col_hf_community_integration") }}'
+      - name: "hf_concerned_job_loss_due_to_ai"
+        description: '{{ doc("l2col_hf_concerned_job_loss_due_to_ai") }}'
+      - name: "hf_conspiracy"
+        description: '{{ doc("l2col_hf_conspiracy") }}'
+      - name: "hf_consumer_value"
+        description: '{{ doc("l2col_hf_consumer_value") }}'
+      - name: "hf_critical_race_theory_books"
+        description: '{{ doc("l2col_hf_critical_race_theory_books") }}'
+      - name: "hf_crypto_buyer"
+        description: '{{ doc("l2col_hf_crypto_buyer") }}'
+      - name: "hf_crypto_restrictions"
+        description: '{{ doc("l2col_hf_crypto_restrictions") }}'
+      - name: "hf_dating"
+        description: '{{ doc("l2col_hf_dating") }}'
+      - name: "hf_death_penalty"
+        description: '{{ doc("l2col_hf_death_penalty") }}'
+      - name: "hf_defense_spending"
+        description: '{{ doc("l2col_hf_defense_spending") }}'
+      - name: "hf_dei"
+        description: '{{ doc("l2col_hf_dei") }}'
+      - name: "hf_dem_horserace_2028"
+        description: '{{ doc("l2col_hf_dem_horserace_2028") }}'
+      - name: "hf_despondency"
+        description: '{{ doc("l2col_hf_despondency") }}'
+      - name: "hf_doge"
+        description: '{{ doc("l2col_hf_doge") }}'
+      - name: "hf_domestic_deployment_of_troops"
+        description: '{{ doc("l2col_hf_domestic_deployment_of_troops") }}'
+      - name: "hf_dropoff_fill"
+        description: '{{ doc("l2col_hf_dropoff_fill") }}'
+      - name: "hf_economic_anxiety"
+        description: '{{ doc("l2col_hf_economic_anxiety") }}'
+      - name: "hf_economic_despondency"
+        description: '{{ doc("l2col_hf_economic_despondency") }}'
+      - name: "hf_electric_vehicle_buyer"
+        description: '{{ doc("l2col_hf_electric_vehicle_buyer") }}'
+      - name: "hf_elon_musk"
+        description: '{{ doc("l2col_hf_elon_musk") }}'
+      - name: "hf_elon_musk_gop"
+        description: '{{ doc("l2col_hf_elon_musk_gop") }}'
+      - name: "hf_epstein_files"
+        description: '{{ doc("l2col_hf_epstein_files") }}'
+      - name: "hf_family_medical_leave"
+        description: '{{ doc("l2col_hf_family_medical_leave") }}'
+      - name: "hf_felon_voting"
+        description: '{{ doc("l2col_hf_felon_voting") }}'
+      - name: "hf_free_community_college"
+        description: '{{ doc("l2col_hf_free_community_college") }}'
+      - name: "hf_gamer"
+        description: '{{ doc("l2col_hf_gamer") }}'
+      - name: "hf_gas_tax"
+        description: '{{ doc("l2col_hf_gas_tax") }}'
+      - name: "hf_general_anti_vax_pro_vax"
+        description: '{{ doc("l2col_hf_general_anti_vax_pro_vax") }}'
+      - name: "hf_gentrification"
+        description: '{{ doc("l2col_hf_gentrification") }}'
+      - name: "hf_gig_work_benefits"
+        description: '{{ doc("l2col_hf_gig_work_benefits") }}'
+      - name: "hf_gig_worker"
+        description: '{{ doc("l2col_hf_gig_worker") }}'
+      - name: "hf_gig_worker_historical"
+        description: '{{ doc("l2col_hf_gig_worker_historical") }}'
+      - name: "hf_green_new_deal"
+        description: '{{ doc("l2col_hf_green_new_deal") }}'
+      - name: "hf_gun_control"
+        description: '{{ doc("l2col_hf_gun_control") }}'
+      - name: "hf_haley"
+        description: '{{ doc("l2col_hf_haley") }}'
+      - name: "hf_haley_gop"
+        description: '{{ doc("l2col_hf_haley_gop") }}'
+      - name: "hf_harris"
+        description: '{{ doc("l2col_hf_harris") }}'
+      - name: "hf_harris_dem"
+        description: '{{ doc("l2col_hf_harris_dem") }}'
+      - name: "hf_home_buyer_any"
+        description: '{{ doc("l2col_hf_home_buyer_any") }}'
+      - name: "hf_home_buyer_new"
+        description: '{{ doc("l2col_hf_home_buyer_new") }}'
+      - name: "hf_ice_actions"
+        description: '{{ doc("l2col_hf_ice_actions") }}'
+      - name: "hf_ideology_establishment_vs_firebrand_gop"
+        description: '{{ doc("l2col_hf_ideology_establishment_vs_firebrand_gop") }}'
+      - name: "hf_ideology_fiscal"
+        description: '{{ doc("l2col_hf_ideology_fiscal") }}'
+      - name: "hf_ideology_general"
+        description: '{{ doc("l2col_hf_ideology_general") }}'
+      - name: "hf_ideology_overall_party"
+        description: '{{ doc("l2col_hf_ideology_overall_party") }}'
+      - name: "hf_ideology_primary_election"
+        description: '{{ doc("l2col_hf_ideology_primary_election") }}'
+      - name: "hf_ideology_progressive_vs_moderate_dem_type"
+        description: '{{ doc("l2col_hf_ideology_progressive_vs_moderate_dem_type") }}'
+      - name: "hf_ideology_social"
+        description: '{{ doc("l2col_hf_ideology_social") }}'
+      - name: "hf_immigration_illegal"
+        description: '{{ doc("l2col_hf_immigration_illegal") }}'
+      - name: "hf_income_inequality"
+        description: '{{ doc("l2col_hf_income_inequality") }}'
+      - name: "hf_inflation_fault"
+        description: '{{ doc("l2col_hf_inflation_fault") }}'
+      - name: "hf_infrastructure_funding"
+        description: '{{ doc("l2col_hf_infrastructure_funding") }}'
+      - name: "hf_insurance_of_last_resort"
+        description: '{{ doc("l2col_hf_insurance_of_last_resort") }}'
+      - name: "hf_israel_committing_genocide"
+        description: '{{ doc("l2col_hf_israel_committing_genocide") }}'
+      - name: "hf_israel_military_actions"
+        description: '{{ doc("l2col_hf_israel_military_actions") }}'
+      - name: "hf_israel_military_actions_dem"
+        description: '{{ doc("l2col_hf_israel_military_actions_dem") }}'
+      - name: "hf_israel_military_actions_gop"
+        description: '{{ doc("l2col_hf_israel_military_actions_gop") }}'
+      - name: "hf_jan_6th_pardons"
+        description: '{{ doc("l2col_hf_jan_6th_pardons") }}'
+      - name: "hf_jd_vance"
+        description: '{{ doc("l2col_hf_jd_vance") }}'
+      - name: "hf_jd_vance_gop"
+        description: '{{ doc("l2col_hf_jd_vance_gop") }}'
+      - name: "hf_job_seeker"
+        description: '{{ doc("l2col_hf_job_seeker") }}'
+      - name: "hf_jobs_guarantee"
+        description: '{{ doc("l2col_hf_jobs_guarantee") }}'
+      - name: "hf_likely_ev"
+        description: '{{ doc("l2col_hf_likely_ev") }}'
+      - name: "hf_likely_mid_term_voter"
+        description: '{{ doc("l2col_hf_likely_mid_term_voter") }}'
+      - name: "hf_likely_presidential_voter"
+        description: '{{ doc("l2col_hf_likely_presidential_voter") }}'
+      - name: "hf_likely_presidential_voter_and_likely_ev"
+        description: '{{ doc("l2col_hf_likely_presidential_voter_and_likely_ev") }}'
+      - name: "hf_likely_presidential_voter_and_likely_vbm"
+        description: '{{ doc("l2col_hf_likely_presidential_voter_and_likely_vbm") }}'
+      - name: "hf_likely_presidential_voter_and_unlikely_ev"
+        description: '{{ doc("l2col_hf_likely_presidential_voter_and_unlikely_ev") }}'
+      - name: "hf_likely_presidential_voter_and_unlikely_vbm"
+        description: '{{ doc("l2col_hf_likely_presidential_voter_and_unlikely_vbm") }}'
+      - name: "hf_likely_vbm"
+        description: '{{ doc("l2col_hf_likely_vbm") }}'
+      - name: "hf_listen_podcaster"
+        description: '{{ doc("l2col_hf_listen_podcaster") }}'
+      - name: "hf_listen_podcaster_leaning"
+        description: '{{ doc("l2col_hf_listen_podcaster_leaning") }}'
+      - name: "hf_mamdani"
+        description: '{{ doc("l2col_hf_mamdani") }}'
+      - name: "hf_mamdani_dem"
+        description: '{{ doc("l2col_hf_mamdani_dem") }}'
+      - name: "hf_marijuana_legal"
+        description: '{{ doc("l2col_hf_marijuana_legal") }}'
+      - name: "hf_mass_deportations"
+        description: '{{ doc("l2col_hf_mass_deportations") }}'
+      - name: "hf_medicaid_expansion"
+        description: '{{ doc("l2col_hf_medicaid_expansion") }}'
+      - name: "hf_medicare_for_all"
+        description: '{{ doc("l2col_hf_medicare_for_all") }}'
+      - name: "hf_mexican_wall"
+        description: '{{ doc("l2col_hf_mexican_wall") }}'
+      - name: "hf_mike_johnson"
+        description: '{{ doc("l2col_hf_mike_johnson") }}'
+      - name: "hf_mike_johnson_gop"
+        description: '{{ doc("l2col_hf_mike_johnson_gop") }}'
+      - name: "hf_military_family_relationship"
+        description: '{{ doc("l2col_hf_military_family_relationship") }}'
+      - name: "hf_military_family_self"
+        description: '{{ doc("l2col_hf_military_family_self") }}'
+      - name: "hf_min_wage_15"
+        description: '{{ doc("l2col_hf_min_wage_15") }}'
+      - name: "hf_most_important_policy_item"
+        description: '{{ doc("l2col_hf_most_important_policy_item") }}'
+      - name: "hf_news_source"
+        description: '{{ doc("l2col_hf_news_source") }}'
+      - name: "hf_newsom"
+        description: '{{ doc("l2col_hf_newsom") }}'
+      - name: "hf_newsom_dem"
+        description: '{{ doc("l2col_hf_newsom_dem") }}'
+      - name: "hf_obamacare_aca"
+        description: '{{ doc("l2col_hf_obamacare_aca") }}'
+      - name: "hf_online_gambling"
+        description: '{{ doc("l2col_hf_online_gambling") }}'
+      - name: "hf_opioid_crisis"
+        description: '{{ doc("l2col_hf_opioid_crisis") }}'
+      - name: "hf_partisanship_moderate_third_party"
+        description: '{{ doc("l2col_hf_partisanship_moderate_third_party") }}'
+      - name: "hf_party_leadership_all"
+        description: '{{ doc("l2col_hf_party_leadership_all") }}'
+      - name: "hf_pipeline_fracking"
+        description: '{{ doc("l2col_hf_pipeline_fracking") }}'
+      - name: "hf_podcast_listener"
+        description: '{{ doc("l2col_hf_podcast_listener") }}'
+      - name: "hf_police_trust"
+        description: '{{ doc("l2col_hf_police_trust") }}'
+      - name: "hf_political_donations"
+        description: '{{ doc("l2col_hf_political_donations") }}'
+      - name: "hf_political_troll"
+        description: '{{ doc("l2col_hf_political_troll") }}'
+      - name: "hf_public_transit"
+        description: '{{ doc("l2col_hf_public_transit") }}'
+      - name: "hf_rank_choice_voting"
+        description: '{{ doc("l2col_hf_rank_choice_voting") }}'
+      - name: "hf_redistricting"
+        description: '{{ doc("l2col_hf_redistricting") }}'
+      - name: "hf_regulations"
+        description: '{{ doc("l2col_hf_regulations") }}'
+      - name: "hf_religion"
+        description: '{{ doc("l2col_hf_religion") }}'
+      - name: "hf_responsiveness_email"
+        description: '{{ doc("l2col_hf_responsiveness_email") }}'
+      - name: "hf_responsiveness_live"
+        description: '{{ doc("l2col_hf_responsiveness_live") }}'
+      - name: "hf_responsiveness_sms"
+        description: '{{ doc("l2col_hf_responsiveness_sms") }}'
+      - name: "hf_rfkjr"
+        description: '{{ doc("l2col_hf_rfkjr") }}'
+      - name: "hf_rideshare_user"
+        description: '{{ doc("l2col_hf_rideshare_user") }}'
+      - name: "hf_ro_khanna"
+        description: '{{ doc("l2col_hf_ro_khanna") }}'
+      - name: "hf_ro_khanna_dem"
+        description: '{{ doc("l2col_hf_ro_khanna_dem") }}'
+      - name: "hf_rubio"
+        description: '{{ doc("l2col_hf_rubio") }}'
+      - name: "hf_rubio_gop"
+        description: '{{ doc("l2col_hf_rubio_gop") }}'
+      - name: "hf_same_sex_marriage"
+        description: '{{ doc("l2col_hf_same_sex_marriage") }}'
+      - name: "hf_school_choice"
+        description: '{{ doc("l2col_hf_school_choice") }}'
+      - name: "hf_school_funding"
+        description: '{{ doc("l2col_hf_school_funding") }}'
+      - name: "hf_sell_federal_lands"
+        description: '{{ doc("l2col_hf_sell_federal_lands") }}'
+      - name: "hf_snap"
+        description: '{{ doc("l2col_hf_snap") }}'
+      - name: "hf_social_media_truth_vs_speech"
+        description: '{{ doc("l2col_hf_social_media_truth_vs_speech") }}'
+      - name: "hf_social_media_user"
+        description: '{{ doc("l2col_hf_social_media_user") }}'
+      - name: "hf_social_security_tax_increase"
+        description: '{{ doc("l2col_hf_social_security_tax_increase") }}'
+      - name: "hf_solar_panel_buyer"
+        description: '{{ doc("l2col_hf_solar_panel_buyer") }}'
+      - name: "hf_stadium_public_financing"
+        description: '{{ doc("l2col_hf_stadium_public_financing") }}'
+      - name: "hf_state_level_fema"
+        description: '{{ doc("l2col_hf_state_level_fema") }}'
+      - name: "hf_super_power_policy"
+        description: '{{ doc("l2col_hf_super_power_policy") }}'
+      - name: "hf_tax_cuts"
+        description: '{{ doc("l2col_hf_tax_cuts") }}'
+      - name: "hf_teachers_union"
+        description: '{{ doc("l2col_hf_teachers_union") }}'
+      - name: "hf_ticket_splitter"
+        description: '{{ doc("l2col_hf_ticket_splitter") }}'
+      - name: "hf_ticket_splitter_dem"
+        description: '{{ doc("l2col_hf_ticket_splitter_dem") }}'
+      - name: "hf_ticket_splitter_gop"
+        description: '{{ doc("l2col_hf_ticket_splitter_gop") }}'
+      - name: "hf_traditional_gender_roles"
+        description: '{{ doc("l2col_hf_traditional_gender_roles") }}'
+      - name: "hf_trans_athlete"
+        description: '{{ doc("l2col_hf_trans_athlete") }}'
+      - name: "hf_tribalism"
+        description: '{{ doc("l2col_hf_tribalism") }}'
+      - name: "hf_trump"
+        description: '{{ doc("l2col_hf_trump") }}'
+      - name: "hf_trump_3rd_term"
+        description: '{{ doc("l2col_hf_trump_3rd_term") }}'
+      - name: "hf_trump_gop"
+        description: '{{ doc("l2col_hf_trump_gop") }}'
+      - name: "hf_trump_tariffs"
+        description: '{{ doc("l2col_hf_trump_tariffs") }}'
+      - name: "hf_trump_ukraine_policy"
+        description: '{{ doc("l2col_hf_trump_ukraine_policy") }}'
+      - name: "hf_trump_vs_harris"
+        description: '{{ doc("l2col_hf_trump_vs_harris") }}'
+      - name: "hf_trump_vs_harris_double_dislike"
+        description: '{{ doc("l2col_hf_trump_vs_harris_double_dislike") }}'
+      - name: "hf_trust_science"
+        description: '{{ doc("l2col_hf_trust_science") }}'
+      - name: "hf_tv_news_source_most_trusted"
+        description: '{{ doc("l2col_hf_tv_news_source_most_trusted") }}'
+      - name: "hf_tv_viewer"
+        description: '{{ doc("l2col_hf_tv_viewer") }}'
+      - name: "hf_united_healthcare"
+        description: '{{ doc("l2col_hf_united_healthcare") }}'
+      - name: "hf_unlikely_presidential_voter_and_likely_vbm"
+        description: '{{ doc("l2col_hf_unlikely_presidential_voter_and_likely_vbm") }}'
+      - name: "hf_vaping_user"
+        description: '{{ doc("l2col_hf_vaping_user") }}'
+      - name: "hf_view_of_opposition"
+        description: '{{ doc("l2col_hf_view_of_opposition") }}'
+      - name: "hf_violent_crime"
+        description: '{{ doc("l2col_hf_violent_crime") }}'
+      - name: "hf_voting_fraud"
+        description: '{{ doc("l2col_hf_voting_fraud") }}'
+      - name: "hf_voting_fraud_concern"
+        description: '{{ doc("l2col_hf_voting_fraud_concern") }}'
+      - name: "hf_wealth_acquired"
+        description: '{{ doc("l2col_hf_wealth_acquired") }}'
+      - name: "High_School_District"
+        description: '{{ doc("l2col_High_School_District") }}'
+      - name: "High_School_SubDistrict"
+        description: '{{ doc("l2col_High_School_SubDistrict") }}'
+      - name: "Hospital_District"
+        description: '{{ doc("l2col_Hospital_District") }}'
+      - name: "Hospital_SubDistrict"
+        description: '{{ doc("l2col_Hospital_SubDistrict") }}'
+      - name: "hs_2025_government_shutdown_fault_dems"
+        description: '{{ doc("l2col_hs_2025_government_shutdown_fault_dems") }}'
+      - name: "hs_2025_government_shutdown_fault_gop_congress"
+        description: '{{ doc("l2col_hs_2025_government_shutdown_fault_gop_congress") }}'
+      - name: "hs_2025_government_shutdown_fault_trump"
+        description: '{{ doc("l2col_hs_2025_government_shutdown_fault_trump") }}'
+      - name: "hs_2028_horserace_support_dem"
+        description: '{{ doc("l2col_hs_2028_horserace_support_dem") }}'
+      - name: "hs_2028_horserace_support_gop"
+        description: '{{ doc("l2col_hs_2028_horserace_support_gop") }}'
+      - name: "hs_2028_horserace_support_unsure"
+        description: '{{ doc("l2col_hs_2028_horserace_support_unsure") }}'
+      - name: "hs_abortion_pro_choice"
+        description: '{{ doc("l2col_hs_abortion_pro_choice") }}'
+      - name: "hs_abortion_pro_life"
+        description: '{{ doc("l2col_hs_abortion_pro_life") }}'
+      - name: "hs_activism"
+        description: '{{ doc("l2col_hs_activism") }}'
+      - name: "hs_affordability_changed_what_you_buy_no"
+        description: '{{ doc("l2col_hs_affordability_changed_what_you_buy_no") }}'
+      - name: "hs_affordability_changed_what_you_buy_yes"
+        description: '{{ doc("l2col_hs_affordability_changed_what_you_buy_yes") }}'
+      - name: "hs_affordable_housing_gov_has_role"
+        description: '{{ doc("l2col_hs_affordable_housing_gov_has_role") }}'
+      - name: "hs_affordable_housing_gov_no_role"
+        description: '{{ doc("l2col_hs_affordable_housing_gov_no_role") }}'
+      - name: "hs_age_limit_oppose"
+        description: '{{ doc("l2col_hs_age_limit_oppose") }}'
+      - name: "hs_age_limit_oppose_dem"
+        description: '{{ doc("l2col_hs_age_limit_oppose_dem") }}'
+      - name: "hs_age_limit_support"
+        description: '{{ doc("l2col_hs_age_limit_support") }}'
+      - name: "hs_age_limit_support_dem"
+        description: '{{ doc("l2col_hs_age_limit_support_dem") }}'
+      - name: "hs_aliens_governenment_disclosed_all"
+        description: '{{ doc("l2col_hs_aliens_governenment_disclosed_all") }}'
+      - name: "hs_aliens_governenment_hiding_much"
+        description: '{{ doc("l2col_hs_aliens_governenment_hiding_much") }}'
+      - name: "hs_amazon_exploitative"
+        description: '{{ doc("l2col_hs_amazon_exploitative") }}'
+      - name: "hs_amazon_good_jobs"
+        description: '{{ doc("l2col_hs_amazon_good_jobs") }}'
+      - name: "hs_any_home_buyer"
+        description: '{{ doc("l2col_hs_any_home_buyer") }}'
+      - name: "hs_aoc_approval"
+        description: '{{ doc("l2col_hs_aoc_approval") }}'
+      - name: "hs_aoc_dem_approval"
+        description: '{{ doc("l2col_hs_aoc_dem_approval") }}'
+      - name: "hs_aoc_dem_disapproval"
+        description: '{{ doc("l2col_hs_aoc_dem_disapproval") }}'
+      - name: "hs_aoc_disapproval"
+        description: '{{ doc("l2col_hs_aoc_disapproval") }}'
+      - name: "hs_area_identity_rural"
+        description: '{{ doc("l2col_hs_area_identity_rural") }}'
+      - name: "hs_area_identity_suburban"
+        description: '{{ doc("l2col_hs_area_identity_suburban") }}'
+      - name: "hs_area_identity_urban"
+        description: '{{ doc("l2col_hs_area_identity_urban") }}'
+      - name: "hs_artificial_intelligence_excited"
+        description: '{{ doc("l2col_hs_artificial_intelligence_excited") }}'
+      - name: "hs_attends_church_frequently"
+        description: '{{ doc("l2col_hs_attends_church_frequently") }}'
+      - name: "hs_attends_church_never"
+        description: '{{ doc("l2col_hs_attends_church_never") }}'
+      - name: "hs_autonomous_vehicles_allow"
+        description: '{{ doc("l2col_hs_autonomous_vehicles_allow") }}'
+      - name: "hs_autonomous_vehicles_do_not_allow"
+        description: '{{ doc("l2col_hs_autonomous_vehicles_do_not_allow") }}'
+      - name: "hs_bernie_approval"
+        description: '{{ doc("l2col_hs_bernie_approval") }}'
+      - name: "hs_bernie_approval_dem"
+        description: '{{ doc("l2col_hs_bernie_approval_dem") }}'
+      - name: "hs_bernie_disapproval"
+        description: '{{ doc("l2col_hs_bernie_disapproval") }}'
+      - name: "hs_bernie_disapproval_dem"
+        description: '{{ doc("l2col_hs_bernie_disapproval_dem") }}'
+      - name: "hs_buttigieg_approval"
+        description: '{{ doc("l2col_hs_buttigieg_approval") }}'
+      - name: "hs_buttigieg_approval_dem"
+        description: '{{ doc("l2col_hs_buttigieg_approval_dem") }}'
+      - name: "hs_buttigieg_disapproval"
+        description: '{{ doc("l2col_hs_buttigieg_disapproval") }}'
+      - name: "hs_buttigieg_disapproval_dem"
+        description: '{{ doc("l2col_hs_buttigieg_disapproval_dem") }}'
+      - name: "hs_campaign_finance_reform_high_priority"
+        description: '{{ doc("l2col_hs_campaign_finance_reform_high_priority") }}'
+      - name: "hs_campaign_finance_reform_less_important"
+        description: '{{ doc("l2col_hs_campaign_finance_reform_less_important") }}'
+      - name: "hs_candidate_female_do_not_prefer"
+        description: '{{ doc("l2col_hs_candidate_female_do_not_prefer") }}'
+      - name: "hs_candidate_female_prefer"
+        description: '{{ doc("l2col_hs_candidate_female_prefer") }}'
+      - name: "hs_candidate_mail_do_not_read"
+        description: '{{ doc("l2col_hs_candidate_mail_do_not_read") }}'
+      - name: "hs_candidate_mail_read_carefully"
+        description: '{{ doc("l2col_hs_candidate_mail_read_carefully") }}'
+      - name: "hs_candidate_mail_readership_do_not_read"
+        description: '{{ doc("l2col_hs_candidate_mail_readership_do_not_read") }}'
+      - name: "hs_candidate_mail_readership_read_carefully"
+        description: '{{ doc("l2col_hs_candidate_mail_readership_read_carefully") }}'
+      - name: "hs_candidate_minority_do_not_prefer"
+        description: '{{ doc("l2col_hs_candidate_minority_do_not_prefer") }}'
+      - name: "hs_candidate_minority_prefer"
+        description: '{{ doc("l2col_hs_candidate_minority_prefer") }}'
+      - name: "hs_capitalism_believe_flawed"
+        description: '{{ doc("l2col_hs_capitalism_believe_flawed") }}'
+      - name: "hs_capitalism_believe_sound"
+        description: '{{ doc("l2col_hs_capitalism_believe_sound") }}'
+      - name: "hs_casino_oppose"
+        description: '{{ doc("l2col_hs_casino_oppose") }}'
+      - name: "hs_casino_support"
+        description: '{{ doc("l2col_hs_casino_support") }}'
+      - name: "hs_charity_giving_enviro_cause"
+        description: '{{ doc("l2col_hs_charity_giving_enviro_cause") }}'
+      - name: "hs_charity_giving_international_aid"
+        description: '{{ doc("l2col_hs_charity_giving_international_aid") }}'
+      - name: "hs_charity_giving_performing_arts"
+        description: '{{ doc("l2col_hs_charity_giving_performing_arts") }}'
+      - name: "hs_charity_giving_relig_cause"
+        description: '{{ doc("l2col_hs_charity_giving_relig_cause") }}'
+      - name: "hs_charity_giving_vet_cause"
+        description: '{{ doc("l2col_hs_charity_giving_vet_cause") }}'
+      - name: "hs_charter_schools_oppose"
+        description: '{{ doc("l2col_hs_charter_schools_oppose") }}'
+      - name: "hs_charter_schools_support"
+        description: '{{ doc("l2col_hs_charter_schools_support") }}'
+      - name: "hs_china_foreign_policy_advesarial"
+        description: '{{ doc("l2col_hs_china_foreign_policy_advesarial") }}'
+      - name: "hs_china_foreign_policy_work_with"
+        description: '{{ doc("l2col_hs_china_foreign_policy_work_with") }}'
+      - name: "hs_christian_values_not_positive"
+        description: '{{ doc("l2col_hs_christian_values_not_positive") }}'
+      - name: "hs_christian_values_positive"
+        description: '{{ doc("l2col_hs_christian_values_positive") }}'
+      - name: "hs_civil_liberties_oppose"
+        description: '{{ doc("l2col_hs_civil_liberties_oppose") }}'
+      - name: "hs_civil_liberties_support"
+        description: '{{ doc("l2col_hs_civil_liberties_support") }}'
+      - name: "hs_climate_change_believer"
+        description: '{{ doc("l2col_hs_climate_change_believer") }}'
+      - name: "hs_climate_change_nonbeliever"
+        description: '{{ doc("l2col_hs_climate_change_nonbeliever") }}'
+      - name: "hs_college_admissions_consider_race"
+        description: '{{ doc("l2col_hs_college_admissions_consider_race") }}'
+      - name: "hs_college_admissions_do_not_consider_race"
+        description: '{{ doc("l2col_hs_college_admissions_do_not_consider_race") }}'
+      - name: "hs_community_college_free_oppose"
+        description: '{{ doc("l2col_hs_community_college_free_oppose") }}'
+      - name: "hs_community_college_free_support"
+        description: '{{ doc("l2col_hs_community_college_free_support") }}'
+      - name: "hs_community_not_integrated"
+        description: '{{ doc("l2col_hs_community_not_integrated") }}'
+      - name: "hs_community_very_integrated"
+        description: '{{ doc("l2col_hs_community_very_integrated") }}'
+      - name: "hs_concerned_job_loss_due_to_ai_no"
+        description: '{{ doc("l2col_hs_concerned_job_loss_due_to_ai_no") }}'
+      - name: "hs_concerned_job_loss_due_to_ai_yes"
+        description: '{{ doc("l2col_hs_concerned_job_loss_due_to_ai_yes") }}'
+      - name: "hs_conspiracy_believer"
+        description: '{{ doc("l2col_hs_conspiracy_believer") }}'
+      - name: "hs_conspiracy_nonbeliever"
+        description: '{{ doc("l2col_hs_conspiracy_nonbeliever") }}'
+      - name: "hs_consumer_value_brand_savings"
+        description: '{{ doc("l2col_hs_consumer_value_brand_savings") }}'
+      - name: "hs_consumer_value_environment"
+        description: '{{ doc("l2col_hs_consumer_value_environment") }}'
+      - name: "hs_consumer_value_low_cost"
+        description: '{{ doc("l2col_hs_consumer_value_low_cost") }}'
+      - name: "hs_critical_race_theory_books_ban"
+        description: '{{ doc("l2col_hs_critical_race_theory_books_ban") }}'
+      - name: "hs_critical_race_theory_books_do_not_ban"
+        description: '{{ doc("l2col_hs_critical_race_theory_books_do_not_ban") }}'
+      - name: "hs_crypto_buyer_no"
+        description: '{{ doc("l2col_hs_crypto_buyer_no") }}'
+      - name: "hs_crypto_buyer_yes"
+        description: '{{ doc("l2col_hs_crypto_buyer_yes") }}'
+      - name: "hs_crypto_increase_restrictions"
+        description: '{{ doc("l2col_hs_crypto_increase_restrictions") }}'
+      - name: "hs_crypto_reduce_leave_as_is"
+        description: '{{ doc("l2col_hs_crypto_reduce_leave_as_is") }}'
+      - name: "hs_crypto_reduce_restrictions"
+        description: '{{ doc("l2col_hs_crypto_reduce_restrictions") }}'
+      - name: "hs_dating_optimistic"
+        description: '{{ doc("l2col_hs_dating_optimistic") }}'
+      - name: "hs_dating_pessimistic"
+        description: '{{ doc("l2col_hs_dating_pessimistic") }}'
+      - name: "hs_death_penalty_oppose"
+        description: '{{ doc("l2col_hs_death_penalty_oppose") }}'
+      - name: "hs_death_penalty_support"
+        description: '{{ doc("l2col_hs_death_penalty_support") }}'
+      - name: "hs_defense_spending_increase"
+        description: '{{ doc("l2col_hs_defense_spending_increase") }}'
+      - name: "hs_defense_spending_reduce"
+        description: '{{ doc("l2col_hs_defense_spending_reduce") }}'
+      - name: "hs_dei_oppose"
+        description: '{{ doc("l2col_hs_dei_oppose") }}'
+      - name: "hs_dei_support"
+        description: '{{ doc("l2col_hs_dei_support") }}'
+      - name: "hs_dem_horserace_2028_aoc"
+        description: '{{ doc("l2col_hs_dem_horserace_2028_aoc") }}'
+      - name: "hs_dem_horserace_2028_harris"
+        description: '{{ doc("l2col_hs_dem_horserace_2028_harris") }}'
+      - name: "hs_dem_horserace_2028_newsom"
+        description: '{{ doc("l2col_hs_dem_horserace_2028_newsom") }}'
+      - name: "hs_dem_horserace_2028_pritzker"
+        description: '{{ doc("l2col_hs_dem_horserace_2028_pritzker") }}'
+      - name: "hs_democratic_partisanship_progressive_vs_moderate_moderate"
+        description: '{{ doc("l2col_hs_democratic_partisanship_progressive_vs_moderate_moderate") }}'
+      - name: "hs_democratic_partisanship_progressive_vs_moderate_progressive"
+        description: '{{ doc("l2col_hs_democratic_partisanship_progressive_vs_moderate_progressive") }}'
+      - name: "hs_despondency_ahead"
+        description: '{{ doc("l2col_hs_despondency_ahead") }}'
+      - name: "hs_despondency_far_behind"
+        description: '{{ doc("l2col_hs_despondency_far_behind") }}'
+      - name: "hs_despondency_on_pace"
+        description: '{{ doc("l2col_hs_despondency_on_pace") }}'
+      - name: "hs_doge_oppose"
+        description: '{{ doc("l2col_hs_doge_oppose") }}'
+      - name: "hs_doge_support"
+        description: '{{ doc("l2col_hs_doge_support") }}'
+      - name: "hs_domestic_deployment_of_troops_oppose"
+        description: '{{ doc("l2col_hs_domestic_deployment_of_troops_oppose") }}'
+      - name: "hs_domestic_deployment_of_troops_support"
+        description: '{{ doc("l2col_hs_domestic_deployment_of_troops_support") }}'
+      - name: "hs_dropoff_fill_entire_ballot"
+        description: '{{ doc("l2col_hs_dropoff_fill_entire_ballot") }}'
+      - name: "hs_dropoff_fill_only_top"
+        description: '{{ doc("l2col_hs_dropoff_fill_only_top") }}'
+      - name: "hs_econ_anxiety_not_worried"
+        description: '{{ doc("l2col_hs_econ_anxiety_not_worried") }}'
+      - name: "hs_econ_anxiety_very_worried"
+        description: '{{ doc("l2col_hs_econ_anxiety_very_worried") }}'
+      - name: "hs_economic_despondency_ahead"
+        description: '{{ doc("l2col_hs_economic_despondency_ahead") }}'
+      - name: "hs_economic_despondency_far_behind"
+        description: '{{ doc("l2col_hs_economic_despondency_far_behind") }}'
+      - name: "hs_electric_vehicle_likely_buyer"
+        description: '{{ doc("l2col_hs_electric_vehicle_likely_buyer") }}'
+      - name: "hs_electric_vehicle_not_likely"
+        description: '{{ doc("l2col_hs_electric_vehicle_not_likely") }}'
+      - name: "hs_elon_musk_approval"
+        description: '{{ doc("l2col_hs_elon_musk_approval") }}'
+      - name: "hs_elon_musk_approval_gop"
+        description: '{{ doc("l2col_hs_elon_musk_approval_gop") }}'
+      - name: "hs_elon_musk_disapproval"
+        description: '{{ doc("l2col_hs_elon_musk_disapproval") }}'
+      - name: "hs_epstein_files_important"
+        description: '{{ doc("l2col_hs_epstein_files_important") }}'
+      - name: "hs_epstein_files_unimportant_or_hoax"
+        description: '{{ doc("l2col_hs_epstein_files_unimportant_or_hoax") }}'
+      - name: "hs_family_medical_leave_oppose"
+        description: '{{ doc("l2col_hs_family_medical_leave_oppose") }}'
+      - name: "hs_family_medical_leave_support"
+        description: '{{ doc("l2col_hs_family_medical_leave_support") }}'
+      - name: "hs_felon_voting_oppose"
+        description: '{{ doc("l2col_hs_felon_voting_oppose") }}'
+      - name: "hs_felon_voting_support"
+        description: '{{ doc("l2col_hs_felon_voting_support") }}'
+      - name: "hs_gamer_no"
+        description: '{{ doc("l2col_hs_gamer_no") }}'
+      - name: "hs_gamer_yes"
+        description: '{{ doc("l2col_hs_gamer_yes") }}'
+      - name: "hs_gas_tax_oppose"
+        description: '{{ doc("l2col_hs_gas_tax_oppose") }}'
+      - name: "hs_gas_tax_support"
+        description: '{{ doc("l2col_hs_gas_tax_support") }}'
+      - name: "hs_general_anti_vax_pro_vax"
+        description: '{{ doc("l2col_hs_general_anti_vax_pro_vax") }}'
+      - name: "hs_gentrification_oppose"
+        description: '{{ doc("l2col_hs_gentrification_oppose") }}'
+      - name: "hs_gentrification_support"
+        description: '{{ doc("l2col_hs_gentrification_support") }}'
+      - name: "hs_gig_work_keep_contractor"
+        description: '{{ doc("l2col_hs_gig_work_keep_contractor") }}'
+      - name: "hs_gig_work_make_employees"
+        description: '{{ doc("l2col_hs_gig_work_make_employees") }}'
+      - name: "hs_gig_worker_ever"
+        description: '{{ doc("l2col_hs_gig_worker_ever") }}'
+      - name: "hs_gig_worker_now"
+        description: '{{ doc("l2col_hs_gig_worker_now") }}'
+      - name: "hs_gig_worker_unlikely"
+        description: '{{ doc("l2col_hs_gig_worker_unlikely") }}'
+      - name: "hs_green_new_deal_oppose"
+        description: '{{ doc("l2col_hs_green_new_deal_oppose") }}'
+      - name: "hs_green_new_deal_support"
+        description: '{{ doc("l2col_hs_green_new_deal_support") }}'
+      - name: "hs_gun_control_oppose"
+        description: '{{ doc("l2col_hs_gun_control_oppose") }}'
+      - name: "hs_gun_control_support"
+        description: '{{ doc("l2col_hs_gun_control_support") }}'
+      - name: "hs_haley_approval"
+        description: '{{ doc("l2col_hs_haley_approval") }}'
+      - name: "hs_haley_approval_gop"
+        description: '{{ doc("l2col_hs_haley_approval_gop") }}'
+      - name: "hs_haley_disapproval"
+        description: '{{ doc("l2col_hs_haley_disapproval") }}'
+      - name: "hs_harris_approval"
+        description: '{{ doc("l2col_hs_harris_approval") }}'
+      - name: "hs_harris_approval_dem"
+        description: '{{ doc("l2col_hs_harris_approval_dem") }}'
+      - name: "hs_harris_disapproval"
+        description: '{{ doc("l2col_hs_harris_disapproval") }}'
+      - name: "hs_harris_disapproval_dem"
+        description: '{{ doc("l2col_hs_harris_disapproval_dem") }}'
+      - name: "hs_ice_actions_oppose"
+        description: '{{ doc("l2col_hs_ice_actions_oppose") }}'
+      - name: "hs_ice_actions_support"
+        description: '{{ doc("l2col_hs_ice_actions_support") }}'
+      - name: "hs_ideology_dem_type_moderate"
+        description: '{{ doc("l2col_hs_ideology_dem_type_moderate") }}'
+      - name: "hs_ideology_dem_type_progressive"
+        description: '{{ doc("l2col_hs_ideology_dem_type_progressive") }}'
+      - name: "hs_ideology_fiscal_conserv"
+        description: '{{ doc("l2col_hs_ideology_fiscal_conserv") }}'
+      - name: "hs_ideology_fiscal_conservative"
+        description: '{{ doc("l2col_hs_ideology_fiscal_conservative") }}'
+      - name: "hs_ideology_fiscal_liberal"
+        description: '{{ doc("l2col_hs_ideology_fiscal_liberal") }}'
+      - name: "hs_ideology_fiscal_moderate"
+        description: '{{ doc("l2col_hs_ideology_fiscal_moderate") }}'
+      - name: "hs_ideology_general_conservative"
+        description: '{{ doc("l2col_hs_ideology_general_conservative") }}'
+      - name: "hs_ideology_general_liberal"
+        description: '{{ doc("l2col_hs_ideology_general_liberal") }}'
+      - name: "hs_ideology_general_moderate"
+        description: '{{ doc("l2col_hs_ideology_general_moderate") }}'
+      - name: "hs_ideology_gop_type_firebrand"
+        description: '{{ doc("l2col_hs_ideology_gop_type_firebrand") }}'
+      - name: "hs_ideology_gop_type_moderate"
+        description: '{{ doc("l2col_hs_ideology_gop_type_moderate") }}'
+      - name: "hs_ideology_overall_party_dem"
+        description: '{{ doc("l2col_hs_ideology_overall_party_dem") }}'
+      - name: "hs_ideology_overall_party_dem_strong"
+        description: '{{ doc("l2col_hs_ideology_overall_party_dem_strong") }}'
+      - name: "hs_ideology_overall_party_gop"
+        description: '{{ doc("l2col_hs_ideology_overall_party_gop") }}'
+      - name: "hs_ideology_overall_party_gop_strong"
+        description: '{{ doc("l2col_hs_ideology_overall_party_gop_strong") }}'
+      - name: "hs_ideology_overall_party_indep"
+        description: '{{ doc("l2col_hs_ideology_overall_party_indep") }}'
+      - name: "hs_ideology_partisanship_partisanship_overall_party_dem"
+        description: '{{ doc("l2col_hs_ideology_partisanship_partisanship_overall_party_dem") }}'
+      - name: "hs_ideology_partisanship_partisanship_overall_party_dem_strong"
+        description: '{{ doc("l2col_hs_ideology_partisanship_partisanship_overall_party_dem_strong") }}'
+      - name: "hs_ideology_partisanship_partisanship_overall_party_gop"
+        description: '{{ doc("l2col_hs_ideology_partisanship_partisanship_overall_party_gop") }}'
+      - name: "hs_ideology_partisanship_partisanship_overall_party_gop_strong"
+        description: '{{ doc("l2col_hs_ideology_partisanship_partisanship_overall_party_gop_strong") }}'
+      - name: "hs_ideology_partisanship_partisanship_overall_party_indep"
+        description: '{{ doc("l2col_hs_ideology_partisanship_partisanship_overall_party_indep") }}'
+      - name: "hs_ideology_primary_election_dem_prim_voter"
+        description: '{{ doc("l2col_hs_ideology_primary_election_dem_prim_voter") }}'
+      - name: "hs_ideology_primary_election_gop_prim_voter"
+        description: '{{ doc("l2col_hs_ideology_primary_election_gop_prim_voter") }}'
+      - name: "hs_ideology_social_conserv"
+        description: '{{ doc("l2col_hs_ideology_social_conserv") }}'
+      - name: "hs_ideology_social_conservative"
+        description: '{{ doc("l2col_hs_ideology_social_conservative") }}'
+      - name: "hs_ideology_social_liberal"
+        description: '{{ doc("l2col_hs_ideology_social_liberal") }}'
+      - name: "hs_ideology_social_moderate"
+        description: '{{ doc("l2col_hs_ideology_social_moderate") }}'
+      - name: "hs_illegal_imm_process_unfair"
+        description: '{{ doc("l2col_hs_illegal_imm_process_unfair") }}'
+      - name: "hs_illegal_imm_undesirable"
+        description: '{{ doc("l2col_hs_illegal_imm_undesirable") }}'
+      - name: "hs_immigration_process_unfair"
+        description: '{{ doc("l2col_hs_immigration_process_unfair") }}'
+      - name: "hs_immigration_undesirable"
+        description: '{{ doc("l2col_hs_immigration_undesirable") }}'
+      - name: "hs_income_inequality_no_issue"
+        description: '{{ doc("l2col_hs_income_inequality_no_issue") }}'
+      - name: "hs_income_inequality_serious"
+        description: '{{ doc("l2col_hs_income_inequality_serious") }}'
+      - name: "hs_inflation_fault_biden"
+        description: '{{ doc("l2col_hs_inflation_fault_biden") }}'
+      - name: "hs_inflation_fault_corporate_america"
+        description: '{{ doc("l2col_hs_inflation_fault_corporate_america") }}'
+      - name: "hs_inflation_fault_external_events"
+        description: '{{ doc("l2col_hs_inflation_fault_external_events") }}'
+      - name: "hs_inflation_fault_trump"
+        description: '{{ doc("l2col_hs_inflation_fault_trump") }}'
+      - name: "hs_infrastructure_funding_enough_spent"
+        description: '{{ doc("l2col_hs_infrastructure_funding_enough_spent") }}'
+      - name: "hs_infrastructure_funding_fund_more"
+        description: '{{ doc("l2col_hs_infrastructure_funding_fund_more") }}'
+      - name: "hs_insurance_of_last_resort_government_should_not_provide"
+        description: '{{ doc("l2col_hs_insurance_of_last_resort_government_should_not_provide") }}'
+      - name: "hs_insurance_of_last_resort_government_should_provide"
+        description: '{{ doc("l2col_hs_insurance_of_last_resort_government_should_provide") }}'
+      - name: "hs_israel_committing_genocide_no"
+        description: '{{ doc("l2col_hs_israel_committing_genocide_no") }}'
+      - name: "hs_israel_committing_genocide_yes"
+        description: '{{ doc("l2col_hs_israel_committing_genocide_yes") }}'
+      - name: "hs_israel_military_actions_dem_oppose"
+        description: '{{ doc("l2col_hs_israel_military_actions_dem_oppose") }}'
+      - name: "hs_israel_military_actions_dem_support"
+        description: '{{ doc("l2col_hs_israel_military_actions_dem_support") }}'
+      - name: "hs_israel_military_actions_gop_oppose"
+        description: '{{ doc("l2col_hs_israel_military_actions_gop_oppose") }}'
+      - name: "hs_israel_military_actions_gop_support"
+        description: '{{ doc("l2col_hs_israel_military_actions_gop_support") }}'
+      - name: "hs_israel_military_actions_oppose"
+        description: '{{ doc("l2col_hs_israel_military_actions_oppose") }}'
+      - name: "hs_israel_military_actions_support"
+        description: '{{ doc("l2col_hs_israel_military_actions_support") }}'
+      - name: "hs_jan_6th_pardons_oppose"
+        description: '{{ doc("l2col_hs_jan_6th_pardons_oppose") }}'
+      - name: "hs_jan_6th_pardons_support"
+        description: '{{ doc("l2col_hs_jan_6th_pardons_support") }}'
+      - name: "hs_jd_vance_approval"
+        description: '{{ doc("l2col_hs_jd_vance_approval") }}'
+      - name: "hs_jd_vance_approval_gop"
+        description: '{{ doc("l2col_hs_jd_vance_approval_gop") }}'
+      - name: "hs_jd_vance_disapproval"
+        description: '{{ doc("l2col_hs_jd_vance_disapproval") }}'
+      - name: "hs_jd_vance_disapproval_gop"
+        description: '{{ doc("l2col_hs_jd_vance_disapproval_gop") }}'
+      - name: "hs_job_seeker_does_not_work"
+        description: '{{ doc("l2col_hs_job_seeker_does_not_work") }}'
+      - name: "hs_job_seeker_likely"
+        description: '{{ doc("l2col_hs_job_seeker_likely") }}'
+      - name: "hs_job_seeker_unlikely"
+        description: '{{ doc("l2col_hs_job_seeker_unlikely") }}'
+      - name: "hs_jobs_guarantee_oppose"
+        description: '{{ doc("l2col_hs_jobs_guarantee_oppose") }}'
+      - name: "hs_jobs_guarantee_support"
+        description: '{{ doc("l2col_hs_jobs_guarantee_support") }}'
+      - name: "hs_likely_ev"
+        description: '{{ doc("l2col_hs_likely_ev") }}'
+      - name: "hs_likely_mid_term_voter"
+        description: '{{ doc("l2col_hs_likely_mid_term_voter") }}'
+      - name: "hs_likely_polling_turnout"
+        description: '{{ doc("l2col_hs_likely_polling_turnout") }}'
+      - name: "hs_likely_presidential_voter"
+        description: '{{ doc("l2col_hs_likely_presidential_voter") }}'
+      - name: "hs_likely_vbm"
+        description: '{{ doc("l2col_hs_likely_vbm") }}'
+      - name: "hs_listen_podcaster_carlson"
+        description: '{{ doc("l2col_hs_listen_podcaster_carlson") }}'
+      - name: "hs_listen_podcaster_daily"
+        description: '{{ doc("l2col_hs_listen_podcaster_daily") }}'
+      - name: "hs_listen_podcaster_left_leaning"
+        description: '{{ doc("l2col_hs_listen_podcaster_left_leaning") }}'
+      - name: "hs_listen_podcaster_meidas"
+        description: '{{ doc("l2col_hs_listen_podcaster_meidas") }}'
+      - name: "hs_listen_podcaster_right_leaning"
+        description: '{{ doc("l2col_hs_listen_podcaster_right_leaning") }}'
+      - name: "hs_listen_podcaster_rogan"
+        description: '{{ doc("l2col_hs_listen_podcaster_rogan") }}'
+      - name: "hs_mamdani_approval"
+        description: '{{ doc("l2col_hs_mamdani_approval") }}'
+      - name: "hs_mamdani_approval_dem"
+        description: '{{ doc("l2col_hs_mamdani_approval_dem") }}'
+      - name: "hs_mamdani_disapproval"
+        description: '{{ doc("l2col_hs_mamdani_disapproval") }}'
+      - name: "hs_mamdani_disapproval_dem"
+        description: '{{ doc("l2col_hs_mamdani_disapproval_dem") }}'
+      - name: "hs_marijuana_legal_oppose"
+        description: '{{ doc("l2col_hs_marijuana_legal_oppose") }}'
+      - name: "hs_marijuana_legal_support"
+        description: '{{ doc("l2col_hs_marijuana_legal_support") }}'
+      - name: "hs_mass_deporations_oppose"
+        description: '{{ doc("l2col_hs_mass_deporations_oppose") }}'
+      - name: "hs_mass_deporations_support"
+        description: '{{ doc("l2col_hs_mass_deporations_support") }}'
+      - name: "hs_mass_deportations_oppose"
+        description: '{{ doc("l2col_hs_mass_deportations_oppose") }}'
+      - name: "hs_mass_deportations_support"
+        description: '{{ doc("l2col_hs_mass_deportations_support") }}'
+      - name: "hs_medicaid_expansion_oppose"
+        description: '{{ doc("l2col_hs_medicaid_expansion_oppose") }}'
+      - name: "hs_medicaid_expansion_support"
+        description: '{{ doc("l2col_hs_medicaid_expansion_support") }}'
+      - name: "hs_medicare_for_all_oppose"
+        description: '{{ doc("l2col_hs_medicare_for_all_oppose") }}'
+      - name: "hs_medicare_for_all_support"
+        description: '{{ doc("l2col_hs_medicare_for_all_support") }}'
+      - name: "hs_mexican_wall_oppose"
+        description: '{{ doc("l2col_hs_mexican_wall_oppose") }}'
+      - name: "hs_mexican_wall_support"
+        description: '{{ doc("l2col_hs_mexican_wall_support") }}'
+      - name: "hs_mike_johnson_approval"
+        description: '{{ doc("l2col_hs_mike_johnson_approval") }}'
+      - name: "hs_mike_johnson_approval_gop"
+        description: '{{ doc("l2col_hs_mike_johnson_approval_gop") }}'
+      - name: "hs_mike_johnson_disapproval"
+        description: '{{ doc("l2col_hs_mike_johnson_disapproval") }}'
+      - name: "hs_mike_johnson_disapproval_gop"
+        description: '{{ doc("l2col_hs_mike_johnson_disapproval_gop") }}'
+      - name: "hs_military_family_relationship_no"
+        description: '{{ doc("l2col_hs_military_family_relationship_no") }}'
+      - name: "hs_military_family_relationship_yes"
+        description: '{{ doc("l2col_hs_military_family_relationship_yes") }}'
+      - name: "hs_military_family_self"
+        description: '{{ doc("l2col_hs_military_family_self") }}'
+      - name: "hs_min_wage_15_increase_oppose"
+        description: '{{ doc("l2col_hs_min_wage_15_increase_oppose") }}'
+      - name: "hs_min_wage_15_increase_support"
+        description: '{{ doc("l2col_hs_min_wage_15_increase_support") }}'
+      - name: "hs_most_important_policy_item_economics"
+        description: '{{ doc("l2col_hs_most_important_policy_item_economics") }}'
+      - name: "hs_most_important_policy_item_environment"
+        description: '{{ doc("l2col_hs_most_important_policy_item_environment") }}'
+      - name: "hs_most_important_policy_item_help_people"
+        description: '{{ doc("l2col_hs_most_important_policy_item_help_people") }}'
+      - name: "hs_most_important_policy_item_religious_values"
+        description: '{{ doc("l2col_hs_most_important_policy_item_religious_values") }}'
+      - name: "hs_most_important_policy_keep_safe"
+        description: '{{ doc("l2col_hs_most_important_policy_keep_safe") }}'
+      - name: "hs_new_home_buyer"
+        description: '{{ doc("l2col_hs_new_home_buyer") }}'
+      - name: "hs_news_independent"
+        description: '{{ doc("l2col_hs_news_independent") }}'
+      - name: "hs_news_mainstream"
+        description: '{{ doc("l2col_hs_news_mainstream") }}'
+      - name: "hs_newsom_approval"
+        description: '{{ doc("l2col_hs_newsom_approval") }}'
+      - name: "hs_newsom_approval_dem"
+        description: '{{ doc("l2col_hs_newsom_approval_dem") }}'
+      - name: "hs_newsom_disapproval"
+        description: '{{ doc("l2col_hs_newsom_disapproval") }}'
+      - name: "hs_newsom_disapproval_dem"
+        description: '{{ doc("l2col_hs_newsom_disapproval_dem") }}'
+      - name: "hs_obamacare_aca_expand"
+        description: '{{ doc("l2col_hs_obamacare_aca_expand") }}'
+      - name: "hs_obamacare_aca_oppose"
+        description: '{{ doc("l2col_hs_obamacare_aca_oppose") }}'
+      - name: "hs_obamacare_aca_protect"
+        description: '{{ doc("l2col_hs_obamacare_aca_protect") }}'
+      - name: "hs_online_gambling_less_legal"
+        description: '{{ doc("l2col_hs_online_gambling_less_legal") }}'
+      - name: "hs_online_gambling_more_legal"
+        description: '{{ doc("l2col_hs_online_gambling_more_legal") }}'
+      - name: "hs_opioid_crisis_enforce"
+        description: '{{ doc("l2col_hs_opioid_crisis_enforce") }}'
+      - name: "hs_opioid_crisis_treat"
+        description: '{{ doc("l2col_hs_opioid_crisis_treat") }}'
+      - name: "hs_partisanship_moderate_third_party_oppose"
+        description: '{{ doc("l2col_hs_partisanship_moderate_third_party_oppose") }}'
+      - name: "hs_partisanship_moderate_third_party_support"
+        description: '{{ doc("l2col_hs_partisanship_moderate_third_party_support") }}'
+      - name: "hs_party_leadership_all_approve"
+        description: '{{ doc("l2col_hs_party_leadership_all_approve") }}'
+      - name: "hs_party_leadership_all_disapprove"
+        description: '{{ doc("l2col_hs_party_leadership_all_disapprove") }}'
+      - name: "hs_pipeline_fracking_oppose"
+        description: '{{ doc("l2col_hs_pipeline_fracking_oppose") }}'
+      - name: "hs_pipeline_fracking_support"
+        description: '{{ doc("l2col_hs_pipeline_fracking_support") }}'
+      - name: "hs_podcast_listener_no"
+        description: '{{ doc("l2col_hs_podcast_listener_no") }}'
+      - name: "hs_podcast_listener_yes"
+        description: '{{ doc("l2col_hs_podcast_listener_yes") }}'
+      - name: "hs_police_trust_no"
+        description: '{{ doc("l2col_hs_police_trust_no") }}'
+      - name: "hs_police_trust_yes"
+        description: '{{ doc("l2col_hs_police_trust_yes") }}'
+      - name: "hs_political_donations_likely"
+        description: '{{ doc("l2col_hs_political_donations_likely") }}'
+      - name: "hs_political_donations_unlikely"
+        description: '{{ doc("l2col_hs_political_donations_unlikely") }}'
+      - name: "hs_political_troll_entertaining"
+        description: '{{ doc("l2col_hs_political_troll_entertaining") }}'
+      - name: "hs_political_troll_negative"
+        description: '{{ doc("l2col_hs_political_troll_negative") }}'
+      - name: "hs_public_transit_oppose"
+        description: '{{ doc("l2col_hs_public_transit_oppose") }}'
+      - name: "hs_public_transit_support"
+        description: '{{ doc("l2col_hs_public_transit_support") }}'
+      - name: "hs_rank_choice_voting_oppose"
+        description: '{{ doc("l2col_hs_rank_choice_voting_oppose") }}'
+      - name: "hs_rank_choice_voting_support"
+        description: '{{ doc("l2col_hs_rank_choice_voting_support") }}'
+      - name: "hs_redistricting_indep_com"
+        description: '{{ doc("l2col_hs_redistricting_indep_com") }}'
+      - name: "hs_redistricting_state_leg"
+        description: '{{ doc("l2col_hs_redistricting_state_leg") }}'
+      - name: "hs_regulations_good"
+        description: '{{ doc("l2col_hs_regulations_good") }}'
+      - name: "hs_regulations_too_harsh"
+        description: '{{ doc("l2col_hs_regulations_too_harsh") }}'
+      - name: "hs_religion_important"
+        description: '{{ doc("l2col_hs_religion_important") }}'
+      - name: "hs_religion_not_important"
+        description: '{{ doc("l2col_hs_religion_not_important") }}'
+      - name: "hs_republican_partisanship_establishment_vs_firebrand_firebrand"
+        description: '{{ doc("l2col_hs_republican_partisanship_establishment_vs_firebrand_firebrand") }}'
+      - name: "hs_republican_partisanship_establishment_vs_firebrand_moderate"
+        description: '{{ doc("l2col_hs_republican_partisanship_establishment_vs_firebrand_moderate") }}'
+      - name: "hs_responsiveness_email"
+        description: '{{ doc("l2col_hs_responsiveness_email") }}'
+      - name: "hs_responsiveness_live"
+        description: '{{ doc("l2col_hs_responsiveness_live") }}'
+      - name: "hs_responsiveness_sms"
+        description: '{{ doc("l2col_hs_responsiveness_sms") }}'
+      - name: "hs_rfkjr_approval"
+        description: '{{ doc("l2col_hs_rfkjr_approval") }}'
+      - name: "hs_rfkjr_disapproval"
+        description: '{{ doc("l2col_hs_rfkjr_disapproval") }}'
+      - name: "hs_rideshare_user"
+        description: '{{ doc("l2col_hs_rideshare_user") }}'
+      - name: "hs_rideshare_user_no"
+        description: '{{ doc("l2col_hs_rideshare_user_no") }}'
+      - name: "hs_right_wing_conspiracy_believer"
+        description: '{{ doc("l2col_hs_right_wing_conspiracy_believer") }}'
+      - name: "hs_right_wing_conspiracy_nonbeliever"
+        description: '{{ doc("l2col_hs_right_wing_conspiracy_nonbeliever") }}'
+      - name: "hs_ro_khanna_approval"
+        description: '{{ doc("l2col_hs_ro_khanna_approval") }}'
+      - name: "hs_ro_khanna_approval_dem"
+        description: '{{ doc("l2col_hs_ro_khanna_approval_dem") }}'
+      - name: "hs_ro_khanna_disapproval"
+        description: '{{ doc("l2col_hs_ro_khanna_disapproval") }}'
+      - name: "hs_rubio_approval"
+        description: '{{ doc("l2col_hs_rubio_approval") }}'
+      - name: "hs_rubio_approval_gop"
+        description: '{{ doc("l2col_hs_rubio_approval_gop") }}'
+      - name: "hs_rubio_disapproval"
+        description: '{{ doc("l2col_hs_rubio_disapproval") }}'
+      - name: "hs_same_sex_marriage_oppose"
+        description: '{{ doc("l2col_hs_same_sex_marriage_oppose") }}'
+      - name: "hs_same_sex_marriage_support"
+        description: '{{ doc("l2col_hs_same_sex_marriage_support") }}'
+      - name: "hs_school_choice_oppose"
+        description: '{{ doc("l2col_hs_school_choice_oppose") }}'
+      - name: "hs_school_choice_support"
+        description: '{{ doc("l2col_hs_school_choice_support") }}'
+      - name: "hs_school_funding_less"
+        description: '{{ doc("l2col_hs_school_funding_less") }}'
+      - name: "hs_school_funding_more"
+        description: '{{ doc("l2col_hs_school_funding_more") }}'
+      - name: "hs_sell_federal_lands_oppose"
+        description: '{{ doc("l2col_hs_sell_federal_lands_oppose") }}'
+      - name: "hs_sell_federal_lands_support"
+        description: '{{ doc("l2col_hs_sell_federal_lands_support") }}'
+      - name: "hs_snap_not_important"
+        description: '{{ doc("l2col_hs_snap_not_important") }}'
+      - name: "hs_snap_protect"
+        description: '{{ doc("l2col_hs_snap_protect") }}'
+      - name: "hs_social_media_truth_vs_speech_free_speech"
+        description: '{{ doc("l2col_hs_social_media_truth_vs_speech_free_speech") }}'
+      - name: "hs_social_media_truth_vs_speech_truth"
+        description: '{{ doc("l2col_hs_social_media_truth_vs_speech_truth") }}'
+      - name: "hs_social_media_user"
+        description: '{{ doc("l2col_hs_social_media_user") }}'
+      - name: "hs_social_media_user_frequent"
+        description: '{{ doc("l2col_hs_social_media_user_frequent") }}'
+      - name: "hs_social_media_user_no_or_infrequent"
+        description: '{{ doc("l2col_hs_social_media_user_no_or_infrequent") }}'
+      - name: "hs_social_security_tax_increase_oppose"
+        description: '{{ doc("l2col_hs_social_security_tax_increase_oppose") }}'
+      - name: "hs_social_security_tax_increase_support"
+        description: '{{ doc("l2col_hs_social_security_tax_increase_support") }}'
+      - name: "hs_solar_panel_buyer_no"
+        description: '{{ doc("l2col_hs_solar_panel_buyer_no") }}'
+      - name: "hs_solar_panel_buyer_yes"
+        description: '{{ doc("l2col_hs_solar_panel_buyer_yes") }}'
+      - name: "hs_stable_polling_partisanship_raw"
+        description: '{{ doc("l2col_hs_stable_polling_partisanship_raw") }}'
+      - name: "hs_stadium_public_financing_approve"
+        description: '{{ doc("l2col_hs_stadium_public_financing_approve") }}'
+      - name: "hs_stadium_public_financing_disapprove"
+        description: '{{ doc("l2col_hs_stadium_public_financing_disapprove") }}'
+      - name: "hs_state_level_fema_oppose"
+        description: '{{ doc("l2col_hs_state_level_fema_oppose") }}'
+      - name: "hs_state_level_fema_support"
+        description: '{{ doc("l2col_hs_state_level_fema_support") }}'
+      - name: "hs_super_power_policy_oppose"
+        description: '{{ doc("l2col_hs_super_power_policy_oppose") }}'
+      - name: "hs_super_power_policy_support"
+        description: '{{ doc("l2col_hs_super_power_policy_support") }}'
+      - name: "hs_tax_cuts_oppose"
+        description: '{{ doc("l2col_hs_tax_cuts_oppose") }}'
+      - name: "hs_tax_cuts_support"
+        description: '{{ doc("l2col_hs_tax_cuts_support") }}'
+      - name: "hs_teachers_union_negative"
+        description: '{{ doc("l2col_hs_teachers_union_negative") }}'
+      - name: "hs_teachers_union_positive"
+        description: '{{ doc("l2col_hs_teachers_union_positive") }}'
+      - name: "hs_ticket_splitter_dem_no"
+        description: '{{ doc("l2col_hs_ticket_splitter_dem_no") }}'
+      - name: "hs_ticket_splitter_dem_yes"
+        description: '{{ doc("l2col_hs_ticket_splitter_dem_yes") }}'
+      - name: "hs_ticket_splitter_gop_no"
+        description: '{{ doc("l2col_hs_ticket_splitter_gop_no") }}'
+      - name: "hs_ticket_splitter_gop_yes"
+        description: '{{ doc("l2col_hs_ticket_splitter_gop_yes") }}'
+      - name: "hs_ticket_splitter_no"
+        description: '{{ doc("l2col_hs_ticket_splitter_no") }}'
+      - name: "hs_ticket_splitter_yes"
+        description: '{{ doc("l2col_hs_ticket_splitter_yes") }}'
+      - name: "hs_ticket_splitting_dem_no"
+        description: '{{ doc("l2col_hs_ticket_splitting_dem_no") }}'
+      - name: "hs_ticket_splitting_dem_yes"
+        description: '{{ doc("l2col_hs_ticket_splitting_dem_yes") }}'
+      - name: "hs_ticket_splitting_gop_no"
+        description: '{{ doc("l2col_hs_ticket_splitting_gop_no") }}'
+      - name: "hs_ticket_splitting_gop_yes"
+        description: '{{ doc("l2col_hs_ticket_splitting_gop_yes") }}'
+      - name: "hs_ticket_splitting_no"
+        description: '{{ doc("l2col_hs_ticket_splitting_no") }}'
+      - name: "hs_ticket_splitting_yes"
+        description: '{{ doc("l2col_hs_ticket_splitting_yes") }}'
+      - name: "hs_traditional_gender_roles_negative"
+        description: '{{ doc("l2col_hs_traditional_gender_roles_negative") }}'
+      - name: "hs_traditional_gender_roles_positive"
+        description: '{{ doc("l2col_hs_traditional_gender_roles_positive") }}'
+      - name: "hs_trans_athlete_no"
+        description: '{{ doc("l2col_hs_trans_athlete_no") }}'
+      - name: "hs_trans_athlete_yes"
+        description: '{{ doc("l2col_hs_trans_athlete_yes") }}'
+      - name: "hs_tribalism_open_minded"
+        description: '{{ doc("l2col_hs_tribalism_open_minded") }}'
+      - name: "hs_tribalism_team_dem"
+        description: '{{ doc("l2col_hs_tribalism_team_dem") }}'
+      - name: "hs_tribalism_team_gop"
+        description: '{{ doc("l2col_hs_tribalism_team_gop") }}'
+      - name: "hs_trump_3rd_term_any_support"
+        description: '{{ doc("l2col_hs_trump_3rd_term_any_support") }}'
+      - name: "hs_trump_3rd_term_oppose"
+        description: '{{ doc("l2col_hs_trump_3rd_term_oppose") }}'
+      - name: "hs_trump_approval"
+        description: '{{ doc("l2col_hs_trump_approval") }}'
+      - name: "hs_trump_approval_gop"
+        description: '{{ doc("l2col_hs_trump_approval_gop") }}'
+      - name: "hs_trump_disapproval"
+        description: '{{ doc("l2col_hs_trump_disapproval") }}'
+      - name: "hs_trump_disapproval_gop"
+        description: '{{ doc("l2col_hs_trump_disapproval_gop") }}'
+      - name: "hs_trump_tariffs_oppose"
+        description: '{{ doc("l2col_hs_trump_tariffs_oppose") }}'
+      - name: "hs_trump_tariffs_support"
+        description: '{{ doc("l2col_hs_trump_tariffs_support") }}'
+      - name: "hs_trump_ukraine_policy_oppose"
+        description: '{{ doc("l2col_hs_trump_ukraine_policy_oppose") }}'
+      - name: "hs_trump_ukraine_policy_support"
+        description: '{{ doc("l2col_hs_trump_ukraine_policy_support") }}'
+      - name: "hs_trump_vs_harris_double_dislike"
+        description: '{{ doc("l2col_hs_trump_vs_harris_double_dislike") }}'
+      - name: "hs_trump_vs_harris_favor_harris"
+        description: '{{ doc("l2col_hs_trump_vs_harris_favor_harris") }}'
+      - name: "hs_trump_vs_harris_favor_other"
+        description: '{{ doc("l2col_hs_trump_vs_harris_favor_other") }}'
+      - name: "hs_trump_vs_harris_favor_trump"
+        description: '{{ doc("l2col_hs_trump_vs_harris_favor_trump") }}'
+      - name: "hs_trust_science_always"
+        description: '{{ doc("l2col_hs_trust_science_always") }}'
+      - name: "hs_trust_science_rarely"
+        description: '{{ doc("l2col_hs_trust_science_rarely") }}'
+      - name: "hs_tv_most_trusted_news_cnn"
+        description: '{{ doc("l2col_hs_tv_most_trusted_news_cnn") }}'
+      - name: "hs_tv_most_trusted_news_fox"
+        description: '{{ doc("l2col_hs_tv_most_trusted_news_fox") }}'
+      - name: "hs_tv_most_trusted_news_msnbc"
+        description: '{{ doc("l2col_hs_tv_most_trusted_news_msnbc") }}'
+      - name: "hs_tv_news_source_most_trusted_cnn"
+        description: '{{ doc("l2col_hs_tv_news_source_most_trusted_cnn") }}'
+      - name: "hs_tv_news_source_most_trusted_fox"
+        description: '{{ doc("l2col_hs_tv_news_source_most_trusted_fox") }}'
+      - name: "hs_tv_news_source_most_trusted_msnbc"
+        description: '{{ doc("l2col_hs_tv_news_source_most_trusted_msnbc") }}'
+      - name: "hs_tv_news_source_most_trusted_newsmax"
+        description: '{{ doc("l2col_hs_tv_news_source_most_trusted_newsmax") }}'
+      - name: "hs_tv_viewer_free_streaming"
+        description: '{{ doc("l2col_hs_tv_viewer_free_streaming") }}'
+      - name: "hs_tv_viewer_not_viewer"
+        description: '{{ doc("l2col_hs_tv_viewer_not_viewer") }}'
+      - name: "hs_tv_viewer_watch_any_tv"
+        description: '{{ doc("l2col_hs_tv_viewer_watch_any_tv") }}'
+      - name: "hs_tv_viewer_watch_paid_streaming"
+        description: '{{ doc("l2col_hs_tv_viewer_watch_paid_streaming") }}'
+      - name: "hs_unions_beneficial"
+        description: '{{ doc("l2col_hs_unions_beneficial") }}'
+      - name: "hs_unions_not_beneficial"
+        description: '{{ doc("l2col_hs_unions_not_beneficial") }}'
+      - name: "hs_united_healthcare_at_fault"
+        description: '{{ doc("l2col_hs_united_healthcare_at_fault") }}'
+      - name: "hs_united_healthcare_no_fault"
+        description: '{{ doc("l2col_hs_united_healthcare_no_fault") }}'
+      - name: "hs_vaping_user_no"
+        description: '{{ doc("l2col_hs_vaping_user_no") }}'
+      - name: "hs_vaping_user_yes"
+        description: '{{ doc("l2col_hs_vaping_user_yes") }}'
+      - name: "hs_view_of_opposition_dangerous"
+        description: '{{ doc("l2col_hs_view_of_opposition_dangerous") }}'
+      - name: "hs_view_of_opposition_just_disagree"
+        description: '{{ doc("l2col_hs_view_of_opposition_just_disagree") }}'
+      - name: "hs_view_of_opposition_misinformed"
+        description: '{{ doc("l2col_hs_view_of_opposition_misinformed") }}'
+      - name: "hs_violent_crime_not_worried"
+        description: '{{ doc("l2col_hs_violent_crime_not_worried") }}'
+      - name: "hs_violent_crime_very_worried"
+        description: '{{ doc("l2col_hs_violent_crime_very_worried") }}'
+      - name: "hs_violent_crime_worried"
+        description: '{{ doc("l2col_hs_violent_crime_worried") }}'
+      - name: "hs_voting_fraud_concern_barriers"
+        description: '{{ doc("l2col_hs_voting_fraud_concern_barriers") }}'
+      - name: "hs_voting_fraud_concern_fraud"
+        description: '{{ doc("l2col_hs_voting_fraud_concern_fraud") }}'
+      - name: "hs_voting_fraud_concern_oppression"
+        description: '{{ doc("l2col_hs_voting_fraud_concern_oppression") }}'
+      - name: "hs_wealth_acquired_advantages"
+        description: '{{ doc("l2col_hs_wealth_acquired_advantages") }}'
+      - name: "hs_wealth_acquired_hardwork"
+        description: '{{ doc("l2col_hs_wealth_acquired_hardwork") }}'
+      - name: "Improvement_Landowner_District"
+        description: '{{ doc("l2col_Improvement_Landowner_District") }}'
+      - name: "Independent_Fire_District"
+        description: '{{ doc("l2col_Independent_Fire_District") }}'
+      - name: "Irrigation_District"
+        description: '{{ doc("l2col_Irrigation_District") }}'
+      - name: "Irrigation_SubDistrict"
+        description: '{{ doc("l2col_Irrigation_SubDistrict") }}'
+      - name: "Island"
+        description: '{{ doc("l2col_Island") }}'
+      - name: "Judicial_Appellate_District"
+        description: '{{ doc("l2col_Judicial_Appellate_District") }}'
+      - name: "Judicial_Chancery_Court"
+        description: '{{ doc("l2col_Judicial_Chancery_Court") }}'
+      - name: "Judicial_Circuit_Court_District"
+        description: '{{ doc("l2col_Judicial_Circuit_Court_District") }}'
+      - name: "Judicial_County_Board_of_Review_District"
+        description: '{{ doc("l2col_Judicial_County_Board_of_Review_District") }}'
+      - name: "Judicial_County_Court_District"
+        description: '{{ doc("l2col_Judicial_County_Court_District") }}'
+      - name: "Judicial_District"
+        description: '{{ doc("l2col_Judicial_District") }}'
+      - name: "Judicial_District_Court_District"
+        description: '{{ doc("l2col_Judicial_District_Court_District") }}'
+      - name: "Judicial_Family_Court_District"
+        description: '{{ doc("l2col_Judicial_Family_Court_District") }}'
+      - name: "Judicial_Jury_District"
+        description: '{{ doc("l2col_Judicial_Jury_District") }}'
+      - name: "Judicial_Justice_of_the_Peace"
+        description: '{{ doc("l2col_Judicial_Justice_of_the_Peace") }}'
+      - name: "Judicial_Juvenile_Court_District"
+        description: '{{ doc("l2col_Judicial_Juvenile_Court_District") }}'
+      - name: "Judicial_Magistrate_Division"
+        description: '{{ doc("l2col_Judicial_Magistrate_Division") }}'
+      - name: "Judicial_Municipal_Court_District"
+        description: '{{ doc("l2col_Judicial_Municipal_Court_District") }}'
+      - name: "Judicial_Sub_Circuit_District"
+        description: '{{ doc("l2col_Judicial_Sub_Circuit_District") }}'
+      - name: "Judicial_Superior_Court_District"
+        description: '{{ doc("l2col_Judicial_Superior_Court_District") }}'
+      - name: "Judicial_Supreme_Court_District"
+        description: '{{ doc("l2col_Judicial_Supreme_Court_District") }}'
+      - name: "LALVOTERID"
+        description: '{{ doc("l2col_LALVOTERID") }}'
+      - name: "Land_Commission"
+        description: '{{ doc("l2col_Land_Commission") }}'
+      - name: "Landline_Phone_Number_Available"
+        description: '{{ doc("l2col_Landline_Phone_Number_Available") }}'
+      - name: "Landscaping_and_Lighting_Assessment_District"
+        description: '{{ doc("l2col_Landscaping_and_Lighting_Assessment_District") }}'
+      - name: "Law_Enforcement_District"
+        description: '{{ doc("l2col_Law_Enforcement_District") }}'
+      - name: "Learning_Community_Coordinating_Council_District"
+        description: '{{ doc("l2col_Learning_Community_Coordinating_Council_District") }}'
+      - name: "Levee_District"
+        description: '{{ doc("l2col_Levee_District") }}'
+      - name: "Levee_Reconstruction_Assesment_District"
+        description: '{{ doc("l2col_Levee_Reconstruction_Assesment_District") }}'
+      - name: "Library_District"
+        description: '{{ doc("l2col_Library_District") }}'
+      - name: "Library_Services_District"
+        description: '{{ doc("l2col_Library_Services_District") }}'
+      - name: "Library_SubDistrict"
+        description: '{{ doc("l2col_Library_SubDistrict") }}'
+      - name: "Lighting_District"
+        description: '{{ doc("l2col_Lighting_District") }}'
+      - name: "loaded_at"
+        description: '{{ doc("l2col_loaded_at") }}'
+      - name: "Local_Hospital_District"
+        description: '{{ doc("l2col_Local_Hospital_District") }}'
+      - name: "Local_Park_District"
+        description: '{{ doc("l2col_Local_Park_District") }}'
+      - name: "Mailing_Addresses_AddressLine"
+        description: '{{ doc("l2col_Mailing_Addresses_AddressLine") }}'
+      - name: "Mailing_Addresses_ApartmentNum"
+        description: '{{ doc("l2col_Mailing_Addresses_ApartmentNum") }}'
+      - name: "Mailing_Addresses_ApartmentType"
+        description: '{{ doc("l2col_Mailing_Addresses_ApartmentType") }}'
+      - name: "Mailing_Addresses_CassErrStatCode"
+        description: '{{ doc("l2col_Mailing_Addresses_CassErrStatCode") }}'
+      - name: "Mailing_Addresses_CheckDigit"
+        description: '{{ doc("l2col_Mailing_Addresses_CheckDigit") }}'
+      - name: "Mailing_Addresses_City"
+        description: '{{ doc("l2col_Mailing_Addresses_City") }}'
+      - name: "Mailing_Addresses_Designator"
+        description: '{{ doc("l2col_Mailing_Addresses_Designator") }}'
+      - name: "Mailing_Addresses_DPBC"
+        description: '{{ doc("l2col_Mailing_Addresses_DPBC") }}'
+      - name: "Mailing_Addresses_ExtraAddressLine"
+        description: '{{ doc("l2col_Mailing_Addresses_ExtraAddressLine") }}'
+      - name: "Mailing_Addresses_HouseNumber"
+        description: '{{ doc("l2col_Mailing_Addresses_HouseNumber") }}'
+      - name: "Mailing_Addresses_PrefixDirection"
+        description: '{{ doc("l2col_Mailing_Addresses_PrefixDirection") }}'
+      - name: "Mailing_Addresses_State"
+        description: '{{ doc("l2col_Mailing_Addresses_State") }}'
+      - name: "Mailing_Addresses_StreetName"
+        description: '{{ doc("l2col_Mailing_Addresses_StreetName") }}'
+      - name: "Mailing_Addresses_SuffixDirection"
+        description: '{{ doc("l2col_Mailing_Addresses_SuffixDirection") }}'
+      - name: "Mailing_Addresses_Zip"
+        description: '{{ doc("l2col_Mailing_Addresses_Zip") }}'
+      - name: "Mailing_Addresses_ZipPlus4"
+        description: '{{ doc("l2col_Mailing_Addresses_ZipPlus4") }}'
+      - name: "Mailing_Families_FamilyID"
+        description: '{{ doc("l2col_Mailing_Families_FamilyID") }}'
+      - name: "Maintenance_District"
+        description: '{{ doc("l2col_Maintenance_District") }}'
+      - name: "Master_Plan_District"
+        description: '{{ doc("l2col_Master_Plan_District") }}'
+      - name: "Memorial_District"
+        description: '{{ doc("l2col_Memorial_District") }}'
+      - name: "Metro_Service_District"
+        description: '{{ doc("l2col_Metro_Service_District") }}'
+      - name: "Metro_Service_Subdistrict"
+        description: '{{ doc("l2col_Metro_Service_Subdistrict") }}'
+      - name: "Metro_Transit_District"
+        description: '{{ doc("l2col_Metro_Transit_District") }}'
+      - name: "Metropolitan_Water_District"
+        description: '{{ doc("l2col_Metropolitan_Water_District") }}'
+      - name: "Middle_School_District"
+        description: '{{ doc("l2col_Middle_School_District") }}'
+      - name: "Mosquito_Abatement_District"
+        description: '{{ doc("l2col_Mosquito_Abatement_District") }}'
+      - name: "Mountain_Water_District"
+        description: '{{ doc("l2col_Mountain_Water_District") }}'
+      - name: "Multi_township_Assessor"
+        description: '{{ doc("l2col_Multi_township_Assessor") }}'
+      - name: "Municipal_Advisory_Council_District"
+        description: '{{ doc("l2col_Municipal_Advisory_Council_District") }}'
+      - name: "Municipal_Utility_District"
+        description: '{{ doc("l2col_Municipal_Utility_District") }}'
+      - name: "Municipal_Utility_SubDistrict"
+        description: '{{ doc("l2col_Municipal_Utility_SubDistrict") }}'
+      - name: "Municipal_Water_District"
+        description: '{{ doc("l2col_Municipal_Water_District") }}'
+      - name: "Municipal_Water_SubDistrict"
+        description: '{{ doc("l2col_Municipal_Water_SubDistrict") }}'
+      - name: "Museum_District"
+        description: '{{ doc("l2col_Museum_District") }}'
+      - name: "Northeast_Soil_and_Water_District"
+        description: '{{ doc("l2col_Northeast_Soil_and_Water_District") }}'
+      - name: "Open_Space_District"
+        description: '{{ doc("l2col_Open_Space_District") }}'
+      - name: "Open_Space_SubDistrict"
+        description: '{{ doc("l2col_Open_Space_SubDistrict") }}'
+      - name: "Other"
+        description: '{{ doc("l2col_Other") }}'
+      - name: "OtherElection_2000"
+        description: '{{ doc("l2col_OtherElection_2000") }}'
+      - name: "OtherElection_2002"
+        description: '{{ doc("l2col_OtherElection_2002") }}'
+      - name: "OtherElection_2004"
+        description: '{{ doc("l2col_OtherElection_2004") }}'
+      - name: "OtherElection_2006"
+        description: '{{ doc("l2col_OtherElection_2006") }}'
+      - name: "OtherElection_2008"
+        description: '{{ doc("l2col_OtherElection_2008") }}'
+      - name: "OtherElection_2010"
+        description: '{{ doc("l2col_OtherElection_2010") }}'
+      - name: "OtherElection_2012"
+        description: '{{ doc("l2col_OtherElection_2012") }}'
+      - name: "OtherElection_2014"
+        description: '{{ doc("l2col_OtherElection_2014") }}'
+      - name: "OtherElection_2016"
+        description: '{{ doc("l2col_OtherElection_2016") }}'
+      - name: "OtherElection_2018"
+        description: '{{ doc("l2col_OtherElection_2018") }}'
+      - name: "OtherElection_2020"
+        description: '{{ doc("l2col_OtherElection_2020") }}'
+      - name: "OtherElection_2022"
+        description: '{{ doc("l2col_OtherElection_2022") }}'
+      - name: "OtherElection_2024"
+        description: '{{ doc("l2col_OtherElection_2024") }}'
+      - name: "OtherElection_2026"
+        description: '{{ doc("l2col_OtherElection_2026") }}'
+      - name: "OtherElection_2028"
+        description: '{{ doc("l2col_OtherElection_2028") }}'
+      - name: "OtherElection_2030"
+        description: '{{ doc("l2col_OtherElection_2030") }}'
+      - name: "Paramedic_District"
+        description: '{{ doc("l2col_Paramedic_District") }}'
+      - name: "Park_Commissioner_District"
+        description: '{{ doc("l2col_Park_Commissioner_District") }}'
+      - name: "Park_District"
+        description: '{{ doc("l2col_Park_District") }}'
+      - name: "Park_SubDistrict"
+        description: '{{ doc("l2col_Park_SubDistrict") }}'
+      - name: "Parties_Description"
+        description: '{{ doc("l2col_Parties_Description") }}'
+      - name: "Phone_Number_Available"
+        description: '{{ doc("l2col_Phone_Number_Available") }}'
+      - name: "Planning_Area_District"
+        description: '{{ doc("l2col_Planning_Area_District") }}'
+      - name: "Police_District"
+        description: '{{ doc("l2col_Police_District") }}'
+      - name: "Port_District"
+        description: '{{ doc("l2col_Port_District") }}'
+      - name: "Port_SubDistrict"
+        description: '{{ doc("l2col_Port_SubDistrict") }}'
+      - name: "Power_District"
+        description: '{{ doc("l2col_Power_District") }}'
+      - name: "Precinct"
+        description: '{{ doc("l2col_Precinct") }}'
+      - name: "PresidentialPrimary_2000"
+        description: '{{ doc("l2col_PresidentialPrimary_2000") }}'
+      - name: "PresidentialPrimary_2004"
+        description: '{{ doc("l2col_PresidentialPrimary_2004") }}'
+      - name: "PresidentialPrimary_2008"
+        description: '{{ doc("l2col_PresidentialPrimary_2008") }}'
+      - name: "PresidentialPrimary_2012"
+        description: '{{ doc("l2col_PresidentialPrimary_2012") }}'
+      - name: "PresidentialPrimary_2016"
+        description: '{{ doc("l2col_PresidentialPrimary_2016") }}'
+      - name: "PresidentialPrimary_2020"
+        description: '{{ doc("l2col_PresidentialPrimary_2020") }}'
+      - name: "PresidentialPrimary_2024"
+        description: '{{ doc("l2col_PresidentialPrimary_2024") }}'
+      - name: "PresidentialPrimary_2028"
+        description: '{{ doc("l2col_PresidentialPrimary_2028") }}'
+      - name: "PRI_BLT_2000"
+        description: '{{ doc("l2col_PRI_BLT_2000") }}'
+      - name: "PRI_BLT_2001"
+        description: '{{ doc("l2col_PRI_BLT_2001") }}'
+      - name: "PRI_BLT_2002"
+        description: '{{ doc("l2col_PRI_BLT_2002") }}'
+      - name: "PRI_BLT_2003"
+        description: '{{ doc("l2col_PRI_BLT_2003") }}'
+      - name: "PRI_BLT_2004"
+        description: '{{ doc("l2col_PRI_BLT_2004") }}'
+      - name: "PRI_BLT_2005"
+        description: '{{ doc("l2col_PRI_BLT_2005") }}'
+      - name: "PRI_BLT_2006"
+        description: '{{ doc("l2col_PRI_BLT_2006") }}'
+      - name: "PRI_BLT_2007"
+        description: '{{ doc("l2col_PRI_BLT_2007") }}'
+      - name: "PRI_BLT_2008"
+        description: '{{ doc("l2col_PRI_BLT_2008") }}'
+      - name: "PRI_BLT_2009"
+        description: '{{ doc("l2col_PRI_BLT_2009") }}'
+      - name: "PRI_BLT_2010"
+        description: '{{ doc("l2col_PRI_BLT_2010") }}'
+      - name: "PRI_BLT_2011"
+        description: '{{ doc("l2col_PRI_BLT_2011") }}'
+      - name: "PRI_BLT_2012"
+        description: '{{ doc("l2col_PRI_BLT_2012") }}'
+      - name: "PRI_BLT_2013"
+        description: '{{ doc("l2col_PRI_BLT_2013") }}'
+      - name: "PRI_BLT_2014"
+        description: '{{ doc("l2col_PRI_BLT_2014") }}'
+      - name: "PRI_BLT_2015"
+        description: '{{ doc("l2col_PRI_BLT_2015") }}'
+      - name: "PRI_BLT_2016"
+        description: '{{ doc("l2col_PRI_BLT_2016") }}'
+      - name: "PRI_BLT_2017"
+        description: '{{ doc("l2col_PRI_BLT_2017") }}'
+      - name: "PRI_BLT_2018"
+        description: '{{ doc("l2col_PRI_BLT_2018") }}'
+      - name: "PRI_BLT_2019"
+        description: '{{ doc("l2col_PRI_BLT_2019") }}'
+      - name: "PRI_BLT_2020"
+        description: '{{ doc("l2col_PRI_BLT_2020") }}'
+      - name: "PRI_BLT_2021"
+        description: '{{ doc("l2col_PRI_BLT_2021") }}'
+      - name: "PRI_BLT_2022"
+        description: '{{ doc("l2col_PRI_BLT_2022") }}'
+      - name: "PRI_BLT_2023"
+        description: '{{ doc("l2col_PRI_BLT_2023") }}'
+      - name: "PRI_BLT_2024"
+        description: '{{ doc("l2col_PRI_BLT_2024") }}'
+      - name: "PRI_BLT_2025"
+        description: '{{ doc("l2col_PRI_BLT_2025") }}'
+      - name: "PRI_BLT_2026"
+        description: '{{ doc("l2col_PRI_BLT_2026") }}'
+      - name: "PRI_BLT_2027"
+        description: '{{ doc("l2col_PRI_BLT_2027") }}'
+      - name: "PRI_BLT_2028"
+        description: '{{ doc("l2col_PRI_BLT_2028") }}'
+      - name: "PRI_BLT_2029"
+        description: '{{ doc("l2col_PRI_BLT_2029") }}'
+      - name: "PRI_BLT_2030"
+        description: '{{ doc("l2col_PRI_BLT_2030") }}'
+      - name: "Primary_2000"
+        description: '{{ doc("l2col_Primary_2000") }}'
+      - name: "Primary_2002"
+        description: '{{ doc("l2col_Primary_2002") }}'
+      - name: "Primary_2004"
+        description: '{{ doc("l2col_Primary_2004") }}'
+      - name: "Primary_2006"
+        description: '{{ doc("l2col_Primary_2006") }}'
+      - name: "Primary_2008"
+        description: '{{ doc("l2col_Primary_2008") }}'
+      - name: "Primary_2010"
+        description: '{{ doc("l2col_Primary_2010") }}'
+      - name: "Primary_2012"
+        description: '{{ doc("l2col_Primary_2012") }}'
+      - name: "Primary_2014"
+        description: '{{ doc("l2col_Primary_2014") }}'
+      - name: "Primary_2016"
+        description: '{{ doc("l2col_Primary_2016") }}'
+      - name: "Primary_2018"
+        description: '{{ doc("l2col_Primary_2018") }}'
+      - name: "Primary_2020"
+        description: '{{ doc("l2col_Primary_2020") }}'
+      - name: "Primary_2022"
+        description: '{{ doc("l2col_Primary_2022") }}'
+      - name: "Primary_2024"
+        description: '{{ doc("l2col_Primary_2024") }}'
+      - name: "Primary_2026"
+        description: '{{ doc("l2col_Primary_2026") }}'
+      - name: "Primary_2028"
+        description: '{{ doc("l2col_Primary_2028") }}'
+      - name: "Primary_2030"
+        description: '{{ doc("l2col_Primary_2030") }}'
+      - name: "Proposed_City"
+        description: '{{ doc("l2col_Proposed_City") }}'
+      - name: "Proposed_City_Commissioner_District"
+        description: '{{ doc("l2col_Proposed_City_Commissioner_District") }}'
+      - name: "Proposed_Community_College"
+        description: '{{ doc("l2col_Proposed_Community_College") }}'
+      - name: "Proposed_District"
+        description: '{{ doc("l2col_Proposed_District") }}'
+      - name: "Proposed_Elementary_School_District"
+        description: '{{ doc("l2col_Proposed_Elementary_School_District") }}'
+      - name: "Proposed_Fire_District"
+        description: '{{ doc("l2col_Proposed_Fire_District") }}'
+      - name: "Proposed_Unified_School_District"
+        description: '{{ doc("l2col_Proposed_Unified_School_District") }}'
+      - name: "Public_Airport_District"
+        description: '{{ doc("l2col_Public_Airport_District") }}'
+      - name: "Public_Regulation_Commission"
+        description: '{{ doc("l2col_Public_Regulation_Commission") }}'
+      - name: "Public_Service_Commission_District"
+        description: '{{ doc("l2col_Public_Service_Commission_District") }}'
+      - name: "Public_Utility_District"
+        description: '{{ doc("l2col_Public_Utility_District") }}'
+      - name: "Public_Utility_SubDistrict"
+        description: '{{ doc("l2col_Public_Utility_SubDistrict") }}'
+      - name: "Rapid_Transit_District"
+        description: '{{ doc("l2col_Rapid_Transit_District") }}'
+      - name: "Rapid_Transit_SubDistrict"
+        description: '{{ doc("l2col_Rapid_Transit_SubDistrict") }}'
+      - name: "Reclamation_District"
+        description: '{{ doc("l2col_Reclamation_District") }}'
+      - name: "Recreation_District"
+        description: '{{ doc("l2col_Recreation_District") }}'
+      - name: "Recreational_SubDistrict"
+        description: '{{ doc("l2col_Recreational_SubDistrict") }}'
+      - name: "Regional_Office_of_Education_District"
+        description: '{{ doc("l2col_Regional_Office_of_Education_District") }}'
+      - name: "Republican_Area"
+        description: '{{ doc("l2col_Republican_Area") }}'
+      - name: "Republican_Convention_Member"
+        description: '{{ doc("l2col_Republican_Convention_Member") }}'
+      - name: "Residence_Addresses_AddressLine"
+        description: '{{ doc("l2col_Residence_Addresses_AddressLine") }}'
+      - name: "Residence_Addresses_ApartmentNum"
+        description: '{{ doc("l2col_Residence_Addresses_ApartmentNum") }}'
+      - name: "Residence_Addresses_ApartmentType"
+        description: '{{ doc("l2col_Residence_Addresses_ApartmentType") }}'
+      - name: "Residence_Addresses_CassErrStatCode"
+        description: '{{ doc("l2col_Residence_Addresses_CassErrStatCode") }}'
+      - name: "Residence_Addresses_CensusBlock"
+        description: '{{ doc("l2col_Residence_Addresses_CensusBlock") }}'
+      - name: "Residence_Addresses_CensusBlockGroup"
+        description: '{{ doc("l2col_Residence_Addresses_CensusBlockGroup") }}'
+      - name: "Residence_Addresses_CensusTract"
+        description: '{{ doc("l2col_Residence_Addresses_CensusTract") }}'
+      - name: "Residence_Addresses_CheckDigit"
+        description: '{{ doc("l2col_Residence_Addresses_CheckDigit") }}'
+      - name: "Residence_Addresses_City"
+        description: '{{ doc("l2col_Residence_Addresses_City") }}'
+      - name: "Residence_Addresses_Complete_Census_Geocode"
+        description: '{{ doc("l2col_Residence_Addresses_Complete_Census_Geocode") }}'
+      - name: "Residence_Addresses_Density"
+        description: '{{ doc("l2col_Residence_Addresses_Density") }}'
+      - name: "Residence_Addresses_Designator"
+        description: '{{ doc("l2col_Residence_Addresses_Designator") }}'
+      - name: "Residence_Addresses_DPBC"
+        description: '{{ doc("l2col_Residence_Addresses_DPBC") }}'
+      - name: "Residence_Addresses_ExtraAddressLine"
+        description: '{{ doc("l2col_Residence_Addresses_ExtraAddressLine") }}'
+      - name: "Residence_Addresses_HouseNumber"
+        description: '{{ doc("l2col_Residence_Addresses_HouseNumber") }}'
+      - name: "Residence_Addresses_Latitude"
+        description: '{{ doc("l2col_Residence_Addresses_Latitude") }}'
+      - name: "Residence_Addresses_LatLongAccuracy"
+        description: '{{ doc("l2col_Residence_Addresses_LatLongAccuracy") }}'
+      - name: "Residence_Addresses_Longitude"
+        description: '{{ doc("l2col_Residence_Addresses_Longitude") }}'
+      - name: "Residence_Addresses_PrefixDirection"
+        description: '{{ doc("l2col_Residence_Addresses_PrefixDirection") }}'
+      - name: "Residence_Addresses_Property_Home_Square_Footage"
+        description: '{{ doc("l2col_Residence_Addresses_Property_Home_Square_Footage") }}'
+      - name: "Residence_Addresses_Property_Land_Square_Footage"
+        description: '{{ doc("l2col_Residence_Addresses_Property_Land_Square_Footage") }}'
+      - name: "Residence_Addresses_Property_Type"
+        description: '{{ doc("l2col_Residence_Addresses_Property_Type") }}'
+      - name: "Residence_Addresses_State"
+        description: '{{ doc("l2col_Residence_Addresses_State") }}'
+      - name: "Residence_Addresses_StreetName"
+        description: '{{ doc("l2col_Residence_Addresses_StreetName") }}'
+      - name: "Residence_Addresses_SuffixDirection"
+        description: '{{ doc("l2col_Residence_Addresses_SuffixDirection") }}'
+      - name: "Residence_Addresses_Zip"
+        description: '{{ doc("l2col_Residence_Addresses_Zip") }}'
+      - name: "Residence_Addresses_ZipPlus4"
+        description: '{{ doc("l2col_Residence_Addresses_ZipPlus4") }}'
+      - name: "Residence_Families_FamilyID"
+        description: '{{ doc("l2col_Residence_Families_FamilyID") }}'
+      - name: "Residence_Families_HHVotersCount"
+        description: '{{ doc("l2col_Residence_Families_HHVotersCount") }}'
+      - name: "Residence_HHGender_Description"
+        description: '{{ doc("l2col_Residence_HHGender_Description") }}'
+      - name: "Residence_HHParties_Description"
+        description: '{{ doc("l2col_Residence_HHParties_Description") }}'
+      - name: "Resort_Improvement_District"
+        description: '{{ doc("l2col_Resort_Improvement_District") }}'
+      - name: "Resource_Conservation_District"
+        description: '{{ doc("l2col_Resource_Conservation_District") }}'
+      - name: "River_Water_District"
+        description: '{{ doc("l2col_River_Water_District") }}'
+      - name: "Road_Maintenance_District"
+        description: '{{ doc("l2col_Road_Maintenance_District") }}'
+      - name: "Rural_Service_District"
+        description: '{{ doc("l2col_Rural_Service_District") }}'
+      - name: "Sanitary_District"
+        description: '{{ doc("l2col_Sanitary_District") }}'
+      - name: "Sanitary_SubDistrict"
+        description: '{{ doc("l2col_Sanitary_SubDistrict") }}'
+      - name: "School_Board_District"
+        description: '{{ doc("l2col_School_Board_District") }}'
+      - name: "School_District"
+        description: '{{ doc("l2col_School_District") }}'
+      - name: "School_District_Vocational"
+        description: '{{ doc("l2col_School_District_Vocational") }}'
+      - name: "School_Facilities_Improvement_District"
+        description: '{{ doc("l2col_School_Facilities_Improvement_District") }}'
+      - name: "School_Subdistrict"
+        description: '{{ doc("l2col_School_Subdistrict") }}'
+      - name: "SEQUENCE"
+        description: '{{ doc("l2col_SEQUENCE") }}'
+      - name: "Service_Area_District"
+        description: '{{ doc("l2col_Service_Area_District") }}'
+      - name: "Sewer_District"
+        description: '{{ doc("l2col_Sewer_District") }}'
+      - name: "Sewer_Maintenance_District"
+        description: '{{ doc("l2col_Sewer_Maintenance_District") }}'
+      - name: "Sewer_SubDistrict"
+        description: '{{ doc("l2col_Sewer_SubDistrict") }}'
+      - name: "Snow_Removal_District"
+        description: '{{ doc("l2col_Snow_Removal_District") }}'
+      - name: "Soil_and_Water_District"
+        description: '{{ doc("l2col_Soil_and_Water_District") }}'
+      - name: "Soil_and_Water_District_At_Large"
+        description: '{{ doc("l2col_Soil_and_Water_District_At_Large") }}'
+      - name: "Special_Reporting_District"
+        description: '{{ doc("l2col_Special_Reporting_District") }}'
+      - name: "Special_Tax_District"
+        description: '{{ doc("l2col_Special_Tax_District") }}'
+      - name: "State_Board_of_Equalization"
+        description: '{{ doc("l2col_State_Board_of_Equalization") }}'
+      - name: "state_from_lalvoterid"
+        description: '{{ doc("l2col_state_from_lalvoterid") }}'
+      - name: "State_House_District"
+        description: '{{ doc("l2col_State_House_District") }}'
+      - name: "State_Legislative_District"
+        description: '{{ doc("l2col_State_Legislative_District") }}'
+      - name: "state_postal_code"
+        description: '{{ doc("l2col_state_postal_code") }}'
+      - name: "State_Senate_District"
+        description: '{{ doc("l2col_State_Senate_District") }}'
+      - name: "Storm_Water_District"
+        description: '{{ doc("l2col_Storm_Water_District") }}'
+      - name: "Street_Lighting_District"
+        description: '{{ doc("l2col_Street_Lighting_District") }}'
+      - name: "Superintendent_of_Schools_District"
+        description: '{{ doc("l2col_Superintendent_of_Schools_District") }}'
+      - name: "Town_Council"
+        description: '{{ doc("l2col_Town_Council") }}'
+      - name: "Town_District"
+        description: '{{ doc("l2col_Town_District") }}'
+      - name: "Town_Ward"
+        description: '{{ doc("l2col_Town_Ward") }}'
+      - name: "Township"
+        description: '{{ doc("l2col_Township") }}'
+      - name: "Township_Ward"
+        description: '{{ doc("l2col_Township_Ward") }}'
+      - name: "Transit_District"
+        description: '{{ doc("l2col_Transit_District") }}'
+      - name: "Transit_SubDistrict"
+        description: '{{ doc("l2col_Transit_SubDistrict") }}'
+      - name: "TriCity_Service_District"
+        description: '{{ doc("l2col_TriCity_Service_District") }}'
+      - name: "TV_Translator_District"
+        description: '{{ doc("l2col_TV_Translator_District") }}'
+      - name: "Unified_School_District"
+        description: '{{ doc("l2col_Unified_School_District") }}'
+      - name: "Unified_School_SubDistrict"
+        description: '{{ doc("l2col_Unified_School_SubDistrict") }}'
+      - name: "Unincorporated_District"
+        description: '{{ doc("l2col_Unincorporated_District") }}'
+      - name: "Unincorporated_Park_District"
+        description: '{{ doc("l2col_Unincorporated_Park_District") }}'
+      - name: "Unprotected_Fire_District"
+        description: '{{ doc("l2col_Unprotected_Fire_District") }}'
+      - name: "US_Congressional_District"
+        description: '{{ doc("l2col_US_Congressional_District") }}'
+      - name: "Ute_Creek_Soil_District"
+        description: '{{ doc("l2col_Ute_Creek_Soil_District") }}'
+      - name: "Vector_Control_District"
+        description: '{{ doc("l2col_Vector_Control_District") }}'
+      - name: "Village"
+        description: '{{ doc("l2col_Village") }}'
+      - name: "Village_Ward"
+        description: '{{ doc("l2col_Village_Ward") }}'
+      - name: "Vote_By_Mail_Area"
+        description: '{{ doc("l2col_Vote_By_Mail_Area") }}'
+      - name: "VoterParties_Change_Changed_Party"
+        description: '{{ doc("l2col_VoterParties_Change_Changed_Party") }}'
+      - name: "Voters_Active"
+        description: '{{ doc("l2col_Voters_Active") }}'
+      - name: "Voters_Age"
+        description: '{{ doc("l2col_Voters_Age") }}'
+      - name: "Voters_BirthDate"
+        description: '{{ doc("l2col_Voters_BirthDate") }}'
+      - name: "Voters_CalculatedRegDate"
+        description: '{{ doc("l2col_Voters_CalculatedRegDate") }}'
+      - name: "Voters_CountyVoterID"
+        description: '{{ doc("l2col_Voters_CountyVoterID") }}'
+      - name: "Voters_FIPS"
+        description: '{{ doc("l2col_Voters_FIPS") }}'
+      - name: "Voters_FirstName"
+        description: '{{ doc("l2col_Voters_FirstName") }}'
+      - name: "Voters_Gender"
+        description: '{{ doc("l2col_Voters_Gender") }}'
+      - name: "Voters_LastName"
+        description: '{{ doc("l2col_Voters_LastName") }}'
+      - name: "Voters_MiddleName"
+        description: '{{ doc("l2col_Voters_MiddleName") }}'
+      - name: "Voters_MovedFrom_Date"
+        description: '{{ doc("l2col_Voters_MovedFrom_Date") }}'
+      - name: "Voters_MovedFrom_Party_Description"
+        description: '{{ doc("l2col_Voters_MovedFrom_Party_Description") }}'
+      - name: "Voters_MovedFrom_State"
+        description: '{{ doc("l2col_Voters_MovedFrom_State") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceEvenYearGeneral"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceEvenYearGeneral") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceEvenYearGeneralAndPrimary"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceEvenYearGeneralAndPrimary") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceEvenYearPrimary"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceEvenYearPrimary") }}'
+      - name: "Voters_MovedFrom_VotingPerformanceMinorElection"
+        description: '{{ doc("l2col_Voters_MovedFrom_VotingPerformanceMinorElection") }}'
+      - name: "Voters_NameSuffix"
+        description: '{{ doc("l2col_Voters_NameSuffix") }}'
+      - name: "Voters_OfficialRegDate"
+        description: '{{ doc("l2col_Voters_OfficialRegDate") }}'
+      - name: "Voters_PlaceOfBirth"
+        description: '{{ doc("l2col_Voters_PlaceOfBirth") }}'
+      - name: "Voters_SequenceOddEven"
+        description: '{{ doc("l2col_Voters_SequenceOddEven") }}'
+      - name: "Voters_SequenceZigZag"
+        description: '{{ doc("l2col_Voters_SequenceZigZag") }}'
+      - name: "Voters_StateVoterID"
+        description: '{{ doc("l2col_Voters_StateVoterID") }}'
+      - name: "Voters_VotingPerformanceEvenYearGeneral"
+        description: '{{ doc("l2col_Voters_VotingPerformanceEvenYearGeneral") }}'
+      - name: "Voters_VotingPerformanceEvenYearGeneralAndPrimary"
+        description: '{{ doc("l2col_Voters_VotingPerformanceEvenYearGeneralAndPrimary") }}'
+      - name: "Voters_VotingPerformanceEvenYearPrimary"
+        description: '{{ doc("l2col_Voters_VotingPerformanceEvenYearPrimary") }}'
+      - name: "Voters_VotingPerformanceMinorElection"
+        description: '{{ doc("l2col_Voters_VotingPerformanceMinorElection") }}'
+      - name: "VoterTelephones_CellConfidenceCode"
+        description: '{{ doc("l2col_VoterTelephones_CellConfidenceCode") }}'
+      - name: "VoterTelephones_CellPhoneFormatted"
+        description: '{{ doc("l2col_VoterTelephones_CellPhoneFormatted") }}'
+      - name: "VoterTelephones_CellPhoneOnly"
+        description: '{{ doc("l2col_VoterTelephones_CellPhoneOnly") }}'
+      - name: "VoterTelephones_CellPhoneUnformatted"
+        description: '{{ doc("l2col_VoterTelephones_CellPhoneUnformatted") }}'
+      - name: "VoterTelephones_Landline7Digit"
+        description: '{{ doc("l2col_VoterTelephones_Landline7Digit") }}'
+      - name: "VoterTelephones_LandlineAreaCode"
+        description: '{{ doc("l2col_VoterTelephones_LandlineAreaCode") }}'
+      - name: "VoterTelephones_LandlineConfidenceCode"
+        description: '{{ doc("l2col_VoterTelephones_LandlineConfidenceCode") }}'
+      - name: "VoterTelephones_LandlineFormatted"
+        description: '{{ doc("l2col_VoterTelephones_LandlineFormatted") }}'
+      - name: "VoterTelephones_LandlineUnformatted"
+        description: '{{ doc("l2col_VoterTelephones_LandlineUnformatted") }}'
+      - name: "Wastewater_District"
+        description: '{{ doc("l2col_Wastewater_District") }}'
+      - name: "Water_Agency"
+        description: '{{ doc("l2col_Water_Agency") }}'
+      - name: "Water_Agency_SubDistrict"
+        description: '{{ doc("l2col_Water_Agency_SubDistrict") }}'
+      - name: "Water_Conservation_District"
+        description: '{{ doc("l2col_Water_Conservation_District") }}'
+      - name: "Water_Conservation_SubDistrict"
+        description: '{{ doc("l2col_Water_Conservation_SubDistrict") }}'
+      - name: "Water_Control_Water_Conservation"
+        description: '{{ doc("l2col_Water_Control_Water_Conservation") }}'
+      - name: "Water_Control_Water_Conservation_SubDistrict"
+        description: '{{ doc("l2col_Water_Control_Water_Conservation_SubDistrict") }}'
+      - name: "Water_District"
+        description: '{{ doc("l2col_Water_District") }}'
+      - name: "Water_Public_Utility_District"
+        description: '{{ doc("l2col_Water_Public_Utility_District") }}'
+      - name: "Water_Public_Utility_Subdistrict"
+        description: '{{ doc("l2col_Water_Public_Utility_Subdistrict") }}'
+      - name: "Water_Replacement_District"
+        description: '{{ doc("l2col_Water_Replacement_District") }}'
+      - name: "Water_Replacement_SubDistrict"
+        description: '{{ doc("l2col_Water_Replacement_SubDistrict") }}'
+      - name: "Water_SubDistrict"
+        description: '{{ doc("l2col_Water_SubDistrict") }}'
+      - name: "Weed_District"
+        description: '{{ doc("l2col_Weed_District") }}'
+
+  - name: serve_agent_voters
+    description: >
+      De-identified voter dataset for the Serve product's AI agents (DATA-2003, TDD DATA-1977).
+      One row per voter (a proxy for a constituent), sourced from
+      int__l2_nationwide_uniform_w_haystaq (L2 national voter file + Haystaq issue models).
+      Curated for analytical, aggregate queries by an AI agent serving an elected official's
+      chief of staff. All direct identifiers and PII (names, street addresses, phone numbers,
+      exact geocode, date of birth, device IDs) are removed; all partisanship (party
+      registration, partisan modeled scores, political-donor and candidate/ideology Haystaq
+      models) is removed; commercial / consumer-lifestyle attributes are excluded. Only
+      non-partisan civic, geographic/district, demographic, household, turnout, and non-partisan
+      Haystaq issue-model fields are exposed. The exposed column set is governed by the
+      l2_column_classification seed (is_available flag) and selected dynamically at build
+      time. Column docs come from the shared l2col_ blocks via the anchored list, so entries
+      for columns this model does not expose are superfluous and ignored.
+    columns: *l2_voter_columns
+
+  - name: win_agent_voters
+    description: >
+      Full-signal voter dataset for the Win product's AI agents, from
+      int__l2_nationwide_uniform_w_haystaq. Mirrors serve_agent_voters but
+      removes PII only: partisan and commercial fields are retained. Exposed
+      columns are the l2_column_classification registry minus the identity_pii
+      and operational families. Column docs come from the shared l2col_ blocks via
+      the anchored list; entries for unexposed columns are superfluous and ignored.
+    columns: *l2_voter_columns
+
+seeds:
+  - name: l2_column_classification
+    description: >
+      L2 column classification registry: one row per column in
+      int__l2_nationwide_uniform_w_haystaq with its family, description, and an is_available
+      flag. serve_agent_voters exposes the columns where is_available is true; win_agent_voters
+      exposes every family except identity_pii and operational. Change a column's classification
+      here and rebuild; no model SQL change is needed.
+    columns:
+      - name: column_name
+        description: "Source column name in int__l2_nationwide_uniform_w_haystaq."
+      - name: data_type
+        description: "Databricks data type of the source column."
+      - name: family
+        description: "Classification family (e.g. district, demographic, household, turnout, haystaq_issue, identity_pii, partisan, commercial)."
+      - name: description
+        description: "Human/agent-facing description, sourced from L2's data dictionaries."
+      - name: is_available
+        description: "Whether the column is exposed to the Serve agent (true/false)."
+      - name: reasoning
+        description: "Why the column is included or excluded."

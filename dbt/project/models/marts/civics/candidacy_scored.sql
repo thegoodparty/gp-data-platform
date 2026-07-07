@@ -2,11 +2,10 @@
 -- viability layered on. This is the sales/Win-facing viability source going
 -- forward; consumers read `viability_score` / `score_viability_automated` here,
 -- not on `candidacy`. The analytics consumers (users_win_candidacy,
--- leads_win_candidacy) read here as of this PR; the HubSpot reverse-ETL feed
--- (sales_reverse_etl/candidacy_hubspot) migrates in a staged fast-follow once
--- prod validation passes.
+-- leads_win_candidacy) and the HubSpot reverse-ETL feed
+-- (sales_reverse_etl/candidacy_hubspot) all read here.
 --
--- DATA-1938. The new civics scorer (int__civics_viability_scoring) is canonical
+-- The new civics scorer (int__civics_viability_scoring) is canonical
 -- and OVERWRITES the old candidacy value wherever it scored the row; the old
 -- value gap-fills rows the new scorer could not score, so coverage never
 -- regresses. The scorer reads candidacy + election as leaves, so layering its

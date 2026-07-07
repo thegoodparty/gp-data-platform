@@ -4,7 +4,6 @@
         unique_key=["gp_candidate_id"],
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
-        tags=["mart", "general", "candidate", "v2"],
     )
 }}
 
@@ -43,7 +42,6 @@ with
             tbl_hs_contacts.created_at,
             tbl_hs_contacts.updated_at,
 
-            -- Rank records by updated_at when prod_db_user_id is not null
             case
                 when tbl_gp_user.id is not null
                 then

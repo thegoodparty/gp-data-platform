@@ -15,7 +15,7 @@ with
 
             -- Candidate identity
             trim(first_name) as first_name,
-            -- Strip middle-initial pollution from last_name (DATA-1523).
+            -- Strip middle-initial pollution from last_name.
             -- Three regex_replace passes after remove_name_suffixes:
             -- (1) strip a trailing comma left behind by suffix removal
             -- ("Smith, Jr." -> "Smith," -> "Smith"); (2) strip one-or-more
@@ -114,7 +114,7 @@ with
             ) as election_date,
             election_result,
 
-            -- Race metadata (booleans via cast_to_boolean from PR #280)
+            -- Race metadata (booleans via cast_to_boolean)
             party,
             {{ cast_to_boolean("partisan", ["partisan"], ["nonpartisan"]) }}
             as is_partisan,

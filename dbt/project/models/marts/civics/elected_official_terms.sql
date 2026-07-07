@@ -1,22 +1,14 @@
--- Civics mart elected_official_terms table
--- Term-grain BR fact table with minimal TS provenance markers.
+-- Term-grain BR fact table (one row per BR elected-official term,
+-- br_office_holder_id) with minimal TS provenance markers.
 --
--- Grain: One row per BR elected-official term (br_office_holder_id).
--- Same row count as int__civics_elected_official_ballotready (~530K).
+-- TS provenance (ts_officeholder_id, has_direct_ts_term_match,
+-- ts_officeholder_id_is_reused) is surfaced via LEFT JOIN to the EO crosswalk so
+-- consumers can identify TS-matched terms. NO TS-derived term-grain attributes are
+-- exposed here — those are person-grain and live on elected_officials only.
 --
--- TS provenance: ts_officeholder_id, has_direct_ts_term_match, and
--- ts_officeholder_id_is_reused are surfaced via LEFT JOIN to the EO
--- crosswalk so consumers can identify TS-matched terms and audit
--- contamination risk. NO TS-derived term-grain attributes (is_incumbent,
--- contact rollup) are exposed here — those are person-grain by nature
--- of TS data and live on elected_officials only.
---
--- ICP flags pass through from int__civics_elected_official_ballotready,
--- where Win ICP / Win Supersize ICP are gated by the candidacy's
--- election_day (joined via br_candidacy_id). NULL election_day yields
--- NULL flag. is_serve_icp has no effective-date gate.
---
--- source_systems is join-based per the candidacy mart convention.
+-- ICP flags pass through from int__civics_elected_official_ballotready, where Win ICP /
+-- Win Supersize ICP are gated by the candidacy's election_day (NULL election_day yields
+-- NULL flag); is_serve_icp has no date gate. source_systems is join-based.
 with
     br_terms as (select * from {{ ref("int__civics_elected_official_ballotready") }}),
 
@@ -30,6 +22,15 @@ with
 
     gp_api_bridge as (
         select * from {{ ref("int__civics_elected_official_gp_api_bridge") }}
+    ),
+
+    -- DDHQ general-winner votes matched to this BR term via the matcha cluster
+    -- (BR-keyed rows only; 1 per br_office_holder_id, so no fan-out). Attached to
+    -- every official, not just gp-api ones.
+    ddhq_votes as (
+        select br_office_holder_id, ddhq_winning_votes
+        from {{ ref("int__civics_elected_official_ddhq_matched_votes") }}
+        where br_office_holder_id is not null
     )
 
 select
@@ -119,6 +120,11 @@ select
     gp.hubspot_company_id,
     gp.days_to_sworn_in,
 
+    -- DDHQ general-winner votes for this office (the official's own votes,
+    -- resolved via the matcha cluster). NULL when the office did not match a
+    -- DDHQ winner. Feeds the election_api support score.
+    dv.ddhq_winning_votes,
+
     -- source_systems: join-based per the candidacy mart convention. BR is always
     -- present (this mart is BR-spine); TS is added when the term has a
     -- direct ts_officeholder_id match; gp_api when the bridge attached a record.
@@ -136,3 +142,4 @@ select
 from br_terms as br
 left join ts_provenance as ts on br.br_office_holder_id = ts.br_office_holder_id
 left join gp_api_bridge as gp on br.br_office_holder_id = gp.br_office_holder_id
+left join ddhq_votes as dv on br.br_office_holder_id = dv.br_office_holder_id

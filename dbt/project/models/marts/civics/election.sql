@@ -132,7 +132,6 @@ with
         where gp_election_id is not null
     ),
 
-    -- Pivot election stage dates by type
     stage_dates as (
         select
             gp_election_id,
@@ -157,7 +156,7 @@ select
     deduplicated.official_office_name,
     deduplicated.candidate_office,
     deduplicated.office_level,
-    -- DATA-1972: positioned elections inherit the canonical office_type from
+    -- positioned elections inherit the canonical office_type from
     -- the position crosswalk whenever it classifies the position (non-Other),
     -- keeping candidacy and election marts consistent; per-source values
     -- survive when the crosswalk can only say 'Other'; rows without a

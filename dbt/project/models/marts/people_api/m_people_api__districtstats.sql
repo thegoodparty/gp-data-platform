@@ -4,36 +4,15 @@
         incremental_strategy="merge",
         unique_key="district_id",
         on_schema_change="fail",
-        tags=["mart", "people_api", "district_stats"],
     )
 }}
 
--- databricks_compute='serverless_medium', -- 310 s
--- default xxs serverless compute: 1950 s
--- default xs serverless compute: ~1070 s (18 min)
 /*
-This model creates district statistics by aggregating voter demographic data per district.
-It computes bucket distributions for age, homeowner status, education, presence of children,
-and estimated income range for each district.
+Aggregates voter demographic data per district into bucket distributions
+(age, homeowner, education, presence of children, estimated income range).
 
 Output schema matches:
-    - district_id: String (primary key)
-    - updated_at: DateTime
-    - total_constituents: Int
-    - total_constituents_with_cell_phone: Int
-    - buckets: Struct containing:
-        - age: Array of Bucket structs
-        - homeowner: Array of Bucket structs
-        - education: Array of Bucket structs
-        - presenceOfChildren: Array of Bucket structs
-        - estimatedIncomeRange: Array of Bucket structs
-
-    Where Bucket is a Struct with:
-        - label: String
-        - count: Long
-        - percent: Double
-
-See: https://github.com/thegoodparty/people-api/tree/develop/prisma/schema/DistrictStats.prisma
+https://github.com/thegoodparty/people-api/tree/develop/prisma/schema/DistrictStats.prisma
 */
 with
     -- Incremental logic: filter to only districts with updated voters

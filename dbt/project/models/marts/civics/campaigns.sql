@@ -140,6 +140,13 @@ with
 
             is_latest_version
         from with_normalized
+        -- Exclude orphan campaigns whose user no longer resolves (the gp-api
+        -- user was deleted, so the users join misses and every user_* field is
+        -- null). A campaign with no user is not a usable product campaign, and
+        -- the mart's per-campaign user invariant (not_null user_id/email/name)
+        -- only holds once these are dropped. Surfaces under --full-refresh; the
+        -- incremental table predates the deletion so it never carried the row.
+        where _user_id is not null
     )
 
 select *

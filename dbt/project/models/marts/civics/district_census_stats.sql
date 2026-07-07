@@ -1,5 +1,5 @@
--- Civics mart district_census_stats: the universal district population reference
--- (DATA-1994). One row per district -- (state_postal_code, district_type,
+-- Civics mart district_census_stats: the universal district population reference.
+-- One row per district -- (state_postal_code, district_type,
 -- district_name) -- for every district of the substrate's curated office-bearing types
 -- nationwide, PLUS one clearly-flagged statewide row per state (50 + DC).
 --
@@ -13,11 +13,11 @@
 -- TWO POPULATION BASES live in district_population, distinguished by district_type:
 -- * local rows (the curated types): voter-block-ALLOCATED population -- inferred from
 -- blocks that carry >=1 L2 voter, so they carry the documented ~2.4%
--- zero-voter-block undercount (TDD App B.1).
+-- zero-voter-block undercount.
 -- * statewide rows (district_type='State'): EXACT whole-state 2020 census
 -- population (sum over ALL blocks incl. zero-voter), computed directly from
--- census -- a genuinely statewide official represents the whole state
--- (TDD 4.5). Reproduces the official 2020 frame to the person.
+-- census -- a genuinely statewide official represents the whole state.
+-- Reproduces the official 2020 frame to the person.
 -- Consumers wanting only local districts filter WHERE district_type <> 'State'
 -- (people_served excludes statewide from the North Star; the substrate-binding
 -- test is likewise scoped to non-statewide rows).
@@ -28,7 +28,7 @@
 -- district reference, not specific to the statewide rows.
 --
 -- v1 = population columns only. ACS demographics + the validated (block-group)
--- non-exact-assignment share land in the demographic layer (phase 2, DATA-1991).
+-- non-exact-assignment share land in the demographic layer (phase 2).
 with
     substrate as (select * from {{ ref("int__district_census_allocation") }}),
 
@@ -53,8 +53,8 @@ with
     -- statewide population: EXACT whole-state 2020 census total via the SAME
     -- geoid-FIPS -> fips_codes derivation the substrate uses for state_postal_code,
     -- so the postal-code domain matches the local rows exactly. The inner join to
-    -- the (50 + DC) fips_codes state seed excludes Puerto Rico (no L2 coverage,
-    -- TDD 8) and every territory.
+    -- the (50 + DC) fips_codes state seed excludes Puerto Rico (no L2 coverage)
+    -- and every territory.
     statewide_pop as (
         select
             sf.place_name as state_postal_code,

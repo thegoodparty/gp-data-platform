@@ -1,5 +1,3 @@
-{{ config(tags=["archive"]) }}
-
 -- Historical archive of elections from elections on or before 2025-12-31
 -- Uses archived HubSpot data from 2026-01-22 snapshot
 -- Inlines m_general__election logic for self-contained archive
@@ -58,7 +56,6 @@ with
             = tbl_br_normalized.database_id
     ),
 
-    -- Filter to elections on or before 2025-12-31
     archived_elections as (
         select *
         from elections

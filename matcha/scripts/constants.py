@@ -15,7 +15,13 @@ OFFICE_STOP_WORDS = (
     "'recorder','register','surveyor','constable','marshal','comptroller',"
     "'controller','prosecutor','councilor','councilman','councilwoman',"
     "'alderman','alderwoman','selectman','selectperson','freeholder',"
-    "'and','for','no.','odd','unexpired'"
+    "'and','for','no.','odd','unexpired',"
+    # Place/seat descriptors folded in from the former office_match_keys stop
+    # list so the dbt office_name_tokens macro can reuse one list. Keep in sync
+    # with the office_name_tokens macro in the gp-data-platform dbt project.
+    "'township','twp','borough','regional','community','area','local','high',"
+    "'authority','committee','members','schools','trustees','councillor',"
+    "'post','place','group','division','at-large','atlarge'"
 )
 
 

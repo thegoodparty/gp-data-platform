@@ -132,7 +132,7 @@ with
             -- BallotReady's normalized position name (low Other rate); gp_api
             -- derives it from raw onboarding free-text (high Other rate), so
             -- prefer BR when a matched BR row exists. TS carries none at this grain.
-            -- DATA-1972: PR2 supersedes this for positioned rows via the
+            -- PR2 supersedes this for positioned rows via the
             -- int__civics_position_office_type crosswalk; this ordering remains
             -- the fallback when br_position_database_id is null.
             coalesce(
@@ -330,7 +330,7 @@ select
     deduplicated.candidate_office,
     deduplicated.official_office_name,
     deduplicated.office_level,
-    -- DATA-1972: positioned rows inherit the canonical office_type from the
+    -- positioned rows inherit the canonical office_type from the
     -- position crosswalk whenever it classifies the position (non-Other).
     -- A per-source value survives when the crosswalk can only say 'Other',
     -- so a clean source value is never downgraded; rows without a position

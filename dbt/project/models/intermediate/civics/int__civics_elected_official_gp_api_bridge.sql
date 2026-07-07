@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics", "entity_resolution"]) }}
-
 -- Term-grain bridge from gp-api elected_office records to BR+TS terms.
 -- Output: at most one row per gp_api elected-office record AND at most one
 -- row per BR term (both sides 1:1 after pass 2).
@@ -19,9 +17,6 @@
 -- silently self-key the gp_api user instead of producing a clean bridge
 -- match. The bridge_br_candidate_resolves_to_br_person YAML test asserts
 -- this contract.
---
--- The campaigns LEFT JOIN attaches `hubspot_company_id` (alias of
--- `campaigns.hubspot_id`) at the term/campaign grain.
 with
     clustered as (
         select * from {{ ref("stg_er_source__clustered_elected_officials") }}

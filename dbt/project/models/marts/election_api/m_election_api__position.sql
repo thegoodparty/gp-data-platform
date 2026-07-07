@@ -3,7 +3,6 @@
         materialized="incremental",
         unique_key="id",
         auto_liquid_cluster=true,
-        tags=["mart", "election_api", "position"],
     )
 }}
 

@@ -1,7 +1,6 @@
 {{
     config(
         auto_liquid_cluster=true,
-        tags=["intermediate", "contacts", "hubspot", "prospects"],
     )
 }}
 
