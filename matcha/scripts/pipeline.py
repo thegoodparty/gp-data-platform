@@ -30,7 +30,10 @@ def _duckdb_api() -> DuckDBAPI:
     limit = os.environ.get("MATCHA_DUCKDB_MEMORY_LIMIT")
     if not limit:
         return DuckDBAPI()
-    return DuckDBAPI(connection=duckdb.connect(config={"memory_limit": limit}))
+    try:
+        return DuckDBAPI(connection=duckdb.connect(config={"memory_limit": limit}))
+    except duckdb.Error as e:
+        raise ValueError(f"Invalid MATCHA_DUCKDB_MEMORY_LIMIT={limit!r}: {e}") from e
 
 
 def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFrame]:
@@ -106,6 +109,32 @@ def train_model(linker: Linker, config: EntityConfig) -> int:
         raise RuntimeError(
             f"EM training failed for all {len(config.em_training_blocks)} configured blocks."
         ) from last_error
+
+    # Some comparisons get their m estimates from a single training block
+    # (e.g. candidacy's election_date only trains in the email session; every
+    # other block references election_date). If that one block failed above,
+    # the comparison ships with no m at all and scores near the cluster
+    # threshold are silently miscalibrated — fail hard instead of warning.
+    # Tolerated: a comparison referenced by every EM block can never train m
+    # (a deliberate config choice, e.g. election_stage blocks on state
+    # everywhere and its post-filter reads raw _l/_r columns); sparse or
+    # all-NULL columns on small cohorts (only enforced when a block failed).
+    if successful_blocks < len(config.em_training_blocks):
+        trainable = {
+            c.output_column_name
+            for c in linker._settings_obj.comparisons
+            if any(all(c.output_column_name not in col for col in cols) for cols in config.em_training_blocks)
+        }
+        untrained = [
+            c.output_column_name
+            for c in linker._settings_obj.comparisons
+            if c.output_column_name in trainable and not c._some_m_are_trained
+        ]
+        if untrained:
+            raise RuntimeError(
+                f"EM training left comparisons with no m estimates: {untrained}. "
+                "The failed training block was their only coverage."
+            ) from last_error
 
     return successful_blocks
 

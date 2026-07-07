@@ -312,3 +312,58 @@ def test_eo_pipeline_writes_filtered_pairs(tmp_path):
         assert (
             row["unique_id_l"] <= row["unique_id_r"]
         ), f"Pair keys not canonicalized: {row['unique_id_l']} > {row['unique_id_r']}"
+
+
+def test_duckdb_api_default_when_env_unset(monkeypatch):
+    """Without MATCHA_DUCKDB_MEMORY_LIMIT, DuckDB keeps its default limit."""
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.delenv("MATCHA_DUCKDB_MEMORY_LIMIT", raising=False)
+    api = _duckdb_api()
+    limit = api._con.execute("select current_setting('memory_limit')").fetchone()[0]
+    assert limit != "95.3 MiB"
+
+
+def test_duckdb_api_memory_limit_applied(monkeypatch):
+    """MATCHA_DUCKDB_MEMORY_LIMIT is applied to the DuckDB connection."""
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.setenv("MATCHA_DUCKDB_MEMORY_LIMIT", "100MB")
+    api = _duckdb_api()
+    limit = api._con.execute("select current_setting('memory_limit')").fetchone()[0]
+    assert limit == "95.3 MiB"  # duckdb normalizes 100MB to MiB
+
+
+def test_duckdb_api_memory_limit_invalid(monkeypatch):
+    """A garbage limit raises a ValueError naming the env var."""
+    from scripts.pipeline import _duckdb_api
+
+    monkeypatch.setenv("MATCHA_DUCKDB_MEMORY_LIMIT", "garbage")
+    with pytest.raises(ValueError, match="MATCHA_DUCKDB_MEMORY_LIMIT"):
+        _duckdb_api()
+
+
+def test_candidacy_pipeline_smoke_year_guard(tmp_path):
+    """Same-year cross-source pairs cluster; cross-year pairs sharing phone and
+    email do not (year-guarded blocking + same-stage post-filter)."""
+    df = pd.read_csv(Path(__file__).parent / "dummy_data.csv", dtype=str)
+    pairwise_df, clustered_df = run(input_df=df, output_dir=tmp_path, config=CANDIDACY_CONFIG)
+
+    assert len(pairwise_df) > 0
+    assert "partisan_type" in clustered_df.columns
+
+    cluster_of = clustered_df.set_index("unique_id")["cluster_id"]
+    assert cluster_of["br_001"] == cluster_of["ts_001"], "2024 pair should cluster"
+    assert cluster_of["br_010"] == cluster_of["ts_010"], "2026 pair should cluster"
+    assert cluster_of["br_001"] != cluster_of["br_010"], "cross-year records merged"
+
+    # The cross-year cross-source pairs (same phone + email, different years)
+    # must never be generated: link_only + year-guarded phone/email blocking.
+    pairs = set(zip(pairwise_df["unique_id_l"], pairwise_df["unique_id_r"]))
+    for bad in [
+        ("br_001", "ts_010"),
+        ("ts_010", "br_001"),
+        ("br_010", "ts_001"),
+        ("ts_001", "br_010"),
+    ]:
+        assert bad not in pairs, f"cross-year pair {bad} was generated"

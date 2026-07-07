@@ -29,7 +29,11 @@ with
     br_staging as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
-        where first_name is not null and last_name is not null and state is not null
+        where
+            election_day is not null
+            and first_name is not null
+            and last_name is not null
+            and state is not null
     ),
 
     br_position as (
