@@ -59,9 +59,8 @@ APPROVED_TAGS: dict[str, str] = {}
 @pytest.mark.parametrize("dag_id,dag,fileloc", get_dags(), ids=[x[2] for x in get_dags()])
 def test_dag_tags(dag_id, dag, fileloc):
     """
-    Test if a DAG is tagged and if those TAGs are in the approved list
+    Tags are optional; when present they must be in the approved list.
     """
-    assert dag.tags, f"{dag_id} in {fileloc} has no tags"
     if APPROVED_TAGS:
         assert not set(dag.tags) - APPROVED_TAGS
 

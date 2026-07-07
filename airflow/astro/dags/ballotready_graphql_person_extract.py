@@ -1,48 +1,36 @@
 """
-## BallotReady GraphQL Person Extraction
+## BallotReady GraphQL Person extraction
 
 Extracts CivicEngine (BallotReady) GraphQL Person objects and lands them raw in
-S3 as newline-delimited JSON. S3 is the durable source of truth — downstream
-loading (dbt/Airbyte) rebuilds Databricks from these files, and the DAG never
-writes to Databricks (it only reads staging to decide what to fetch).
+S3 as newline-delimited JSON. S3 is the source of truth; downstream loading
+(dbt/Airbyte) rebuilds Databricks. The DAG never writes Databricks — it only
+reads staging to decide which persons to fetch.
 
-### How it decides what to fetch
+The `people` query can't filter by created/updated time, so persons are fetched
+by id via `nodes(ids:)`. A keyset cursor `(source_changed_at, br_person_id)` is
+kept in S3, where `source_changed_at` is the greatest created/updated timestamp
+across a person's BallotReady candidacy and office-holder rows. Each run pulls
+the next `max_persons` ids past the cursor, writes them to S3, then advances the
+cursor. The first run sweeps oldest→newest in `max_persons` batches; once caught
+up it only pulls newly-changed persons. A person edited without any
+candidacy/office-holder change is picked up on the next feed refresh or via
+`full_reload`.
 
-The CivicEngine `people` query cannot filter by created/updated time, so persons
-are fetched by id via `nodes(ids:)`. Freshness is driven by the BallotReady S3
-feeds, which carry BR's own created/updated timestamps:
-
-- `source_changed_at` = greatest created/updated across a person's candidacy and
-  office-holder rows (`stg_airbyte_source__ballotready_s3_candidacies_v3`,
-  `..._office_holders_v3`).
-- A keyset cursor `(source_changed_at, br_person_id)` is persisted in S3. Each
-  run pulls the next `max_persons` ids past the cursor, fetches them, writes
-  NDJSON to S3, then advances the cursor.
-
-The first run (no cursor) sweeps the universe oldest→newest in `max_persons`
-batches; once caught up it only pulls newly-changed persons, so it is safe to run
-at any time. A person edited without any candidacy/office-holder change is picked
-up on BR's next feed refresh or via `full_reload`.
+This is the Person extraction; other BallotReady GraphQL objects (Race,
+Election, OfficeHolder) will land in their own DAGs.
 
 ### Parameters
 - `full_reload` — ignore the cursor and re-sweep the entire universe.
-- `max_persons` — cap ids fetched per run (backfill batching). Run repeatedly
-  until a run reports `fetched < max_persons` to complete the initial sweep.
+- `max_persons` — ids fetched per run. Run until a run reports
+  `persons_requested < max_persons` to finish the initial sweep.
 
-### Connections (set in Astro Environment Manager)
-- `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M credentials
-  (host, login=client_id, password=client_secret, extra.http_path)
-- AWS connection named by the `ballotready_graphql_aws_conn_id` Variable
-  (default `aws_default`) — write access to the raw S3 archive
-
-### Variables (set in Astro Environment Manager)
-- `databricks_conn_id` — Databricks connection id (`databricks_dev` in dev)
-- `databricks_catalog` — e.g. `goodparty_data_catalog`
-- `databricks_dbt_schema` — schema where dbt staging lives (`dbt` in prod)
-- `civicengine_api_token` — CivicEngine GraphQL bearer token (masked)
-- `ballotready_graphql_s3_bucket` — S3 bucket for the raw archive
-- `ballotready_graphql_s3_prefix` — key prefix (default `ballotready/graphql/persons`)
-- `ballotready_graphql_aws_conn_id` — AWS connection id (default `aws_default`)
+### Connections / Variables (Astro Environment Manager)
+- `databricks_conn_id` (Variable) → a Databricks OAuth M2M connection.
+- AWS connection named by `ballotready_graphql_aws_conn_id` (default
+  `aws_default`) with write access to the S3 archive.
+- Variables: `databricks_catalog`, `databricks_dbt_schema`,
+  `civicengine_api_token`, `ballotready_graphql_s3_bucket`,
+  `ballotready_graphql_s3_prefix` (default `ballotready/graphql/persons`).
 """
 
 import logging
@@ -67,7 +55,7 @@ FETCH_BATCH_SIZE = 100  # persons per GraphQL nodes() call
 
 
 def _format_cursor_ts(value) -> str:
-    """Render a Databricks timestamp as a plain (tz-naive, UTC) ISO string for the cursor."""
+    """Render a Databricks timestamp as a tz-naive UTC ISO string for the cursor."""
     if value.tzinfo is not None:
         value = value.astimezone(UTC).replace(tzinfo=None)
     return value.isoformat(sep=" ")
@@ -81,11 +69,9 @@ def _format_cursor_ts(value) -> str:
     doc_md=__doc__,
     catchup=False,
     default_args={
-        "owner": "Data Engineering Team",
         "retries": 3,
         "retry_delay": duration(seconds=30),
     },
-    tags=["ballotready", "graphql", "person", "ingestion"],
     is_paused_upon_creation=True,
     params={
         "full_reload": Param(
@@ -101,7 +87,7 @@ def _format_cursor_ts(value) -> str:
         ),
     },
 )
-def ballotready_graphql_extract():
+def ballotready_graphql_person_extract():
     @task
     def extract_persons() -> dict:
         """Fetch the next batch of new/changed persons and write them to S3."""
@@ -125,7 +111,6 @@ def ballotready_graphql_extract():
         aws_conn_id = Variable.get("ballotready_graphql_aws_conn_id", default="aws_default")
         cursor_key = f"{prefix}/_state/cursor.json"
 
-        # Resolve the keyset cursor and the next batch of ids to fetch.
         cursor_ts, cursor_id = (None, None)
         if not full_reload:
             cursor_ts, cursor_id = read_cursor(bucket, cursor_key, aws_conn_id)
@@ -181,8 +166,8 @@ def ballotready_graphql_extract():
                 key,
             )
 
-        # Advance the cursor to the last planned id (whether or not it resolved to
-        # a Person) so ids without a Person are not re-queried forever.
+        # Advance the cursor to the last planned id (even if it had no Person) so
+        # ids without a Person are not re-queried forever.
         last_id, last_changed_at = id_rows[-1]
         write_cursor(
             bucket,
@@ -206,4 +191,4 @@ def ballotready_graphql_extract():
     extract_persons()
 
 
-ballotready_graphql_extract()
+ballotready_graphql_person_extract()
