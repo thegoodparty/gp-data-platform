@@ -8,14 +8,29 @@ Usage:
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 from splink import Linker, SettingsCreator, block_on
 from splink.internals.duckdb.database_api import DuckDBAPI
 
 from scripts.entity_config import EntityConfig
+
+
+def _duckdb_api() -> DuckDBAPI:
+    """DuckDBAPI honoring an optional MATCHA_DUCKDB_MEMORY_LIMIT (e.g. "12GB").
+
+    When set, DuckDB spills oversized frames to disk at the cap instead of
+    pressuring the whole machine. Unset keeps DuckDB's default (80% of RAM),
+    which is correct in the memory-limited production container.
+    """
+    limit = os.environ.get("MATCHA_DUCKDB_MEMORY_LIMIT")
+    if not limit:
+        return DuckDBAPI()
+    return DuckDBAPI(connection=duckdb.connect(config={"memory_limit": limit}))
 
 
 def load_and_prepare(df: pd.DataFrame, config: EntityConfig) -> list[pd.DataFrame]:
@@ -264,7 +279,7 @@ def run(input_df: pd.DataFrame, output_dir: Path, config: EntityConfig) -> tuple
     output_dir.mkdir(parents=True, exist_ok=True)
     source_dfs = load_and_prepare(input_df, config)
     settings = build_settings(config)
-    linker = Linker(source_dfs, settings, DuckDBAPI())
+    linker = Linker(source_dfs, settings, _duckdb_api())
     train_model(linker, config)
     pairwise_df, clustered_df = predict_and_cluster(linker, config, output_dir)
     save_results(linker, pairwise_df, clustered_df, output_dir, config)

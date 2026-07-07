@@ -130,11 +130,16 @@ CANDIDACY_CONFIG = EntityConfig(
     ],
     em_training_blocks=[
         ("last_name", "state", "election_date"),
-        # Election-year guard on the date-less blocks (mirrors the phone/email
-        # blocking rules): behavior-preserving on the single-year cohort, keeps
-        # EM training pairs from spanning years on the all-time cohort.
-        ("first_name", "substr(election_date, 1, 4)"),
-        ("email", "substr(election_date, 1, 4)"),
+        # first_name alone blocks ~256M cross-source pairs on the all-time
+        # cohort (~83M even year-guarded), and EM materializes the full
+        # comparison frame per session. Adding state cuts it to ~5M, below
+        # the ~22M single-year production baseline.
+        ("first_name", "state", "substr(election_date, 1, 4)"),
+        # email stays unguarded: near-unique so the block is tiny, and it is
+        # the one session with no election_date term (Splink skips
+        # m-estimation for any column referenced by the block, even inside
+        # substr), so it is where election_date's m gets trained.
+        ("email",),
         ("state", "election_date", "last_name"),
         ("last_name", "state", "office_level", "substr(election_date, 1, 4)"),
     ],
