@@ -1,10 +1,3 @@
-{{
-    config(
-        materialized="table",
-        tags=["mart", "election_api", "officepicker"],
-    )
-}}
-
 with
     future_elections as (
         -- Some (br_position_database_id, election_date) pairs have multiple

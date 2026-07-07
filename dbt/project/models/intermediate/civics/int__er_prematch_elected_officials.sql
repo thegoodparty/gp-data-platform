@@ -4,8 +4,6 @@
 -- Source 1: ballotready_techspeed (BR term LEFT JOIN canonical_ids LEFT JOIN raw TS,
 -- with reused-ID guard inside the TS join clause to prevent row explosion).
 -- Source 2: gp_api (with new ballotready_position_id, raw campaign_office_raw).
---
--- Spec: .tickets/data-1731/eo-prematch-rewrite-design-spec-v2.md (v2.2)
 with
     nickname_aliases as (
         -- Normalize the seed with the same alpha-only rule applied to
@@ -45,7 +43,7 @@ with
         left join
             ts_raw as ts
             on cx.ts_officeholder_id = ts.ts_officeholder_id
-            and not coalesce(cx.ts_officeholder_id_is_reused, false)  -- v2.2 Blocker fix: in-join guard
+            and not coalesce(cx.ts_officeholder_id_is_reused, false)  -- in-join guard
     ),
 
     ballotready_techspeed as (
@@ -70,7 +68,7 @@ with
             b.city,
             b.term_start_date,
             b.term_end_date,
-            -- v2.2: ballotready_position_id from BR side
+            -- ballotready_position_id from BR side
             b.br_position_id as ballotready_position_id,
             b.br_office_holder_id,
             b.br_candidate_id,
@@ -79,7 +77,8 @@ with
             cast(null as bigint) as gp_api_user_id,
             cast(null as bigint) as gp_api_campaign_id,
             cast(null as string) as gp_api_elected_office_id,
-            cast(null as string) as gp_api_organization_slug
+            cast(null as string) as gp_api_organization_slug,
+            cast(null as bigint) as ddhq_votes
         from br_with_ts as b
         where
             not coalesce(b.is_vacant, false)
@@ -102,7 +101,7 @@ with
             g.candidate_office,
             g.office_level,
             g.office_type,
-            -- v2.2: extract district from RAW campaign_office_raw, not normalized
+            -- extract district from RAW campaign_office_raw, not normalized
             -- position_name
             {{ extract_district_raw("g.campaign_office_raw") }} as district_raw,
             {{ extract_district_identifier("g.campaign_office_raw") }}
@@ -111,8 +110,7 @@ with
             -- gp-api phone is already cleaned by clean_phone_number in the
             -- intermediate; pass through
             g.phone,
-            -- v2.2: official_office_name from RAW text (preserves seat/district
-            -- context)
+            -- official_office_name from RAW text (preserves seat/district context)
             trim(g.campaign_office_raw) as official_office_name,
             cast(null as string) as city,
             g.term_start_date,
@@ -125,15 +123,56 @@ with
             g.gp_api_user_id,
             g.gp_api_campaign_id,
             g.gp_api_elected_office_id,
-            g.gp_api_organization_slug
+            g.gp_api_organization_slug,
+            cast(null as bigint) as ddhq_votes
         from {{ ref("int__civics_elected_official_gp_api") }} as g
         where
             nullif(trim(g.first_name), '') is not null
             and nullif(trim(g.last_name), '') is not null
             and g.state is not null
-            -- v2.2: filter null campaign_office at the prematch level (mirrors
+            -- filter null campaign_office at the prematch level (mirrors
             -- candidacy line 266).
             and nullif(trim(g.campaign_office_raw), '') is not null
+    ),
+
+    -- Source 3: ddhq winners (one row per general winner with a vote tally).
+    -- term_start_date is set to the winning election_date so the date comparison
+    -- links each winner to the correct cycle of an office (an official's term
+    -- starts shortly after their election). office_level/office_type are left
+    -- null because DDHQ's taxonomy does not align with BR's ExactMatch buckets.
+    -- ddhq_votes carries the official's own votes for the support score.
+    ddhq as (
+        select
+            'ddhq' as source_name,
+            d.ddhq_candidate_id || '|' || d.ddhq_race_id as source_id,
+            lower(trim(d.first_name)) as first_name,
+            lower(trim(d.last_name)) as last_name,
+            d.state,
+            d.party_affiliation as party,
+            d.candidate_office,
+            cast(null as string) as office_level,
+            cast(null as string) as office_type,
+            {{ extract_district_raw("d.official_office_name") }} as district_raw,
+            {{ extract_district_identifier("d.official_office_name") }}
+            as district_identifier,
+            cast(null as string) as email,
+            cast(null as string) as phone,
+            trim(d.official_office_name) as official_office_name,
+            cast(null as string) as city,
+            -- date anchor: election_date stands in for term_start_date
+            d.election_date as term_start_date,
+            cast(null as date) as term_end_date,
+            cast(null as bigint) as ballotready_position_id,
+            cast(null as int) as br_office_holder_id,
+            cast(null as int) as br_candidate_id,
+            cast(null as string) as ts_officeholder_id,
+            cast(null as string) as ts_position_id,
+            cast(null as bigint) as gp_api_user_id,
+            cast(null as bigint) as gp_api_campaign_id,
+            cast(null as string) as gp_api_elected_office_id,
+            cast(null as string) as gp_api_organization_slug,
+            d.votes as ddhq_votes
+        from {{ ref("int__civics_elected_official_ddhq") }} as d
     ),
 
     unioned as (
@@ -142,34 +181,85 @@ with
         union all
         select *
         from gp_api
-    )
+        union all
+        select *
+        from ddhq
+    ),
 
--- Splink treats empty strings as real values for exact matching, so convert
--- sparse columns to NULL where empty so missing data is handled correctly.
+    -- Splink treats empty strings as real values for exact matching, so convert
+    -- sparse columns to NULL where empty so missing data is handled correctly.
+    assembled as (
+        select
+            source_name || '|' || source_id as unique_id,
+            source_id,
+            u.source_name,
+            {{ first_name_normalized("u.first_name") }} as first_name,
+            u.last_name,
+            -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel.
+            coalesce(
+                na.aliases, array({{ first_name_normalized("u.first_name") }})
+            ) as first_name_aliases,
+            -- >=2-char first-name token array for Splink ArrayIntersectLevel: lets
+            -- compound first names overlap on a shared token
+            {{ first_name_tokens("u.first_name") }} as first_name_tokens,
+            u.state,
+            party,
+            candidate_office,
+            office_level,
+            office_type,
+            nullif(district_raw, '') as district_raw,
+            district_identifier,
+            nullif(email, '') as email,
+            nullif(phone, '') as phone,
+            nullif(lower(trim(official_office_name)), '') as official_office_name,
+            nullif(city, '') as city,
+            term_start_date,
+            term_end_date,
+            ballotready_position_id,
+            br_office_holder_id,
+            br_candidate_id,
+            ts_officeholder_id,
+            ts_position_id,
+            gp_api_user_id,
+            gp_api_campaign_id,
+            gp_api_elected_office_id,
+            gp_api_organization_slug,
+            ddhq_votes
+        from unioned as u
+        left join
+            nickname_aliases as na
+            on {{ first_name_normalized("u.first_name") }} = na.name1
+    ),
+
+    -- Normalized office key so the matcher links cross-source office-name
+    -- variants the raw JaroWinkler misses ("Georgetown City Mayor" vs "Mayor of
+    -- Georgetown", "X Township Trustee" vs "X Township Trustee Board At-Large").
+    -- Reuses office_match_keys (locality tokens + category + seat). at-large is
+    -- treated as null (whole-body seat) so it matches an unnumbered office, but a
+    -- specific numbered seat still differs. Null when there is no office name or
+    -- no distinctive locality token, so sparse offices stay neutral (not all
+    -- collapsing to one key).
+    keyed as (select *, {{ office_match_keys("official_office_name") }} from assembled)
+
 select
-    source_name || '|' || source_id as unique_id,
+    unique_id,
     source_id,
-    u.source_name,
-    {{ first_name_normalized("u.first_name") }} as first_name,
-    u.last_name,
-    -- Array of first_name + all known nicknames for Splink ArrayIntersectLevel.
-    coalesce(
-        na.aliases, array({{ first_name_normalized("u.first_name") }})
-    ) as first_name_aliases,
-    -- >=2-char first-name token array for Splink ArrayIntersectLevel: lets
-    -- compound first names overlap on a shared token ("charles kirk" vs "charles")
-    {{ first_name_tokens("u.first_name") }} as first_name_tokens,
-    u.state,
+    source_name,
+    first_name,
+    last_name,
+    first_name_aliases,
+    first_name_tokens,
+    state,
     party,
     candidate_office,
     office_level,
     office_type,
-    nullif(district_raw, '') as district_raw,
+    district_raw,
     district_identifier,
-    nullif(email, '') as email,
-    nullif(phone, '') as phone,
-    nullif(lower(trim(official_office_name)), '') as official_office_name,
-    nullif(city, '') as city,
+    email,
+    phone,
+    official_office_name,
+    city,
     term_start_date,
     term_end_date,
     ballotready_position_id,
@@ -180,7 +270,21 @@ select
     gp_api_user_id,
     gp_api_campaign_id,
     gp_api_elected_office_id,
-    gp_api_organization_slug
-from unioned as u
-left join
-    nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1
+    gp_api_organization_slug,
+    ddhq_votes,
+    case
+        when official_office_name is null or size(locality_key) = 0
+        then null
+        else
+            concat_ws(
+                '|',
+                array_join(locality_key, ' '),
+                office_category,
+                case
+                    when seat_designator = 'atlarge'
+                    then ''
+                    else coalesce(seat_designator, '')
+                end
+            )
+    end as official_office_norm
+from keyed

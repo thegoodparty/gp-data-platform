@@ -1,16 +1,10 @@
-{{ config(tags=["archive"]) }}
-
--- Archived HubSpot companies with contacts from 2025 snapshot
--- Uses companies as the base table and joins contacts via the companies.contacts field
--- Prioritizes company field values over contact field values
--- Includes contacts without associated companies
+-- Archived HubSpot companies with contacts from 2025 snapshot.
+-- Prioritizes company field values over contact field values.
 with
-    -- Extract contact IDs from the companies.contacts JSON array field
     companies_with_contacts as (
         select
             tbl_companies.id as company_id,
             tbl_companies.*,
-            -- Parse the contacts array and extract individual contact IDs
             explode(
                 from_json(tbl_companies.contacts, 'array<string>')
             ) as contact_id_extracted
@@ -18,7 +12,6 @@ with
         where tbl_companies.contacts is not null and tbl_companies.contacts != '[]'
     ),
 
-    -- Companies without contacts (will be included with null contact data)
     companies_without_contacts as (
         select
             tbl_companies.id as company_id,
@@ -28,7 +21,6 @@ with
         where tbl_companies.contacts is null or tbl_companies.contacts = '[]'
     ),
 
-    -- Join companies to contacts, ranking by updated_at for disambiguation
     companies_joined_contacts as (
         select
             cwc.company_id,
@@ -206,18 +198,25 @@ with
                 tbl_contacts.is_pledged
             ) as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
-            -- BallotReady Position Database ID (decoded from base64 positionId in
-            -- campaign details)
-            cast(
-                regexp_extract(
-                    cast(
-                        unbase64(
-                            tbl_gp_db_campaign.details:positionid::string
-                        ) as string
-                    ),
-                    '/([0-9]+)$',
-                    1
-                ) as bigint
+            -- BallotReady Position Database ID. Live source: the campaign's
+            -- organization (organization.position_id -> enhanced_position.id ->
+            -- br_database_id). The legacy base64 decode of
+            -- campaign.details:positionid is kept as a fallback but is now empty
+            -- (~4/62k) -- the gp-api data-flow cutover moved the position FK onto
+            -- the organization, so the old field went dark.
+            coalesce(
+                tbl_enhanced_position.br_database_id,
+                cast(
+                    regexp_extract(
+                        cast(
+                            unbase64(
+                                tbl_gp_db_campaign.details:positionid::string
+                            ) as string
+                        ),
+                        '/([0-9]+)$',
+                        1
+                    ) as bigint
+                )
             ) as br_position_database_id,
             -- assessments (coalesce HubSpot win_number with GP DB path_to_victory)
             coalesce(
@@ -243,9 +242,15 @@ with
         left join
             {{ ref("stg_airbyte_source__gp_api_db_path_to_victory") }} as tbl_gp_db_ptv
             on tbl_gp_db_campaign.id = tbl_gp_db_ptv.campaign_id
+        -- Resolve the BR position from the campaign's organization (live source).
+        left join
+            {{ ref("stg_airbyte_source__gp_api_db_organization") }} as tbl_org
+            on tbl_gp_db_campaign.organization_slug = tbl_org.slug
+        left join
+            {{ ref("int__enhanced_position") }} as tbl_enhanced_position
+            on tbl_org.position_id = tbl_enhanced_position.id
     ),
 
-    -- Companies without contacts - create rows with null contact data
     companies_no_contacts_joined as (
         select
             cwoc.company_id,
@@ -361,16 +366,22 @@ with
             nullif(cwoc.properties_verified_candidates, '') as verified_candidate,
             {{ cast_to_boolean("cwoc.properties_pledge_status") }} as is_pledged,
             tbl_gp_db_campaign.id as product_campaign_id,
-            cast(
-                regexp_extract(
-                    cast(
-                        unbase64(
-                            tbl_gp_db_campaign.details:positionid::string
-                        ) as string
-                    ),
-                    '/([0-9]+)$',
-                    1
-                ) as bigint
+            -- BR Position Database ID from the campaign's organization (live
+            -- source); legacy campaign.details:positionid decode kept as an
+            -- empty fallback. See the companies_joined_contacts branch.
+            coalesce(
+                tbl_enhanced_position.br_database_id,
+                cast(
+                    regexp_extract(
+                        cast(
+                            unbase64(
+                                tbl_gp_db_campaign.details:positionid::string
+                            ) as string
+                        ),
+                        '/([0-9]+)$',
+                        1
+                    ) as bigint
+                )
             ) as br_position_database_id,
             coalesce(
                 cast(cwoc.properties_win_number as string),
@@ -388,9 +399,14 @@ with
         left join
             {{ ref("stg_airbyte_source__gp_api_db_path_to_victory") }} as tbl_gp_db_ptv
             on tbl_gp_db_campaign.id = tbl_gp_db_ptv.campaign_id
+        left join
+            {{ ref("stg_airbyte_source__gp_api_db_organization") }} as tbl_org
+            on tbl_gp_db_campaign.organization_slug = tbl_org.slug
+        left join
+            {{ ref("int__enhanced_position") }} as tbl_enhanced_position
+            on tbl_org.position_id = tbl_enhanced_position.id
     ),
 
-    -- Contacts without associated companies
     contacts_without_companies as (
         select
             null as company_id,
@@ -458,8 +474,6 @@ with
         where tbl_contacts.companies is null or tbl_contacts.companies = '[]'
     ),
 
-    -- Union all sources: companies with contacts, companies without, contacts without
-    -- companies
     all_records as (
         select *
         from companies_joined_contacts
@@ -472,7 +486,6 @@ with
         from contacts_without_companies
     ),
 
-    -- Final deduplication by gp_candidacy_id
     ranked_final as (
         select
             *,

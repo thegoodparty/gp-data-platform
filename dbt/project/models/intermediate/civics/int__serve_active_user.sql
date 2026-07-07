@@ -1,6 +1,4 @@
-{{ config(materialized="table", tags=["intermediate", "civics", "serve"]) }}
-
--- int__serve_active_user (epic DATA-1359): the single source of truth for the
+-- int__serve_active_user: the single source of truth for the
 -- "active serve user" BEHAVIORAL definition, one row per user. A user is an
 -- active serve user when they completed Serve onboarding by sending an SMS poll
 -- AND have pledged. This is the behavioral half of the People Served cohort; the

@@ -1,12 +1,4 @@
-{{
-    config(
-        materialized="table",
-        tags=["intermediate", "civics", "contest", "hubspot", "archive"],
-    )
-}}
-
 -- Archived HubSpot contest data from 2026-01-22 snapshot
--- This model uses the archived staging data to ensure historical consistency
 select
     id as contact_id,
 

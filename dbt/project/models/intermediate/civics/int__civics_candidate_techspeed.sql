@@ -1,8 +1,4 @@
-{{ config(materialized="table", tags=["civics", "techspeed"]) }}
-
--- TechSpeed candidates → Civics mart candidate schema
--- Source: stg_airbyte_source__techspeed_gdrive_candidates
--- Deduplicates on person-level identity (name + state + contact info)
+-- TechSpeed candidates → Civics mart candidate schema.
 --
 -- CRITICAL: UUID fields MUST match int__civics_candidate_2025.sql pattern
 -- to ensure same person from different sources gets same gp_candidate_id
@@ -10,7 +6,7 @@ with
     -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical candidate_id.
     -- Deduped per source_candidate_id (one person may have multiple candidacies).
     canonical_candidate as (
-        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- BR-priority ordering — see int__civics_candidacy_techspeed.sql
         -- for full rationale. canonical_gp_election_id is referenced in the
         -- ORDER BY only (NULL for non-BR cluster rows, populated for BR-anchored
         -- rows) without adding it to the SELECT list.

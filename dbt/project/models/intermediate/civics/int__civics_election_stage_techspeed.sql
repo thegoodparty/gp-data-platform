@@ -1,21 +1,11 @@
-{{ config(materialized="table", tags=["civics", "techspeed"]) }}
-
 -- TechSpeed candidates → Civics mart election_stage schema
 -- Source: stg_airbyte_source__techspeed_gdrive_candidates
+-- Grain: one row per election stage (race + stage type).
 --
--- Grain: One row per election stage (race + stage type)
---
--- A TechSpeed candidate has both primary_election_date AND general_election_date,
--- but only ONE br_race_id. We unpivot primary/general dates into separate stage
--- rows, then aggregate to race-level.
---
--- gp_election_stage_id is generated from a composite key (NOT br_race_id) because
--- a single br_race_id would collide across the two stage types.
---
--- BR enrichment via br_race_id mirrors int__civics_candidacy_techspeed and
--- int__civics_election_techspeed: same date-coalesce in source so the stage
--- date drives a consistent gp_election_stage_id, and brp.br_gp_election_id
--- as a fallback so TS-only stages adopt BR's gp_election_id.
+-- A TS candidate has both primary and general dates but only ONE br_race_id, so we
+-- unpivot the dates into separate stage rows, then aggregate to race-level.
+-- gp_election_stage_id uses a composite key (NOT br_race_id) because a single
+-- br_race_id would collide across the two stage types.
 with
     br_race_to_position as ({{ br_race_to_position_lookup() }}),
 
@@ -47,7 +37,7 @@ with
     ),
 
     canonical_candidacy as (
-        -- DATA-1523: BR-priority ordering — see int__civics_candidacy_techspeed.sql
+        -- BR-priority ordering — see int__civics_candidacy_techspeed.sql
         -- for full rationale. Mirrors sibling TS intermediates so election /
         -- election_stage IDs stay aligned with the canonical chosen by
         -- int__civics_candidacy_techspeed.

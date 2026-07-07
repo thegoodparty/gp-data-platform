@@ -33,7 +33,9 @@ with
             cast(gp_api_user_id as bigint) as gp_api_user_id,
             cast(gp_api_campaign_id as bigint) as gp_api_campaign_id,
             gp_api_elected_office_id,
-            gp_api_organization_slug
+            gp_api_organization_slug,
+            -- DDHQ general-winner votes for ddhq-source rows (null for others)
+            cast(ddhq_votes as bigint) as ddhq_votes
 
         from source
 

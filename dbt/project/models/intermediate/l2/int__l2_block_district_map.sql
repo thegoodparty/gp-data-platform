@@ -1,18 +1,14 @@
-{{
-    config(
-        materialized="table", tags=["intermediate", "l2", "districts", "substrate"]
-    )
-}}
+{{ config(materialized="table") }}
 
 -- int__l2_block_district_map: one row per (census block, district_type,
 -- normalized district_name) with the L2 voter count in that intersection
 -- (voters_in_block_district) and the per-(block, type) voter total
 -- (voters_in_block). The block-grain twin of int__zip_code_to_l2_district and
--- the input to int__district_census_allocation (the substrate, DATA-1992).
+-- the input to int__district_census_allocation (the substrate).
 --
 -- UNPIVOTs the curated substrate district columns
--- (get_l2_major_district_columns) -- the cohort-occupied office-bearing types
--- (widened in DATA-2013). District names are normalized here so the grain and
+-- (get_l2_major_district_columns) -- the cohort-occupied office-bearing types.
+-- District names are normalized here so the grain and
 -- every downstream name-join key match the serve resolver's
 -- normalized_district_name (L2 "(EST.)"/whitespace drift between snapshots).
 --
@@ -26,7 +22,7 @@
 --
 -- Block grain is the source of truth for overlap. Do NOT count by joining the
 -- district-level int__l2_district_aggregations on the normalized name: its
--- (state, type, name) key is non-unique and would fan out (DATA-1988 codex #5).
+-- (state, type, name) key is non-unique and would fan out.
 with
     l2 as (
         select

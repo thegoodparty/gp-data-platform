@@ -248,6 +248,36 @@ def _ztp_constraint_ddl() -> list[str]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Elected_Office_Support
+# ---------------------------------------------------------------------------
+
+# elected_office_id is the gp-api elected_office instance; it is not an enforced
+# FK (elected_office lives in gp-api, not the Election API), so the table has only
+# a primary key — no secondary indexes or foreign keys.
+EOS = TableSyncSpec(target_table="Elected_Office_Support")
+
+# The mart emits these columns directly, so rows pass through with no transform
+# (source order must match this list).
+EOS_COLUMNS = [
+    "elected_office_id",
+    "support_constituents",
+    "total_constituents",
+    "created_at",
+    "updated_at",
+]
+
+
+def _eos_constraint_ddl() -> list[str]:
+    sn, nt = EOS.staging_schema, EOS.new_table
+    return [
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{EOS.stage_name(EOS.pk_name)}" PRIMARY KEY (elected_office_id)'
+        ),
+    ]
+
+
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
     schedule="@daily",
@@ -502,11 +532,119 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
-    # The two pipelines run in parallel; under the Kubernetes executor each task
+    @task_group(group_id="elected_official_support")
+    def elected_official_support():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, EOS)
+
+        @task
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            col_list = ", ".join(EOS_COLUMNS)
+            query = (
+                f"SELECT {col_list} "
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"`m_election_api__elected_official_support`"
+            )
+            # ~1.1k rows; no partitioning needed (one small result fits easily).
+            with _open_pg() as conn:
+                return bulk_insert_from_databricks(
+                    conn,
+                    EOS,
+                    source_query=query,
+                    target_columns=EOS_COLUMNS,
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                apply_ddl(conn, _eos_constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            # Coverage is intentionally low: the support score needs an election
+            # vote tally, which exists for only a small share of offices (see the
+            # model docs / DATA-2000 PR). A flat floor can't catch a regression
+            # that halves a ~1.1k-row table (a ~550-row load would clear 500), so
+            # gate on the ratio to the prior live table (same pattern as the
+            # DistrictTopIssue block); the absolute floor is the cold-start
+            # fallback only.
+            with _open_pg() as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        f"SELECT COUNT(*), COUNT(DISTINCT elected_office_id), "
+                        f"COUNT(*) FILTER (WHERE elected_office_id IS NULL) "
+                        f'FROM "{EOS.staging_schema}"."{EOS.new_table}"'
+                    )
+                    n, distinct_pos, null_pos = cur.fetchone()
+
+                    # Prior live state (absent on a true cold start). Both
+                    # identifiers must be double-quoted in the regclass argument
+                    # so Postgres does not fold the mixed-case name to lowercase.
+                    cur.execute(
+                        "SELECT to_regclass(%s)",
+                        (f'"{EOS.target_schema}"."{EOS.target_table}"',),
+                    )
+                    prior_exists = cur.fetchone()[0] is not None
+                    if prior_exists:
+                        cur.execute(f'SELECT COUNT(*) FROM "{EOS.target_schema}"."{EOS.target_table}"')
+                        prior_count = cur.fetchone()[0]
+                    else:
+                        prior_count = 0
+
+                    if prior_count > 0:
+                        ratio = loaded_count / prior_count
+                        if ratio < 0.5:
+                            raise ValueError(
+                                f"Loaded {loaded_count} rows, prior live had "
+                                f"{prior_count} (ratio {ratio:.2f}) — refusing to swap"
+                            )
+                    elif loaded_count < 500:
+                        raise ValueError(f"Cold-start load of {loaded_count} rows (<500) — refusing to swap")
+
+                    if null_pos > 0:
+                        raise ValueError(
+                            f"{null_pos} staging rows have a NULL elected_office_id — refusing to swap"
+                        )
+                    if distinct_pos != n:
+                        raise ValueError(
+                            f"elected_office_id not unique ({distinct_pos} distinct of {n}) — refusing to swap"
+                        )
+                    t_log.info(
+                        "Quality checks passed: %d rows (prior %d), elected_office_id unique and non-null",
+                        n,
+                        prior_count,
+                    )
+                finally:
+                    cur.close()
+
+        @task
+        def swap() -> None:
+            with _open_pg() as conn:
+                swap_staging_into_target(conn, EOS)
+
+        @task
+        def drop_old() -> None:
+            with _open_pg() as conn:
+                drop_old_table(conn, EOS)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        sw = swap()
+        do = drop_old()
+        s >> loaded >> idx >> qc >> sw >> do
+
+    # The pipelines run in parallel; under the Kubernetes executor each task
     # is its own pod, and each load_staging reads one partition at a time, so
     # they don't contend for memory.
     zip_to_position()
     district_top_issues()
+    elected_official_support()
 
 
 sync_election_api()

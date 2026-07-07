@@ -1,11 +1,6 @@
--- BallotReady candidates → Civics mart candidate schema
--- Source: stg_airbyte_source__ballotready_s3_candidacies_v3 (2026+ elections)
--- Augmented with int__ballotready_person for richer contact/URL data from API
---
--- Grain: One row per unique person
---
--- UUID fields MUST match int__civics_candidate_2025 pattern
--- to ensure same person from different sources gets same gp_candidate_id
+-- BallotReady candidates → Civics mart candidate schema. Grain: one row per person.
+-- UUID fields MUST match int__civics_candidate_2025 so the same person from
+-- different sources resolves to the same gp_candidate_id.
 with
     candidacies as (
         select *
@@ -13,10 +8,8 @@ with
         where election_day >= '2026-01-01'
     ),
 
-    -- Get enriched person data from BallotReady API (has contact info, URLs, bio)
     br_person as (select * from {{ ref("int__ballotready_person") }}),
 
-    -- Extract URL fields from person API data
     person_urls as (
         select
             database_id as person_database_id,
@@ -26,13 +19,11 @@ with
             middle_name,
             nickname,
             suffix,
-            -- Extract typed URLs from person.urls array (use get() for safe access)
             get(filter(urls, x -> x.type = 'website'), 0).url as website_url,
             get(filter(urls, x -> x.type = 'linkedin'), 0).url as linkedin_url,
             get(filter(urls, x -> x.type = 'twitter'), 0).url as twitter_url,
             get(filter(urls, x -> x.type = 'facebook'), 0).url as facebook_url,
             get(filter(urls, x -> x.type = 'instagram'), 0).url as instagram_url,
-            -- Extract contact info from person.contacts array
             get(filter(contacts, x -> x.email is not null), 0).email as api_email,
             nullif(
                 regexp_replace(
@@ -80,7 +71,6 @@ with
             cast(null as string) as hubspot_contact_id,
             cast(null as string) as prod_db_user_id,
 
-            -- Confidence tier
             cast(null as string) as candidate_id_tier,
 
             -- Name fields - prefer API person data if available
@@ -99,14 +89,12 @@ with
             coalesce(candidacies.phone, person_urls.api_phone) as phone_number,
             cast(null as string) as street_address,
 
-            -- Social/web presence from API person data
             person_urls.website_url,
             person_urls.linkedin_url as linkedin_url,
             person_urls.twitter_url as twitter_handle,
             person_urls.facebook_url as facebook_url,
             person_urls.instagram_url as instagram_handle,
 
-            -- Timestamps
             coalesce(
                 person_urls.person_created_at, candidacies._airbyte_extracted_at
             ) as created_at,

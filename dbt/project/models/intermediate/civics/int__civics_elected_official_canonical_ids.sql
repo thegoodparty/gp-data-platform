@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics"]) }}
-
 -- Crosswalk: deterministic ts_officeholder_id ↔ BR canonical IDs.
 -- Grain: one row per distinct numeric ts_officeholder_id that matches BR.
 -- This is a key-mapping model only; per-field rollups and reused-ID

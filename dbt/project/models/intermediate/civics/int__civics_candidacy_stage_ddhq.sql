@@ -1,12 +1,5 @@
--- DDHQ election results → Civics mart candidacy_stage (base model)
--- Source: stg_airbyte_source__ddhq_gdrive_election_results
---
--- Grain: One row per candidacy stage (candidate + race), 1:1 with staging rows.
---
--- This is the foundational DDHQ intermediate model. It computes all five
--- GP IDs and carries through all staging columns so the other four DDHQ
--- models (candidate, candidacy, election_stage, election) can derive from it
--- without re-reading the staging table.
+-- DDHQ election results → Civics mart candidacy_stage (base model).
+-- Grain: one row per candidacy stage (candidate + race), 1:1 with staging rows.
 with
     source as (
         select *

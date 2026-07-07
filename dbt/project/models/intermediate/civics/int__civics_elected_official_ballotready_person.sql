@@ -1,21 +1,16 @@
-{{ config(materialized="table", tags=["civics"]) }}
-
--- BR-only person-grain rollup. One row per br_candidate_id, populated
--- with the person's latest term snapshot. Plays the same role as
--- int__civics_candidate_ballotready in the merge (BR-side input to a
--- person-grain mart), but the grain mechanics differ: this is a
--- latest-term window over term-grain BR data, not a natural person grain.
+-- BR-only person-grain rollup: one row per br_candidate_id, populated with
+-- the person's latest term snapshot. Grain mechanics differ from
+-- int__civics_candidate_ballotready: a latest-term window over term-grain BR
+-- data, not a natural person grain.
 --
--- "Latest term" ordering: term_start_date desc nulls last,
--- term_end_date desc nulls last, updated_at desc, br_office_holder_id desc.
--- selected_* columns expose which term row was picked so debugging
--- "why this person got office X" doesn't require re-running the window.
+-- selected_* columns expose which term row was picked so debugging "why this
+-- person got office X" doesn't require re-running the window.
 --
 -- Vacancy terms (br_candidate_id IS NULL) are filtered out.
 --
--- ICP flags are intentionally NOT carried at person grain (per Hugh's
--- commit 8c22079). ICP is position-scoped and a latest-term scalar
--- misrepresents the data. ICP lives at term grain only.
+-- ICP flags are intentionally NOT carried at person grain: ICP is
+-- position-scoped and a latest-term scalar misrepresents it. ICP lives at
+-- term grain only.
 with
     br_terms as (
         select *
@@ -39,7 +34,7 @@ with
     )
 
 select
-    -- PK (person-grain canonical UUID from BR intermediate — Task 1)
+    -- PK (person-grain canonical UUID from BR intermediate)
     gp_elected_official_id,
 
     -- Person-grain natural key
@@ -96,11 +91,6 @@ select
     -- Tier (latest term's BR position tier)
     br_position_tier as tier,
 
-    -- ICP flags are intentionally NOT exposed at person grain (Hugh's
-    -- commit 8c22079 removed them from elected_officials). ICP is
-    -- position-scoped — a person isn't ICP, an office is. Consumers
-    -- needing person-level ICP rollups query elected_official_terms
-    -- directly with the aggregation that fits their question.
     -- Timestamps from latest term (NOT person's earliest appearance)
     created_at,
     updated_at

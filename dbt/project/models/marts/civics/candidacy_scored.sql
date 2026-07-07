@@ -5,7 +5,7 @@
 -- leads_win_candidacy) and the HubSpot reverse-ETL feed
 -- (sales_reverse_etl/candidacy_hubspot) all read here.
 --
--- DATA-1938. The new civics scorer (int__civics_viability_scoring) is canonical
+-- The new civics scorer (int__civics_viability_scoring) is canonical
 -- and OVERWRITES the old candidacy value wherever it scored the row; the old
 -- value gap-fills rows the new scorer could not score, so coverage never
 -- regresses. The scorer reads candidacy + election as leaves, so layering its

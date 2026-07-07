@@ -1,5 +1,3 @@
-{{ config(materialized="table", tags=["civics"]) }}
-
 -- Person-grain rollup of gp-api elected officials. One row per gp_api_user_id.
 -- Adopts BR's gp_elected_official_id via the bridge for matched users (so
 -- the mart's 3-way FOJ on gp_elected_official_id collapses correctly).

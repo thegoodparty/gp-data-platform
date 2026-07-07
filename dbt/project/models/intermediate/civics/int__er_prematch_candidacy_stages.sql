@@ -1,20 +1,6 @@
--- Entity Resolution prematch: BallotReady x TechSpeed x DDHQ x GP API
--- candidacy-stages. Unions candidacy-stage records from all sources into a
--- standardized schema for Splink matching.
---
--- Grain: One row per source candidacy-stage record (candidate + office + election date)
--- Key: unique_id (source_name || '|' || source_id)
---
--- All upstream sources are at the candidacy-stage grain:
--- - BallotReady staging: one row per candidate per race (election stage)
--- - TechSpeed staging: dates/state pre-parsed, unpivoted into primary/general
--- stage rows, deduped per candidate-stage
--- - DDHQ election results: one row per candidate per race
--- - GP API: one row per latest-version pledged campaign. election_stage
--- and br_race_id are resolved by joining BR's race spine on PD's
--- ballotready_race_id; null for ~6% of campaigns where PD didn't set
--- raceId.
---
+-- Entity Resolution prematch: unions BallotReady, TechSpeed, DDHQ, and GP API
+-- candidacy-stage records into one standardized schema for Splink matching.
+-- Grain: one row per source candidacy-stage; key unique_id = source_name|source_id.
 with
     -- Nickname aliases: aggregate nicknames per canonical name into an array
     -- so Splink can use ArrayIntersectLevel to detect nickname matches

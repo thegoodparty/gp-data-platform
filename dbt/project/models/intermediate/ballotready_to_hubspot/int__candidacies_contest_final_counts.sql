@@ -1,7 +1,5 @@
-{{ config(tags=["intermediate", "hubspot", "ballotready"]) }}
 -- this file calculates whether races are contested or not by combining BallotReady
 -- and Hubspot upstream data
--- count of ballotready candidates per contest
 with
     brnumcands as (
         select
@@ -13,7 +11,6 @@ with
         group by contest_id, number_of_seats_available
     ),
 
-    -- count of hubspot candidates per contest
     hsnumcands as (
         select
             lower(
@@ -38,7 +35,6 @@ with
         group by contest_id, number_of_seats_available
     ),
 
-    -- merged counts of candidates per contest,
     -- note in the following code to ensure a single value per contest_id the
     -- number_of_seats variable will be taken from HS > BR
     unioned as (
@@ -69,7 +65,6 @@ with
         left join seat_source s using (contest_id)
     ),
 
-    -- final step determine which contest are contested/uncontested
     uncontested as (
         select
             contest_id,

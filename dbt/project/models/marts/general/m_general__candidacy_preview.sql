@@ -1,12 +1,6 @@
 /*
 Note that the incremental strategy is not supported for this model because the DDHQ matches are not incremental.
 DDHQ are not incremental since at times, election results may arrive *after* the candidacy data is loaded into the data warehouse.
-
-This model will only return results when int__gp_ai_election_match has a count greater than 0.
-If the count is 0, the model will log a warning and return empty results.
-
-To inger all dependencies for the model since there is a ref() placed within a conditional block.,
-the "-- depends_on:" comments are used
 */
 {{
     config(
@@ -14,7 +8,6 @@ the "-- depends_on:" comments are used
         unique_key="gp_candidacy_id",
         on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
-        tags=["mart", "general", "candidacy", "hubspot"],
         schema="dbt_preview",
     )
 }}
@@ -155,7 +148,6 @@ with
             tbl_ddhq_matches.top_10_candidates as ddhq_top_10_candidates,
             tbl_ddhq_matches.has_match as ddhq_has_match,
 
-            -- adding back some DDHQ data
             case
                 when lower(tbl_ddhq_matches.ddhq_election_type) like '%general%'
                 then tbl_ddhq_election_results_source.votes

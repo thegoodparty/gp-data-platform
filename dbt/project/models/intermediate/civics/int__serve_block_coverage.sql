@@ -1,6 +1,4 @@
-{{ config(materialized="table", tags=["intermediate", "civics", "serve"]) }}
-
--- int__serve_block_coverage (DATA-1993): the count-once engine. One row per
+-- int__serve_block_coverage: the count-once engine. One row per
 -- (census block, served_set) carrying the count of DISTINCT served voters and the
 -- block's total voters. people_served reads it: count-once for a set =
 -- sum(served_voters / total_voters * block_population) over served blocks.
@@ -11,11 +9,9 @@
 -- de-duplicated across types from counts alone -- that cross-type overlap is exactly
 -- the "represented by 2+ officials" gap. So the union needs voter IDs, which the
 -- counts-only substrate (and int__l2_block_district_map) dropped at the
--- count(distinct lalvoterid) step. This model scans int__l2_nationwide_uniform once --
--- the "scanned, never surfaced" node from TDD 7.1 -- and emits ONLY block-grain counts
--- (PII-free). It is a model, not an inline CTE, because the ~230M-row unpivot is heavy
--- (Dan's "break out only if it grows complex" clause); it restores the original TDD
--- DAG.
+-- count(distinct lalvoterid) step. This model scans int__l2_nationwide_uniform once
+-- and emits ONLY block-grain counts (PII-free). It is a model, not an inline CTE,
+-- because the ~230M-row unpivot is heavy.
 --
 -- Scoped to the SAME district types as the substrate
 -- (get_l2_major_district_columns),
@@ -28,9 +24,9 @@
 -- substrate l2 types. Statewide officials are NOT here -- they are read from the
 -- exact T5
 -- 'State'
--- rows in people_served and reported separately (TDD 4.5), avoiding a basis mix.
+-- rows in people_served and reported separately, avoiding a basis mix.
 --
--- ACTIVE COHORT (epic DATA-1359): served_voters_active is the parallel
+-- ACTIVE COHORT: served_voters_active is the parallel
 -- distinct-served-voter count restricted to the active People Served cohort
 -- (in_people_served_cohort on the resolver) -- the SAME single L2 scan, just a second
 -- membership flag carried through. Active cohort districts are a subset of all cohort

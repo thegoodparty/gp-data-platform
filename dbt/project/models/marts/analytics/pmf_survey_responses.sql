@@ -7,8 +7,6 @@
     Web survey', id 12 = 'Win PMF - Web survey'. Use the `pmf_variant`
     column to split or compare cohorts.
 
-    Joined to HubSpot contacts for additional user context.
-
     Grain: One row per survey response.
 
     PMF Score = (count of 'Very Disappointed' / total responses) * 100
