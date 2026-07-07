@@ -39,10 +39,12 @@ with
         from {{ ref("stg_airbyte_source__gp_api_db_user") }}
     ),
 
+    -- createdat (Airbyte top-level) guards a contact whose properties JSON
+    -- lacks createdate; both are fully populated today.
     hubspot_first_seen as (
         select
             'hubspot|' || cast(id as string) as record_key,
-            contact_created_at as first_seen_at
+            coalesce(contact_created_at, created_at) as first_seen_at
         from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
     ),
 
@@ -69,12 +71,13 @@ with
         where source_name in ('techspeed', 'ddhq')
     ),
 
-    -- Fallbacks for ddhq records that survive in the stale cluster table but
-    -- have no prematch row (~184 today). Keyed lookup first, so a record still
-    -- in staging (e.g. dropped by a prematch filter) gets its own row's extract
-    -- time; records absent from staging entirely fall back to the source's min
-    -- extract time. Both are deterministic -- never current_timestamp. DDHQ
-    -- ships as one master CSV, so today all extract times share one value.
+    -- Fallbacks for vendor records that survive in the stale cluster table but
+    -- have no prematch row (~184 ddhq today, 0 techspeed). Keyed lookup first,
+    -- so a ddhq record still in staging (e.g. dropped by a prematch filter)
+    -- gets its own row's extract time; records absent from staging entirely
+    -- fall back to their source's min extract time. All deterministic -- never
+    -- current_timestamp. DDHQ ships as one master CSV, so today all its
+    -- extract times share one value.
     ddhq_extracts as (
         select
             'ddhq|'
@@ -90,6 +93,13 @@ with
     ddhq_load_date as (
         select min(_airbyte_extracted_at) as first_seen_at
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
+    ),
+
+    -- No keyed variant for techspeed: its source_id embeds a generated
+    -- candidate_code, so a keyed lookup would mean reconstructing the key.
+    techspeed_load_date as (
+        select min(_airbyte_extracted_at) as first_seen_at
+        from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }}
     ),
 
     first_seen as (
@@ -118,12 +128,14 @@ with
             coalesce(
                 fs.first_seen_at,
                 de.first_seen_at,
-                case when g.source_name = 'ddhq' then dl.first_seen_at end
+                case when g.source_name = 'ddhq' then dl.first_seen_at end,
+                case when g.source_name = 'techspeed' then tl.first_seen_at end
             ) as first_seen_at
         from groups as g
         left join first_seen as fs using (record_key)
         left join ddhq_extracts as de using (record_key)
         cross join ddhq_load_date as dl
+        cross join techspeed_load_date as tl
     ),
 
     -- Earliest member mints the id. nulls last keeps a stray missing timestamp
