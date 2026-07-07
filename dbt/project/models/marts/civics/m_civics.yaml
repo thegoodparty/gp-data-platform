@@ -2759,8 +2759,8 @@ models:
   - name: people
     description: >
       Canonical person mart. One row per gp_person_id, derived from the dbt
-      person groups (no probabilistic matching). See canonical-person-plan.md
-      decision 5.
+      person groups (deterministic native-id and cluster co-membership edges,
+      no probabilistic matching).
 
       Identifier columns (br_person_id, gp_api_user_id, hs_contact_id,
       ddhq_candidate_id, ts_candidate_code) are scalar only when the person
@@ -2781,6 +2781,9 @@ models:
       candidacy grain), BR party from the candidacy feed; officeholder-only or
       pre-2026 BR persons therefore have sparse attributes. HubSpot state is
       the raw CRM value and may be a full state name rather than a postal code.
+      party is normalized to the parse_party_affiliation vocabulary in every
+      tier; vendor abbreviations and minor parties outside it (e.g. IND,
+      Unaffiliated, Working Families) coarsen to 'Other'.
 
       Role flags derive from the member records, not a stored status:
         is_candidate: the group contains any candidacy-context member -- a
@@ -2822,7 +2825,21 @@ models:
       - name: state
         description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Format may vary (HubSpot free-text).
       - name: party
-        description: Party affiliation, precedence BR > HubSpot > TS > TS officeholder > DDHQ.
+        description: >
+          Party affiliation, precedence BR > HubSpot > TS > TS officeholder >
+          DDHQ. All tiers normalized via parse_party_affiliation; values
+          outside its vocabulary coarsen to 'Other'.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
       - name: first_seen_at
         description: Earliest source-native created timestamp across the group's members.
         data_tests:
@@ -2855,8 +2872,7 @@ models:
       Long-format map of every source record to its gp_person_id: one row per
       (gp_person_id, source_name, source_id), the full multi-valued sets behind
       the scalar identifier columns in people (including records whose scalar
-      column was nulled by within-group ambiguity). See
-      canonical-person-plan.md decision 5.
+      column was nulled by within-group ambiguity).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -2889,9 +2905,13 @@ models:
           - not_null
       - name: record_key
         description: >
-          source_name || '|' || source_id, the person-graph node key. Unique by
-          construction; the combination test above covers the grain.
+          source_name || '|' || source_id, the person-graph node key. The
+          unique test is stronger than the combination test above: it also
+          rejects one record_key mapped to two persons.
         data_tests:
           - not_null
+          - unique
       - name: first_seen_at
         description: Source-native created timestamp of the record.
+        data_tests:
+          - not_null

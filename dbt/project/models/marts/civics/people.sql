@@ -3,8 +3,7 @@
 -- full multi-valued sets live in person_identifiers. Attribute precedence:
 -- gp_api > HubSpot > BR > TS > TS officeholder > DDHQ for contact fields,
 -- BR > others for civic fields. Role flags derive from the member records,
--- not from a stored status.
--- See canonical-person-plan.md decision 5.
+-- not from a stored status, so they stay re-derivable on every run.
 with
     records as (
         select
@@ -31,8 +30,8 @@ with
         left join {{ ref("int__civics_person_groups") }} as pg using (record_key)
     ),
 
-    -- Scalar where unambiguous: null when the group holds 0 or >1 distinct
-    -- values (count(distinct) ignores nulls, so 0 -> null via max()).
+    -- Scalar where unambiguous: the case has no else branch, so a group with
+    -- zero (count = 0) or multiple distinct values yields null.
     identifiers as (
         select
             gp_person_id,
@@ -96,7 +95,7 @@ with
             nullif(trim(c.email), '') as email,
             nullif(trim(c.phone), '') as phone,
             nullif(trim(c.state), '') as state,
-            nullif(trim(c.party_affiliation), '') as party
+            {{ parse_party_affiliation("c.party_affiliation") }} as party
         from records as r
         inner join
             {{ ref("stg_airbyte_source__hubspot_api_contacts") }} as c
@@ -171,7 +170,7 @@ with
             nullif(trim(cl.email), '') as email,
             nullif(trim(cl.phone), '') as phone,
             nullif(trim(cl.state), '') as state,
-            nullif(trim(cl.party), '') as party
+            {{ parse_party_affiliation("cl.party") }} as party
         from records as r
         inner join clustered as cl on cl.unique_id = r.record_key
         where r.source_name = 'techspeed'
@@ -189,7 +188,7 @@ with
             nullif(trim(cl.first_name), '') as first_name,
             nullif(trim(cl.last_name), '') as last_name,
             nullif(trim(cl.state), '') as state,
-            nullif(trim(cl.party), '') as party
+            {{ parse_party_affiliation("cl.party") }} as party
         from records as r
         inner join clustered as cl on cl.unique_id = r.record_key
         where r.source_name = 'ddhq'
@@ -203,7 +202,8 @@ with
 
     -- TS officeholder attributes: without this tier, officeholder-only groups
     -- (which the mart flags is_elected_official) would carry no attributes at
-    -- all. Extra tie-breaks dedupe multiple staging rows per officeholder id.
+    -- all. Freshness then alphabetical tie-breaks dedupe multiple staging rows
+    -- per officeholder id deterministically.
     ts_officeholder_attrs as (
         select
             r.gp_person_id,
@@ -212,7 +212,7 @@ with
             nullif(trim(o.email), '') as email,
             nullif(trim(o.phone_clean), '') as phone,
             nullif(trim(o.state), '') as state,
-            nullif(trim(o.party), '') as party
+            {{ parse_party_affiliation("o.party") }} as party
         from records as r
         inner join
             {{ ref("stg_airbyte_source__techspeed_gdrive_officeholders") }} as o
@@ -225,9 +225,12 @@ with
                     r.first_seen_at asc nulls last,
                     r.source_id,
                     o.date_processed_date desc nulls last,
+                    o._airbyte_extracted_at desc,
                     o.email asc nulls last,
                     o.phone_clean asc nulls last,
-                    o.last_name asc nulls last
+                    o.last_name asc nulls last,
+                    o.first_name asc nulls last,
+                    o.state asc nulls last
             )
             = 1
     ),
