@@ -250,7 +250,8 @@ with
         select *
         from {{ ref("campaigns") }}
         where
-            nullif(trim(campaign_state), '') is not null
+            election_date is not null
+            and nullif(trim(campaign_state), '') is not null
             and not coalesce(is_demo, false)
             and is_latest_version
             and nullif(trim(user_first_name), '') is not null
