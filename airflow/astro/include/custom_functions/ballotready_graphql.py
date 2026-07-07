@@ -311,7 +311,15 @@ def read_cursor(bucket: str, key: str, aws_conn_id: str) -> tuple[str | None, in
         logger.info("No cursor at s3://%s/%s — starting from the beginning.", bucket, key)
         return None, None
     state = json.loads(hook.read_key(key, bucket_name=bucket))
-    return state.get("source_changed_at"), state.get("br_person_id")
+    changed_at = state.get("source_changed_at")
+    person_id = state.get("br_person_id")
+    if (changed_at is None) != (person_id is None):
+        raise ValueError(
+            f"Cursor at s3://{bucket}/{key} has partial state "
+            f"(source_changed_at={changed_at!r}, br_person_id={person_id!r}); "
+            "delete the cursor file or fix both fields before restarting."
+        )
+    return changed_at, person_id
 
 
 def write_cursor(
