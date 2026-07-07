@@ -693,7 +693,8 @@ models:
 
   - name: int__civics_candidacy_stage_techspeed
     description: >
-      TechSpeed candidacy stages transformed into civics mart candidacy_stage schema.
+      TechSpeed candidacy stages transformed into civics mart candidacy_stage schema
+      (2026+ elections).
 
       Grain: One row per candidacy stage (candidate + election stage).
 

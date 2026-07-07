@@ -1,4 +1,4 @@
--- TechSpeed candidates → Civics mart candidacy_stage schema.
+-- TechSpeed candidates → Civics mart candidacy_stage schema (2026+ elections).
 -- Grain: one row per candidacy stage. A candidate with both primary and
 -- general dates produces two rows.
 with
@@ -45,6 +45,11 @@ with
             )
             between 1900 and 2050
     ),
+
+    -- 2026 gate at stage grain, matching BR's/DDHQ's per-row election_day/
+    -- election_date gates. A candidate with a 2025 primary and 2026 general
+    -- keeps only the general row once TS's own row reflects that stage.
+    gated_stage as (select * from with_stage where stage_election_date >= '2026-01-01'),
 
     -- ER crosswalk — joined twice below:
     -- (1) stage grain: canonical stage/election_stage IDs only apply to the
@@ -156,14 +161,14 @@ with
             _airbyte_extracted_at as created_at,
             _airbyte_extracted_at as updated_at
 
-        from with_stage
+        from gated_stage
         left join
             canonical_stage as xw_stage
-            on with_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
-            and with_stage.stage_election_date = xw_stage.ts_stage_election_date
+            on gated_stage.techspeed_candidate_code = xw_stage.ts_source_candidate_id
+            and gated_stage.stage_election_date = xw_stage.ts_stage_election_date
         left join
             canonical_candidacy as xw_cand
-            on with_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
+            on gated_stage.techspeed_candidate_code = xw_cand.ts_source_candidate_id
         where election_date is not null
     ),
 
