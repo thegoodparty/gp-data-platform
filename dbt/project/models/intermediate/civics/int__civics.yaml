@@ -552,7 +552,9 @@ models:
 
   - name: int__civics_election_stage_techspeed
     description: >
-      TechSpeed election stages transformed into civics mart election_stage schema.
+      TechSpeed election stages transformed into civics mart election_stage schema
+      (2026+ elections; pre-2026 stages are gated out to mirror
+      int__civics_candidacy_stage_techspeed).
 
       Grain: One row per election stage (race + stage type).
 
@@ -700,6 +702,12 @@ models:
 
       Source: stg_airbyte_source__techspeed_gdrive_candidates, unpivoted into primary/general
       stage rows. Each candidate with both dates produces two rows.
+
+      Stage rows dated <=2025 are dropped: the HubSpot archive is the sole
+      <=2025 authority in the candidacy_stage mart. A source row carrying a
+      pre-2026 primary alongside a 2026+ general is represented by its
+      general stage only; a row with only pre-2026 dates is excluded
+      entirely.
 
       Won/Unopposed election results mapped to general stages when available.
 

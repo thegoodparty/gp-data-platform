@@ -20,19 +20,22 @@ with
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }} as ts
     ),
 
-    -- Determine stage type: primary takes priority over general. If TechSpeed
-    -- populates both dates, the candidate is at the primary stage (they haven't
-    -- advanced yet). Only if no primary date exists do we treat it as general.
+    -- Determine stage type: a 2026+ primary takes priority over general (the
+    -- candidate hasn't advanced yet). A pre-2026 primary belongs to the
+    -- archive era, so a row carrying one alongside a 2026+ general is
+    -- represented by its general stage rather than dropped wholesale by the
+    -- gate below (no such rows exist today; defensive). Must stay identical
+    -- to int__civics_election_stage_techspeed so stage IDs align.
     with_stage as (
         select
             *,
             case
-                when primary_election_date_parsed is not null
+                when primary_election_date_parsed >= '2026-01-01'
                 then 'primary'
                 else 'general'
             end as stage_type,
             case
-                when primary_election_date_parsed is not null
+                when primary_election_date_parsed >= '2026-01-01'
                 then primary_election_date_parsed
                 else general_election_date_parsed
             end as stage_election_date
@@ -47,8 +50,8 @@ with
     ),
 
     -- 2026 gate at stage grain, matching BR's/DDHQ's per-row election_day/
-    -- election_date gates. A candidate with a 2025 primary and 2026 general
-    -- keeps only the general row once TS's own row reflects that stage.
+    -- election_date gates; keeps the HubSpot archive the sole <=2025 outcome
+    -- authority in the candidacy_stage mart.
     gated_stage as (select * from with_stage where stage_election_date >= '2026-01-01'),
 
     -- ER crosswalk — joined twice below:
