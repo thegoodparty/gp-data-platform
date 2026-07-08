@@ -303,6 +303,93 @@ seeds:
               arguments:
                 regex: ^\\[([0-9]{5},[0-9]{5})\\]$
 
+  - name: hubspot_contact_property_columns
+    description: >
+      Registry of HubSpot contact properties surfaced as columns on
+      stg_airbyte_source__hubspot_api_contacts (and therefore on
+      mart_analytics.hubspot_contacts, the Sigma-readable passthrough).
+      One row per requested HubSpot property.
+
+      `status` controls generation: `generated` rows are emitted by a Jinja
+      loop in the staging model as typed get_json_object extractions of the
+      raw `properties` JSON (see hubspot_contact_property_expression);
+      `existing` rows document properties the staging model already exposes
+      by hand — `column_name` records the existing alias — and are never
+      re-emitted by the loop. To surface another HubSpot property, add a row
+      with status=generated, a collision-free column_name, and the right
+      cast_type; no SQL change is needed. The seed doubles as the
+      warehouse-queryable HubSpot-property -> column dictionary.
+
+      HubSpot sends '' rather than null for unset values, so the generating
+      macro wraps extractions in nullif(..., '') before any typed cast.
+    config:
+      column_types:
+        internal_name: STRING
+        label: STRING
+        hubspot_type: STRING
+        hubspot_group: STRING
+        status: STRING
+        column_name: STRING
+        cast_type: STRING
+        sort_order: INT
+        description: STRING
+    columns:
+      - name: internal_name
+        description: HubSpot internal property name (the key inside the raw properties JSON).
+        data_tests:
+          - unique
+          - not_null
+      - name: label
+        description: HubSpot display label for the property.
+        data_tests:
+          - not_null
+      - name: hubspot_type
+        description: Property type as exported from HubSpot.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [bool, number, date, datetime, enumeration, string]
+      - name: hubspot_group
+        description: HubSpot property group the property belongs to.
+        data_tests:
+          - not_null
+      - name: status
+        description: >
+          generated = column is emitted by the staging-model loop;
+          existing = column was already exposed by hand and column_name
+          records that alias.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [existing, generated]
+      - name: column_name
+        description: Output column name on stg_airbyte_source__hubspot_api_contacts.
+        data_tests:
+          - unique
+          - not_null
+      - name: cast_type
+        description: >
+          Target type emitted by hubspot_contact_property_expression for
+          generated rows. Blank for existing rows: the loop never reads
+          them, and the hand-written column's type is authoritative.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [boolean, double, date, timestamp, string]
+      - name: sort_order
+        description: Stable output order for generated columns (source-list order).
+        data_tests:
+          - unique
+          - not_null
+      - name: description
+        description: HubSpot's own property description, where one exists.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "status = 'existing' or cast_type is not null"
+
   - name: haystaq_issue_tags
     description: >
       Per-issue metadata used by m_election_api__district_top_issues. One row
