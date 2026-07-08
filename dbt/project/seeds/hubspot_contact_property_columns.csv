@@ -98,7 +98,7 @@ hs_feedback_last_csat_survey_date,Last CSAT survey date,datetime,contactinformat
 hs_feedback_last_csat_survey_follow_up,Last CSAT survey comment,string,contactinformation,generated,hs_feedback_last_csat_survey_follow_up,string,97,Last CSAT survey comment from this contact.
 hs_feedback_last_csat_survey_rating,Last CSAT survey rating,number,contactinformation,generated,hs_feedback_last_csat_survey_rating,double,98,Last CSAT survey rating from this contact.
 hs_feedback_last_nps_rating_number,Latest NPS survey rating,number,contactinformation,generated,hs_feedback_last_nps_rating_number,double,99,Latest NPS survey rating that this contact gave
-hs_object_id,Record ID,number,contactinformation,generated,hs_object_id,double,100,The unique ID for this record. This value is set automatically by HubSpot.
+hs_object_id,Record ID,number,contactinformation,generated,hs_object_id,bigint,100,The unique ID for this record. This value is set automatically by HubSpot.
 hs_object_source_detail_1,Record source detail 1,string,contactinformation,generated,hs_object_source_detail_1,string,101,First level of detail on how this record was created.
 hs_object_source_detail_2,Record source detail 2,string,contactinformation,generated,hs_object_source_detail_2,string,102,Second level of detail on how this record was created.
 hs_object_source_detail_3,Record source detail 3,string,contactinformation,generated,hs_object_source_detail_3,string,103,Third level of detail on how this record was created.

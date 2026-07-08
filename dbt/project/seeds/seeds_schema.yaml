@@ -365,10 +365,17 @@ seeds:
               arguments:
                 values: [existing, generated]
       - name: column_name
-        description: Output column name on stg_airbyte_source__hubspot_api_contacts.
+        description: >
+          Output column name on stg_airbyte_source__hubspot_api_contacts.
+          Must be a valid lowercase SQL identifier (enforced below); a
+          collision with a hand-written column fails the view creation
+          loudly at build time.
         data_tests:
           - unique
           - not_null
+          - dbt_expectations.expect_column_values_to_match_regex:
+              arguments:
+                regex: ^[a-z][a-z0-9_]*$
       - name: cast_type
         description: >
           Target type emitted by hubspot_contact_property_expression for
@@ -377,7 +384,7 @@ seeds:
         data_tests:
           - accepted_values:
               arguments:
-                values: [boolean, double, date, timestamp, string]
+                values: [boolean, double, bigint, date, timestamp, string]
       - name: sort_order
         description: Stable output order for generated columns (source-list order).
         data_tests:

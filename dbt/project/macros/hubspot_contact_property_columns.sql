@@ -41,7 +41,8 @@
         columns must never raise at query time. -#}
     {%- set raw = "get_json_object(properties, '$." ~ internal_name ~ "')" -%}
     {%- if cast_type == "boolean" -%} {{ cast_to_boolean(raw) }}
-    {%- elif cast_type == "double" -%} try_cast({{ raw }} as double)
+    {%- elif cast_type == "double" -%} try_cast(nullif({{ raw }}, '') as double)
+    {%- elif cast_type == "bigint" -%} try_cast(nullif({{ raw }}, '') as bigint)
     {%- elif cast_type == "date" -%} try_cast(nullif({{ raw }}, '') as date)
     {%- elif cast_type == "timestamp" -%} try_cast(nullif({{ raw }}, '') as timestamp)
     {%- elif cast_type == "string" -%} {{ raw }}
