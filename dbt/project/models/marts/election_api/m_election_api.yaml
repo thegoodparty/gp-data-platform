@@ -33,12 +33,11 @@ models:
           person + position.
       - name: gp_candidate_id
         description: >
-          Canonical civics candidate UUID. Resolved via
-          int__civics_candidate_ballotready (BR person.database_id ->
-          gp_candidate_id). Pre-aggregated by br_candidate_id with
-          max(gp_candidate_id) for deterministic selection when a single BR
-          person produced multiple gp_candidate_ids upstream. Null when the
-          BR candidate is not present in civics.
+          Canonical person id (gp_person_id, the earliest-member cluster mint),
+          resolved via int__civics_candidate_ballotready (BR person.database_id
+          -> gp_candidate_id). One id per person, so candidacies of the same
+          person share it. Null when the BR candidate is not in the person
+          universe.
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready

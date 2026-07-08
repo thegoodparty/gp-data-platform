@@ -29,44 +29,24 @@ with
             case when size(parties) > 0 then parties[0].name else null end as party
         from {{ ref("int__ballotready_party") }}
     ),
-    -- Pre-dedupe int__civics_candidate_ballotready to one row per
-    -- br_candidate_id. That model dedupes by gp_candidate_id, not
-    -- br_candidate_id, so a single BR person whose S3 candidacy rows had
-    -- inconsistent email/phone can produce multiple gp_candidate_ids and
-    -- thus multiple rows with the same br_candidate_id.
-    --
-    -- Use ROW_NUMBER + QUALIFY (not independent max() per column) so the
-    -- output row is internally consistent — gp_candidate_id, email, and
-    -- website_url all come from the same source row. Independent max()
-    -- per column would mix one identity's UUID with another row's email
-    -- because gp_candidate_id is a salted hash with no ordering
-    -- relationship to the email it was seeded from.
-    --
-    -- Sort on whether contact data is present, not on its value:
-    -- gp_candidate_id is a salted UUID seeded from email + phone (see
-    -- int__civics_candidate_ballotready), so different emails for the
-    -- same br_candidate_id produce different gp_candidate_ids. Sorting
-    -- `email asc` would alphabetically pick one arbitrarily, biasing
-    -- which identity wins. `(email is null) asc` only penalizes nulls
-    -- (false < true), preserving "non-null contact data first" without
-    -- adding alphabetical bias; `updated_at desc` is the actual
-    -- tiebreak among rows that both have (or both lack) contact data.
-    --
-    -- int__civics_candidate_ballotready.updated_at is
-    -- coalesce(person_updated_at, _airbyte_extracted_at), so a
-    -- candidacy row with no matching person can get a fresh Airbyte
-    -- extraction timestamp; the IS NULL sort runs first so a
-    -- personless row can't outrank a person-linked row on updated_at.
-    civics_candidate_by_br as (
-        select br_candidate_id, gp_candidate_id, email, website_url
+    -- Resolve every BR candidate to its person mint via the crosswalk. Going
+    -- through int__civics_candidate_ballotready alone drops a br_candidate_id
+    -- that lost its person group's dedup (a BR-conflict cluster that merged >1
+    -- br_candidate_id keeps only one row, keyed by the surviving id), leaving its
+    -- candidacies with a null gp_candidate_id. The crosswalk is one row per
+    -- record_key ('ballotready|<br_candidate_id>'), so every br_candidate_id
+    -- resolves to its gp_person_id.
+    person_xwalk as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+        where record_key like 'ballotready|%'
+    ),
+    -- Person-grain contact attributes. int__civics_candidate_ballotready is one
+    -- row per person (gp_candidate_id = gp_person_id), so keying on the person
+    -- also surfaces contact data for the merged-away br_candidate_ids above.
+    civics_contact_by_person as (
+        select gp_candidate_id, email, website_url
         from {{ ref("int__civics_candidate_ballotready") }}
-        where br_candidate_id is not null
-        qualify
-            row_number() over (
-                partition by br_candidate_id
-                order by (email is null) asc, (website_url is null) asc, updated_at desc
-            )
-            = 1
     ),
     -- (gp_candidate_id, br_position_database_id) -> is_incumbent for the
     -- most recent election cycle. The civics candidacy source is a
@@ -119,9 +99,9 @@ with
             tbl_mart_race.salary,
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
-            tbl_civics_candidate.gp_candidate_id,
-            tbl_civics_candidate.email,
-            tbl_civics_candidate.website_url,
+            tbl_person_xwalk.gp_person_id as gp_candidate_id,
+            tbl_civics_contact.email,
+            tbl_civics_contact.website_url,
             tbl_civics_attrs.is_incumbent,
             concat(
                 coalesce(tbl_person.first_name, ''),
@@ -145,14 +125,17 @@ with
         left join
             {{ ref("m_election_api__place") }} as tbl_place
             on tbl_mart_race.place_id = tbl_place.id
-        -- BR candidate.database_id (= S3 br_candidate_id) -> canonical gp_candidate_id
+        -- BR candidate.database_id (= S3 br_candidate_id) -> person mint -> contact
         left join
-            civics_candidate_by_br as tbl_civics_candidate
-            on tbl_candidacy.candidate_database_id
-            = tbl_civics_candidate.br_candidate_id
+            person_xwalk as tbl_person_xwalk
+            on 'ballotready|' || cast(tbl_candidacy.candidate_database_id as string)
+            = tbl_person_xwalk.record_key
+        left join
+            civics_contact_by_person as tbl_civics_contact
+            on tbl_person_xwalk.gp_person_id = tbl_civics_contact.gp_candidate_id
         left join
             civics_candidacy_attrs as tbl_civics_attrs
-            on tbl_civics_candidate.gp_candidate_id = tbl_civics_attrs.gp_candidate_id
+            on tbl_person_xwalk.gp_person_id = tbl_civics_attrs.gp_candidate_id
             and tbl_int_race.br_position_database_id
             = tbl_civics_attrs.br_position_database_id
     ),
