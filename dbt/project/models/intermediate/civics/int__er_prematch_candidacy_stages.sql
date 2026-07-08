@@ -103,9 +103,10 @@ with
                 ''
             ) as seat_name,
             br.partisan_type,
-            -- first_seen_at for BR is computed in the person mint from native
-            -- br_candidate_id (spans candidacies + terms), not here.
-            cast(null as timestamp) as first_seen_at
+            -- Native BR candidacy creation timestamp; seeds the candidacy-stage
+            -- mint's earliest-member rule. The person mint uses a different
+            -- (br_candidate_id) grain, so it recomputes its own first_seen_at.
+            br.candidacy_created_at as first_seen_at
         from br_with_office as br
     ),
 
@@ -372,9 +373,9 @@ with
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
             cast(null as string) as partisan_type,
-            -- first_seen_at for gp_api is computed in the person mint from the
-            -- user's created_at, not here (campaign grain differs from user).
-            cast(null as timestamp) as first_seen_at
+            -- Native campaign creation timestamp (candidacy grain); seeds the
+            -- candidacy-stage mint. The person mint uses the user's created_at.
+            g.created_at as first_seen_at
         from gp_api_with_office as g
     ),
 

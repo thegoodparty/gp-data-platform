@@ -3217,8 +3217,8 @@ models:
       candidacies + officeholder terms), gp_api users, HubSpot contacts,
       non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
       Also unions in the cluster- and bridge-derived gp_api user ids so every
-      edge endpoint is guaranteed a label seed in the propagation. See
-      canonical-person-plan.md decision 1.
+      edge endpoint is guaranteed a label seed in the propagation.
+      Deterministically derived, no probabilistic matching.
     columns:
       - name: record_key
         description: Primary key.
@@ -3247,8 +3247,7 @@ models:
       ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the elected-official
       linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge), candidacy-stage
       Splink cluster co-membership (E5, hub to the cluster's min record key),
-      and within-source vendor keys (E7). See canonical-person-plan.md
-      decision 1.
+      and within-source vendor keys (E7).
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -3311,7 +3310,6 @@ models:
       no recursion). Pass count exceeds the largest component's diameter with
       headroom; convergence is tested (penultimate pass == final).
       had_conflict rolls up E7 conflict edges to the group (both endpoints).
-      See canonical-person-plan.md decision 1.
     tests:
       # Propagation converged: the last two passes agree for every record.
       - dbt_utils.expression_is_true:
@@ -3395,6 +3393,55 @@ models:
         description: Canonical person UUID, salted-hash of the minting member's (source_name, source_id).
         data_tests:
           - not_null
+
+  - name: int__civics_minted_candidacy_ids
+    description: >
+      Minted gp_candidacy_id per clustered candidacy-stage record. One row per
+      candidacy-stage unique_id. The id is the salted-hash of the cluster
+      member earliest by first_seen_at (ties: source_name, source_id), shared by
+      all members, so it is stable under cluster churn. Clusters are single-date
+      (stage grain), so consuming provider models roll this up to candidacy grain
+      (min over their candidacy grouping); records in no cluster mint from
+      themselves via the provider self-mint fallback.
+    columns:
+      - name: unique_id
+        description: Primary key. source_name || '|' || source_id (stage grain).
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Candidacy-stage cluster the record belongs to.
+        data_tests:
+          - not_null
+      - name: minted_gp_candidacy_id
+        description: Salted-hash of the cluster's earliest member (source_name, source_id).
+        data_tests:
+          - not_null
+    # Stability (every cluster -> one minted id) is checked by the singular test
+    # assert_minted_ids_one_per_cluster.
+
+  - name: int__civics_minted_election_stage_ids
+    description: >
+      Minted gp_election_stage_id per clustered election-stage record. One row
+      per election-stage unique_id. Same earliest-member rule as the candidacy
+      mint; election-stage clusters are already at stage grain, so no rollup is
+      needed. Records in no cluster mint from themselves via the provider
+      self-mint fallback.
+    columns:
+      - name: unique_id
+        description: Primary key. source_name || '|' || source_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Election-stage cluster the record belongs to.
+        data_tests:
+          - not_null
+      - name: minted_gp_election_stage_id
+        description: Salted-hash of the cluster's earliest member (source_name, source_id).
+        data_tests:
+          - not_null
+    # Stability checked by the singular test assert_minted_ids_one_per_cluster.
 
   - name: int__civics_er_canonical_election_stages
     description: >

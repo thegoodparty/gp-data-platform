@@ -35,7 +35,11 @@ with
             es.is_special,
             es.is_primary,
             es.is_runoff,
-            es.number_of_seats
+            es.number_of_seats,
+            -- BR races expose only a race-level updated timestamp (no native
+            -- created field); it seeds the election-stage mint's earliest-member
+            -- rule and is deterministic under full refresh.
+            es.created_at as first_seen_at
         from {{ ref("int__civics_election_stage_ballotready") }} as es
         left join br_position as bp on es.br_position_id = bp.br_position_id
         where bp.state is not null
@@ -69,7 +73,9 @@ with
             stage_type like '%special%' as is_special,
             is_primary,
             is_runoff,
-            cast(null as int) as number_of_seats
+            cast(null as int) as number_of_seats,
+            -- DDHQ has no native created field; min extract time per stage.
+            created_at as first_seen_at
         from {{ ref("int__civics_election_stage_ddhq") }}
         where state_postal_code is not null
     ),
@@ -103,7 +109,9 @@ with
             false as is_special,
             is_primary,
             is_runoff,
-            number_of_seats
+            number_of_seats,
+            -- TS has no native created field; min extract time per stage.
+            created_at as first_seen_at
         from {{ ref("int__civics_election_stage_techspeed") }}
         where race_name rlike '^[A-Z]{2} '
     ),
@@ -153,7 +161,8 @@ select
     -- office/geo path. BR + DDHQ only (TS already anchors via br_race_id).
     coalesce(
         cc.matched_candidacy_stage_clusters, array()
-    ) as matched_candidacy_stage_clusters
+    ) as matched_candidacy_stage_clusters,
+    u.first_seen_at
 from unioned as u
 left join
     {{ ref("int__er_election_stage_candidacy_clusters") }} as cc
