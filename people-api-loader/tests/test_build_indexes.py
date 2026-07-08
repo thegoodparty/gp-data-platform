@@ -202,22 +202,28 @@ class _PKRaisingConn:
     def cursor(self) -> _PKRaisingConn:
         return self
 
+    def fetchone(self) -> object:
+        # The idempotency pre-check ("does a PK already exist?") sees none, so _add_primary_key
+        # proceeds to the ADD — where ALTER TABLE raises the injected error.
+        return None
+
     def execute(self, sql: str, params: object = None) -> None:
         if sql.strip().startswith("ALTER TABLE"):
             raise self._exc
 
 
-def test_add_primary_key_swallows_duplicate() -> None:
-    # "constraint already exists" (DuplicateObject/42710) is the idempotency case.
-    import psycopg
-
+def test_add_primary_key_skips_when_pk_exists() -> None:
+    # Re-runnability: a table can hold only one PK, so a re-run on a cluster that already has it
+    # must SKIP the ADD (which would raise 42P16), not re-issue it. The pre-check finds the PK.
+    conn = FakeConn().queue_result(("Voter_pkey",))
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
-    step._add_primary_key(_PKRaisingConn(psycopg.errors.DuplicateObject("exists")), pk)  # must not raise
+    step._add_primary_key(conn, pk)  # must not raise
+    assert not any("ADD CONSTRAINT" in s for s in executed_sql(conn))
 
 
 def test_add_primary_key_propagates_invalid_definition() -> None:
-    # InvalidTableDefinition (42P16) is a structural rejection, not idempotency — it must
-    # propagate so we never record an un-created PK as added.
+    # With no existing PK, a genuine bad-DDL InvalidTableDefinition (42P16) on the ADD is a
+    # structural rejection, not idempotency — it must propagate, never recorded as added.
     import psycopg
 
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])

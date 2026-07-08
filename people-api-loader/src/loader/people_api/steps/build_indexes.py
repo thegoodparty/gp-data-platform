@@ -79,14 +79,20 @@ def _add_primary_key(conn: psycopg.Connection, pk: PrimaryKey) -> None:
     cols = ", ".join(f'"{c}"' for c in pk.columns)
     sql = f'ALTER TABLE public."{pk.table}" ADD CONSTRAINT "{pk.constraint}" PRIMARY KEY ({cols})'
     with conn.cursor() as cur:
-        try:
-            cur.execute(sql)  # ty: ignore[no-matching-overload]
-            log.info("indexes.pk_added", table=pk.table, constraint=pk.constraint)
-        except psycopg.errors.DuplicateObject:
-            # Only "constraint already exists" (42710) is idempotency. We deliberately do
-            # NOT catch InvalidTableDefinition (42P16) — that means PG rejected the DDL
-            # (e.g. a column doesn't exist), so it must propagate, not be recorded as added.
-            log.info("indexes.pk_exists", table=pk.table, constraint=pk.constraint)
+        # Idempotency (the step must be re-runnable for a given date): a table can hold only one
+        # PK, so re-adding when one already exists raises 42P16 "multiple primary keys not allowed"
+        # — NOT 42710 DuplicateObject — even when the constraint name matches. Pre-check instead of
+        # catching, so a genuine bad-DDL 42P16 (e.g. a missing column) still surfaces on the ADD.
+        cur.execute(
+            "SELECT conname FROM pg_constraint WHERE conrelid = %s::regclass AND contype = 'p'",
+            (f'public."{pk.table}"',),
+        )
+        existing = cur.fetchone()
+        if existing is not None:
+            log.info("indexes.pk_exists", table=pk.table, constraint=existing[0])
+            return
+        cur.execute(sql)  # ty: ignore[no-matching-overload]
+        log.info("indexes.pk_added", table=pk.table, constraint=pk.constraint)
 
 
 def _create_index(conn: psycopg.Connection, idx: IndexDef) -> None:
