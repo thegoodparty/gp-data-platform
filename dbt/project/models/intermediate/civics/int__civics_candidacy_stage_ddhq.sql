@@ -120,16 +120,17 @@ with
     with_ids as (
         select
             -- === Computed IDs (canonical if Splink-matched, else self-mint) ===
-            -- gp_candidate_id is the person id; records absent from ER
-            -- self-mint per record (own-person semantics).
+            -- gp_candidate_id is the person id. Records absent from ER (all
+            -- pre-2026 rows: the prematch is 2026-gated) self-mint from
+            -- candidate_id alone -- E7's within-source person key -- so one
+            -- person's multi-race rows share an id. Accepts DDHQ's ~1.5%
+            -- candidate_id reuse across people without E7's conflict guard;
+            -- the all-time ER expansion shrinks this population.
             coalesce(
                 p.gp_person_id,
                 {{
                     generate_salted_uuid(
-                        fields=[
-                            "'ddhq'",
-                            "cast(s.candidate_id as string) || '_' || cast(s.ddhq_race_id as string)",
-                        ],
+                        fields=["'ddhq'", "cast(s.candidate_id as string)"],
                         salt="person",
                     )
                 }}

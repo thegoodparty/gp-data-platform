@@ -80,6 +80,7 @@ select
     m.source_name,
     m.source_id,
     m.cluster_id,
+    m.first_seen_at,
     -- BR consumers only adopt the mint from sole-BR-member clusters:
     -- matcher-merged duplicate BR records keep distinct published ids
     -- (row-preserving), while vendor co-members still adopt one BR id via
