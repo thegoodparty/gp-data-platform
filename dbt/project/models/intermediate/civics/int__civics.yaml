@@ -2181,8 +2181,7 @@ models:
 
       ballotready_position_id is NULL on the DDHQ and TS branches in V1.
       DDHQ has no native BR position FK, and resolving it requires the
-      election_stage ER clusters that this view itself seeds; revisit once
-      int__civics_er_canonical_election_stages exists.
+      election_stage ER clusters that this view itself seeds.
 
       first_name_aliases is emitted as an empty array because matcha's
       shared pipeline.load_and_prepare unconditionally reads the column even
@@ -2190,7 +2189,7 @@ models:
 
       Output of matcha lands at
       goodparty_data_catalog.er_source.er_clustered_election_stages and is
-      consumed by int__civics_er_canonical_election_stages in a follow-up PR.
+      consumed by int__civics_minted_election_stage_ids.
 
     columns:
       - name: unique_id
@@ -2592,16 +2591,14 @@ models:
       Product Database (gp_api_db) users transformed into the civics mart
       candidate schema. Grain: one row per user with campaign_count > 0.
 
-      ER canonicalization: canonical_gp_candidate_id from
-      int__civics_er_canonical_ids is looked up via the user's latest campaigns
-      and propagated across users sharing the same person hash.
+      gp_candidate_id is the person id from int__civics_person_canonical_ids
+      (record_key gp_api|user_id), with a deterministic self-mint guard.
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - UUID generated from (first_name, last_name, state,
-          null birth_date, email, phone). Cross-source compatible with
-          int__civics_candidate_ballotready / _techspeed.
+          Primary key - the user's gp_person_id (person-group earliest-member
+          mint). Cross-source alignment comes from shared person groups.
         data_tests:
           - unique
           - not_null
@@ -3158,17 +3155,17 @@ models:
 
   - name: int__civics_er_canonical_ids
     description: >
-      Entity resolution crosswalk: provider raw keys → BallotReady canonical
-      gp_* IDs. Wide schema covering TechSpeed (keyed by ts_source_candidate_id
-      + ts_stage_election_date) and Product DB (keyed by gp_api_campaign_id +
-      gp_api_stage_election_date). Provider columns are null on rows from
-      other providers.
+      Entity resolution crosswalk: provider raw keys → canonical gp_* IDs
+      (BR's cluster-derived ids on BR-anchored clusters, the earliest-member
+      mint on non-BR clusters). Wide schema covering TechSpeed (keyed by
+      ts_source_candidate_id + ts_stage_election_date), Product DB (keyed by
+      gp_api_campaign_id + gp_api_stage_election_date), and DDHQ (keyed by
+      ddhq_candidate_id + ddhq_race_id). Provider columns are null on rows
+      from other providers. Candidate grain is not here: gp_candidate_id is
+      the person id, resolved per provider via
+      int__civics_person_canonical_ids.
 
     columns:
-      - name: canonical_gp_candidate_id
-        data_tests:
-          - not_null
-
       - name: canonical_gp_candidacy_id
         data_tests:
           - not_null
@@ -3413,6 +3410,13 @@ models:
         description: Candidacy-stage cluster the record belongs to.
         data_tests:
           - not_null
+      - name: cluster_br_members
+        description: >
+          Count of ballotready members in the cluster. BR consumers only adopt
+          the mint when this is 1, so matcher-merged duplicate BR records keep
+          distinct published ids (row-preserving).
+        data_tests:
+          - not_null
       - name: minted_gp_candidacy_id
         description: Salted-hash of the cluster's earliest member (source_name, source_id).
         data_tests:
@@ -3437,48 +3441,18 @@ models:
         description: Election-stage cluster the record belongs to.
         data_tests:
           - not_null
+      - name: cluster_br_members
+        description: >
+          Count of ballotready members in the cluster. BR consumers only adopt
+          the mint when this is 1, so matcher-merged duplicate BR records keep
+          distinct published ids (row-preserving).
+        data_tests:
+          - not_null
       - name: minted_gp_election_stage_id
         description: Salted-hash of the cluster's earliest member (source_name, source_id).
         data_tests:
           - not_null
     # Stability checked by the singular test assert_minted_ids_one_per_cluster.
-
-  - name: int__civics_er_canonical_election_stages
-    description: >
-      Direct election-stage ER crosswalk: maps DDHQ / TechSpeed election stages
-      that clustered with a BallotReady race (gp-data-matcha election_stage
-      entity) to BR's canonical gp_election_stage_id. Broader race-level coverage
-      than int__civics_er_canonical_ids's candidacy-derived
-      canonical_gp_election_stage_id (links races even without a matched
-      candidacy). BR-anchored clusters adopt BR's id; non-BR cross-source
-      clusters (DDHQ <-> TS, no BR member) adopt a representative member's id so
-      they still collapse. Single-record clusters keep their natural id.
-
-      Grain: one row per non-BR provider election stage (source_name +
-      gp_election_stage_id). Note: DDHQ and TS can share a natural
-      gp_election_stage_id for the same race, so the id is unique only within a
-      source. A small number (~41) of such shared ids map to different BR
-      canonicals (the matcher anchored the DDHQ vs TS record to different BR
-      races); consumers join per-source so the mapping stays deterministic.
-    columns:
-      - name: source_name
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ["ddhq", "techspeed"]
-      - name: gp_election_stage_id
-        description: The provider's own gp_election_stage_id (the matched non-BR record).
-        data_tests:
-          - not_null
-      - name: canonical_gp_election_stage_id
-        description: BR's gp_election_stage_id for the cluster; consumers coalesce against this.
-        data_tests:
-          - not_null
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [source_name, gp_election_stage_id]
 
   - name: int__serve_active_user
     description: >

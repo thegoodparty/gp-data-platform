@@ -1,9 +1,12 @@
--- Entity resolution crosswalk: provider raw keys -> BR canonical gp_* IDs.
+-- Entity resolution crosswalk: provider raw keys -> canonical gp_* IDs.
 -- One row per (provider, raw stage key); provider columns are null on rows
 -- from other providers. Provider intermediates left-join this and coalesce
--- their own hashes against the canonical column, so clustered rows share
--- BR's IDs. Keyed on raw provider fields (not provider-computed hashes) to
--- avoid a cycle with the consuming provider models.
+-- their self-mints against the canonical column: BR-anchored clusters carry
+-- BR's cluster-derived ids, non-BR clusters carry the cluster's earliest-
+-- member mint. Keyed on raw provider fields (not provider-computed hashes)
+-- to avoid a cycle with the consuming provider models. Candidate grain is
+-- not here: gp_candidate_id is the person id, resolved per provider via
+-- int__civics_person_canonical_ids.
 --
 -- Providers:
 -- TechSpeed (ts_source_candidate_id + ts_stage_election_date)
@@ -23,7 +26,6 @@ with
             br_cs.gp_candidacy_stage_id as canonical_gp_candidacy_stage_id,
             br_cs.gp_election_stage_id as canonical_gp_election_stage_id,
             br_cs.gp_candidacy_id as canonical_gp_candidacy_id,
-            br_c.gp_candidate_id as canonical_gp_candidate_id,
             br_es.gp_election_id as canonical_gp_election_id,
             br_cs.updated_at as br_updated_at
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as br_cw
@@ -34,9 +36,6 @@ with
         inner join
             {{ ref("int__civics_candidacy_stage_ballotready") }} as br_cs
             on br_cw.br_candidacy_id = br_cs.br_candidacy_id
-        inner join
-            {{ ref("int__civics_candidacy_ballotready") }} as br_c
-            on br_cs.gp_candidacy_id = br_c.gp_candidacy_id
         inner join
             {{ ref("int__civics_election_stage_ballotready") }} as br_es
             on br_cs.gp_election_stage_id = br_es.gp_election_stage_id
@@ -62,7 +61,6 @@ with
             br_cs.gp_candidacy_stage_id as canonical_gp_candidacy_stage_id,
             br_cs.gp_election_stage_id as canonical_gp_election_stage_id,
             br_cs.gp_candidacy_id as canonical_gp_candidacy_id,
-            br_c.gp_candidate_id as canonical_gp_candidate_id,
             br_es.gp_election_id as canonical_gp_election_id,
             br_cs.updated_at as br_updated_at
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as br_cw
@@ -73,9 +71,6 @@ with
         inner join
             {{ ref("int__civics_candidacy_stage_ballotready") }} as br_cs
             on br_cw.br_candidacy_id = br_cs.br_candidacy_id
-        inner join
-            {{ ref("int__civics_candidacy_ballotready") }} as br_c
-            on br_cs.gp_candidacy_id = br_c.gp_candidacy_id
         inner join
             {{ ref("int__civics_election_stage_ballotready") }} as br_es
             on br_cs.gp_election_stage_id = br_es.gp_election_stage_id
@@ -101,7 +96,6 @@ with
             br_cs.gp_candidacy_stage_id as canonical_gp_candidacy_stage_id,
             br_cs.gp_election_stage_id as canonical_gp_election_stage_id,
             br_cs.gp_candidacy_id as canonical_gp_candidacy_id,
-            br_c.gp_candidate_id as canonical_gp_candidate_id,
             br_es.gp_election_id as canonical_gp_election_id,
             br_cs.updated_at as br_updated_at
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as br_cw
@@ -112,9 +106,6 @@ with
         inner join
             {{ ref("int__civics_candidacy_stage_ballotready") }} as br_cs
             on br_cw.br_candidacy_id = br_cs.br_candidacy_id
-        inner join
-            {{ ref("int__civics_candidacy_ballotready") }} as br_c
-            on br_cs.gp_candidacy_id = br_c.gp_candidacy_id
         inner join
             {{ ref("int__civics_election_stage_ballotready") }} as br_es
             on br_cs.gp_election_stage_id = br_es.gp_election_stage_id
@@ -135,16 +126,13 @@ with
     ),
 
     non_br_cluster_matches as (
-        -- For non-BR clusters, derive canonical IDs from cluster_id directly
-        -- (no BR member to anchor to). Provider int models coalesce against
-        -- these so cluster members at every grain share the same canonical
-        -- gp_*_id and collapse to one mart row in the BR + TS + DDHQ FOJ.
-        --
-        -- Salts per grain ensure each grain's canonical is distinct but
-        -- deterministic. cluster_id is unique per cluster so cluster members
-        -- share the same canonicals; different clusters get different IDs
-        -- (cross-cluster merging at election/race grain still relies on
-        -- providers' natural deterministic hashes — same as today).
+        -- Non-BR clusters (no BR member to anchor to): the candidacy canonical
+        -- is the cluster's earliest-member mint, shared by every co-member, so
+        -- matched TS/DDHQ/gp_api rows still collapse to one mart row. Stage,
+        -- election_stage, and election canonicals stay NULL: candidacy_stage
+        -- merges by cluster FOJ, and race/election grains fall back to
+        -- provider self-mints (cross-cluster merging there still relies on
+        -- BR-anchored adoption — same topology as before).
         --
         -- Dedup on each provider's natural key (matches the BR-anchored
         -- branches' partition keys). Two TS records sharing the same stripped
@@ -159,9 +147,14 @@ with
             cast(null as date) as gp_api_stage_election_date,
             cast(null as bigint) as ddhq_candidate_id,
             cast(null as bigint) as ddhq_race_id,
-            {{ non_br_cluster_canonicals("cw.cluster_id") }}
+            cast(null as string) as canonical_gp_candidacy_stage_id,
+            cast(null as string) as canonical_gp_election_stage_id,
+            mint.minted_gp_candidacy_id as canonical_gp_candidacy_id,
+            cast(null as string) as canonical_gp_election_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
+        inner join
+            {{ ref("int__civics_minted_candidacy_ids") }} as mint using (unique_id)
         where
             cw.source_name = 'techspeed'
             -- Skip (ts_source_candidate_id, election_date)
@@ -205,9 +198,14 @@ with
             cast(cw.election_date as date) as gp_api_stage_election_date,
             cast(null as bigint) as ddhq_candidate_id,
             cast(null as bigint) as ddhq_race_id,
-            {{ non_br_cluster_canonicals("cw.cluster_id") }}
+            cast(null as string) as canonical_gp_candidacy_stage_id,
+            cast(null as string) as canonical_gp_election_stage_id,
+            mint.minted_gp_candidacy_id as canonical_gp_candidacy_id,
+            cast(null as string) as canonical_gp_election_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
+        inner join
+            {{ ref("int__civics_minted_candidacy_ids") }} as mint using (unique_id)
         where cw.source_name = 'gp_api'
         qualify
             row_number() over (
@@ -225,9 +223,14 @@ with
             cast(null as date) as gp_api_stage_election_date,
             cast(split(cw.source_id, '_')[0] as bigint) as ddhq_candidate_id,
             cast(split(cw.source_id, '_')[1] as bigint) as ddhq_race_id,
-            {{ non_br_cluster_canonicals("cw.cluster_id") }}
+            cast(null as string) as canonical_gp_candidacy_stage_id,
+            cast(null as string) as canonical_gp_election_stage_id,
+            mint.minted_gp_candidacy_id as canonical_gp_candidacy_id,
+            cast(null as string) as canonical_gp_election_id
         from {{ ref("stg_er_source__clustered_candidacy_stages") }} as cw
         inner join non_br_clusters using (cluster_id)
+        inner join
+            {{ ref("int__civics_minted_candidacy_ids") }} as mint using (unique_id)
         where cw.source_name = 'ddhq'
         qualify
             row_number() over (
@@ -246,7 +249,6 @@ select
     canonical_gp_candidacy_stage_id,
     canonical_gp_election_stage_id,
     canonical_gp_candidacy_id,
-    canonical_gp_candidate_id,
     canonical_gp_election_id
 from ts_stage_matches
 union all
@@ -260,7 +262,6 @@ select
     canonical_gp_candidacy_stage_id,
     canonical_gp_election_stage_id,
     canonical_gp_candidacy_id,
-    canonical_gp_candidate_id,
     canonical_gp_election_id
 from gp_api_stage_matches
 union all
@@ -274,7 +275,6 @@ select
     canonical_gp_candidacy_stage_id,
     canonical_gp_election_stage_id,
     canonical_gp_candidacy_id,
-    canonical_gp_candidate_id,
     canonical_gp_election_id
 from ddhq_stage_matches
 union all
@@ -288,6 +288,5 @@ select
     canonical_gp_candidacy_stage_id,
     canonical_gp_election_stage_id,
     canonical_gp_candidacy_id,
-    canonical_gp_candidate_id,
     canonical_gp_election_id
 from non_br_cluster_matches

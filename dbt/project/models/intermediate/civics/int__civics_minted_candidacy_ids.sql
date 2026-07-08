@@ -32,6 +32,13 @@ select
     m.source_name,
     m.source_id,
     m.cluster_id,
+    -- BR consumers only adopt the mint from sole-BR-member clusters:
+    -- matcher-merged duplicate BR records keep distinct published ids
+    -- (row-preserving), while vendor co-members still adopt one BR id via
+    -- the crosswalk.
+    count_if(m.source_name = 'ballotready') over (
+        partition by m.cluster_id
+    ) as cluster_br_members,
     {{
         generate_salted_uuid(
             fields=["mm.minting_source_name", "mm.minting_source_id"],

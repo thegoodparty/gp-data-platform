@@ -274,7 +274,9 @@ cluster mints from itself (single-member semantics).
 `first_seen_at` is computed inline where each record's native id and timestamp
 share a row (never rejoined): BR candidacy_created_at / office_holder_created_at,
 gp_api campaign & user created_at, HubSpot createdate, TechSpeed date_processed,
-DDHQ Airbyte extract time.
+DDHQ Airbyte extract time. Election stages use the BR race's native created_at;
+TS/DDHQ election-stage keys are feeder-derived hashes, so their first_seen_at is
+the source's first load time.
 
 
 ## Useful Links
