@@ -2052,6 +2052,14 @@ models:
                   - Regional
                   - Federal
 
+      - name: first_seen_at
+        description: >
+          Source-native record timestamp for the person id mint. Populated only
+          for techspeed (min processing date across delivery duplicates, airbyte
+          extract as parse fallback) and ddhq (airbyte extract time); null for
+          ballotready and gp_api, whose values are computed in
+          int__civics_person_canonical_ids from their native person-grain ids.
+
   - name: int__er_prematch_elected_officials
     description: >
       Entity resolution prematch table at term grain. Two sources:
@@ -3318,6 +3326,53 @@ models:
           - not_null
       - name: had_conflict
         description: true when the group is touched by an E7 conflict edge.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_canonical_ids
+    description: >
+      Canonical gp_person_id per record. One row per record_key. The id is minted
+      from the group member earliest by first_seen_at (ties: source_name,
+      source_id) via generate_salted_uuid([source_name, source_id], salt=person),
+      so first-in wins uniformly and the id survives a later record joining the
+      group. first_seen_at is computed inline where each record's native id and
+      source timestamp share a row.
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - not_null
+      - name: person_group_key
+        description: The record's person group (from int__civics_person_groups).
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          Earliest source-native timestamp for the record. Drives the mint.
+          Derived from source data only (never current_timestamp), so a full
+          refresh reproduces it; the ddhq value can still shift if Airbyte
+          re-extracts the master CSV. The snapshot is the churn detector.
+        data_tests:
+          - not_null
+      - name: minting_source_name
+        description: source_name of the group's earliest member (mints the id).
+        data_tests:
+          - not_null
+      - name: minting_source_id
+        description: source_id of the group's earliest member.
+        data_tests:
+          - not_null
+      - name: group_size
+        description: Number of records in the person group.
+        data_tests:
+          - not_null
+      - name: gp_person_id
+        description: Canonical person UUID, salted-hash of the minting member's (source_name, source_id).
         data_tests:
           - not_null
 
