@@ -1,13 +1,24 @@
 """Step 5 — build the PK + indexes on the unified Voter table, then ANALYZE (DATA-1853).
 
 Reads the PK, the LALVOTERID unique, and the plain indexes from `schema_spec`
-(the pg_catalog-sourced `_serving_seed`) and applies them to public."Voter" in
-parallel (concurrent CREATE INDEX on one table run in separate sessions).
-`CREATE INDEX` (not CONCURRENTLY) since the cluster is idle. No FKs exist in this schema.
+(the pg_catalog-sourced `_serving_seed`) and applies them to the LIST-partitioned
+public."Voter". `CREATE INDEX` (not CONCURRENTLY) since the cluster is idle.
+
+Plain (non-unique) indexes are built PER PARTITION, not on the parent. `CREATE INDEX ON <parent>`
+recurses through every partition serially inside one statement, so N concurrent builders each walk
+all ~51 partitions in sequence — coarse units, poor load-balancing (measured ~30h). Instead we
+`CREATE INDEX ... ON ONLY <parent>` (empty/instant), then build one child index per partition as
+independent `(index, partition)` units scheduled across the pool, then `ATTACH` each. That is the
+scheduling the 52-separate-table POC used to hit ~12h on the same hardware; when all children of a
+parent index are attached, the parent index flips valid automatically.
+
+The PK and the single LALVOTERID unique index stay parent-level builds: the PK is fast, and the one
+unique is a single build — not worth the partitioned-unique/PK-constraint machinery. No FKs exist.
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -26,6 +37,7 @@ from loader.people_api.manifests import (
 )
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
 from loader.people_api.schema.schema_spec import indexes_for, primary_key_for
+from loader.people_api.schema.states import STATES
 
 log = get_logger(__name__)
 
@@ -116,6 +128,61 @@ def _create_index(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
         log.info("indexes.built", table=idx.table, name=idx.name, unique=idx.unique)
 
 
+def _child_index_name(index_name: str, state: str) -> str:
+    """Deterministic, unique, <=63-char (PG identifier limit) name for a partition's child index.
+
+    Prefer the readable `<index>_<state>`; if that exceeds 63 chars (a few very long district
+    index names + a 2-char state would), fall back to a hashed name unique per (index, state).
+    """
+    name = f"{index_name}_{state}"
+    if len(name) <= 63:
+        return name
+    return f"ix_{hashlib.md5(index_name.encode()).hexdigest()[:12]}_{state}"
+
+
+def _plain_parent_only_sql(idx: IndexDef) -> str:
+    """`CREATE INDEX ... ON ONLY <parent>` — the empty parent index (instant, no partition data)."""
+    sql = _rewrite_index_sql(idx.sql).rstrip().rstrip(";")
+    return sql.replace(f'ON public."{_TARGET_TABLE}"', f'ON ONLY public."{_TARGET_TABLE}"', 1)
+
+
+def _plain_child_sql(idx: IndexDef, state: str) -> tuple[str, str]:
+    """(child_index_name, `CREATE INDEX ... ON <partition>`) preserving method/expr/opclass/WHERE."""
+    child = _child_index_name(idx.name, state)
+    sql = _rewrite_index_sql(idx.sql).rstrip().rstrip(";")
+    sql = sql.replace(f'"{idx.name}"', f'"{child}"', 1)
+    sql = sql.replace(f'ON public."{_TARGET_TABLE}"', f'ON public."{_TARGET_TABLE}_{state}"', 1)
+    return child, sql
+
+
+def _create_plain_parent_only(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        _apply_session(cur)
+        cur.execute(_plain_parent_only_sql(idx))  # ty: ignore[no-matching-overload]
+
+
+def _build_and_attach_child(cfg: LoaderConfig, run_date: str, item: tuple[IndexDef, str]) -> None:
+    """Build one partition's child index and attach it to the parent partitioned index.
+
+    Attach is idempotent: pg_inherits records the child under its parent index once attached, so a
+    partial-rerun (child built + attached before a crash) skips the re-attach rather than erroring.
+    """
+    idx, state = item
+    child, child_sql = _plain_child_sql(idx, state)
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        _apply_session(cur)
+        cur.execute(child_sql)  # ty: ignore[no-matching-overload]
+        cur.execute(
+            "SELECT 1 FROM pg_inherits WHERE inhrelid = %s::regclass",
+            (f'public."{child}"',),
+        )
+        if cur.fetchone() is None:
+            cur.execute(  # ty: ignore[no-matching-overload]
+                f'ALTER INDEX public."{idx.name}" ATTACH PARTITION public."{child}"'
+            )
+        log.info("indexes.child_built", name=idx.name, state=state, child=child)
+
+
 def _analyze(cfg: LoaderConfig, run_date: str) -> None:
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute('ANALYZE public."Voter"')
@@ -177,9 +244,19 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
             for fut in as_completed(futures):
                 fut.result()
 
-    # 1. Primary key(s), then 2. indexes (unique + plain) — parallel on the single table.
+    unique_idxs = [i for i in idxs if i.unique]
+    plain_idxs = [i for i in idxs if not i.unique]
+
+    # 1. Primary key(s) and the unique index: parent-level builds (few; fast/one-off).
     _build_in_parallel(_add_primary_key, pks)
-    _build_in_parallel(_create_index, idxs)
+    _build_in_parallel(_create_index, unique_idxs)
+
+    # 2. Plain indexes PER PARTITION (the bulk, and the whole bottleneck): first the empty parent
+    #    indexes (ON ONLY, instant), then the child index on each partition as an independent
+    #    (index, partition) unit across the pool, attached to its parent. Fine-grained scheduling
+    #    keeps every builder on useful small work instead of a serial 51-partition walk per index.
+    _build_in_parallel(_create_plain_parent_only, plain_idxs)
+    _build_in_parallel(_build_and_attach_child, [(i, s) for i in plain_idxs for s in STATES])
 
     # 3. ANALYZE.
     _analyze(cfg, run_date)

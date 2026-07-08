@@ -39,6 +39,48 @@ def test_rewrite_injects_if_not_exists() -> None:
     )
 
 
+def test_child_index_name_short_and_hashed() -> None:
+    assert step._child_index_name("Voter_Active_idx", "CA") == "Voter_Active_idx_CA"
+    # A very long parent name + state would blow the 63-char identifier limit -> hashed fallback.
+    long = "Voter_" + "Really_Long_District_Name_" * 3 + "idx"
+    child = step._child_index_name(long, "WY")
+    assert len(child) <= 63 and child.startswith("ix_") and child.endswith("_WY")
+
+
+def test_plain_parent_only_and_child_sql() -> None:
+    idx = step.IndexDef(
+        table="Voter",
+        name="Voter_Active_idx",
+        sql='CREATE INDEX "Voter_Active_idx" ON public."Voter" USING btree ("Active");',
+        unique=False,
+        columns=["Active"],
+        where=None,
+    )
+    parent = step._plain_parent_only_sql(idx)
+    assert (
+        'CREATE INDEX IF NOT EXISTS "Voter_Active_idx" ON ONLY public."Voter" USING btree ("Active")'
+        in parent
+    )
+    child_name, child_sql = step._plain_child_sql(idx, "CA")
+    assert child_name == "Voter_Active_idx_CA"
+    assert (
+        'CREATE INDEX IF NOT EXISTS "Voter_Active_idx_CA" ON public."Voter_CA" USING btree ("Active")'
+        in child_sql
+    )
+    assert "ON ONLY" not in child_sql  # the child targets the leaf partition, not the parent
+
+
+def test_build_and_attach_child_skips_reattach_when_already_attached(monkeypatch: pytest.MonkeyPatch) -> None:
+    # pg_inherits returns a row => the child is already a partition of the parent index; a
+    # partial-rerun must build (IF NOT EXISTS, no-op) but NOT re-issue ATTACH (which would error).
+    conn = FakeConn().queue_result((1,))
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    step._build_and_attach_child(_CFG, "20260609", (_IDXS[1], "CA"))
+    sql = executed_sql(conn)
+    assert any('"Voter_Active_idx_CA" ON public."Voter_CA"' in s for s in sql)
+    assert not any("ATTACH PARTITION" in s for s in sql)
+
+
 def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     conn = FakeConn()
@@ -48,20 +90,29 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd: [])
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "STATES", ("CA", "TX"))
 
     manifest = step.run(_CFG, "20260609")
     sql = executed_sql(conn)
 
     # PK must include "State"
     assert any("ADD CONSTRAINT" in s and 'PRIMARY KEY ("id", "State")' in s for s in sql)
-    # Unique index must include "State"
+    # Unique index stays a parent-level build, with "State" appended
     assert any(
         'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_LALVOTERID_key" ON public."Voter" ("LALVOTERID", "State")'
         in s
         for s in sql
     )
-    # Plain index should be rewritten with IF NOT EXISTS but NOT have "State" appended
-    assert any("CREATE INDEX IF NOT EXISTS" in s and "Voter_Active_idx" in s for s in sql)
+    # Plain index is built PER PARTITION: empty parent (ON ONLY) + a child per state + ATTACH.
+    assert any('CREATE INDEX IF NOT EXISTS "Voter_Active_idx" ON ONLY public."Voter"' in s for s in sql)
+    assert any('"Voter_Active_idx_CA" ON public."Voter_CA"' in s for s in sql)
+    assert any('"Voter_Active_idx_TX" ON public."Voter_TX"' in s for s in sql)
+    assert any(
+        'ALTER INDEX public."Voter_Active_idx" ATTACH PARTITION public."Voter_Active_idx_CA"' in s
+        for s in sql
+    )
+    # ...and NOT built directly on the parent (that's the slow serial-per-partition path we removed).
+    assert not any('"Voter_Active_idx" ON public."Voter" USING' in s for s in sql)
     assert any('ANALYZE public."Voter"' in s for s in sql)
     assert manifest.status == "complete"
     assert manifest.analyzed_tables == ["Voter"]
