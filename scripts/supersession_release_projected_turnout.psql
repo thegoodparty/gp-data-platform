@@ -22,6 +22,16 @@
 
 \set ON_ERROR_STOP on
 
+-- Guard: abort immediately if bak_suffix was not supplied on the command line.
+-- psql leaves unset :variables as literal text, so the backup would otherwise be
+-- created under the colon-containing name "Projected_Turnout_bak_:bak_suffix" and
+-- silently reused by IF NOT EXISTS on every later suffix-less run.
+\if :{?bak_suffix}
+\else
+\warn 'ERROR: -v bak_suffix=<value> is required (e.g. bak_suffix=$(date +%Y%m%d))'
+\quit
+\endif
+
 -- Assemble the backup table name once: adjacent interpolation like
 -- "Projected_Turnout_bak_":bak_suffix does NOT concatenate identifiers in SQL.
 \set bak_table 'Projected_Turnout_bak_' :bak_suffix
