@@ -15,6 +15,9 @@ with
             tbl_candidacy.id as br_hash_id,
             tbl_candidacy.database_id as br_database_id,
             tbl_candidacy.candidate_database_id,
+            -- person-crosswalk key; built here so the join block stays flat
+            'ballotready|'
+            || cast(tbl_candidacy.candidate_database_id as string) as person_record_key,
             tbl_candidacy.race_database_id,
             tbl_candidacy.created_at,
             tbl_candidacy.updated_at
@@ -99,9 +102,9 @@ with
             tbl_mart_race.salary,
             tbl_mart_race.normalized_position_name,
             tbl_mart_race.position_description,
-            tbl_person_xwalk.gp_person_id as gp_candidate_id,
-            tbl_civics_contact.email,
-            tbl_civics_contact.website_url,
+            person_xwalk.gp_person_id as gp_candidate_id,
+            civics_contact.email,
+            civics_contact.website_url,
             tbl_civics_attrs.is_incumbent,
             concat(
                 coalesce(tbl_person.first_name, ''),
@@ -127,15 +130,13 @@ with
             on tbl_mart_race.place_id = tbl_place.id
         -- BR candidate.database_id (= S3 br_candidate_id) -> person mint -> contact
         left join
-            person_xwalk as tbl_person_xwalk
-            on 'ballotready|' || cast(tbl_candidacy.candidate_database_id as string)
-            = tbl_person_xwalk.record_key
+            person_xwalk on tbl_candidacy.person_record_key = person_xwalk.record_key
         left join
-            civics_contact_by_person as tbl_civics_contact
-            on tbl_person_xwalk.gp_person_id = tbl_civics_contact.gp_candidate_id
+            civics_contact_by_person as civics_contact
+            on person_xwalk.gp_person_id = civics_contact.gp_candidate_id
         left join
             civics_candidacy_attrs as tbl_civics_attrs
-            on tbl_person_xwalk.gp_person_id = tbl_civics_attrs.gp_candidate_id
+            on person_xwalk.gp_person_id = tbl_civics_attrs.gp_candidate_id
             and tbl_int_race.br_position_database_id
             = tbl_civics_attrs.br_position_database_id
     ),
