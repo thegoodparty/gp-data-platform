@@ -130,11 +130,11 @@ with
             -- Native stage so <=2025 BR rows can merge at the archive
             -- person-stage grain (BR S3 has no 'special' variants).
             case
-                when s.is_primary = 'true' and s.is_runoff = 'true'
+                when s.is_primary and s.is_runoff
                 then 'primary runoff'
-                when s.is_primary = 'true'
+                when s.is_primary
                 then 'primary'
-                when s.is_runoff = 'true'
+                when s.is_runoff
                 then 'general runoff'
                 else 'general'
             end as election_stage,

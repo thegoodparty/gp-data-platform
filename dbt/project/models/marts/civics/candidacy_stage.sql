@@ -1,21 +1,25 @@
 -- Civics mart candidacy_stage table.
 --
--- Two eras (see canonical-person-plan.md decision 4):
+-- Two eras:
 -- 2026+  : 4-way cluster-based FOJ over BR + TS + DDHQ + gp_api. Byte-stable
 -- vs the pre-person mart; gp_person_id is the only added column.
--- <=2025 : the HubSpot archive is the spine. BR / DDHQ / TS candidacy-stage
--- rows for the same person-stage merge into the archive row with
--- HubSpot-first display precedence (HubSpot > DDHQ > BR > TS).
--- HubSpot records are not in candidacy-stage ER, so the person layer
--- (gp_person_id) is the bridge: archive rows resolve their person via
--- their HubSpot contact, FOJ rows via their native vendor keys, and
--- the two sides merge on (gp_person_id, election_stage_date,
--- election_stage). The era merge is contained to this mart: the BR
--- and DDHQ candidacy/election/election_stage/candidate intermediates
--- stay 2026-gated, so an archive-uncovered <=2025 FOJ row survives
--- standalone only when both its gp_candidacy_id and
--- gp_election_stage_id are real mart FKs (TechSpeed qualifies as
--- today; BR / DDHQ <=2025 rows only ever enrich an archive row).
+-- <=2025 : the HubSpot archive is the spine (it is the outcome authority for
+-- pre-2026 races). BR / DDHQ / TS rows for the same person-stage
+-- merge into the archive row with HubSpot-first display precedence
+-- (HubSpot > DDHQ > BR > TS); HubSpot only records general-stage
+-- outcomes, so primaries legitimately display DDHQ. HubSpot records
+-- are not in candidacy-stage ER, so the person layer (gp_person_id)
+-- is the bridge: archive rows resolve their person via their HubSpot
+-- contact, FOJ rows via their native vendor keys, and the two sides
+-- pair on (gp_person_id, election_stage_date, election_stage).
+-- Archive-uncovered FOJ rows survive standalone only with FK-valid
+-- ids: each row adopts the first provider id trio (merged coalesce,
+-- then TS, then DDHQ) whose candidacy / election-stage ids exist in
+-- the marts. The BR and DDHQ candidacy, election, election_stage,
+-- and candidate intermediates stay 2026-gated (their all-time
+-- expansion is a later PR), so today only TS-derived <=2025 ids are
+-- valid: a BR- or DDHQ-keyed <=2025 row either enriches an archive
+-- row, rides a TS-keyed merged row, or is dropped.
 --
 -- gp_person_id is the deterministic min over the person ids reached by a row's
 -- native keys; cluster-merged rows are one person by construction, the min is a
@@ -33,6 +37,36 @@
     "election_result",
     "election_result_source",
     "votes_received",
+] %}
+{%- set out_cols = [
+    "gp_candidacy_stage_id",
+    "gp_candidacy_id",
+    "gp_election_stage_id",
+    "candidate_name",
+    "source_candidate_id",
+    "source_race_id",
+    "candidate_party",
+    "is_winner",
+    "election_result",
+    "election_result_source",
+    "match_confidence",
+    "match_reasoning",
+    "match_top_candidates",
+    "has_match",
+    "votes_received",
+    "is_uncontested",
+    "election_stage_date",
+    "election_stage",
+    "source_systems",
+    "er_cluster_id",
+    "br_candidacy_id",
+    "ts_source_candidate_id",
+    "gp_api_campaign_id",
+    "ddhq_candidate_id",
+    "ddhq_race_id",
+    "gp_person_id",
+    "created_at",
+    "updated_at",
 ] %}
 
 with
@@ -82,8 +116,7 @@ with
     ),
 
     -- Every real candidacy id across the marts, without referencing the
-    -- candidacy mart itself (which reads this model). Gates archive-uncovered
-    -- <=2025 FOJ rows to those with a valid candidacy FK.
+    -- candidacy mart itself (which reads this model).
     valid_candidacy_ids as (
         select gp_candidacy_id
         from {{ ref("int__civics_candidacy_ballotready") }}
@@ -101,10 +134,6 @@ with
         from {{ ref("int__civics_candidacy_2025") }}
     ),
 
-    -- Valid election-stage FKs. BR <=2025 stages are absent here (the BR
-    -- election_stage intermediate stays 2026-gated), so this drops BR-only
-    -- <=2025 rows that slipped past the candidacy gate on a shared id hash;
-    -- their BR-derived gp_election_stage_id would otherwise be an orphan FK.
     valid_election_stage_ids as (
         select gp_election_stage_id from {{ ref("election_stage") }}
     ),
@@ -282,7 +311,18 @@ with
             ts.source_candidate_id as ts_source_candidate_id,
             gp_api.source_candidate_id as gp_api_campaign_id,
             ddhq.source_candidate_id as ddhq_candidate_id,
-            ddhq.source_race_id as ddhq_race_id
+            ddhq.source_race_id as ddhq_race_id,
+            -- Per-provider id trios: <=2025 standalone rows adopt the first
+            -- trio whose FKs are valid (the merged coalesce prefers BR, whose
+            -- <=2025 ids are not in the 2026-gated BR candidacy/election_stage
+            -- marts -- without the fallback a BR+TS cluster's row would be
+            -- silently dropped, destroying TS coverage that exists today).
+            ts.gp_candidacy_stage_id as ts_gp_candidacy_stage_id,
+            ts.gp_candidacy_id as ts_gp_candidacy_id,
+            ts.gp_election_stage_id as ts_gp_election_stage_id,
+            ddhq.gp_candidacy_stage_id as ddhq_gp_candidacy_stage_id,
+            ddhq.gp_candidacy_id as ddhq_gp_candidacy_id,
+            ddhq.gp_election_stage_id as ddhq_gp_election_stage_id
         from br_with_cluster as br
         full outer join ts_with_cluster as ts on br.merge_key = ts.merge_key
         full outer join
@@ -298,33 +338,8 @@ with
     -- stage_type for byte-stability; <=2025 falls back to the native stage).
     foj as (
         select
-            m.gp_candidacy_stage_id,
-            m.gp_candidacy_id,
-            m.gp_election_stage_id,
-            m.candidate_name,
-            m.source_candidate_id,
-            m.candidate_party,
-            m.election_stage_date,
-            m.created_at,
-            m.updated_at,
+            m.*,
             coalesce(es.stage_type, m.native_stage) as election_stage,
-            m.source_race_id,
-            m.is_winner,
-            m.election_result,
-            m.election_result_source,
-            m.votes_received,
-            m.match_confidence,
-            m.match_reasoning,
-            m.match_top_candidates,
-            m.has_match,
-            m.is_uncontested,
-            m.source_systems,
-            m.er_cluster_id,
-            m.br_candidacy_id,
-            m.ts_source_candidate_id,
-            m.gp_api_campaign_id,
-            m.ddhq_candidate_id,
-            m.ddhq_race_id,
             least(
                 bcp.gp_person_id, tcp.gp_person_id, gcp.gp_person_id, dp.gp_person_id
             ) as gp_person_id
@@ -350,9 +365,10 @@ with
 
     foj_archive_era as (select * from foj where election_stage_date <= '2025-12-31'),
 
-    -- One representative FOJ row per archive person-stage (prefer a resolved
-    -- outcome, DDHQ then BR then TS), plus the union of all its FOJ sources.
-    foj_best as (
+    -- Person-linked FOJ rows, each carrying the union of every source seen at
+    -- its person-stage (the merged archive row credits all contributors even
+    -- when only one FOJ row supplies the display fields).
+    foj_person_stage as (
         select
             *,
             array_distinct(
@@ -364,20 +380,13 @@ with
             ) as ps_sources
         from foj_archive_era
         where gp_person_id is not null
-        qualify
-            row_number() over (
-                partition by gp_person_id, election_stage_date, election_stage
-                order by
-                    (election_result is not null) desc,
-                    array_contains(source_systems, 'ddhq') desc,
-                    array_contains(source_systems, 'ballotready') desc,
-                    gp_candidacy_stage_id
-            )
-            = 1
     ),
 
-    -- Archive rows enriched with the FOJ person-stage: HubSpot-first display,
-    -- archive ids preserved, source_systems unioned.
+    -- Archive rows enriched with their best-matching FOJ row: HubSpot-first
+    -- display, archive ids preserved, source_systems unioned. Paired per
+    -- archive row so same-day multi-office people don't cross-contaminate:
+    -- when the archive row has a DDHQ match, an FOJ row for the same DDHQ race
+    -- outranks everything, then resolved outcomes, then DDHQ > BR.
     archive_enriched as (
         select
             a.gp_candidacy_stage_id,
@@ -415,134 +424,111 @@ with
             coalesce(a.gp_api_campaign_id, f.gp_api_campaign_id) as gp_api_campaign_id,
             coalesce(a.ddhq_candidate_id, f.ddhq_candidate_id) as ddhq_candidate_id,
             coalesce(a.ddhq_race_id, f.ddhq_race_id) as ddhq_race_id,
-            a.gp_person_id
+            a.gp_person_id,
+            f.gp_candidacy_stage_id as matched_foj_pk
         from archive_2025 as a
         left join
-            foj_best as f
+            foj_person_stage as f
             on a.gp_person_id = f.gp_person_id
             and a.election_stage_date = f.election_stage_date
             and a.election_stage = f.election_stage
-    ),
-
-    -- Person-stages already occupied by an archive row.
-    covered_pstages as (
-        select distinct gp_person_id, election_stage_date, election_stage
-        from archive_2025
-        where gp_person_id is not null
-    ),
-
-    -- <=2025 FOJ rows with no archive counterpart survive only with a valid
-    -- candidacy FK (drops orphan BR-only rows; keeps DDHQ / TS coverage).
-    foj_standalone as (
-        select f.*
-        from foj_archive_era as f
-        left join
-            covered_pstages as c
-            on f.gp_person_id = c.gp_person_id
-            and f.election_stage_date = c.election_stage_date
-            and f.election_stage = c.election_stage
-        where
-            c.gp_person_id is null
-            and f.gp_candidacy_id in (select gp_candidacy_id from valid_candidacy_ids)
-            and (
-                f.gp_election_stage_id is null
-                or f.gp_election_stage_id
-                in (select gp_election_stage_id from valid_election_stage_ids)
+        qualify
+            row_number() over (
+                partition by a.gp_candidacy_stage_id
+                order by
+                    (
+                        f.ddhq_race_id is not null and f.ddhq_race_id <=> a.ddhq_race_id
+                    ) desc,
+                    (f.election_result is not null) desc,
+                    array_contains(f.source_systems, 'ddhq') desc,
+                    array_contains(f.source_systems, 'ballotready') desc,
+                    f.gp_candidacy_stage_id
             )
+            = 1
+    ),
+
+    -- FOJ rows consumed as archive enrichment. Suppression is scoped to the
+    -- matched row (not the whole person-stage) so a same-day row for a
+    -- genuinely different office survives standalone.
+    consumed_foj as (
+        select distinct matched_foj_pk
+        from archive_enriched
+        where matched_foj_pk is not null
+    ),
+
+    -- Archive-uncovered <=2025 FOJ rows. Each adopts the first id trio with
+    -- valid FKs: merged coalesce, then TS, then DDHQ. No valid trio -> dropped
+    -- (BR-only rows; BR's <=2025 ids are not in the 2026-gated BR marts).
+    foj_standalone as (
+        select
+            f.* except (gp_candidacy_stage_id, gp_candidacy_id, gp_election_stage_id),
+            vc_o.gp_candidacy_id is not null
+            and (
+                f.gp_election_stage_id is null or ve_o.gp_election_stage_id is not null
+            ) as orig_valid,
+            vc_t.gp_candidacy_id is not null
+            and (
+                f.ts_gp_election_stage_id is null
+                or ve_t.gp_election_stage_id is not null
+            ) as ts_valid,
+            vc_d.gp_candidacy_id is not null
+            and (
+                f.ddhq_gp_election_stage_id is null
+                or ve_d.gp_election_stage_id is not null
+            ) as ddhq_valid,
+            case
+                when orig_valid
+                then f.gp_candidacy_stage_id
+                when ts_valid
+                then f.ts_gp_candidacy_stage_id
+                when ddhq_valid
+                then f.ddhq_gp_candidacy_stage_id
+            end as gp_candidacy_stage_id,
+            case
+                when orig_valid
+                then f.gp_candidacy_id
+                when ts_valid
+                then f.ts_gp_candidacy_id
+                when ddhq_valid
+                then f.ddhq_gp_candidacy_id
+            end as gp_candidacy_id,
+            case
+                when orig_valid
+                then f.gp_election_stage_id
+                when ts_valid
+                then f.ts_gp_election_stage_id
+                when ddhq_valid
+                then f.ddhq_gp_election_stage_id
+            end as gp_election_stage_id
+        from foj_archive_era as f
+        left join consumed_foj as cf on cf.matched_foj_pk = f.gp_candidacy_stage_id
+        left join
+            valid_candidacy_ids as vc_o on vc_o.gp_candidacy_id = f.gp_candidacy_id
+        left join
+            valid_election_stage_ids as ve_o
+            on ve_o.gp_election_stage_id = f.gp_election_stage_id
+        left join
+            valid_candidacy_ids as vc_t on vc_t.gp_candidacy_id = f.ts_gp_candidacy_id
+        left join
+            valid_election_stage_ids as ve_t
+            on ve_t.gp_election_stage_id = f.ts_gp_election_stage_id
+        left join
+            valid_candidacy_ids as vc_d on vc_d.gp_candidacy_id = f.ddhq_gp_candidacy_id
+        left join
+            valid_election_stage_ids as ve_d
+            on ve_d.gp_election_stage_id = f.ddhq_gp_election_stage_id
+        where cf.matched_foj_pk is null
     ),
 
     combined as (
-        select
-            gp_candidacy_stage_id,
-            gp_candidacy_id,
-            gp_election_stage_id,
-            candidate_name,
-            source_candidate_id,
-            source_race_id,
-            candidate_party,
-            is_winner,
-            election_result,
-            election_result_source,
-            match_confidence,
-            match_reasoning,
-            match_top_candidates,
-            has_match,
-            votes_received,
-            is_uncontested,
-            election_stage_date,
-            election_stage,
-            source_systems,
-            er_cluster_id,
-            br_candidacy_id,
-            ts_source_candidate_id,
-            gp_api_campaign_id,
-            ddhq_candidate_id,
-            ddhq_race_id,
-            gp_person_id,
-            created_at,
-            updated_at
+        select {{ out_cols | join(", ") }}
         from archive_enriched
         union all
-        select
-            gp_candidacy_stage_id,
-            gp_candidacy_id,
-            gp_election_stage_id,
-            candidate_name,
-            source_candidate_id,
-            source_race_id,
-            candidate_party,
-            is_winner,
-            election_result,
-            election_result_source,
-            match_confidence,
-            match_reasoning,
-            match_top_candidates,
-            has_match,
-            votes_received,
-            is_uncontested,
-            election_stage_date,
-            election_stage,
-            source_systems,
-            er_cluster_id,
-            br_candidacy_id,
-            ts_source_candidate_id,
-            gp_api_campaign_id,
-            ddhq_candidate_id,
-            ddhq_race_id,
-            gp_person_id,
-            created_at,
-            updated_at
+        select {{ out_cols | join(", ") }}
         from foj_standalone
+        where gp_candidacy_stage_id is not null
         union all
-        select
-            gp_candidacy_stage_id,
-            gp_candidacy_id,
-            gp_election_stage_id,
-            candidate_name,
-            source_candidate_id,
-            source_race_id,
-            candidate_party,
-            is_winner,
-            election_result,
-            election_result_source,
-            match_confidence,
-            match_reasoning,
-            match_top_candidates,
-            has_match,
-            votes_received,
-            is_uncontested,
-            election_stage_date,
-            election_stage,
-            source_systems,
-            er_cluster_id,
-            br_candidacy_id,
-            ts_source_candidate_id,
-            gp_api_campaign_id,
-            ddhq_candidate_id,
-            ddhq_race_id,
-            gp_person_id,
-            created_at,
-            updated_at
+        select {{ out_cols | join(", ") }}
         from foj_passthrough
     ),
 
