@@ -15,9 +15,7 @@
 with
     ts_stage_matches as (
         select
-            regexp_replace(
-                ts_cw.source_id, '__(primary|general|runoff)$', ''
-            ) as ts_source_candidate_id,
+            {{ strip_ts_stage_suffix("ts_cw.source_id") }} as ts_source_candidate_id,
             cast(ts_cw.election_date as date) as ts_stage_election_date,
             cast(null as bigint) as gp_api_campaign_id,
             cast(null as date) as gp_api_stage_election_date,
@@ -43,7 +41,7 @@ with
         qualify
             row_number() over (
                 partition by ts_source_candidate_id, ts_stage_election_date
-                order by br_updated_at desc
+                order by br_updated_at desc, canonical_gp_candidacy_id
             )
             = 1
     ),
@@ -78,7 +76,7 @@ with
         qualify
             row_number() over (
                 partition by gp_api_campaign_id, gp_api_stage_election_date
-                order by br_updated_at desc
+                order by br_updated_at desc, canonical_gp_candidacy_id
             )
             = 1
     ),
@@ -112,7 +110,8 @@ with
         where br_cw.source_name = 'ballotready' and ddhq_cw.source_name = 'ddhq'
         qualify
             row_number() over (
-                partition by ddhq_candidate_id, ddhq_race_id order by br_updated_at desc
+                partition by ddhq_candidate_id, ddhq_race_id
+                order by br_updated_at desc, canonical_gp_candidacy_id
             )
             = 1
     ),
@@ -139,9 +138,7 @@ with
         -- (source_candidate_id, election_date) but in different non-BR
         -- clusters keep one canonical, deterministically by min(cluster_id).
         select
-            regexp_replace(
-                cw.source_id, '__(primary|general|runoff)$', ''
-            ) as ts_source_candidate_id,
+            {{ strip_ts_stage_suffix("cw.source_id") }} as ts_source_candidate_id,
             cast(cw.election_date as date) as ts_stage_election_date,
             cast(null as bigint) as gp_api_campaign_id,
             cast(null as date) as gp_api_stage_election_date,
@@ -165,9 +162,9 @@ with
             -- Root cause is upstream: candidate_code is keyed on
             -- (first_name, last_name, state, city, office_type) and
             -- office_type='other' can't distinguish specialty districts in
-            -- the same city (e.g. Robert Emmons ME 2026-06-09: Wells Water
-            -- District General + Kennebunk Sewer District Primary both
-            -- collapse to the same stripped ts_source_candidate_id).
+            -- the same city (e.g. one candidate's water-district general and
+            -- sewer-district primary on the same date both collapse to the
+            -- same stripped ts_source_candidate_id).
             -- The BR-paired ts_stage_matches branch owns the canonical
             -- mapping; the TS-only candidacy still gets a row in
             -- mart_civics.candidacy via int__civics_candidacy_techspeed
@@ -179,7 +176,7 @@ with
                 from ts_stage_matches s
                 where
                     s.ts_source_candidate_id
-                    = regexp_replace(cw.source_id, '__(primary|general|runoff)$', '')
+                    = {{ strip_ts_stage_suffix("cw.source_id") }}
                     and s.ts_stage_election_date <=> cast(cw.election_date as date)
             )
         qualify

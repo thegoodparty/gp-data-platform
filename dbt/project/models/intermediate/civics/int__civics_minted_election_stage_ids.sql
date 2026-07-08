@@ -7,22 +7,37 @@
 -- first_seen_at reads staging only (never the election-stage prematch or the
 -- feeders): the BR feeder consumes this mint, so a prematch/feeder join here
 -- would be a dbt cycle. BR races carry a native created timestamp keyed by
--- br_race_id; TS/DDHQ election-stage keys are feeder-derived hashes, so their
--- first_seen_at is the source's first load time (deterministic, one value per
--- source).
+-- br_race_id (a race missing from staging ranks nulls-last); TS/DDHQ
+-- election-stage keys are feeder-derived hashes, so their first_seen_at is the
+-- source's pinned first-load time.
+--
+-- Known one-time churn: the live clustered table's TS/DDHQ source_ids are the
+-- feeders' pre-swap hash-derived ids. The next election-stage matcha run
+-- (phase 2) rewrites them, so vendor-minted clusters re-mint once at that
+-- transition. Expected relabel, not a regression.
 with
     br_race_created as (
         select cast(database_id as string) as br_race_id, created_at
         from {{ ref("stg_airbyte_source__ballotready_api_race") }}
     ),
 
+    -- least() pins the first-load anchor: both connectors re-sync in overwrite
+    -- mode, so a bare min(_airbyte_extracted_at) advances over time and could
+    -- flip a mixed cluster's minting member when the BR race's created_at
+    -- falls between loads. Pinned to the earliest observed load per source.
     ts_load_date as (
-        select min(_airbyte_extracted_at) as first_seen_at
+        select
+            least(
+                min(_airbyte_extracted_at), timestamp '2025-11-12 00:00:00'
+            ) as first_seen_at
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }}
     ),
 
     ddhq_load_date as (
-        select min(_airbyte_extracted_at) as first_seen_at
+        select
+            least(
+                min(_airbyte_extracted_at), timestamp '2026-07-02 00:00:00'
+            ) as first_seen_at
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
     ),
 
