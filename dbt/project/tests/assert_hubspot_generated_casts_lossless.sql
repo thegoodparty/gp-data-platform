@@ -4,10 +4,12 @@
 -- Sigma at query time) — the trade-off is that a malformed future HubSpot
 -- value becomes NULL silently. This test makes that loss loud: for every
 -- typed generated column, non-empty raw values must equal cast survivors.
--- Warn severity: one bad manually-entered HubSpot value should page nobody,
--- but it must surface in the run output for follow-up.
+-- Error severity on purpose: HubSpot enforces property types at entry, so
+-- real loss here means a format or schema drift (a property type changed,
+-- a datetime representation shifted) — exactly the class of change that
+-- must block a build rather than silently null a Sigma column.
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
-{{ config(severity="warn") }}
+{{ config(severity="error") }}
 
 {%- set typed = [] %}
 {%- for p in hubspot_generated_contact_properties() %}
