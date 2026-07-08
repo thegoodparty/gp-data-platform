@@ -84,9 +84,10 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     captured: dict = {}
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))  # no bastion in unit tests
     monkeypatch.setattr(step, "primary_key_for", lambda t: _PK)
     monkeypatch.setattr(step, "indexes_for", lambda t: _IDXS)
-    monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd: [])
+    monkeypatch.setattr(step, "_l2type_coverage", lambda cfg, rd, **_k: [])
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     monkeypatch.setattr(step, "STATES", ("CA", "TX"))

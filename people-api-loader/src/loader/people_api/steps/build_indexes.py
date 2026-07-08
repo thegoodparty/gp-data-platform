@@ -28,7 +28,7 @@ import psycopg
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, connect_prod
+from loader.people_api.db import connect_new, connect_prod, open_new_tunnel
 from loader.people_api.manifests import (
     IndexManifest,
     IndexSpec,
@@ -188,13 +188,15 @@ def _build_and_attach_child(conn: psycopg.Connection, item: tuple[IndexDef, str]
         log.info("indexes.child_built", name=idx.name, state=state, child=child)
 
 
-def _analyze(cfg: LoaderConfig, run_date: str) -> None:
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+def _analyze(cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None) -> None:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute('ANALYZE public."Voter"')
         log.info("indexes.analyzed", table=_TARGET_TABLE)
 
 
-def _l2type_coverage(cfg: LoaderConfig, run_date: str) -> list[str] | None:
+def _l2type_coverage(
+    cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None
+) -> list[str] | None:
     """l2Type values in prod org_districts not present as columns on Voter.
 
     Returns the missing list, or `None` when the check was skipped because
@@ -209,7 +211,7 @@ def _l2type_coverage(cfg: LoaderConfig, run_date: str) -> list[str] | None:
         log.warning("indexes.l2type.skip", error=str(e))
         return None
 
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema='public' AND table_name='Voter'"
@@ -245,11 +247,11 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
         """Run `fn(conn, item)` over items with a fixed pool of PERSISTENT connections, fail-fast.
 
-        Each worker opens ONE bastion tunnel + connection and reuses it for many items, so a
-        stage opens at most `parallelism` tunnels (held open for the stage), not one per item.
-        A fresh-tunnel-per-item pattern floods the bastion's sshd MaxStartups when the items are
-        many and individually fast — the ON ONLY parent creates are near-instant — which is what
-        failed the 20260708 run. On the first worker error the pool stops and re-raises it.
+        Each worker opens ONE connection and reuses it for many items. All connections share the
+        single bastion tunnel `fwd` (see `open_new_tunnel`), so the whole step makes exactly one
+        SSH handshake regardless of `parallelism` — a fresh tunnel per connection floods the
+        bastion's sshd MaxStartups (which failed the 20260708 runs). On the first worker error the
+        pool stops and re-raises it.
         """
         if not items:
             return
@@ -262,7 +264,7 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
 
         def _worker() -> None:
             try:
-                with connect_new(cfg, run_date) as conn:
+                with connect_new(cfg, run_date, forward=fwd) as conn:
                     with conn.cursor() as cur:
                         _apply_session(cur)
                     while not stop.is_set():
@@ -287,22 +289,26 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     unique_idxs = [i for i in idxs if i.unique]
     plain_idxs = [i for i in idxs if not i.unique]
 
-    # 1. Primary key(s) and the unique index: parent-level builds (few; fast/one-off).
-    _build_in_parallel(_add_primary_key, pks)
-    _build_in_parallel(_create_index, unique_idxs)
+    # One bastion tunnel for the whole step; every connection below multiplexes through it (see
+    # _build_in_parallel). `fwd` is None when no bastion is configured (direct connections).
+    with open_new_tunnel(cfg, run_date) as fwd:
+        # 1. Primary key(s) and the unique index: parent-level builds (few; fast/one-off).
+        _build_in_parallel(_add_primary_key, pks)
+        _build_in_parallel(_create_index, unique_idxs)
 
-    # 2. Plain indexes PER PARTITION (the bulk, and the whole bottleneck): first the empty parent
-    #    indexes (ON ONLY, instant), then the child index on each partition as an independent
-    #    (index, partition) unit across the pool, attached to its parent. Fine-grained scheduling
-    #    keeps every builder on useful small work instead of a serial 51-partition walk per index.
-    _build_in_parallel(_create_plain_parent_only, plain_idxs)
-    _build_in_parallel(_build_and_attach_child, [(i, s) for i in plain_idxs for s in STATES])
+        # 2. Plain indexes PER PARTITION (the bulk, and the whole bottleneck): first the empty
+        #    parent indexes (ON ONLY, instant), then the child index on each partition as an
+        #    independent (index, partition) unit across the pool, attached to its parent. Fine-
+        #    grained scheduling keeps every builder on useful small work instead of a serial
+        #    51-partition walk per index.
+        _build_in_parallel(_create_plain_parent_only, plain_idxs)
+        _build_in_parallel(_build_and_attach_child, [(i, s) for i in plain_idxs for s in STATES])
 
-    # 3. ANALYZE.
-    _analyze(cfg, run_date)
+        # 3. ANALYZE.
+        _analyze(cfg, run_date, forward=fwd)
 
-    # 4. l2Type coverage.
-    missing = _l2type_coverage(cfg, run_date)
+        # 4. l2Type coverage.
+        missing = _l2type_coverage(cfg, run_date, forward=fwd)
     if missing is None:
         log.warning("indexes.l2type.skipped", reason="org_districts unreachable")
     elif missing:
