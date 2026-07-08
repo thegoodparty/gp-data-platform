@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
+from queue import Empty, Queue
+from threading import Event, Lock, Thread
 
 import psycopg
 
@@ -41,11 +42,13 @@ from loader.people_api.schema.states import STATES
 
 log = get_logger(__name__)
 
-# Default concurrent CREATE INDEX builds. Peak memory is roughly parallelism *
-# maintenance_work_mem (8GB, set below), so 32 is about 256 GB -- sized for the
-# default db.r7g.16xlarge load instance (512 GiB). Lower it via the CLI
-# --parallelism flag for a smaller load instance to avoid OOM.
-_DEFAULT_BUILDERS = 32
+# Default number of concurrent builders. Each builder holds ONE persistent bastion tunnel +
+# connection for the whole stage (see `_build_in_parallel`), so this is also the peak count of
+# concurrent SSH sessions to the bastion. The bastion's sshd MaxStartups rejects a burst of
+# handshakes, so we cap at 8 — the same bastion-safe concurrency the copy step uses. Peak memory
+# is roughly parallelism * maintenance_work_mem (8GB, set below) = ~64 GB, well within the
+# db.r7g.16xlarge load instance (512 GiB). Raise/lower via the CLI --parallelism flag.
+_DEFAULT_BUILDERS = 8
 _TARGET_TABLE = "Voter"
 
 _BUILD_SESSION_SQL: tuple[str, ...] = (
@@ -72,11 +75,10 @@ def _rewrite_index_sql(sql: str) -> str:
     return sql
 
 
-def _add_primary_key(cfg: LoaderConfig, run_date: str, pk: PrimaryKey) -> None:
+def _add_primary_key(conn: psycopg.Connection, pk: PrimaryKey) -> None:
     cols = ", ".join(f'"{c}"' for c in pk.columns)
     sql = f'ALTER TABLE public."{pk.table}" ADD CONSTRAINT "{pk.constraint}" PRIMARY KEY ({cols})'
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        _apply_session(cur)
+    with conn.cursor() as cur:
         try:
             cur.execute(sql)  # ty: ignore[no-matching-overload]
             log.info("indexes.pk_added", table=pk.table, constraint=pk.constraint)
@@ -87,7 +89,7 @@ def _add_primary_key(cfg: LoaderConfig, run_date: str, pk: PrimaryKey) -> None:
             log.info("indexes.pk_exists", table=pk.table, constraint=pk.constraint)
 
 
-def _create_index(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
+def _create_index(conn: psycopg.Connection, idx: IndexDef) -> None:
     if idx.unique:
         # We rebuild a unique index from its parsed columns (to append the partition
         # key), requoting each as an identifier. Empty columns would silently emit a
@@ -122,8 +124,7 @@ def _create_index(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
         sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols}){where_clause}'
     else:
         sql = _rewrite_index_sql(idx.sql)
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        _apply_session(cur)
+    with conn.cursor() as cur:
         cur.execute(sql)  # ty: ignore[no-matching-overload]
         log.info("indexes.built", table=idx.table, name=idx.name, unique=idx.unique)
 
@@ -155,13 +156,12 @@ def _plain_child_sql(idx: IndexDef, state: str) -> tuple[str, str]:
     return child, sql
 
 
-def _create_plain_parent_only(cfg: LoaderConfig, run_date: str, idx: IndexDef) -> None:
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        _apply_session(cur)
+def _create_plain_parent_only(conn: psycopg.Connection, idx: IndexDef) -> None:
+    with conn.cursor() as cur:
         cur.execute(_plain_parent_only_sql(idx))  # ty: ignore[no-matching-overload]
 
 
-def _build_and_attach_child(cfg: LoaderConfig, run_date: str, item: tuple[IndexDef, str]) -> None:
+def _build_and_attach_child(conn: psycopg.Connection, item: tuple[IndexDef, str]) -> None:
     """Build one partition's child index and attach it to the parent partitioned index.
 
     Attach is idempotent: pg_inherits records the child under its parent index once attached, so a
@@ -169,8 +169,7 @@ def _build_and_attach_child(cfg: LoaderConfig, run_date: str, item: tuple[IndexD
     """
     idx, state = item
     child, child_sql = _plain_child_sql(idx, state)
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        _apply_session(cur)
+    with conn.cursor() as cur:
         cur.execute(child_sql)  # ty: ignore[no-matching-overload]
         cur.execute(
             "SELECT 1 FROM pg_inherits WHERE inhrelid = %s::regclass",
@@ -238,11 +237,46 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     ]
 
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
-        """Run `fn(cfg, run_date, item)` across items, fail-fast."""
-        with ThreadPoolExecutor(max_workers=parallelism) as executor:
-            futures = [executor.submit(fn, cfg, run_date, item) for item in items]
-            for fut in as_completed(futures):
-                fut.result()
+        """Run `fn(conn, item)` over items with a fixed pool of PERSISTENT connections, fail-fast.
+
+        Each worker opens ONE bastion tunnel + connection and reuses it for many items, so a
+        stage opens at most `parallelism` tunnels (held open for the stage), not one per item.
+        A fresh-tunnel-per-item pattern floods the bastion's sshd MaxStartups when the items are
+        many and individually fast — the ON ONLY parent creates are near-instant — which is what
+        failed the 20260708 run. On the first worker error the pool stops and re-raises it.
+        """
+        if not items:
+            return
+        work: Queue[object] = Queue()
+        for it in items:
+            work.put(it)
+        errors: list[BaseException] = []
+        errors_lock = Lock()
+        stop = Event()
+
+        def _worker() -> None:
+            try:
+                with connect_new(cfg, run_date) as conn:
+                    with conn.cursor() as cur:
+                        _apply_session(cur)
+                    while not stop.is_set():
+                        try:
+                            item = work.get_nowait()
+                        except Empty:
+                            return
+                        fn(conn, item)
+            except BaseException as e:  # record first error, stop the pool, re-raise after join
+                with errors_lock:
+                    errors.append(e)
+                stop.set()
+
+        threads = [Thread(target=_worker, name=f"idx-{i}") for i in range(min(parallelism, len(items)))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if errors:
+            raise errors[0]
 
     unique_idxs = [i for i in idxs if i.unique]
     plain_idxs = [i for i in idxs if not i.unique]

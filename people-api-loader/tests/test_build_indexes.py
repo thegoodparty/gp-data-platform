@@ -70,12 +70,11 @@ def test_plain_parent_only_and_child_sql() -> None:
     assert "ON ONLY" not in child_sql  # the child targets the leaf partition, not the parent
 
 
-def test_build_and_attach_child_skips_reattach_when_already_attached(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_and_attach_child_skips_reattach_when_already_attached() -> None:
     # pg_inherits returns a row => the child is already a partition of the parent index; a
     # partial-rerun must build (IF NOT EXISTS, no-op) but NOT re-issue ATTACH (which would error).
     conn = FakeConn().queue_result((1,))
-    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    step._build_and_attach_child(_CFG, "20260609", (_IDXS[1], "CA"))
+    step._build_and_attach_child(conn, (_IDXS[1], "CA"))
     sql = executed_sql(conn)
     assert any('"Voter_Active_idx_CA" ON public."Voter_CA"' in s for s in sql)
     assert not any("ATTACH PARTITION" in s for s in sql)
@@ -92,7 +91,9 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     monkeypatch.setattr(step, "STATES", ("CA", "TX"))
 
-    manifest = step.run(_CFG, "20260609")
+    # parallelism=1 keeps the persistent-connection pool single-threaded, so all stages run on the
+    # one shared FakeConn deterministically (no cross-thread races on its recorded-SQL list).
+    manifest = step.run(_CFG, "20260609", parallelism=1)
     sql = executed_sql(conn)
 
     # PK must include "State"
@@ -123,7 +124,6 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
 def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) -> None:
     # A partial unique index keeps its WHERE predicate (and gets State appended).
     conn = FakeConn()
-    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     idx = step.IndexDef(
         table="Voter",
         name="Voter_u_idx",
@@ -132,18 +132,17 @@ def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) ->
         columns=["LALVOTERID"],
         where='"x" IS NOT NULL',
     )
-    step._create_index(_CFG, "20260609", idx)
+    step._create_index(conn, idx)
     sql = " ".join(executed_sql(conn))
     assert 'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_u_idx"' in sql
     assert '("LALVOTERID", "State")' in sql
     assert 'WHERE "x" IS NOT NULL' in sql
 
 
-def test_create_index_unique_functional_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_index_unique_functional_raises() -> None:
     # A functional unique index can't be safely requoted from parsed columns with the
     # partition key — fail loudly instead of emitting invalid DDL.
     conn = FakeConn()
-    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     idx = step.IndexDef(
         table="Voter",
         name="Voter_fn_uniq",
@@ -153,19 +152,18 @@ def test_create_index_unique_functional_raises(monkeypatch: pytest.MonkeyPatch) 
         where=None,
     )
     with pytest.raises(RuntimeError, match="expression column"):
-        step._create_index(_CFG, "20260609", idx)
+        step._create_index(conn, idx)
 
 
-def test_create_index_unique_empty_columns_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_index_unique_empty_columns_raises() -> None:
     # A unique index with no parsed columns must NOT silently rebuild to UNIQUE("State") —
     # guards the extraction regression the seed once had (columns=[]).
     conn = FakeConn()
-    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     idx = step.IndexDef(
         table="Voter", name="Voter_LALVOTERID_key", sql="(unused)", unique=True, columns=[], where=None
     )
     with pytest.raises(RuntimeError, match="no parsed columns"):
-        step._create_index(_CFG, "20260609", idx)
+        step._create_index(conn, idx)
 
 
 def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -209,27 +207,19 @@ class _PKRaisingConn:
             raise self._exc
 
 
-def test_add_primary_key_swallows_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_primary_key_swallows_duplicate() -> None:
     # "constraint already exists" (DuplicateObject/42710) is the idempotency case.
     import psycopg
 
-    monkeypatch.setattr(
-        step, "connect_new", lambda *a, **k: _PKRaisingConn(psycopg.errors.DuplicateObject("exists"))
-    )
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
-    step._add_primary_key(_CFG, "20260609", pk)  # must not raise
+    step._add_primary_key(_PKRaisingConn(psycopg.errors.DuplicateObject("exists")), pk)  # must not raise
 
 
-def test_add_primary_key_propagates_invalid_definition(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_primary_key_propagates_invalid_definition() -> None:
     # InvalidTableDefinition (42P16) is a structural rejection, not idempotency — it must
     # propagate so we never record an un-created PK as added.
     import psycopg
 
-    monkeypatch.setattr(
-        step,
-        "connect_new",
-        lambda *a, **k: _PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl")),
-    )
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
     with pytest.raises(psycopg.errors.InvalidTableDefinition):
-        step._add_primary_key(_CFG, "20260609", pk)
+        step._add_primary_key(_PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl")), pk)
