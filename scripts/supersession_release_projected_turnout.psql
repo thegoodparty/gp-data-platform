@@ -22,6 +22,10 @@
 
 \set ON_ERROR_STOP on
 
+-- Assemble the backup table name once: adjacent interpolation like
+-- "Projected_Turnout_bak_":bak_suffix does NOT concatenate identifiers in SQL.
+\set bak_table 'Projected_Turnout_bak_' :bak_suffix
+
 -- ── Step 1: preflight - staging must be fresh and contain the new model version ─────────
 -- Fails (division by zero) if staging has no rows for the new model_version.
 SELECT 1 / count(*)
@@ -35,10 +39,12 @@ GROUP BY 1, 2, 3
 ORDER BY 1, 2, 3;
 
 -- ── Step 2: backup (rollback anchor) ─────────────────────────────────────────────────────
-CREATE TABLE :"db_schema"."Projected_Turnout_bak_":bak_suffix AS
+-- IF NOT EXISTS: lets an aborted run resume without re-snapshotting; the date
+-- suffix means a pre-existing table is today's own backup, never a stale one.
+CREATE TABLE IF NOT EXISTS :"db_schema".:"bak_table" AS
 SELECT * FROM :"db_schema"."Projected_Turnout";
 
-SELECT count(*) AS backup_rows FROM :"db_schema"."Projected_Turnout_bak_":bak_suffix;
+SELECT count(*) AS backup_rows FROM :"db_schema".:"bak_table";
 
 -- ── Step 3: scoped delete + in-transaction verification ─────────────────────────────────
 -- Owned pairs = (election_year, election_code) where staging carries the new model_version.
@@ -55,7 +61,9 @@ WITH owned_pairs AS (
 DELETE FROM :"db_schema"."Projected_Turnout" AS pt
 USING owned_pairs AS op
 WHERE pt.election_year = op.election_year
-  AND pt.election_code = op.election_code
+  -- live election_code is the "ElectionCode" enum, staging's is text; there is
+  -- no enum = text operator, and enum::text is total (never errors).
+  AND pt.election_code::text = op.election_code
   AND NOT EXISTS (
       SELECT 1
       FROM :"staging_schema"."Projected_Turnout" AS stg
@@ -84,7 +92,7 @@ FROM (
         FROM :"staging_schema"."Projected_Turnout"
         WHERE model_version = :'new_model_version'
     ) AS op
-      ON pt.election_year = op.election_year AND pt.election_code = op.election_code
+      ON pt.election_year = op.election_year AND pt.election_code::text = op.election_code
     LEFT JOIN :"staging_schema"."Projected_Turnout" AS stg ON stg.id::uuid = pt.id
     WHERE stg.id IS NULL
     LIMIT 1
@@ -100,10 +108,11 @@ ORDER BY 1, 2, 3;
 
 -- ── Rollback (only if something is wrong AFTER commit; the in-transaction checks above
 -- roll back automatically on failure) ────────────────────────────────────────────────────
+-- \set bak_table 'Projected_Turnout_bak_' :bak_suffix
 -- BEGIN;
 -- TRUNCATE :"db_schema"."Projected_Turnout";
--- INSERT INTO :"db_schema"."Projected_Turnout" SELECT * FROM :"db_schema"."Projected_Turnout_bak_":bak_suffix;
+-- INSERT INTO :"db_schema"."Projected_Turnout" SELECT * FROM :"db_schema".:"bak_table";
 -- COMMIT;
 --
 -- Cleanup after a soak period (a week is plenty):
--- DROP TABLE :"db_schema"."Projected_Turnout_bak_":bak_suffix;
+-- DROP TABLE :"db_schema".:"bak_table";
