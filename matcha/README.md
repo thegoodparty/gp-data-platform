@@ -45,6 +45,9 @@ uv run python -m scripts.cli match --entity-type elected_official --input input.
 uv run python -m scripts.cli match --entity-type election_stage --input input.csv
 ```
 
+Set `MATCHA_DUCKDB_MEMORY_LIMIT` (e.g. `12GB`) to cap DuckDB's memory for
+local runs; unset, DuckDB defaults to 80% of RAM.
+
 ### Docker (pre-built image)
 
 Authenticate Docker with GHCR using the GitHub CLI:
