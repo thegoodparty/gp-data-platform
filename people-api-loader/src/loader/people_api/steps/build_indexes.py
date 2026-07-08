@@ -42,13 +42,13 @@ from loader.people_api.schema.states import STATES
 
 log = get_logger(__name__)
 
-# Default number of concurrent builders. Each builder holds ONE persistent bastion tunnel +
-# connection for the whole stage (see `_build_in_parallel`), so this is also the peak count of
-# concurrent SSH sessions to the bastion. The bastion's sshd MaxStartups rejects a burst of
-# handshakes, so we cap at 8 — the same bastion-safe concurrency the copy step uses. Peak memory
-# is roughly parallelism * maintenance_work_mem (8GB, set below) = ~64 GB, well within the
-# db.r7g.16xlarge load instance (512 GiB). Raise/lower via the CLI --parallelism flag.
-_DEFAULT_BUILDERS = 8
+# Default number of concurrent builders. All builders share ONE bastion tunnel (see
+# `open_new_tunnel` + `_build_in_parallel`), so concurrency is bounded by the load instance, not
+# the bastion's sshd MaxStartups. Peak memory is roughly parallelism * maintenance_work_mem (8GB,
+# set below) = ~256 GB at 32, sized for the default db.r7g.16xlarge (512 GiB, 64 vCPU); 8-way
+# under-utilizes the cores (many small-partition child builds use ~1 worker each). 32 matches the
+# POC that hit ~12h on this hardware. Lower via the CLI --parallelism flag for a smaller instance.
+_DEFAULT_BUILDERS = 32
 _TARGET_TABLE = "Voter"
 
 _BUILD_SESSION_SQL: tuple[str, ...] = (
