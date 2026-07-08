@@ -361,9 +361,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district (matches HubSpot pattern).
+          Primary key. Canonical candidacy id via int__civics_er_canonical_ids
+          for clustered candidacies (cluster earliest-member mint); unmatched
+          candidacies self-mint from (candidate_code, election date).
         data_tests:
           - unique
           - not_null
@@ -507,18 +507,19 @@ models:
     description: >
       TechSpeed candidates transformed into civics mart candidate schema.
 
-      Grain: One row per unique person (deduplicated on identity fields).
+      Grain: One row per unique person (deduplicated on gp_candidate_id).
 
       Source: stg_airbyte_source__techspeed_gdrive_candidates
 
-      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
-      first_name, last_name, state, birth_date, email, phone_number
+      gp_candidate_id is the person id: min gp_person_id over the
+      stage-stripped candidate_code's clustered records, self-mint for codes
+      absent from ER (own-person semantics).
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, birth_date, email, phone_number.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint); self-mint from ('techspeed', candidate_code) when absent from ER.
         data_tests:
           - unique
           - not_null
@@ -921,14 +922,14 @@ models:
 
       Derived from int__civics_candidacy_stage_ddhq.
 
-      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
-      first_name, last_name, state (birth_date, email, phone are NULL for DDHQ).
+      gp_candidate_id is the person id from the stage model; cross-source
+      dedupe happens via shared person groups, not attribute hashes.
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, null, null, null.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint); self-mint per record when absent from ER (own-person semantics).
         data_tests:
           - unique
           - not_null
@@ -975,9 +976,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district.
+          Primary key. Canonical candidacy id via int__civics_er_canonical_ids
+          for clustered rows (cluster earliest-member mint); unmatched rows
+          share the candidacy group's min self-mint.
         data_tests:
           - unique
           - not_null
@@ -1156,8 +1157,8 @@ models:
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, birth_date (null), email, phone.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint), looked up via br_candidate_id; deterministic self-mint guard.
         data_tests:
           - unique
           - not_null
@@ -1215,9 +1216,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district.
+          Primary key. Candidacy-grain rollup of the stage-grain cluster mint:
+          min minted id over the candidacy's stages (mirrored in
+          int__civics_candidacy_stage_ballotready).
         data_tests:
           - unique
           - not_null
@@ -3410,11 +3411,21 @@ models:
         description: Candidacy-stage cluster the record belongs to.
         data_tests:
           - not_null
+      - name: first_seen_at
+        description: >
+          The member's own earliest-seen timestamp (prematch first, then keyed
+          native-created / pinned first-load fallbacks). Null means every
+          fallback missed; the member ranks last for minting.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
       - name: cluster_br_members
         description: >
           Count of ballotready members in the cluster. BR consumers only adopt
           the mint when this is 1, so matcher-merged duplicate BR records keep
-          distinct published ids (row-preserving).
+          distinct published ids (row-preserving). Guarded by the singular test
+          assert_multi_br_clusters_never_adopt_cluster_mint.
         data_tests:
           - not_null
       - name: minted_gp_candidacy_id
