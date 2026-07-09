@@ -29,7 +29,9 @@
 \if :{?bak_suffix}
 \else
 \warn 'ERROR: -v bak_suffix=<value> is required (e.g. bak_suffix=$(date +%Y%m%d))'
-\quit
+-- psql's \quit takes no status argument and always exits 0, so abort via a SQL
+-- error under ON_ERROR_STOP instead: exit code 3, detectable by shell wrappers.
+SELECT 1 / 0 AS missing_bak_suffix;
 \endif
 
 -- Assemble the backup table name once: adjacent interpolation like
