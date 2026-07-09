@@ -116,12 +116,12 @@ models:
                 min_value: 2024
                 max_value: 2035
       - name: election_code
-        description: "General or Local_or_Municipal (the only codes this model emits)."
+        description: "General, Local_or_Municipal, or Primary (the codes this model emits)."
         tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ["General", "Local_or_Municipal"]
+                values: ["General", "Local_or_Municipal", "Primary"]
       - name: state
         description: >
           State postal code. The full-nationwide set is asserted so a partial
