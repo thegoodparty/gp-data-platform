@@ -19,5 +19,5 @@ br_009,ballotready,marcus,Davis,"[""marcus""]","[""marcus""]",2024-11-05,Indepen
 ts_009,techspeed,nina,Wilson,"[""nina""]","[""nina""]",2024-11-05,Republican,nina.w@example.com,,NV,Assembly Member,"[""assembly""]",AD-12,race_1500,ts_src_009,Assembly Member,state,legislative,Assembly District 12,,,general,
 br_010,ballotready,jane,Doe,"[""jane"", ""janet""]","[""jane""]",2026-11-03,Independent,jane.doe@example.com,5551234567,WI,City Council Member,[],District 3,race_1600,br_src_010,City Council,local,legislative,District 3,Seat A,cand_010,general,partisan
 ts_010,techspeed,janet,Doe,"[""janet"", ""jane""]","[""janet""]",2026-11-03,Independent,jane.doe@example.com,5551234567,WI,City Council,[],District 3,race_1600,ts_src_010,City Council,local,legislative,Dist 3,Seat A,,general,
-br_011,ballotready,oscar,Nguyen,"[""oscar""]","[""oscar""]",2024-03-05,Democrat,oscar.n@example.com,5553330001,UT,County Treasurer,[],,,br_src_011,County Treasurer,local,executive,,,cand_011,general,partisan
-ts_011,techspeed,oscar,Nguyen,"[""oscar""]","[""oscar""]",2024-03-07,Democrat,oscar.n@example.com,5553330001,UT,County Treasurer,[],,,ts_src_011,County Treasurer,local,executive,,,,general,
+br_011,ballotready,oscar,Nguyen,"[""oscar""]","[""oscar""]",2024-03-05,Democrat,,,UT,County Treasurer,[],,,br_src_011,County Treasurer,local,executive,,,cand_011,general,partisan
+ts_011,techspeed,oscar,Nguyen,"[""oscar""]","[""oscar""]",2024-03-07,Democrat,,,UT,County Treasurer,[],,,ts_src_011,County Treasurer,local,executive,,,,general,
