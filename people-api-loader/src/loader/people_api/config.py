@@ -64,7 +64,10 @@ DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 # Load-phase instance. Prod is serverless, but we use provisioned for load
 # (see PLAN_LOADER.md "Provisioned-vs-Serverless"). Resize step flips this.
-DEFAULT_LOAD_INSTANCE_CLASS = "db.r7g.16xlarge"
+# build_indexes is cleanly CPU-bound (see steps/build_indexes.py) and scales with vCPU, so the
+# load phase runs on a large box (192 vCPU) and resizes down to serverless for serving. Override
+# per-env with LOADER_LOAD_INSTANCE_CLASS; keep _DEFAULT_BUILDERS in build_indexes.py in step.
+DEFAULT_LOAD_INSTANCE_CLASS = "db.r8g.48xlarge"
 DEFAULT_SERVE_MIN_ACU = 0.5
 DEFAULT_SERVE_MAX_ACU = 128.0
 DEFAULT_ENGINE_VERSION = "16.8"
