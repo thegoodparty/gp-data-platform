@@ -55,7 +55,15 @@ _TARGET_TABLE = "Voter"
 _BUILD_SESSION_SQL: tuple[str, ...] = (
     # 3 GB * up to 128 builders = ~384 GB, safe alongside the buffer pool on the 1.5 TiB r8g.48xl.
     "SET maintenance_work_mem = '3GB'",
-    "SET max_parallel_maintenance_workers = 8",
+    # Aurora defaults max_parallel_workers to ~vCPU/2 (=96 on the 192-vCPU index box), which caps
+    # the build at ~125 active backends and leaves ~67 cores idle (measured 2026-07-09). Raise the
+    # per-session pool ceiling so the tail (~33 leaders + parallel workers) fills the box.
+    # max_parallel_workers is a user-context GUC, so a per-session SET is honored; max_worker_processes
+    # is 384 (ample), so no reboot-class parameter change is needed.
+    "SET max_parallel_workers = 176",
+    # Widen per-build parallelism so the long-pole giant partition builds (common columns on
+    # CA/TX/FL/NY) spread wider and the absolute tail shrinks.
+    "SET max_parallel_maintenance_workers = 16",
     "SET statement_timeout = 0",
     "SET idle_in_transaction_session_timeout = 0",
 )

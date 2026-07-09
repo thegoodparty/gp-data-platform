@@ -30,6 +30,16 @@ _IDXS = [
 ]
 
 
+def test_build_session_sql_fills_the_box() -> None:
+    # The load box is db.r8g.48xlarge (192 vCPU). Aurora defaults max_parallel_workers to ~96
+    # (~vCPU/2), which caps the build at ~125 active backends and leaves ~67 cores idle. Raise the
+    # pool so the index build uses the box it pays for, and widen per-build maintenance workers so
+    # the long-pole giant partition builds spread wider.
+    sql = step._BUILD_SESSION_SQL
+    assert "SET max_parallel_workers = 176" in sql
+    assert "SET max_parallel_maintenance_workers = 16" in sql
+
+
 def test_rewrite_injects_if_not_exists() -> None:
     assert "CREATE INDEX IF NOT EXISTS" in step._rewrite_index_sql(
         'CREATE INDEX "x" ON public."Voter" ("Active");'
