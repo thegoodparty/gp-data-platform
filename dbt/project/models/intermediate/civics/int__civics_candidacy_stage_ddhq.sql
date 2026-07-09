@@ -1,12 +1,14 @@
 -- DDHQ election results → Civics mart candidacy_stage (base model).
 -- Grain: one row per candidacy stage (candidate + race), 1:1 with staging rows.
+-- All-time: <=2025 DDHQ rows flow through here and cascade to the DDHQ
+-- candidacy / election_stage / candidate intermediates (which source from this
+-- model), so their gp_* ids stay valid across the marts.
 with
     source as (
         select *
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
         where
-            election_date >= '2026-01-01'
-            and ddhq_race_id is not null
+            ddhq_race_id is not null
             and candidate_id is not null
             and candidate_first_name is not null
             and candidate_last_name is not null

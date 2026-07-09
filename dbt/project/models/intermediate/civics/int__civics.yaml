@@ -1074,6 +1074,9 @@ models:
               config:
                 warn_if: ">0"
                 error_if: ">100"
+                # 2026+ only: <=2025 DDHQ rows enrich the archive era rather than
+                # surfacing standalone, so their id is not a mart key.
+                where: "election_date >= '2026-01-01'"
 
       - name: source_race_id
         description: >
@@ -1091,6 +1094,9 @@ models:
               config:
                 warn_if: ">0"
                 error_if: ">100"
+                # 2026+ only: <=2025 DDHQ rows enrich the archive era rather than
+                # surfacing standalone, so their id is not a mart key.
+                where: "election_date >= '2026-01-01'"
 
       - name: election_result
         description: Result of the election stage (Won or Lost)
@@ -2442,10 +2448,14 @@ models:
         description: Foreign key to candidacy table
         data_tests:
           - not_null
+          # 2026+ only: <=2025 rows are emitted for candidacy_stage archive
+          # enrichment and carry BR ids absent from the 2026-gated BR candidacy.
           - relationships:
               arguments:
                 to: ref('int__civics_candidacy_ballotready')
                 field: gp_candidacy_id
+              config:
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
@@ -2457,6 +2467,7 @@ models:
                 field: gp_election_stage_id
               config:
                 error_if: ">=100"
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: br_candidacy_id
         description: >
@@ -2479,6 +2490,9 @@ models:
               config:
                 severity: warn
                 error_if: ">100"
+                # 2026+ only: <=2025 BR rows enrich the archive era rather than
+                # surfacing standalone, so their br_candidacy_id is not a mart PK.
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)
@@ -2504,8 +2518,14 @@ models:
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
-                min_value: "'2026-01-01'"
+                min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
+
+      - name: election_stage
+        description: >
+          Election stage derived from BallotReady is_primary / is_runoff.
+          BR S3 carries no 'special' variants, so only primary, general,
+          primary runoff, and general runoff appear.
 
       - name: created_at
         data_tests:

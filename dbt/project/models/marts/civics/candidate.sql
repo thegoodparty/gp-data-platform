@@ -155,10 +155,29 @@ with
         qualify
             row_number() over (partition by gp_candidate_id order by updated_at desc)
             = 1
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    -- Rollup of the person resolved on the candidate's candidacies (covers the
+    -- BR / DDHQ / TS grains). One person per candidate by construction.
+    candidacy_person as (
+        select gp_candidate_id, min(gp_person_id) as gp_person_id
+        from {{ ref("candidacy") }}
+        where gp_person_id is not null
+        group by gp_candidate_id
     )
 
 select
-    gp_candidate_id,
+    deduplicated.gp_candidate_id,
+    -- gp_person_id: min over the person reached by HubSpot contact,
+    -- prod_db user, and the candidate's candidacies.
+    array_min(
+        array_compact(array(hp.gp_person_id, gpp.gp_person_id, cp.gp_person_id))
+    ) as gp_person_id,
     hubspot_contact_id,
     prod_db_user_id,
     candidate_id_tier,
@@ -180,3 +199,10 @@ select
     updated_at
 
 from deduplicated
+left join
+    person_ids as hp
+    on hp.record_key = 'hubspot|' || cast(deduplicated.hubspot_contact_id as string)
+left join
+    person_ids as gpp
+    on gpp.record_key = 'gp_api|' || cast(deduplicated.prod_db_user_id as string)
+left join candidacy_person as cp on cp.gp_candidate_id = deduplicated.gp_candidate_id

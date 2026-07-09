@@ -14,6 +14,14 @@ models:
           - unique
           - not_null
 
+      - name: gp_person_id
+        description: Canonical person (FK to people.gp_person_id), via gp_api|user_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: email
         description: User's email address (primary contact, unique identifier)
 
@@ -426,6 +434,17 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the product campaign's user, and the
+          candidacy's stage rows.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: gp_candidate_id
         description: Foreign key to candidate table
@@ -841,6 +860,17 @@ models:
           - not_null
           - is_uuid
 
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the prod_db user, and the candidate's
+          candidacies.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: hubspot_contact_id
         description: >
           Contact ID from HubSpot CRM linking this candidate to a HubSpot
@@ -932,19 +962,37 @@ models:
 
   - name: candidacy_stage
     description: >
-      Candidacy stage mart. Union of 2025 HubSpot archive and 2026+ merged
-      BallotReady + TechSpeed + DDHQ + gp_api via Splink cluster_id-based
-      4-way FOJ. Each provider is wrapped with its cluster_id from
-      stg_er_source__clustered_candidacy_stages, then joined on
-      coalesce(cluster_id, 'self_' || gp_candidacy_stage_id).
+      Candidacy stage mart, in two eras.
 
-      Provider precedence (2026+ branch):
-        gp_api > BR > TS > DDHQ for candidate_name, source_candidate_id,
-          candidate_party, election_stage_date, created_at, updated_at.
-        DDHQ wins for results: is_winner, election_result,
-          election_result_source, votes_received, is_uncontested.
-        BR/TS only for match_confidence, match_reasoning,
-          match_top_candidates, has_match (LLM-match metadata).
+      2026+: 4-way Splink cluster_id-based FOJ over BallotReady + TechSpeed +
+      DDHQ + gp_api. Each provider is wrapped with its cluster_id from
+      stg_er_source__clustered_candidacy_stages, then joined on
+      coalesce(cluster_id, 'self_' || gp_candidacy_stage_id). Provider
+      precedence: gp_api > BR > TS > DDHQ for candidate_name,
+      source_candidate_id, candidate_party, election_stage_date, created_at,
+      updated_at; DDHQ wins for results (is_winner, election_result,
+      election_result_source, votes_received, is_uncontested); BR/TS only for
+      the LLM-match metadata (match_confidence, match_reasoning,
+      match_top_candidates, has_match).
+
+      <=2025: the HubSpot archive is the spine (the outcome authority for
+      pre-2026 races). BR / DDHQ / TS candidacy-stage rows pair with archive
+      rows on (gp_person_id, election_stage_date, election_stage) -- HubSpot is
+      not in candidacy-stage ER, so the person layer is the bridge -- and each
+      archive row takes its best-matching FOJ row (same DDHQ race first when
+      the archive has a DDHQ match, then resolved outcomes, then DDHQ > BR)
+      with HubSpot-first display precedence (HubSpot > DDHQ > BR > TS) on
+      candidate_name, is_winner, election_result, election_result_source.
+      Consumed FOJ rows are suppressed row-wise, so a same-day row for a
+      different office survives standalone. The era merge is contained to this
+      mart: the BR and DDHQ candidacy / election / election_stage / candidate
+      intermediates stay 2026-gated, so an archive-uncovered <=2025 FOJ row
+      survives standalone only by adopting the first per-provider id trio
+      (merged coalesce, then TS, then DDHQ) whose candidacy and election-stage
+      ids are real mart FKs -- today only TS-derived <=2025 ids qualify; BR- or
+      DDHQ-keyed rows enrich archive rows, ride a TS-keyed merged row, or drop.
+      Their standalone all-time expansion is a later PR. source_systems lists
+      every contributing source.
 
       Diagnostic columns (per-provider natural keys, populated only when
       that provider is in the cluster): br_candidacy_id,
@@ -958,6 +1006,20 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Resolved from the row's
+          native keys (br_candidacy_id -> BR person, ts_source_candidate_id,
+          ddhq keys, gp_api_campaign_id -> user) for FOJ rows, and from the
+          HubSpot contact for archive rows. Deterministic min when a row's
+          sources reach more than one person (a warn test tracks that). NULL for
+          <=2025 vendor rows not yet in the person universe (pre-swap).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: gp_candidacy_id
         description: Foreign key to candidacy table
@@ -1090,9 +1152,11 @@ models:
           column is renamed there only because the column name would shadow
           the mart name). Sourced directly from the 2025 archive int model
           (where it is intrinsic) and from the `election_stage` mart via
-          `gp_election_stage_id` on the 2026+ merged path. Available directly
-          on this mart so analysts asking stage-typed questions don't have to
-          join `election_stage`.
+          `gp_election_stage_id` on the merged path; <=2025 FOJ rows whose
+          BR-derived stage id is absent from `election_stage` fall back to the
+          provider-native stage (BR is_primary/is_runoff, DDHQ election_stage).
+          Available directly on this mart so analysts asking stage-typed
+          questions don't have to join `election_stage`.
         data_tests:
           - accepted_values:
               arguments:
@@ -1753,6 +1817,17 @@ models:
               config:
                 where: "gp_elected_official_id is not null"
 
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by br_candidate_id and the bridged gp_api_user_id. NULL for
+          vacancy terms.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: br_office_holder_id
         description: BallotReady term-level row PK (OfficeHolder.databaseId)
         data_tests:
@@ -2129,6 +2204,16 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by br_candidate_id, gp_api_user_id, and hubspot_contact_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: br_candidate_id
         description: |
