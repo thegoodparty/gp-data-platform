@@ -45,11 +45,11 @@ from loader.people_api.schema.states import STATES
 log = get_logger(__name__)
 
 # Default number of concurrent builders. All builders share ONE bastion tunnel (see
-# `open_new_tunnel` + `_build_in_parallel`), so concurrency is bounded by the load instance, not
+# `open_new_tunnel` + `_build_in_parallel`), so concurrency is bounded by the index instance, not
 # the bastion's sshd MaxStartups. build_indexes is cleanly CPU-bound (measured 2026-07-08:
 # pg_stat_activity showed all active backends running, zero IPC/LWLock waits), and most partitions
 # are small so each child build uses ~1 core — so throughput tracks the builder count up to the
-# vCPU count. 128 targets the ~192-vCPU db.r8g.48xlarge load instance. maintenance_work_mem is kept
+# vCPU count. 128 targets the ~192-vCPU db.r8g.48xlarge index instance. maintenance_work_mem is kept
 # modest (below) so builders * mem stays well under RAM; lower --parallelism for a smaller instance.
 _DEFAULT_BUILDERS = 128
 _TARGET_TABLE = "Voter"

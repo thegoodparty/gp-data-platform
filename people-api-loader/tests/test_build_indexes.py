@@ -105,6 +105,17 @@ def test_ensure_instance_class_retries_after_in_progress(monkeypatch: pytest.Mon
     assert len(modifies) == 2  # first raised the fault, settled, then re-issued
 
 
+def test_ensure_instance_class_reraises_other_client_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A non-InvalidDBInstanceStateFault error is a genuine bad state, not an in-progress modify:
+    # it must propagate, never be swallowed (which would let a misconfigured box look like success).
+    fake = _FakeRds(current_class="db.r8g.16xlarge", raise_once="InvalidParameterCombination")
+    monkeypatch.setattr(step, "rds", lambda cfg: fake)
+    with pytest.raises(ClientError):
+        step._ensure_instance_class(_scale_cfg(), "20260709")
+    # the tolerated-fault retry path was NOT taken: only the first modify was attempted
+    assert sum(1 for op, _ in fake.calls if op == "modify") == 1
+
+
 def test_build_session_sql_fills_the_box() -> None:
     # The load box is db.r8g.48xlarge (192 vCPU). Aurora defaults max_parallel_workers to ~96
     # (~vCPU/2), which caps the build at ~125 active backends and leaves ~67 cores idle. Raise the
