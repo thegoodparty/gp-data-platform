@@ -12,7 +12,7 @@ with
             id,
             body,
             issue,
-            `order`,
+            {{ adapter.quote("order") }},
             title,
             run_id,
             campaign_id,
