@@ -1,8 +1,9 @@
 -- Civics mart candidate table.
 -- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
--- joined on gp_candidate_id (matched providers adopt BR's canonical via
--- int__civics_er_canonical_ids). Per-column precedence rules: see the
--- candidate model description in m_civics.yaml.
+-- joined on gp_candidate_id. On 2026+ rows gp_candidate_id IS the person id
+-- (kept as an alias of gp_person_id; dropping the alias outright is a merge
+-- review call), so the FOJ merges by person; archive rows keep HubSpot-derived
+-- ids. Per-column precedence rules: see m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "hubspot_contact_id",
     "first_name",
@@ -85,10 +86,10 @@ with
         from {{ ref("int__civics_candidate_ddhq") }}
     ),
 
-    -- All four provider int models adopt BR's canonical gp_candidate_id via
-    -- int__civics_er_canonical_ids, so a 4-way full outer join on
-    -- gp_candidate_id auto-merges matched quadruples. Unmatched rows on any
-    -- side pass through with NULLs on absent providers.
+    -- All four provider int models emit the person id as gp_candidate_id,
+    -- so a 4-way full outer join on gp_candidate_id auto-merges matched
+    -- quadruples. Unmatched rows on any side pass through with NULLs on
+    -- absent providers.
     merged_since_2026 as (
         select
             coalesce(

@@ -424,8 +424,8 @@ models:
 
       Within-cluster merging across providers (including non-BR clusters like
       TS+gp_api or TS+DDHQ-only) is enforced by int__civics_er_canonical_ids,
-      which emits canonical gp_*_ids derived from cluster_id for non-BR
-      clusters.
+      which emits the cluster's earliest-member mint as the canonical
+      gp_candidacy_id for non-BR clusters.
 
     columns:
       - name: gp_candidacy_id
@@ -849,12 +849,16 @@ models:
 
       created_at semantics: see candidacy mart description.
 
-      Within-cluster merging across providers is enforced by
-      int__civics_er_canonical_ids (including non-BR clusters).
+      Cross-provider merging happens on gp_candidate_id itself: it is the
+      person id (person-group earliest-member mint), so provider rows for the
+      same person share the key by construction. 2025 archive rows keep their
+      HubSpot-derived ids (not cluster-backed).
 
     columns:
       - name: gp_candidate_id
-        description: Primary key - internally generated unique identifier for candidates
+        description: >
+          Primary key - the person's gp_person_id on 2026+ rows (kept as an
+          alias of gp_person_id); HubSpot-derived on 2025 archive rows.
         data_tests:
           - unique
           - not_null

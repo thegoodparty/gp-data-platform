@@ -1,6 +1,6 @@
 -- DDHQ candidate rows for the Civics mart (one row per person, deduped on
--- gp_candidate_id). UUID fields MUST match int__civics_candidate_2025 so the
--- same person from different sources gets the same gp_candidate_id.
+-- gp_candidate_id). gp_candidate_id is the person id from the stage model;
+-- cross-source dedupe happens via shared person groups, not attribute hashes.
 with
     -- 2026+ only; the stage model is all-time for candidacy_stage enrichment,
     -- but the candidate grain's all-time expansion is a later PR.

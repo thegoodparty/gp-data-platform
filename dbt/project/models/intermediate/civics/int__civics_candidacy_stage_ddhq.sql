@@ -95,10 +95,11 @@ with
             is_special
     ),
 
-    -- ER crosswalk: when Splink clustered this DDHQ row with a BR row, adopt
-    -- BR's canonical gp_* IDs so the mart's full outer join collapses
-    -- matched DDHQ + BR/TS pairs onto the same key. Pre-restricted to DDHQ
-    -- rows so we keep this lookup small.
+    -- ER crosswalk: when Splink clustered this DDHQ row, adopt the canonical
+    -- gp_* IDs (BR's cluster-derived ids on BR-anchored clusters, the cluster
+    -- mint on non-BR clusters) so the mart's full outer join collapses matched
+    -- rows onto the same key. Pre-restricted to DDHQ rows so we keep this
+    -- lookup small.
     canonical_ids as (
         select
             ddhq_candidate_id,
@@ -106,53 +107,73 @@ with
             canonical_gp_candidacy_stage_id,
             canonical_gp_election_stage_id,
             canonical_gp_candidacy_id,
-            canonical_gp_candidate_id,
             canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where ddhq_candidate_id is not null and ddhq_race_id is not null
     ),
 
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
     with_ids as (
         select
-            -- === Computed IDs (canonical from BR if Splink-matched, else hashed) ===
-            -- Lateral column refs let us derive gp_candidacy_stage_id from the
-            -- same-row gp_candidacy_id / gp_election_stage_id without a chained CTE.
+            -- === Computed IDs (canonical if Splink-matched, else self-mint) ===
+            -- gp_candidate_id is the person id. Records absent from ER (all
+            -- pre-2026 rows: the prematch is 2026-gated) self-mint from
+            -- candidate_id alone -- E7's within-source person key -- so one
+            -- person's multi-race rows share an id. Accepts DDHQ's ~1.5%
+            -- candidate_id reuse across people without E7's conflict guard;
+            -- the all-time ER expansion shrinks this population.
             coalesce(
-                xw.canonical_gp_candidate_id,
+                p.gp_person_id,
                 {{
                     generate_salted_uuid(
-                        fields=[
-                            "s.candidate_first_name",
-                            "s.candidate_last_name",
-                            "s.state_postal_code",
-                            "cast(null as string)",
-                            "cast(null as string)",
-                            "cast(null as string)",
-                        ]
+                        fields=["'ddhq'", "cast(s.candidate_id as string)"],
+                        salt="person",
                     )
                 }}
             ) as gp_candidate_id,
 
+            -- Unmatched rows share the candidacy group's min self-mint (the
+            -- window partition mirrors the candidacy_dates grain), so a
+            -- candidacy's unmatched stages still collapse to one candidacy row.
             coalesce(
                 xw.canonical_gp_candidacy_id,
-                {{
-                    generate_salted_uuid(
-                        fields=[
-                            "s.candidate_first_name",
-                            "s.candidate_last_name",
-                            "s.state_postal_code",
-                            "s.party_affiliation",
-                            "s.candidate_office",
-                            "cast(coalesce(cd.general_date, cd.primary_date, cd.general_runoff_date, cd.primary_runoff_date) as string)",
-                            "s.district",
-                        ]
-                    )
-                }}
+                min(
+                    {{
+                        generate_salted_uuid(
+                            fields=[
+                                "'ddhq'",
+                                "cast(s.candidate_id as string) || '_' || cast(s.ddhq_race_id as string)",
+                            ],
+                            salt="candidacy",
+                        )
+                    }}
+                ) over (
+                    partition by
+                        cd.candidate_first_name,
+                        cd.candidate_last_name,
+                        cd.state_postal_code,
+                        cd.party_affiliation,
+                        cd.candidate_office,
+                        cd.official_office_name,
+                        cd.office_level,
+                        cd.district,
+                        cd.election_year,
+                        cd.is_special
+                )
             ) as gp_candidacy_id,
 
             coalesce(
                 xw.canonical_gp_election_stage_id,
-                {{ generate_salted_uuid(fields=["cast(s.ddhq_race_id as string)"]) }}
+                {{
+                    generate_salted_uuid(
+                        fields=["'ddhq'", "cast(s.ddhq_race_id as string)"],
+                        salt="election_stage",
+                    )
+                }}
             ) as gp_election_stage_id,
 
             coalesce(
@@ -164,14 +185,7 @@ with
                 }}
             ) as gp_election_id,
 
-            coalesce(
-                xw.canonical_gp_candidacy_stage_id,
-                {{
-                    generate_salted_uuid(
-                        fields=["gp_candidacy_id", "gp_election_stage_id"]
-                    )
-                }}
-            ) as gp_candidacy_stage_id,
+            xw.canonical_gp_candidacy_stage_id,
 
             -- === Staging passthrough ===
             s.candidate as candidate_full_name,
@@ -262,11 +276,34 @@ with
             canonical_ids as xw
             on cast(s.candidate_id as bigint) = xw.ddhq_candidate_id
             and cast(s.ddhq_race_id as bigint) = xw.ddhq_race_id
+        left join
+            person_ids as p
+            on 'ddhq|'
+            || cast(s.candidate_id as string)
+            || '_'
+            || cast(s.ddhq_race_id as string)
+            = p.record_key
+    ),
+
+    -- Separate select: gp_candidacy_id is a window result above, so the PK
+    -- composition cannot lateral-reference it in the same block.
+    with_stage_pk as (
+        select
+            *,
+            coalesce(
+                canonical_gp_candidacy_stage_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["gp_candidacy_id", "gp_election_stage_id"]
+                    )
+                }}
+            ) as gp_candidacy_stage_id
+        from with_ids
     ),
 
     deduplicated as (
         select *
-        from with_ids
+        from with_stage_pk
         qualify
             row_number() over (
                 partition by gp_candidacy_stage_id order by _airbyte_extracted_at desc

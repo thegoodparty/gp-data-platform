@@ -90,17 +90,24 @@ with
         group by 1
     ),
 
-    -- Scalar last resorts: vendor records absent from staging entirely take
-    -- their source's min extract time.
+    -- least() pins the first-load anchor: the connectors re-sync in overwrite
+    -- mode, so a bare min(_airbyte_extracted_at) advances over time (same pins
+    -- as the candidacy/election-stage mints).
     ddhq_load_date as (
-        select min(_airbyte_extracted_at) as first_seen_at
+        select
+            least(
+                min(_airbyte_extracted_at), timestamp '2026-07-02 00:00:00'
+            ) as first_seen_at
         from {{ ref("stg_airbyte_source__ddhq_gdrive_election_results") }}
     ),
 
     -- No keyed variant for techspeed: its source_id embeds a generated
     -- candidate_code, so a keyed lookup would mean reconstructing the key.
     techspeed_load_date as (
-        select min(_airbyte_extracted_at) as first_seen_at
+        select
+            least(
+                min(_airbyte_extracted_at), timestamp '2025-11-12 00:00:00'
+            ) as first_seen_at
         from {{ ref("stg_airbyte_source__techspeed_gdrive_candidates") }}
     ),
 
