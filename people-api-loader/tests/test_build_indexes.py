@@ -44,17 +44,39 @@ class _FakeWaiter:
 
 
 class _FakeRds:
-    """RDS double for the scale-up: records modify calls, can raise a one-shot in-progress fault."""
+    """RDS double for the scale-up: records modify calls, can raise a one-shot in-progress fault.
 
-    def __init__(self, current_class: str, *, raise_once: str | None = None) -> None:
+    `describe_db_instances` returns items from `describe_sequence` in order, holding on the last
+    item once exhausted (mirrors a real poll settling and staying settled). Defaults to a single
+    steady state (available, `current_class`, no pending) built from `current_class` so callers
+    that don't care about the poll sequence (e.g. the no-op test) are unaffected.
+    """
+
+    def __init__(
+        self,
+        current_class: str,
+        *,
+        raise_once: str | None = None,
+        describe_sequence: list[dict] | None = None,
+    ) -> None:
         self.current_class = current_class
         self.calls: list[tuple[str, dict]] = []
         self._raise_once = raise_once  # ClientError code to raise on the first modify, then clear
         self._raised = False
+        self._describe_sequence = describe_sequence or [
+            {
+                "DBInstanceClass": current_class,
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            }
+        ]
+        self._describe_calls = 0
 
     def describe_db_instances(self, **kw: object) -> dict:
         self.calls.append(("describe", dict(kw)))
-        return {"DBInstances": [{"DBInstanceClass": self.current_class}]}
+        idx = min(self._describe_calls, len(self._describe_sequence) - 1)
+        self._describe_calls += 1
+        return {"DBInstances": [self._describe_sequence[idx]]}
 
     def modify_db_instance(self, **kw: object) -> None:
         self.calls.append(("modify", dict(kw)))
@@ -81,7 +103,24 @@ def _scale_cfg() -> LoaderConfig:
 
 
 def test_ensure_instance_class_scales_up_when_smaller(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _FakeRds(current_class="db.r8g.16xlarge")
+    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
+    fake = _FakeRds(
+        current_class="db.r8g.16xlarge",
+        describe_sequence=[
+            # initial current-class check
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+            # _wait_class_applied poll: settled on the target class
+            {
+                "DBInstanceClass": "db.r8g.48xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+        ],
+    )
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
     step._ensure_instance_class(_scale_cfg(), "20260709")
     modify = dict(fake.calls)["modify"]
@@ -91,6 +130,7 @@ def test_ensure_instance_class_scales_up_when_smaller(monkeypatch: pytest.Monkey
 
 
 def test_ensure_instance_class_noop_when_already_index_class(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(current_class="db.r8g.48xlarge")
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
     step._ensure_instance_class(_scale_cfg(), "20260709")
@@ -98,7 +138,25 @@ def test_ensure_instance_class_noop_when_already_index_class(monkeypatch: pytest
 
 
 def test_ensure_instance_class_retries_after_in_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _FakeRds(current_class="db.r8g.16xlarge", raise_once="InvalidDBInstanceStateFault")
+    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
+    fake = _FakeRds(
+        current_class="db.r8g.16xlarge",
+        raise_once="InvalidDBInstanceStateFault",
+        describe_sequence=[
+            # initial current-class check
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+            # _wait_class_applied poll (after the fault settles and the modify is re-issued): settled
+            {
+                "DBInstanceClass": "db.r8g.48xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+        ],
+    )
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
     step._ensure_instance_class(_scale_cfg(), "20260709")
     modifies = [kw for op, kw in fake.calls if op == "modify"]
@@ -108,12 +166,49 @@ def test_ensure_instance_class_retries_after_in_progress(monkeypatch: pytest.Mon
 def test_ensure_instance_class_reraises_other_client_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # A non-InvalidDBInstanceStateFault error is a genuine bad state, not an in-progress modify:
     # it must propagate, never be swallowed (which would let a misconfigured box look like success).
+    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(current_class="db.r8g.16xlarge", raise_once="InvalidParameterCombination")
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
     with pytest.raises(ClientError):
         step._ensure_instance_class(_scale_cfg(), "20260709")
     # the tolerated-fault retry path was NOT taken: only the first modify was attempted
     assert sum(1 for op, _ in fake.calls if op == "modify") == 1
+
+
+def test_ensure_instance_class_waits_until_class_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Aurora keeps reporting the instance 'available' for a few seconds after modify_db_instance
+    # before it flips to 'modifying' and reboots. Assert we ride through that stale-available /
+    # pending-modify state and only return once the poll observes the settled, applied class.
+    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
+    fake = _FakeRds(
+        current_class="db.r8g.16xlarge",
+        describe_sequence=[
+            # initial current-class check
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+            # first poll: modify has been issued but not yet applied
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "modifying",
+                "PendingModifiedValues": {"DBInstanceClass": "db.r8g.48xlarge"},
+            },
+            # second poll: settled on the target class
+            {
+                "DBInstanceClass": "db.r8g.48xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+        ],
+    )
+    monkeypatch.setattr(step, "rds", lambda cfg: fake)
+    step._ensure_instance_class(_scale_cfg(), "20260709")
+    assert sum(1 for op, _ in fake.calls if op == "modify") == 1
+    describe_calls = sum(1 for op, _ in fake.calls if op == "describe")
+    # initial check + at least two polls (the not-yet-applied state, then the settled state)
+    assert describe_calls >= 3
 
 
 def test_build_session_sql_fills_the_box() -> None:
