@@ -193,8 +193,17 @@ with
 
     election_stages as (
         select
+            -- Matched races adopt BR's cluster-minted stage id via the
+            -- crosswalk; unmatched races self-mint from the TS natural key
+            -- (single-member cluster semantics).
             coalesce(
-                canonical_gp_election_stage_id, {{ generate_ts_gp_election_stage_id() }}
+                canonical_gp_election_stage_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["'techspeed'", generate_ts_election_stage_key()],
+                        salt="election_stage",
+                    )
+                }}
             ) as gp_election_stage_id,
 
             coalesce(

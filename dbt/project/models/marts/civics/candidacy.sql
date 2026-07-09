@@ -1,8 +1,8 @@
 -- Civics mart candidacy table.
 -- 2025 HubSpot archive UNION 2026+ 4-way FOJ over BR + TS + DDHQ + gp_api,
--- joined on gp_candidacy_id (matched providers adopt BR's canonical via
--- int__civics_er_canonical_ids). Per-column precedence rules: see the
--- candidacy model description in m_civics.yaml.
+-- joined on gp_candidacy_id (cluster earliest-member mint; matched providers
+-- adopt the canonical via int__civics_er_canonical_ids). Per-column precedence
+-- rules: see the candidacy model description in m_civics.yaml.
 {%- set gp_api_wins_cols = [
     "hubspot_contact_id",
     "candidate_id_source",
@@ -73,9 +73,9 @@ with
     ),
 
     -- Four-way FOJ. TS / DDHQ / gp_api int models all remap clustered rows
-    -- to BR's gp_candidacy_id via int__civics_er_canonical_ids, so a FOJ on
-    -- gp_candidacy_id auto-merges matched quadruples. Unmatched rows on any
-    -- side pass through with NULLs on absent providers.
+    -- to the canonical gp_candidacy_id via int__civics_er_canonical_ids, so a
+    -- FOJ on gp_candidacy_id auto-merges matched quadruples. Unmatched rows
+    -- on any side pass through with NULLs on absent providers.
     merged_since_2026 as (
         select
             coalesce(
@@ -314,10 +314,37 @@ with
                     updated_at desc nulls last
             )
             = 1
+    ),
+
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+    ),
+
+    campaign_user as (
+        select
+            cast(campaign_id as string) as campaign_id,
+            cast(user_id as string) as user_id
+        from {{ ref("campaigns") }}
+        where is_latest_version and user_id is not null
+    ),
+
+    -- Rollup of the person resolved on the candidacy's stage rows (covers
+    -- BR / DDHQ / TS grains). One person per candidacy by construction.
+    stage_person as (
+        select gp_candidacy_id, min(gp_person_id) as gp_person_id
+        from {{ ref("candidacy_stage") }}
+        where gp_person_id is not null
+        group by gp_candidacy_id
     )
 
 select
     deduplicated.gp_candidacy_id,
+    -- gp_person_id: min over the person reached by HubSpot contact, product
+    -- campaign -> user, and the candidacy's stage rows.
+    array_min(
+        array_compact(array(hp.gp_person_id, gpp.gp_person_id, sp.gp_person_id))
+    ) as gp_person_id,
     deduplicated.gp_candidate_id,
     deduplicated.gp_election_id,
     deduplicated.product_campaign_id,
@@ -399,3 +426,11 @@ left join
 left join
     latest_stage_per_candidacy as latest
     on deduplicated.gp_candidacy_id = latest.gp_candidacy_id
+left join
+    person_ids as hp
+    on hp.record_key = 'hubspot|' || cast(deduplicated.hubspot_contact_id as string)
+left join
+    campaign_user as cu
+    on cu.campaign_id = cast(deduplicated.product_campaign_id as string)
+left join person_ids as gpp on gpp.record_key = 'gp_api|' || cu.user_id
+left join stage_person as sp on sp.gp_candidacy_id = deduplicated.gp_candidacy_id

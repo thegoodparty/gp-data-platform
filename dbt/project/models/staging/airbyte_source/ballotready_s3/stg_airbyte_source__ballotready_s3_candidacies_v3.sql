@@ -52,7 +52,7 @@ with
             nullif(election_result, '') as election_result,
             cast(number_of_seats as int) as number_of_seats,
             _ab_source_file_url,
-            candidacy_created_at,
+            cast(candidacy_created_at as timestamp) as candidacy_created_at,
             candidacy_updated_at,
             {{ cast_to_boolean("geofence_is_not_exact") }} as geofence_is_not_exact,
             normalized_position_id as br_normalized_position_id,

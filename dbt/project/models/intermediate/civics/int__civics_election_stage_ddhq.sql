@@ -1,7 +1,13 @@
 -- DDHQ election_stage rows for the Civics mart, aggregated from candidate-level
 -- candidacy_stage rows to one row per DDHQ race.
 with
-    source as (select * from {{ ref("int__civics_candidacy_stage_ddhq") }}),
+    -- 2026+ only; the stage model is all-time for candidacy_stage enrichment,
+    -- but the election_stage grain's all-time expansion is a later PR.
+    source as (
+        select *
+        from {{ ref("int__civics_candidacy_stage_ddhq") }}
+        where election_date >= '2026-01-01'
+    ),
 
     election_stages as (
         select

@@ -102,7 +102,11 @@ with
                 regexp_extract(br.position_name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name,
-            br.partisan_type
+            br.partisan_type,
+            -- Native BR candidacy creation timestamp; seeds the candidacy-stage
+            -- mint's earliest-member rule. The person mint uses a different
+            -- (br_candidate_id) grain, so it recomputes its own first_seen_at.
+            br.candidacy_created_at as first_seen_at
         from br_with_office as br
     ),
 
@@ -175,7 +179,18 @@ with
             ts.official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
+            cast(null as string) as partisan_type,
+            -- Earliest processing date across all delivery rows for this
+            -- candidate-stage (windows evaluate before qualify), so the value
+            -- is deterministic whichever duplicate the dedupe keeps. Airbyte
+            -- extract fills gaps where date_processed did not parse. Feeds the
+            -- person mint.
+            min(
+                coalesce(
+                    cast(ts.date_processed_date as timestamp), ts._airbyte_extracted_at
+                )
+            ) over (partition by ts.techspeed_candidate_code, ts.election_stage)
+            as first_seen_at
         from ts_with_stage as ts
         -- Dedupe: staging is not deduplicated, keep first appearance per
         -- candidate-stage to avoid duplicate source_ids
@@ -242,7 +257,10 @@ with
             d.official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
+            cast(null as string) as partisan_type,
+            -- DDHQ has no native created field; the single master CSV shares one
+            -- extract time, so this is deterministic and full-refresh safe.
+            d._airbyte_extracted_at as first_seen_at
         from ddhq_staging as d
     ),
 
@@ -347,7 +365,10 @@ with
             trim(g.campaign_office) as official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
+            cast(null as string) as partisan_type,
+            -- Native campaign creation timestamp (candidacy grain); seeds the
+            -- candidacy-stage mint. The person mint uses the user's created_at.
+            g.created_at as first_seen_at
         from gp_api_with_office as g
     ),
 
@@ -418,7 +439,8 @@ select
     {{ office_name_tokens("official_office_name") }} as official_office_name_tokens,
     nullif(br_candidacy_id, '') as br_candidacy_id,
     nullif(seat_name, '') as seat_name,
-    partisan_type
+    partisan_type,
+    u.first_seen_at
 from unioned as u
 left join
     nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1

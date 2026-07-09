@@ -5,6 +5,14 @@
 with
     race as (select * from {{ ref("stg_airbyte_source__ballotready_api_race") }}),
 
+    -- Cluster-minted id for races that went through election-stage ER;
+    -- unclustered races self-mint from br_race_id (single-member semantics).
+    br_minted as (
+        select source_id as br_race_id, minted_gp_election_stage_id
+        from {{ ref("int__civics_minted_election_stage_ids") }}
+        where source_name = 'ballotready' and cluster_br_members = 1
+    ),
+
     br_election as (
         select *
         from {{ ref("stg_airbyte_source__ballotready_api_election") }}
@@ -107,8 +115,18 @@ with
 
     election_stages as (
         select
-            {{ generate_salted_uuid(fields=["races_with_fields.database_id"]) }}
-            as gp_election_stage_id,
+            coalesce(
+                br_minted.minted_gp_election_stage_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "'ballotready'",
+                            "cast(races_with_fields.database_id as string)",
+                        ],
+                        salt="election_stage",
+                    )
+                }}
+            ) as gp_election_stage_id,
 
             -- gp_election_id needs the general election date, not the stage
             -- date. is_special differentiates special from regular elections
@@ -197,6 +215,9 @@ with
             races_with_fields.updated_at as updated_at
 
         from races_with_fields
+        left join
+            br_minted
+            on cast(races_with_fields.database_id as string) = br_minted.br_race_id
         left join
             general_election_dates as ged
             on races_with_fields.br_position_database_id = ged.br_position_database_id

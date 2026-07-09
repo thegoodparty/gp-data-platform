@@ -43,13 +43,10 @@ with
             -- Alias for generate_gp_election_id macro compatibility
             ts.state_postal_code as state,
             cast(null as string) as seat_name,
-            -- ID-generation macros (generate_ts_gp_candidacy_id, etc.) hash
-            -- off these *_parsed columns. To keep UUIDs stable for existing
-            -- rows, ONLY substitute BR fallback dates when the TS row has
-            -- neither a primary nor a general parsed date — otherwise pass
-            -- the TS values through unchanged. Rows with at least one TS
-            -- date keep their original hash; rows with neither (previously
-            -- filtered out) get a deterministic BR-derived hash.
+            -- The candidacy self-mint hashes off these *_parsed columns. To
+            -- keep ids stable for existing rows, ONLY substitute BR fallback
+            -- dates when the TS row has neither a primary nor a general
+            -- parsed date — otherwise pass the TS values through unchanged.
             case
                 when
                     ts.primary_election_date_parsed is not null
@@ -89,23 +86,20 @@ with
             br_election_dates as bed on brp.br_gp_election_id = bed.br_gp_election_id
     ),
 
-    -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical gp_* IDs.
-    -- Deduped to one row per source_candidate_id — all stages of a matched
-    -- candidacy share the same BR candidacy/candidate/election IDs.
+    -- ER crosswalk: for clustered TS candidacies, adopt the canonical
+    -- candidacy/election ids (BR's rolled mint for BR-anchored clusters, the
+    -- cluster mint for non-BR clusters). Deduped to one row per
+    -- source_candidate_id — all stages of a matched candidacy share ids.
     canonical_candidacy as (
-        -- When a ts_source_candidate_id has both a BR-anchored
-        -- row (from ts_stage_matches) and a non-BR row (from
-        -- non_br_cluster_matches) in the crosswalk, prefer BR. Without the
-        -- explicit BR-priority order, the UUID tiebreak picks arbitrarily
-        -- and ~64 TS candidates were adopting non-BR canonicals despite
-        -- having a BR match. canonical_gp_election_id is NULL for non-BR
-        -- cluster rows and populated for BR-anchored rows, so it works as
-        -- the priority signal across all 5 TS provider intermediates.
+        -- When a ts_source_candidate_id has both a BR-anchored row and a
+        -- non-BR row in the crosswalk, prefer BR. Without the explicit
+        -- BR-priority order, the UUID tiebreak picks arbitrarily and ~64 TS
+        -- candidates were adopting non-BR canonicals despite having a BR
+        -- match. canonical_gp_election_id is NULL for non-BR cluster rows and
+        -- populated for BR-anchored rows, so it works as the priority signal
+        -- across all 5 TS provider intermediates.
         select
-            ts_source_candidate_id,
-            canonical_gp_candidacy_id,
-            canonical_gp_candidate_id,
-            canonical_gp_election_id
+            ts_source_candidate_id, canonical_gp_candidacy_id, canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
         qualify
             row_number() over (
@@ -115,36 +109,60 @@ with
             = 1
     ),
 
+    -- gp_person_id per stage-stripped candidate_code. Cluster-linked TS
+    -- records share the BR/gp_api person's group by construction, so this
+    -- subsumes the old adopt-BR candidate cascade; codes absent from ER
+    -- self-mint below (own-person semantics). Must match
+    -- int__civics_candidate_techspeed.
+    ts_person as (
+        select
+            {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
+            as ts_source_candidate_id,
+            min(gp_person_id) as gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+        where source_name = 'techspeed'
+        group by 1
+    ),
+
     viability_scoring as (
         select techspeed_candidate_code, viability_rating_2_0, score_viability_automated
         from {{ ref("int__techspeed_viability_scoring") }}
     ),
 
     candidacies as (
-        -- gp_candidate_id and gp_election_id use WINDOW propagation so all raw
-        -- rows of the same person/election adopt BR's canonical if ANY candidacy
-        -- of that person/election was matched — matching the propagation used
-        -- in int__civics_candidate_techspeed and int__civics_election_techspeed
-        -- (required for FK relationships to hold).
-        -- gp_candidacy_id is per-row (each candidacy matches its own xw entry).
-        --
-        -- gp_election_id falls back to source.br_gp_election_id (when TS's
-        -- br_race_id matches a BR election) before the TS-derived hash, so
-        -- TS-only candidacies that share a BR election adopt the BR-side id.
-        -- Mirrored in int__civics_election_techspeed and
-        -- int__civics_election_stage_techspeed for end-to-end alignment.
+        -- gp_election_id uses WINDOW propagation so all raw rows of the same
+        -- election adopt BR's canonical if ANY candidacy of that election was
+        -- matched — matching int__civics_election_techspeed (required for FK
+        -- relationships to hold). It falls back to source.br_gp_election_id
+        -- (when TS's br_race_id matches a BR election) before the TS-derived
+        -- hash. gp_candidacy_id is per-row (each candidacy matches its own xw
+        -- entry); unmatched candidacies self-mint from (code, election date) —
+        -- must match int__civics_candidacy_stage_techspeed.
         select
             coalesce(
-                xw.canonical_gp_candidacy_id, {{ generate_ts_gp_candidacy_id() }}
+                xw.canonical_gp_candidacy_id,
+                {{
+                    generate_salted_uuid(
+                        fields=[
+                            "'techspeed'",
+                            "source.techspeed_candidate_code",
+                            "cast(coalesce(general_election_date_parsed, primary_election_date_parsed) as string)",
+                        ],
+                        salt="candidacy",
+                    )
+                }}
             ) as gp_candidacy_id,
 
             cast(null as string) as br_candidacy_id,
 
             coalesce(
-                max(xw.canonical_gp_candidate_id) over (
-                    partition by {{ generate_ts_gp_candidate_id() }}
-                ),
-                {{ generate_ts_gp_candidate_id() }}
+                tp.gp_person_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["'techspeed'", "source.techspeed_candidate_code"],
+                        salt="person",
+                    )
+                }}
             ) as gp_candidate_id,
 
             coalesce(
@@ -202,6 +220,9 @@ with
         left join
             canonical_candidacy as xw
             on source.techspeed_candidate_code = xw.ts_source_candidate_id
+        left join
+            ts_person as tp
+            on source.techspeed_candidate_code = tp.ts_source_candidate_id
         left join
             viability_scoring as vs
             on source.techspeed_candidate_code = vs.techspeed_candidate_code

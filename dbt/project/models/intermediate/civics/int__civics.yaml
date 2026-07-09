@@ -361,9 +361,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district (matches HubSpot pattern).
+          Primary key. Canonical candidacy id via int__civics_er_canonical_ids
+          for clustered candidacies (cluster earliest-member mint); unmatched
+          candidacies self-mint from (candidate_code, election date).
         data_tests:
           - unique
           - not_null
@@ -507,18 +507,19 @@ models:
     description: >
       TechSpeed candidates transformed into civics mart candidate schema.
 
-      Grain: One row per unique person (deduplicated on identity fields).
+      Grain: One row per unique person (deduplicated on gp_candidate_id).
 
       Source: stg_airbyte_source__techspeed_gdrive_candidates
 
-      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
-      first_name, last_name, state, birth_date, email, phone_number
+      gp_candidate_id is the person id: min gp_person_id over the
+      stage-stripped candidate_code's clustered records, self-mint for codes
+      absent from ER (own-person semantics).
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, birth_date, email, phone_number.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint); self-mint from ('techspeed', candidate_code) when absent from ER.
         data_tests:
           - unique
           - not_null
@@ -921,14 +922,14 @@ models:
 
       Derived from int__civics_candidacy_stage_ddhq.
 
-      UUID fields aligned with int__civics_candidate_2025 for cross-source consistency:
-      first_name, last_name, state (birth_date, email, phone are NULL for DDHQ).
+      gp_candidate_id is the person id from the stage model; cross-source
+      dedupe happens via shared person groups, not attribute hashes.
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, null, null, null.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint); self-mint per record when absent from ER (own-person semantics).
         data_tests:
           - unique
           - not_null
@@ -975,9 +976,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district.
+          Primary key. Canonical candidacy id via int__civics_er_canonical_ids
+          for clustered rows (cluster earliest-member mint); unmatched rows
+          share the candidacy group's min self-mint.
         data_tests:
           - unique
           - not_null
@@ -1074,6 +1075,9 @@ models:
               config:
                 warn_if: ">0"
                 error_if: ">100"
+                # 2026+ only: <=2025 DDHQ rows enrich the archive era rather than
+                # surfacing standalone, so their id is not a mart key.
+                where: "election_date >= '2026-01-01'"
 
       - name: source_race_id
         description: >
@@ -1091,6 +1095,9 @@ models:
               config:
                 warn_if: ">0"
                 error_if: ">100"
+                # 2026+ only: <=2025 DDHQ rows enrich the archive era rather than
+                # surfacing standalone, so their id is not a mart key.
+                where: "election_date >= '2026-01-01'"
 
       - name: election_result
         description: Result of the election stage (Won or Lost)
@@ -1150,8 +1157,8 @@ models:
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - internally generated UUID for candidates.
-          Generated from: first_name, last_name, state, birth_date (null), email, phone.
+          Primary key - the person's gp_person_id (person-group earliest-member
+          mint), looked up via br_candidate_id; deterministic self-mint guard.
         data_tests:
           - unique
           - not_null
@@ -1209,9 +1216,9 @@ models:
     columns:
       - name: gp_candidacy_id
         description: >
-          Primary key - internally generated UUID for candidacies.
-          Generated from: first_name, last_name, state, party, candidate_office,
-          election_date, district.
+          Primary key. Candidacy-grain rollup of the stage-grain cluster mint:
+          min minted id over the candidacy's stages (mirrored in
+          int__civics_candidacy_stage_ballotready).
         data_tests:
           - unique
           - not_null
@@ -2052,6 +2059,14 @@ models:
                   - Regional
                   - Federal
 
+      - name: first_seen_at
+        description: >
+          Source-native record timestamp for the person id mint. Populated only
+          for techspeed (min processing date across delivery duplicates, airbyte
+          extract as parse fallback) and ddhq (airbyte extract time); null for
+          ballotready and gp_api, whose values are computed in
+          int__civics_person_canonical_ids from their native person-grain ids.
+
   - name: int__er_prematch_elected_officials
     description: >
       Entity resolution prematch table at term grain. Two sources:
@@ -2167,8 +2182,7 @@ models:
 
       ballotready_position_id is NULL on the DDHQ and TS branches in V1.
       DDHQ has no native BR position FK, and resolving it requires the
-      election_stage ER clusters that this view itself seeds; revisit once
-      int__civics_er_canonical_election_stages exists.
+      election_stage ER clusters that this view itself seeds.
 
       first_name_aliases is emitted as an empty array because matcha's
       shared pipeline.load_and_prepare unconditionally reads the column even
@@ -2176,7 +2190,7 @@ models:
 
       Output of matcha lands at
       goodparty_data_catalog.er_source.er_clustered_election_stages and is
-      consumed by int__civics_er_canonical_election_stages in a follow-up PR.
+      consumed by int__civics_minted_election_stage_ids.
 
     columns:
       - name: unique_id
@@ -2434,10 +2448,14 @@ models:
         description: Foreign key to candidacy table
         data_tests:
           - not_null
+          # 2026+ only: <=2025 rows are emitted for candidacy_stage archive
+          # enrichment and carry BR ids absent from the 2026-gated BR candidacy.
           - relationships:
               arguments:
                 to: ref('int__civics_candidacy_ballotready')
                 field: gp_candidacy_id
+              config:
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: gp_election_stage_id
         description: Foreign key to election_stage table
@@ -2449,6 +2467,7 @@ models:
                 field: gp_election_stage_id
               config:
                 error_if: ">=100"
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: br_candidacy_id
         description: >
@@ -2471,6 +2490,9 @@ models:
               config:
                 severity: warn
                 error_if: ">100"
+                # 2026+ only: <=2025 BR rows enrich the archive era rather than
+                # surfacing standalone, so their br_candidacy_id is not a mart PK.
+                where: "election_stage_date >= '2026-01-01'"
 
       - name: election_result
         description: Result of the election stage (Won, Lost, Runoff, or null)
@@ -2496,8 +2518,14 @@ models:
         data_tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
-                min_value: "'2026-01-01'"
+                min_value: "'1900-01-01'"
                 max_value: "'2050-12-31'"
+
+      - name: election_stage
+        description: >
+          Election stage derived from BallotReady is_primary / is_runoff.
+          BR S3 carries no 'special' variants, so only primary, general,
+          primary runoff, and general runoff appear.
 
       - name: created_at
         data_tests:
@@ -2564,16 +2592,14 @@ models:
       Product Database (gp_api_db) users transformed into the civics mart
       candidate schema. Grain: one row per user with campaign_count > 0.
 
-      ER canonicalization: canonical_gp_candidate_id from
-      int__civics_er_canonical_ids is looked up via the user's latest campaigns
-      and propagated across users sharing the same person hash.
+      gp_candidate_id is the person id from int__civics_person_canonical_ids
+      (record_key gp_api|user_id), with a deterministic self-mint guard.
 
     columns:
       - name: gp_candidate_id
         description: >
-          Primary key - UUID generated from (first_name, last_name, state,
-          null birth_date, email, phone). Cross-source compatible with
-          int__civics_candidate_ballotready / _techspeed.
+          Primary key - the user's gp_person_id (person-group earliest-member
+          mint). Cross-source alignment comes from shared person groups.
         data_tests:
           - unique
           - not_null
@@ -3130,17 +3156,17 @@ models:
 
   - name: int__civics_er_canonical_ids
     description: >
-      Entity resolution crosswalk: provider raw keys → BallotReady canonical
-      gp_* IDs. Wide schema covering TechSpeed (keyed by ts_source_candidate_id
-      + ts_stage_election_date) and Product DB (keyed by gp_api_campaign_id +
-      gp_api_stage_election_date). Provider columns are null on rows from
-      other providers.
+      Entity resolution crosswalk: provider raw keys → canonical gp_* IDs
+      (BR's cluster-derived ids on BR-anchored clusters, the earliest-member
+      mint on non-BR clusters). Wide schema covering TechSpeed (keyed by
+      ts_source_candidate_id + ts_stage_election_date), Product DB (keyed by
+      gp_api_campaign_id + gp_api_stage_election_date), and DDHQ (keyed by
+      ddhq_candidate_id + ddhq_race_id). Provider columns are null on rows
+      from other providers. Candidate grain is not here: gp_candidate_id is
+      the person id, resolved per provider via
+      int__civics_person_canonical_ids.
 
     columns:
-      - name: canonical_gp_candidate_id
-        data_tests:
-          - not_null
-
       - name: canonical_gp_candidacy_id
         data_tests:
           - not_null
@@ -3182,42 +3208,272 @@ models:
           config:
             where: "gp_api_campaign_id is not null"
 
-  - name: int__civics_er_canonical_election_stages
+  - name: int__civics_person_nodes
     description: >
-      Direct election-stage ER crosswalk: maps DDHQ / TechSpeed election stages
-      that clustered with a BallotReady race (gp-data-matcha election_stage
-      entity) to BR's canonical gp_election_stage_id. Broader race-level coverage
-      than int__civics_er_canonical_ids's candidacy-derived
-      canonical_gp_election_stage_id (links races even without a matched
-      candidacy). BR-anchored clusters adopt BR's id; non-BR cross-source
-      clusters (DDHQ <-> TS, no BR member) adopt a representative member's id so
-      they still collapse. Single-record clusters keep their natural id.
-
-      Grain: one row per non-BR provider election stage (source_name +
-      gp_election_stage_id). Note: DDHQ and TS can share a natural
-      gp_election_stage_id for the same race, so the id is unique only within a
-      source. A small number (~41) of such shared ids map to different BR
-      canonicals (the matcher anchored the DDHQ vs TS record to different BR
-      races); consumers join per-source so the mapping stays deterministic.
+      Person record universe. One row per record_key (source_name || '|' ||
+      source_id) participating in person identity: BR persons (all-time
+      candidacies + officeholder terms), gp_api users, HubSpot contacts,
+      non-reused TS officeholder ids, and TS/DDHQ candidacy-stage records.
+      Also unions in the cluster- and bridge-derived gp_api user ids so every
+      edge endpoint is guaranteed a label seed in the propagation.
+      Deterministically derived, no probabilistic matching.
     columns:
+      - name: record_key
+        description: Primary key.
+        data_tests:
+          - unique
+          - not_null
       - name: source_name
+        description: Source system, parsed from record_key.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ["ddhq", "techspeed"]
-      - name: gp_election_stage_id
-        description: The provider's own gp_election_stage_id (the matched non-BR record).
-        data_tests:
-          - not_null
-      - name: canonical_gp_election_stage_id
-        description: BR's gp_election_stage_id for the cluster; consumers coalesce against this.
-        data_tests:
-          - not_null
-    data_tests:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+
+  - name: int__civics_person_edges
+    description: >
+      Deterministic person edges. One row per typed edge between two record
+      keys (record_key = source_name || '|' || source_id). Direction-agnostic
+      (record_key_1 <= record_key_2). No new matching: edges derive from native
+      ids (E1 HubSpot<->gp_api, E3 HubSpot->BR candidacy), the elected-official
+      linkages (E4 ts_officeholder->BR, E6 gp_api->BR bridge), candidacy-stage
+      Splink cluster co-membership (E5, hub to the cluster's min record key),
+      and within-source vendor keys (E7).
+    tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [source_name, gp_election_stage_id]
+            combination_of_columns: [record_key_1, record_key_2, edge_type]
+      # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
+      # (DDHQ candidate_id reuse). Excluded from propagation and flagged. Warn
+      # on any; error on a large jump that would signal an E7-keying regression.
+      # No severity override: severity warn would disable error_if entirely.
+      - dbt_utils.expression_is_true:
+          name: person_edges_conflict_count_warn
+          arguments:
+            expression: "not is_conflict"
+          config:
+            warn_if: ">0"
+            error_if: ">200"
+    columns:
+      - name: record_key_1
+        description: Lower of the two endpoint record keys (source_name || '|' || source_id).
+        data_tests:
+          - not_null
+          # Every endpoint must exist in the node universe; a missing endpoint
+          # silently drops a propagation neighbor in one direction.
+          - relationships:
+              arguments:
+                to: ref('int__civics_person_nodes')
+                field: record_key
+      - name: record_key_2
+        description: Higher of the two endpoint record keys.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_person_nodes')
+                field: record_key
+      - name: edge_type
+        description: Trust-ordered edge provenance.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - e1_hubspot_user
+                  - e3_hubspot_br_candidacy
+                  - e4_ts_officeholder
+                  - e5_cluster
+                  - e6_eo_bridge
+                  - e7_within_source
+      - name: is_conflict
+        description: >
+          true for E7 edges whose within-source key resolves to more than one
+          distinct br_candidate_id. Flagged and excluded from propagation.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_groups
+    description: >
+      Person groups. One row per int__civics_person_nodes record_key with its
+      person_group_key: the min record_key reachable over the non-conflicting
+      edges, via min-label propagation across 15 unrolled passes (Spark SQL,
+      no recursion). Pass count exceeds the largest component's diameter with
+      headroom; convergence is tested (penultimate pass == final).
+      had_conflict rolls up E7 conflict edges to the group (both endpoints).
+    tests:
+      # Propagation converged: the last two passes agree for every record.
+      - dbt_utils.expression_is_true:
+          name: person_groups_converged
+          arguments:
+            expression: "person_group_key = pass_penultimate_key"
+      # At most one distinct br_candidate_id per group. ~108 known cluster
+      # conflicts resolve to the min br_candidate_id (plan decision 1); warn
+      # on the known set, error on a regression. See the singular test
+      # assert_person_group_single_br_candidate.
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+      - name: person_group_key
+        description: Min record_key reachable over non-conflicting edges. Stable person label.
+        data_tests:
+          - not_null
+      - name: had_conflict
+        description: true when the group is touched by an E7 conflict edge.
+        data_tests:
+          - not_null
+
+  - name: int__civics_person_canonical_ids
+    description: >
+      Canonical gp_person_id per record. One row per record_key. The id is minted
+      from the group member earliest by first_seen_at (ties: source_name,
+      source_id) via generate_salted_uuid([source_name, source_id], salt=person),
+      so first-in wins uniformly and the id survives a later record joining the
+      group. first_seen_at is computed inline where each record's native id and
+      source timestamp share a row.
+    columns:
+      - name: record_key
+        description: Primary key. source_name || '|' || source_id for the source record.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_name
+        description: Source system, parsed from record_key.
+        data_tests:
+          - not_null
+      - name: person_group_key
+        description: The record's person group (from int__civics_person_groups).
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          Earliest source-native timestamp for the record. Drives the mint.
+          Derived from source data only (never current_timestamp), so a full
+          refresh reproduces it; the ddhq value can still shift if Airbyte
+          re-extracts the master CSV. The snapshot is the churn detector.
+        data_tests:
+          - not_null
+      - name: minting_source_name
+        description: source_name of the group's earliest member (mints the id).
+        data_tests:
+          - not_null
+      - name: minting_source_id
+        description: source_id of the group's earliest member.
+        data_tests:
+          - not_null
+      - name: group_size
+        description: Number of records in the person group.
+        data_tests:
+          - not_null
+      - name: gp_person_id
+        description: Canonical person UUID, salted-hash of the minting member's (source_name, source_id).
+        data_tests:
+          - not_null
+
+  - name: int__civics_minted_candidacy_ids
+    description: >
+      Minted gp_candidacy_id per clustered candidacy-stage record. One row per
+      candidacy-stage unique_id. The id is the salted-hash of the cluster
+      member earliest by first_seen_at (ties: source_name, source_id), shared by
+      all members, so it is stable under cluster churn. Clusters are single-date
+      (stage grain), so consuming provider models roll this up to candidacy grain
+      (min over their candidacy grouping); records in no cluster mint from
+      themselves via the provider self-mint fallback.
+    columns:
+      - name: unique_id
+        description: Primary key. source_name || '|' || source_id (stage grain).
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Candidacy-stage cluster the record belongs to.
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          The member's own earliest-seen timestamp (prematch first, then keyed
+          native-created / pinned first-load fallbacks). Null means every
+          fallback missed; the member ranks last for minting.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: cluster_br_members
+        description: >
+          Count of ballotready members in the cluster. BR consumers only adopt
+          the mint when this is 1, so matcher-merged duplicate BR records keep
+          distinct published ids (row-preserving). Guarded by the singular test
+          assert_multi_br_clusters_never_adopt_cluster_mint.
+        data_tests:
+          - not_null
+      - name: minted_gp_candidacy_id
+        description: Salted-hash of the cluster's earliest member (source_name, source_id).
+        data_tests:
+          - not_null
+    # Stability (every cluster -> one minted id) is checked by the singular test
+    # assert_minted_ids_one_per_cluster.
+
+  - name: int__civics_minted_election_stage_ids
+    description: >
+      Minted gp_election_stage_id per clustered election-stage record. One row
+      per election-stage unique_id. Same earliest-member rule as the candidacy
+      mint; election-stage clusters are already at stage grain, so no rollup is
+      needed. Records in no cluster mint from themselves via the provider
+      self-mint fallback.
+    columns:
+      - name: unique_id
+        description: Primary key. source_name || '|' || source_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: cluster_id
+        description: Election-stage cluster the record belongs to.
+        data_tests:
+          - not_null
+      - name: first_seen_at
+        description: >
+          The member's own earliest-seen timestamp (BR race created_at keyed
+          by br_race_id; TS/DDHQ pinned first-load). Null ranks last for
+          minting; BR nulls in mixed clusters are guarded by
+          assert_mint_br_first_seen_in_mixed_clusters.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: cluster_br_members
+        description: >
+          Count of ballotready members in the cluster. BR consumers only adopt
+          the mint when this is 1, so matcher-merged duplicate BR records keep
+          distinct published ids (row-preserving).
+        data_tests:
+          - not_null
+      - name: minted_gp_election_stage_id
+        description: Salted-hash of the cluster's earliest member (source_name, source_id).
+        data_tests:
+          - not_null
+    # Stability checked by the singular test assert_minted_ids_one_per_cluster.
 
   - name: int__serve_active_user
     description: >

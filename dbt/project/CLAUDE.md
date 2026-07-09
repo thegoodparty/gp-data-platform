@@ -251,6 +251,33 @@ etc.
     *   `candidacy_stage.ddhq_candidacy_id` | Provides candidacy-stage-level IDs for DDHQ Data
     *   `election_stage.ddhq_race_id` | Provides election-stage ID for DDHQ Data
 
+### Post-ER identifier derivation (earliest-member mint)
+
+The published `gp_*` identities are derived from entity-resolution clusters by
+an **earliest-member rule**, not per-source attribute hashes: an id is the
+salted-hash of the cluster member earliest by source-native `first_seen_at`
+(ties broken by `source_name`, `source_id`), shared by every co-member. First-in
+wins uniformly across sources, so the id is stable when a later record joins the
+cluster, deterministic under splits, and safe under full refresh. A record in no
+cluster mints from itself (single-member semantics).
+
+*   `gp_candidate_id` → **`gp_person_id`**, minted in `int__civics_person_canonical_ids`
+    from the person group's earliest member (person grain). `gp_candidate_id` is
+    kept as an alias of `gp_person_id`.
+*   `gp_candidacy_id` — minted in `int__civics_minted_candidacy_ids` from the
+    candidacy-stage cluster's earliest member. Clusters are single-date (stage
+    grain), so the candidacy-grain id is the min minted id over the candidacy's
+    stages; co-clustered candidacies converge because they share clusters.
+*   `gp_election_stage_id` — minted in `int__civics_minted_election_stage_ids`
+    from the election-stage cluster's earliest member (already stage grain).
+
+`first_seen_at` is computed inline where each record's native id and timestamp
+share a row (never rejoined): BR candidacy_created_at / office_holder_created_at,
+gp_api campaign & user created_at, HubSpot createdate, TechSpeed date_processed,
+DDHQ Airbyte extract time. Election stages use the BR race's native created_at;
+TS/DDHQ election-stage keys are feeder-derived hashes, so their first_seen_at is
+the source's first load time.
+
 
 ## Useful Links
 [BallotReady Documentation](https://developers.civicengine.com/docs/api/graphql)

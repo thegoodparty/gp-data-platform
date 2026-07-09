@@ -17,21 +17,13 @@ with
             and election_date >= '2026-01-01'
     ),
 
-    -- Source user fields from the users mart, not campaigns' denormalized
-    -- user_* fields, to keep the person hash aligned with candidate_gp_api
-    -- (the two marts can be built at different times).
-    users as (
-        select user_id, first_name, last_name, email, phone from {{ ref("users") }}
-    ),
+    -- Inner-joined below so the candidacy universe stays gated on users that
+    -- exist in the users mart (matches candidate_gp_api's user filter).
+    users as (select user_id from {{ ref("users") }}),
 
-    -- Must match user_state in int__civics_candidate_gp_api.
-    user_state as (
-        -- latest_campaigns is already filtered to non-demo / 2026+ / BR-anchored;
-        -- mirror is in int__civics_candidate_gp_api so both models hash
-        -- gp_candidate_id over the same campaign universe.
-        select user_id, campaign_state as state
-        from latest_campaigns
-        qualify row_number() over (partition by user_id order by created_at desc) = 1
+    person_ids as (
+        select record_key, gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
     ),
 
     -- All stages of a campaign in the crosswalk resolve to the same
@@ -42,8 +34,7 @@ with
         select
             gp_api_campaign_id,
             max(canonical_gp_candidacy_id) as canonical_gp_candidacy_id,
-            max(canonical_gp_election_id) as canonical_gp_election_id,
-            max(canonical_gp_candidate_id) as canonical_gp_candidate_id
+            max(canonical_gp_election_id) as canonical_gp_election_id
         from {{ ref("int__civics_er_canonical_ids") }}
         where gp_api_campaign_id is not null
         group by gp_api_campaign_id
@@ -77,27 +68,12 @@ with
         group by br_position_id, year(election_date)
     ),
 
-    -- Must mirror user_er_canonical in int__civics_candidate_gp_api so
-    -- candidacy.gp_candidate_id matches candidate.gp_candidate_id.
-    user_er_canonical as (
-        select c.user_id, max(xw.canonical_gp_candidate_id) as canonical_gp_candidate_id
-        from latest_campaigns as c
-        inner join
-            {{ ref("int__civics_er_canonical_ids") }} as xw
-            on c.campaign_id = xw.gp_api_campaign_id
-        group by c.user_id
-    ),
-
     enriched as (
         -- Aliases below match the unprefixed column names that
         -- generate_gp_election_id() expects in scope.
         select
             c.campaign_id,
             c.user_id,
-            u.first_name as user_first_name,
-            u.last_name as user_last_name,
-            u.email as user_email,
-            u.phone as user_phone,
             c.hubspot_id,
             c.is_verified,
             c.is_pledged,
@@ -106,7 +82,6 @@ with
             c.ballotready_position_id,
             c.created_at,
             c.updated_at,
-            us.state as user_state,
             c.campaign_state as state,
             c.normalized_position_name as official_office_name,
             c.campaign_office as candidate_office,
@@ -120,49 +95,35 @@ with
             c.election_date as general_election_date,
             {{ parse_party_affiliation("c.campaign_party") }} as party_affiliation,
             c.partisan_type,
-            uec.canonical_gp_candidate_id as user_canonical_gp_candidate_id
+            p.gp_person_id as user_gp_person_id
         from latest_campaigns as c
         inner join users as u on c.user_id = u.user_id
-        left join user_state as us on c.user_id = us.user_id
-        left join user_er_canonical as uec on c.user_id = uec.user_id
+        left join
+            person_ids as p on 'gp_api|' || cast(c.user_id as string) = p.record_key
     ),
 
     candidacies_with_ids as (
         select
-            -- Salt field order matches int__civics_candidacy_ballotready.
+            -- Matched campaigns adopt the cluster canonical via the crosswalk;
+            -- unmatched self-mint from campaign_id (single-member semantics).
+            -- Must match int__civics_candidacy_stage_gp_api.
             coalesce(
                 xw.canonical_gp_candidacy_id,
                 {{
-                    generate_gp_api_gp_candidacy_id(
-                        first_name="user_first_name",
-                        last_name="user_last_name",
-                        general_election_date="enriched.general_election_date",
+                    generate_salted_uuid(
+                        fields=["'gp_api'", "cast(campaign_id as string)"],
+                        salt="candidacy",
                     )
                 }}
             ) as gp_candidacy_id,
 
-            -- Window over the person hash matches the cross-user cascade in
-            -- candidate_gp_api, so hash-collision users share canonical IDs.
+            -- Person id; must match int__civics_candidate_gp_api.
             coalesce(
-                max(user_canonical_gp_candidate_id) over (
-                    partition by
-                        {{
-                            generate_gp_api_gp_candidate_id(
-                                first_name="user_first_name",
-                                last_name="user_last_name",
-                                state="user_state",
-                                email="user_email",
-                                phone="user_phone",
-                            )
-                        }}
-                ),
+                user_gp_person_id,
                 {{
-                    generate_gp_api_gp_candidate_id(
-                        first_name="user_first_name",
-                        last_name="user_last_name",
-                        state="user_state",
-                        email="user_email",
-                        phone="user_phone",
+                    generate_salted_uuid(
+                        fields=["'gp_api'", "cast(user_id as string)"],
+                        salt="person",
                     )
                 }}
             ) as gp_candidate_id,
