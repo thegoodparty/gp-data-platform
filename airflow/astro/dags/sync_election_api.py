@@ -765,17 +765,30 @@ def sync_election_api():
                     )
                     prior_exists = cur.fetchone()[0] is not None
                     if prior_exists:
-                        cur.execute(f'SELECT COUNT(*) FROM "{PT.target_schema}"."{PT.target_table}"')
-                        prior_count = cur.fetchone()[0]
+                        # Baseline on DISTINCT natural keys, not raw rows: a
+                        # live table last written by the legacy upsert path can
+                        # be bloated with superseded model_version duplicates,
+                        # while staging is deduped (gate above) — a raw-count
+                        # ratio could refuse a legitimate dedupe cutover.
+                        # Keys-vs-keys compares like with like.
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM ("
+                            f"SELECT DISTINCT district_id, election_year, election_code "
+                            f'FROM "{PT.target_schema}"."{PT.target_table}"'
+                            f") AS prior_keys"
+                        )
+                        prior_key_count = cur.fetchone()[0]
                     else:
-                        prior_count = 0
+                        prior_key_count = 0
 
-                    if prior_count > 0:
-                        ratio = loaded_count / prior_count
+                    if prior_key_count > 0:
+                        ratio = loaded_count / prior_key_count
                         if ratio < 0.5:
                             raise ValueError(
                                 f"Loaded {loaded_count} rows, prior live had "
-                                f"{prior_count} (ratio {ratio:.2f}) — refusing to swap"
+                                f"{prior_key_count} distinct (district_id, "
+                                f"election_year, election_code) keys "
+                                f"(ratio {ratio:.2f}) — refusing to swap"
                             )
                     elif loaded_count < 100_000:
                         raise ValueError(
@@ -784,10 +797,10 @@ def sync_election_api():
                         )
 
                     t_log.info(
-                        "Quality checks passed: %d rows (prior %d), "
+                        "Quality checks passed: %d rows (prior %d distinct keys), "
                         "no duplicate (district, election) keys",
                         loaded_count,
-                        prior_count,
+                        prior_key_count,
                     )
                 finally:
                     cur.close()
