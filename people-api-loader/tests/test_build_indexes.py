@@ -6,12 +6,20 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from botocore.exceptions import ClientError
 
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import build_indexes as step
 from tests._fakes import FakeConn, executed_sql, fake_connect
 
-_CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
+_CFG = cast(
+    LoaderConfig,
+    SimpleNamespace(
+        s3_bucket="b",
+        index_instance_class="db.r8g.48xlarge",
+        new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-dev-writer",
+    ),
+)
 
 # schema_spec records build_indexes reads (PK on id; a unique index + a plain index).
 _PK = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id"])
@@ -28,6 +36,73 @@ _IDXS = [
         where=None,
     ),
 ]
+
+
+class _FakeWaiter:
+    def wait(self, **kwargs: object) -> None:
+        return None
+
+
+class _FakeRds:
+    """RDS double for the scale-up: records modify calls, can raise a one-shot in-progress fault."""
+
+    def __init__(self, current_class: str, *, raise_once: str | None = None) -> None:
+        self.current_class = current_class
+        self.calls: list[tuple[str, dict]] = []
+        self._raise_once = raise_once  # ClientError code to raise on the first modify, then clear
+        self._raised = False
+
+    def describe_db_instances(self, **kw: object) -> dict:
+        self.calls.append(("describe", dict(kw)))
+        return {"DBInstances": [{"DBInstanceClass": self.current_class}]}
+
+    def modify_db_instance(self, **kw: object) -> None:
+        self.calls.append(("modify", dict(kw)))
+        if self._raise_once and not self._raised:
+            self._raised = True
+            raise ClientError(
+                {"Error": {"Code": self._raise_once, "Message": "in progress"}}, "ModifyDBInstance"
+            )
+
+    def get_waiter(self, name: str) -> _FakeWaiter:
+        return _FakeWaiter()
+
+
+def _scale_cfg() -> LoaderConfig:
+    from types import SimpleNamespace
+
+    return cast(
+        LoaderConfig,
+        SimpleNamespace(
+            index_instance_class="db.r8g.48xlarge",
+            new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-dev-writer",
+        ),
+    )
+
+
+def test_ensure_instance_class_scales_up_when_smaller(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRds(current_class="db.r8g.16xlarge")
+    monkeypatch.setattr(step, "rds", lambda cfg: fake)
+    step._ensure_instance_class(_scale_cfg(), "20260709")
+    modify = dict(fake.calls)["modify"]
+    assert modify["DBInstanceClass"] == "db.r8g.48xlarge"
+    assert modify["DBInstanceIdentifier"] == "gp-people-db-20260709-dev-writer"
+    assert modify["ApplyImmediately"] is True
+
+
+def test_ensure_instance_class_noop_when_already_index_class(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRds(current_class="db.r8g.48xlarge")
+    monkeypatch.setattr(step, "rds", lambda cfg: fake)
+    step._ensure_instance_class(_scale_cfg(), "20260709")
+    assert not any(op == "modify" for op, _ in fake.calls)  # already scaled => no modify
+
+
+def test_ensure_instance_class_retries_after_in_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRds(current_class="db.r8g.16xlarge", raise_once="InvalidDBInstanceStateFault")
+    monkeypatch.setattr(step, "rds", lambda cfg: fake)
+    step._ensure_instance_class(_scale_cfg(), "20260709")
+    modifies = [kw for op, kw in fake.calls if op == "modify"]
+    assert len(modifies) == 2  # first raised the fault, settled, then re-issued
 
 
 def test_build_session_sql_fills_the_box() -> None:
@@ -101,6 +176,8 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
     monkeypatch.setattr(step, "STATES", ("CA", "TX"))
+    # Already at the index class: _ensure_instance_class is a no-op describe, no real RDS calls.
+    monkeypatch.setattr(step, "rds", lambda cfg: _FakeRds(current_class=cfg.index_instance_class))
 
     # parallelism=1 keeps the persistent-connection pool single-threaded, so all stages run on the
     # one shared FakeConn deterministically (no cross-thread races on its recorded-SQL list).

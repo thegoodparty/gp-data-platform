@@ -25,7 +25,9 @@ from queue import Empty, Queue
 from threading import Event, Lock, Thread
 
 import psycopg
+from botocore.exceptions import ClientError
 
+from loader.core.aws import rds
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new, connect_prod, open_new_tunnel
@@ -230,6 +232,50 @@ def _l2type_coverage(
     return sorted(v for v in distinct_l2types if v not in new_cols)
 
 
+def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
+    """Scale the writer up to the index-build instance class if it is not already there.
+
+    provision/create_schema/copy run on the smaller `load_instance_class`; build_indexes is the
+    only CPU-bound step and needs the large `index_instance_class`. Mirror resize's modify + waiter,
+    including tolerating a still-in-progress modify from a partial re-run (InvalidDBInstanceStateFault
+    -> settle via the instance waiter -> re-issue). Idempotent: when the box is already the index
+    class this is a no-op describe, so per-date re-runs are safe.
+    """
+    instance_id = cfg.new_writer_instance_id(run_date)
+    target = cfg.index_instance_class
+    rds_client = rds(cfg)
+    current = rds_client.describe_db_instances(DBInstanceIdentifier=instance_id)["DBInstances"][0][
+        "DBInstanceClass"
+    ]
+    if current == target:
+        log.info("indexes.instance_class_ok", instance=instance_id, instance_class=target)
+        return
+
+    waiter = rds_client.get_waiter("db_instance_available")
+
+    def _wait() -> None:
+        waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
+
+    def _modify() -> None:
+        rds_client.modify_db_instance(
+            DBInstanceIdentifier=instance_id, DBInstanceClass=target, ApplyImmediately=True
+        )
+
+    log.info("indexes.scale_up", instance=instance_id, from_class=current, to_class=target)
+    try:
+        _modify()
+    except ClientError as e:
+        # Only tolerate a still-in-progress modify from a partial re-run; re-issue after it settles
+        # so our class is actually applied. A genuine bad state re-raises on the retry.
+        if e.response["Error"]["Code"] != "InvalidDBInstanceStateFault":
+            raise
+        log.warning("indexes.scale_up_retry_after_settle")
+        _wait()
+        _modify()
+    _wait()
+    log.info("indexes.scale_up_applied", instance=instance_id, instance_class=target)
+
+
 def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDERS) -> IndexManifest:
     bind(run_date=run_date, step="indexes")
     existing = read_manifest(cfg, run_date, "indexes", IndexManifest)
@@ -241,6 +287,10 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
 
     started = datetime.now(UTC)
     log.info("indexes.start")
+
+    # Scale the writer up to the index box before any build work; provision/copy ran on the
+    # smaller load box. No-op on a re-run where the box is already scaled.
+    _ensure_instance_class(cfg, run_date)
 
     pk = primary_key_for(_TARGET_TABLE)
     pks = [pk] if pk is not None else []

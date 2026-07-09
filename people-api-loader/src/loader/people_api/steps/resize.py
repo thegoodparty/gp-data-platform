@@ -1,6 +1,6 @@
 """Step 6 — resize the loaded cluster to Serverless v2 + serve params, lock down (DATA-1854).
 
-After the load/index phase on a provisioned db.r7g instance, flip the writer to
+After the load/index phase on the provisioned load instance, flip the writer to
 db.serverless with the prod-matching ACU range, swap the load parameter group for the
 serve group (reboot applies it), bump backup retention to prod's 14 days, and enable
 deletion protection. The rds-s3-import role is intentionally left attached (future
