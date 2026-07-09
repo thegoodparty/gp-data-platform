@@ -3251,16 +3251,18 @@ models:
           arguments:
             combination_of_columns: [record_key_1, record_key_2, edge_type]
       # Conflict edges are E7 vendor keys spanning >1 distinct br_candidate_id
-      # (DDHQ candidate_id reuse). Excluded from propagation and flagged. Warn
-      # on any; error on a large jump that would signal an E7-keying regression.
-      # No severity override: severity warn would disable error_if entirely.
+      # (mostly DDHQ candidate_id reuse across cycles). Excluded from
+      # propagation and flagged. Warn on any; error on a large jump that would
+      # signal an E7-keying regression. Baseline is ~1188 over the all-time
+      # historical ER universe (was ~23 before pre-2026 candidacies were
+      # included). No severity override: severity warn would disable error_if.
       - dbt_utils.expression_is_true:
           name: person_edges_conflict_count_warn
           arguments:
             expression: "not is_conflict"
           config:
             warn_if: ">0"
-            error_if: ">200"
+            error_if: ">2000"
     columns:
       - name: record_key_1
         description: Lower of the two endpoint record keys (source_name || '|' || source_id).
@@ -3314,7 +3316,7 @@ models:
           name: person_groups_converged
           arguments:
             expression: "person_group_key = pass_penultimate_key"
-      # At most one distinct br_candidate_id per group. ~108 known cluster
+      # At most one distinct br_candidate_id per group. ~223 known cluster
       # conflicts resolve to the min br_candidate_id (plan decision 1); warn
       # on the known set, error on a regression. See the singular test
       # assert_person_group_single_br_candidate.
