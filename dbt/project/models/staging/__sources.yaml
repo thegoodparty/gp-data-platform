@@ -1596,7 +1596,6 @@ sources:
           unmatched records.
 
       - name: pairwise_candidacy_stages
-        identifier: pairwise_candidacy_stages20260527
         description: >
           Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),
           after post-prediction filters for person identity, race-level agreement, and

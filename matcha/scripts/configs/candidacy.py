@@ -10,6 +10,25 @@ from splink.comparison_library import CustomComparison
 from scripts.constants import BASE_POST_PREDICTION_FILTER
 from scripts.entity_config import EntityConfig
 
+# Two sources routinely report the same election on dates that differ by a few
+# days (data-entry / reporting lag), so an exact-date requirement drops real
+# cross-source matches. Treat election dates within this window as the same
+# election for both blocking and scoring. Kept well under the gap between a
+# primary, runoff, and general (>=3 weeks apart), so distinct stages of one
+# race never merge — the candidacy_stage grain still holds.
+ELECTION_DATE_WINDOW_DAYS = 10
+
+# Blocking-rule form of the window (l./r. prefixes). election_date is a
+# 'YYYY-MM-DD' string after prematch prep, so parse it with try_strptime before
+# differencing. This mirrors the SQL that AbsoluteDateDifferenceAtThresholds
+# emits for the election_date comparison below (ABS(EPOCH(...) - EPOCH(...)) <=
+# threshold*86400), so blocking and scoring agree on what "within N days" means.
+_ELECTION_DATE_WITHIN_WINDOW = (
+    "abs(epoch(try_strptime(l.election_date, '%Y-%m-%d'))"
+    " - epoch(try_strptime(r.election_date, '%Y-%m-%d')))"
+    f" <= {ELECTION_DATE_WINDOW_DAYS * 86400}"
+)
+
 CANDIDACY_CONFIG = EntityConfig(
     entity_type="candidacy_stage",
     display_name="Candidacy Stages",
@@ -36,7 +55,18 @@ CANDIDACY_CONFIG = EntityConfig(
         cl.ExactMatch("email"),
         cl.ExactMatch("phone"),
         cl.ExactMatch("state"),
-        cl.ExactMatch("election_date"),
+        # election_date is not exact-match: sources disagree on the reported
+        # date of the same election by a few days. This builds null / exact /
+        # within-window / else levels — exact scores highest, a within-window
+        # match is a distinct middle level (gamma 1) that the same-stage
+        # post-filter (gamma_election_date > 0) still admits, and genuinely
+        # different stages (>10 days apart) fall to else (gamma 0).
+        cl.AbsoluteDateDifferenceAtThresholds(
+            "election_date",
+            input_is_string=True,
+            metrics="day",
+            thresholds=ELECTION_DATE_WINDOW_DAYS,
+        ),
         CustomComparison(
             output_column_name="official_office_name",
             comparison_levels=[
@@ -59,18 +89,18 @@ CANDIDACY_CONFIG = EntityConfig(
     ],
     blocking_rules_for_prediction=[
         block_on("br_race_id"),
+        # block_on("state", "last_name", "election_date") can't express the
+        # date window, so it's a CustomRule: same state + exact last_name, dates
+        # within the window. This subsumes the old state + window + office-JW +
+        # exact-last_name rule (which only added an office filter on the same
+        # keys), so that rule is dropped as redundant.
         CustomRule(
-            "l.state = r.state"
-            " AND l.election_date = r.election_date"
-            " AND jaro_winkler_similarity(l.official_office_name,"
-            " r.official_office_name) >= 0.88"
-            " AND l.last_name = r.last_name",
+            "l.state = r.state" " AND l.last_name = r.last_name" f" AND {_ELECTION_DATE_WITHIN_WINDOW}",
             sql_dialect="duckdb",
         ),
-        block_on("state", "last_name", "election_date"),
         CustomRule(
             "l.state = r.state"
-            " AND l.election_date = r.election_date"
+            f" AND {_ELECTION_DATE_WITHIN_WINDOW}"
             " AND jaro_winkler_similarity(l.official_office_name,"
             " r.official_office_name) >= 0.88"
             " AND jaro_winkler_similarity(l.last_name,"
@@ -83,14 +113,15 @@ CANDIDACY_CONFIG = EntityConfig(
         # "mehlville r-9 school board" → JW=0.85) but the locality+code tokens
         # overlap. Required because DDHQ has 0% br_race_id, phone, email
         # coverage, so blocking depends entirely on name + office signals.
-        # Same-date only: candidacy_stage grain treats primary / runoff /
-        # general as distinct entities, so cross-date matching would merge
-        # different stages of the same race (e.g. AR Prosecuting Attorney
-        # D11 West has separate br_race_ids for the 3/3 primary, 5/19 runoff,
-        # and 11/3 general — Evelyn Moorehead must end up in three clusters).
+        # Date window (not exact): the window is far narrower than the gap
+        # between the primary / runoff / general stages the candidacy_stage
+        # grain keeps distinct (e.g. AR Prosecuting Attorney D11 West has the
+        # 3/3 primary, 5/19 runoff, and 11/3 general — all >10 days apart, so
+        # Evelyn Moorehead still lands in three clusters), so it only bridges
+        # the same election reported on slightly different dates.
         CustomRule(
             "l.state = r.state"
-            " AND l.election_date = r.election_date"
+            f" AND {_ELECTION_DATE_WITHIN_WINDOW}"
             " AND list_has_any(l.official_office_name_tokens,"
             " r.official_office_name_tokens)"
             " AND jaro_winkler_similarity(l.last_name,"
@@ -167,7 +198,10 @@ CANDIDACY_CONFIG = EntityConfig(
         # phone / email / br_race_id blocking rules transitively merge a
         # candidate's primary, runoff, and general candidacies (same person
         # has the same phone across all three stages, but the BR records have
-        # distinct br_race_ids and dates per stage).
+        # distinct br_race_ids and dates per stage). gamma_election_date > 0
+        # admits both an exact match (gamma 2) and a within-window match
+        # (gamma 1) as the same stage, while stages >10 days apart score gamma
+        # 0 and are dropped.
         "gamma_election_date > 0",
     ],
     audit_display_columns=[
