@@ -42,7 +42,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["ballotready", "techspeed", "ddhq", "gp_api"]
+                values: ["ballotready_techspeed", "gp_api", "ddhq"]
       - name: first_name
         description: Candidate first name (lowercased, trimmed in prematch).
       - name: last_name
