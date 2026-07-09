@@ -200,6 +200,38 @@ def _build_and_attach_child(conn: psycopg.Connection, item: tuple[IndexDef, str]
         log.info("indexes.child_built", name=idx.name, state=state, child=child)
 
 
+def _partition_sizes(cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None) -> dict[str, int]:
+    """Return {state: on-disk bytes} for each public."Voter_<state>" leaf partition.
+
+    One catalog query, used to schedule the largest partitions first. relkind='r' excludes the
+    partitioned parent (relkind='p'), so only leaf partitions are returned.
+    """
+    sql = (
+        "SELECT c.relname, pg_relation_size(c.oid) "
+        "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        r"WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname LIKE 'Voter\_%'"
+    )
+    sizes: dict[str, int] = {}
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
+        cur.execute(sql)
+        for relname, size in cur.fetchall():
+            sizes[relname.removeprefix("Voter_")] = size
+    return sizes
+
+
+def _order_children_largest_first(
+    units: list[tuple[IndexDef, str]], partition_bytes: dict[str, int]
+) -> list[tuple[IndexDef, str]]:
+    """Order (index, state) build units by their state's partition size, largest first.
+
+    Postgres grants parallel workers at statement start against the shared pool, so a giant that
+    launches into a busy pool is starved to ~1 worker for hours. Submitting the biggest partitions
+    first lets each grab its full worker request; near-empty partitions backfill. `sorted` is
+    stable, so equal-size states keep input order. States with no known size sort last (0).
+    """
+    return sorted(units, key=lambda u: partition_bytes.get(u[1], 0), reverse=True)
+
+
 def _analyze(cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None) -> None:
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute('ANALYZE public."Voter"')
@@ -362,7 +394,12 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
         #    grained scheduling keeps every builder on useful small work instead of a serial
         #    51-partition walk per index.
         _build_in_parallel(_create_plain_parent_only, plain_idxs)
-        _build_in_parallel(_build_and_attach_child, [(i, s) for i in plain_idxs for s in STATES])
+        # Schedule the biggest partitions first so each CREATE INDEX launches into an open worker
+        # pool and grabs its full worker request (see _order_children_largest_first); avoids the
+        # ~1-worker starvation of the CA/TX/FL giants when they launch mid-flood.
+        sizes = _partition_sizes(cfg, run_date, forward=fwd)
+        children = _order_children_largest_first([(i, s) for i in plain_idxs for s in STATES], sizes)
+        _build_in_parallel(_build_and_attach_child, children)
 
         # 3. ANALYZE.
         _analyze(cfg, run_date, forward=fwd)

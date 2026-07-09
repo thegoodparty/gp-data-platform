@@ -176,6 +176,33 @@ def test_build_and_attach_child_skips_reattach_when_already_attached() -> None:
     assert not any("ATTACH PARTITION" in s for s in sql)
 
 
+def test_order_children_largest_first_sorts_by_partition_size() -> None:
+    a = step.IndexDef(table="Voter", name="Voter_A_idx", sql="", unique=False, columns=["A"], where=None)
+    b = step.IndexDef(table="Voter", name="Voter_B_idx", sql="", unique=False, columns=["B"], where=None)
+    units = [(a, "WY"), (a, "CA"), (b, "TX"), (b, "WY")]
+    sizes = {"CA": 4_000_000, "TX": 3_000_000, "WY": 10_000}
+    ordered = step._order_children_largest_first(units, sizes)
+    # biggest partition first; WY (smallest) last; ties keep input order (stable)
+    assert [s for _, s in ordered] == ["CA", "TX", "WY", "WY"]
+
+
+def test_order_children_largest_first_unknown_size_sorts_last() -> None:
+    a = step.IndexDef(table="Voter", name="Voter_A_idx", sql="", unique=False, columns=["A"], where=None)
+    units = [(a, "ZZ"), (a, "CA")]  # ZZ has no known size -> treated as 0 -> last
+    ordered = step._order_children_largest_first(units, {"CA": 100})
+    assert [s for _, s in ordered] == ["CA", "ZZ"]
+
+
+def test_partition_sizes_maps_state_to_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = FakeConn()
+    conn.queue_result([("Voter_CA", 4_000_000), ("Voter_TX", 3_000_000)])  # one fetchall result set
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    sizes = step._partition_sizes(
+        cast(LoaderConfig, SimpleNamespace(s3_bucket="b")), "20260709", forward=None
+    )
+    assert sizes == {"CA": 4_000_000, "TX": 3_000_000}
+
+
 def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
     conn = FakeConn()
@@ -203,6 +230,10 @@ def test_run_builds_pk_indexes_and_analyzes(monkeypatch: pytest.MonkeyPatch) -> 
         in s
         for s in sql
     )
+    # Largest-partition-first scheduling queries partition sizes before building children (the
+    # FakeConn's fetchall defaults to [] when nothing is queued, so this runs with unknown sizes
+    # and falls back to input order -- exercised for real by test_partition_sizes_maps_state_to_bytes).
+    assert any("pg_relation_size" in s for s in sql)
     # Plain index is built PER PARTITION: empty parent (ON ONLY) + a child per state + ATTACH.
     assert any('CREATE INDEX IF NOT EXISTS "Voter_Active_idx" ON ONLY public."Voter"' in s for s in sql)
     assert any('"Voter_Active_idx_CA" ON public."Voter_CA"' in s for s in sql)
