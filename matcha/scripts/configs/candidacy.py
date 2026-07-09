@@ -89,17 +89,11 @@ CANDIDACY_CONFIG = EntityConfig(
     ],
     blocking_rules_for_prediction=[
         block_on("br_race_id"),
-        CustomRule(
-            "l.state = r.state"
-            f" AND {_ELECTION_DATE_WITHIN_WINDOW}"
-            " AND jaro_winkler_similarity(l.official_office_name,"
-            " r.official_office_name) >= 0.88"
-            " AND l.last_name = r.last_name",
-            sql_dialect="duckdb",
-        ),
         # block_on("state", "last_name", "election_date") can't express the
         # date window, so it's a CustomRule: same state + exact last_name, dates
-        # within the window.
+        # within the window. This subsumes the old state + window + office-JW +
+        # exact-last_name rule (which only added an office filter on the same
+        # keys), so that rule is dropped as redundant.
         CustomRule(
             "l.state = r.state" " AND l.last_name = r.last_name" f" AND {_ELECTION_DATE_WITHIN_WINDOW}",
             sql_dialect="duckdb",
