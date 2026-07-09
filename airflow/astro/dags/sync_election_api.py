@@ -335,12 +335,17 @@ def _pt_constraint_ddl() -> list[str]:
     ]
 
 
-def _pt_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int) -> None:
+def _pt_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, null_keys: int) -> None:
     """Decide whether staged Projected_Turnout data may swap into place.
 
     Pure decision logic (unit-tested); the quality_checks task gathers the
     inputs from Postgres. Raises ValueError (task fails, no swap) when:
 
+    - ``null_keys`` > 0 — staged rows with a NULL district_id, election_year,
+      or election_code. Belt-and-braces over the staging table's inherited
+      NOT NULLs (the LIKE-clone copies them, so such a row should already
+      have failed the load): the gate carries its own proof rather than
+      relying on an inherited constraint.
     - ``dup_keys`` > 0 — duplicate (district_id, election_year, election_code)
       keys in staging. Must be zero: the election-api consumer does not
       disambiguate model_version, so a duplicate key would make it serve an
@@ -354,6 +359,11 @@ def _pt_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int) -> 
       cutover pass while still refusing a coverage collapse.
     - cold start (no prior table) with an implausibly small load.
     """
+    if null_keys > 0:
+        raise ValueError(
+            f"{null_keys} staging rows have a NULL district_id, "
+            f"election_year, or election_code — refusing to swap"
+        )
     if dup_keys > 0:
         raise ValueError(
             f"{dup_keys} duplicate (district_id, election_year, "
@@ -785,6 +795,17 @@ def sync_election_api():
                     )
                     dup_keys = cur.fetchone()[0]
 
+                    # NULL keys: belt-and-braces over the staging table's
+                    # inherited NOT NULLs — the gate proves it directly.
+                    cur.execute(
+                        f"SELECT COUNT(*) "
+                        f'FROM "{PT.staging_schema}"."{PT.new_table}" '
+                        f"WHERE district_id IS NULL "
+                        f"OR election_year IS NULL "
+                        f"OR election_code IS NULL"
+                    )
+                    null_keys = cur.fetchone()[0]
+
                     # Prior live state (absent on a true cold start). Both
                     # identifiers must be double-quoted in the regclass argument
                     # so Postgres does not fold the mixed-case name to lowercase.
@@ -806,11 +827,11 @@ def sync_election_api():
                 finally:
                     cur.close()
 
-            _pt_quality_gate(loaded_count, dup_keys, prior_key_count)
+            _pt_quality_gate(loaded_count, dup_keys, prior_key_count, null_keys)
 
             t_log.info(
                 "Quality checks passed: %d rows (prior %d distinct keys), "
-                "no duplicate (district, election) keys",
+                "no duplicate and no NULL (district, election) keys",
                 loaded_count,
                 prior_key_count,
             )
