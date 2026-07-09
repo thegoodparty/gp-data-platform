@@ -281,8 +281,26 @@ with
                 ) as {{ col }},
             {% endfor %}
             -- Native BR/DDHQ stage so <=2025 rows (absent from election_stage)
-            -- still carry a stage for the person-stage merge.
-            coalesce(br.election_stage, ddhq.election_stage) as native_stage,
+            -- still carry a stage for the person-stage merge. DDHQ's special-
+            -- election variants have no counterpart in the archive's stage_type
+            -- (primary/general/general runoff only), so they're normalized to
+            -- their non-special base, preserving the primary/general
+            -- distinction. BR is unaffected: it stays 2026-gated, so
+            -- br.election_stage is always null on an archive-era row.
+            coalesce(
+                br.election_stage,
+                case
+                    when ddhq.election_stage = 'primary special'
+                    then 'primary'
+                    when ddhq.election_stage = 'general special'
+                    then 'general'
+                    when ddhq.election_stage = 'general special runoff'
+                    then 'general runoff'
+                    when ddhq.election_stage = 'primary special runoff'
+                    then 'primary runoff'
+                    else ddhq.election_stage
+                end
+            ) as native_stage,
             coalesce(
                 br.source_race_id, ts.source_race_id, ddhq.source_race_id
             ) as source_race_id,
@@ -340,8 +358,15 @@ with
         select
             m.*,
             coalesce(es.stage_type, m.native_stage) as election_stage,
-            least(
-                bcp.gp_person_id, tcp.gp_person_id, gcp.gp_person_id, dp.gp_person_id
+            array_min(
+                array_compact(
+                    array(
+                        bcp.gp_person_id,
+                        tcp.gp_person_id,
+                        gcp.gp_person_id,
+                        dp.gp_person_id
+                    )
+                )
             ) as gp_person_id
         from merged_foj as m
         left join
@@ -442,6 +467,7 @@ with
                     (f.election_result is not null) desc,
                     array_contains(f.source_systems, 'ddhq') desc,
                     array_contains(f.source_systems, 'ballotready') desc,
+                    array_size(f.source_systems) desc,
                     f.gp_candidacy_stage_id
             )
             = 1

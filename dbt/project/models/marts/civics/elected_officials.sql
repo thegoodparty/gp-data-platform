@@ -149,7 +149,10 @@ with
 -- gp_api_user_id, and hubspot_contact_id (one person by construction; min
 -- guards residual multi-source disagreement).
 select
-    merged.*, least(bp.gp_person_id, gpp.gp_person_id, hp.gp_person_id) as gp_person_id
+    merged.*,
+    array_min(
+        array_compact(array(bp.gp_person_id, gpp.gp_person_id, hp.gp_person_id))
+    ) as gp_person_id
 from merged
 left join
     person_ids as bp

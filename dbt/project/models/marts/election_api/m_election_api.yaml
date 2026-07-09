@@ -300,6 +300,17 @@ models:
               - election_year
               - election_code
               - model_version
+      # API invariant (DATA-2015): the election-api consumer (projectedTurnout.service.ts
+      # findFirst/getMany) does NOT disambiguate model_version, so there must be exactly one
+      # row per (district_id, election_year, election_code). Fails if a superseding
+      # model_version is not cleaned up — the supersession release must --full-refresh this
+      # mart and delete the stale Postgres rows (see DATA-2015 Task 6).
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - district_id
+              - election_year
+              - election_code
 
   - name: m_election_api__race
     description: "Mart model that serves the Election API"
