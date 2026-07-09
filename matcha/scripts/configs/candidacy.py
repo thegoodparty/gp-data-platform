@@ -3,7 +3,7 @@
 
 import splink.comparison_level_library as cll
 import splink.internals.comparison_library as cl
-from splink import block_on
+from splink import ColumnExpression, block_on
 from splink.blocking_rule_library import CustomRule
 from splink.comparison_library import CustomComparison
 
@@ -20,8 +20,8 @@ ELECTION_DATE_WINDOW_DAYS = 10
 
 # Blocking-rule form of the window (l./r. prefixes). election_date is a
 # 'YYYY-MM-DD' string after prematch prep, so parse it with try_strptime before
-# differencing. This mirrors the SQL that AbsoluteDateDifferenceAtThresholds
-# emits for the election_date comparison below (ABS(EPOCH(...) - EPOCH(...)) <=
+# differencing. This mirrors the SQL that AbsoluteDateDifferenceLevel emits for
+# the election_date comparison below (ABS(EPOCH(...) - EPOCH(...)) <=
 # threshold*86400), so blocking and scoring agree on what "within N days" means.
 _ELECTION_DATE_WITHIN_WINDOW = (
     "abs(epoch(try_strptime(l.election_date, '%Y-%m-%d'))"
@@ -56,17 +56,31 @@ CANDIDACY_CONFIG = EntityConfig(
         cl.ExactMatch("phone"),
         cl.ExactMatch("state"),
         # election_date is not exact-match: sources disagree on the reported
-        # date of the same election by a few days. This builds null / exact /
-        # within-window / else levels, so an exact match scores highest, a
-        # within-window match is a distinct middle level (gamma 1) that the
-        # same-stage post-filter (gamma_election_date > 0) still admits, and
-        # genuinely different stages (>10 days apart) fall to else (gamma 0).
-        # input_is_string parses the 'YYYY-MM-DD' string via try_strptime.
-        cl.AbsoluteDateDifferenceAtThresholds(
-            "election_date",
-            input_is_string=True,
-            metrics="day",
-            thresholds=ELECTION_DATE_WINDOW_DAYS,
+        # date of the same election by a few days. null / exact / within-window
+        # / else — exact scores highest, a within-window match is a distinct
+        # middle level (gamma 1) that the same-stage post-filter
+        # (gamma_election_date > 0) still admits, and genuinely different stages
+        # (>10 days apart) fall to else (gamma 0).
+        CustomComparison(
+            output_column_name="election_date",
+            comparison_levels=[
+                cll.NullLevel("election_date"),
+                cll.ExactMatchLevel("election_date"),
+                # Pre-parse the 'YYYY-MM-DD' string here and pass
+                # input_is_string=False. With input_is_string=True the level's
+                # create_sql reassigns self.col_expression to a parsed copy of
+                # itself on every resolution, and Splink resolves each level many
+                # times per run (u-training, each EM session, predict), so the
+                # parse stacks — try_parse_date(try_parse_date(...)) — until the
+                # date reads NULL. Parsing once keeps create_sql idempotent.
+                cll.AbsoluteDateDifferenceLevel(
+                    ColumnExpression("election_date").try_parse_date("%Y-%m-%d"),
+                    input_is_string=False,
+                    threshold=ELECTION_DATE_WINDOW_DAYS,
+                    metric="day",
+                ),
+                cll.ElseLevel(),
+            ],
         ),
         CustomComparison(
             output_column_name="official_office_name",
