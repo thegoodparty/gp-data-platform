@@ -228,7 +228,6 @@ def test_add_primary_key_propagates_invalid_definition() -> None:
     import psycopg
 
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
+    raising = _PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl"))
     with pytest.raises(psycopg.errors.InvalidTableDefinition):
-        step._add_primary_key(
-            _PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl")), pk
-        )  # ty: ignore[invalid-argument-type]
+        step._add_primary_key(raising, pk)  # ty: ignore[invalid-argument-type]
