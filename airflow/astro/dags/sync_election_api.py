@@ -335,6 +335,43 @@ def _pt_constraint_ddl() -> list[str]:
     ]
 
 
+def _pt_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int) -> None:
+    """Decide whether staged Projected_Turnout data may swap into place.
+
+    Pure decision logic (unit-tested); the quality_checks task gathers the
+    inputs from Postgres. Raises ValueError (task fails, no swap) when:
+
+    - ``dup_keys`` > 0 — duplicate (district_id, election_year, election_code)
+      keys in staging. Must be zero: the election-api consumer does not
+      disambiguate model_version, so a duplicate key would make it serve an
+      arbitrary row. This is the invariant the swap delivery exists to
+      guarantee (the legacy upsert writer could not).
+    - loaded rows fall below half of ``prior_key_count``, the prior live
+      table's DISTINCT natural-key count (0 on a true cold start). The
+      baseline is keys, not raw rows: a live table last written by the legacy
+      upsert path can be bloated with superseded model_version duplicates,
+      while staging is deduped, so keys-vs-keys lets a legitimate dedupe
+      cutover pass while still refusing a coverage collapse.
+    - cold start (no prior table) with an implausibly small load.
+    """
+    if dup_keys > 0:
+        raise ValueError(
+            f"{dup_keys} duplicate (district_id, election_year, "
+            f"election_code) keys in staging — refusing to swap"
+        )
+    if prior_key_count > 0:
+        ratio = loaded_count / prior_key_count
+        if ratio < 0.5:
+            raise ValueError(
+                f"Loaded {loaded_count} rows, prior live had "
+                f"{prior_key_count} distinct (district_id, "
+                f"election_year, election_code) keys "
+                f"(ratio {ratio:.2f}) — refusing to swap"
+            )
+    elif loaded_count < 100_000:
+        raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small — refusing to swap")
+
+
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
     schedule="@daily",
@@ -732,12 +769,9 @@ def sync_election_api():
 
         @task
         def quality_checks(loaded_count: int) -> None:
-            # The swap exists to guarantee the invariant the upsert writer
-            # could not: exactly one row per (district_id, election_year,
-            # election_code). The election-api consumer does not disambiguate
-            # model_version, so a duplicate key would make it serve an
-            # arbitrary row — gate the swap on it directly, plus the
-            # shape-aware row-count ratio used by the other groups.
+            # Gate decisions (and their rationale) live in _pt_quality_gate,
+            # which is pure and unit-tested; this task only gathers the
+            # inputs from Postgres.
             with _open_pg() as conn:
                 cur = conn.cursor()
                 try:
@@ -750,11 +784,6 @@ def sync_election_api():
                         f") AS dupe_keys"
                     )
                     dup_keys = cur.fetchone()[0]
-                    if dup_keys > 0:
-                        raise ValueError(
-                            f"{dup_keys} duplicate (district_id, election_year, "
-                            f"election_code) keys in staging — refusing to swap"
-                        )
 
                     # Prior live state (absent on a true cold start). Both
                     # identifiers must be double-quoted in the regclass argument
@@ -765,12 +794,6 @@ def sync_election_api():
                     )
                     prior_exists = cur.fetchone()[0] is not None
                     if prior_exists:
-                        # Baseline on DISTINCT natural keys, not raw rows: a
-                        # live table last written by the legacy upsert path can
-                        # be bloated with superseded model_version duplicates,
-                        # while staging is deduped (gate above) — a raw-count
-                        # ratio could refuse a legitimate dedupe cutover.
-                        # Keys-vs-keys compares like with like.
                         cur.execute(
                             f"SELECT COUNT(*) FROM ("
                             f"SELECT DISTINCT district_id, election_year, election_code "
@@ -780,30 +803,17 @@ def sync_election_api():
                         prior_key_count = cur.fetchone()[0]
                     else:
                         prior_key_count = 0
-
-                    if prior_key_count > 0:
-                        ratio = loaded_count / prior_key_count
-                        if ratio < 0.5:
-                            raise ValueError(
-                                f"Loaded {loaded_count} rows, prior live had "
-                                f"{prior_key_count} distinct (district_id, "
-                                f"election_year, election_code) keys "
-                                f"(ratio {ratio:.2f}) — refusing to swap"
-                            )
-                    elif loaded_count < 100_000:
-                        raise ValueError(
-                            f"Cold-start load of {loaded_count} rows is "
-                            f"implausibly small — refusing to swap"
-                        )
-
-                    t_log.info(
-                        "Quality checks passed: %d rows (prior %d distinct keys), "
-                        "no duplicate (district, election) keys",
-                        loaded_count,
-                        prior_key_count,
-                    )
                 finally:
                     cur.close()
+
+            _pt_quality_gate(loaded_count, dup_keys, prior_key_count)
+
+            t_log.info(
+                "Quality checks passed: %d rows (prior %d distinct keys), "
+                "no duplicate (district, election) keys",
+                loaded_count,
+                prior_key_count,
+            )
 
         @task
         def swap() -> None:
