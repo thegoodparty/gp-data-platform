@@ -467,6 +467,7 @@ with
                     (f.election_result is not null) desc,
                     array_contains(f.source_systems, 'ddhq') desc,
                     array_contains(f.source_systems, 'ballotready') desc,
+                    array_size(f.source_systems) desc,
                     f.gp_candidacy_stage_id
             )
             = 1
