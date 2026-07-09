@@ -44,15 +44,17 @@ log = get_logger(__name__)
 
 # Default number of concurrent builders. All builders share ONE bastion tunnel (see
 # `open_new_tunnel` + `_build_in_parallel`), so concurrency is bounded by the load instance, not
-# the bastion's sshd MaxStartups. Peak memory is roughly parallelism * maintenance_work_mem (8GB,
-# set below) = ~256 GB at 32, sized for the default db.r7g.16xlarge (512 GiB, 64 vCPU); 8-way
-# under-utilizes the cores (many small-partition child builds use ~1 worker each). 32 matches the
-# POC that hit ~12h on this hardware. Lower via the CLI --parallelism flag for a smaller instance.
-_DEFAULT_BUILDERS = 32
+# the bastion's sshd MaxStartups. build_indexes is cleanly CPU-bound (measured 2026-07-08:
+# pg_stat_activity showed all active backends running, zero IPC/LWLock waits), and most partitions
+# are small so each child build uses ~1 core — so throughput tracks the builder count up to the
+# vCPU count. 128 targets the ~192-vCPU db.r8g.48xlarge load instance. maintenance_work_mem is kept
+# modest (below) so builders * mem stays well under RAM; lower --parallelism for a smaller instance.
+_DEFAULT_BUILDERS = 128
 _TARGET_TABLE = "Voter"
 
 _BUILD_SESSION_SQL: tuple[str, ...] = (
-    "SET maintenance_work_mem = '8GB'",
+    # 3 GB * up to 128 builders = ~384 GB, safe alongside the buffer pool on the 1.5 TiB r8g.48xl.
+    "SET maintenance_work_mem = '3GB'",
     "SET max_parallel_maintenance_workers = 8",
     "SET statement_timeout = 0",
     "SET idle_in_transaction_session_timeout = 0",
