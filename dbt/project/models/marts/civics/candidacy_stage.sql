@@ -281,8 +281,26 @@ with
                 ) as {{ col }},
             {% endfor %}
             -- Native BR/DDHQ stage so <=2025 rows (absent from election_stage)
-            -- still carry a stage for the person-stage merge.
-            coalesce(br.election_stage, ddhq.election_stage) as native_stage,
+            -- still carry a stage for the person-stage merge. DDHQ's special-
+            -- election variants have no counterpart in the archive's stage_type
+            -- (primary/general/general runoff only), so they're normalized to
+            -- their non-special base -- same runoff-to-general precedent as
+            -- normalize_ddhq_stage_type. BR is unaffected: it stays 2026-gated,
+            -- so br.election_stage is always null on an archive-era row.
+            coalesce(
+                br.election_stage,
+                case
+                    when ddhq.election_stage = 'primary special'
+                    then 'primary'
+                    when ddhq.election_stage = 'general special'
+                    then 'general'
+                    when ddhq.election_stage = 'general special runoff'
+                    then 'general runoff'
+                    when ddhq.election_stage = 'primary special runoff'
+                    then 'general runoff'
+                    else ddhq.election_stage
+                end
+            ) as native_stage,
             coalesce(
                 br.source_race_id, ts.source_race_id, ddhq.source_race_id
             ) as source_race_id,
