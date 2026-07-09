@@ -33,22 +33,32 @@ models:
           person + position.
       - name: gp_candidate_id
         description: >
-          Canonical civics candidate UUID. Resolved via
-          int__civics_candidate_ballotready (BR person.database_id ->
-          gp_candidate_id). Pre-aggregated by br_candidate_id with
-          max(gp_candidate_id) for deterministic selection when a single BR
-          person produced multiple gp_candidate_ids upstream. Null when the
-          BR candidate is not present in civics.
+          Canonical person id (gp_person_id, the earliest-member cluster mint),
+          resolved via the int__civics_person_canonical_ids crosswalk
+          (record_key 'ballotready|<br_candidate_id>' -> gp_person_id). One id
+          per person, so candidacies of the same person share it. Null only
+          when the BR candidate is absent from the person universe.
+        tests:
+          # Fill-rate guard: a record_key format drift upstream would silently
+          # null this column. A couple of person-universe-absent BR candidates
+          # are tolerated (2 known).
+          - not_null:
+              config:
+                warn_if: ">10"
+                error_if: ">1000"
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
           (which itself coalesces S3 candidacy email with the BR API
-          person.contacts email). Surfaced by the campaign-strategy-context
+          person.contacts email). Keyed on the person, not br_candidate_id, so
+          the value can originate from a merged-away br_candidate_id in the
+          same person group. Surfaced by the campaign-strategy-context
           endpoint so the caller can match the requesting user.
       - name: website_url
         description: >
           Candidate website URL, sourced from int__civics_candidate_ballotready
-          (extracted from BR person.urls where type='website').
+          (extracted from BR person.urls where type='website'). Person-keyed,
+          same as email.
 
   - name: m_election_api__district
     description: "Mart model that serves districts to the Election API, part of projected turnout"
