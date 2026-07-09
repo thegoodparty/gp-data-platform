@@ -1093,3 +1093,213 @@ models:
       - name: created_at
       - name: visitor_id
       - name: website_id
+  - name: stg_airbyte_source__gp_api_db_race_opponent_contrast
+    description: >
+      AI-generated candidate/opponent contrast statements for a race. One row
+      per contrast, tied to a campaign and (optionally) an opponent research
+      finding.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the contrast"
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: "Foreign key to the campaign this contrast belongs to"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
+      - name: finding_id
+        description: "Foreign key to the opponent research finding this contrast is drawn from"
+      - name: status
+        description: "Processing/lifecycle status of the contrast"
+      - name: routing
+        description: "How the contrast is routed for use (e.g. story, website, outreach)"
+      - name: issue_tag
+        description: "Issue tag associated with the contrast"
+      - name: opponent_fact
+        description: "Fact about the opponent used in the contrast"
+      - name: candidate_fact
+        description: "Fact about the candidate used in the contrast"
+      - name: contrast_sentence
+        description: "The generated sentence contrasting the candidate and opponent"
+      - name: source_url
+        description: "Source URL backing the contrast"
+      - name: routed_story_id
+        description: "ID of the story this contrast was routed to, if any"
+      - name: routed_website_id
+        description: "ID of the website this contrast was routed to, if any"
+      - name: routed_outreach_id
+        description: "ID of the outreach this contrast was routed to, if any"
+      - name: edit_count
+        description: "Number of times the contrast has been edited"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: created_at
+        description: "Timestamp when the contrast was created"
+      - name: updated_at
+        description: "Timestamp when the contrast was last updated"
+  - name: stg_airbyte_source__gp_api_db_race_opponent_research
+    description: >
+      Opponent research runs for a race. One row per research request, tracking
+      the run status and the opponent being researched.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the research run"
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: "Foreign key to the campaign this research belongs to"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
+      - name: kind
+        description: "Type of research run"
+      - name: run_id
+        description: "Identifier for the generation run that produced this research"
+      - name: status
+        description: "Processing/lifecycle status of the research run"
+      - name: attempts
+        description: "Number of processing attempts made"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: opponent_name
+        description: "Name of the opponent being researched"
+      - name: election_candidacy_id
+        description: "Identifier for the opponent's election candidacy"
+      - name: completed_at
+        description: "Timestamp when the research run completed"
+      - name: last_viewed_at
+        description: "Timestamp when the research was last viewed"
+      - name: created_at
+        description: "Timestamp when the research run was created"
+      - name: updated_at
+        description: "Timestamp when the research run was last updated"
+  - name: stg_airbyte_source__gp_api_db_race_opponent_standout_action
+    description: >
+      AI-generated standout actions attributed to an opponent. One row per
+      standout action, tied to a campaign and an opponent.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the standout action"
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: "Foreign key to the campaign this standout action belongs to"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
+      - name: run_id
+        description: "Identifier for the generation run that produced this standout action"
+        data_tests:
+          - not_null
+      - name: opponent_name
+        description: "Name of the opponent the standout action is attributed to"
+        data_tests:
+          - not_null
+      - name: title
+        description: "Title of the standout action"
+      - name: body
+        description: "Body text describing the standout action"
+      - name: issue
+        description: "Issue the standout action relates to"
+      - name: order
+        description: "Display order of the standout action"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: sms_message
+        description: "SMS-formatted version of the standout action"
+      - name: created_at
+        description: "Timestamp when the standout action was created"
+      - name: updated_at
+        description: "Timestamp when the standout action was last updated"
+  - name: stg_airbyte_source__gp_api_db_race_opponent_summary
+    description: >
+      AI-generated opponent research summaries for a race. One row per summary,
+      tied to a campaign and an opponent.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+          config:
+            where: "updated_at is not null and created_at is not null"
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the summary"
+        data_tests:
+          - not_null
+          - unique
+      - name: campaign_id
+        description: "Foreign key to the campaign this summary belongs to"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
+      - name: run_id
+        description: "Identifier for the generation run that produced this summary"
+        data_tests:
+          - not_null
+      - name: opponent_name
+        description: "Name of the opponent the summary describes"
+        data_tests:
+          - not_null
+      - name: sections
+        description: "Structured sections of the summary (serialized)"
+        data_tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp when the summary was created"
+      - name: updated_at
+        description: "Timestamp when the summary was last updated"

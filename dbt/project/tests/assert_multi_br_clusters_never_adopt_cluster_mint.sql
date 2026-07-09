@@ -37,5 +37,5 @@ from
             {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }} as s
             on cast(s.br_candidacy_id as string) = mo.br_candidacy_id
     )
-group by 1, 2
+group by gp_candidacy_id
 having count(*) > 1

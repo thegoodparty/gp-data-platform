@@ -2,7 +2,7 @@
 -- identity. Must contain every key the edge model can emit — an edge endpoint
 -- missing from labels_0 silently drops its neighbors during propagation — so
 -- the cluster- and bridge-derived gp_api user ids are unioned in alongside
--- the staging user table.
+-- the staging user table. See canonical-person-plan.md decision 1.
 with
     campaigns as (
         select cast(campaign_id as string) as campaign_id, user_id

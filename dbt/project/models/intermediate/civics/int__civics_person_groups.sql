@@ -3,7 +3,7 @@
 -- propagation across a fixed number of unrolled passes (Spark SQL, no
 -- recursion). Labels stop changing after pass 5 on current data (pass 6 ==
 -- pass 5, verified); 15 passes leaves headroom and the convergence test
--- (penultimate == final) proves it.
+-- (penultimate == final) proves it. See canonical-person-plan.md decision 1.
 {% set passes = 15 %}
 with
     nodes as (

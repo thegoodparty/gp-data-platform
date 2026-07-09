@@ -193,6 +193,14 @@ sources:
         description: raw data load from gp_api_db postgres db from table `website_contact`
       - name: gp_api_db_website_view
         description: raw data load from gp_api_db postgres db from table `website_view`
+      - name: gp_api_db_race_opponent_contrast
+        description: raw data load from gp_api_db postgres db from table `race_opponent_contrast`
+      - name: gp_api_db_race_opponent_research
+        description: raw data load from gp_api_db postgres db from table `race_opponent_research`
+      - name: gp_api_db_race_opponent_standout_action
+        description: raw data load from gp_api_db postgres db from table `race_opponent_standout_action`
+      - name: gp_api_db_race_opponent_summary
+        description: raw data load from gp_api_db postgres db from table `race_opponent_summary`
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts

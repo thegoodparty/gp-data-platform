@@ -86,6 +86,85 @@ models:
               arguments:
                 value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
 
+  - name: int__voter_turnout_lgbm_inference
+    description: >
+      Nationwide district-level voter-turnout projections from the LightGBM
+      models (DATA-2015). One row per (state, district_type, district_name,
+      election_year, election_code). Replaces the per-state inference models.
+      Projections are known to skew high (calibration caveat from research).
+    config:
+      meta:
+        # Most recent year of L2 vote history present (drives the feature window).
+        max_vote_history_year: "{{ var('max_vote_history_year', 2025) }}"
+        # DEV-ONLY iteration knob: comma/space list like "AL" to score a subset.
+        # NEVER set when building the wired int__model_prediction_voter_turnout
+        # (the carve would suppress legacy rows nationwide for a partial run).
+        l2_state_allowlist: "{{ var('l2_state_allowlist', '') }}"
+        # Schema holding the @production registered models.
+        voter_turnout_models_schema: "{{ var('voter_turnout_models_schema', 'model_predictions') }}"
+        # Schema holding turnout_historical_precincts. PROD = model_predictions
+        # (must be promoted there alongside the models; it currently exists only
+        # in sandbox). Dev overrides to sandbox via the var.
+        voter_turnout_precincts_schema: "{{ var('voter_turnout_precincts_schema', 'model_predictions') }}"
+    columns:
+      - name: election_year
+        description: "Election year scored (current year + 0/1/2)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2024
+                max_value: 2035
+      - name: election_code
+        description: "General or Local_or_Municipal (the only codes this model emits)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Local_or_Municipal"]
+      - name: state
+        description: >
+          State postal code. The full-nationwide set is asserted so a partial
+          (allowlisted) build fails loudly.
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_distinct_values_to_equal_set:
+              arguments:
+                value_set: "{{ get_us_states_list(include_DC=true, include_US=false, include_territories=false) }}"
+      - name: district_type
+        description: "L2 district column name, or 'State' for the statewide row."
+        tests:
+          - not_null
+      - name: district_name
+        description: "District identifier within district_type."
+        tests:
+          - not_null
+      - name: ballots_projected
+        description: "Projected ballots = round(sum(p_hat * n_voters)) over the district's precincts."
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: model_version
+        description: "model_family value (load-bearing - part of the election-api projected_turnout id)."
+        tests:
+          - not_null
+      - name: inference_at
+        description: "Timestamp the projections were produced (dedup tiebreaker downstream)."
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - district_type
+              - district_name
+              - election_year
+              - election_code
+              - model_version
+
   - name: int__l2_nationwide_haystaq_flags
     description: "Combined Haystaq issue model flags from all states (loaded from per-state L2 Haystaq flags tables)"
     config:

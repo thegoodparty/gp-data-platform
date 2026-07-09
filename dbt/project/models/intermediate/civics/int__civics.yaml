@@ -3452,6 +3452,16 @@ models:
         description: Election-stage cluster the record belongs to.
         data_tests:
           - not_null
+      - name: first_seen_at
+        description: >
+          The member's own earliest-seen timestamp (BR race created_at keyed
+          by br_race_id; TS/DDHQ pinned first-load). Null ranks last for
+          minting; BR nulls in mixed clusters are guarded by
+          assert_mint_br_first_seen_in_mixed_clusters.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
       - name: cluster_br_members
         description: >
           Count of ballotready members in the cluster. BR consumers only adopt

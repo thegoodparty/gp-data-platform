@@ -1,0 +1,109 @@
+-- One-time (recurs per retrain until the durable-supersession fix) coordinated release:
+-- remove Projected_Turnout rows superseded by a new turnout model_version (DATA-2015).
+--
+-- WHY: the election-api id hashes model_version, and write__election_api_db.py only
+-- stages (overwrite) then upserts by id - it never deletes. A new model_version therefore
+-- INSERTS alongside the old rows, and the API consumer (findFirst, no orderBy) assumes one
+-- row per (district_id, election_year, election_code). This script deletes the stale rows,
+-- anchored on the staging table the writer just loaded (exactly the new mart id-set).
+--
+-- RUN: with the Win team, over VPN against the election-api Postgres (pg_service.conf),
+-- IMMEDIATELY AFTER the first prod dbt run containing the new model_version (so staging
+-- is fresh from that run - staging is rewritten by every prod run; verify in step 1).
+--
+--   psql service=<election-api-service> \
+--     -v db_schema=<DBT_ELECTION_DB_SCHEMA> -v staging_schema=<DBT_STAGING_SCHEMA> \
+--     -v new_model_version='precinct_level_lgbm_votehistory_socioecondemopolgeo' \
+--     -v bak_suffix=$(date +%Y%m%d) \
+--     -f supersession_release_projected_turnout.psql
+--
+-- The script stops at the first failed assertion (ON_ERROR_STOP) and the delete runs in a
+-- transaction with in-transaction verification: it COMMITs only if the invariant holds.
+
+\set ON_ERROR_STOP on
+
+-- ── Step 1: preflight - staging must be fresh and contain the new model version ─────────
+-- Fails (division by zero) if staging has no rows for the new model_version.
+SELECT 1 / count(*)
+FROM :"staging_schema"."Projected_Turnout"
+WHERE model_version = :'new_model_version';
+
+-- Eyeball scale before proceeding: staged rows per (year, code, version).
+SELECT election_year, election_code, model_version, count(*) AS staged_rows
+FROM :"staging_schema"."Projected_Turnout"
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3;
+
+-- ── Step 2: backup (rollback anchor) ─────────────────────────────────────────────────────
+CREATE TABLE :"db_schema"."Projected_Turnout_bak_":bak_suffix AS
+SELECT * FROM :"db_schema"."Projected_Turnout";
+
+SELECT count(*) AS backup_rows FROM :"db_schema"."Projected_Turnout_bak_":bak_suffix;
+
+-- ── Step 3: scoped delete + in-transaction verification ─────────────────────────────────
+-- Owned pairs = (election_year, election_code) where staging carries the new model_version.
+-- Within those pairs, any live row whose id is not in staging is superseded (covers both a
+-- changed model_version and districts dropped from coverage). Rows in pairs the new model
+-- does not own (e.g. ConsolidatedGeneral, pre-2026) are untouched.
+BEGIN;
+
+WITH owned_pairs AS (
+    SELECT DISTINCT election_year, election_code
+    FROM :"staging_schema"."Projected_Turnout"
+    WHERE model_version = :'new_model_version'
+)
+DELETE FROM :"db_schema"."Projected_Turnout" AS pt
+USING owned_pairs AS op
+WHERE pt.election_year = op.election_year
+  AND pt.election_code = op.election_code
+  AND NOT EXISTS (
+      SELECT 1
+      FROM :"staging_schema"."Projected_Turnout" AS stg
+      WHERE stg.id::uuid = pt.id
+  );
+
+-- Verify the API invariant BEFORE committing: zero duplicate natural keys.
+-- Fails (division by zero -> automatic ROLLBACK of the delete) if any remain.
+SELECT 1 / (1 - count(*))
+FROM (
+    SELECT district_id, election_year, election_code
+    FROM :"db_schema"."Projected_Turnout"
+    GROUP BY 1, 2, 3
+    HAVING count(*) > 1
+    LIMIT 1
+) AS dupes;
+
+-- Verify owned pairs now match staging exactly (row-for-row by id).
+-- Fails and rolls back if live and staging disagree within the owned pairs.
+SELECT 1 / (1 - count(*))
+FROM (
+    SELECT pt.id
+    FROM :"db_schema"."Projected_Turnout" AS pt
+    JOIN (
+        SELECT DISTINCT election_year, election_code
+        FROM :"staging_schema"."Projected_Turnout"
+        WHERE model_version = :'new_model_version'
+    ) AS op
+      ON pt.election_year = op.election_year AND pt.election_code = op.election_code
+    LEFT JOIN :"staging_schema"."Projected_Turnout" AS stg ON stg.id::uuid = pt.id
+    WHERE stg.id IS NULL
+    LIMIT 1
+) AS strays;
+
+COMMIT;
+
+-- ── Step 4: post-release report ──────────────────────────────────────────────────────────
+SELECT election_year, election_code, model_version, count(*) AS live_rows
+FROM :"db_schema"."Projected_Turnout"
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3;
+
+-- ── Rollback (only if something is wrong AFTER commit; the in-transaction checks above
+-- roll back automatically on failure) ────────────────────────────────────────────────────
+-- BEGIN;
+-- TRUNCATE :"db_schema"."Projected_Turnout";
+-- INSERT INTO :"db_schema"."Projected_Turnout" SELECT * FROM :"db_schema"."Projected_Turnout_bak_":bak_suffix;
+-- COMMIT;
+--
+-- Cleanup after a soak period (a week is plenty):
+-- DROP TABLE :"db_schema"."Projected_Turnout_bak_":bak_suffix;

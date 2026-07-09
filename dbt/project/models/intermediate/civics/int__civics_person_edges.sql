@@ -2,7 +2,7 @@
 -- (record_key = source_name || '|' || source_id). Edges are direction-agnostic
 -- (record_key_1 <= record_key_2). No new matching: every edge derives from
 -- native ids, candidacy-stage Splink cluster co-membership, or the
--- elected-official bridge.
+-- elected-official bridge. See canonical-person-plan.md decision 1.
 with
     -- br_candidacy_id -> br_candidate_id (person grain).
     candidacies as (
