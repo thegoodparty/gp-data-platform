@@ -1102,8 +1102,8 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-            config:
-              where: "updated_at is not null and created_at is not null"
+          config:
+            where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the contrast"
@@ -1162,8 +1162,8 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-            config:
-              where: "updated_at is not null and created_at is not null"
+          config:
+            where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the research run"
@@ -1214,8 +1214,8 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-            config:
-              where: "updated_at is not null and created_at is not null"
+          config:
+            where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the standout action"
@@ -1268,8 +1268,8 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "updated_at >= created_at"
-            config:
-              where: "updated_at is not null and created_at is not null"
+          config:
+            where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the summary"
