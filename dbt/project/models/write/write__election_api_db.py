@@ -605,8 +605,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   Stance -> Issue, Candidacy
     # so referenced parents must load before their children.
     # Projected_Turnout is NOT written here: this writer upserts and never
-    # deletes, so superseded rows would linger. It is delivered by the
-    # sync_election_api Airflow DAG's atomic table swap instead.
+    # deletes, so superseded rows would linger. Delivery moves to the
+    # sync_election_api Airflow DAG's atomic table swap (added in PR #585);
+    # until that lands, the API serves its current rows, aging but clean
+    # (accepted interim, DATA-2015).
     table_load_counts: dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [

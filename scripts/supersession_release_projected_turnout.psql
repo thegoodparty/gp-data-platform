@@ -1,3 +1,13 @@
+-- ⛔ DEPRECATED - DO NOT RUN (DATA-2015 durable-supersession migration). ⛔
+-- This script's safety model requires staging_schema."Projected_Turnout" to be freshly
+-- overwritten by write__election_api_db.py immediately before it runs. That staging write
+-- has been REMOVED: Projected_Turnout delivery moved to the sync_election_api Airflow
+-- DAG's atomic table swap, which makes coordinated deletes unnecessary (the API table is
+-- replaced wholesale each run). With the staging table frozen at its last pre-migration
+-- content, the Step 1 preflight below can pass on stale rows and the Step 3 delete would
+-- anchor on a stale id-set. Retained for reference only; removal happens in a cleanup PR
+-- once the swap DAG is live.
+--
 -- One-time (recurs per retrain until the durable-supersession fix) coordinated release:
 -- remove Projected_Turnout rows superseded by a new turnout model_version (DATA-2015).
 --
