@@ -419,6 +419,20 @@ def test_candidacy_pipeline_smoke_year_guard(tmp_path):
     assert cluster_of["br_010"] == cluster_of["ts_010"], "2026 pair should cluster"
     assert cluster_of["br_001"] != cluster_of["br_010"], "cross-year records merged"
 
+    # Near-date cross-source pair (br_011/ts_011, 2 days apart) must cluster via
+    # the within-window election_date level, not an exact match — this is the
+    # only end-to-end exercise of the AbsoluteDateDifferenceAtThresholds path and
+    # the gamma_election_date > 0 post-filter admitting a within-window match.
+    assert cluster_of["br_011"] == cluster_of["ts_011"], "near-date pair should cluster"
+    near = pairwise_df[
+        pairwise_df["unique_id_l"].isin(["br_011", "ts_011"])
+        & pairwise_df["unique_id_r"].isin(["br_011", "ts_011"])
+    ]
+    assert len(near) == 1, "near-date pair should be scored exactly once"
+    assert (
+        int(near.iloc[0]["gamma_election_date"]) == 1
+    ), "near-date pair must hit the within-window level (gamma=1), not exact (gamma=2)"
+
     # The cross-year cross-source pairs (same phone + email, different years)
     # must never be generated: link_only + year-guarded phone/email blocking.
     bad_pairs = {
