@@ -47,7 +47,7 @@ select
 
     -- Canonical person. min over the person ids reached by br_candidate_id
     -- and the bridged gp_api_user_id (one person by construction).
-    least(bp.gp_person_id, gpp.gp_person_id) as gp_person_id,
+    array_min(array_compact(array(bp.gp_person_id, gpp.gp_person_id))) as gp_person_id,
 
     -- Source IDs
     br.br_office_holder_id,
