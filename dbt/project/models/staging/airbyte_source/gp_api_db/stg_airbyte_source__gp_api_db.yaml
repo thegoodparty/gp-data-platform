@@ -1098,6 +1098,12 @@ models:
       AI-generated candidate/opponent contrast statements for a race. One row
       per contrast, tied to a campaign and (optionally) an opponent research
       finding.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the contrast"
@@ -1108,6 +1114,13 @@ models:
         description: "Foreign key to the campaign this contrast belongs to"
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
       - name: finding_id
         description: "Foreign key to the opponent research finding this contrast is drawn from"
       - name: status
@@ -1132,6 +1145,11 @@ models:
         description: "ID of the outreach this contrast was routed to, if any"
       - name: edit_count
         description: "Number of times the contrast has been edited"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: created_at
         description: "Timestamp when the contrast was created"
       - name: updated_at
@@ -1140,6 +1158,12 @@ models:
     description: >
       Opponent research runs for a race. One row per research request, tracking
       the run status and the opponent being researched.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the research run"
@@ -1150,6 +1174,13 @@ models:
         description: "Foreign key to the campaign this research belongs to"
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
       - name: kind
         description: "Type of research run"
       - name: run_id
@@ -1158,6 +1189,11 @@ models:
         description: "Processing/lifecycle status of the research run"
       - name: attempts
         description: "Number of processing attempts made"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: opponent_name
         description: "Name of the opponent being researched"
       - name: election_candidacy_id
@@ -1174,6 +1210,12 @@ models:
     description: >
       AI-generated standout actions attributed to an opponent. One row per
       standout action, tied to a campaign and an opponent.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the standout action"
@@ -1184,6 +1226,13 @@ models:
         description: "Foreign key to the campaign this standout action belongs to"
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
       - name: run_id
         description: "Identifier for the generation run that produced this standout action"
         data_tests:
@@ -1200,6 +1249,11 @@ models:
         description: "Issue the standout action relates to"
       - name: order
         description: "Display order of the standout action"
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
       - name: sms_message
         description: "SMS-formatted version of the standout action"
       - name: created_at
@@ -1210,6 +1264,12 @@ models:
     description: >
       AI-generated opponent research summaries for a race. One row per summary,
       tied to a campaign and an opponent.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "updated_at >= created_at"
+            config:
+              where: "updated_at is not null and created_at is not null"
     columns:
       - name: id
         description: "Primary key - unique identifier for the summary"
@@ -1220,6 +1280,13 @@ models:
         description: "Foreign key to the campaign this summary belongs to"
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_airbyte_source__gp_api_db_campaign')
+                field: id
+              config:
+                warn_if: ">5"
+                error_if: ">10"
       - name: run_id
         description: "Identifier for the generation run that produced this summary"
         data_tests:
@@ -1230,6 +1297,8 @@ models:
           - not_null
       - name: sections
         description: "Structured sections of the summary (serialized)"
+        data_tests:
+          - not_null
       - name: created_at
         description: "Timestamp when the summary was created"
       - name: updated_at
