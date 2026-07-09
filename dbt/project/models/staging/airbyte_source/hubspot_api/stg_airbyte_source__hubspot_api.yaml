@@ -332,6 +332,995 @@ models:
         description: HubSpot `pro_upgrade_date` — timestamp of the Pro upgrade.
       - name: contact_created_at
         description: HubSpot `createdate` — when the contact was created in HubSpot.
+      - name: n2026_alt_activation__cas_meeting
+        description: >
+          HubSpot contact property `n2026_alt_activation__cas_meeting` (2026 alt
+          activation - CAS meeting). HubSpot property group: 2026_alt_activation.
+      - name: n2026_alt_activation__circle_engagement
+        description: >
+          HubSpot contact property `n2026_alt_activation__circle_engagement` (2026
+          alt activation - Circle engagement). HubSpot property group:
+          2026_alt_activation.
+      - name: n2026_alt_activation__content_engagement
+        description: >
+          HubSpot contact property `n2026_alt_activation__content_engagement` (2026
+          alt activation - content engagement). HubSpot property group:
+          2026_alt_activation.
+      - name: n2026_alt_activation__course_completion
+        description: >
+          HubSpot contact property `n2026_alt_activation__course_completion` (2026
+          alt activation - course completion). HubSpot property group:
+          2026_alt_activation.
+      - name: n2026_alt_activation__free_features
+        description: >
+          HubSpot contact property `n2026_alt_activation__free_features` (2026 alt
+          activation - free features). HubSpot property group: 2026_alt_activation.
+      - name: n2026_alt_activation__pro_features
+        description: >
+          HubSpot contact property `n2026_alt_activation__pro_features` (2026 alt
+          activation - Pro Features). HubSpot property group: 2026_alt_activation.
+      - name: n2026_alt_activation__webinar_attendance
+        description: >
+          HubSpot contact property `n2026_alt_activation__webinar_attendance` (2026
+          alt activation - webinar attendance). HubSpot property group:
+          2026_alt_activation.
+      - name: n2026_alternative_activation
+        description: >
+          HubSpot contact property `n2026_alternative_activation` (2026 alternative
+          activation). HubSpot property group: 2026_alt_activation.
+      - name: serve_eo_waitlist
+        description: >
+          HubSpot contact property `serve_eo_waitlist` (Serve EO Waitlist). HubSpot
+          property group: 2026_eo_outreach.
+      - name: serve_eo_waitlist_date
+        description: >
+          HubSpot contact property `serve_eo_waitlist_date` (Serve EO Waitlist
+          Date). HubSpot property group: 2026_eo_outreach.
+      - name: activepassive_candidate
+        description: >
+          HubSpot contact property `activepassive_candidate` (Active/Passive
+          Candidate). HubSpot property group: 2026_sales_properties.
+      - name: candidate_pain_point
+        description: >
+          HubSpot contact property `candidate_pain_point` (Candidate Pain Point).
+          HubSpot property group: 2026_sales_properties.
+      - name: follow_up_preference
+        description: >
+          HubSpot contact property `follow_up_preference` (Follow Up Preference).
+          HubSpot property group: 2026_sales_properties.
+      - name: menu_item_offered
+        description: >
+          HubSpot contact property `menu_item_offered` (Solution Offered). HubSpot
+          property group: 2026_sales_properties.
+      - name: no_offer_made_reason
+        description: >
+          HubSpot contact property `no_offer_made_reason` (No Offer Made Reason).
+          HubSpot property group: 2026_sales_properties.
+      - name: offer_accepted
+        description: >
+          HubSpot contact property `offer_accepted` (Offer Accepted). HubSpot
+          property group: 2026_sales_properties.
+      - name: hs_analytics_average_page_views
+        description: >
+          HubSpot contact property `hs_analytics_average_page_views` (Average
+          Pageviews). Average number of pageviews per session for this contact. Set
+          automatically.
+      - name: hs_analytics_first_referrer
+        description: >
+          HubSpot contact property `hs_analytics_first_referrer` (First Referring
+          Site). URL that referred the contact to your website. Set automatically.
+      - name: hs_analytics_first_timestamp
+        description: >
+          HubSpot contact property `hs_analytics_first_timestamp` (Time First Seen).
+          First time the contact has been seen. Set automatically.
+      - name: hs_analytics_first_touch_converting_campaign
+        description: >
+          HubSpot contact property `hs_analytics_first_touch_converting_campaign`
+          (First Touch Converting Campaign). Campaign responsible for the first
+          touch creation of this contact.
+      - name: hs_analytics_first_url
+        description: >
+          HubSpot contact property `hs_analytics_first_url` (First Page Seen). First
+          page the contact visited on your website. Set automatically.
+      - name: hs_analytics_first_visit_timestamp
+        description: >
+          HubSpot contact property `hs_analytics_first_visit_timestamp` (Time of
+          First Session). First time the contact visited your website. Set
+          automatically.
+      - name: hs_analytics_last_referrer
+        description: >
+          HubSpot contact property `hs_analytics_last_referrer` (Last Referring
+          Site). Last URL that referred contact to your website. Set automatically.
+      - name: hs_analytics_last_timestamp
+        description: >
+          HubSpot contact property `hs_analytics_last_timestamp` (Time Last Seen).
+          Timestamp for most recent webpage view on your website.
+      - name: hs_analytics_last_touch_converting_campaign
+        description: >
+          HubSpot contact property `hs_analytics_last_touch_converting_campaign`
+          (Last Touch Converting Campaign). Campaign responsible for the last touch
+          creation of this contact.
+      - name: hs_analytics_last_url
+        description: >
+          HubSpot contact property `hs_analytics_last_url` (Last Page Seen). Last
+          page the contact visited on your website. Set automatically.
+      - name: hs_analytics_last_visit_timestamp
+        description: >
+          HubSpot contact property `hs_analytics_last_visit_timestamp` (Time of Last
+          Session). Timestamp for start of the most recent session for this contact
+          to your website.
+      - name: hs_analytics_num_event_completions
+        description: >
+          HubSpot contact property `hs_analytics_num_event_completions` (Number of
+          event completions). Total number of events for this contact. Set
+          automatically.
+      - name: hs_analytics_num_page_views
+        description: >
+          HubSpot contact property `hs_analytics_num_page_views` (Number of
+          Pageviews). Total number of page views this contact has had on your
+          website. Set automatically.
+      - name: hs_analytics_num_visits
+        description: >
+          HubSpot contact property `hs_analytics_num_visits` (Number of Sessions).
+          Number of times a contact has come to your website. Set automatically.
+      - name: hs_analytics_source
+        description: >
+          HubSpot contact property `hs_analytics_source` (Original Traffic Source).
+          First known source the contact used to find your website. Set
+          automatically, but may be updated manually.
+      - name: hs_analytics_source_data_1
+        description: >
+          HubSpot contact property `hs_analytics_source_data_1` (Original Traffic
+          Source Drill-Down 1). Additional information about the source the contact
+          used to find your website. Set automatically.
+      - name: hs_analytics_source_data_2
+        description: >
+          HubSpot contact property `hs_analytics_source_data_2` (Original Traffic
+          Source Drill-Down 2). Additional information about the source the contact
+          used to find your website. Set automatically.
+      - name: hs_latest_source
+        description: >
+          HubSpot contact property `hs_latest_source` (Latest Traffic Source). The
+          source of the latest session for a contact
+      - name: hs_latest_source_data_1
+        description: >
+          HubSpot contact property `hs_latest_source_data_1` (Latest Traffic Source
+          Drill-Down 1). Additional information about the latest source for the last
+          session the contact used to find your website. Set automatically.
+      - name: hs_latest_source_data_2
+        description: >
+          HubSpot contact property `hs_latest_source_data_2` (Latest Traffic Source
+          Drill-Down 2). Additional information about the source for the last
+          session the contact used to find your website. Set automatically.
+      - name: hs_latest_source_timestamp
+        description: >
+          HubSpot contact property `hs_latest_source_timestamp` (Latest Traffic
+          Source Date). The time of the latest session for a contact
+      - name: calls_made
+        description: >
+          HubSpot contact property `calls_made` (Calls Made). HubSpot property
+          group: contact_activity.
+      - name: notes_last_updated
+        description: >
+          HubSpot contact property `notes_last_updated` (Last Activity Date). The
+          last time a call, chat conversation, LinkedIn message, postal mail,
+          meeting, note, sales email, SMS, or WhatsApp message was logged for a
+          contact. This is set automatically by HubSpot based on user actions in the
+          contact record.
+      - name: notes_next_activity_date
+        description: >
+          HubSpot contact property `notes_next_activity_date` (Next Activity Date).
+          The date of the next upcoming activity for a contact. This is set
+          automatically by HubSpot based on user actions in the contact record.
+      - name: num_contacted_notes
+        description: >
+          HubSpot contact property `num_contacted_notes` (Number of times
+          contacted). The number of times a call, chat conversation, LinkedIn
+          message, postal mail, meeting, sales email, SMS, or WhatsApp message was
+          logged for a contact record. This is set automatically by HubSpot based on
+          user actions in the contact record.
+      - name: num_notes
+        description: >
+          HubSpot contact property `num_notes` (Number of Sales Activities). The
+          number of times a call, chat conversation, LinkedIn message, postal mail,
+          meeting, note, sales email, SMS, task, or WhatsApp message was logged for
+          a contact record. This is set automatically by HubSpot based on user
+          actions in the contact record.
+      - name: open_lead
+        description: >
+          HubSpot contact property `open_lead` (Open Lead). HubSpot property group:
+          contact_activity.
+      - name: ana_health
+        description: >
+          HubSpot contact property `ana_health` (ANA Health). HubSpot property
+          group: contactinformation.
+      - name: br_person_id
+        description: >
+          HubSpot contact property `br_person_id` (BR Person ID). HubSpot property
+          group: contactinformation.
+      - name: candidate_date_verified
+        description: >
+          HubSpot contact property `candidate_date_verified` (Candidate Date
+          Verified). When a candidate became confirmed - stamped over from company-
+          level property 'date_verified'
+      - name: candidate_experience_level
+        description: >
+          HubSpot contact property `candidate_experience_level` (Candidate
+          Experience Level). HubSpot property group: contactinformation.
+      - name: candidate_interest
+        description: >
+          HubSpot contact property `candidate_interest` (Candidate Interest).
+          HubSpot property group: contactinformation.
+      - name: candidate_profile_url
+        description: >
+          HubSpot contact property `candidate_profile_url` (Candidate Profile URL).
+          HubSpot property group: contactinformation.
+      - name: candidate_seat
+        description: >
+          HubSpot contact property `candidate_seat` (Candidate Seat). HubSpot
+          property group: contactinformation.
+      - name: candidate_state
+        description: >
+          HubSpot contact property `candidate_state` (Candidate State). State in
+          which the candidate is running
+      - name: channel_group__first_conversion_source
+        description: >
+          HubSpot contact property `channel_group__first_conversion_source` (Channel
+          Group - First Conversion Source). HubSpot property group:
+          contactinformation.
+      - name: circle_attributed_pledge
+        description: >
+          HubSpot contact property `circle_attributed_pledge` (Circle attributed
+          pledge). Indicates whether this contact's pledge is attributed to Circle.
+          Options are Yes or No.
+      - name: circle_comments
+        description: >
+          HubSpot contact property `circle_comments` (Circle Comments). HubSpot
+          property group: contactinformation.
+      - name: circle_invite_link
+        description: >
+          HubSpot contact property `circle_invite_link` (circle invite link).
+          HubSpot property group: contactinformation.
+      - name: circle_join_date
+        description: >
+          HubSpot contact property `circle_join_date` (Circle Join Date). The date a
+          candidate joined Circle
+      - name: circle_leaderboard_level
+        description: >
+          HubSpot contact property `circle_leaderboard_level` (Circle Leaderboard
+          Level). Shows the level attained on the Circle leaderboard
+      - name: circle_level_2_code
+        description: >
+          HubSpot contact property `circle_level_2_code` (Circle Level 2 Code). The
+          unique Stripe code for this user's Circle Level 2 rewards
+      - name: circle_level_5_code
+        description: >
+          HubSpot contact property `circle_level_5_code` (Circle Level 5 Code). The
+          unique Stripe code for this user's Circle Level 5 rewards
+      - name: circle_level_8_code
+        description: >
+          HubSpot contact property `circle_level_8_code` (Circle Level 8 Code). The
+          unique Stripe code for this user's Circle Level 8 rewards
+      - name: circle_live_events_attended
+        description: >
+          HubSpot contact property `circle_live_events_attended` (Circle Live Events
+          Attended). HubSpot property group: contactinformation.
+      - name: circle_member
+        description: >
+          HubSpot contact property `circle_member` (Circle Member). HubSpot property
+          group: contactinformation.
+      - name: circle_roles
+        description: >
+          HubSpot contact property `circle_roles` (Circle Roles). Contact is on
+          Circle/came from Circle & indicates their roles on Circle
+      - name: circle_tags
+        description: >
+          HubSpot contact property `circle_tags` (Circle Tags). HubSpot property
+          group: contactinformation.
+      - name: circle_user_name
+        description: >
+          HubSpot contact property `circle_user_name` (Circle User Name). HubSpot
+          property group: contactinformation.
+      - name: clean_phone
+        description: >
+          HubSpot contact property `clean_phone` (Clean Phone). This is a clean
+          phone number field that should not contain anything other than digits. No
+          parentheses, dashes, spaces, etc.
+      - name: closed_post_enrichment
+        description: >
+          HubSpot contact property `closed_post_enrichment` (Closed Post
+          Enrichment). HubSpot property group: contactinformation.
+      - name: closed_won_candidate
+        description: >
+          HubSpot contact property `closed_won_candidate` (Closed Won Candidate).
+          HubSpot property group: contactinformation.
+      - name: conversion_source
+        description: >
+          HubSpot contact property `conversion_source` (Conversion Source). Source
+          of session when candidate converts
+      - name: conversion_source_drill_down_1
+        description: >
+          HubSpot contact property `conversion_source_drill_down_1` (Conversion
+          Source Drill Down 1). Drill down 1 source of session when candidate
+          converts (from latest source)
+      - name: conversion_source_drill_down_2
+        description: >
+          HubSpot contact property `conversion_source_drill_down_2` (Conversion
+          Source Drill Down 2). Drill down 2 source of session when candidate
+          converts (from latest source)
+      - name: country
+        description: >
+          HubSpot contact property `country` (Country/Region). The contact's
+          country/region of residence. This might be set via import, form, or
+          integration.
+      - name: courses_completed
+        description: >
+          HubSpot contact property `courses_completed` (Courses Completed). HubSpot
+          property group: contactinformation.
+      - name: courses_started
+        description: >
+          HubSpot contact property `courses_started` (Courses Started). HubSpot
+          property group: contactinformation.
+      - name: election_result
+        description: >
+          HubSpot contact property `election_result` (Election Result). HubSpot
+          property group: contactinformation.
+      - name: election_results
+        description: >
+          HubSpot contact property `election_results` (Election Results). HubSpot
+          property group: contactinformation.
+      - name: election_type
+        description: >
+          HubSpot contact property `election_type` (Election Type). HubSpot property
+          group: contactinformation.
+      - name: fuzzy_match_score
+        description: >
+          HubSpot contact property `fuzzy_match_score` (fuzzy_match_score). HubSpot
+          property group: contactinformation.
+      - name: general_election_result
+        description: >
+          HubSpot contact property `general_election_result` (General Election
+          Result). Result for this candidate in their general election.. Copied from
+          Company record.
+      - name: hs_feedback_last_csat_survey_date
+        description: >
+          HubSpot contact property `hs_feedback_last_csat_survey_date` (Last CSAT
+          survey date). The time that this contact last submitted a CSAT survey
+          response. This is automatically set by HubSpot.
+      - name: hs_feedback_last_csat_survey_follow_up
+        description: >
+          HubSpot contact property `hs_feedback_last_csat_survey_follow_up` (Last
+          CSAT survey comment). Last CSAT survey comment from this contact.
+      - name: hs_feedback_last_csat_survey_rating
+        description: >
+          HubSpot contact property `hs_feedback_last_csat_survey_rating` (Last CSAT
+          survey rating). Last CSAT survey rating from this contact.
+      - name: hs_feedback_last_nps_rating_number
+        description: >
+          HubSpot contact property `hs_feedback_last_nps_rating_number` (Latest NPS
+          survey rating). Latest NPS survey rating that this contact gave
+      - name: hs_object_id
+        description: >
+          HubSpot contact property `hs_object_id` (Record ID). The unique ID for
+          this record. This value is set automatically by HubSpot.
+      - name: hs_object_source_detail_1
+        description: >
+          HubSpot contact property `hs_object_source_detail_1` (Record source detail
+          1). First level of detail on how this record was created.
+      - name: hs_object_source_detail_2
+        description: >
+          HubSpot contact property `hs_object_source_detail_2` (Record source detail
+          2). Second level of detail on how this record was created.
+      - name: hs_object_source_detail_3
+        description: >
+          HubSpot contact property `hs_object_source_detail_3` (Record source detail
+          3). Third level of detail on how this record was created.
+      - name: hs_object_source_label
+        description: >
+          HubSpot contact property `hs_object_source_label` (Record source). How
+          this record was created.
+      - name: number_property
+        description: >
+          HubSpot contact property `number` (Number). HubSpot property group:
+          contactinformation.
+      - name: number_of_candidates
+        description: >
+          HubSpot contact property `number_of_candidates` (Number of Candidates).
+          HubSpot property group: contactinformation.
+      - name: number_of_guests
+        description: >
+          HubSpot contact property `number_of_guests` (Number of Guests). HubSpot
+          property group: contactinformation.
+      - name: number_of_opponents
+        description: >
+          HubSpot contact property `number_of_opponents` (Number of opponents).
+          Number of opponents the candidate has in their race
+      - name: number_of_people_joining_you
+        description: >
+          HubSpot contact property `number_of_people_joining_you` (Number of People
+          Joining You). HubSpot property group: contactinformation.
+      - name: number_of_voters
+        description: >
+          HubSpot contact property `number_of_voters` (Number of Voters). HubSpot
+          property group: contactinformation.
+      - name: numemployees
+        description: >
+          HubSpot contact property `numemployees` (Number of Employees). The number
+          of company employees
+      - name: office_hours_attendances
+        description: >
+          HubSpot contact property `office_hours_attendances` (Office Hours
+          Attendances). HubSpot property group: contactinformation.
+      - name: office_level_tier
+        description: >
+          HubSpot contact property `office_level_tier` (Office Level Tier). HubSpot
+          property group: contactinformation.
+      - name: pdl_likelihood
+        description: >
+          HubSpot contact property `pdl_likelihood` (PDL Likelihood). HubSpot
+          property group: contactinformation.
+      - name: sent_holiday_ooo
+        description: >
+          HubSpot contact property `sent_holiday_ooo` (Sent holiday OOO). Indicates
+          whether the contact has been sent a holiday out-of-office (OOO) message
+      - name: serve__days_between_poll_scheduled_and_launched
+        description: >
+          HubSpot contact property `serve__days_between_poll_scheduled_and_launched`
+          (Serve - Days between Poll Scheduled and Launched). HubSpot property
+          group: contactinformation.
+      - name: serve__duration_between_results_received_and_launch_date
+        description: >
+          HubSpot contact property
+          `serve__duration_between_results_received_and_launch_date` (Serve -
+          Duration Between Results Received and Launch Date). HubSpot property
+          group: contactinformation.
+      - name: serve_founding_member_meeting
+        description: >
+          HubSpot contact property `serve_founding_member_meeting` (Serve Founding
+          Member Meeting). HubSpot property group: contactinformation.
+      - name: serve_founding_member_opt_in
+        description: >
+          HubSpot contact property `serve_founding_member_opt_in` (Serve Founding
+          Member Opt In). HubSpot property group: contactinformation.
+      - name: serve_lifecycle_stage
+        description: >
+          HubSpot contact property `serve_lifecycle_stage` (Serve lifecycle stage).
+          The current lifecycle stage of an elected official's user journey with
+          Serve, from initial lead to retention or churn.
+      - name: serve_meeting_attended
+        description: >
+          HubSpot contact property `serve_meeting_attended` (Serve meeting
+          attended). Indicates whether this contact has attended a Serve meeting
+      - name: serve_meeting_booked
+        description: >
+          HubSpot contact property `serve_meeting_booked` (Serve meeting booked).
+          Indicates whether a Serve meeting has been booked for this contact
+      - name: serve_onboarded
+        description: >
+          HubSpot contact property `serve_onboarded` (Serve Activated User). HubSpot
+          property group: contactinformation.
+      - name: serve_opt_in_approved
+        description: >
+          HubSpot contact property `serve_opt_in_approved` (Serve opt in approved).
+          Indicates whether the contact has been approved for serve opt in.
+      - name: term_end_date
+        description: >
+          HubSpot contact property `term_end_date` (Term End Date). HubSpot property
+          group: contactinformation.
+      - name: term_start_date
+        description: >
+          HubSpot contact property `term_start_date` (Term Start Date). HubSpot
+          property group: contactinformation.
+      - name: utm_campaign
+        description: >
+          HubSpot contact property `utm_campaign` (utm_campaign). HubSpot property
+          group: contactinformation.
+      - name: utm_content
+        description: >
+          HubSpot contact property `utm_content` (utm_content). HubSpot property
+          group: contactinformation.
+      - name: utm_medium
+        description: >
+          HubSpot contact property `utm_medium` (utm_medium). HubSpot property
+          group: contactinformation.
+      - name: utm_source
+        description: >
+          HubSpot contact property `utm_source` (utm_source). HubSpot property
+          group: contactinformation.
+      - name: utm_term
+        description: >
+          HubSpot contact property `utm_term` (utm_term). HubSpot property group:
+          contactinformation.
+      - name: viability_score_dropdown
+        description: >
+          HubSpot contact property `viability_score_dropdown` (Viability Score
+          Dropdown). HubSpot property group: contactinformation.
+      - name: viability_score_numeric
+        description: >
+          HubSpot contact property `viability_score_numeric` (Viability Score
+          Numeric). HubSpot property group: contactinformation.
+      - name: voter_contact_goal
+        description: >
+          HubSpot contact property `voter_contact_goal` (Voter Contact Goal).
+          HubSpot property group: contactinformation.
+      - name: voter_outreach_intent
+        description: >
+          HubSpot contact property `voter_outreach_intent` (Voter Outreach Intent).
+          HubSpot property group: contactinformation.
+      - name: voter_outreach_timing
+        description: >
+          HubSpot contact property `voter_outreach_timing` (Voter Outreach Budget).
+          HubSpot property group: contactinformation.
+      - name: website_created
+        description: >
+          HubSpot contact property `website_created` (Website Created). HubSpot
+          property group: contactinformation.
+      - name: win_icp_supersize
+        description: >
+          HubSpot contact property `win_icp_supersize` (Win ICP Supersize). HubSpot
+          property group: contactinformation.
+      - name: ana_acquired_not_activated
+        description: >
+          HubSpot contact property `ana_acquired_not_activated` (ANA (Acquired Not
+          Activated)). contact has created an account (pledged) AND taken a
+          meaningful action outside of product-defined activation (commenting in
+          Circle multiple times, attending an event, completing a course), but has
+          NOT been product-activated.
+      - name: pro_closed_won_rep
+        description: >
+          HubSpot contact property `pro_closed_won_rep` (Pro Closed Won Rep). Rep
+          who closed a Pro candidate
+      - name: win_lifecycle_stage
+        description: >
+          HubSpot contact property `win_lifecycle_stage` (Win Lifecycle Stage).
+          HubSpot property group: conversioninformation.
+      - name: hs_email_bounce
+        description: >
+          HubSpot contact property `hs_email_bounce` (Marketing emails bounced). The
+          number of marketing emails that bounced for the current email address.
+          This is automatically set by HubSpot.
+      - name: hs_email_customer_quarantined_reason
+        description: >
+          HubSpot contact property `hs_email_customer_quarantined_reason` (Email
+          address quarantine reason). The reason why the email address has been
+          quarantined.
+      - name: hs_email_delivered
+        description: >
+          HubSpot contact property `hs_email_delivered` (Marketing emails
+          delivered). The number of marketing emails delivered for the current email
+          address. This is automatically set by HubSpot.
+      - name: hs_email_first_click_date
+        description: >
+          HubSpot contact property `hs_email_first_click_date` (First marketing
+          email click date). The date of the earliest link click for any marketing
+          email to the current email address. This is automatically set by HubSpot.
+      - name: hs_email_first_open_date
+        description: >
+          HubSpot contact property `hs_email_first_open_date` (First marketing email
+          open date). The date of the earliest open for any marketing email to the
+          current email address. This is automatically set by HubSpot.
+      - name: hs_email_first_reply_date
+        description: >
+          HubSpot contact property `hs_email_first_reply_date` (First marketing
+          email reply date). The date of the earliest reply for any marketing email
+          to the current email address. This is automatically set by HubSpot.
+      - name: hs_email_first_send_date
+        description: >
+          HubSpot contact property `hs_email_first_send_date` (First marketing email
+          send date). The date of the earliest delivery for any marketing email to
+          the current email address. This is automatically set by HubSpot.
+      - name: hs_email_hard_bounce_reason_enum
+        description: >
+          HubSpot contact property `hs_email_hard_bounce_reason_enum` (Email hard
+          bounce reason). The issue that caused a contact to hard bounce from your
+          emails. If this is an error or a temporary issue, you can unbounce this
+          contact from the contact record.
+      - name: hs_email_last_email_name
+        description: >
+          HubSpot contact property `hs_email_last_email_name` (Last marketing email
+          name). The name of the last marketing email sent to the current email
+          address. This is automatically set by HubSpot.
+      - name: hs_email_last_reply_date
+        description: >
+          HubSpot contact property `hs_email_last_reply_date` (Last marketing email
+          reply date). The date of the latest reply for any marketing email to the
+          current email address. This is automatically set by HubSpot.
+      - name: hs_email_last_send_date
+        description: >
+          HubSpot contact property `hs_email_last_send_date` (Last marketing email
+          send date). The date of the most recent delivery for any marketing email
+          to the current email address. This is automatically set by HubSpot.
+      - name: hs_email_optout
+        description: >
+          HubSpot contact property `hs_email_optout` (Unsubscribed from all email).
+          Indicates that the current email address has opted out of all email.
+      - name: hs_email_optout_337186406
+        description: >
+          HubSpot contact property `hs_email_optout_337186406` (Opted out of email:
+          Customer Service Communication). Indicates that the current email address
+          has opted out of this email type.
+      - name: hs_email_optout_36299695
+        description: >
+          HubSpot contact property `hs_email_optout_36299695` (Opted out of email:
+          Marketing Information). Indicates that the current email address has opted
+          out of this email type.
+      - name: hs_email_optout_364222251
+        description: >
+          HubSpot contact property `hs_email_optout_364222251` (Opted out of email:
+          Visibility Team). Indicates that the current email address has opted out
+          of this email type.
+      - name: hs_email_optout_364222343
+        description: >
+          HubSpot contact property `hs_email_optout_364222343` (Opted out of email:
+          Campaign Success). Indicates that the current email address has opted out
+          of this email type.
+      - name: hs_email_optout_364222456
+        description: >
+          HubSpot contact property `hs_email_optout_364222456` (Opted out of email:
+          Voter Outreach Team). Indicates that the current email address has opted
+          out of this email type.
+      - name: hs_email_optout_38291863
+        description: >
+          HubSpot contact property `hs_email_optout_38291863` (Opted out of email:
+          One to One). Indicates that the current email address has opted out of
+          this email type.
+      - name: hs_email_optout_38853397
+        description: >
+          HubSpot contact property `hs_email_optout_38853397` (Opted out of email:
+          Product Updates). Indicates that the current email address has opted out
+          of this email type.
+      - name: hs_email_optout_38853444
+        description: >
+          HubSpot contact property `hs_email_optout_38853444` (Opted out of email:
+          Newsletter). Indicates that the current email address has opted out of
+          this email type.
+      - name: hs_email_optout_38853518
+        description: >
+          HubSpot contact property `hs_email_optout_38853518` (Opted out of email:
+          Onboarding). Indicates that the current email address has opted out of
+          this email type.
+      - name: zb_catchall_domain
+        description: >
+          HubSpot contact property `zb_catchall_domain` (ZB_Catchall_Domain).
+          ZeroBounce Catchall Domain
+      - name: zb_free_email
+        description: >
+          HubSpot contact property `zb_free_email` (ZB_Free_Email). ZeroBounce Free
+          Email
+      - name: zb_status
+        description: >
+          HubSpot contact property `zb_status` (ZB_Status). ZeroBounce validation
+          status
+      - name: zb_substatus
+        description: >
+          HubSpot contact property `zb_substatus` (ZB_SubStatus). ZeroBounce
+          validation sub status
+      - name: zb_validation_timestamp
+        description: >
+          HubSpot contact property `zb_validation_timestamp`
+          (ZB_Validation_Timestamp). ZeroBounce Validation Timestamp
+      - name: meeting_agenda_id
+        description: >
+          HubSpot contact property `meeting_agenda_id` (Meeting Agenda ID). HubSpot
+          property group: meeting_briefings.
+      - name: meeting_date_string
+        description: >
+          HubSpot contact property `meeting_date_string` (Meeting Date String).
+          HubSpot property group: meeting_briefings.
+      - name: meeting_place
+        description: >
+          HubSpot contact property `meeting_place` (Meeting Place). HubSpot property
+          group: meeting_briefings.
+      - name: meeting_type
+        description: >
+          HubSpot contact property `meeting_type` (Meeting Type). HubSpot property
+          group: meeting_briefings.
+      - name: next_briefing_meeting_date
+        description: >
+          HubSpot contact property `next_briefing_meeting_date` (Next Briefing
+          Meeting Date). HubSpot property group: meeting_briefings.
+      - name: next_briefing_meeting_date_2
+        description: >
+          HubSpot contact property `next_briefing_meeting_date_2` (Next Briefing
+          Meeting Date 2). HubSpot property group: meeting_briefings.
+      - name: next_briefing_meeting_date_3
+        description: >
+          HubSpot contact property `next_briefing_meeting_date_3` (Next Briefing
+          Meeting Date 3). HubSpot property group: meeting_briefings.
+      - name: next_briefing_meeting_name
+        description: >
+          HubSpot contact property `next_briefing_meeting_name` (Next Briefing
+          Meeting Name). HubSpot property group: meeting_briefings.
+      - name: next_briefing_meeting_name_2
+        description: >
+          HubSpot contact property `next_briefing_meeting_name_2` (Next Briefing
+          Meeting Name 2). HubSpot property group: meeting_briefings.
+      - name: next_briefing_meeting_name_3
+        description: >
+          HubSpot contact property `next_briefing_meeting_name_3` (Next Briefing
+          Meeting Name 3). HubSpot property group: meeting_briefings.
+      - name: next_briefing_summary
+        description: >
+          HubSpot contact property `next_briefing_summary` (Next Briefing Summary).
+          HubSpot property group: meeting_briefings.
+      - name: next_briefing_summary_2
+        description: >
+          HubSpot contact property `next_briefing_summary_2` (Next Briefing Summary
+          2). HubSpot property group: meeting_briefings.
+      - name: next_briefing_summary_3
+        description: >
+          HubSpot contact property `next_briefing_summary_3` (Next Briefing Summary
+          3). HubSpot property group: meeting_briefings.
+      - name: has_ein
+        description: >
+          HubSpot contact property `has_ein` (Has EIN). Indicates whether the
+          candidate or campaign has an Employer Identification Number (EIN). An EIN
+          is required for Pro qualification. If No, the record is Not Qualifie
+      - name: hubspot_owner_assigneddate
+        description: >
+          HubSpot contact property `hubspot_owner_assigneddate` (Owner assigned
+          date). The most recent timestamp of when an owner was assigned to this
+          record. This value is set automatically by HubSpot.
+      - name: hubspot_team_id
+        description: >
+          HubSpot contact property `hubspot_team_id` (HubSpot Team). The team of the
+          owner of a contact.
+      - name: hubspotscore
+        description: >
+          HubSpot contact property `hubspotscore` (HubSpot Score). The number that
+          shows qualification of contacts to sales readiness. It can be set in
+          HubSpot's Lead Scoring app.
+      - name: icp
+        description: >
+          HubSpot contact property `icp` (ICP). Is this person ICP for 2026
+      - name: top_issue_1_priority
+        description: >
+          HubSpot contact property `top_issue_1_priority` (Top Issue 1 Priority).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_1_summary
+        description: >
+          HubSpot contact property `top_issue_1_summary` (Top Issue 1 Summary).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_1_title
+        description: >
+          HubSpot contact property `top_issue_1_title` (Top Issue 1 Title). HubSpot
+          property group: serve_-_community_issues.
+      - name: top_issue_2_priority
+        description: >
+          HubSpot contact property `top_issue_2_priority` (Top Issue 2 Priority).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_2_summary
+        description: >
+          HubSpot contact property `top_issue_2_summary` (Top Issue 2 Summary).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_2_title
+        description: >
+          HubSpot contact property `top_issue_2_title` (Top Issue 2 Title). HubSpot
+          property group: serve_-_community_issues.
+      - name: top_issue_3_priority
+        description: >
+          HubSpot contact property `top_issue_3_priority` (Top Issue 3 Priority).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_3_summary
+        description: >
+          HubSpot contact property `top_issue_3_summary` (Top Issue 3 Summary).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_3_title
+        description: >
+          HubSpot contact property `top_issue_3_title` (Top Issue 3 Title). HubSpot
+          property group: serve_-_community_issues.
+      - name: top_issue_4_priority
+        description: >
+          HubSpot contact property `top_issue_4_priority` (Top Issue 4 Priority).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_4_summary
+        description: >
+          HubSpot contact property `top_issue_4_summary` (Top Issue 4 Summary).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_4_title
+        description: >
+          HubSpot contact property `top_issue_4_title` (Top Issue 4 Title). HubSpot
+          property group: serve_-_community_issues.
+      - name: top_issue_5_priority
+        description: >
+          HubSpot contact property `top_issue_5_priority` (Top Issue 5 Priority).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_5_summary
+        description: >
+          HubSpot contact property `top_issue_5_summary` (Top Issue 5 Summary).
+          HubSpot property group: serve_-_community_issues.
+      - name: top_issue_5_title
+        description: >
+          HubSpot contact property `top_issue_5_title` (Top Issue 5 Title). HubSpot
+          property group: serve_-_community_issues.
+      - name: top_issue_count
+        description: >
+          HubSpot contact property `top_issue_count` (top Issue Count). HubSpot
+          property group: serve_-_community_issues.
+      - name: trending_issue1_priority
+        description: >
+          HubSpot contact property `trending_issue1_priority` (trending Issue1
+          Priority). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_1_summary
+        description: >
+          HubSpot contact property `trending_issue_1_summary` (trending Issue 1
+          Summary). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_1_title
+        description: >
+          HubSpot contact property `trending_issue_1_title` (trending Issue 1
+          Title). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_2_priority
+        description: >
+          HubSpot contact property `trending_issue_2_priority` (Trending Issue 2
+          Priority). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_2_summary
+        description: >
+          HubSpot contact property `trending_issue_2_summary` (Trending Issue 2
+          Summary). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_2_title
+        description: >
+          HubSpot contact property `trending_issue_2_title` (trending Issue 2
+          Title). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_3_priority
+        description: >
+          HubSpot contact property `trending_issue_3_priority` (trending Issue 3
+          Priority). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_3_summary
+        description: >
+          HubSpot contact property `trending_issue_3_summary` (trending Issue 3
+          Summary). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_3_title
+        description: >
+          HubSpot contact property `trending_issue_3_title` (trending Issue 3
+          Title). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_4_priority
+        description: >
+          HubSpot contact property `trending_issue_4_priority` (trending Issue 4
+          Priority). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_4_summary
+        description: >
+          HubSpot contact property `trending_issue_4_summary` (trending Issue 4
+          Summary). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_4_title
+        description: >
+          HubSpot contact property `trending_issue_4_title` (trending Issue 4
+          Title). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_5_priority
+        description: >
+          HubSpot contact property `trending_issue_5_priority` (trending Issue 5
+          Priority). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_5_summary
+        description: >
+          HubSpot contact property `trending_issue_5_summary` (trending Issue 5
+          Summary). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_5_title
+        description: >
+          HubSpot contact property `trending_issue_5_title` (trending Issue 5
+          Title). HubSpot property group: serve_-_community_issues.
+      - name: trending_issue_count
+        description: >
+          HubSpot contact property `trending_issue_count` (trending Issue Count).
+          HubSpot property group: serve_-_community_issues.
+      - name: high_priority_issue_id
+        description: >
+          HubSpot contact property `issue_id` (issue Id). HubSpot property group:
+          serve_-_community_issues_-_high_priority_issues_generated.
+      - name: high_priority_issue_summary
+        description: >
+          HubSpot contact property `summary` (Summary). HubSpot property group:
+          serve_-_community_issues_-_high_priority_issues_generated.
+      - name: high_priority_issue_title
+        description: >
+          HubSpot contact property `title` (Title). HubSpot property group: serve_-
+          _community_issues_-_high_priority_issues_generated.
+      - name: plan_duration
+        description: >
+          HubSpot contact property `plan_duration` (Plan Duration). HubSpot property
+          group: win_campaign_plan.
+      - name: plan_enabled
+        description: >
+          HubSpot contact property `plan_enabled` (Plan Enabled). HubSpot property
+          group: win_campaign_plan.
+      - name: plan_start_date
+        description: >
+          HubSpot contact property `plan_start_date` (Plan Start Date). HubSpot
+          property group: win_campaign_plan.
+      - name: plan_tasks_completed
+        description: >
+          HubSpot contact property `plan_tasks_completed` (Plan Tasks Completed).
+          HubSpot property group: win_campaign_plan.
+      - name: plan_total_tasks
+        description: >
+          HubSpot contact property `plan_total_tasks` (Plan Total Tasks). HubSpot
+          property group: win_campaign_plan.
+      - name: task_description_1
+        description: >
+          HubSpot contact property `task_description_1` (Task Description 1).
+          HubSpot property group: win_campaign_plan.
+      - name: task_description_2
+        description: >
+          HubSpot contact property `task_description_2` (Task Description 2).
+          HubSpot property group: win_campaign_plan.
+      - name: task_description_3
+        description: >
+          HubSpot contact property `task_description_3` (Task Description 3).
+          HubSpot property group: win_campaign_plan.
+      - name: task_description_4
+        description: >
+          HubSpot contact property `task_description_4` (Task Description 4).
+          HubSpot property group: win_campaign_plan.
+      - name: task_description_5
+        description: >
+          HubSpot contact property `task_description_5` (Task Description 5).
+          HubSpot property group: win_campaign_plan.
+      - name: task_due_date_1
+        description: >
+          HubSpot contact property `task_due_date_1` (Task Due Date 1). HubSpot
+          property group: win_campaign_plan.
+      - name: task_due_date_2
+        description: >
+          HubSpot contact property `task_due_date_2` (Task Due Date 2). HubSpot
+          property group: win_campaign_plan.
+      - name: task_due_date_3
+        description: >
+          HubSpot contact property `task_due_date_3` (Task Due Date 3). HubSpot
+          property group: win_campaign_plan.
+      - name: task_due_date_4
+        description: >
+          HubSpot contact property `task_due_date_4` (Task Due Date 4). HubSpot
+          property group: win_campaign_plan.
+      - name: task_due_date_5
+        description: >
+          HubSpot contact property `task_due_date_5` (Task Due Date 5). HubSpot
+          property group: win_campaign_plan.
+      - name: task_name_1
+        description: >
+          HubSpot contact property `task_name_1` (Task Name 1). HubSpot property
+          group: win_campaign_plan.
+      - name: task_name_2
+        description: >
+          HubSpot contact property `task_name_2` (Task Name 2). HubSpot property
+          group: win_campaign_plan.
+      - name: task_name_3
+        description: >
+          HubSpot contact property `task_name_3` (Task Name 3). HubSpot property
+          group: win_campaign_plan.
+      - name: task_name_4
+        description: >
+          HubSpot contact property `task_name_4` (Task Name 4). HubSpot property
+          group: win_campaign_plan.
+      - name: task_name_5
+        description: >
+          HubSpot contact property `task_name_5` (Task Name 5). HubSpot property
+          group: win_campaign_plan.
+      - name: task_status_1
+        description: >
+          HubSpot contact property `task_status_1` (Task Status 1). HubSpot property
+          group: win_campaign_plan.
+      - name: task_status_2
+        description: >
+          HubSpot contact property `task_status_2` (Task Status 2). HubSpot property
+          group: win_campaign_plan.
+      - name: task_status_3
+        description: >
+          HubSpot contact property `task_status_3` (Task Status 3). HubSpot property
+          group: win_campaign_plan.
+      - name: task_status_4
+        description: >
+          HubSpot contact property `task_status_4` (Task Status 4). HubSpot property
+          group: win_campaign_plan.
+      - name: task_status_5
+        description: >
+          HubSpot contact property `task_status_5` (Task Status 5). HubSpot property
+          group: win_campaign_plan.
+      - name: task_type
+        description: >
+          HubSpot contact property `task_type` (Task Type). HubSpot property group:
+          win_campaign_plan.
+      - name: connected_with_rep
+        description: >
+          HubSpot contact property `connected_with_rep` (Connected with rep).
+          HubSpot property group: contactinformation.
   - name: stg_airbyte_source__hubspot_api_deals
     description: Deals data load from HubSpot API
     columns:
