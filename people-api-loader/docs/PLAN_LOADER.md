@@ -36,6 +36,27 @@
 > captured from the serving cluster's `pg_catalog` by `loader extract-serving-structure`.
 > `create-schema`/`copy`/`build-indexes` read those generated artifacts. Scope is Voter-only;
 > the District family is built by the dbt write path.
+>
+> **Load-phase design (DATA-1913, validated end-to-end on astro-dev 2026-07-09).** The numbered
+> Step sections below are stale in their load/index specifics; the current design is:
+> - **Load instance is `db.r8g.48xlarge` (192 vCPU), not `db.r7g.16xlarge`.** `build_indexes` is
+>   cleanly CPU-bound (verified with `pg_stat_activity`: all backends running, zero IPC/LWLock
+>   waits) and scales with vCPU, so the load/index phase runs large and the `resize` step flips
+>   the writer down to Serverless v2 (0.5–128 ACU) for serving. `DEFAULT_LOAD_INSTANCE_CLASS`
+>   (config.py) sets it; override with `LOADER_LOAD_INSTANCE_CLASS`.
+> - **`build-indexes` builds plain (non-unique) indexes PER PARTITION, not per table.** For each
+>   plain index it does `CREATE INDEX ... ON ONLY public."Voter"` (empty parent, instant), then one
+>   child index per partition `public."Voter_<ST>"` as an independent `(index, partition)` unit
+>   across a fixed pool, then `ALTER INDEX ... ATTACH PARTITION`. The PK and the single LALVOTERID
+>   unique stay parent-level builds (the partition key `"State"` is appended to both). Every step is
+>   idempotent/re-runnable (`CREATE INDEX IF NOT EXISTS`, a `pg_inherits` attach check, and a
+>   `pg_constraint` pre-check before adding the PK — re-adding an existing PK raises 42P16, not
+>   42710). Pool size is `_DEFAULT_BUILDERS` (build_indexes.py), tuned to the load instance's vCPU.
+> - **The loader reaches the private cluster through an SSH bastion tunnel.** `build_indexes` opens
+>   ONE shared tunnel for the whole step (`db.open_new_tunnel` + `connect_new(..., forward=...)`) so
+>   its many concurrent connections multiplex over a single SSH transport; opening a tunnel per
+>   connection floods the bastion's sshd MaxStartups. The `copy` step caps `--parallelism` for the
+>   same reason.
 
 ## Context
 
