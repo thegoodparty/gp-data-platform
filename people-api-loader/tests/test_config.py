@@ -137,3 +137,20 @@ def test_bastion_enabled_when_host_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.bastion_user == "ec2-user"
     assert cfg.bastion_private_key == "PEM"
     assert cfg.bastion_enabled is True
+
+
+def test_from_env_instance_classes_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LOADER_LOAD_INSTANCE_CLASS", raising=False)
+    monkeypatch.delenv("LOADER_INDEX_INSTANCE_CLASS", raising=False)
+    cfg = LoaderConfig.from_env()
+    # copy/provision phase runs on the smaller box; build_indexes scales up to the large box.
+    assert cfg.load_instance_class == "db.r8g.16xlarge"
+    assert cfg.index_instance_class == "db.r8g.48xlarge"
+
+
+def test_from_env_instance_classes_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOADER_LOAD_INSTANCE_CLASS", "db.r8g.8xlarge")
+    monkeypatch.setenv("LOADER_INDEX_INSTANCE_CLASS", "db.r8g.24xlarge")
+    cfg = LoaderConfig.from_env()
+    assert cfg.load_instance_class == "db.r8g.8xlarge"
+    assert cfg.index_instance_class == "db.r8g.24xlarge"

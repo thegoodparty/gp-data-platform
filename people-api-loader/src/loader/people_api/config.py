@@ -62,12 +62,15 @@ DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
 DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 
-# Load-phase instance. Prod is serverless, but we use provisioned for load
-# (see PLAN_LOADER.md "Provisioned-vs-Serverless"). Resize step flips this.
-# build_indexes is cleanly CPU-bound (see steps/build_indexes.py) and scales with vCPU, so the
-# load phase runs on a large box (192 vCPU) and resizes down to serverless for serving. Override
-# per-env with LOADER_LOAD_INSTANCE_CLASS; keep _DEFAULT_BUILDERS in build_indexes.py in step.
-DEFAULT_LOAD_INSTANCE_CLASS = "db.r8g.48xlarge"
+# Load-phase instance sizing. Prod serving is serverless; load uses provisioned (see
+# PLAN_LOADER.md "Provisioned-vs-Serverless"). We use TWO classes: provision/create_schema/copy
+# run on the smaller `load_instance_class` (copy is I/O/WAL-bound, not CPU-bound), and
+# build_indexes scales the writer UP to `index_instance_class` (build_indexes is cleanly
+# CPU-bound and scales with vCPU — see steps/build_indexes.py). resize then flips the writer to
+# serverless. Override per-env with LOADER_LOAD_INSTANCE_CLASS / LOADER_INDEX_INSTANCE_CLASS;
+# keep _DEFAULT_BUILDERS in build_indexes.py in step with the index box's vCPU.
+DEFAULT_LOAD_INSTANCE_CLASS = "db.r8g.16xlarge"
+DEFAULT_INDEX_INSTANCE_CLASS = "db.r8g.48xlarge"
 DEFAULT_SERVE_MIN_ACU = 0.5
 DEFAULT_SERVE_MAX_ACU = 128.0
 DEFAULT_ENGINE_VERSION = "16.8"
@@ -133,6 +136,7 @@ class LoaderConfig(BaseLoaderConfig):
     # New cluster defaults
     engine_version: str
     load_instance_class: str
+    index_instance_class: str
     serve_min_acu: float
     serve_max_acu: float
 
@@ -210,6 +214,7 @@ class LoaderConfig(BaseLoaderConfig):
             bastion_private_key_passphrase=os.environ.get("LOADER_BASTION_KEY_PASSPHRASE", ""),
             engine_version=_env("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
             load_instance_class=_env("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
+            index_instance_class=_env("LOADER_INDEX_INSTANCE_CLASS", DEFAULT_INDEX_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
             serve_max_acu=float(os.environ.get("LOADER_SERVE_MAX_ACU", DEFAULT_SERVE_MAX_ACU)),
             mart_fqns=mart_fqns,
