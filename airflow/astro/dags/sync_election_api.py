@@ -19,8 +19,12 @@ a thin per-table wrapper that supplies the source query, transform, and
 constraint DDL.
 
 This is the prototype for migrating the legacy
-`dbt/project/models/write/write__election_api_db.py` (which writes 8 election
-tables to Postgres via JDBC from a Databricks cluster) onto Airflow.
+`dbt/project/models/write/write__election_api_db.py` (which writes the other
+election tables to Postgres via JDBC from a Databricks cluster) onto Airflow.
+Projected_Turnout is the first table cut over from that writer: upsert-by-id
+delivery can never delete, so model-version supersessions and L2 coverage
+drift stranded stale rows in the API (DATA-2015). The swap replaces the
+table wholesale each run, so the API always matches the Databricks mart.
 
 ### Connections (set in Astro Environment Manager):
 - `databricks` / `databricks_dev` (Generic) — Databricks OAuth M2M.
@@ -274,6 +278,59 @@ def _eos_constraint_ddl() -> list[str]:
         (
             f'ALTER TABLE "{sn}"."{nt}" '
             f'ADD CONSTRAINT "{EOS.stage_name(EOS.pk_name)}" PRIMARY KEY (elected_office_id)'
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Projected_Turnout
+# ---------------------------------------------------------------------------
+
+# First table cut over from the legacy dbt writer (DATA-2015): the writer
+# upserts by id and never deletes, so model-version supersessions and L2
+# coverage drift stranded stale rows. Swapping the whole table each run keeps
+# the API equal to the mart with no supersession bookkeeping.
+PT = TableSyncSpec(
+    target_table="Projected_Turnout",
+    indexes=("Projected_Turnout_district_id_election_year_idx",),
+    fkeys=("Projected_Turnout_district_id_fkey",),
+)
+
+# The mart emits these columns directly, so rows pass through with no transform
+# (source order must match this list; it mirrors the legacy dbt writer's column
+# mapping for this table). election_code arrives as the enum label text
+# (General | LocalOrMunicipal | ConsolidatedGeneral | Primary); the staging
+# table is a LIKE-clone of the live table, so the column keeps the
+# "ElectionCode" enum type and Postgres rejects any unknown label at insert.
+PT_COLUMNS = [
+    "id",
+    "created_at",
+    "updated_at",
+    "election_year",
+    "election_code",
+    "projected_turnout",
+    "inference_at",
+    "model_version",
+    "district_id",
+]
+
+
+def _pt_constraint_ddl() -> list[str]:
+    sn, nt = PT.staging_schema, PT.new_table
+    target_schema = PT.target_schema
+    return [
+        (f'ALTER TABLE "{sn}"."{nt}" ' f'ADD CONSTRAINT "{PT.stage_name(PT.pk_name)}" PRIMARY KEY (id)'),
+        (
+            f"CREATE INDEX "
+            f'"{PT.stage_name("Projected_Turnout_district_id_election_year_idx")}" '
+            f'ON "{sn}"."{nt}" (district_id, election_year)'
+        ),
+        (
+            f'ALTER TABLE "{sn}"."{nt}" '
+            f'ADD CONSTRAINT "{PT.stage_name("Projected_Turnout_district_id_fkey")}" '
+            f"FOREIGN KEY (district_id) "
+            f'REFERENCES "{target_schema}"."District"(id) '
+            f"ON UPDATE CASCADE ON DELETE RESTRICT"
         ),
     ]
 
@@ -639,12 +696,127 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
+    @task_group(group_id="projected_turnout")
+    def projected_turnout():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, PT)
+
+        @task
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            col_list = ", ".join(PT_COLUMNS)
+            query = (
+                f"SELECT {col_list} "
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"`m_election_api__projected_turnout`"
+            )
+            with _open_pg() as conn:
+                return bulk_insert_from_databricks(
+                    conn,
+                    PT,
+                    source_query=query,
+                    target_columns=PT_COLUMNS,
+                    # ~800k rows; this load runs concurrently with the other
+                    # groups on the same worker, so read one election year at a
+                    # time (a handful of partitions) to keep the combined peak
+                    # memory bounded.
+                    partition_column="election_year",
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                apply_ddl(conn, _pt_constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            # The swap exists to guarantee the invariant the upsert writer
+            # could not: exactly one row per (district_id, election_year,
+            # election_code). The election-api consumer does not disambiguate
+            # model_version, so a duplicate key would make it serve an
+            # arbitrary row — gate the swap on it directly, plus the
+            # shape-aware row-count ratio used by the other groups.
+            with _open_pg() as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM ("
+                        f"SELECT district_id, election_year, election_code "
+                        f'FROM "{PT.staging_schema}"."{PT.new_table}" '
+                        f"GROUP BY district_id, election_year, election_code "
+                        f"HAVING COUNT(*) > 1"
+                        f") AS dupe_keys"
+                    )
+                    dup_keys = cur.fetchone()[0]
+                    if dup_keys > 0:
+                        raise ValueError(
+                            f"{dup_keys} duplicate (district_id, election_year, "
+                            f"election_code) keys in staging — refusing to swap"
+                        )
+
+                    # Prior live state (absent on a true cold start). Both
+                    # identifiers must be double-quoted in the regclass argument
+                    # so Postgres does not fold the mixed-case name to lowercase.
+                    cur.execute(
+                        "SELECT to_regclass(%s)",
+                        (f'"{PT.target_schema}"."{PT.target_table}"',),
+                    )
+                    prior_exists = cur.fetchone()[0] is not None
+                    if prior_exists:
+                        cur.execute(f'SELECT COUNT(*) FROM "{PT.target_schema}"."{PT.target_table}"')
+                        prior_count = cur.fetchone()[0]
+                    else:
+                        prior_count = 0
+
+                    if prior_count > 0:
+                        ratio = loaded_count / prior_count
+                        if ratio < 0.5:
+                            raise ValueError(
+                                f"Loaded {loaded_count} rows, prior live had "
+                                f"{prior_count} (ratio {ratio:.2f}) — refusing to swap"
+                            )
+                    elif loaded_count < 100_000:
+                        raise ValueError(
+                            f"Cold-start load of {loaded_count} rows is "
+                            f"implausibly small — refusing to swap"
+                        )
+
+                    t_log.info(
+                        "Quality checks passed: %d rows (prior %d), "
+                        "no duplicate (district, election) keys",
+                        loaded_count,
+                        prior_count,
+                    )
+                finally:
+                    cur.close()
+
+        @task
+        def swap() -> None:
+            with _open_pg() as conn:
+                swap_staging_into_target(conn, PT)
+
+        @task
+        def drop_old() -> None:
+            with _open_pg() as conn:
+                drop_old_table(conn, PT)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        sw = swap()
+        do = drop_old()
+        s >> loaded >> idx >> qc >> sw >> do
+
     # The pipelines run in parallel; under the Kubernetes executor each task
     # is its own pod, and each load_staging reads one partition at a time, so
     # they don't contend for memory.
     zip_to_position()
     district_top_issues()
     elected_official_support()
+    projected_turnout()
 
 
 sync_election_api()

@@ -32,6 +32,7 @@ for _mod in _STUBS:
 from dags.sync_election_api import (  # noqa: E402
     DTI_COLUMNS,
     EOS_COLUMNS,
+    PT_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
     _ztp_transform_row,
@@ -144,4 +145,27 @@ def test_eos_columns_pinned():
         "total_constituents",
         "created_at",
         "updated_at",
+    ]
+
+
+def test_pt_columns_pinned():
+    """Pin PT_COLUMNS to catch silent column reorderings.
+
+    Projected_Turnout loads with no row transform: PT_COLUMNS drives both the
+    Databricks SELECT order and the positional Postgres insert. id/district_id
+    are both uuids and created_at/updated_at/inference_at are all timestamps,
+    so a swap within either group would corrupt data without any insert-time
+    error. The order mirrors the legacy dbt writer's column mapping for this
+    table.
+    """
+    assert PT_COLUMNS == [
+        "id",
+        "created_at",
+        "updated_at",
+        "election_year",
+        "election_code",
+        "projected_turnout",
+        "inference_at",
+        "model_version",
+        "district_id",
     ]
