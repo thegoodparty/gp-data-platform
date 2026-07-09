@@ -358,15 +358,8 @@ with
         select
             m.*,
             coalesce(es.stage_type, m.native_stage) as election_stage,
-            array_min(
-                array_compact(
-                    array(
-                        bcp.gp_person_id,
-                        tcp.gp_person_id,
-                        gcp.gp_person_id,
-                        dp.gp_person_id
-                    )
-                )
+            least(
+                bcp.gp_person_id, tcp.gp_person_id, gcp.gp_person_id, dp.gp_person_id
             ) as gp_person_id
         from merged_foj as m
         left join

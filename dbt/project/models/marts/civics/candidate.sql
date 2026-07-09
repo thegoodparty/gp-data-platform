@@ -176,9 +176,7 @@ select
     deduplicated.gp_candidate_id,
     -- gp_person_id: min over the person reached by HubSpot contact,
     -- prod_db user, and the candidate's candidacies.
-    array_min(
-        array_compact(array(hp.gp_person_id, gpp.gp_person_id, cp.gp_person_id))
-    ) as gp_person_id,
+    least(hp.gp_person_id, gpp.gp_person_id, cp.gp_person_id) as gp_person_id,
     hubspot_contact_id,
     prod_db_user_id,
     candidate_id_tier,
