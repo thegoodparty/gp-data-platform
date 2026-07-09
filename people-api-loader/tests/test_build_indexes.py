@@ -74,7 +74,7 @@ def test_build_and_attach_child_skips_reattach_when_already_attached() -> None:
     # pg_inherits returns a row => the child is already a partition of the parent index; a
     # partial-rerun must build (IF NOT EXISTS, no-op) but NOT re-issue ATTACH (which would error).
     conn = FakeConn().queue_result((1,))
-    step._build_and_attach_child(conn, (_IDXS[1], "CA"))
+    step._build_and_attach_child(conn, (_IDXS[1], "CA"))  # ty: ignore[invalid-argument-type]
     sql = executed_sql(conn)
     assert any('"Voter_Active_idx_CA" ON public."Voter_CA"' in s for s in sql)
     assert not any("ATTACH PARTITION" in s for s in sql)
@@ -133,7 +133,7 @@ def test_create_index_unique_preserves_where(monkeypatch: pytest.MonkeyPatch) ->
         columns=["LALVOTERID"],
         where='"x" IS NOT NULL',
     )
-    step._create_index(conn, idx)
+    step._create_index(conn, idx)  # ty: ignore[invalid-argument-type]
     sql = " ".join(executed_sql(conn))
     assert 'CREATE UNIQUE INDEX IF NOT EXISTS "Voter_u_idx"' in sql
     assert '("LALVOTERID", "State")' in sql
@@ -153,7 +153,7 @@ def test_create_index_unique_functional_raises() -> None:
         where=None,
     )
     with pytest.raises(RuntimeError, match="expression column"):
-        step._create_index(conn, idx)
+        step._create_index(conn, idx)  # ty: ignore[invalid-argument-type]
 
 
 def test_create_index_unique_empty_columns_raises() -> None:
@@ -164,7 +164,7 @@ def test_create_index_unique_empty_columns_raises() -> None:
         table="Voter", name="Voter_LALVOTERID_key", sql="(unused)", unique=True, columns=[], where=None
     )
     with pytest.raises(RuntimeError, match="no parsed columns"):
-        step._create_index(conn, idx)
+        step._create_index(conn, idx)  # ty: ignore[invalid-argument-type]
 
 
 def test_l2type_coverage_returns_missing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -218,7 +218,7 @@ def test_add_primary_key_skips_when_pk_exists() -> None:
     # must SKIP the ADD (which would raise 42P16), not re-issue it. The pre-check finds the PK.
     conn = FakeConn().queue_result(("Voter_pkey",))
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
-    step._add_primary_key(conn, pk)  # must not raise
+    step._add_primary_key(conn, pk)  # ty: ignore[invalid-argument-type]  # must not raise
     assert not any("ADD CONSTRAINT" in s for s in executed_sql(conn))
 
 
@@ -229,4 +229,6 @@ def test_add_primary_key_propagates_invalid_definition() -> None:
 
     pk = step.PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
     with pytest.raises(psycopg.errors.InvalidTableDefinition):
-        step._add_primary_key(_PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl")), pk)
+        step._add_primary_key(
+            _PKRaisingConn(psycopg.errors.InvalidTableDefinition("bad ddl")), pk
+        )  # ty: ignore[invalid-argument-type]
