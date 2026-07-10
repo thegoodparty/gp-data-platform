@@ -54,10 +54,16 @@
 
 
 {% macro l2_district_columns() %}
-    {#- District identifiers (family = 'district'): state, congressional,
-        county commission, ward, school district, etc. Returns column names;
-        for backticked SELECT/UNPIVOT SQL use get_l2_district_columns. -#}
-    {{ return(l2_columns_in_families(["district"])) }}
+    {#- District-identifier column names (current electoral districts).
+        Delegates to get_l2_district_columns, the single canonical list, so this
+        API and the SQL-emitting macro never diverge. Narrower than the seed's
+        family='district', which also tags historical/proposed district columns
+        for voter-file exposure and is not the electoral-district list. -#}
+    {%- set names = [] -%}
+    {%- for c in get_l2_district_columns(use_backticks=false).split(",") -%}
+        {%- set _ = names.append(c | trim) -%}
+    {%- endfor -%}
+    {{ return(names) }}
 {% endmacro %}
 
 
