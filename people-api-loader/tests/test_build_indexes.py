@@ -299,8 +299,15 @@ def test_order_children_largest_first_sorts_by_partition_size() -> None:
     units = [(a, "WY"), (a, "CA"), (b, "TX"), (b, "WY")]
     sizes = {"CA": 4_000_000, "TX": 3_000_000, "WY": 10_000}
     ordered = step._order_children_largest_first(units, sizes)
-    # biggest partition first; WY (smallest) last; ties keep input order (stable)
-    assert [s for _, s in ordered] == ["CA", "TX", "WY", "WY"]
+    # Biggest partition first, smallest last; the two WY units are a size tie and must keep input
+    # order (A before B) — asserting on the index name, not just the state, so a non-stable or
+    # reversed-tie sort is actually caught.
+    assert [(idx.name, s) for idx, s in ordered] == [
+        ("Voter_A_idx", "CA"),
+        ("Voter_B_idx", "TX"),
+        ("Voter_A_idx", "WY"),
+        ("Voter_B_idx", "WY"),
+    ]
 
 
 def test_order_children_largest_first_unknown_size_sorts_last() -> None:
