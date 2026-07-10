@@ -29,6 +29,12 @@ with
             get(filter(urls, x -> x.type = 'twitter'), 0).url as twitter_url,
             get(filter(urls, x -> x.type = 'facebook'), 0).url as facebook_url,
             get(filter(urls, x -> x.type = 'instagram'), 0).url as instagram_url,
+            -- Full typed URL array (normalized to {type, url}); lets marts
+            -- distinguish government/official sites from campaign websites.
+            transform(
+                filter(urls, x -> x.url is not null),
+                x -> struct(x.type as type, x.url as url)
+            ) as urls,
             get(filter(contacts, x -> x.email is not null), 0).email as api_email,
             nullif(
                 regexp_replace(
@@ -93,6 +99,7 @@ with
             person_urls.twitter_url as twitter_handle,
             person_urls.facebook_url as facebook_url,
             person_urls.instagram_url as instagram_handle,
+            person_urls.urls,
 
             coalesce(
                 person_urls.person_created_at, candidacies._airbyte_extracted_at
@@ -141,6 +148,7 @@ select
     twitter_handle,
     facebook_url,
     instagram_handle,
+    urls,
     created_at,
     updated_at
 from deduplicated

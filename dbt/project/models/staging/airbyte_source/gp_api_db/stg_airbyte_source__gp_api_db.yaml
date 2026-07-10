@@ -155,6 +155,41 @@ models:
         description: "Timestamp when the feedback was created"
       - name: updated_at
         description: "Timestamp when the feedback was last updated"
+  - name: stg_airbyte_source__gp_api_db_artifact_review
+    description: >
+      Automated/human review verdicts on EO artifacts (currently briefings).
+      One row per review of a resource.
+    columns:
+      - name: id
+        description: "Primary key - unique identifier for the review"
+        data_tests:
+          - not_null
+          - unique
+      - name: verdict
+        description: "Review outcome: passed or failed"
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["passed", "failed"]
+      - name: fail_reason
+        description: "Free-text explanation of the failure (null when passed)"
+      - name: resource_id
+        description: "ID of the reviewed resource (e.g. a briefing_id)"
+        data_tests:
+          - not_null
+      - name: resource_type
+        description: "Type of the reviewed resource (e.g. briefing)"
+        data_tests:
+          - not_null
+      - name: reviewer_email
+        description: "Email of the reviewer (nullable; some rows carry the reviewer's identity only in reviewer_clerk_sub)"
+      - name: reviewer_clerk_sub
+        description: "Reviewer identity: Clerk subject id, though some rows hold an email instead"
+      - name: created_at
+        description: "Timestamp when the review was created"
+      - name: updated_at
+        description: "Timestamp when the review was last updated"
   - name: stg_airbyte_source__gp_api_db_campaign
     description: raw data load from gp_api_db postgres db from table `campaign`
     columns:

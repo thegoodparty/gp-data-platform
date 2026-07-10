@@ -65,6 +65,8 @@ with
             ) as birth_date,
             facebook_url,
             phone_number,
+            -- 2025 HubSpot archive has no BR typed URLs.
+            cast(null as array<struct<type:string, url:string>>) as urls,
             array_compact(
                 array('hubspot', case when has_ddhq_match then 'ddhq' end)
             ) as source_systems
@@ -121,6 +123,8 @@ with
             coalesce(
                 gp_api.phone_number, ts.phone_number, br.phone_number
             ) as phone_number,
+            -- Typed BR URL array (BR is the only source that carries it).
+            br.urls,
             array_compact(
                 array(
                     case when br.gp_candidate_id is not null then 'ballotready' end,
@@ -193,6 +197,7 @@ select
     twitter_handle,
     facebook_url,
     instagram_handle,
+    urls,
     source_systems,
     created_at,
     updated_at

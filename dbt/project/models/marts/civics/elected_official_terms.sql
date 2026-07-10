@@ -104,6 +104,7 @@ select
     br.linkedin_url,
     br.facebook_url,
     br.twitter_url,
+    br.urls,
 
     -- Mailing (BR term)
     br.mailing_address_line_1,
