@@ -33,15 +33,7 @@ with
             tbl_contest.number_of_opponents,
             tbl_contest.is_open_seat,
             tbl_ddhq_matches.ddhq_race_id is not null as has_ddhq_match,
-            case
-                when
-                    gp_election_id in (
-                        select gp_election_id
-                        from {{ ref("seed_civics_election_2025_position_nullouts") }}
-                    )
-                then null
-                else tbl_candidacy.br_position_database_id
-            end as br_position_database_id,
+            tbl_candidacy.br_position_database_id,
             tbl_br_position.is_judicial,
             tbl_br_position.is_appointed,
             tbl_br_normalized.name as br_normalized_position_type,
@@ -74,56 +66,89 @@ with
                 order by has_ddhq_match desc, updated_at desc
             )
             = 1
+    ),
+
+    collapsed as (
+        -- Trustworthy + unique br_position_database_id per
+        -- (br_position_database_id, election_date):
+        -- * office_mismatch rows (curated seed) drop the tag, and
+        -- * among same-office duplicates, only the most complete row keeps it.
+        -- The seed match is folded into the partition key so a mismatched row
+        -- cannot occupy a group's winning slot. gp_election_id is the terminal
+        -- tiebreak, so the winner is deterministic within a build. Uniqueness
+        -- holds on every build regardless of gp_election_id drift.
+        select
+            archived_elections.* except (br_position_database_id),
+            case
+                when nullouts.gp_election_id is not null
+                then null
+                when
+                    row_number() over (
+                        partition by
+                            case
+                                when nullouts.gp_election_id is not null
+                                then null
+                                else archived_elections.br_position_database_id
+                            end,
+                            archived_elections.election_date
+                        order by
+                            (archived_elections.official_office_name is not null) desc,
+                            archived_elections.has_ddhq_match desc,
+                            archived_elections.updated_at desc nulls last,
+                            archived_elections.gp_election_id
+                    )
+                    = 1
+                then archived_elections.br_position_database_id
+            end as br_position_database_id
+        from archived_elections
+        left join
+            {{ ref("seed_civics_election_2025_position_nullouts") }} as nullouts
+            on archived_elections.gp_election_id = nullouts.gp_election_id
     )
 
 select
-    archived_elections.gp_election_id,
-    archived_elections.official_office_name,
-    archived_elections.candidate_office,
-    archived_elections.office_level,
-    archived_elections.office_type,
+    collapsed.gp_election_id,
+    collapsed.official_office_name,
+    collapsed.candidate_office,
+    collapsed.office_level,
+    collapsed.office_type,
     tbl_states.state_cleaned_postal_code as state,
-    archived_elections.city,
-    archived_elections.district,
-    archived_elections.seat_name,
-    archived_elections.election_date,
-    archived_elections.election_year,
-    archived_elections.filing_deadline,
-    archived_elections.population,
-    archived_elections.seats_available,
-    archived_elections.term_start_date,
-    archived_elections.is_uncontested,
-    archived_elections.number_of_opponents,
-    archived_elections.is_open_seat,
-    archived_elections.has_ddhq_match,
-    -- Deterministic uniqueness: keep br_position_database_id on only the most
-    -- complete row per (br_position_database_id, election_date), null on the
-    -- rest. With the office_mismatch seed already applied in `elections`, this
-    -- guarantees at most one non-null br_position_database_id per (position,
-    -- date) on every build, independent of gp_election_id drift. Evaluated here
-    -- (not a prior CTE) because the clean_states join is 1:1 (state_raw unique).
+    collapsed.city,
+    collapsed.district,
+    collapsed.seat_name,
+    collapsed.election_date,
+    collapsed.election_year,
+    collapsed.filing_deadline,
+    collapsed.population,
+    collapsed.seats_available,
+    collapsed.term_start_date,
+    collapsed.is_uncontested,
+    collapsed.number_of_opponents,
+    collapsed.is_open_seat,
+    collapsed.has_ddhq_match,
+    collapsed.br_position_database_id,
+    -- Position-derived attributes must track the (possibly nulled)
+    -- br_position_database_id: a null position means the tag is untrusted, so
+    -- these must not surface the dropped position's values.
     case
-        when
-            archived_elections.br_position_database_id is not null
-            and row_number() over (
-                partition by
-                    archived_elections.br_position_database_id,
-                    archived_elections.election_date
-                order by
-                    (archived_elections.official_office_name is not null) desc,
-                    archived_elections.has_ddhq_match desc,
-                    archived_elections.updated_at desc nulls last
-            )
-            = 1
-        then archived_elections.br_position_database_id
-    end as br_position_database_id,
-    archived_elections.is_judicial,
-    archived_elections.is_appointed,
-    archived_elections.br_normalized_position_type,
-    archived_elections.created_at,
-    archived_elections.updated_at
+        when collapsed.br_position_database_id is null
+        then null
+        else collapsed.is_judicial
+    end as is_judicial,
+    case
+        when collapsed.br_position_database_id is null
+        then null
+        else collapsed.is_appointed
+    end as is_appointed,
+    case
+        when collapsed.br_position_database_id is null
+        then null
+        else collapsed.br_normalized_position_type
+    end as br_normalized_position_type,
+    collapsed.created_at,
+    collapsed.updated_at
 
-from archived_elections
+from collapsed
 left join
     {{ ref("clean_states") }} as tbl_states
-    on trim(upper(archived_elections.state)) = tbl_states.state_raw
+    on trim(upper(collapsed.state)) = tbl_states.state_raw
