@@ -96,3 +96,17 @@ def test_load_people_api_sequence():
     assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("unload").upstream_list}
     assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("provision").upstream_list}
     assert "resize" in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
+
+
+def test_load_people_api_scale_down_on_failure():
+    """scale_down_on_failure is the on-failure cost guard: downstream of every post-provision
+    resource-creating step (fires via trigger_rule=one_failed if any of them fails), but NOT
+    upstream of validate — a successful run skips it since resize already made the writer
+    serverless.
+    """
+    assert _LOADER_DAG is not None, f"load_people_api failed to load from {_LOADER_DAG_FILE}"
+    scale_down_task = _LOADER_DAG.get_task("scale_down_on_failure")
+    assert scale_down_task.trigger_rule == "one_failed"
+    upstream_ids = {t.task_id for t in scale_down_task.upstream_list}
+    assert upstream_ids == {"provision", "create_schema", "copy", "build_indexes", "resize"}
+    assert "scale_down_on_failure" not in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}

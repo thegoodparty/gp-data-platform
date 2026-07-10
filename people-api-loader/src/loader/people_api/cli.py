@@ -171,6 +171,15 @@ def resize(run_date: RunDateArg) -> None:
     step.run(cfg, run_date)
 
 
+@app.command(name="scale-down")
+def scale_down(run_date: RunDateArg) -> None:
+    """Failure cost guard — flip the writer to db.serverless (keeps the cluster + data)."""
+    from loader.people_api.steps import scale_down as step
+
+    cfg = _setup(run_date)
+    step.run(cfg, run_date)
+
+
 @app.command()
 def validate(run_date: RunDateArg) -> None:
     """Step 7 — six validation checks. Exits non-zero if any fail."""

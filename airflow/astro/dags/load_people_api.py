@@ -74,6 +74,7 @@ def _step(
     *,
     extra_env: dict[str, str] | None = None,
     extra_args: str = "",
+    trigger_rule: str = "all_success",
 ) -> BashOperator:
     args = f" {extra_args}" if extra_args else ""
     return BashOperator(
@@ -81,6 +82,7 @@ def _step(
         bash_command=f"loader {subcommand} --date {{{{ ds_nodash }}}}{args}",
         env={**_LOADER_ENV, **(extra_env or {})},
         append_env=True,
+        trigger_rule=trigger_rule,
     )
 
 
@@ -116,12 +118,20 @@ def load_people_api():
     build_indexes = _step("build_indexes", "build-indexes")
     resize = _step("resize", "resize")
     validate = _step("validate", "validate")
+    # Cost guard: a failed/aborted run after provision strands whatever writer instance class was
+    # in effect (up to db.r8g.48xlarge post build_indexes) because `resize` never runs. Fires
+    # (trigger_rule=one_failed) when any of provision..resize fails, flipping the stranded writer to
+    # db.serverless WITHOUT resize's serve lockdown (no param-group swap, backup retention,
+    # deletion protection, or reboot) so the cluster + loaded data stay around for a resumed retry
+    # or forensics. Skipped when the run succeeds — resize already made the writer serverless.
+    scale_down_on_failure = _step("scale_down_on_failure", "scale-down", trigger_rule="one_failed")
 
     # dbt gate must pass before unload; unload + provision then run in parallel and both feed
     # create-schema; then the serial load chain.
     inspect_prod >> dbt_test_voter_gate >> [unload, provision]
     [unload, provision] >> create_schema
     create_schema >> copy >> build_indexes >> resize >> validate
+    [provision, create_schema, copy, build_indexes, resize] >> scale_down_on_failure
 
 
 load_people_api()
