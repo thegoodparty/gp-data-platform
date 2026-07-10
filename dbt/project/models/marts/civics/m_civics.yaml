@@ -14,6 +14,14 @@ models:
           - unique
           - not_null
 
+      - name: gp_person_id
+        description: Canonical person (FK to people.gp_person_id), via gp_api|user_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: email
         description: User's email address (primary contact, unique identifier)
 
@@ -416,8 +424,8 @@ models:
 
       Within-cluster merging across providers (including non-BR clusters like
       TS+gp_api or TS+DDHQ-only) is enforced by int__civics_er_canonical_ids,
-      which emits canonical gp_*_ids derived from cluster_id for non-BR
-      clusters.
+      which emits the cluster's earliest-member mint as the canonical
+      gp_candidacy_id for non-BR clusters.
 
     columns:
       - name: gp_candidacy_id
@@ -426,6 +434,17 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the product campaign's user, and the
+          candidacy's stage rows.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: gp_candidate_id
         description: Foreign key to candidate table
@@ -830,16 +849,31 @@ models:
 
       created_at semantics: see candidacy mart description.
 
-      Within-cluster merging across providers is enforced by
-      int__civics_er_canonical_ids (including non-BR clusters).
+      Cross-provider merging happens on gp_candidate_id itself: it is the
+      person id (person-group earliest-member mint), so provider rows for the
+      same person share the key by construction. 2025 archive rows keep their
+      HubSpot-derived ids (not cluster-backed).
 
     columns:
       - name: gp_candidate_id
-        description: Primary key - internally generated unique identifier for candidates
+        description: >
+          Primary key - the person's gp_person_id on 2026+ rows (kept as an
+          alias of gp_person_id); HubSpot-derived on 2025 archive rows.
         data_tests:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by the HubSpot contact, the prod_db user, and the candidate's
+          candidacies.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: hubspot_contact_id
         description: >
@@ -900,6 +934,17 @@ models:
       - name: instagram_handle
         description: Candidate's Instagram handle
 
+      - name: urls
+        description: |
+          All BallotReady URLs for this person as an array of {type, url}
+          structs (BR-sourced rows only; NULL for the 2025 HubSpot archive and
+          non-BR rows). `type` values include 'website' (campaign/personal),
+          'government' (official/government site), 'facebook', 'linkedin',
+          'twitter', 'instagram', 'donate', 'contact', 'wikipedia', 'youtube',
+          'volunteer'. The scalar website_url/linkedin_url/etc. columns take the
+          first URL of the matching type; use this array to tell a government
+          site apart from a campaign website.
+
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
@@ -932,19 +977,37 @@ models:
 
   - name: candidacy_stage
     description: >
-      Candidacy stage mart. Union of 2025 HubSpot archive and 2026+ merged
-      BallotReady + TechSpeed + DDHQ + gp_api via Splink cluster_id-based
-      4-way FOJ. Each provider is wrapped with its cluster_id from
-      stg_er_source__clustered_candidacy_stages, then joined on
-      coalesce(cluster_id, 'self_' || gp_candidacy_stage_id).
+      Candidacy stage mart, in two eras.
 
-      Provider precedence (2026+ branch):
-        gp_api > BR > TS > DDHQ for candidate_name, source_candidate_id,
-          candidate_party, election_stage_date, created_at, updated_at.
-        DDHQ wins for results: is_winner, election_result,
-          election_result_source, votes_received, is_uncontested.
-        BR/TS only for match_confidence, match_reasoning,
-          match_top_candidates, has_match (LLM-match metadata).
+      2026+: 4-way Splink cluster_id-based FOJ over BallotReady + TechSpeed +
+      DDHQ + gp_api. Each provider is wrapped with its cluster_id from
+      stg_er_source__clustered_candidacy_stages, then joined on
+      coalesce(cluster_id, 'self_' || gp_candidacy_stage_id). Provider
+      precedence: gp_api > BR > TS > DDHQ for candidate_name,
+      source_candidate_id, candidate_party, election_stage_date, created_at,
+      updated_at; DDHQ wins for results (is_winner, election_result,
+      election_result_source, votes_received, is_uncontested); BR/TS only for
+      the LLM-match metadata (match_confidence, match_reasoning,
+      match_top_candidates, has_match).
+
+      <=2025: the HubSpot archive is the spine (the outcome authority for
+      pre-2026 races). BR / DDHQ / TS candidacy-stage rows pair with archive
+      rows on (gp_person_id, election_stage_date, election_stage) -- HubSpot is
+      not in candidacy-stage ER, so the person layer is the bridge -- and each
+      archive row takes its best-matching FOJ row (same DDHQ race first when
+      the archive has a DDHQ match, then resolved outcomes, then DDHQ > BR)
+      with HubSpot-first display precedence (HubSpot > DDHQ > BR > TS) on
+      candidate_name, is_winner, election_result, election_result_source.
+      Consumed FOJ rows are suppressed row-wise, so a same-day row for a
+      different office survives standalone. The era merge is contained to this
+      mart: the BR and DDHQ candidacy / election / election_stage / candidate
+      intermediates stay 2026-gated, so an archive-uncovered <=2025 FOJ row
+      survives standalone only by adopting the first per-provider id trio
+      (merged coalesce, then TS, then DDHQ) whose candidacy and election-stage
+      ids are real mart FKs -- today only TS-derived <=2025 ids qualify; BR- or
+      DDHQ-keyed rows enrich archive rows, ride a TS-keyed merged row, or drop.
+      Their standalone all-time expansion is a later PR. source_systems lists
+      every contributing source.
 
       Diagnostic columns (per-provider natural keys, populated only when
       that provider is in the cluster): br_candidacy_id,
@@ -958,6 +1021,20 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Resolved from the row's
+          native keys (br_candidacy_id -> BR person, ts_source_candidate_id,
+          ddhq keys, gp_api_campaign_id -> user) for FOJ rows, and from the
+          HubSpot contact for archive rows. Deterministic min when a row's
+          sources reach more than one person (a warn test tracks that). NULL for
+          <=2025 vendor rows not yet in the person universe (pre-swap).
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: gp_candidacy_id
         description: Foreign key to candidacy table
@@ -1090,9 +1167,11 @@ models:
           column is renamed there only because the column name would shadow
           the mart name). Sourced directly from the 2025 archive int model
           (where it is intrinsic) and from the `election_stage` mart via
-          `gp_election_stage_id` on the 2026+ merged path. Available directly
-          on this mart so analysts asking stage-typed questions don't have to
-          join `election_stage`.
+          `gp_election_stage_id` on the merged path; <=2025 FOJ rows whose
+          BR-derived stage id is absent from `election_stage` fall back to the
+          provider-native stage (BR is_primary/is_runoff, DDHQ election_stage).
+          Available directly on this mart so analysts asking stage-typed
+          questions don't have to join `election_stage`.
         data_tests:
           - accepted_values:
               arguments:
@@ -1753,6 +1832,17 @@ models:
               config:
                 where: "gp_elected_official_id is not null"
 
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by br_candidate_id and the bridged gp_api_user_id. NULL for
+          vacancy terms.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+
       - name: br_office_holder_id
         description: BallotReady term-level row PK (OfficeHolder.databaseId)
         data_tests:
@@ -1921,7 +2011,9 @@ models:
                 severity: warn
 
       - name: website_url
-        description: Official's government or campaign website (BR)
+        description: >
+          Official's campaign/personal website (BR url type='website'). For the
+          official/government site and every other link with its type, see urls.
 
       - name: linkedin_url
         description: Official's LinkedIn profile (BR)
@@ -1931,6 +2023,18 @@ models:
 
       - name: twitter_url
         description: Official's Twitter profile (BR)
+
+      - name: urls
+        description: |
+          All BallotReady URLs for the person holding this term, as an array of
+          {type, url} structs. Sourced from the BR API person feed (joined on
+          br_candidate_id), not the S3 office_holders feed, which carries almost
+          no government-typed URLs. `type` values include 'website'
+          (campaign/personal), 'government' (official/government site),
+          'facebook', 'linkedin', 'twitter', 'instagram', 'donate', 'contact',
+          'wikipedia', 'youtube', 'volunteer'. Use this to distinguish an
+          official government site from a campaign website. NULL when the term's
+          person is not present in the API person feed.
 
       - name: mailing_address_line_1
         description: Mailing address line 1 (BR)
@@ -2129,6 +2233,16 @@ models:
           - unique
           - not_null
           - is_uuid
+
+      - name: gp_person_id
+        description: >
+          Canonical person (FK to people.gp_person_id). Min over the person
+          reached by br_candidate_id, gp_api_user_id, and hubspot_contact_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
 
       - name: br_candidate_id
         description: |
@@ -2755,3 +2869,163 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 1
+
+  - name: people
+    description: >
+      Canonical person mart. One row per gp_person_id, derived from the dbt
+      person groups (deterministic native-id and cluster co-membership edges,
+      no probabilistic matching).
+
+      Identifier columns (br_person_id, gp_api_user_id, hs_contact_id,
+      ddhq_candidate_id, ts_candidate_code) are scalar only when the person
+      group carries exactly one value for that source; a group with zero or
+      more than one value leaves the column NULL. The full multi-valued sets
+      live in person_identifiers. ts_candidate_code is stage-stripped (the
+      primary/general suffix removed); ddhq_candidate_id is the candidate_id
+      portion of the DDHQ candidacy key.
+
+      Attribute precedence:
+        first_name, last_name, email, phone: gp_api > HubSpot > BR > TS >
+          TS officeholder > DDHQ (DDHQ carries no email/phone).
+        state, party: BR > HubSpot > TS > TS officeholder > DDHQ (gp_api
+          carries neither).
+      Each source contributes from one representative member record (earliest
+      by first_seen_at), so a source's fields stay internally consistent.
+      BR contact/state come from int__ballotready_candidate_identity (2026
+      candidacy grain), BR party from the candidacy feed; officeholder-only or
+      pre-2026 BR persons therefore have sparse attributes. HubSpot state is
+      the raw CRM value and may be a full state name rather than a postal code.
+      party is normalized to the parse_party_affiliation vocabulary in every
+      tier; vendor abbreviations and minor parties outside it (e.g. IND,
+      Unaffiliated, Working Families) coarsen to 'Other'.
+
+      Role flags derive from the member records, not a stored status:
+        is_candidate: the group contains any candidacy-context member -- a
+          techspeed or ddhq record, a br_candidate_id with at least one
+          candidacies_v3 row, or a gp_api user with a campaign.
+        is_elected_official: the group contains a techspeed_officeholder
+          record, a br_candidate_id with at least one office_holders_v3 row,
+          or a gp_api user with an elected-office record
+          (int__civics_elected_official_gp_api).
+      Resolution status (e.g. CRM contacts unresolved to a BR person) is a
+      query over person_identifiers, not a flag.
+    columns:
+      - name: gp_person_id
+        description: Primary key - stable canonical person identifier.
+        data_tests:
+          - unique
+          - not_null
+          - is_uuid
+      - name: br_person_id
+        description: >
+          BallotReady br_candidate_id when the group resolves to exactly one;
+          NULL when zero or ambiguous (>1 in the group).
+      - name: gp_api_user_id
+        description: gp-api user id when unambiguous, else NULL.
+      - name: hs_contact_id
+        description: HubSpot contact id when unambiguous, else NULL.
+      - name: ddhq_candidate_id
+        description: DDHQ candidate_id when unambiguous, else NULL.
+      - name: ts_candidate_code
+        description: Stage-stripped TechSpeed candidate code when unambiguous, else NULL.
+      - name: first_name
+        description: First name, precedence gp_api > HubSpot > BR > TS > TS officeholder > DDHQ.
+      - name: last_name
+        description: Last name, same precedence as first_name.
+      - name: email
+        description: Email, precedence gp_api > HubSpot > BR > TS > TS officeholder.
+      - name: phone
+        description: Phone, precedence gp_api > HubSpot > BR > TS > TS officeholder.
+      - name: state
+        description: State, precedence BR > HubSpot > TS > TS officeholder > DDHQ. Format may vary (HubSpot free-text).
+      - name: party
+        description: >
+          Party affiliation, precedence BR > HubSpot > TS > TS officeholder >
+          DDHQ. All tiers normalized via parse_party_affiliation; values
+          outside its vocabulary coarsen to 'Other'.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Independent
+                  - Nonpartisan
+                  - Democrat
+                  - Republican
+                  - Libertarian
+                  - Green
+                  - Other
+      - name: first_seen_at
+        description: Earliest source-native created timestamp across the group's members.
+        data_tests:
+          - not_null
+      - name: group_size
+        description: Number of source records in the person group.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: had_conflict
+        description: >
+          True when the group was touched by a within-source (E7) edge that
+          spanned more than one BR person; those conflicting edges are dropped
+          upstream, so the flag is advisory.
+        data_tests:
+          - not_null
+      - name: is_candidate
+        description: See model description for the exact derivation.
+        data_tests:
+          - not_null
+      - name: is_elected_official
+        description: See model description for the exact derivation.
+        data_tests:
+          - not_null
+
+  - name: person_identifiers
+    description: >
+      Long-format map of every source record to its gp_person_id: one row per
+      (gp_person_id, source_name, source_id), the full multi-valued sets behind
+      the scalar identifier columns in people (including records whose scalar
+      column was nulled by within-group ambiguity).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [gp_person_id, source_name, source_id]
+    columns:
+      - name: gp_person_id
+        description: Foreign key to people.gp_person_id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('people')
+                field: gp_person_id
+      - name: source_name
+        description: Source system of the record (ballotready, gp_api, hubspot, techspeed, techspeed_officeholder, ddhq).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - ballotready
+                  - gp_api
+                  - hubspot
+                  - techspeed
+                  - techspeed_officeholder
+                  - ddhq
+      - name: source_id
+        description: Native identifier of the record within its source system.
+        data_tests:
+          - not_null
+      - name: record_key
+        description: >
+          source_name || '|' || source_id, the person-graph node key. The
+          unique test is stronger than the combination test above: it also
+          rejects one record_key mapped to two persons.
+        data_tests:
+          - not_null
+          - unique
+      - name: first_seen_at
+        description: Source-native created timestamp of the record.
+        data_tests:
+          - not_null

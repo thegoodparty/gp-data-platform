@@ -30,7 +30,7 @@ with
         select *
         from {{ ref("stg_airbyte_source__ballotready_s3_candidacies_v3") }}
         where
-            election_day >= '2026-01-01'
+            election_day is not null
             and first_name is not null
             and last_name is not null
             and state is not null
@@ -102,7 +102,11 @@ with
                 regexp_extract(br.position_name, ' - Position ([^\\s(]+)'),
                 ''
             ) as seat_name,
-            br.partisan_type
+            br.partisan_type,
+            -- Native BR candidacy creation timestamp; seeds the candidacy-stage
+            -- mint's earliest-member rule. The person mint uses a different
+            -- (br_candidate_id) grain, so it recomputes its own first_seen_at.
+            br.candidacy_created_at as first_seen_at
         from br_with_office as br
     ),
 
@@ -141,11 +145,7 @@ with
             end as election_date
         from ts_staging
         where
-            coalesce(primary_election_date_parsed, general_election_date_parsed)
-            >= '2026-01-01'
-            and year(
-                coalesce(primary_election_date_parsed, general_election_date_parsed)
-            )
+            year(coalesce(primary_election_date_parsed, general_election_date_parsed))
             between 1900 and 2050
     ),
 
@@ -179,7 +179,18 @@ with
             ts.official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
+            cast(null as string) as partisan_type,
+            -- Earliest processing date across all delivery rows for this
+            -- candidate-stage (windows evaluate before qualify), so the value
+            -- is deterministic whichever duplicate the dedupe keeps. Airbyte
+            -- extract fills gaps where date_processed did not parse. Feeds the
+            -- person mint.
+            min(
+                coalesce(
+                    cast(ts.date_processed_date as timestamp), ts._airbyte_extracted_at
+                )
+            ) over (partition by ts.techspeed_candidate_code, ts.election_stage)
+            as first_seen_at
         from ts_with_stage as ts
         -- Dedupe: staging is not deduplicated, keep first appearance per
         -- candidate-stage to avoid duplicate source_ids
@@ -207,7 +218,6 @@ with
             and candidate_first_name is not null
             and candidate_last_name is not null
             and election_date is not null
-            and election_date >= '2026-01-01'
             and state_postal_code is not null
     ),
 
@@ -247,7 +257,10 @@ with
             d.official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
+            cast(null as string) as partisan_type,
+            -- DDHQ has no native created field; the single master CSV shares one
+            -- extract time, so this is deterministic and full-refresh safe.
+            d._airbyte_extracted_at as first_seen_at
         from ddhq_staging as d
     ),
 
@@ -259,7 +272,7 @@ with
         select *
         from {{ ref("campaigns") }}
         where
-            election_date >= '2026-01-01'
+            election_date is not null
             and nullif(trim(campaign_state), '') is not null
             and not coalesce(is_demo, false)
             and is_latest_version
@@ -269,7 +282,7 @@ with
     ),
 
     -- BR race spine for resolving election_stage by br_race_id. Excludes
-    -- disabled races and pre-2026 elections.
+    -- disabled races.
     br_race as (
         select
             race.database_id as br_race_id,
@@ -283,9 +296,7 @@ with
         inner join
             {{ ref("stg_airbyte_source__ballotready_api_election") }} as election
             on race.election.databaseid = election.database_id
-        where
-            not coalesce(race.is_disabled, false)
-            and election.election_day >= '2026-01-01'
+        where not coalesce(race.is_disabled, false)
     ),
 
     gp_api_with_office as (
@@ -354,7 +365,10 @@ with
             trim(g.campaign_office) as official_office_name,
             cast(null as string) as br_candidacy_id,
             cast(null as string) as seat_name,
-            cast(null as string) as partisan_type
+            cast(null as string) as partisan_type,
+            -- Native campaign creation timestamp (candidacy grain); seeds the
+            -- candidacy-stage mint. The person mint uses the user's created_at.
+            g.created_at as first_seen_at
         from gp_api_with_office as g
     ),
 
@@ -425,7 +439,8 @@ select
     {{ office_name_tokens("official_office_name") }} as official_office_name_tokens,
     nullif(br_candidacy_id, '') as br_candidacy_id,
     nullif(seat_name, '') as seat_name,
-    partisan_type
+    partisan_type,
+    u.first_seen_at
 from unioned as u
 left join
     nickname_aliases as na on {{ first_name_normalized("u.first_name") }} = na.name1

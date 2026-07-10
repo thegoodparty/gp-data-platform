@@ -1,23 +1,16 @@
 -- TechSpeed candidates → Civics mart candidate schema.
---
--- CRITICAL: UUID fields MUST match int__civics_candidate_2025.sql pattern
--- to ensure same person from different sources gets same gp_candidate_id
+-- gp_candidate_id is the person id: cluster-linked TS records share the
+-- BR/gp_api person's group, records absent from ER self-mint (own person).
 with
-    -- ER crosswalk: for clustered TS candidacies, adopt BR's canonical candidate_id.
-    -- Deduped per source_candidate_id (one person may have multiple candidacies).
-    canonical_candidate as (
-        -- BR-priority ordering — see int__civics_candidacy_techspeed.sql
-        -- for full rationale. canonical_gp_election_id is referenced in the
-        -- ORDER BY only (NULL for non-BR cluster rows, populated for BR-anchored
-        -- rows) without adding it to the SELECT list.
-        select ts_source_candidate_id, canonical_gp_candidate_id
-        from {{ ref("int__civics_er_canonical_ids") }}
-        qualify
-            row_number() over (
-                partition by ts_source_candidate_id
-                order by canonical_gp_election_id is null, canonical_gp_candidate_id
-            )
-            = 1
+    -- Must match int__civics_candidacy_techspeed.
+    ts_person as (
+        select
+            {{ strip_ts_stage_suffix("substring_index(record_key, '|', -1)") }}
+            as ts_source_candidate_id,
+            min(gp_person_id) as gp_person_id
+        from {{ ref("int__civics_person_canonical_ids") }}
+        where source_name = 'techspeed'
+        group by 1
     ),
 
     source as (
@@ -36,15 +29,15 @@ with
     ),
 
     candidates_with_id as (
-        -- If ANY candidacy of a person was clustered to BR, all raw rows for
-        -- that person adopt BR's canonical_gp_candidate_id (propagated via a
-        -- window partitioned by the raw TS hash). Otherwise keep the TS hash.
         select
             coalesce(
-                max(xw.canonical_gp_candidate_id) over (
-                    partition by {{ generate_ts_gp_candidate_id() }}
-                ),
-                {{ generate_ts_gp_candidate_id() }}
+                tp.gp_person_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["'techspeed'", "source.techspeed_candidate_code"],
+                        salt="person",
+                    )
+                }}
             ) as gp_candidate_id,
 
             cast(null as string) as hubspot_contact_id,
@@ -68,8 +61,8 @@ with
 
         from source
         left join
-            canonical_candidate as xw
-            on source.techspeed_candidate_code = xw.ts_source_candidate_id
+            ts_person as tp
+            on source.techspeed_candidate_code = tp.ts_source_candidate_id
         where first_name is not null and last_name is not null and state is not null
     ),
 

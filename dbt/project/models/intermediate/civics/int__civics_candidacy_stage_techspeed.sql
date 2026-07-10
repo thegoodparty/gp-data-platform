@@ -80,34 +80,41 @@ with
 
     candidacy_stages as (
         select
-            -- gp_candidacy_id: must match int__civics_candidacy_techspeed generation.
-            -- Cascades at candidacy grain (any stage match → BR's candidacy_id
-            -- applies to all stages of that candidacy).
+            -- gp_candidacy_id: must match int__civics_candidacy_techspeed.
+            -- Matched candidacies adopt BR's rolled mint via the crosswalk
+            -- (candidacy grain: any stage match applies to all stages);
+            -- unmatched self-mint from (candidate_code, election date).
             coalesce(
-                xw_cand.canonical_gp_candidacy_id, {{ generate_ts_gp_candidacy_id() }}
-            ) as computed_gp_candidacy_id,
-
-            -- gp_candidacy_stage_id = hash(gp_candidacy_id, gp_election_stage_id)
-            coalesce(
-                xw_stage.canonical_gp_candidacy_stage_id,
+                xw_cand.canonical_gp_candidacy_id,
                 {{
                     generate_salted_uuid(
                         fields=[
-                            generate_ts_gp_candidacy_id(),
-                            generate_ts_gp_election_stage_id(),
-                        ]
+                            "'techspeed'",
+                            "techspeed_candidate_code",
+                            "cast(coalesce(general_election_date_parsed, primary_election_date_parsed) as string)",
+                        ],
+                        salt="candidacy",
                     )
                 }}
-            ) as gp_candidacy_stage_id,
+            ) as computed_gp_candidacy_id,
+
+            xw_stage.canonical_gp_candidacy_stage_id,
 
             -- gp_election_stage_id: race-level. If ANY candidate in this race
-            -- was clustered to a BR race, all candidates adopt BR's stage id
-            -- (matches the race-level cascade in int__civics_election_stage_techspeed).
+            -- was clustered to a BR race, all candidates adopt the canonical
+            -- stage id (matches the race-level cascade in
+            -- int__civics_election_stage_techspeed); else self-mint from the
+            -- TS natural race key.
             coalesce(
                 max(xw_stage.canonical_gp_election_stage_id) over (
-                    partition by {{ generate_ts_gp_election_stage_id() }}
+                    partition by {{ generate_ts_election_stage_key() }}
                 ),
-                {{ generate_ts_gp_election_stage_id() }}
+                {{
+                    generate_salted_uuid(
+                        fields=["'techspeed'", generate_ts_election_stage_key()],
+                        salt="election_stage",
+                    )
+                }}
             ) as gp_election_stage_id,
 
             concat(first_name, ' ', last_name) as candidate_name,
@@ -167,6 +174,22 @@ with
         where election_date is not null
     ),
 
+    -- Separate select: gp_election_stage_id is a window result above, so the
+    -- PK composition cannot lateral-reference it in the same block.
+    with_stage_pk as (
+        select
+            *,
+            coalesce(
+                canonical_gp_candidacy_stage_id,
+                {{
+                    generate_salted_uuid(
+                        fields=["computed_gp_candidacy_id", "gp_election_stage_id"]
+                    )
+                }}
+            ) as gp_candidacy_stage_id
+        from candidacy_stages
+    ),
+
     valid_candidacies as (
         select gp_candidacy_id from {{ ref("int__civics_candidacy_techspeed") }}
     ),
@@ -178,7 +201,7 @@ with
 
     filtered as (
         select stage.*
-        from candidacy_stages as stage
+        from with_stage_pk as stage
         inner join
             valid_candidacies
             on stage.computed_gp_candidacy_id = valid_candidacies.gp_candidacy_id

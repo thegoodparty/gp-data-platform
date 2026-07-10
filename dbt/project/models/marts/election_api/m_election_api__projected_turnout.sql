@@ -1,9 +1,8 @@
 {{
     config(
-        materialized="incremental",
+        materialized="table",
         unique_key="id",
-        on_schema_change="fail",
-        auto_liquid_cluster=True,
+        auto_liquid_cluster=true,
     )
 }}
 
@@ -31,14 +30,10 @@ with
             inference_at,
             model_version
         from {{ ref("int__model_prediction_voter_turnout") }}
-        {% if is_incremental() %}
-            where
-                inference_at >= coalesce(
-                    (select max(inference_at) from {{ this }}), '1900-01-01'::timestamp
-                )
-        {% endif %}
     )
 
+-- full rebuild every run: districts that drift out of model coverage drop out
+-- instead of stranding stale rows; created_at/updated_at are build timestamps
 select
     {{
         generate_salted_uuid(
@@ -50,9 +45,7 @@ select
             ]
         )
     }} as id,
-    {% if is_incremental() %} coalesce(existing.created_at, now()) as created_at,
-    {% else %} now() as created_at,
-    {% endif %}
+    now() as created_at,
     current_timestamp() as updated_at,
     projected_turnout.district_id,
     projected_turnout.election_year,
@@ -61,17 +54,3 @@ select
     projected_turnout.projected_turnout,
     projected_turnout.inference_at
 from projected_turnout
-{% if is_incremental() %}
-    left join
-        {{ this }} as existing
-        on {{
-            generate_salted_uuid(
-                fields=[
-                    "projected_turnout.district_id",
-                    "projected_turnout.election_year",
-                    "projected_turnout.election_code",
-                    "projected_turnout.model_version",
-                ]
-            )
-        }} = existing.id
-{% endif %}

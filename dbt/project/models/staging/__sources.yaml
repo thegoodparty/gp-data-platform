@@ -125,6 +125,10 @@ sources:
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
         config:
           freshness: null
+      - name: gp_api_db_artifact_review
+        description: raw data load from gp_api_db postgres db from table `artifact_review`
+        config:
+          freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_chat_conversation
@@ -193,6 +197,14 @@ sources:
         description: raw data load from gp_api_db postgres db from table `website_contact`
       - name: gp_api_db_website_view
         description: raw data load from gp_api_db postgres db from table `website_view`
+      - name: gp_api_db_race_opponent_contrast
+        description: raw data load from gp_api_db postgres db from table `race_opponent_contrast`
+      - name: gp_api_db_race_opponent_research
+        description: raw data load from gp_api_db postgres db from table `race_opponent_research`
+      - name: gp_api_db_race_opponent_standout_action
+        description: raw data load from gp_api_db postgres db from table `race_opponent_standout_action`
+      - name: gp_api_db_race_opponent_summary
+        description: raw data load from gp_api_db postgres db from table `race_opponent_summary`
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts
@@ -1588,7 +1600,6 @@ sources:
           unmatched records.
 
       - name: pairwise_candidacy_stages
-        identifier: pairwise_candidacy_stages20260527
         description: >
           Scored candidate pairs from Splink prediction (threshold: 0.01 match probability),
           after post-prediction filters for person identity, race-level agreement, and

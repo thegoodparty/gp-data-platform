@@ -1,3 +1,4 @@
+-- depends_on: {{ ref("hubspot_contact_property_columns") }}
 select
     -- identifiers
     id,
@@ -306,4 +307,13 @@ select
     ) as contact_created_at,
     createdat as created_at,
     updatedat as updated_at
+
+    -- requested hubspot properties, generated from the
+    -- hubspot_contact_property_columns seed registry. To expose another
+    -- property, add a status=generated row there; no SQL change needed.
+    {%- for prop in hubspot_generated_contact_properties() %}
+        ,
+        {{ hubspot_contact_property_expression(prop.internal_name, prop.cast_type) }}
+        as {{ prop.column_name }}
+    {%- endfor %}
 from {{ source("airbyte_source", "hubspot_api_contacts") }}
