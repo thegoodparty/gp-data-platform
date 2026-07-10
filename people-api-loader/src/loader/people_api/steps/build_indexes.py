@@ -24,10 +24,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
+from typing import TYPE_CHECKING
 
 import psycopg
-from botocore.client import BaseClient
 from botocore.exceptions import ClientError
+
+if TYPE_CHECKING:
+    from botocore.client import BaseClient
 
 from loader.core.aws import rds
 from loader.core.log import bind, get_logger
