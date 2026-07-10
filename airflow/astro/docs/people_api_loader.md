@@ -37,6 +37,7 @@ inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> c
 | `build_indexes` | Scale the writer up to the **index-phase** class, then add the PK + the LALVOTERID unique + all plain indexes per partition, then `ANALYZE`. See below. |
 | `resize` | Flip the writer to Serverless v2 with the prod ACU range, swap in the serve parameter group, bump backup retention, enable deletion protection. |
 | `validate` | Per-state row counts vs the `inspect_prod` baseline within +/-10%, plus structural checks. Failure halts the DAG. |
+| `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`resize`. On any post-provision failure it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
 
 ## Connectivity: bastion
 
@@ -94,11 +95,27 @@ Two things make this fast and cheap:
 Measured: a full build dropped from a ~30-hour trajectory to ~83 minutes on the 48xlarge with these
 changes (run `manual__2026-07-09T20:30`, validated end-to-end).
 
-**Scale-up reboot.** Changing the instance class reboots the writer. `_ensure_instance_class` waits
-for the class change to fully apply (polls until the reported class equals the target, status is
-available, and no class change is pending) before building, because Aurora reports `available` for a
-few seconds after the modify before it actually reboots. Airflow retries also cover a mid-build drop
-since every step is idempotent for its date.
+**Scale-up reboot and shared control-plane helpers.** Changing the instance class reboots the
+writer. `_ensure_instance_class` waits for the class change to fully apply (polls until the reported
+class equals the target, status is available, and no class change is pending) before building,
+because Aurora reports `available` for a few seconds after the modify before it actually reboots.
+That poll and the tolerate-in-progress-fault retry are shared helpers in `core/aws.py`
+(`wait_instance_class_applied`, `retry_after_settle`), reused by `resize`'s Serverless v2 flip (which
+had the same stale-available reboot race) and by the on-failure scale-down. Airflow retries also
+cover a mid-build drop since every step is idempotent for its date.
+
+## Failure cost guard
+
+`resize` (which flips the writer to Serverless v2) is downstream of `build_indexes`, so a run that
+fails or is aborted mid-build never reaches it and would otherwise strand its scaled-up writer at
+full provisioned cost. The `scale_down_on_failure` task (`trigger_rule=one_failed`, upstreams
+`provision`/`create_schema`/`copy`/`build_indexes`/`resize`) runs `loader scale-down`, which flips
+the writer to `db.serverless` to stop that cost. It deliberately skips the serve lockdown that
+`resize` applies (no serve parameter group, backup-retention bump, deletion protection, or reboot),
+so the failed run's cluster and loaded data survive for resume/forensics and stay easy to
+`teardown`. It is skipped on a fully successful run (where `resize` already made the writer
+serverless). Limit: it fires on an organic failure or a task marked failed, but not if the whole DAG
+run is hard-deleted — that still needs a manual `loader teardown`/`scale-down`.
 
 ## Configuration
 
