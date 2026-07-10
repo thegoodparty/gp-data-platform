@@ -10,7 +10,9 @@ in Databricks. Each table is its own task group following the same lifecycle:
 3. **build_indexes_and_fk** — add PK, indexes, and FK constraints.
 4. **quality_checks** — gate the swap on row-count / coverage floors.
 5. **swap** — atomic rename swap (`_new` -> live, live -> `_old`) with all
-   indexes and constraints renamed to canonical Prisma names.
+   indexes and constraints renamed to canonical Prisma names. A leftover
+   `_old` from a run that crashed before drop_old is pre-dropped in the same
+   transaction, so a crashed run never wedges subsequent ones.
 6. **drop_old** — drop the renamed-aside `_old` table.
 
 The shared lifecycle lives in
@@ -42,6 +44,15 @@ table wholesale each run, so the API always matches the Databricks mart.
 The source schema is hardcoded to `dbt` (not `databricks_dbt_schema`, which
 points at `dbt_staging` for in-flight dbt build artifacts). The election-api
 sync reads the production-quality version of the marts in both dev and prod.
+
+### Failure alerting (Astro-side, one-time setup):
+Nothing in this repo sends failure notifications — there is no
+`on_failure_callback`/notifier wiring, no Slack provider, and no SMTP
+config. Alerting for this DAG is configured in the Astro UI (Workspace →
+Alerts): create a DAG Failure alert scoped to `sync_election_api` on the
+prod deployment and attach the team's Slack communication channel. Without
+it, the only failure signal is `max_consecutive_failed_dag_runs=5`
+eventually pausing the DAG, which freezes all synced tables silently.
 
 ### Deploy model:
 - `main` → `astro-prod`. `astro-dev`'s branch mapping is set manually in the
