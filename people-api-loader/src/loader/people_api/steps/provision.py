@@ -86,7 +86,7 @@ def _attach_s3_import_role(client: object, cluster_id: str, role_arn: str) -> No
     already-attached check — so a caller lacking PassRole gets `AccessDenied` (not
     `DBClusterRoleAlreadyExists`) when the role is already attached, which `ignore_client_errors`
     can't swallow. Describing first (a read, no PassRole) lets a re-run continue when an admin
-    pre-attached the role, the path PLAN_LOADER.md documents for a loader without PassRole.
+    pre-attached the role, the documented path for a loader without PassRole.
 
     Only an `ACTIVE` association is treated as done; a `PENDING`/`INVALID` role (e.g. from an
     interrupted prior run) still gets a (re)attach so s3 imports aren't silently left broken.

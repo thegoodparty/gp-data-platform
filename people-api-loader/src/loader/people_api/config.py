@@ -62,8 +62,7 @@ DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
 DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 
-# Load-phase instance sizing. Prod serving is serverless; load uses provisioned (see
-# PLAN_LOADER.md "Provisioned-vs-Serverless"). We use TWO classes: provision/create_schema/copy
+# Load-phase instance sizing. Prod serving is serverless; load uses provisioned (see the loader DAG spec, airflow/astro/docs/people_api_loader.md). We use TWO classes: provision/create_schema/copy
 # run on the smaller `load_instance_class` (copy is I/O/WAL-bound, not CPU-bound), and
 # build_indexes scales the writer UP to `index_instance_class` (build_indexes is cleanly
 # CPU-bound and scales with vCPU — see steps/build_indexes.py). resize then flips the writer to

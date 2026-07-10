@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Short, non-obvious context for `people-api-loader`. The repo overview is in `README.md`; the full TDD is in `docs/PLAN_LOADER.md`.
+Short, non-obvious context for `people-api-loader`. The repo overview is in `README.md`; the DAG design + ops reference is `airflow/astro/docs/people_api_loader.md` (TDD: DATA-1735).
 
 ## ai-rules submodule
 

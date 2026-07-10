@@ -25,7 +25,7 @@ class TableSpec:
 # Scope: the loader bulk-loads only Voter. District/DistrictVoter are small, Prisma-defined,
 # and built by the dbt write path (write__people_api_db.py); DistrictStats isn't a serving
 # Postgres table at all. So generation is Voter-only. The single Prisma-layer column the mart
-# omits is Mailing_HHGender_Description (a REMOVED_COLUMNS NULL placeholder per PLAN_LOADER);
+# omits is Mailing_HHGender_Description (a REMOVED_COLUMNS NULL placeholder);
 # `id` is the mart's salted-uuid string, stored as UUID in Postgres.
 TABLE_SPECS: dict[str, TableSpec] = {
     "Voter": TableSpec(
