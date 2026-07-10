@@ -317,9 +317,6 @@ def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
 
     waiter = rds_client.get_waiter("db_instance_available")
 
-    def _wait() -> None:
-        waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
-
     def _modify() -> None:
         rds_client.modify_db_instance(
             DBInstanceIdentifier=instance_id, DBInstanceClass=target, ApplyImmediately=True
@@ -334,7 +331,7 @@ def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
         if e.response["Error"]["Code"] != "InvalidDBInstanceStateFault":
             raise
         log.warning("indexes.scale_up_retry_after_settle")
-        _wait()
+        waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
         _modify()
     _wait_class_applied(rds_client, instance_id, target)
     log.info("indexes.scale_up_applied", instance=instance_id, instance_class=target)

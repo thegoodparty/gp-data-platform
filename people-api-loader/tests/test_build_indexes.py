@@ -44,7 +44,7 @@ class _FakeWaiter:
 
 
 class _FakeRds:
-    """RDS double for the scale-up: records modify calls, can raise a one-shot in-progress fault.
+    """RDS double for the scale-up: records describe/modify calls, can raise a one-shot in-progress fault.
 
     `describe_db_instances` returns items from `describe_sequence` in order, holding on the last
     item once exhausted (mirrors a real poll settling and staying settled). Defaults to a single
@@ -60,7 +60,8 @@ class _FakeRds:
         describe_sequence: list[dict] | None = None,
     ) -> None:
         self.current_class = current_class
-        self.calls: list[tuple[str, dict]] = []
+        self.describe_calls: list[dict] = []
+        self.modify_calls: list[dict] = []
         self._raise_once = raise_once  # ClientError code to raise on the first modify, then clear
         self._raised = False
         self._describe_sequence = describe_sequence or [
@@ -70,16 +71,14 @@ class _FakeRds:
                 "PendingModifiedValues": {},
             }
         ]
-        self._describe_calls = 0
 
     def describe_db_instances(self, **kw: object) -> dict:
-        self.calls.append(("describe", dict(kw)))
-        idx = min(self._describe_calls, len(self._describe_sequence) - 1)
-        self._describe_calls += 1
+        self.describe_calls.append(dict(kw))
+        idx = min(len(self.describe_calls) - 1, len(self._describe_sequence) - 1)
         return {"DBInstances": [self._describe_sequence[idx]]}
 
     def modify_db_instance(self, **kw: object) -> None:
-        self.calls.append(("modify", dict(kw)))
+        self.modify_calls.append(dict(kw))
         if self._raise_once and not self._raised:
             self._raised = True
             raise ClientError(
@@ -90,20 +89,13 @@ class _FakeRds:
         return _FakeWaiter()
 
 
-def _scale_cfg() -> LoaderConfig:
-    from types import SimpleNamespace
-
-    return cast(
-        LoaderConfig,
-        SimpleNamespace(
-            index_instance_class="db.r8g.48xlarge",
-            new_writer_instance_id=lambda rd: f"gp-people-db-{rd}-dev-writer",
-        ),
-    )
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test in this module patches step.time.sleep to a no-op; none relies on real sleep."""
+    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
 
 
 def test_ensure_instance_class_scales_up_when_smaller(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(
         current_class="db.r8g.16xlarge",
         describe_sequence=[
@@ -122,23 +114,21 @@ def test_ensure_instance_class_scales_up_when_smaller(monkeypatch: pytest.Monkey
         ],
     )
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
-    step._ensure_instance_class(_scale_cfg(), "20260709")
-    modify = dict(fake.calls)["modify"]
+    step._ensure_instance_class(_CFG, "20260709")
+    modify = fake.modify_calls[0]
     assert modify["DBInstanceClass"] == "db.r8g.48xlarge"
     assert modify["DBInstanceIdentifier"] == "gp-people-db-20260709-dev-writer"
     assert modify["ApplyImmediately"] is True
 
 
 def test_ensure_instance_class_noop_when_already_index_class(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(current_class="db.r8g.48xlarge")
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
-    step._ensure_instance_class(_scale_cfg(), "20260709")
-    assert not any(op == "modify" for op, _ in fake.calls)  # already scaled => no modify
+    step._ensure_instance_class(_CFG, "20260709")
+    assert not fake.modify_calls  # already scaled => no modify
 
 
 def test_ensure_instance_class_retries_after_in_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(
         current_class="db.r8g.16xlarge",
         raise_once="InvalidDBInstanceStateFault",
@@ -158,28 +148,25 @@ def test_ensure_instance_class_retries_after_in_progress(monkeypatch: pytest.Mon
         ],
     )
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
-    step._ensure_instance_class(_scale_cfg(), "20260709")
-    modifies = [kw for op, kw in fake.calls if op == "modify"]
-    assert len(modifies) == 2  # first raised the fault, settled, then re-issued
+    step._ensure_instance_class(_CFG, "20260709")
+    assert len(fake.modify_calls) == 2  # first raised the fault, settled, then re-issued
 
 
 def test_ensure_instance_class_reraises_other_client_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # A non-InvalidDBInstanceStateFault error is a genuine bad state, not an in-progress modify:
     # it must propagate, never be swallowed (which would let a misconfigured box look like success).
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(current_class="db.r8g.16xlarge", raise_once="InvalidParameterCombination")
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
     with pytest.raises(ClientError):
-        step._ensure_instance_class(_scale_cfg(), "20260709")
+        step._ensure_instance_class(_CFG, "20260709")
     # the tolerated-fault retry path was NOT taken: only the first modify was attempted
-    assert sum(1 for op, _ in fake.calls if op == "modify") == 1
+    assert len(fake.modify_calls) == 1
 
 
 def test_ensure_instance_class_waits_until_class_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     # Aurora keeps reporting the instance 'available' for a few seconds after modify_db_instance
     # before it flips to 'modifying' and reboots. Assert we ride through that stale-available /
     # pending-modify state and only return once the poll observes the settled, applied class.
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
     fake = _FakeRds(
         current_class="db.r8g.16xlarge",
         describe_sequence=[
@@ -204,18 +191,16 @@ def test_ensure_instance_class_waits_until_class_applied(monkeypatch: pytest.Mon
         ],
     )
     monkeypatch.setattr(step, "rds", lambda cfg: fake)
-    step._ensure_instance_class(_scale_cfg(), "20260709")
-    assert sum(1 for op, _ in fake.calls if op == "modify") == 1
-    describe_calls = sum(1 for op, _ in fake.calls if op == "describe")
+    step._ensure_instance_class(_CFG, "20260709")
+    assert len(fake.modify_calls) == 1
     # initial check + at least two polls (the not-yet-applied state, then the settled state)
-    assert describe_calls >= 3
+    assert len(fake.describe_calls) >= 3
 
 
 def test_wait_class_applied_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     # After _CLASS_APPLY_MAX_POLLS, if the class has not been applied, _wait_class_applied raises
-    # RuntimeError. Monkeypatch sleep to no-op and _CLASS_APPLY_MAX_POLLS to a small number so the
-    # test completes quickly, and use a _FakeRds that never reaches the target class.
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
+    # RuntimeError. _CLASS_APPLY_MAX_POLLS is patched to a small number so the test completes
+    # quickly, and use a _FakeRds that never reaches the target class.
     monkeypatch.setattr(step, "_CLASS_APPLY_MAX_POLLS", 3)
     # The describe_sequence holds the last state forever (mirrors real poll behavior), so set the
     # last item to a never-settling state: still in the old class with a pending class change.
@@ -321,9 +306,7 @@ def test_partition_sizes_maps_state_to_bytes(monkeypatch: pytest.MonkeyPatch) ->
     conn = FakeConn()
     conn.queue_result([("Voter_CA", 4_000_000), ("Voter_TX", 3_000_000)])  # one fetchall result set
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    sizes = step._partition_sizes(
-        cast(LoaderConfig, SimpleNamespace(s3_bucket="b")), "20260709", forward=None
-    )
+    sizes = step._partition_sizes(_CFG, "20260709", forward=None)
     assert sizes == {"CA": 4_000_000, "TX": 3_000_000}
 
 
