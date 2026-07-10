@@ -312,9 +312,9 @@ models:
               - model_version
       # API invariant (DATA-2015): the election-api consumer (projectedTurnout.service.ts
       # findFirst/getMany) does NOT disambiguate model_version, so there must be exactly one
-      # row per (district_id, election_year, election_code). Fails if a superseding
-      # model_version is not cleaned up — the supersession release must --full-refresh this
-      # mart and delete the stale Postgres rows (see DATA-2015 Task 6).
+      # row per (district_id, election_year, election_code). The table materialization
+      # rebuilds from int__model_prediction_voter_turnout every run, so this only fails if
+      # the intermediate itself emits a superseded model_version for a district+election.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
