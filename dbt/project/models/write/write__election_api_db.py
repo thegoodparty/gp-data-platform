@@ -572,7 +572,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 stance_df,
                 district_df,
             ],
-            strict=False,
+            strict=True,
         )
         for table, df in to_load:
             query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
@@ -605,10 +605,9 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   Stance -> Issue, Candidacy
     # so referenced parents must load before their children.
     # Projected_Turnout is NOT written here: this writer upserts and never
-    # deletes, so superseded rows would linger. Delivery moves to the
-    # sync_election_api Airflow DAG's atomic table swap (added in PR #585);
-    # until that lands, the API serves its current rows, aging but clean
-    # (accepted interim, DATA-2015).
+    # deletes, so superseded rows would linger. It is delivered by the
+    # sync_election_api Airflow DAG's atomic table swap instead (PR #585,
+    # DATA-2015); tests/test_write__election_api_db.py pins its absence.
     table_load_counts: dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [
@@ -638,7 +637,7 @@ def model(dbt, session: SparkSession) -> DataFrame:
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
         ],
-        strict=False,
+        strict=True,
     ):
         table_load_counts[table_name] = _load_data_to_postgres(
             df=df,
