@@ -934,6 +934,17 @@ models:
       - name: instagram_handle
         description: Candidate's Instagram handle
 
+      - name: urls
+        description: |
+          All BallotReady URLs for this person as an array of {type, url}
+          structs (BR-sourced rows only; NULL for the 2025 HubSpot archive and
+          non-BR rows). `type` values include 'website' (campaign/personal),
+          'government' (official/government site), 'facebook', 'linkedin',
+          'twitter', 'instagram', 'donate', 'contact', 'wikipedia', 'youtube',
+          'volunteer'. The scalar website_url/linkedin_url/etc. columns take the
+          first URL of the matching type; use this array to tell a government
+          site apart from a campaign website.
+
       - name: source_systems
         description: |
           Array of source systems contributing to this row. Possible values:
@@ -2000,7 +2011,9 @@ models:
                 severity: warn
 
       - name: website_url
-        description: Official's government or campaign website (BR)
+        description: >
+          Official's campaign/personal website (BR url type='website'). For the
+          official/government site and every other link with its type, see urls.
 
       - name: linkedin_url
         description: Official's LinkedIn profile (BR)
@@ -2010,6 +2023,18 @@ models:
 
       - name: twitter_url
         description: Official's Twitter profile (BR)
+
+      - name: urls
+        description: |
+          All BallotReady URLs for the person holding this term, as an array of
+          {type, url} structs. Sourced from the BR API person feed (joined on
+          br_candidate_id), not the S3 office_holders feed, which carries almost
+          no government-typed URLs. `type` values include 'website'
+          (campaign/personal), 'government' (official/government site),
+          'facebook', 'linkedin', 'twitter', 'instagram', 'donate', 'contact',
+          'wikipedia', 'youtube', 'volunteer'. Use this to distinguish an
+          official government site from a campaign website. NULL when the term's
+          person is not present in the API person feed.
 
       - name: mailing_address_line_1
         description: Mailing address line 1 (BR)
