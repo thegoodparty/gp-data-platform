@@ -10,6 +10,8 @@ import sys
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 # Stub external modules so the DAG file can be imported in any environment.
 _STUBS = (
     "airflow",
@@ -32,8 +34,10 @@ for _mod in _STUBS:
 from dags.sync_election_api import (  # noqa: E402
     DTI_COLUMNS,
     EOS_COLUMNS,
+    PT_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
+    _pt_quality_gate,
     _ztp_transform_row,
 )
 
@@ -145,3 +149,69 @@ def test_eos_columns_pinned():
         "created_at",
         "updated_at",
     ]
+
+
+def test_pt_columns_pinned():
+    """Pin PT_COLUMNS to catch silent column reorderings.
+
+    Projected_Turnout loads with no row transform: PT_COLUMNS drives both the
+    Databricks SELECT order and the positional Postgres insert. id/district_id
+    are both uuids and created_at/updated_at/inference_at are all timestamps,
+    so a swap within either group would corrupt data without any insert-time
+    error. The order mirrors the legacy dbt writer's column mapping for this
+    table.
+    """
+    assert PT_COLUMNS == [
+        "id",
+        "created_at",
+        "updated_at",
+        "election_year",
+        "election_code",
+        "projected_turnout",
+        "inference_at",
+        "model_version",
+        "district_id",
+    ]
+
+
+def test_pt_quality_gate_refuses_duplicate_keys():
+    """Any duplicate (district_id, election_year, election_code) key refuses
+    the swap — the invariant the swap delivery exists to guarantee."""
+    with pytest.raises(ValueError, match="duplicate"):
+        _pt_quality_gate(loaded_count=800_000, dup_keys=1, prior_key_count=800_000, null_keys=0)
+
+
+def test_pt_quality_gate_refuses_coverage_collapse():
+    """Staging under half the prior distinct-key count refuses the swap."""
+    with pytest.raises(ValueError, match="refusing to swap"):
+        _pt_quality_gate(loaded_count=300_000, dup_keys=0, prior_key_count=800_000, null_keys=0)
+
+
+def test_pt_quality_gate_allows_dedupe_cutover():
+    """Keys-vs-keys baseline: a deduped load matching the prior key count
+    passes even when the prior table's RAW row count was much larger (bloat
+    from the legacy upsert path must not refuse a legitimate cutover)."""
+    _pt_quality_gate(loaded_count=800_000, dup_keys=0, prior_key_count=800_000, null_keys=0)
+
+
+def test_pt_quality_gate_boundary_ratio_passes():
+    """Exactly 0.5 passes — same boundary semantics as the other groups."""
+    _pt_quality_gate(loaded_count=400_000, dup_keys=0, prior_key_count=800_000, null_keys=0)
+
+
+def test_pt_quality_gate_cold_start_floor():
+    """No prior table: implausibly small loads refuse, plausible loads pass."""
+    with pytest.raises(ValueError, match="Cold-start"):
+        _pt_quality_gate(loaded_count=99_999, dup_keys=0, prior_key_count=0, null_keys=0)
+    _pt_quality_gate(loaded_count=100_000, dup_keys=0, prior_key_count=0, null_keys=0)
+
+
+def test_pt_quality_gate_refuses_null_keys():
+    """Any staged row with a NULL key column refuses the swap.
+
+    Belt-and-braces: the staging LIKE-clone inherits NOT NULL from the live
+    table so such a row should fail at load time, but the gate proves the
+    property directly instead of relying on the inherited constraint.
+    """
+    with pytest.raises(ValueError, match="NULL"):
+        _pt_quality_gate(loaded_count=800_000, dup_keys=0, prior_key_count=800_000, null_keys=1)
