@@ -46,6 +46,7 @@ class _FakeRds:
         persistent: bool = False,
         describe_sequence: list[dict] | None = None,
         describe_not_found: bool = False,
+        describe_error_code: str | None = None,
     ) -> None:
         self.calls: list[tuple[str, dict]] = []
         self._raise_on = raise_on or {}
@@ -54,6 +55,7 @@ class _FakeRds:
         self._describe_sequence = describe_sequence or _SETTLED_SERVERLESS
         self._describe_calls = 0
         self._describe_not_found = describe_not_found
+        self._describe_error_code = describe_error_code
 
     def _maybe_raise(self, op: str) -> None:
         code = self._raise_on.get(op)
@@ -74,6 +76,10 @@ class _FakeRds:
         if self._describe_not_found:
             raise ClientError(
                 {"Error": {"Code": "DBInstanceNotFound", "Message": "not found"}}, "DescribeDBInstances"
+            )
+        if self._describe_error_code:
+            raise ClientError(
+                {"Error": {"Code": self._describe_error_code, "Message": "error"}}, "DescribeDBInstances"
             )
         idx = min(self._describe_calls, len(self._describe_sequence) - 1)
         self._describe_calls += 1
@@ -128,6 +134,19 @@ def test_scale_down_noop_when_instance_gone(monkeypatch: pytest.MonkeyPatch) -> 
 
     step.run(_CFG, "20260616")  # must not raise
 
+    ops = [c[0] for c in rds_client.calls]
+    assert "modify_cluster" not in ops
+    assert "modify_instance" not in ops
+
+
+def test_scale_down_reraises_other_describe_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    rds_client = _FakeRds(describe_error_code="AccessDenied")
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+
+    with pytest.raises(ClientError) as exc_info:
+        step.run(_CFG, "20260616")
+
+    assert exc_info.value.response["Error"]["Code"] == "AccessDenied"
     ops = [c[0] for c in rds_client.calls]
     assert "modify_cluster" not in ops
     assert "modify_instance" not in ops

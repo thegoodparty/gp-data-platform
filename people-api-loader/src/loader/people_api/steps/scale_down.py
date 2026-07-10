@@ -56,6 +56,7 @@ def run(cfg: LoaderConfig, run_date: str) -> None:
         fault_code="InvalidDBClusterStateFault",
         settle=lambda: cluster_waiter.wait(DBClusterIdentifier=cluster_id, WaiterConfig=_WAITER_CFG),
     )
+    # Instance can read available while cluster still modifying; unconditional wait gates modify_db_instance.
     cluster_waiter.wait(DBClusterIdentifier=cluster_id, WaiterConfig=_WAITER_CFG)
     retry_after_settle(
         lambda: rds_client.modify_db_instance(
