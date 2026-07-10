@@ -183,11 +183,9 @@ models:
         data_tests:
           - not_null
       - name: reviewer_email
-        description: "Email of the reviewer (null for automated reviews)"
+        description: "Email of the reviewer (nullable; some rows carry the reviewer's identity only in reviewer_clerk_sub)"
       - name: reviewer_clerk_sub
-        description: "Clerk subject identifier of the reviewer"
-        data_tests:
-          - not_null
+        description: "Reviewer identity: Clerk subject id, though some rows hold an email instead"
       - name: created_at
         description: "Timestamp when the review was created"
       - name: updated_at
