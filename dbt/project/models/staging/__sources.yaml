@@ -125,6 +125,10 @@ sources:
         description: raw data load from gp_api_db postgres db from table `artifact_feedback`
         config:
           freshness: null
+      - name: gp_api_db_artifact_review
+        description: raw data load from gp_api_db postgres db from table `artifact_review`
+        config:
+          freshness: null
       - name: gp_api_db_campaign
         description: raw data load from gp_api_db postgres db from table `campaign`
       - name: gp_api_db_chat_conversation
