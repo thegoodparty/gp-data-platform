@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 from botocore.exceptions import ClientError
 
+from loader.core import aws
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import resize as step
 
@@ -28,12 +29,28 @@ class _FakeWaiter:
         return None
 
 
+_SETTLED_SERVERLESS = [
+    {"DBInstanceClass": "db.serverless", "DBInstanceStatus": "available", "PendingModifiedValues": {}}
+]
+
+
 class FakeRds:
-    def __init__(self, raise_on: dict[str, str] | None = None, *, persistent: bool = False) -> None:
+    def __init__(
+        self,
+        raise_on: dict[str, str] | None = None,
+        *,
+        persistent: bool = False,
+        describe_sequence: list[dict] | None = None,
+    ) -> None:
         self.calls: list[tuple[str, dict]] = []
         self._raise_on = raise_on or {}  # op -> ClientError code to raise after recording
         self._persistent = persistent  # raise every time (bad state) vs once (in-progress)
         self._raised: set[str] = set()
+        # The serverless-flip wait (loader.core.aws.wait_instance_class_applied) polls
+        # describe_db_instances; defaults to already-settled db.serverless so it terminates on
+        # the first poll. Held on the last item once exhausted (mirrors a real poll settling).
+        self._describe_sequence = describe_sequence or _SETTLED_SERVERLESS
+        self._describe_calls = 0
 
     def _maybe_raise(self, op: str) -> None:
         code = self._raise_on.get(op)
@@ -51,6 +68,12 @@ class FakeRds:
 
     def reboot_db_instance(self, **kw: Any) -> None:
         self.calls.append(("reboot", kw))
+
+    def describe_db_instances(self, **kw: Any) -> dict:
+        self.calls.append(("describe_instance", kw))
+        idx = min(self._describe_calls, len(self._describe_sequence) - 1)
+        self._describe_calls += 1
+        return {"DBInstances": [self._describe_sequence[idx]]}
 
     def get_waiter(self, name: str) -> _FakeWaiter:
         return _FakeWaiter()
@@ -100,6 +123,50 @@ def test_resize_retries_in_progress_modify(monkeypatch: pytest.MonkeyPatch) -> N
     assert ops.count("modify_cluster") == 2
     assert ops.count("modify_instance") == 2
     assert "reboot" in ops
+
+
+def test_resize_reboot_waits_for_class_applied_not_just_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The race this task fixes: Aurora reports the instance 'available' for a few seconds after
+    # the class-change modify before it flips to 'modifying' and reboots. A plain db_instance_
+    # available waiter would return on that stale state and let the explicit reboot below race
+    # the conversion's own delayed reboot. Assert the describe sequence is actually POLLED past
+    # the stale-available / pending-class state before reboot_db_instance is issued.
+    monkeypatch.setattr(aws.time, "sleep", lambda *a, **k: None)
+    rds_client = FakeRds(
+        describe_sequence=[
+            # stale: still 'available' on the OLD class immediately after the modify
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {"DBInstanceClass": "db.serverless"},
+            },
+            # now actually modifying
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "modifying",
+                "PendingModifiedValues": {"DBInstanceClass": "db.serverless"},
+            },
+            # settled on the target class
+            {
+                "DBInstanceClass": "db.serverless",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+        ]
+    )
+    monkeypatch.setattr(step, "rds", lambda cfg: rds_client)
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: None)
+    monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+
+    manifest = step.run(_CFG, "20260616")
+
+    assert manifest.status == "complete"
+    assert manifest.final_instance_class == "db.serverless"
+    ops = [c[0] for c in rds_client.calls]
+    reboot_idx = ops.index("reboot")
+    # at least 3 describes happened before reboot (rode through stale-available + modifying)
+    assert ops[:reboot_idx].count("describe_instance") >= 3
+    assert ops[reboot_idx - 1] == "describe_instance"  # the poll immediately preceding reboot
 
 
 def test_resize_propagates_persistent_modify_fault(monkeypatch: pytest.MonkeyPatch) -> None:

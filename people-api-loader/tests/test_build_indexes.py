@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 from botocore.exceptions import ClientError
 
+from loader.core import aws
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import build_indexes as step
 from tests._fakes import FakeConn, executed_sql, fake_connect
@@ -91,8 +92,10 @@ class _FakeRds:
 
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every test in this module patches step.time.sleep to a no-op; none relies on real sleep."""
-    monkeypatch.setattr(step.time, "sleep", lambda *a, **k: None)
+    """Every test in this module drives the real `wait_instance_class_applied`, whose sleep now
+    lives in `loader.core.aws` (the shared helper); patch it there so no test does a real sleep.
+    """
+    monkeypatch.setattr(aws.time, "sleep", lambda *a, **k: None)
 
 
 def test_ensure_instance_class_scales_up_when_smaller(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,16 +200,24 @@ def test_ensure_instance_class_waits_until_class_applied(monkeypatch: pytest.Mon
     assert len(fake.describe_calls) >= 3
 
 
-def test_wait_class_applied_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    # After _CLASS_APPLY_MAX_POLLS, if the class has not been applied, _wait_class_applied raises
-    # RuntimeError. _CLASS_APPLY_MAX_POLLS is patched to a small number so the test completes
-    # quickly, and use a _FakeRds that never reaches the target class.
-    monkeypatch.setattr(step, "_CLASS_APPLY_MAX_POLLS", 3)
+def test_ensure_instance_class_propagates_wait_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    # If the class never settles, the shared `wait_instance_class_applied` (loader.core.aws) raises
+    # RuntimeError, and _ensure_instance_class must let it propagate rather than reporting success.
+    # `wait_instance_class_applied`'s poll_seconds/max_polls defaults are bound at function
+    # definition time, so we can't shrink the ~80-poll ceiling by monkeypatching the module
+    # constant after the fact; the module-level _no_sleep fixture makes even 80 no-op polls fast.
     # The describe_sequence holds the last state forever (mirrors real poll behavior), so set the
     # last item to a never-settling state: still in the old class with a pending class change.
     fake = _FakeRds(
         current_class="db.r8g.16xlarge",
         describe_sequence=[
+            # initial current-class check
+            {
+                "DBInstanceClass": "db.r8g.16xlarge",
+                "DBInstanceStatus": "available",
+                "PendingModifiedValues": {},
+            },
+            # every poll after the modify: never settles
             {
                 "DBInstanceClass": "db.r8g.16xlarge",
                 "DBInstanceStatus": "modifying",
@@ -214,8 +225,9 @@ def test_wait_class_applied_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         ],
     )
+    monkeypatch.setattr(step, "rds", lambda cfg: fake)
     with pytest.raises(RuntimeError, match="did not reach class"):
-        step._wait_class_applied(fake, "writer", "db.r8g.48xlarge")  # ty: ignore[invalid-argument-type]
+        step._ensure_instance_class(_CFG, "20260709")
 
 
 def test_build_session_sql_fills_the_box() -> None:

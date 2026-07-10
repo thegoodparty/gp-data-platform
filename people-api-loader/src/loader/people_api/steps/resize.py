@@ -11,12 +11,9 @@ Idempotent: a completed manifest short-circuits.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import UTC, datetime
 
-from botocore.exceptions import ClientError
-
-from loader.core.aws import rds
+from loader.core.aws import rds, retry_after_settle, wait_instance_class_applied
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.manifests import (
@@ -57,26 +54,11 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
         # so cluster-level modifies must be gated on the cluster waiter, not the instance one.
         cluster_waiter.wait(DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
 
-    def _modify_settle(call: Callable[[], object], fault: str, settle: Callable[[], None]) -> None:
-        """Apply a modify, tolerating only a still-in-progress modify from a partial re-run.
-
-        On `fault` (InvalidDB{Cluster,Instance}StateFault) we wait (via `settle`, the matching
-        cluster/instance waiter) for the in-flight modify to settle, then RE-ISSUE the call so
-        our settings are actually applied. We do not swallow-and-skip: AWS uses the same fault
-        for creating/deleting/failed states, and a skipped modify would write a `complete`
-        manifest over a misconfigured cluster. A genuinely bad state re-raises on the retry.
-        """
-        try:
-            call()
-        except ClientError as e:
-            if e.response["Error"]["Code"] != fault:
-                raise
-            log.warning("resize.modify_retry_after_settle", fault=fault)
-            settle()
-            call()
-
     # Serve param group + Serverless v2 scaling (cluster-level) + lock-down, applied now.
-    _modify_settle(
+    # retry_after_settle tolerates only a still-in-progress modify from a partial re-run
+    # (InvalidDBClusterStateFault -> wait for the cluster to settle -> re-issue so our settings
+    # are actually applied); a genuinely bad state re-raises on the retry.
+    retry_after_settle(
         lambda: rds_client.modify_db_cluster(
             DBClusterIdentifier=cluster_id,
             DBClusterParameterGroupName=serve_pg,
@@ -88,25 +70,29 @@ def run(cfg: LoaderConfig, run_date: str) -> ResizeManifest:
             DeletionProtection=True,
             ApplyImmediately=True,
         ),
-        "InvalidDBClusterStateFault",
-        _wait_cluster,
+        fault_code="InvalidDBClusterStateFault",
+        settle=_wait_cluster,
     )
     # Gate on the CLUSTER waiter: the instance can be `available` while the cluster is still
     # `modifying`, and modify_db_instance against a modifying cluster raises
     # InvalidDBClusterStateFault (which the instance-fault guard below would not catch).
     _wait_cluster()
     # Flip the writer instance to serverless (instance-level class).
-    _modify_settle(
+    retry_after_settle(
         lambda: rds_client.modify_db_instance(
             DBInstanceIdentifier=instance_id, DBInstanceClass=_SERVERLESS_CLASS, ApplyImmediately=True
         ),
-        "InvalidDBInstanceStateFault",
-        _wait,
+        fault_code="InvalidDBInstanceStateFault",
+        settle=_wait,
     )
-    # The class change leaves the instance 'modifying' for minutes; a reboot now would be
-    # rejected (InvalidDBInstanceStateFault). Wait for available, reboot to apply the serve
-    # parameter group, then wait for available again.
-    _wait()
+    # A single db_instance_available waiter is NOT enough here: Aurora keeps reporting the
+    # instance 'available' for a few seconds after a class-change modify before it flips to
+    # 'modifying' and reboots, so a plain `_wait()` can return on the stale state — and the
+    # explicit reboot below would then race the conversion's own delayed reboot
+    # (InvalidDBInstanceStateFault). Ride through the class-change reboot with the same
+    # class-applied poll build_indexes uses, THEN reboot to apply the serve parameter group,
+    # then wait for available again.
+    wait_instance_class_applied(rds_client, instance_id, _SERVERLESS_CLASS)
     rds_client.reboot_db_instance(DBInstanceIdentifier=instance_id)
     _wait()
     log.info(

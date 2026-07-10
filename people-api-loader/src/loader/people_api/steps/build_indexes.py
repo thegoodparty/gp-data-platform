@@ -19,20 +19,14 @@ unique is a single build — not worth the partitioned-unique/PK-constraint mach
 from __future__ import annotations
 
 import hashlib
-import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import TYPE_CHECKING
 
 import psycopg
-from botocore.exceptions import ClientError
 
-if TYPE_CHECKING:
-    from botocore.client import BaseClient
-
-from loader.core.aws import rds
+from loader.core.aws import rds, retry_after_settle, wait_instance_class_applied
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new, connect_prod, open_new_tunnel
@@ -270,30 +264,6 @@ def _l2type_coverage(
     return sorted(v for v in distinct_l2types if v not in new_cols)
 
 
-# A class-change modify does not take effect atomically: Aurora keeps reporting the instance
-# 'available' for a few seconds after modify_db_instance before it flips to 'modifying' and reboots.
-# A single db_instance_available waiter therefore returns on the STALE 'available' — and the delayed
-# reboot then drops whatever connection build_indexes has already opened (observed 2026-07-09: the
-# scale-up reboot killed the PK-add connection, failing the step until Airflow retried). Poll until
-# the class is actually applied AND the instance has settled instead.
-_CLASS_APPLY_POLL_SECONDS = 30
-_CLASS_APPLY_MAX_POLLS = 80  # ~40 min, generous for a class-change reboot
-
-
-def _wait_class_applied(rds_client: BaseClient, instance_id: str, target: str) -> None:
-    for _ in range(_CLASS_APPLY_MAX_POLLS):
-        inst = rds_client.describe_db_instances(DBInstanceIdentifier=instance_id)["DBInstances"][0]
-        pending = inst.get("PendingModifiedValues") or {}
-        if (
-            inst["DBInstanceClass"] == target
-            and inst["DBInstanceStatus"] == "available"
-            and "DBInstanceClass" not in pending
-        ):
-            return
-        time.sleep(_CLASS_APPLY_POLL_SECONDS)
-    raise RuntimeError(f"instance {instance_id} did not reach class {target} after scale-up")
-
-
 def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
     """Scale the writer up to the index-build instance class if it is not already there.
 
@@ -301,10 +271,11 @@ def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
     only CPU-bound step and needs the large `index_instance_class`. Mirror resize's modify, but wait
     for the class change to actually APPLY (not just for a single availability check) before
     returning: Aurora keeps reporting 'available' for a few seconds after the modify before it flips
-    to 'modifying' and reboots (see `_wait_class_applied`). Also tolerates a still-in-progress modify
-    from a partial re-run (InvalidDBInstanceStateFault -> settle via the instance waiter ->
-    re-issue). Idempotent: when the box is already the index class this is a no-op describe, so
-    per-date re-runs are safe.
+    to 'modifying' and reboots (see `wait_instance_class_applied` in `loader.core.aws` — observed
+    2026-07-09: the scale-up reboot killed the PK-add connection, failing the step until Airflow
+    retried). Also tolerates a still-in-progress modify from a partial re-run
+    (InvalidDBInstanceStateFault -> settle via the instance waiter -> re-issue). Idempotent: when
+    the box is already the index class this is a no-op describe, so per-date re-runs are safe.
     """
     instance_id = cfg.new_writer_instance_id(run_date)
     target = cfg.index_instance_class
@@ -324,17 +295,14 @@ def _ensure_instance_class(cfg: LoaderConfig, run_date: str) -> None:
         )
 
     log.info("indexes.scale_up", instance=instance_id, from_class=current, to_class=target)
-    try:
-        _modify()
-    except ClientError as e:
-        # Only tolerate a still-in-progress modify from a partial re-run; re-issue after it settles
-        # so our class is actually applied. A genuine bad state re-raises on the retry.
-        if e.response["Error"]["Code"] != "InvalidDBInstanceStateFault":
-            raise
-        log.warning("indexes.scale_up_retry_after_settle")
-        waiter.wait(DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40})
-        _modify()
-    _wait_class_applied(rds_client, instance_id, target)
+    retry_after_settle(
+        _modify,
+        fault_code="InvalidDBInstanceStateFault",
+        settle=lambda: waiter.wait(
+            DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40}
+        ),
+    )
+    wait_instance_class_applied(rds_client, instance_id, target)
     log.info("indexes.scale_up_applied", instance=instance_id, instance_class=target)
 
 

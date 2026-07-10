@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import cache
 from threading import Lock
@@ -17,6 +18,9 @@ if TYPE_CHECKING:
     from botocore.client import BaseClient
 
 from loader.core.config import BaseLoaderConfig
+from loader.core.log import get_logger
+
+log = get_logger(__name__)
 
 
 @contextmanager
@@ -33,6 +37,54 @@ def ignore_client_errors(*codes: str) -> Iterator[None]:
     except ClientError as e:
         if e.response["Error"]["Code"] not in codes:
             raise
+
+
+def retry_after_settle(call: Callable[[], None], *, fault_code: str, settle: Callable[[], None]) -> None:
+    """Run an RDS control-plane `call`; if it raises `fault_code` (a still-in-progress state on the
+    same resource from a partial re-run), run `settle` (a waiter) and re-issue `call` once. Any other
+    ClientError propagates, and a second `fault_code` on the retry propagates too — we never
+    swallow-and-skip, because the same fault covers creating/deleting/failed states and a skipped
+    call would leave the resource misconfigured.
+    """
+    try:
+        call()
+    except ClientError as e:
+        if e.response["Error"]["Code"] != fault_code:
+            raise
+        log.warning("aws.retry_after_settle", fault=fault_code)
+        settle()
+        call()
+
+
+_CLASS_APPLY_POLL_SECONDS = 30
+_CLASS_APPLY_MAX_POLLS = 80  # ~40 min, generous for a class-change reboot
+
+
+def wait_instance_class_applied(
+    rds_client: BaseClient,
+    instance_id: str,
+    target: str,
+    *,
+    poll_seconds: int = _CLASS_APPLY_POLL_SECONDS,
+    max_polls: int = _CLASS_APPLY_MAX_POLLS,
+) -> None:
+    """Poll until `instance_id` reports `DBInstanceClass == target`, status 'available', and no
+    `DBInstanceClass` left in `PendingModifiedValues`. A single `db_instance_available` waiter is
+    insufficient: Aurora keeps reporting 'available' for a few seconds after a class-change modify
+    before it flips to 'modifying' and reboots, so the waiter returns on the stale state and any
+    connection/reboot issued next races the delayed reboot.
+    """
+    for _ in range(max_polls):
+        inst = rds_client.describe_db_instances(DBInstanceIdentifier=instance_id)["DBInstances"][0]
+        pending = inst.get("PendingModifiedValues") or {}
+        if (
+            inst["DBInstanceClass"] == target
+            and inst["DBInstanceStatus"] == "available"
+            and "DBInstanceClass" not in pending
+        ):
+            return
+        time.sleep(poll_seconds)
+    raise RuntimeError(f"instance {instance_id} did not reach class {target} in time")
 
 
 @cache
