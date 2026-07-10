@@ -368,3 +368,39 @@ seeds:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "is_local or is_regional or is_state or is_federal"
+
+  - name: seed_civics_election_2025_position_nullouts
+    description: >
+      One-time resolution of 2025-archive br_position_database_id collisions
+      (DATA-1894). Each row is a gp_election_id whose br_position_database_id
+      must be nulled in int__civics_election_2025 because the contest's office
+      does not match the tagged BallotReady position (office_mismatch). The
+      seed now carries office_mismatch rows only; same-office duplicate
+      collapse is handled in-model (the `collapsed` CTE in
+      int__civics_election_2025.sql), not via the seed. The 2025 archive is a
+      frozen 2026-01-22 snapshot, so these gp_election_ids are stable.
+    columns:
+      - name: gp_election_id
+        description: Archive election id whose position tag is nulled.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int__civics_election_2025')
+                field: gp_election_id
+              config:
+                severity: warn
+      - name: br_position_database_id
+        description: BR position the row was tagged to (audit only).
+        data_tests:
+          - not_null
+      - name: reason
+        description: Why the tag is nulled.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["office_mismatch"]
+      - name: br_position_name
+        description: Human-readable BR position name (documentation only).
