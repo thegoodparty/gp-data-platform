@@ -69,7 +69,8 @@ _BUILD_SESSION_SQL: tuple[str, ...] = (
     # is 384 (ample), so no reboot-class parameter change is needed.
     "SET max_parallel_workers = 176",
     # Widen per-build parallelism so the long-pole giant partition builds (common columns on
-    # CA/TX/FL/NY) spread wider and the absolute tail shrinks.
+    # CA/TX/FL/NY) spread wider and the absolute tail shrinks. (Sized for 192-vCPU
+    # db.r8g.48xlarge; lower if LOADER_INDEX_INSTANCE_CLASS is overridden to a smaller class.)
     "SET max_parallel_maintenance_workers = 16",
     "SET statement_timeout = 0",
     "SET idle_in_transaction_session_timeout = 0",
