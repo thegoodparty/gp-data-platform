@@ -74,63 +74,56 @@ with
                 order by has_ddhq_match desc, updated_at desc
             )
             = 1
-    ),
-
-    collapsed as (
-        -- Deterministic uniqueness: keep br_position_database_id on only the
-        -- most complete row per (br_position_database_id, election_date) and
-        -- null it on the rest. Combined with the office_mismatch seed applied
-        -- in `elections`, this guarantees at most one non-null
-        -- br_position_database_id per (position, date) on every build,
-        -- independent of gp_election_id drift across snapshot refreshes.
-        select
-            * except (br_position_database_id),
-            case
-                when br_position_database_id is null
-                then null
-                when
-                    row_number() over (
-                        partition by br_position_database_id, election_date
-                        order by
-                            (official_office_name is not null) desc,
-                            has_ddhq_match desc,
-                            updated_at desc nulls last
-                    )
-                    = 1
-                then br_position_database_id
-                else null
-            end as br_position_database_id
-        from archived_elections
     )
 
 select
-    collapsed.gp_election_id,
-    collapsed.official_office_name,
-    collapsed.candidate_office,
-    collapsed.office_level,
-    collapsed.office_type,
+    archived_elections.gp_election_id,
+    archived_elections.official_office_name,
+    archived_elections.candidate_office,
+    archived_elections.office_level,
+    archived_elections.office_type,
     tbl_states.state_cleaned_postal_code as state,
-    collapsed.city,
-    collapsed.district,
-    collapsed.seat_name,
-    collapsed.election_date,
-    collapsed.election_year,
-    collapsed.filing_deadline,
-    collapsed.population,
-    collapsed.seats_available,
-    collapsed.term_start_date,
-    collapsed.is_uncontested,
-    collapsed.number_of_opponents,
-    collapsed.is_open_seat,
-    collapsed.has_ddhq_match,
-    collapsed.br_position_database_id,
-    collapsed.is_judicial,
-    collapsed.is_appointed,
-    collapsed.br_normalized_position_type,
-    collapsed.created_at,
-    collapsed.updated_at
+    archived_elections.city,
+    archived_elections.district,
+    archived_elections.seat_name,
+    archived_elections.election_date,
+    archived_elections.election_year,
+    archived_elections.filing_deadline,
+    archived_elections.population,
+    archived_elections.seats_available,
+    archived_elections.term_start_date,
+    archived_elections.is_uncontested,
+    archived_elections.number_of_opponents,
+    archived_elections.is_open_seat,
+    archived_elections.has_ddhq_match,
+    -- Deterministic uniqueness: keep br_position_database_id on only the most
+    -- complete row per (br_position_database_id, election_date), null on the
+    -- rest. With the office_mismatch seed already applied in `elections`, this
+    -- guarantees at most one non-null br_position_database_id per (position,
+    -- date) on every build, independent of gp_election_id drift. Evaluated here
+    -- (not a prior CTE) because the clean_states join is 1:1 (state_raw unique).
+    case
+        when
+            archived_elections.br_position_database_id is not null
+            and row_number() over (
+                partition by
+                    archived_elections.br_position_database_id,
+                    archived_elections.election_date
+                order by
+                    (archived_elections.official_office_name is not null) desc,
+                    archived_elections.has_ddhq_match desc,
+                    archived_elections.updated_at desc nulls last
+            )
+            = 1
+        then archived_elections.br_position_database_id
+    end as br_position_database_id,
+    archived_elections.is_judicial,
+    archived_elections.is_appointed,
+    archived_elections.br_normalized_position_type,
+    archived_elections.created_at,
+    archived_elections.updated_at
 
-from collapsed
+from archived_elections
 left join
     {{ ref("clean_states") }} as tbl_states
-    on trim(upper(collapsed.state)) = tbl_states.state_raw
+    on trim(upper(archived_elections.state)) = tbl_states.state_raw
