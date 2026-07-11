@@ -60,22 +60,36 @@ def _index_drift(live: set[str], seeded: set[str]) -> tuple[list[str], list[str]
 
 
 def _inspect_table(cur: psycopg.Cursor, table: str) -> TableInspection:
-    # Table name is from a fixed constant tuple (not user input); f-string is safe here.
-    cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
-    total = _scalar_int(cur)
+    """Inspect one table in a single scan where possible.
 
+    When the table has a "State" column, one GROUP BY scan yields the per-state counts, the
+    per-state snapshot freshness (max(updated_at), when that column exists), AND the total row
+    count — summed over every group, *including* a NULL-State group, so the total still equals the
+    full-table count. This avoids a separate count(*) scan (these tables are large; each extra
+    full scan is expensive). A table without a "State" column falls back to a plain count(*).
+    """
+    # Table names are from a fixed constant tuple (not user input); f-strings are safe here.
+    if not _has_column(cur, table, "State"):
+        cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
+        return TableInspection(table=table, total_row_count=_scalar_int(cur))
+
+    has_updated = _has_column(cur, table, "updated_at")
+    cols = "count(*), max(updated_at)" if has_updated else "count(*)"
+    cur.execute(
+        f'SELECT "State", {cols} FROM public."{table}" GROUP BY "State"'
+    )  # ty: ignore[no-matching-overload]
+
+    total = 0
     per_state: dict[str, int] = {}
     snapshot: dict[str, str] = {}
-    if _has_column(cur, table, "State"):
-        count_sql = f'SELECT "State", count(*) FROM public."{table}" GROUP BY "State"'
-        cur.execute(count_sql)  # ty: ignore[no-matching-overload]
-        per_state = {r[0]: int(r[1]) for r in cur.fetchall() if r[0] is not None}
-        if _has_column(cur, table, "updated_at"):
-            snap_sql = f'SELECT "State", max(updated_at) FROM public."{table}" GROUP BY "State"'
-            cur.execute(snap_sql)  # ty: ignore[no-matching-overload]
-            snapshot = {
-                r[0]: r[1].isoformat() for r in cur.fetchall() if r[0] is not None and r[1] is not None
-            }
+    for r in cur.fetchall():
+        state, count = r[0], int(r[1])
+        total += count  # includes the NULL-State group, so total == full-table count
+        if state is None:
+            continue
+        per_state[state] = count
+        if has_updated and r[2] is not None:
+            snapshot[state] = r[2].isoformat()
     return TableInspection(
         table=table,
         total_row_count=total,
@@ -100,6 +114,9 @@ def run(cfg: LoaderConfig, run_date: str) -> InspectManifest:
     with connect_prod(cfg) as conn, conn.cursor() as cur:
         # Voter is required — let a failure propagate so we never write a partial
         # "complete" manifest missing the baseline validate depends on.
+        # This scan is the step's dominant cost (full-table aggregate over the largest table);
+        # log before it so the run shows progress rather than going silent mid-scan.
+        log.info("inspect.table_scan_start", table=_REQUIRED_TABLE)
         voter = _inspect_table(cur, _REQUIRED_TABLE)
         tables.append(voter)
         log.info(
@@ -121,6 +138,7 @@ def run(cfg: LoaderConfig, run_date: str) -> InspectManifest:
         # not fatal. connect_prod is autocommit, so a failed query doesn't poison the rest.
         for table in _OPTIONAL_TABLES:
             try:
+                log.info("inspect.table_scan_start", table=table)
                 ti = _inspect_table(cur, table)
                 tables.append(ti)
                 log.info("inspect.table", table=table, total=ti.total_row_count)

@@ -19,8 +19,8 @@ voter-file refreshes. This loader replaces it with a per-step CLI that
 unloads to S3, provisions a fresh Aurora cluster, parallel-COPYs into it,
 builds indexes after load, then resizes to serverless and swaps in.
 
-See `docs/PLAN_LOADER.md` for the full TDD (DATA-1735) — sizing, parameter
-groups, validation, rollback.
+See the TDD (DATA-1735) and the DAG spec `airflow/astro/docs/people_api_loader.md` for the
+design — sizing, parameter groups, validation, rollback.
 
 ## Train-deployment model
 
@@ -93,7 +93,7 @@ CI runs all of the above on push / PR. See `.github/workflows/people-api-loader.
 
 ## Reference
 
-- `docs/PLAN_LOADER.md` — TDD (sizing, params, validation, rollback)
+- `airflow/astro/docs/people_api_loader.md` — DAG design + ops reference; TDD is DATA-1735 (sizing, params, validation)
 - `docs/validate.md` — validation report format
 - ClickUp epic [DATA-1640](https://app.clickup.com/t/86ag66jjr) — People API Data Loading Revamp
 - POC: [thegoodparty/poc-voterfile-loader](https://github.com/thegoodparty/poc-voterfile-loader)

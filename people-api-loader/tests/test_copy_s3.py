@@ -23,16 +23,54 @@ _DDL = (
     ");"
 )
 _COLS = '"LALVOTERID", "State", "id"'
+_OPTS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
 
 
 def _unload(files, counts):
     return SimpleNamespace(status="complete", files=files, per_state_row_counts=counts)
 
 
+# A realistic mix of target types: text columns (which legitimately hold empty
+# strings) and typed columns (which cannot — an empty field must import as NULL).
+_MIXED_TYPES = {
+    "LALVOTERID": "TEXT",
+    "State": "TEXT",
+    "Age_Int": "INTEGER",
+    "Active": "BOOLEAN",
+    "Estimated_Income": "DOUBLE PRECISION",
+    "created_at": "TIMESTAMPTZ",
+    "Registration_Date": "DATE",
+    "id": "UUID",
+}
+
+
+def test_force_null_columns_selects_only_non_text() -> None:
+    # Text columns keep their empty-vs-NULL distinction (empty string preserved);
+    # every non-text type is FORCE_NULL so a quoted-empty "" imports as NULL.
+    forced = step._force_null_columns(_MIXED_TYPES)
+    assert forced == ["Age_Int", "Active", "Estimated_Income", "created_at", "Registration_Date", "id"]
+    assert "LALVOTERID" not in forced and "State" not in forced
+
+
+def test_import_options_appends_force_null_for_typed_columns() -> None:
+    opts = step._import_options(["Age_Int", "Active"])
+    # base CSV options are preserved verbatim (still paired with unload)...
+    assert opts.startswith("(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8'")
+    # ...and a FORCE_NULL clause for the named typed columns is appended inside the parens.
+    assert opts.endswith(', FORCE_NULL ("Age_Int", "Active"))')
+
+
+def test_import_options_no_force_null_when_all_text() -> None:
+    # No typed columns -> plain base options, no dangling FORCE_NULL ().
+    assert step._import_options([]) == step._IMPORT_OPTIONS
+    assert "FORCE_NULL" not in step._import_options([])
+
+
 def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn()
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
-    step._copy_one_file(_CFG, "20260609", "voter_export_20260609/state_id=TX/part-0.csv", _COLS)
+    opts = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
+    step._copy_one_file(_CFG, "20260609", "voter_export_20260609/state_id=TX/part-0.csv", _COLS, opts)
     sql = executed_sql(conn)
     assert any("aws_s3.table_import_from_s3" in s for s in sql)
     # all five session SETs run before the import
@@ -49,11 +87,8 @@ def test_copy_one_file_targets_voter_with_session_sets(monkeypatch: pytest.Monke
     import_params = next(p for s, p in conn.executed if "table_import_from_s3" in s)
     assert import_params["table"] == 'public."Voter"'
     assert import_params["columns"] == _COLS
-    # CSV (tab-delimited) — pairs with the unload's Spark CSV writer (quote/escape '"', NULL '').
-    assert (
-        import_params["options"]
-        == "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
-    )
+    # The caller-built options string is passed straight through to the import.
+    assert import_params["options"] == opts
 
 
 def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -67,6 +102,7 @@ def test_load_state_skips_when_count_matches(monkeypatch: pytest.MonkeyPatch) ->
         s3_keys=["k"],
         parallelism=1,
         column_list=_COLS,
+        options=_OPTS,
     )
     assert r.files_loaded == 0 and r.state == "TX" and r.table == "Voter"
 
@@ -154,6 +190,7 @@ def test_load_state_partial_reload_deletes_then_loads(monkeypatch: pytest.Monkey
         s3_keys=["k"],
         parallelism=1,
         column_list=_COLS,
+        options=_OPTS,
     )
     sql = executed_sql(conn)
     assert any('DELETE FROM public."Voter" WHERE "State"' in s for s in sql)
@@ -172,6 +209,7 @@ def test_load_state_skip_path_does_not_delete(monkeypatch: pytest.MonkeyPatch) -
         s3_keys=["k"],
         parallelism=1,
         column_list=_COLS,
+        options=_OPTS,
     )
     assert not any("DELETE FROM" in s for s in executed_sql(conn))
 
@@ -284,6 +322,7 @@ def test_load_state_acquires_advisory_lock(monkeypatch: pytest.MonkeyPatch) -> N
         s3_keys=["k"],
         parallelism=1,
         column_list=_COLS,
+        options=_OPTS,
     )
     # Assert ordering, not just presence: the lock must precede the row count, else a
     # reordering regression (count first) would defeat the guard yet still pass.

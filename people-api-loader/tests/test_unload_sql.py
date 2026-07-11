@@ -13,7 +13,7 @@ def test_select_exprs_orders_by_ddl_and_nulls_prisma_extras() -> None:
         "`id`",
         "`LALVOTERID`",
         "`State`",
-        "NULL AS `Mailing_HHGender_Description`",
+        "CAST(NULL AS STRING) AS `Mailing_HHGender_Description`",
     ]
 
 
