@@ -1,4 +1,5 @@
 # Astro Runtime pre-installed provider packages: https://docs.astronomer.io/astro/runtime-image-architecture#provider-packages
+apache-airflow-providers-amazon>=9.0.0,<10.0.0
 duckdb==1.5.4
 tabulate==0.10.0
 pyarrow
