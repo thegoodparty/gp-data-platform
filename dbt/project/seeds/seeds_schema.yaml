@@ -462,3 +462,51 @@ seeds:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "is_local or is_regional or is_state or is_federal"
+
+  - name: election_calendar
+    description: >
+      Per (state, election_date) lookup of what election type that date is.
+      Backs election-api's determineElectionCode (DATA-2015): a single lookup
+      instead of recomputing election type in the service layer. General rows
+      are computed from the fixed Tuesday-after-first-Monday-in-November rule
+      (never changes; safe to compute). Primary rows come from each state's
+      dominant Primary_YYYY_MM_DD column in L2 for that year -- primary dates
+      ARE legislated and do drift across cycles (confirmed empirically: GA, MD,
+      NY, OH, AZ, TX, NC all changed dates across the cycles pulled), so unlike
+      General this is not a formula and needs a per-cycle row. No
+      LocalOrMunicipal/ConsolidatedGeneral rows: any (state, date) with no match
+      in this table is LocalOrMunicipal by definition (ConsolidatedGeneral was
+      a placeholder for 4 odd-year states pending a dedicated odd-year model
+      that was never built, and repeated an identical projection year over
+      year -- removed rather than carried forward).
+      Known gaps (follow-up, not bugs here): CA is absent -- its L2 vote-history
+      staging view is currently broken (unresolved column error) -- and only 6
+      states (AR, GA, MS, NC, NE, NJ) have a confirmed 2026 Primary date; the
+      other 45 haven't held theirs yet as of this seed's creation, so L2 has no
+      ground truth for them. Extending this seed with next cycle's confirmed
+      dates (e.g. from BallotReady's own scheduled-election data, which -- unlike
+      L2 -- covers future elections) is the natural way to keep it current.
+    columns:
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+      - name: election_date
+        description: The calendar date this row classifies
+        data_tests:
+          - not_null
+      - name: election_code
+        description: General (computed) or Primary (from L2) -- no other values
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary"]
+      - name: source_note
+        description: How this row's date was determined (documentation only, not used downstream)
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - election_date

@@ -745,3 +745,39 @@ models:
           name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
+
+  - name: m_election_api__election_calendar
+    description: >
+      Per (state, election_date) election-type lookup, delivered to Postgres
+      via the sync_election_api DAG's atomic swap (see m_election_api__projected_turnout
+      for the same delivery pattern and why upsert-by-id was rejected).
+    columns:
+      - name: id
+        description: "UUID of the election calendar row"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: state
+        description: State postal code
+        tests:
+          - not_null
+      - name: election_date
+        description: The calendar date this row classifies
+        tests:
+          - not_null
+      - name: election_code
+        description: What type of election this date is for this state (General or Primary only -- no match means LocalOrMunicipal)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary"]
+    tests:
+      # API invariant: election-api's determineElectionCode does a single findUnique
+      # on (state, election_date), so there must be exactly one row per key.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - election_date

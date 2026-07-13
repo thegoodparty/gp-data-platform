@@ -33,10 +33,12 @@ for _mod in _STUBS:
 
 from dags.sync_election_api import (  # noqa: E402
     DTI_COLUMNS,
+    EC_COLUMNS,
     EOS_COLUMNS,
     PT_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
+    _ec_quality_gate,
     _pt_quality_gate,
     _ztp_transform_row,
 )
@@ -215,3 +217,43 @@ def test_pt_quality_gate_refuses_null_keys():
     """
     with pytest.raises(ValueError, match="NULL"):
         _pt_quality_gate(loaded_count=800_000, dup_keys=0, prior_key_count=800_000, null_keys=1)
+
+
+def test_ec_columns_pinned():
+    """Pin EC_COLUMNS to catch silent column reorderings (no row transform,
+    same rationale as test_pt_columns_pinned)."""
+    assert EC_COLUMNS == [
+        "id",
+        "created_at",
+        "updated_at",
+        "state",
+        "election_date",
+        "election_code",
+    ]
+
+
+def test_ec_quality_gate_refuses_duplicate_keys():
+    with pytest.raises(ValueError, match="duplicate"):
+        _ec_quality_gate(loaded_count=200, dup_keys=1, prior_key_count=200, null_keys=0)
+
+
+def test_ec_quality_gate_refuses_coverage_collapse():
+    with pytest.raises(ValueError, match="refusing to swap"):
+        _ec_quality_gate(loaded_count=80, dup_keys=0, prior_key_count=200, null_keys=0)
+
+
+def test_ec_quality_gate_boundary_ratio_passes():
+    _ec_quality_gate(loaded_count=100, dup_keys=0, prior_key_count=200, null_keys=0)
+
+
+def test_ec_quality_gate_cold_start_floor():
+    """No prior table: this table is only a few hundred rows, so the floor is
+    much lower than Projected_Turnout's (absolute row counts, not a ratio)."""
+    with pytest.raises(ValueError, match="Cold-start"):
+        _ec_quality_gate(loaded_count=49, dup_keys=0, prior_key_count=0, null_keys=0)
+    _ec_quality_gate(loaded_count=50, dup_keys=0, prior_key_count=0, null_keys=0)
+
+
+def test_ec_quality_gate_refuses_null_keys():
+    with pytest.raises(ValueError, match="NULL"):
+        _ec_quality_gate(loaded_count=200, dup_keys=0, prior_key_count=200, null_keys=1)

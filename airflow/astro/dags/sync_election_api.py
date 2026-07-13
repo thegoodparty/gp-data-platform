@@ -393,6 +393,71 @@ def _pt_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, nul
         raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small — refusing to swap")
 
 
+# ---------------------------------------------------------------------------
+# Election_Calendar
+# ---------------------------------------------------------------------------
+
+# Backs election-api's determineElectionCode: a (state, election_date) -> code
+# lookup table (General | Primary only). Any date with no match is
+# LocalOrMunicipal by definition, so the service does a single findUnique
+# instead of recomputing election type itself. Same full-swap delivery as
+# Projected_Turnout, for the same reason (DATA-2015): this is a small,
+# frequently-corrected reference table (a state's primary date is legislated,
+# not evergreen), so upsert-by-id would strand rows superseded by a
+# corrected date.
+EC = TableSyncSpec(
+    target_table="Election_Calendar",
+    indexes=("Election_Calendar_state_election_date_key",),
+    fkeys=(),
+)
+
+EC_COLUMNS = [
+    "id",
+    "created_at",
+    "updated_at",
+    "state",
+    "election_date",
+    "election_code",
+]
+
+
+def _ec_constraint_ddl() -> list[str]:
+    sn, nt = EC.staging_schema, EC.new_table
+    return [
+        f'ALTER TABLE "{sn}"."{nt}" ADD CONSTRAINT "{EC.stage_name(EC.pk_name)}" PRIMARY KEY (id)',
+        (
+            f"CREATE UNIQUE INDEX "
+            f'"{EC.stage_name("Election_Calendar_state_election_date_key")}" '
+            f'ON "{sn}"."{nt}" (state, election_date)'
+        ),
+    ]
+
+
+def _ec_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, null_keys: int) -> None:
+    """Decide whether staged Election_Calendar data may swap into place.
+
+    Same shape as _pt_quality_gate, scaled to this table's size: a few hundred
+    rows (2-3 dates per state per cycle), not hundreds of thousands, so the
+    cold-start floor and ratio-drop threshold are much smaller in absolute
+    terms.
+    """
+    if null_keys > 0:
+        raise ValueError(
+            f"{null_keys} staging rows have a NULL state, election_date, or election_code — refusing to swap"
+        )
+    if dup_keys > 0:
+        raise ValueError(f"{dup_keys} duplicate (state, election_date) keys in staging — refusing to swap")
+    if prior_key_count > 0:
+        ratio = loaded_count / prior_key_count
+        if ratio < 0.5:
+            raise ValueError(
+                f"Loaded {loaded_count} rows, prior live had {prior_key_count} "
+                f"distinct (state, election_date) keys (ratio {ratio:.2f}) — refusing to swap"
+            )
+    elif loaded_count < 50:
+        raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small — refusing to swap")
+
+
 @dag(
     start_date=pendulum_datetime(2026, 5, 5, tz="UTC"),
     schedule="@daily",
@@ -865,6 +930,108 @@ def sync_election_api():
         do = drop_old()
         s >> loaded >> idx >> qc >> sw >> do
 
+    @task_group(group_id="election_calendar")
+    def election_calendar():
+        @task
+        def build_staging() -> None:
+            with _open_pg() as conn:
+                create_staging_table(conn, EC)
+
+        @task
+        def load_staging() -> int:
+            catalog = Variable.get("databricks_catalog")
+            col_list = ", ".join(EC_COLUMNS)
+            query = (
+                f"SELECT {col_list} "
+                f"FROM `{catalog}`.`{DATABRICKS_SCHEMA}`."
+                f"`m_election_api__election_calendar`"
+            )
+            with _open_pg() as conn:
+                # A few hundred rows total -- no partitioning needed.
+                return bulk_insert_from_databricks(
+                    conn,
+                    EC,
+                    source_query=query,
+                    target_columns=EC_COLUMNS,
+                )
+
+        @task
+        def build_indexes_and_fk() -> None:
+            with _open_pg() as conn:
+                apply_ddl(conn, _ec_constraint_ddl())
+
+        @task
+        def quality_checks(loaded_count: int) -> None:
+            # Gate decisions (and their rationale) live in _ec_quality_gate,
+            # which is pure and unit-tested; this task only gathers the
+            # inputs from Postgres.
+            with _open_pg() as conn:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM ("
+                        f"SELECT state, election_date "
+                        f'FROM "{EC.staging_schema}"."{EC.new_table}" '
+                        f"GROUP BY state, election_date "
+                        f"HAVING COUNT(*) > 1"
+                        f") AS dupe_keys"
+                    )
+                    dup_keys = cur.fetchone()[0]
+
+                    cur.execute(
+                        f"SELECT COUNT(*) "
+                        f'FROM "{EC.staging_schema}"."{EC.new_table}" '
+                        f"WHERE state IS NULL "
+                        f"OR election_date IS NULL "
+                        f"OR election_code IS NULL"
+                    )
+                    null_keys = cur.fetchone()[0]
+
+                    cur.execute(
+                        "SELECT to_regclass(%s)",
+                        (f'"{EC.target_schema}"."{EC.target_table}"',),
+                    )
+                    prior_exists = cur.fetchone()[0] is not None
+                    if prior_exists:
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM ("
+                            f"SELECT DISTINCT state, election_date "
+                            f'FROM "{EC.target_schema}"."{EC.target_table}"'
+                            f") AS prior_keys"
+                        )
+                        prior_key_count = cur.fetchone()[0]
+                    else:
+                        prior_key_count = 0
+                finally:
+                    cur.close()
+
+            _ec_quality_gate(loaded_count, dup_keys, prior_key_count, null_keys)
+
+            t_log.info(
+                "Quality checks passed: %d rows (prior %d distinct keys), "
+                "no duplicate and no NULL (state, election_date) keys",
+                loaded_count,
+                prior_key_count,
+            )
+
+        @task
+        def swap() -> None:
+            with _open_pg() as conn:
+                swap_staging_into_target(conn, EC)
+
+        @task
+        def drop_old() -> None:
+            with _open_pg() as conn:
+                drop_old_table(conn, EC)
+
+        s = build_staging()
+        loaded = load_staging()
+        idx = build_indexes_and_fk()
+        qc = quality_checks(loaded)
+        sw = swap()
+        do = drop_old()
+        s >> loaded >> idx >> qc >> sw >> do
+
     # The pipelines run in parallel; under the Kubernetes executor each task
     # is its own pod, and each load_staging reads one partition at a time, so
     # they don't contend for memory.
@@ -872,6 +1039,7 @@ def sync_election_api():
     district_top_issues()
     elected_official_support()
     projected_turnout()
+    election_calendar()
 
 
 sync_election_api()
