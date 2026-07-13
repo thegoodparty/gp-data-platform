@@ -1,199 +1,199 @@
-state,election_date,election_code,source_note
-AK,2024-08-20,Primary,"L2 dominant Primary_ column, 107,467 non-null voters"
-AK,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-AK,2026-08-18,Primary,BallotReady 'Alaska Primary Election' (63 races)
-AK,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-AL,2024-03-05,Primary,"L2 dominant Primary_ column, 758,083 non-null voters"
-AL,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-AL,2026-05-19,Primary,BallotReady 'Alabama Primary Election' (767 races)
-AL,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-AR,2024-03-05,Primary,"L2 dominant Primary_ column, 335,136 non-null voters"
-AR,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-AR,2026-03-03,Primary,"L2 dominant Primary_ column, 428,593 non-null voters"
-AR,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-AZ,2024-07-30,Primary,"L2 dominant Primary_ column, 1,217,729 non-null voters"
-AZ,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-AZ,2026-07-21,Primary,BallotReady 'Arizona Primary Election' (435 races)
-AZ,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-CO,2024-06-25,Primary,"L2 dominant Primary_ column, 937,816 non-null voters"
-CO,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-CO,2026-06-30,Primary,BallotReady 'Colorado Primary Election' (527 races)
-CO,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-CT,2024-08-13,Primary,"L2 dominant Primary_ column, 57,445 non-null voters"
-CT,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-CT,2026-08-11,Primary,BallotReady 'Connecticut Primary Election' (279 races)
-CT,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-DC,2024-06-04,Primary,"L2 dominant Primary_ column, 88,609 non-null voters"
-DC,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-DC,2026-06-16,Primary,BallotReady 'DC Primary Election' (12 races)
-DC,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-DE,2024-09-10,Primary,"L2 dominant Primary_ column, 118,922 non-null voters"
-DE,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-DE,2026-09-15,Primary,BallotReady 'Delaware Primary Election' (77 races)
-DE,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-FL,2024-08-20,Primary,"L2 dominant Primary_ column, 2,839,732 non-null voters"
-FL,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-FL,2026-08-18,Primary,"BallotReady 'Florida Primary Election' (1,206 races)"
-FL,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-GA,2024-05-21,Primary,"L2 dominant Primary_ column, 1,233,153 non-null voters"
-GA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-GA,2026-05-19,Primary,"L2 dominant Primary_ column, 2,003,958 non-null voters"
-GA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-HI,2024-08-10,Primary,"L2 dominant Primary_ column, 259,708 non-null voters"
-HI,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-HI,2026-08-08,Primary,BallotReady 'Hawaii Primary Election' (97 races)
-HI,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-IA,2024-06-04,Primary,"L2 dominant Primary_ column, 175,106 non-null voters"
-IA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-IA,2026-06-02,Primary,BallotReady 'Iowa Primary Election' (619 races)
-IA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-ID,2024-05-21,Primary,"L2 dominant Primary_ column, 269,514 non-null voters"
-ID,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-ID,2026-05-19,Primary,BallotReady 'Idaho Primary Election' (430 races)
-ID,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-IL,2024-03-19,Primary,"L2 dominant Primary_ column, 1,444,591 non-null voters"
-IL,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-IL,2026-03-17,Primary,"BallotReady 'Illinois Primary Election' (1,247 races)"
-IL,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-IN,2024-05-07,Primary,"L2 dominant Primary_ column, 776,739 non-null voters"
-IN,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-IN,2026-05-05,Primary,"BallotReady 'Indiana Primary Election' (2,262 races)"
-IN,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-KS,2024-08-06,Primary,"L2 dominant Primary_ column, 318,185 non-null voters"
-KS,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-KS,2026-08-04,Primary,"BallotReady 'Kansas Primary Election' (1,797 races)"
-KS,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-KY,2024-05-21,Primary,"L2 dominant Primary_ column, 427,213 non-null voters"
-KY,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-KY,2026-05-19,Primary,"BallotReady 'Kentucky Primary Election' (2,572 races)"
-KY,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-LA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-LA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MA,2024-09-03,Primary,"L2 dominant Primary_ column, 782,007 non-null voters"
-MA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MA,2026-09-01,Primary,BallotReady 'Massachusetts Primary Election' (259 races)
-MA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MD,2024-05-14,Primary,"L2 dominant Primary_ column, 964,968 non-null voters"
-MD,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MD,2026-06-23,Primary,BallotReady 'Maryland Primary Election' (446 races)
-MD,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-ME,2024-06-11,Primary,"L2 dominant Primary_ column, 143,586 non-null voters"
-ME,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-ME,2026-06-09,Primary,BallotReady 'Maine Primary Election' (520 races)
-ME,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MI,2024-08-06,Primary,"L2 dominant Primary_ column, 1,923,738 non-null voters"
-MI,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MI,2026-08-04,Primary,BallotReady 'Michigan Primary Election' (894 races)
-MI,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MN,2024-08-13,Primary,"L2 dominant Primary_ column, 521,861 non-null voters"
-MN,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MN,2026-08-11,Primary,"BallotReady 'Minnesota Primary Election' (2,557 races)"
-MN,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MO,2024-08-06,Primary,"L2 dominant Primary_ column, 1,082,689 non-null voters"
-MO,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MO,2026-08-04,Primary,"BallotReady 'Missouri Primary Election' (1,136 races)"
-MO,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MS,2024-03-12,Primary,"L2 dominant Primary_ column, 328,239 non-null voters"
-MS,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MS,2026-03-10,Primary,"L2 dominant Primary_ column, 294,901 non-null voters"
-MS,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-MT,2024-06-04,Primary,"L2 dominant Primary_ column, 293,400 non-null voters"
-MT,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-MT,2026-06-02,Primary,BallotReady 'Montana Primary Election' (560 races)
-MT,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NC,2024-03-05,Primary,"L2 dominant Primary_ column, 1,733,269 non-null voters"
-NC,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NC,2026-03-03,Primary,"L2 dominant Primary_ column, 1,507,255 non-null voters"
-NC,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-ND,2024-06-11,Primary,"L2 dominant Primary_ column, 117,635 non-null voters"
-ND,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-ND,2026-06-09,Primary,BallotReady 'North Dakota Primary Election' (765 races)
-ND,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NE,2024-05-14,Primary,"L2 dominant Primary_ column, 329,342 non-null voters"
-NE,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NE,2026-05-12,Primary,"L2 dominant Primary_ column, 355,681 non-null voters"
-NE,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NH,2024-09-10,Primary,"L2 dominant Primary_ column, 259,776 non-null voters"
-NH,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NH,2026-09-08,Primary,BallotReady 'New Hampshire Primary Election' (309 races)
-NH,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NJ,2024-06-04,Primary,"L2 dominant Primary_ column, 870,249 non-null voters"
-NJ,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NJ,2026-06-02,Primary,"L2 dominant Primary_ column, 856,675 non-null voters"
-NJ,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NM,2024-06-04,Primary,"L2 dominant Primary_ column, 221,807 non-null voters"
-NM,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NM,2026-06-02,Primary,BallotReady 'New Mexico Primary Election' (351 races)
-NM,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NV,2024-06-11,Primary,"L2 dominant Primary_ column, 348,379 non-null voters"
-NV,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NV,2026-06-09,Primary,BallotReady 'Nevada Primary Election' (517 races)
-NV,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-NY,2024-06-25,Primary,"L2 dominant Primary_ column, 501,542 non-null voters"
-NY,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-NY,2026-06-23,Primary,"BallotReady 'New York Primary Election' (1,160 races)"
-NY,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-OH,2024-03-19,Primary,"L2 dominant Primary_ column, 1,718,336 non-null voters"
-OH,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-OH,2026-05-05,Primary,BallotReady 'Ohio Primary Election' (553 races)
-OH,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-OK,2024-06-18,Primary,"L2 dominant Primary_ column, 283,501 non-null voters"
-OK,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-OK,2026-06-16,Primary,BallotReady 'Oklahoma Primary Election' (635 races)
-OK,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-OR,2024-05-21,Primary,"L2 dominant Primary_ column, 1,008,308 non-null voters"
-OR,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-OR,2026-05-19,Primary,BallotReady 'Oregon Primary Election' (934 races)
-OR,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-PA,2024-04-23,Primary,"L2 dominant Primary_ column, 2,018,822 non-null voters"
-PA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-PA,2026-05-19,Primary,"BallotReady 'Pennsylvania Primary Election' (1,737 races)"
-PA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-RI,2024-09-10,Primary,"L2 dominant Primary_ column, 78,762 non-null voters"
-RI,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-RI,2026-09-09,Primary,BallotReady 'Rhode Island Primary Election' (273 races)
-RI,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-SC,2024-06-11,Primary,"L2 dominant Primary_ column, 481,085 non-null voters"
-SC,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-SC,2026-06-09,Primary,BallotReady 'South Carolina Primary Election' (648 races)
-SC,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-SD,2024-06-04,Primary,"L2 dominant Primary_ column, 96,767 non-null voters"
-SD,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-SD,2026-06-02,Primary,BallotReady 'South Dakota Primary Election' (525 races)
-SD,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-TN,2024-08-01,Primary,"L2 dominant Primary_ column, 625,536 non-null voters"
-TN,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-TN,2026-08-06,Primary,"BallotReady 'Tennessee Primary Election' (2,505 races)"
-TN,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-TX,2024-03-05,Primary,"L2 dominant Primary_ column, 3,277,141 non-null voters"
-TX,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-TX,2026-03-03,Primary,"BallotReady 'Texas Primary Election' (3,712 races)"
-TX,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-UT,2024-06-25,Primary,"L2 dominant Primary_ column, 391,077 non-null voters"
-UT,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-UT,2026-06-23,Primary,BallotReady 'Utah Primary Election' (383 races)
-UT,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-VA,2024-06-18,Primary,"L2 dominant Primary_ column, 501,778 non-null voters"
-VA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-VA,2026-08-04,Primary,BallotReady 'Virginia Primary Election' (180 races)
-VA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-VT,2024-08-13,Primary,"L2 dominant Primary_ column, 70,468 non-null voters"
-VT,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-VT,2026-08-11,Primary,BallotReady 'Vermont Primary Election' (198 races)
-VT,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-WA,2024-08-06,Primary,"L2 dominant Primary_ column, 2,645,780 non-null voters"
-WA,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-WA,2026-08-04,Primary,BallotReady 'Washington Primary Election' (609 races)
-WA,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-WI,2024-08-13,Primary,"L2 dominant Primary_ column, 1,248,947 non-null voters"
-WI,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-WI,2026-08-11,Primary,BallotReady 'Wisconsin Primary Election' (299 races)
-WI,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-WV,2024-05-14,Primary,"L2 dominant Primary_ column, 341,619 non-null voters"
-WV,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-WV,2026-05-12,Primary,BallotReady 'West Virginia Primary Election' (467 races)
-WV,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
-WY,2024-08-20,Primary,"L2 dominant Primary_ column, 116,060 non-null voters"
-WY,2024-11-05,General,computed: Tuesday after first Monday in Nov 2024
-WY,2026-08-18,Primary,BallotReady 'Wyoming Primary Election' (439 races)
-WY,2026-11-03,General,computed: Tuesday after first Monday in Nov 2026
+state,election_date,election_code,source,source_note
+AK,2024-08-20,Primary,l2,"L2 dominant Primary_ column, 107,467 non-null voters"
+AK,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+AK,2026-08-18,Primary,ballotready,BallotReady 'Alaska Primary Election' (63 races)
+AK,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+AL,2024-03-05,Primary,l2,"L2 dominant Primary_ column, 758,083 non-null voters"
+AL,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+AL,2026-05-19,Primary,ballotready,BallotReady 'Alabama Primary Election' (767 races)
+AL,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+AR,2024-03-05,Primary,l2,"L2 dominant Primary_ column, 335,136 non-null voters"
+AR,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+AR,2026-03-03,Primary,l2,"L2 dominant Primary_ column, 428,593 non-null voters"
+AR,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+AZ,2024-07-30,Primary,l2,"L2 dominant Primary_ column, 1,217,729 non-null voters"
+AZ,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+AZ,2026-07-21,Primary,ballotready,BallotReady 'Arizona Primary Election' (435 races)
+AZ,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+CO,2024-06-25,Primary,l2,"L2 dominant Primary_ column, 937,816 non-null voters"
+CO,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+CO,2026-06-30,Primary,ballotready,BallotReady 'Colorado Primary Election' (527 races)
+CO,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+CT,2024-08-13,Primary,l2,"L2 dominant Primary_ column, 57,445 non-null voters"
+CT,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+CT,2026-08-11,Primary,ballotready,BallotReady 'Connecticut Primary Election' (279 races)
+CT,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+DC,2024-06-04,Primary,l2,"L2 dominant Primary_ column, 88,609 non-null voters"
+DC,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+DC,2026-06-16,Primary,ballotready,BallotReady 'DC Primary Election' (12 races)
+DC,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+DE,2024-09-10,Primary,l2,"L2 dominant Primary_ column, 118,922 non-null voters"
+DE,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+DE,2026-09-15,Primary,ballotready,BallotReady 'Delaware Primary Election' (77 races)
+DE,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+FL,2024-08-20,Primary,l2,"L2 dominant Primary_ column, 2,839,732 non-null voters"
+FL,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+FL,2026-08-18,Primary,ballotready,"BallotReady 'Florida Primary Election' (1,206 races)"
+FL,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+GA,2024-05-21,Primary,l2,"L2 dominant Primary_ column, 1,233,153 non-null voters"
+GA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+GA,2026-05-19,Primary,l2,"L2 dominant Primary_ column, 2,003,958 non-null voters"
+GA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+HI,2024-08-10,Primary,l2,"L2 dominant Primary_ column, 259,708 non-null voters"
+HI,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+HI,2026-08-08,Primary,ballotready,BallotReady 'Hawaii Primary Election' (97 races)
+HI,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+IA,2024-06-04,Primary,l2,"L2 dominant Primary_ column, 175,106 non-null voters"
+IA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+IA,2026-06-02,Primary,ballotready,BallotReady 'Iowa Primary Election' (619 races)
+IA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+ID,2024-05-21,Primary,l2,"L2 dominant Primary_ column, 269,514 non-null voters"
+ID,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+ID,2026-05-19,Primary,ballotready,BallotReady 'Idaho Primary Election' (430 races)
+ID,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+IL,2024-03-19,Primary,l2,"L2 dominant Primary_ column, 1,444,591 non-null voters"
+IL,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+IL,2026-03-17,Primary,ballotready,"BallotReady 'Illinois Primary Election' (1,247 races)"
+IL,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+IN,2024-05-07,Primary,l2,"L2 dominant Primary_ column, 776,739 non-null voters"
+IN,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+IN,2026-05-05,Primary,ballotready,"BallotReady 'Indiana Primary Election' (2,262 races)"
+IN,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+KS,2024-08-06,Primary,l2,"L2 dominant Primary_ column, 318,185 non-null voters"
+KS,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+KS,2026-08-04,Primary,ballotready,"BallotReady 'Kansas Primary Election' (1,797 races)"
+KS,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+KY,2024-05-21,Primary,l2,"L2 dominant Primary_ column, 427,213 non-null voters"
+KY,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+KY,2026-05-19,Primary,ballotready,"BallotReady 'Kentucky Primary Election' (2,572 races)"
+KY,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+LA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+LA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MA,2024-09-03,Primary,l2,"L2 dominant Primary_ column, 782,007 non-null voters"
+MA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MA,2026-09-01,Primary,ballotready,BallotReady 'Massachusetts Primary Election' (259 races)
+MA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MD,2024-05-14,Primary,l2,"L2 dominant Primary_ column, 964,968 non-null voters"
+MD,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MD,2026-06-23,Primary,ballotready,BallotReady 'Maryland Primary Election' (446 races)
+MD,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+ME,2024-06-11,Primary,l2,"L2 dominant Primary_ column, 143,586 non-null voters"
+ME,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+ME,2026-06-09,Primary,ballotready,BallotReady 'Maine Primary Election' (520 races)
+ME,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MI,2024-08-06,Primary,l2,"L2 dominant Primary_ column, 1,923,738 non-null voters"
+MI,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MI,2026-08-04,Primary,ballotready,BallotReady 'Michigan Primary Election' (894 races)
+MI,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MN,2024-08-13,Primary,l2,"L2 dominant Primary_ column, 521,861 non-null voters"
+MN,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MN,2026-08-11,Primary,ballotready,"BallotReady 'Minnesota Primary Election' (2,557 races)"
+MN,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MO,2024-08-06,Primary,l2,"L2 dominant Primary_ column, 1,082,689 non-null voters"
+MO,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MO,2026-08-04,Primary,ballotready,"BallotReady 'Missouri Primary Election' (1,136 races)"
+MO,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MS,2024-03-12,Primary,l2,"L2 dominant Primary_ column, 328,239 non-null voters"
+MS,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MS,2026-03-10,Primary,l2,"L2 dominant Primary_ column, 294,901 non-null voters"
+MS,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+MT,2024-06-04,Primary,l2,"L2 dominant Primary_ column, 293,400 non-null voters"
+MT,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+MT,2026-06-02,Primary,ballotready,BallotReady 'Montana Primary Election' (560 races)
+MT,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NC,2024-03-05,Primary,l2,"L2 dominant Primary_ column, 1,733,269 non-null voters"
+NC,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NC,2026-03-03,Primary,l2,"L2 dominant Primary_ column, 1,507,255 non-null voters"
+NC,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+ND,2024-06-11,Primary,l2,"L2 dominant Primary_ column, 117,635 non-null voters"
+ND,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+ND,2026-06-09,Primary,ballotready,BallotReady 'North Dakota Primary Election' (765 races)
+ND,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NE,2024-05-14,Primary,l2,"L2 dominant Primary_ column, 329,342 non-null voters"
+NE,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NE,2026-05-12,Primary,l2,"L2 dominant Primary_ column, 355,681 non-null voters"
+NE,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NH,2024-09-10,Primary,l2,"L2 dominant Primary_ column, 259,776 non-null voters"
+NH,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NH,2026-09-08,Primary,ballotready,BallotReady 'New Hampshire Primary Election' (309 races)
+NH,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NJ,2024-06-04,Primary,l2,"L2 dominant Primary_ column, 870,249 non-null voters"
+NJ,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NJ,2026-06-02,Primary,l2,"L2 dominant Primary_ column, 856,675 non-null voters"
+NJ,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NM,2024-06-04,Primary,l2,"L2 dominant Primary_ column, 221,807 non-null voters"
+NM,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NM,2026-06-02,Primary,ballotready,BallotReady 'New Mexico Primary Election' (351 races)
+NM,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NV,2024-06-11,Primary,l2,"L2 dominant Primary_ column, 348,379 non-null voters"
+NV,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NV,2026-06-09,Primary,ballotready,BallotReady 'Nevada Primary Election' (517 races)
+NV,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+NY,2024-06-25,Primary,l2,"L2 dominant Primary_ column, 501,542 non-null voters"
+NY,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+NY,2026-06-23,Primary,ballotready,"BallotReady 'New York Primary Election' (1,160 races)"
+NY,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+OH,2024-03-19,Primary,l2,"L2 dominant Primary_ column, 1,718,336 non-null voters"
+OH,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+OH,2026-05-05,Primary,ballotready,BallotReady 'Ohio Primary Election' (553 races)
+OH,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+OK,2024-06-18,Primary,l2,"L2 dominant Primary_ column, 283,501 non-null voters"
+OK,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+OK,2026-06-16,Primary,ballotready,BallotReady 'Oklahoma Primary Election' (635 races)
+OK,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+OR,2024-05-21,Primary,l2,"L2 dominant Primary_ column, 1,008,308 non-null voters"
+OR,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+OR,2026-05-19,Primary,ballotready,BallotReady 'Oregon Primary Election' (934 races)
+OR,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+PA,2024-04-23,Primary,l2,"L2 dominant Primary_ column, 2,018,822 non-null voters"
+PA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+PA,2026-05-19,Primary,ballotready,"BallotReady 'Pennsylvania Primary Election' (1,737 races)"
+PA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+RI,2024-09-10,Primary,l2,"L2 dominant Primary_ column, 78,762 non-null voters"
+RI,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+RI,2026-09-09,Primary,ballotready,BallotReady 'Rhode Island Primary Election' (273 races)
+RI,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+SC,2024-06-11,Primary,l2,"L2 dominant Primary_ column, 481,085 non-null voters"
+SC,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+SC,2026-06-09,Primary,ballotready,BallotReady 'South Carolina Primary Election' (648 races)
+SC,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+SD,2024-06-04,Primary,l2,"L2 dominant Primary_ column, 96,767 non-null voters"
+SD,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+SD,2026-06-02,Primary,ballotready,BallotReady 'South Dakota Primary Election' (525 races)
+SD,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+TN,2024-08-01,Primary,l2,"L2 dominant Primary_ column, 625,536 non-null voters"
+TN,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+TN,2026-08-06,Primary,ballotready,"BallotReady 'Tennessee Primary Election' (2,505 races)"
+TN,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+TX,2024-03-05,Primary,l2,"L2 dominant Primary_ column, 3,277,141 non-null voters"
+TX,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+TX,2026-03-03,Primary,ballotready,"BallotReady 'Texas Primary Election' (3,712 races)"
+TX,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+UT,2024-06-25,Primary,l2,"L2 dominant Primary_ column, 391,077 non-null voters"
+UT,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+UT,2026-06-23,Primary,ballotready,BallotReady 'Utah Primary Election' (383 races)
+UT,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+VA,2024-06-18,Primary,l2,"L2 dominant Primary_ column, 501,778 non-null voters"
+VA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+VA,2026-08-04,Primary,ballotready,BallotReady 'Virginia Primary Election' (180 races)
+VA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+VT,2024-08-13,Primary,l2,"L2 dominant Primary_ column, 70,468 non-null voters"
+VT,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+VT,2026-08-11,Primary,ballotready,BallotReady 'Vermont Primary Election' (198 races)
+VT,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+WA,2024-08-06,Primary,l2,"L2 dominant Primary_ column, 2,645,780 non-null voters"
+WA,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+WA,2026-08-04,Primary,ballotready,BallotReady 'Washington Primary Election' (609 races)
+WA,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+WI,2024-08-13,Primary,l2,"L2 dominant Primary_ column, 1,248,947 non-null voters"
+WI,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+WI,2026-08-11,Primary,ballotready,BallotReady 'Wisconsin Primary Election' (299 races)
+WI,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+WV,2024-05-14,Primary,l2,"L2 dominant Primary_ column, 341,619 non-null voters"
+WV,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+WV,2026-05-12,Primary,ballotready,BallotReady 'West Virginia Primary Election' (467 races)
+WV,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026
+WY,2024-08-20,Primary,l2,"L2 dominant Primary_ column, 116,060 non-null voters"
+WY,2024-11-05,General,computed,computed: Tuesday after first Monday in Nov 2024
+WY,2026-08-18,Primary,ballotready,BallotReady 'Wyoming Primary Election' (439 races)
+WY,2026-11-03,General,computed,computed: Tuesday after first Monday in Nov 2026

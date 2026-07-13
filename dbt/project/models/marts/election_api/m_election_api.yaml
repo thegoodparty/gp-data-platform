@@ -751,6 +751,13 @@ models:
       Per (state, election_date) election-type lookup, delivered to Postgres
       via the sync_election_api DAG's atomic swap (see m_election_api__projected_turnout
       for the same delivery pattern and why upsert-by-id was rejected).
+      General rows come from the election_calendar seed unconditionally.
+      Primary rows come from int__election_calendar_primary_ballotready
+      (recomputed live from BallotReady every run) with the election_calendar
+      seed's own Primary rows used only as a fallback for a (state, year) the
+      live model doesn't resolve -- BallotReady is authoritative for Primary
+      whenever it has an answer, even overriding an L2-sourced seed row for
+      the same key.
     columns:
       - name: id
         description: "UUID of the election calendar row"

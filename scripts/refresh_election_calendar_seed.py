@@ -2,6 +2,23 @@
 election has actually happened) and BallotReady (current/future cycles, where L2
 has no ground truth yet -- it's retrospective-only).
 
+NOTE on this script's role: m_election_api__election_calendar treats
+int__election_calendar_primary_ballotready (a live dbt model implementing the
+same rule as this script, recomputed every run) as authoritative for Primary --
+it overrides this seed's Primary rows automatically whenever it has an answer,
+including for BallotReady-sourced rows this script previously added. So running
+this script is no longer required to keep Primary rows current; the live model
+already does that continuously. What this script is still for:
+  1. Backfilling L2-confirmed rows once a cycle's election has actually
+     happened -- L2 ground truth doesn't come from BallotReady at all, so the
+     live model can't produce these on its own.
+  2. Populating the seed's fallback rows for a (state, year) the live model
+     currently excludes (e.g. CA -- see the live model's header comment), so
+     there's still a reasonable answer for that gap until it's resolved
+     upstream.
+  3. Keeping the checked-in seed a comprehensive, human-readable snapshot of
+     everything known, even for rows the live model would also compute.
+
 General rows are always computed: the Tuesday-after-first-Monday-in-November rule
 is a fixed federal statute that has not changed and is not expected to. This
 script does not touch General rows; it only fills in Primary rows for years/states
@@ -183,6 +200,7 @@ def main():
                 "state": state,
                 "election_date": date_str,
                 "election_code": "Primary",
+                "source": "ballotready",
                 "source_note": f"BallotReady '{name}' ({race_count:,} races)",
             }
         )
@@ -191,7 +209,7 @@ def main():
     all_rows.sort(key=lambda r: (r["state"], r["election_date"]))
 
     with open(SEED_PATH, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["state", "election_date", "election_code", "source_note"])
+        w = csv.DictWriter(f, fieldnames=["state", "election_date", "election_code", "source", "source_note"])
         w.writeheader()
         w.writerows(all_rows)
 

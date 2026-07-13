@@ -11,15 +11,49 @@
 -- staging -> quality gate -> swap), not the upsert-by-id writer, so there's no
 -- supersession bookkeeping to preserve here.
 --
--- Source is the election_calendar seed (dbt/project/seeds/election_calendar.csv),
--- not a model_predictions source table: this reference data is small (~150 rows)
--- and checked into git, same pattern as election_api_race_filing_address_overrides.
--- General rows are computed (Tuesday after the first Monday in November); Primary
--- rows come from each state's dominant L2 Primary_YYYY_MM_DD column for that year
--- (see seeds_schema.yaml for per-row provenance in source_note). CA is absent --
--- its L2 vote-history staging view is currently broken -- and only 6 states have a
--- confirmed 2026 Primary date (the rest haven't held theirs yet); both are
--- follow-up items, not bugs in this model.
+-- General comes from the election_calendar seed (dbt/project/seeds/
+-- election_calendar.csv) unconditionally -- computed once from a fixed federal
+-- rule that never changes, so there's nothing to keep live.
+--
+-- Primary is authoritative from int__election_calendar_primary_ballotready,
+-- which recomputes live from BallotReady's scheduled-election data every run --
+-- an edit there (a corrected date, a newly scheduled state) flows through on
+-- the next sync automatically. The seed's own Primary rows are used only as a
+-- fallback for a (state, year) the live model doesn't resolve (e.g. CA, which
+-- the live model excludes -- see its header comment for why).
+with general as (
+    select state, election_date, election_code
+    from {{ ref("election_calendar") }}
+    where election_code = 'General'
+),
+
+seed_primary_fallback as (
+    select state, election_date, year(election_date) as election_year
+    from {{ ref("election_calendar") }}
+    where election_code = 'Primary'
+),
+
+live_primary as (
+    select state, election_date, year(election_date) as election_year
+    from {{ ref("int__election_calendar_primary_ballotready") }}
+),
+
+primary_final as (
+    select
+        coalesce(live.state, fallback.state) as state,
+        coalesce(live.election_date, fallback.election_date) as election_date,
+        'Primary' as election_code
+    from live_primary live
+    full outer join seed_primary_fallback fallback
+        on live.state = fallback.state and live.election_year = fallback.election_year
+),
+
+combined as (
+    select * from general
+    union all
+    select * from primary_final
+)
+
 select
     {{
         generate_salted_uuid(
@@ -34,4 +68,4 @@ select
     state,
     cast(election_date as date) as election_date,
     election_code
-from {{ ref("election_calendar") }}
+from combined
