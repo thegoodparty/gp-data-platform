@@ -471,7 +471,13 @@ seeds:
       int__election_calendar_primary_ballotready combine.
       General rows are computed from the fixed Tuesday-after-first-Monday-in-
       November rule (never changes) and are authoritative as-is -- there is no
-      live General model, this seed IS the source of truth for General.
+      live General model, this seed IS the source of truth for General. They
+      cover every even year the live Primary model can emit; when BallotReady
+      starts publishing the next even cycle, the
+      assert_election_calendar_general_covers_primary_years test fails loudly
+      until that year's General rows are added here, and
+      assert_election_calendar_general_dates_follow_federal_rule recomputes
+      the rule so a typo cannot ship.
       Primary rows here are a snapshot only -- a fallback used solely for a
       (state, year) the live BallotReady model doesn't resolve for some
       reason.

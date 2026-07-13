@@ -769,6 +769,17 @@ models:
         description: State postal code
         tests:
           - not_null
+          # 50 states + DC. An unexpected BallotReady territory or state-name
+          # variant should fail loudly here, not quietly serve calendar rows.
+          - accepted_values:
+              arguments:
+                values:
+                  ["AK", "AL", "AR", "AZ", "CA", "CO", "CT", "DC", "DE", "FL",
+                   "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA",
+                   "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE",
+                   "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI",
+                   "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV",
+                   "WY"]
       - name: election_date
         description: The calendar date this row classifies
         tests:
