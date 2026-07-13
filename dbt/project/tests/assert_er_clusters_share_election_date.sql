@@ -3,7 +3,8 @@
 -- Each cluster from the candidacy-stage entity resolution pipeline must
 -- represent a single (candidate, race, stage) triple. matcha matches
 -- election_date within a 10-day window (ELECTION_DATE_WINDOW_DAYS in
--- matcha/scripts/configs/candidacy.py, the contract's source of truth), so
+-- matcha/scripts/configs/candidacy.py, the contract's source of truth,
+-- mirrored by the er_election_date_window_days var; update both together), so
 -- one stage reported a few days apart across sources lands in one cluster,
 -- while distinct stages of a race (primary, runoff, general) sit three or
 -- more weeks apart and must never merge. A date spread wider than the window
@@ -24,4 +25,6 @@ select
 from {{ source("er_source", "clustered_candidacy_stages") }}
 where election_date is not null
 group by cluster_id
-having datediff(max(cast(election_date as date)), min(cast(election_date as date))) > 10
+having
+    datediff(max(cast(election_date as date)), min(cast(election_date as date)))
+    > {{ var("er_election_date_window_days") }}

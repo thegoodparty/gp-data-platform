@@ -21,6 +21,11 @@ clean-targets: # directories to be removed by `dbt clean`
   - "target"
   - "dbt_packages"
 
+vars:
+  # Must match ELECTION_DATE_WINDOW_DAYS in matcha/scripts/configs/candidacy.py
+  # (the matcher's contract source of truth). Update both together.
+  er_election_date_window_days: 10
+
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
 
