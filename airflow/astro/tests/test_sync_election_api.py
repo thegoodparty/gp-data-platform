@@ -247,11 +247,12 @@ def test_ec_quality_gate_boundary_ratio_passes():
 
 
 def test_ec_quality_gate_cold_start_floor():
-    """No prior table: this table is only a few hundred rows, so the floor is
-    much lower than Projected_Turnout's (absolute row counts, not a ratio)."""
+    """No prior table: the floor tracks the seed's actual size (198 rows) with
+    a small margin, not a round guess -- tight enough that a truncated load
+    can't pass, per review feedback on an earlier, much looser floor."""
     with pytest.raises(ValueError, match="Cold-start"):
-        _ec_quality_gate(loaded_count=49, dup_keys=0, prior_key_count=0, null_keys=0)
-    _ec_quality_gate(loaded_count=50, dup_keys=0, prior_key_count=0, null_keys=0)
+        _ec_quality_gate(loaded_count=179, dup_keys=0, prior_key_count=0, null_keys=0)
+    _ec_quality_gate(loaded_count=180, dup_keys=0, prior_key_count=0, null_keys=0)
 
 
 def test_ec_quality_gate_refuses_null_keys():
