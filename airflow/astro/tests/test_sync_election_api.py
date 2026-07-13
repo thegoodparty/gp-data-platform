@@ -16,6 +16,7 @@ import pytest
 _STUBS = (
     "airflow",
     "airflow.decorators",
+    "airflow.exceptions",
     "airflow.sdk",
     "databricks",
     "databricks.sql",
@@ -39,6 +40,7 @@ from dags.sync_election_api import (  # noqa: E402
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
     _ec_quality_gate,
+    _ec_target_exists,
     _pt_quality_gate,
     _ztp_transform_row,
 )
@@ -247,15 +249,58 @@ def test_ec_quality_gate_boundary_ratio_passes():
 
 
 def test_ec_quality_gate_cold_start_floor():
-    """No prior table: the floor tracks the mart's actual current size (~458
-    rows: 102 General from the seed + ~356 live Primary from BallotReady)
+    """No prior table: the floor tracks the mart's actual current size (~713
+    rows: 357 General from the seed + ~356 live Primary from BallotReady)
     with a margin, not a round guess -- tight enough that a truncated load
     can't pass, per review feedback on an earlier, much looser floor."""
     with pytest.raises(ValueError, match="Cold-start"):
-        _ec_quality_gate(loaded_count=409, dup_keys=0, prior_key_count=0, null_keys=0)
-    _ec_quality_gate(loaded_count=410, dup_keys=0, prior_key_count=0, null_keys=0)
+        _ec_quality_gate(loaded_count=639, dup_keys=0, prior_key_count=0, null_keys=0)
+    _ec_quality_gate(loaded_count=640, dup_keys=0, prior_key_count=0, null_keys=0)
 
 
 def test_ec_quality_gate_refuses_null_keys():
     with pytest.raises(ValueError, match="NULL"):
         _ec_quality_gate(loaded_count=200, dup_keys=0, prior_key_count=200, null_keys=1)
+
+
+class _FakeRegclassCursor:
+    """Stands in for a psycopg cursor answering the to_regclass probe."""
+
+    def __init__(self, result):
+        self._result = result
+        self.closed = False
+
+    def execute(self, sql, params=None):
+        assert "to_regclass" in sql
+
+    def fetchone(self):
+        return (self._result,)
+
+    def close(self):
+        self.closed = True
+
+
+class _FakeRegclassConn:
+    def __init__(self, result):
+        self.last_cursor = None
+        self._result = result
+
+    def cursor(self):
+        self.last_cursor = _FakeRegclassCursor(self._result)
+        return self.last_cursor
+
+
+def test_ec_target_exists_true_when_regclass_resolves():
+    conn = _FakeRegclassConn('public."Election_Calendar"')
+    assert _ec_target_exists(conn) is True
+    assert conn.last_cursor.closed
+
+
+def test_ec_target_exists_false_before_migration():
+    """Pre-migration (to_regclass returns NULL) the group must skip, not
+    fail: repeated failures would count toward the DAG's
+    max_consecutive_failed_dag_runs auto-pause and freeze every other
+    delivery group."""
+    conn = _FakeRegclassConn(None)
+    assert _ec_target_exists(conn) is False
+    assert conn.last_cursor.closed

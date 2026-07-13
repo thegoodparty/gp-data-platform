@@ -70,6 +70,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from airflow.exceptions import AirflowSkipException
 from airflow.sdk import Variable, dag, task, task_group
 from include.custom_functions.election_api_utils import (
     TableSyncSpec,
@@ -433,13 +434,33 @@ def _ec_constraint_ddl() -> list[str]:
     ]
 
 
+def _ec_target_exists(conn) -> bool:
+    """True once election-api's Prisma migration has created the live table.
+
+    The swap helpers LIKE-clone and then rename the live table, so this group
+    cannot run before omni's Election_Calendar migration deploys. Skipping
+    (rather than failing) until then keeps merge order flexible: repeated
+    failures would otherwise count toward max_consecutive_failed_dag_runs and
+    auto-pause every delivery group in this DAG.
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT to_regclass(%s)",
+            (f'"{EC.target_schema}"."{EC.target_table}"',),
+        )
+        return cur.fetchone()[0] is not None
+    finally:
+        cur.close()
+
+
 def _ec_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, null_keys: int) -> None:
     """Decide whether staged Election_Calendar data may swap into place.
 
     Same shape as _pt_quality_gate, scaled to this table's size. The mart
     combines the (small, fixed) election_calendar seed's General rows with
     int__election_calendar_primary_ballotready's live-recomputed Primary rows
-    (~458 total as of this writing: 102 General + ~356 Primary) -- there's no
+    (~713 total as of this writing: 357 General + ~356 Primary) -- there's no
     reason a healthy load should ever land far below that. The floor below is
     set close to the actual current size (not a round "few hundred" guess) so
     a truncated load (e.g. a query timeout returning a partial batch, or a
@@ -461,7 +482,7 @@ def _ec_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, nul
                 f"Loaded {loaded_count} rows, prior live had {prior_key_count} "
                 f"distinct (state, election_date) keys (ratio {ratio:.2f}) — refusing to swap"
             )
-    elif loaded_count < 410:
+    elif loaded_count < 640:
         raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small — refusing to swap")
 
 
@@ -942,6 +963,12 @@ def sync_election_api():
         @task
         def build_staging() -> None:
             with _open_pg() as conn:
+                if not _ec_target_exists(conn):
+                    raise AirflowSkipException(
+                        f"{EC.target_schema}.{EC.target_table} does not exist yet "
+                        "(election-api's Prisma migration creates it); skipping the "
+                        "election_calendar sync until it does"
+                    )
                 create_staging_table(conn, EC)
 
         @task
