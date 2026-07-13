@@ -1321,6 +1321,156 @@ models:
         description: >
           HubSpot contact property `connected_with_rep` (Connected with rep).
           HubSpot property group: contactinformation.
+      - name: companies
+        description: >
+          HubSpot company ids associated with the contact (Airbyte record column,
+          not a HubSpot property).
+      - name: created_at
+        description: >
+          Record creation timestamp from the HubSpot API object (Airbyte record
+          column, not a HubSpot property).
+      - name: updated_at
+        description: >
+          Record last-update timestamp from the HubSpot API object (Airbyte record
+          column, not a HubSpot property).
+      - name: full_name
+        description: >
+          HubSpot contact property `full_name` (full name). HubSpot property group:
+          contactinformation.
+      - name: first_name
+        description: >
+          HubSpot contact property `firstname` (First Name). A contact's first name
+      - name: last_name
+        description: >
+          HubSpot contact property `lastname` (Last Name). A contact's last name
+      - name: birth_date
+        description: >
+          HubSpot contact property `birth_date` (Birth Date). HubSpot property
+          group: contactinformation.
+      - name: email
+        description: >
+          HubSpot contact property `email` (Email). A contact's email address
+      - name: phone
+        description: >
+          HubSpot contact property `phone` (Phone Number). A contact's primary phone
+          number
+      - name: website
+        description: >
+          HubSpot contact property `website` (Website URL). Associated company
+          website.
+      - name: instagram_handle
+        description: >
+          HubSpot contact property `instagram_handle` (Instagram Link). HubSpot
+          property group: contactinformation.
+      - name: linkedin_url
+        description: >
+          HubSpot contact property `linkedin_url` (LinkedIn URL - Custom). HubSpot
+          property group: contactinformation.
+      - name: twitter_handle
+        description: >
+          HubSpot contact property `twitterhandle` (Twitter Username). The contact's
+          Twitter handle.
+      - name: facebook_url
+        description: >
+          HubSpot contact property `facebook_url` (Facebook URL). HubSpot property
+          group: contactinformation.
+      - name: address
+        description: >
+          HubSpot contact property `address` (Street Address). Contact's street
+          address, including apartment or unit number.
+      - name: candidate_id_source
+        description: >
+          HubSpot contact property `candidate_id_source` (Candidate ID Source).
+          HubSpot property group: contactinformation.
+      - name: candidate_id_tier
+        description: >
+          HubSpot contact property `candidate_id_tier` (Candidate ID Tier). HubSpot
+          property group: contactinformation.
+      - name: verified_candidate_status
+        description: >
+          HubSpot contact property `verified_candidate_status` (Verified Candidate
+          Status). HubSpot property group: contactinformation.
+      - name: type
+        description: >
+          HubSpot contact property `type` (Type). HubSpot property group:
+          contactinformation.
+      - name: product_user
+        description: >
+          HubSpot contact property `product_user` (Product User). HubSpot property
+          group: contactinformation.
+      - name: official_office_name
+        description: >
+          HubSpot contact property `official_office_name` (Official Office Name).
+          HubSpot property group: contactinformation.
+      - name: candidate_office
+        description: >
+          HubSpot contact property `candidate_office` (Candidate Office). Office for
+          which the candidate is running
+      - name: office_level
+        description: >
+          HubSpot contact property `office_level` (Office Level). HubSpot property
+          group: contactinformation.
+      - name: office_type
+        description: >
+          HubSpot contact property `office_type` (Office Type). HubSpot property
+          group: contactinformation.
+      - name: party_affiliation
+        description: >
+          HubSpot contact property `party_affiliation` (Party Affiliation). HubSpot
+          property group: contactinformation.
+      - name: state
+        description: >
+          HubSpot contact property `state` (State/Region). The contact's state of
+          residence. This might be set via import, form, or integration.
+      - name: city
+        description: >
+          HubSpot contact property `city` (City). A contact's city of residence
+      - name: candidate_district
+        description: >
+          HubSpot contact property `candidate_district` (Candidate District).
+          HubSpot property group: contactinformation.
+      - name: population
+        description: >
+          HubSpot contact property `population` (Population). HubSpot property
+          group: contactinformation.
+      - name: population_raw
+        description: >
+          HubSpot contact property `population` (Population). Raw decimal
+          value preserved alongside the integer `population` column.
+      - name: filing_deadline
+        description: >
+          HubSpot contact property `filing_deadline` (Filing Deadline). HubSpot
+          property group: contactinformation.
+      - name: primary_election_date
+        description: >
+          HubSpot contact property `primary_election_date` (Primary Election Date).
+          HubSpot property group: contactinformation.
+      - name: election_date
+        description: >
+          HubSpot contact property `election_date` (Election Date). HubSpot property
+          group: contactinformation.
+      - name: general_election_date
+        description: >
+          HubSpot contact property `general_election_date` (General Election Date).
+          HubSpot property group: contactinformation.
+      - name: start_date
+        description: >
+          HubSpot contact property `start_date` (Start date). Contact's start date.
+          Required for the Facebook Ads Integration. Automatically synced from the
+          Lead Ads tool.
+      - name: number_opponents
+        description: >
+          HubSpot contact property `number_opponents` (# Opponents). Number of
+          opponents the candidate has in their race
+      - name: number_of_seats_available
+        description: >
+          HubSpot contact property `number_of_seats_available` (Number of seats
+          available). HubSpot property group: contactinformation.
+      - name: number_of_seats_available_raw
+        description: >
+          HubSpot contact property `number_of_seats_available` (Number of seats
+          available). Raw decimal value preserved alongside the integer
+          `number_of_seats_available` column.
   - name: stg_airbyte_source__hubspot_api_deals
     description: Deals data load from HubSpot API
     columns:
