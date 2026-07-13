@@ -54,7 +54,6 @@
 -- Presidential-named rows, same most/fewest-races logic. Generic, not DC-
 -- specific: DC's other cycles (2018-2030) all have a single plain "Primary
 -- Election" row and never hit this branch.
-
 {% set wisconsin_states = "('WI')" %}
 
 -- next_day(d, 'MON') returns the first Monday strictly after d, so
@@ -62,83 +61,112 @@
 -- resolves to Nov 1 itself, not Nov 8.
 {% set computed_general_date_expr = "date_add(next_day(make_date(year(election_day), 11, 1) - interval 1 day, 'MON'), 1)" %}
 
-with candidates_no_presidential as (
-    select
-        state,
-        election_day,
-        race_count,
-        year(election_day) as election_year
-    from {{ ref('stg_airbyte_source__ballotready_api_election') }}
-    where name like '%Primary%'
-      and name not like '%Runoff%'
-      and name not like '%Consolidated%'
-      and name not like '%Special%'
-      and name not like '%Presidential%'
-      and is_special = false
-      and race_count > 0
-      and year(election_day) % 2 = 0
-      and election_day != {{ computed_general_date_expr }}
-),
+with
+    candidates_no_presidential as (
+        select
+            state,
+            election_day,
+            race_count,
+            database_id,
+            year(election_day) as election_year
+        from {{ ref("stg_airbyte_source__ballotready_api_election") }}
+        where
+            name like '%Primary%'
+            and name not like '%Runoff%'
+            and name not like '%Consolidated%'
+            and name not like '%Special%'
+            and name not like '%Presidential%'
+            and is_special = false
+            and race_count > 0
+            and year(election_day) % 2 = 0
+            and election_day != {{ computed_general_date_expr }}
+    ),
 
-candidates_with_presidential as (
-    select
-        state,
-        election_day,
-        race_count,
-        year(election_day) as election_year
-    from {{ ref('stg_airbyte_source__ballotready_api_election') }}
-    where name like '%Primary%'
-      and name not like '%Runoff%'
-      and name not like '%Consolidated%'
-      and name not like '%Special%'
-      and is_special = false
-      and race_count > 0
-      and year(election_day) % 2 = 0
-      and election_day != {{ computed_general_date_expr }}
-),
+    candidates_with_presidential as (
+        select
+            state,
+            election_day,
+            race_count,
+            database_id,
+            year(election_day) as election_year
+        from {{ ref("stg_airbyte_source__ballotready_api_election") }}
+        where
+            name like '%Primary%'
+            and name not like '%Runoff%'
+            and name not like '%Consolidated%'
+            and name not like '%Special%'
+            and is_special = false
+            and race_count > 0
+            and year(election_day) % 2 = 0
+            and election_day != {{ computed_general_date_expr }}
+    ),
 
-ranked_no_presidential as (
-    select
-        *,
-        row_number() over (
-            partition by state, election_year
-            -- Wisconsin: fewest races wins (see header). Everyone else: most
-            -- races wins. Folding both into one ORDER BY direction (ASC) via
-            -- the sign flip keeps this a single ranked CTE instead of a
-            -- union of two differently-ordered ones.
-            order by (case when state in {{ wisconsin_states }} then race_count else -race_count end) asc
-        ) as rn
-    from candidates_no_presidential
-),
+    ranked_no_presidential as (
+        select
+            *,
+            row_number() over (
+                partition by state, election_year
+                -- Wisconsin: fewest races wins (see header). Everyone else: most
+                -- races wins. Folding both into one ORDER BY direction (ASC) via
+                -- the sign flip keeps this a single ranked CTE instead of a
+                -- union of two differently-ordered ones.
+                -- election_day + database_id break race-count ties
+                -- deterministically: the mart is full-refresh + atomic swap, so
+                -- an unstable pick would flip a state's date (and its salted
+                -- UUID) between nightly runs whenever BallotReady data ties.
+                order by
+                    (
+                        case
+                            when state in {{ wisconsin_states }}
+                            then race_count
+                            else - race_count
+                        end
+                    ) asc,
+                    election_day asc,
+                    database_id asc
+            ) as rn
+        from candidates_no_presidential
+    ),
 
-ranked_with_presidential as (
-    select
-        *,
-        row_number() over (
-            partition by state, election_year
-            order by (case when state in {{ wisconsin_states }} then race_count else -race_count end) asc
-        ) as rn
-    from candidates_with_presidential
-),
+    ranked_with_presidential as (
+        select
+            *,
+            row_number() over (
+                partition by state, election_year
+                order by
+                    (
+                        case
+                            when state in {{ wisconsin_states }}
+                            then race_count
+                            else - race_count
+                        end
+                    ) asc,
+                    election_day asc,
+                    database_id asc
+            ) as rn
+        from candidates_with_presidential
+    ),
 
-picked_no_presidential as (
-    select state, election_year, election_day
-    from ranked_no_presidential
-    where rn = 1
-),
+    picked_no_presidential as (
+        select state, election_year, election_day
+        from ranked_no_presidential
+        where rn = 1
+    ),
 
--- Only used for (state, year) keys picked_no_presidential has nothing for
--- (the DC-2024-style fallback) -- see the final select's coalesce.
-picked_with_presidential as (
-    select state, election_year, election_day
-    from ranked_with_presidential
-    where rn = 1
-)
+    -- Only used for (state, year) keys picked_no_presidential has nothing for
+    -- (the DC-2024-style fallback) -- see the final select's coalesce.
+    picked_with_presidential as (
+        select state, election_year, election_day
+        from ranked_with_presidential
+        where rn = 1
+    )
 
 select
     coalesce(a.state, b.state) as state,
     coalesce(a.election_day, b.election_day) as election_date,
     'Primary' as election_code
 from picked_no_presidential a
-full outer join picked_with_presidential b
-    on a.state = b.state and a.election_year = b.election_year
+full outer join
+    picked_with_presidential b
+    on a.state = b.state
+    and a.election_year = b.election_year
