@@ -197,9 +197,11 @@ sources:
         description: raw data load from gp_api_db postgres db from table `website_contact`
       - name: gp_api_db_website_view
         description: raw data load from gp_api_db postgres db from table `website_view`
-      # contrast and research stay empty until campaigns exercise those flows
-      # (rows are written on demand); freshness over an empty table reads as
-      # ERROR STALE, so suppress it until the product writes data.
+      # The race_opponent family is written on demand (campaigns exercising
+      # those flows), so rows can stop landing for arbitrary stretches:
+      # contrast and research are still empty, and any of the four would read
+      # ERROR STALE after a usage lull outlasts the inherited error_after.
+      # Suppress inherited freshness for the whole family.
       - name: gp_api_db_race_opponent_contrast
         description: raw data load from gp_api_db postgres db from table `race_opponent_contrast`
         config:
@@ -210,8 +212,12 @@ sources:
           freshness: null
       - name: gp_api_db_race_opponent_standout_action
         description: raw data load from gp_api_db postgres db from table `race_opponent_standout_action`
+        config:
+          freshness: null
       - name: gp_api_db_race_opponent_summary
         description: raw data load from gp_api_db postgres db from table `race_opponent_summary`
+        config:
+          freshness: null
       - name: hubspot_api_companies
         description: raw data load from HubSpot data model
       - name: hubspot_api_contacts
