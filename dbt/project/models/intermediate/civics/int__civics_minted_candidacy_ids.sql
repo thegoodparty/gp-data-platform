@@ -1,6 +1,7 @@
 -- Minted gp_candidacy_id per candidacy-stage record. One row per clustered
--- candidacy-stage unique_id. Each candidacy-stage cluster is single-date (0
--- clusters span >1 date in prod), so its earliest-member mint is stage-grain.
+-- candidacy-stage unique_id. Each candidacy-stage cluster is single-stage
+-- (election dates may differ within matcha's 10-day window; distinct stages
+-- sit >= 3 weeks apart), so its earliest-member mint is stage-grain.
 -- gp_candidacy_id is candidacy-grain, so the consuming provider models roll this
 -- up (min over their candidacy grouping); co-clustered candidacies converge
 -- because they share the same clusters. Records in no cluster mint from
