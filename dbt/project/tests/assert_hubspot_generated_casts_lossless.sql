@@ -8,12 +8,19 @@
 -- real loss here means a format or schema drift (a property type changed,
 -- a datetime representation shifted) — exactly the class of change that
 -- must block a build rather than silently null a Sigma column.
+-- Registry rows flagged cast_loss_expected are excluded: their source
+-- properties legitimately carry non-conforming values (free-text ids,
+-- out-of-map enum words) that the cast nulls by design, unchanged from the
+-- pre-registry hand-written expressions.
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
+-- depends_on: {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 {{ config(severity="error") }}
 
 {%- set typed = [] %}
 {%- for p in hubspot_generated_contact_properties() %}
-    {%- if p.cast_type != "string" %} {% do typed.append(p) %} {% endif %}
+    {%- if p.cast_type != "string" and not p.cast_loss_expected %}
+        {% do typed.append(p) %}
+    {% endif %}
 {%- endfor %}
 
 {% if typed | length == 0 %}

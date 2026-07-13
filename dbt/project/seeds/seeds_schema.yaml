@@ -345,6 +345,7 @@ seeds:
         description: STRING
         boolean_true_value: STRING
         boolean_false_value: STRING
+        cast_loss_expected: BOOLEAN
     columns:
       - name: internal_name
         description: >
@@ -426,6 +427,15 @@ seeds:
         description: >
           For boolean rows only: source word mapped to FALSE (e.g.
           nonpartisan, contested). Set exactly when boolean_true_value is.
+      - name: cast_loss_expected
+        description: >
+          True on typed columns whose source property legitimately carries
+          non-conforming values (free-text ids, out-of-map enum words) that
+          the cast nulls out by design — the same behavior the hand-written
+          expressions had before the registry migration.
+          assert_hubspot_generated_casts_lossless skips these columns; every
+          other typed column is strictly zero-loss-tested. Leave blank for
+          new rows unless the property is known free-form.
     data_tests:
       - dbt_utils.expression_is_true:
           arguments:
@@ -438,6 +448,10 @@ seeds:
           arguments:
             expression: >-
               boolean_true_value is null or cast_type = 'boolean'
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              cast_loss_expected is not true or cast_type != 'string'
 
   - name: haystaq_issue_tags
     description: >

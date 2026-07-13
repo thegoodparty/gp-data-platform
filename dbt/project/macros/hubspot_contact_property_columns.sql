@@ -15,7 +15,7 @@
     {%- if execute -%}
         {%- set results = run_query(
             "select internal_name, column_name, cast_type, "
-            ~ "boolean_true_value, boolean_false_value from "
+            ~ "boolean_true_value, boolean_false_value, cast_loss_expected from "
             ~ ref(seed)
             ~ " where status = 'generated' order by sort_order"
         ) -%}
@@ -27,6 +27,7 @@
                     "cast_type": row[2],
                     "true_value": row[3],
                     "false_value": row[4],
+                    "cast_loss_expected": row[5],
                 }
             ) -%}
         {%- endfor -%}
