@@ -247,13 +247,13 @@ def test_ec_quality_gate_boundary_ratio_passes():
 
 
 def test_ec_quality_gate_cold_start_floor():
-    """No prior table: the floor tracks the mart's actual current size (~449
-    rows: 100 General from the seed + ~349 live Primary from BallotReady)
+    """No prior table: the floor tracks the mart's actual current size (~458
+    rows: 102 General from the seed + ~356 live Primary from BallotReady)
     with a margin, not a round guess -- tight enough that a truncated load
     can't pass, per review feedback on an earlier, much looser floor."""
     with pytest.raises(ValueError, match="Cold-start"):
-        _ec_quality_gate(loaded_count=399, dup_keys=0, prior_key_count=0, null_keys=0)
-    _ec_quality_gate(loaded_count=400, dup_keys=0, prior_key_count=0, null_keys=0)
+        _ec_quality_gate(loaded_count=409, dup_keys=0, prior_key_count=0, null_keys=0)
+    _ec_quality_gate(loaded_count=410, dup_keys=0, prior_key_count=0, null_keys=0)
 
 
 def test_ec_quality_gate_refuses_null_keys():

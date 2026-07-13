@@ -54,14 +54,8 @@
 -- Presidential-named rows, same most/fewest-races logic. Generic, not DC-
 -- specific: DC's other cycles (2018-2030) all have a single plain "Primary
 -- Election" row and never hit this branch.
---
--- CA is excluded: its L2 vote-history staging view is currently broken, so
--- there was no ground truth to validate this rule against for CA. Remove the
--- exclusion once that view is fixed and CA is checked like every other state
--- was.
 
 {% set wisconsin_states = "('WI')" %}
-{% set unvalidated_states = "('CA')" %}
 
 -- next_day(d, 'MON') returns the first Monday strictly after d, so
 -- subtracting a day from Nov 1 first means a Nov-1-is-a-Monday year still
@@ -82,7 +76,6 @@ with candidates_no_presidential as (
       and name not like '%Presidential%'
       and is_special = false
       and race_count > 0
-      and state not in {{ unvalidated_states }}
       and year(election_day) % 2 = 0
       and election_day != {{ computed_general_date_expr }}
 ),
@@ -100,7 +93,6 @@ candidates_with_presidential as (
       and name not like '%Special%'
       and is_special = false
       and race_count > 0
-      and state not in {{ unvalidated_states }}
       and year(election_day) % 2 = 0
       and election_day != {{ computed_general_date_expr }}
 ),

@@ -474,7 +474,7 @@ seeds:
       live General model, this seed IS the source of truth for General.
       Primary rows here are a snapshot only -- a fallback used solely for a
       (state, year) the live BallotReady model doesn't resolve for some
-      reason (e.g. CA, which that model excludes -- see its header comment).
+      reason.
       For every (state, year) the live model DOES resolve, its current output
       wins over whatever is frozen here, even if this seed has a row for that
       exact key already: BallotReady is treated as authoritative for Primary,
@@ -488,10 +488,6 @@ seeds:
       dedicated odd-year model that was never built, and repeated an
       identical projection year over year -- removed rather than carried
       forward).
-      Known gap (follow-up, not a bug here): CA has no Primary row -- its L2
-      vote-history staging view is currently broken (unresolved column
-      error), so there was no ground truth to validate the BallotReady rule
-      against for CA before trusting it there.
     columns:
       - name: state
         description: State postal code

@@ -19,8 +19,7 @@
 -- which recomputes live from BallotReady's scheduled-election data every run --
 -- an edit there (a corrected date, a newly scheduled state) flows through on
 -- the next sync automatically. The seed's own Primary rows are used only as a
--- fallback for a (state, year) the live model doesn't resolve (e.g. CA, which
--- the live model excludes -- see its header comment for why).
+-- fallback for a (state, year) the live model doesn't resolve.
 with general as (
     select state, election_date, election_code
     from {{ ref("election_calendar") }}

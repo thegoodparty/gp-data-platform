@@ -439,7 +439,7 @@ def _ec_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, nul
     Same shape as _pt_quality_gate, scaled to this table's size. The mart
     combines the (small, fixed) election_calendar seed's General rows with
     int__election_calendar_primary_ballotready's live-recomputed Primary rows
-    (~449 total as of this writing: 100 General + ~349 Primary) -- there's no
+    (~458 total as of this writing: 102 General + ~356 Primary) -- there's no
     reason a healthy load should ever land far below that. The floor below is
     set close to the actual current size (not a round "few hundred" guess) so
     a truncated load (e.g. a query timeout returning a partial batch, or a
@@ -461,7 +461,7 @@ def _ec_quality_gate(loaded_count: int, dup_keys: int, prior_key_count: int, nul
                 f"Loaded {loaded_count} rows, prior live had {prior_key_count} "
                 f"distinct (state, election_date) keys (ratio {ratio:.2f}) — refusing to swap"
             )
-    elif loaded_count < 400:
+    elif loaded_count < 410:
         raise ValueError(f"Cold-start load of {loaded_count} rows is implausibly small — refusing to swap")
 
 
