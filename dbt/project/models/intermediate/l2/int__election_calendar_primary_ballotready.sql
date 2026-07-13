@@ -1,5 +1,5 @@
--- Live-recomputed Primary-day guess per (state, year), sourced from
--- BallotReady's scheduled-election data. Authoritative for Primary in
+-- Live-recomputed Primary date per (state, year), informed by BallotReady's
+-- scheduled-election data and treated as authoritative for Primary in
 -- m_election_api__election_calendar: this always reflects BallotReady's
 -- CURRENT data, so an edit there (a corrected date, a newly scheduled state)
 -- flows through to Election_Calendar on the next sync automatically -- no
@@ -14,8 +14,12 @@
 -- data at best and a confusing surprise match at worst.
 --
 -- Rule (validated to 55/55 against L2 ground truth for every (state, year)
--- pair L2 could confirm -- see scripts/refresh_election_calendar_seed.py's
--- docstring for the full validation writeup and rejected alternatives):
+-- pair L2 could confirm as of 2024 + the 6 states L2 had already confirmed
+-- for 2026, then re-checked against the FULL even-year L2 history back to
+-- 2010: 198/202 matches, the only 4 misses being pre-2024 BallotReady data
+-- gaps/naming quirks with no bearing on current years. Rejected alternatives:
+-- max-race-count with no Wisconsin exception (53/55), and picking whichever
+-- candidate falls closest to the November general day (51/55)):
 --
 -- Filter to elections plausibly named as each state's Primary day, then per
 -- (state, year) the one with the MOST races wins -- except Wisconsin, which

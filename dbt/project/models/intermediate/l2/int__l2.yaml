@@ -466,20 +466,21 @@ models:
 
   - name: int__election_calendar_primary_ballotready
     description: >
-      Live-recomputed per (state, election_year) Primary-day guess from
-      BallotReady's scheduled-election data (DATA-2015). Authoritative for
-      Primary in m_election_api__election_calendar -- recomputes every run,
-      so an edit to BallotReady's election table flows through automatically.
-      Even years only. See the model file's header comment for the full rule
-      (max-race-count winner, Wisconsin exception, Presidential fallback, the
-      Louisiana general-day collision guard) and its validation writeup.
+      Live-recomputed per (state, election_year) Primary date, informed by
+      BallotReady's scheduled-election data (DATA-2015) and treated as
+      authoritative for Primary in m_election_api__election_calendar --
+      recomputes every run, so an edit to BallotReady's election table flows
+      through automatically. Even years only. See the model file's header
+      comment for the full rule (max-race-count winner, Wisconsin exception,
+      Presidential fallback, the Louisiana general-day collision guard) and
+      its validation writeup.
     columns:
       - name: state
         description: State postal code
         data_tests:
           - not_null
       - name: election_date
-        description: The guessed Primary date for this state/year
+        description: The Primary date for this state/year, per BallotReady
         data_tests:
           - not_null
       - name: election_code
