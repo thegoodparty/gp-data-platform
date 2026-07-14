@@ -195,7 +195,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
     fc = fake_connect(pg_conn)
     monkeypatch.setattr(validate, "connect_new", fc)
-    counts = validate._new_voter_counts_by_state(_CFG, "20260609")
+    counts = validate._new_counts_by_state(_CFG, "20260609", "Voter")
     assert counts == {"TX": 5, "CA": 4}  # TX=5, CA=4 (3 + the cross-state row added in 3b)
     assert validate._compare_counts("prod_row_counts", counts, {"TX": 5, "CA": 4}).passed is True
 
