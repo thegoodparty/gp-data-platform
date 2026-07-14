@@ -39,7 +39,11 @@ from loader.people_api.manifests import (
     write_manifest,
 )
 from loader.people_api.schema.snapshot import load_target_schema
-from loader.people_api.schema.table_ddl import extract_column_names, extract_create_tables
+from loader.people_api.schema.table_ddl import (
+    extract_column_names,
+    extract_column_types,
+    extract_create_tables,
+)
 
 log = get_logger(__name__)
 
@@ -58,18 +62,51 @@ _SESSION_SQL: tuple[str, ...] = (
     "SET idle_in_transaction_session_timeout = 0",
 )
 
-# PG `aws_s3.table_import_from_s3` options — CSV (tab-delimited) to match the unload's Spark CSV
-# writer: quoting/escaping (both '"') handle embedded tab/newline/quote in free-text fields;
+# PG `aws_s3.table_import_from_s3` base options — CSV (tab-delimited) to match the unload's Spark
+# CSV writer: quoting/escaping (both '"') handle embedded tab/newline/quote in free-text fields;
 # NULL '' pairs with the unload's nullValue=''. MUST stay in sync with unload_sql._CSV_OPTIONS;
-# test_format_contract.py pins the pairing so a one-sided edit fails CI.
+# test_format_contract.py pins the pairing so a one-sided edit fails CI. The per-run FORCE_NULL
+# clause (see `_import_options`) is appended to this base at runtime.
 _IMPORT_OPTIONS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODING 'UTF8')"
 
+# Target types that can legitimately hold an empty string. For these, an empty CSV field stays as
+# '' (the null-vs-empty-string distinction is deliberate — see unload_sql). Every OTHER type
+# (INTEGER, BOOLEAN, DATE, TIMESTAMPTZ, DOUBLE PRECISION, UUID, ...) cannot parse '', so its
+# quoted-empty "" must import as NULL via FORCE_NULL, or the COPY fails the cast.
+_TEXT_TYPE_PREFIXES = ("TEXT", "VARCHAR", "CHAR", "CHARACTER", "CITEXT", "BPCHAR", "NAME")
 
-def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: str) -> None:
+
+def _force_null_columns(column_types: dict[str, str]) -> list[str]:
+    """Columns (in DDL order) whose target type cannot hold an empty string.
+
+    The unload writes a genuine empty-string mart value as a quoted-empty CSV field (Spark's default
+    emptyValue is '""'), and PG's `NULL ''` reads quoted-empty as '' — fine for TEXT, but a fatal
+    cast error for INTEGER/BOOLEAN/DATE/etc. FORCE_NULL on exactly these typed columns converts their
+    quoted-empty back to NULL while leaving text columns' empty strings intact.
+    """
+    forced: list[str] = []
+    for col, typ in column_types.items():
+        base = typ.upper().split("(", 1)[0].strip()
+        if not base.startswith(_TEXT_TYPE_PREFIXES):
+            forced.append(col)
+    return forced
+
+
+def _import_options(force_null_columns: list[str]) -> str:
+    """Base CSV options with a FORCE_NULL clause for the typed (non-text) columns appended inside
+    the option parens. With no typed columns, returns the base options unchanged."""
+    if not force_null_columns:
+        return _IMPORT_OPTIONS
+    cols = ", ".join(f'"{c}"' for c in force_null_columns)
+    return f"{_IMPORT_OPTIONS[:-1]}, FORCE_NULL ({cols}))"
+
+
+def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: str, options: str) -> None:
     """Import one S3 file into public."Voter" on its own backend.
 
     `column_list` is the explicit, DDL-ordered column list (see module docstring);
     it must name exactly the columns the unload file contains, in file order.
+    `options` is the COPY options string (base CSV + per-run FORCE_NULL), built once in `run()`.
     """
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         for stmt in _SESSION_SQL:
@@ -86,7 +123,7 @@ def _copy_one_file(cfg: LoaderConfig, run_date: str, s3_key: str, column_list: s
             {
                 "table": f'public."{_TARGET_TABLE}"',
                 "columns": column_list,
-                "options": _IMPORT_OPTIONS,
+                "options": options,
                 "bucket": cfg.s3_bucket,
                 "key": s3_key,
                 "region": cfg.aws_region,
@@ -124,6 +161,7 @@ def _load_state(
     s3_keys: list[str],
     parallelism: int,
     column_list: str,
+    options: str,
 ) -> CopyTableResult:
     bind(state=state)
     started = time.time()
@@ -156,7 +194,8 @@ def _load_state(
 
         with ThreadPoolExecutor(max_workers=parallelism) as executor:
             futures = {
-                executor.submit(_copy_one_file, cfg, run_date, key, column_list): key for key in s3_keys
+                executor.submit(_copy_one_file, cfg, run_date, key, column_list, options): key
+                for key in s3_keys
             }
             errors: list[tuple[str, Exception]] = []
             for fut in as_completed(futures):
@@ -210,12 +249,19 @@ def run(
         raise RuntimeError(f'could not parse any columns from the "{_TARGET_TABLE}" DDL')
     column_list = ", ".join(f'"{c}"' for c in columns)
 
+    # Non-text columns cannot parse an empty string, so their quoted-empty "" (an empty-string
+    # mart value written by Spark) must import as NULL — otherwise the CSV cast fails. FORCE_NULL
+    # them; text columns keep their empty strings. See `_force_null_columns` / `_import_options`.
+    force_null = _force_null_columns(extract_column_types(tables[_TARGET_TABLE]))
+    options = _import_options(force_null)
+
     started = datetime.now(UTC)
     log.info(
         "copy.start",
         state_filter=state_filter,
         parallelism=parallelism,
         columns=len(columns),
+        force_null_columns=len(force_null),
     )
 
     files_by_state: dict[str, list[str]] = {}
@@ -244,6 +290,7 @@ def run(
             s3_keys=files_by_state.get(state, []),
             parallelism=parallelism,
             column_list=column_list,
+            options=options,
         )
         for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0))
     ]

@@ -10,31 +10,49 @@ import pytest
 
 from loader.people_api.config import LoaderConfig
 from loader.people_api.steps import inspect_prod as step
-from tests._fakes import FakeConn, fake_connect
+from tests._fakes import FakeConn, executed_sql, fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b", prod_cluster_id="gp-voter-db-x"))
 
 
 def test_inspect_table_with_state_and_snapshot() -> None:
-    # Voter-shaped: has State + updated_at -> per-state counts and per-state max(updated_at).
+    # Voter-shaped: has State + updated_at. One GROUP BY scan yields per-state counts,
+    # per-state max(updated_at), AND the total (summed over groups) — no separate count(*).
     dt = datetime(2026, 6, 1, 12, 0, 0)
     conn = (
         FakeConn()
-        .queue_result((100,))  # count(*)
         .queue_result((1,))  # has "State"
-        .queue_result([("TX", 60), ("CA", 40)])  # per-state counts
         .queue_result((1,))  # has "updated_at"
-        .queue_result([("TX", dt), ("CA", dt)])  # per-state max(updated_at)
+        .queue_result([("TX", 60, dt), ("CA", 40, dt)])  # per-state count + max in one scan
     )
     ti = step._inspect_table(conn.cursor(), "Voter")  # ty: ignore[invalid-argument-type]
-    assert ti.total_row_count == 100
+    assert ti.total_row_count == 100  # summed from the single aggregate scan
     assert ti.per_state_row_counts == {"TX": 60, "CA": 40}
     assert ti.per_state_snapshot_dates == {"TX": dt.isoformat(), "CA": dt.isoformat()}
+    # Exactly one full-table aggregate scan (count + max together); no separate count(*).
+    sqls = executed_sql(conn)
+    assert sum('GROUP BY "State"' in s for s in sqls) == 1
+    assert not any(s.startswith("SELECT count(*)") for s in sqls)
+
+
+def test_inspect_table_total_includes_null_state_rows() -> None:
+    # Rows with a NULL "State" still count toward the total (they can't be attributed to a
+    # state), so total != sum(per_state) when NULL-state rows exist.
+    conn = (
+        FakeConn()
+        .queue_result((1,))  # has "State"
+        .queue_result(None)  # has "updated_at" -> no
+        .queue_result([("TX", 60), ("CA", 40), (None, 5)])  # a NULL-State group of 5
+    )
+    ti = step._inspect_table(conn.cursor(), "Voter")  # ty: ignore[invalid-argument-type]
+    assert ti.total_row_count == 105
+    assert ti.per_state_row_counts == {"TX": 60, "CA": 40}  # NULL excluded from per-state
+    assert ti.per_state_snapshot_dates == {}
 
 
 def test_inspect_table_without_state_is_total_only() -> None:
-    # A District table with no "State" column -> total count only, no per-state breakdown.
-    conn = FakeConn().queue_result((7,)).queue_result(None)  # count(*); has "State" -> no
+    # A District table with no "State" column -> a plain count(*), no per-state breakdown.
+    conn = FakeConn().queue_result(None).queue_result((7,))  # has "State" -> no; then count(*)
     ti = step._inspect_table(conn.cursor(), "District")  # ty: ignore[invalid-argument-type]
     assert ti.total_row_count == 7
     assert ti.per_state_row_counts == {}

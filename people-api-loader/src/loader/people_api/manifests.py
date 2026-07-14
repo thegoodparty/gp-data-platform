@@ -4,7 +4,7 @@ Every step writes one of these to S3 at
 `s3://{bucket}/voter_export_{date}/_manifest/{step}.json`. Step re-entry
 reads the manifest first and no-ops if `status == "complete"`.
 
-Shape matches PLAN_LOADER.md section 5. Keep in sync — external review
+Shape is the loader's manifest contract. Keep in sync — external review
 (the validate.md human-readable report) depends on these field names.
 
 Step modules import everything they need from this module: both the
