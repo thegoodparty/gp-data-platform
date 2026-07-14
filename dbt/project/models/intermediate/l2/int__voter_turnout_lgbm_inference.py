@@ -683,7 +683,7 @@ def model(dbt, session):
             p.State                          AS state,
             m.district_type,
             m.district_name,
-            ROUND(SUM(p.p_hat * p.n_voters)) AS ballots_projected,
+            GREATEST(ROUND(SUM(p.p_hat * p.n_voters)), 3) AS ballots_projected,
             p.model_family                   AS model_version,
             current_timestamp()              AS inference_at
         FROM _precinct_preds p
