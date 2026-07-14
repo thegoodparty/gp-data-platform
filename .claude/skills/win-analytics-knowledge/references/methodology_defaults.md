@@ -1,7 +1,7 @@
 # Win methodology defaults
 
 Part of the **win-analytics-knowledge** skill. The Win-product defaults consumed by the
-process skill's [methodology.md](../../win-analytics-process/references/methodology.md):
+process skill's [methodology.md](../../analytics-process/references/methodology.md):
 that doc owns the product-agnostic discipline (scoping checklist, folder patterns, binning,
 verification protocol); this one owns what is true *for Win* — the resolved scoping
 decisions, the default cohorts, and the working-set builder.

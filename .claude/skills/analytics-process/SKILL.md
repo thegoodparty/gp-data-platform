@@ -1,14 +1,14 @@
 ---
-name: win-analytics-process
-description: Use when planning, executing, reviewing, or calibrating a product analysis, or when asked a product data question that should become one (currently Win-only; the entry runbook routes by product). For the data facts themselves, use the product's knowledge skill (win-analytics-knowledge).
+name: analytics-process
+description: Use when planning, executing, reviewing, or calibrating a product analysis, or when asked a product data question that should become one (the entry runbook routes by product — Win and Serve today). For the data facts themselves, use the product's knowledge skill (win-analytics-knowledge or serve-analytics-knowledge).
 ---
 
-# Win analytics process
+# Analytics process
 
 How a product analysis is run, from a fuzzy question to a reviewed result. For the data
 facts themselves (which table, which metric, which join), use the product's knowledge skill
-(**win-analytics-knowledge**) — this skill is about *how to work*, not *what is true about
-the data*.
+(**win-analytics-knowledge**, **serve-analytics-knowledge**) — this skill is about *how to
+work*, not *what is true about the data*.
 
 ## The senior-analyst loop
 

@@ -1,6 +1,6 @@
 # Calibration
 
-Part of the **win-analytics-process** skill. The closing step that makes the pipeline self-correct.
+Part of the **analytics-process** skill. The closing step that makes the pipeline self-correct.
 
 After a substantive analysis run, write findings that pass the promotion test (below) into a
 dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`, then handle each finding

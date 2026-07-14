@@ -1,6 +1,6 @@
 ---
 name: win-analytics-knowledge
-description: Use when a Win-product data concept — engagement, activation, outcomes/win rate, viability, segmentation, Amplitude events, joins, PMF/satisfaction — needs to resolve to its governed metric, table, column, or definition before a query is written. Not for running analyses (that is the win-analytics-process skill).
+description: Use when a Win-product data concept — engagement, activation, outcomes/win rate, viability, segmentation, Amplitude events, joins, PMF/satisfaction — needs to resolve to its governed metric, table, column, or definition before a query is written. Not for running analyses (that is the analytics-process skill).
 ---
 
 # Win analytics knowledge
@@ -8,7 +8,7 @@ description: Use when a Win-product data concept — engagement, activation, out
 A router for the data facts behind Win-product analyses. Its job is to take a concept
 ("engagement," "a win," "viability") and narrow it to the **one** governed definition and the
 single doc that owns the detail — before any SQL is written. It does not execute analyses; for
-the analyst workflow and patterns, see the **win-analytics-process** skill.
+the analyst workflow and patterns, see the **analytics-process** skill.
 
 ## How to resolve a concept
 

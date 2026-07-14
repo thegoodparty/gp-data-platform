@@ -9,8 +9,8 @@ process-design candidate is parked. Rows are never deleted; only the `status` co
 last-consolidation date above are ever updated.
 
 When to append, the promotion thresholds, and the branch/PR mechanics are owned by the calibration
-step of the win-analytics-process skill
-(`.claude/skills/win-analytics-process/references/calibration.md`) — this file does not restate them.
+step of the analytics-process skill
+(`.claude/skills/analytics-process/references/calibration.md`) — this file does not restate them.
 
 - **Entry format** (one table row per observation): date | track (`data`/`process`) | tag
   (`universal`/`data-state`) | one-line observation | run reference (branch or ticket) | status.

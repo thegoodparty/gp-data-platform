@@ -1,6 +1,6 @@
 # Framing routine
 
-Part of the **win-analytics-process** skill. Step 1 of the senior-analyst loop. The orchestrator runs this routine **in its own context** (not as a sub-agent) so it can ask the user clarifying questions and iterate to an approved brief.
+Part of the **analytics-process** skill. Step 1 of the senior-analyst loop. The orchestrator runs this routine **in its own context** (not as a sub-agent) so it can ask the user clarifying questions and iterate to an approved brief.
 
 **The approval gate is hard.** Do not write any analysis code while framing. Framing ends only when the user explicitly approves the framing; the approved brief is the spec the execution step then follows. Framing and execution are two ordered steps, never one blended activity.
 

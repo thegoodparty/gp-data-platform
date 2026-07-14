@@ -27,7 +27,7 @@ import pandas as pd
 # ``mart_analytics`` for marts; the legacy ``dbt_staging`` schema is being retired)
 # rather than resolved via dbt
 # ``ref()``: this module runs outside dbt (notebooks / ad-hoc), where ``ref()`` can
-# resolve to stale dev artifacts (win-analytics-process skill's references/methodology.md).
+# resolve to stale dev artifacts (analytics-process skill's references/methodology.md).
 # Repoint these for a dev/test catalog.
 EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events"
 USERS_WIN_CANDIDACY = "goodparty_data_catalog.mart_analytics.users_win_candidacy"
@@ -118,7 +118,7 @@ def build_win_working_set(
 ) -> pd.DataFrame:
     """Build one consolidated per-user cohort x engagement working set, slice it in pandas.
 
-    This is the "build once, slice many" pattern (win-analytics-process skill's
+    This is the "build once, slice many" pattern (analytics-process skill's
     references/methodology.md). All funnel
     steps are derived point-in-time from the raw event stream (events strictly
     before each user's election anchor), so onboarding/activation are anchored
