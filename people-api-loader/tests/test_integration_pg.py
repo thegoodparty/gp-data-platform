@@ -125,7 +125,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     create_sql = extract_create_tables(_DDL)["Voter"]
 
     # 1. create-schema: partitioned parent + per-state children apply, and partitions attach.
-    parent, children = build_partitioned_ddl(create_sql, "Voter", _STATES)
+    parent, children = build_partitioned_ddl(create_sql, "Voter", "State", _STATES)
     with pg_conn.cursor() as cur:
         _exec(cur, 'DROP TABLE IF EXISTS public."Voter" CASCADE')  # idempotent vs a reused DB
         _exec(cur, parent)
