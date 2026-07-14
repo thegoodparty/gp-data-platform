@@ -1,15 +1,24 @@
-"""Step 7 — validate the new cluster before handoff (ClickUp DATA-1911).
+"""Step 7 — validate the new cluster before handoff (ClickUp DATA-1911, DATA-2100).
 
-Six checks against the unified public."Voter" table (all must pass):
-1. row_counts_match_databricks — per-state count (GROUP BY "State") within ±10% of
-   the unload baseline (load integrity: did COPY load everything that was unloaded).
-2. prod_row_counts_within_tolerance — per-state count within ±10% of the inspect-prod
-   baseline (sanity: refresh magnitude vs the current Present cluster). Fails closed if
-   inspect-prod hasn't run for this run_date — run it first.
-3. schema_diff_clean — new Voter columns equal prod Voter columns.
-4. index_constraint_diff_clean — every prod index present on new.
+Runs, PER TABLE in the unload manifest (Voter, District, DistrictStats, DistrictVoter):
+1. row_counts_match_databricks — the unload-integrity gate: per-state count (GROUP BY "State")
+   for a partitioned table (Voter, DistrictVoter), or a single whole-table count(*) for a flat
+   table (District, DistrictStats), within ±10% of the unload baseline (did COPY load everything
+   that was unloaded).
+2. prod_row_counts_within_tolerance — the same ±10% shape against the inspect-prod baseline
+   (sanity: refresh magnitude vs the current Present cluster). Fails closed if inspect-prod hasn't
+   run for this run_date, or if the REQUIRED Voter baseline is somehow missing. An optional table
+   absent from the prod baseline (e.g. DistrictStats, "not yet a serving table" — see
+   schema_spec.py; inspect_prod treats the whole District family as best-effort) is skipped
+   instead — there's no magnitude baseline to sanity-check.
+3. schema_diff_clean — new columns equal prod columns. Skipped (not failed) when prod has no
+   such table at all (same DistrictStats case: nothing to diff against).
+4. index_constraint_diff_clean — every prod index present on new (trivially passes when prod has
+   no indexes for an absent table).
+
+Plus two Voter-only checks (these are inherently Voter concerns, not per-table):
 5. sample_queries_pass — voterFile.util.ts-shaped queries return without error.
-6. l2Type_coverage — every distinct org_districts l2Type maps to a column.
+6. l2Type_coverage — every distinct org_districts l2Type maps to a Voter column.
 
 Writes validate.json + a Markdown companion. all_passed=False blocks handoff
 (cli.py exits non-zero).
@@ -25,6 +34,7 @@ from loader.people_api.db import connect_new, connect_prod
 from loader.people_api.manifests import (
     InspectManifest,
     UnloadManifest,
+    UnloadTable,
     ValidateManifest,
     ValidationCheck,
     manifest_uri,
@@ -32,6 +42,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
+from loader.people_api.schema.schema_spec import is_partitioned
 
 log = get_logger(__name__)
 
@@ -39,13 +50,23 @@ log = get_logger(__name__)
 _ROW_COUNT_TOLERANCE = 0.10
 
 
-def _new_voter_counts_by_state(cfg: LoaderConfig, run_date: str) -> dict[str, int]:
-    """Per-state Voter row counts on the new cluster (queried once, reused by both gates)."""
+def _new_counts_by_state(cfg: LoaderConfig, run_date: str, table: str) -> dict[str, int]:
+    """Per-state row counts for `table` on the new cluster (partitioned tables only)."""
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        cur.execute('SELECT "State", count(*) FROM public."Voter" GROUP BY "State"')
+        cur.execute(  # ty: ignore[no-matching-overload]
+            f'SELECT "State", count(*) FROM public."{table}" GROUP BY "State"'
+        )
         # Drop a NULL-State group (the partition key is NOT NULL, so this is defensive,
         # matching inspect_prod): a None key would break JSON-keyed manifest output.
         return {row[0]: int(row[1]) for row in cur.fetchall() if row[0] is not None}
+
+
+def _new_total_count(cfg: LoaderConfig, run_date: str, table: str) -> int:
+    """Whole-table row count for `table` on the new cluster (flat tables only)."""
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
+        row = cur.fetchone()
+        return int(row[0]) if row is not None else 0
 
 
 def _compare_counts(
@@ -81,65 +102,130 @@ def _compare_counts(
     )
 
 
-def _check_prod_row_counts(
-    cfg: LoaderConfig, run_date: str, actual_by_state: dict[str, int]
-) -> ValidationCheck:
-    """New-vs-prod ±10% gate on Voter, using inspect-prod's Voter per-state baseline.
+def _compare_total(name: str, actual: int, expected: int) -> ValidationCheck:
+    """Build a ±tolerance whole-table count check (flat tables: District, DistrictStats)."""
+    low = expected * (1 - _ROW_COUNT_TOLERANCE)
+    high = expected * (1 + _ROW_COUNT_TOLERANCE)
+    return ValidationCheck(
+        name=name,
+        passed=low <= actual <= high,
+        details={"expected": expected, "actual": actual, "tolerance": _ROW_COUNT_TOLERANCE},
+    )
 
-    Distinct from the unload gate (load integrity): this checks the refresh is roughly
-    the same magnitude as the current Present cluster. Fails closed (like the other
-    prod-dependent checks) when the inspect baseline is missing — returning passed=True
-    there would let an all-pass run cache a `complete` manifest that permanently bypasses
-    this gate on retry. The fix is to run inspect-prod for the same run_date.
+
+def _count_gate_check(
+    cfg: LoaderConfig, run_date: str, unload_table: UnloadTable
+) -> tuple[ValidationCheck, dict[str, int] | int]:
+    """One table's unload-integrity gate: per-state ±10% (partitioned) or whole-table ±10% (flat).
+
+    Returns `(check, actual)` — `actual` is reused by `_check_prod_row_counts` so the new
+    cluster's counts for this table are queried once, not twice.
+    """
+    name = f"row_counts_match_databricks:{unload_table.table}"
+    if is_partitioned(unload_table.table):
+        actual = _new_counts_by_state(cfg, run_date, unload_table.table)
+        return _compare_counts(name, actual, unload_table.row_counts), actual
+    actual_total = _new_total_count(cfg, run_date, unload_table.table)
+    return _compare_total(name, actual_total, unload_table.row_counts.get("", 0)), actual_total
+
+
+def _check_prod_row_counts(
+    cfg: LoaderConfig, run_date: str, new_counts: dict[str, dict[str, int] | int]
+) -> list[ValidationCheck]:
+    """New-vs-prod ±10% gate per table, using inspect-prod's per-table baseline.
+
+    Distinct from the unload gate (load integrity): this checks the refresh is roughly the same
+    magnitude as the current Present cluster. Fails closed (like the other prod-dependent checks)
+    when the inspect baseline is missing entirely, or when the REQUIRED Voter baseline is absent
+    from a `complete` inspect manifest (shouldn't happen — inspect_prod guarantees it — but fail
+    closed rather than silently pass). An OPTIONAL table (the District family) absent from the
+    baseline is skipped: inspect_prod itself treats these as best-effort (e.g. DistrictStats is
+    "not yet a serving table" on any current prod cluster), so there is no magnitude baseline to
+    compare against — skipping avoids a permanently-failing gate for a legitimately new table.
     """
     inspect = read_manifest(cfg, run_date, "inspect", InspectManifest)
     if inspect is None or inspect.status != "complete":
         log.error("validate.prod_baseline_missing", reason="no completed inspect manifest")
-        return ValidationCheck(
-            name="prod_row_counts_within_tolerance",
-            passed=False,
-            details={"error": "no completed inspect manifest for this run_date"},
-        )
-    voter = next((t for t in inspect.tables if t.table == "Voter"), None)
-    if voter is None or not voter.per_state_row_counts:
-        log.error("validate.prod_baseline_missing", reason="no Voter per-state baseline")
-        return ValidationCheck(
-            name="prod_row_counts_within_tolerance",
-            passed=False,
-            details={"error": "inspect manifest has no Voter per-state baseline"},
-        )
-    # Don't flag states new to the cluster but absent from the prod snapshot — that's a
-    # legitimate geographic expansion, not drift (the unload gate already covers integrity).
-    return _compare_counts(
-        "prod_row_counts_within_tolerance",
-        actual_by_state,
-        voter.per_state_row_counts,
-        flag_unexpected=False,
-    )
+        return [
+            ValidationCheck(
+                name=f"prod_row_counts_within_tolerance:{table}",
+                passed=False,
+                details={"error": "no completed inspect manifest for this run_date"},
+            )
+            for table in new_counts
+        ]
+
+    checks: list[ValidationCheck] = []
+    for table, actual in new_counts.items():
+        name = f"prod_row_counts_within_tolerance:{table}"
+        insp = next((t for t in inspect.tables if t.table == table), None)
+        if insp is None:
+            if table == "Voter":
+                log.error("validate.prod_baseline_missing", reason="no Voter baseline in inspect manifest")
+                checks.append(
+                    ValidationCheck(
+                        name=name, passed=False, details={"error": "inspect manifest has no Voter baseline"}
+                    )
+                )
+            else:
+                log.warning("validate.prod_baseline_table_absent", table=table)
+                checks.append(
+                    ValidationCheck(
+                        name=name, passed=True, details={"skipped": "table absent from inspect baseline"}
+                    )
+                )
+            continue
+        # `isinstance` (not `is_partitioned`) narrows `actual`'s union type for ty: `_count_gate_check`
+        # guarantees a dict iff the table is partitioned, so this is equivalent by construction.
+        if isinstance(actual, dict):
+            if not insp.per_state_row_counts:
+                log.error("validate.prod_baseline_missing", reason=f"no {table} per-state baseline")
+                checks.append(
+                    ValidationCheck(
+                        name=name,
+                        passed=False,
+                        details={"error": f"inspect manifest has no {table} per-state baseline"},
+                    )
+                )
+                continue
+            # Don't flag states new to the cluster but absent from the prod snapshot — that's a
+            # legitimate geographic expansion, not drift (the unload gate already covers integrity).
+            checks.append(_compare_counts(name, actual, insp.per_state_row_counts, flag_unexpected=False))
+        else:
+            checks.append(_compare_total(name, actual, insp.total_row_count))
+    return checks
 
 
-def _voter_columns(conn) -> set[str]:
+def _columns(conn, table: str) -> set[str]:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_schema='public' AND table_name='Voter'"
+            f"WHERE table_schema='public' AND table_name='{table}'"
         )
         return {r[0] for r in cur.fetchall()}
 
 
-def _check_schema_diff(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+def _check_schema_diff(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCheck:
+    name = f"schema_diff_clean:{table}"
     try:
         with connect_prod(cfg) as prod_conn:
-            prod_cols = _voter_columns(prod_conn)
+            prod_cols = _columns(prod_conn, table)
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
-        log.error("validate.prod_unreachable", check="schema_diff_clean", error=str(e))
-        return ValidationCheck(name="schema_diff_clean", passed=False, details={"error_reading_prod": str(e)})
+        log.error("validate.prod_unreachable", check=name, error=str(e))
+        return ValidationCheck(name=name, passed=False, details={"error_reading_prod": str(e)})
+    if not prod_cols:
+        # No columns on prod: this table doesn't exist there yet (e.g. DistrictStats, which
+        # schema_spec.py documents as "not yet a serving table" — inspect_prod treats the whole
+        # District family as best-effort/optional for the same reason). Nothing to diff against;
+        # skip rather than report every column on the new cluster as "extra" and fail forever.
+        log.warning("validate.schema_diff.skip", table=table, reason="table absent from prod")
+        return ValidationCheck(name=name, passed=True, details={"skipped": "table absent from prod"})
     with connect_new(cfg, run_date) as conn:
-        new_cols = _voter_columns(conn)
+        new_cols = _columns(conn, table)
     missing_from_new = prod_cols - new_cols
     extra_in_new = new_cols - prod_cols
     return ValidationCheck(
-        name="schema_diff_clean",
+        name=name,
         passed=not missing_from_new and not extra_in_new,
         details={
             "prod_cols": len(prod_cols),
@@ -150,25 +236,25 @@ def _check_schema_diff(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     )
 
 
-def _check_indexes(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+def _check_indexes(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCheck:
+    name = f"index_constraint_diff_clean:{table}"
     query = (
-        "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='Voter' ORDER BY indexname"
+        "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND "
+        f"tablename='{table}' ORDER BY indexname"
     )
     try:
         with connect_prod(cfg) as prod_conn, prod_conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query)  # ty: ignore[no-matching-overload]
             prod_idx = {r[0] for r in cur.fetchall()}
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
-        log.error("validate.prod_unreachable", check="index_constraint_diff_clean", error=str(e))
-        return ValidationCheck(
-            name="index_constraint_diff_clean", passed=False, details={"error_reading_prod": str(e)}
-        )
+        log.error("validate.prod_unreachable", check=name, error=str(e))
+        return ValidationCheck(name=name, passed=False, details={"error_reading_prod": str(e)})
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        cur.execute(query)
+        cur.execute(query)  # ty: ignore[no-matching-overload]
         new_idx = {r[0] for r in cur.fetchall()}
     missing = sorted(prod_idx - new_idx)
     return ValidationCheck(
-        name="index_constraint_diff_clean",
+        name=name,
         passed=not missing,
         details={"prod_count": len(prod_idx), "new_count": len(new_idx), "missing_from_new": missing[:20]},
     )
@@ -220,7 +306,7 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
             details={"skipped": "org_districts unreachable", "error": str(e)},
         )
     with connect_new(cfg, run_date) as conn:
-        new_cols = _voter_columns(conn)
+        new_cols = _columns(conn, "Voter")
     missing = sorted(v for v in distinct_l2types if v not in new_cols)
     return ValidationCheck(
         name="l2Type_coverage",
@@ -262,10 +348,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     unload = read_manifest(cfg, run_date, "unload", UnloadManifest)
     if unload is None or unload.status != "complete":
         raise RuntimeError("Step 7 requires a completed unload manifest (per-state baseline).")
-    # This step still validates only Voter; select its per-table unload record for the count gate.
-    # (Task 7 generalizes validate to iterate all unload.tables.)
-    voter_unload = next((t for t in unload.tables if t.table == "Voter"), None)
-    if voter_unload is None:
+    if not any(t.table == "Voter" for t in unload.tables):
         raise RuntimeError("unload manifest has no Voter table")
 
     started = datetime.now(UTC)
@@ -277,13 +360,19 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     # written. The per-check functions capture their own expected failures; this catches
     # everything else.
     try:
-        # Query the new cluster's per-state Voter counts once; both count gates reuse it.
-        new_counts = _new_voter_counts_by_state(cfg, run_date)
+        # Query the new cluster's counts once per table; both count gates reuse them.
+        count_checks: list[ValidationCheck] = []
+        new_counts: dict[str, dict[str, int] | int] = {}
+        for t in unload.tables:
+            check, actual = _count_gate_check(cfg, run_date, t)
+            count_checks.append(check)
+            new_counts[t.table] = actual
+
         checks: list[ValidationCheck] = [
-            _compare_counts("row_counts_match_databricks", new_counts, voter_unload.row_counts),
-            _check_prod_row_counts(cfg, run_date, new_counts),
-            _check_schema_diff(cfg, run_date),
-            _check_indexes(cfg, run_date),
+            *count_checks,
+            *_check_prod_row_counts(cfg, run_date, new_counts),
+            *[_check_schema_diff(cfg, run_date, t.table) for t in unload.tables],
+            *[_check_indexes(cfg, run_date, t.table) for t in unload.tables],
             _check_sample_queries(cfg, run_date),
             _check_l2type_coverage(cfg, run_date),
         ]
