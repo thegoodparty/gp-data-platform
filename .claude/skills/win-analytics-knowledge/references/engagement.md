@@ -15,6 +15,7 @@ stream they're computed from.
 - IF the question asks for a governed metric's definition (Active, Activated, Onboarded, etc.) → [canonical_metrics.md](canonical_metrics.md); the caveats are below.
 - IF the analysis spans the **2026-05-07 onboarding cutover** → use version-agnostic anchors (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`.
 - IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
+- IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see [sources.md](sources.md) ("Event-lifecycle assets"). The catalog's `first_seen_date` is data-observed, not code-truth.
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
 - IF the question is about self-reported win/loss from the Did-You-Win modal → that's an outcome; see [outcomes.md](outcomes.md).
 
