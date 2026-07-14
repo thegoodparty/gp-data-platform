@@ -8,58 +8,80 @@
 -- real loss here means a format or schema drift (a property type changed,
 -- a datetime representation shifted) — exactly the class of change that
 -- must block a build rather than silently null a Sigma column.
+-- Registry rows flagged cast_loss_expected are excluded: their source
+-- properties legitimately carry non-conforming values (free-text ids,
+-- out-of-map enum words) that the cast nulls by design, unchanged from the
+-- pre-registry hand-written expressions.
 -- depends_on: {{ ref("hubspot_contact_property_columns") }}
+-- depends_on: {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
 {{ config(severity="error") }}
 
 {%- set typed = [] %}
 {%- for p in hubspot_generated_contact_properties() %}
-    {%- if p.cast_type != "string" %} {% do typed.append(p) %} {% endif %}
+    {%- if p.cast_type != "string" and not p.cast_loss_expected %}
+        {% do typed.append(p) %}
+    {% endif %}
 {%- endfor %}
 
-with
-    raw_counts as (
-        select
-            {%- for p in typed %}
-                count(
-                    nullif(get_json_object(properties, '$.{{ p.internal_name }}'), '')
-                ) as {{ p.column_name }}{{ "," if not loop.last }}
-            {%- endfor %}
-        from {{ source("airbyte_source", "hubspot_api_contacts") }}
-    ),
-    model_counts as (
-        select
-            {%- for p in typed %}
-                count(
-                    {{ p.column_name }}
-                ) as {{ p.column_name }}{{ "," if not loop.last }}
-            {%- endfor %}
-        from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
-    ),
-    raw_long as (
-        select
-            stack(
-                {{ typed | length }},
+{% if typed | length == 0 %}
+    -- no typed generated rows in the registry: render a valid, always-empty
+    -- statement instead of an illegal zero-arg stack()
+    select
+        cast(null as string) as column_name,
+        cast(null as bigint) as raw_nonempty,
+        cast(null as bigint) as model_nonnull,
+        cast(null as bigint) as values_lost_to_cast
+    where false
+{% else %}
+    with
+        raw_counts as (
+            select
                 {%- for p in typed %}
-                    '{{ p.column_name }}', {{ p.column_name }}{{ "," if not loop.last }}
+                    count(
+                        nullif(
+                            get_json_object(properties, '$.{{ p.internal_name }}'), ''
+                        )
+                    ) as {{ p.column_name }}{{ "," if not loop.last }}
                 {%- endfor %}
-            ) as (column_name, raw_nonempty)
-        from raw_counts
-    ),
-    model_long as (
-        select
-            stack(
-                {{ typed | length }},
+            from {{ source("airbyte_source", "hubspot_api_contacts") }}
+        ),
+        model_counts as (
+            select
                 {%- for p in typed %}
-                    '{{ p.column_name }}', {{ p.column_name }}{{ "," if not loop.last }}
+                    count(
+                        {{ p.column_name }}
+                    ) as {{ p.column_name }}{{ "," if not loop.last }}
                 {%- endfor %}
-            ) as (column_name, model_nonnull)
-        from model_counts
-    )
-select
-    column_name,
-    raw_nonempty,
-    model_nonnull,
-    raw_nonempty - model_nonnull as values_lost_to_cast
-from raw_long
-join model_long using (column_name)
-where raw_nonempty != model_nonnull
+            from {{ ref("stg_airbyte_source__hubspot_api_contacts") }}
+        ),
+        raw_long as (
+            select
+                stack(
+                    {{ typed | length }},
+                    {%- for p in typed %}
+                        '{{ p.column_name }}',
+                        {{ p.column_name }}{{ "," if not loop.last }}
+                    {%- endfor %}
+                ) as (column_name, raw_nonempty)
+            from raw_counts
+        ),
+        model_long as (
+            select
+                stack(
+                    {{ typed | length }},
+                    {%- for p in typed %}
+                        '{{ p.column_name }}',
+                        {{ p.column_name }}{{ "," if not loop.last }}
+                    {%- endfor %}
+                ) as (column_name, model_nonnull)
+            from model_counts
+        )
+    select
+        column_name,
+        raw_nonempty,
+        model_nonnull,
+        raw_nonempty - model_nonnull as values_lost_to_cast
+    from raw_long
+    join model_long using (column_name)
+    where raw_nonempty != model_nonnull
+{% endif %}
