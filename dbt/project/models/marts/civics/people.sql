@@ -155,6 +155,45 @@ with
             = 1
     ),
 
+    -- BR officeholder attributes: int__ballotready_candidate_identity is
+    -- candidacy-based, so officeholder-only BR people carry no name from br_attrs.
+    -- Backfill from the office-holder feed, keyed on br_candidate_id. Freshness
+    -- then alphabetical tie-breaks dedupe multiple terms per person.
+    br_officeholder_attrs as (
+        select
+            r.gp_person_id,
+            nullif(trim(oh.first_name), '') as first_name,
+            nullif(trim(oh.last_name), '') as last_name,
+            nullif(trim(oh.email), '') as email,
+            nullif(trim(oh.phone), '') as phone,
+            nullif(trim(oh.state), '') as state,
+            case
+                when get(oh.party_names, 0) is null
+                then null
+                else {{ parse_party_affiliation("get(oh.party_names, 0)") }}
+            end as party
+        from records as r
+        inner join
+            {{ ref("stg_airbyte_source__ballotready_s3_office_holders_v3") }} as oh
+            on cast(oh.br_candidate_id as string) = r.source_id
+        where r.source_name = 'ballotready'
+        qualify
+            row_number() over (
+                partition by r.gp_person_id
+                order by
+                    r.first_seen_at asc nulls last,
+                    r.source_id,
+                    oh.office_holder_created_at desc nulls last,
+                    oh._airbyte_extracted_at desc,
+                    oh.email asc nulls last,
+                    oh.phone asc nulls last,
+                    oh.last_name asc nulls last,
+                    oh.first_name asc nulls last,
+                    oh.state asc nulls last
+            )
+            = 1
+    ),
+
     -- TS/DDHQ attributes ride the clustered candidacy-stage rows, keyed on
     -- unique_id == record_key (DDHQ carries no email/phone).
     clustered as (
@@ -311,6 +350,7 @@ select
         ga.first_name,
         ha.first_name,
         ba.first_name,
+        boa.first_name,
         ta.first_name,
         toa.first_name,
         da.first_name
@@ -319,16 +359,17 @@ select
         ga.last_name,
         ha.last_name,
         ba.last_name,
+        boa.last_name,
         ta.last_name,
         toa.last_name,
         da.last_name
     ) as last_name,
-    coalesce(ga.email, ha.email, ba.email, ta.email, toa.email) as email,
-    coalesce(ga.phone, ha.phone, ba.phone, ta.phone, toa.phone) as phone,
+    coalesce(ga.email, ha.email, ba.email, boa.email, ta.email, toa.email) as email,
+    coalesce(ga.phone, ha.phone, ba.phone, boa.phone, ta.phone, toa.phone) as phone,
 
     -- Civic attributes: BR > others.
-    coalesce(ba.state, ha.state, ta.state, toa.state, da.state) as state,
-    coalesce(ba.party, ha.party, ta.party, toa.party, da.party) as party,
+    coalesce(ba.state, boa.state, ha.state, ta.state, toa.state, da.state) as state,
+    coalesce(ba.party, boa.party, ha.party, ta.party, toa.party, da.party) as party,
 
     pb.first_seen_at,
     pb.group_size,
@@ -342,6 +383,7 @@ left join roles using (gp_person_id)
 left join gp_api_attrs as ga using (gp_person_id)
 left join hubspot_attrs as ha using (gp_person_id)
 left join br_attrs as ba using (gp_person_id)
+left join br_officeholder_attrs as boa using (gp_person_id)
 left join ts_attrs as ta using (gp_person_id)
 left join ts_officeholder_attrs as toa using (gp_person_id)
 left join ddhq_attrs as da using (gp_person_id)
