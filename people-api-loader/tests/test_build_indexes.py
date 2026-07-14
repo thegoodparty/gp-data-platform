@@ -400,9 +400,10 @@ def test_create_index_partitioned_appends_partition_key() -> None:
         columns=["district_id", "voter_id"],
         where=None,
     )
-    step._create_index(conn, idx, partition_key="State")  # ty: ignore[invalid-argument-type]
+    # DistrictVoter's partition column is lowercase "state" (its mart), not capital "State".
+    step._create_index(conn, idx, partition_key="state")  # ty: ignore[invalid-argument-type]
     sql = " ".join(executed_sql(conn))
-    assert '("district_id", "voter_id", "State")' in sql
+    assert '("district_id", "voter_id", "state")' in sql
 
 
 def test_create_plain_flat_builds_directly() -> None:
@@ -523,8 +524,9 @@ def test_run_builds_all_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     # Partitioned PKs get "State" appended; flat PKs do NOT.
     voter_pk = [s for s in sql if 'ADD CONSTRAINT "Voter_pkey"' in s]
     assert voter_pk and 'PRIMARY KEY ("id", "State")' in voter_pk[0]
+    # DistrictVoter is partitioned on lowercase "state" (spec-driven), so run() appends "state".
     dv_pk = [s for s in sql if 'ADD CONSTRAINT "DistrictVoter_pkey"' in s]
-    assert dv_pk and 'PRIMARY KEY ("district_id", "voter_id", "State")' in dv_pk[0]
+    assert dv_pk and 'PRIMARY KEY ("district_id", "voter_id", "state")' in dv_pk[0]
     district_pk = [s for s in sql if 'ADD CONSTRAINT "District_pkey"' in s]
     assert district_pk and 'PRIMARY KEY ("id")' in district_pk[0] and '"State"' not in district_pk[0]
     ds_pk = [s for s in sql if 'ADD CONSTRAINT "DistrictStats_pkey"' in s]

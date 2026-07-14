@@ -14,7 +14,10 @@ def test_partition_flags() -> None:
     assert ss.is_partitioned("DistrictVoter") is True
     assert ss.is_partitioned("District") is False
     assert ss.is_partitioned("DistrictStats") is False
-    assert ss.partition_column("DistrictVoter") == "State"
+    # Only the Voter mart emits capital "State"; the District family (incl. DistrictVoter)
+    # is lowercase "state" — the partition column is spec-driven per table.
+    assert ss.partition_column("Voter") == "State"
+    assert ss.partition_column("DistrictVoter") == "state"
     assert ss.partition_column("District") is None
 
 

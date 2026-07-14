@@ -156,8 +156,9 @@ def _create_index(conn: psycopg.Connection, idx: IndexDef, *, partition_key: str
         # current DB still has the single-column unique and the composite target would
         # break live upserts. See the PR body's cutover note.
         # SIBLING NOTE (cutover): DistrictVoter is the same DATA-1855 divergence. Its PK
-        # (district_id, voter_id) becomes (district_id, voter_id, "State") on this partitioned
-        # table, so the dbt DistrictVoter write path's ON CONFLICT must move to the composite key
+        # (district_id, voter_id) becomes (district_id, voter_id, "state") on this partitioned
+        # table (DistrictVoter's partition column is lowercase "state", not Voter's "State"), so
+        # the dbt DistrictVoter write path's ON CONFLICT must move to the composite key
         # at cutover, not before — for the same reason the current DB carries the narrower key.
         # A flat table (partition_key is None) appends nothing and keeps its real columns.
         keyed = [*idx.columns, partition_key] if partition_key is not None else list(idx.columns)

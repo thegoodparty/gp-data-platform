@@ -21,7 +21,7 @@ def test_inspect_table_with_state_and_snapshot() -> None:
     dt = datetime(2026, 6, 1, 12, 0, 0)
     conn = (
         FakeConn()
-        .queue_result((1,))  # has "State"
+        # Voter is_partitioned -> group by its spec column "State"; no runtime "State"-column probe.
         .queue_result((1,))  # has "updated_at"
         .queue_result([("TX", 60, dt), ("CA", 40, dt)])  # per-state count + max in one scan
     )
@@ -40,7 +40,6 @@ def test_inspect_table_total_includes_null_state_rows() -> None:
     # state), so total != sum(per_state) when NULL-state rows exist.
     conn = (
         FakeConn()
-        .queue_result((1,))  # has "State"
         .queue_result(None)  # has "updated_at" -> no
         .queue_result([("TX", 60), ("CA", 40), (None, 5)])  # a NULL-State group of 5
     )
@@ -50,9 +49,9 @@ def test_inspect_table_total_includes_null_state_rows() -> None:
     assert ti.per_state_snapshot_dates == {}
 
 
-def test_inspect_table_without_state_is_total_only() -> None:
-    # A District table with no "State" column -> a plain count(*), no per-state breakdown.
-    conn = FakeConn().queue_result(None).queue_result((7,))  # has "State" -> no; then count(*)
+def test_inspect_table_flat_table_is_total_only() -> None:
+    # A flat table (District, not partitioned) -> a plain count(*), no per-state breakdown.
+    conn = FakeConn().queue_result((7,))  # flat -> single count(*), no column probe
     ti = step._inspect_table(conn.cursor(), "District")  # ty: ignore[invalid-argument-type]
     assert ti.total_row_count == 7
     assert ti.per_state_row_counts == {}

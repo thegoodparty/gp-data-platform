@@ -27,8 +27,11 @@ class TableSpec:
 
 
 # The loader bulk-loads the full serving set onto the fresh cluster: Voter and DistrictVoter are
-# LIST-partitioned by "State" (large, per-partition parallel index builds); District and
-# DistrictStats are flat. Columns/types come from the marts (mart_introspect); this module owns the
+# LIST-partitioned (large, per-partition parallel index builds); District and DistrictStats are
+# flat. The partition column is per-table: only the Voter mart emits capital "State"; the District
+# family (DistrictVoter here) uses lowercase "state" (its mart's column and the serving/app
+# convention), so a hardcoded "State" would break DistrictVoter's partition DDL. Columns/types come
+# from the marts (mart_introspect); this module owns the
 # Postgres-side decisions. DistrictStats is not yet a serving table, so its PK is carried here, not
 # in the generated _serving_seed. Serving enforces no FKs, so none are created. Voter's single
 # Prisma-only column the mart omits is Mailing_HHGender_Description; `id` is the mart's salted-uuid
@@ -54,7 +57,7 @@ TABLE_SPECS: dict[str, TableSpec] = {
     ),
     "DistrictVoter": TableSpec(
         pg_table="DistrictVoter",
-        partition_by="State",
+        partition_by="state",  # lowercase: the DistrictVoter mart emits "state", not Voter's "State"
     ),
 }
 

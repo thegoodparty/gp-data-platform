@@ -182,6 +182,28 @@ def test_load_unit_partial_reload_deletes_then_loads(monkeypatch: pytest.MonkeyP
     assert r.files_loaded == 1 and r.actual_rows == 100
 
 
+def test_count_state_rows_uses_spec_partition_column() -> None:
+    # Voter's partition column is capital "State"; DistrictVoter's is lowercase "state" (its mart).
+    # _count_state_rows must use each table's real column, not a hardcoded "State".
+    voter_conn = FakeConn().queue_result((1,))
+    step._count_state_rows(cast(psycopg.Connection, voter_conn), "Voter", "TX")
+    assert any('WHERE "State" = ' in s for s in executed_sql(voter_conn))
+    dv_conn = FakeConn().queue_result((1,))
+    step._count_state_rows(cast(psycopg.Connection, dv_conn), "DistrictVoter", "TX")
+    dv_sql = executed_sql(dv_conn)
+    assert any('WHERE "state" = ' in s for s in dv_sql)
+    assert not any('WHERE "State" = ' in s for s in dv_sql)
+
+
+def test_delete_state_uses_spec_partition_column() -> None:
+    voter_conn = FakeConn()
+    step._delete_state(cast(psycopg.Connection, voter_conn), "Voter", "TX")
+    assert any('DELETE FROM public."Voter" WHERE "State" = ' in s for s in executed_sql(voter_conn))
+    dv_conn = FakeConn()
+    step._delete_state(cast(psycopg.Connection, dv_conn), "DistrictVoter", "TX")
+    assert any('DELETE FROM public."DistrictVoter" WHERE "state" = ' in s for s in executed_sql(dv_conn))
+
+
 def test_load_unit_skip_path_does_not_delete(monkeypatch: pytest.MonkeyPatch) -> None:
     # exact match -> skip, and crucially no destructive DELETE fires.
     conn = FakeConn().queue_result((100,))

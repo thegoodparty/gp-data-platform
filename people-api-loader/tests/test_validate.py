@@ -113,6 +113,20 @@ def test_new_counts_by_state_queries_the_given_table(monkeypatch: pytest.MonkeyP
     assert 'public."DistrictVoter"' in conn.executed[0][0]
 
 
+def test_new_counts_by_state_uses_spec_partition_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Voter groups by capital "State"; DistrictVoter groups by lowercase "state" (its mart column).
+    voter_conn = FakeConn().queue_result([("TX", 1)])
+    monkeypatch.setattr(step, "connect_new", fake_connect(voter_conn))
+    step._new_counts_by_state(_CFG, "20260609", "Voter")
+    assert 'GROUP BY "State"' in voter_conn.executed[0][0]
+
+    dv_conn = FakeConn().queue_result([("TX", 1)])
+    monkeypatch.setattr(step, "connect_new", fake_connect(dv_conn))
+    step._new_counts_by_state(_CFG, "20260609", "DistrictVoter")
+    assert 'GROUP BY "state"' in dv_conn.executed[0][0]
+    assert 'GROUP BY "State"' not in dv_conn.executed[0][0]
+
+
 def test_new_total_count(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = FakeConn().queue_result((42,))
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
@@ -590,11 +604,11 @@ def test_check_prod_row_counts_voter_missing_from_manifest_fails_closed(
     assert "error" in checks[0].details
 
 
-def test_check_prod_row_counts_partitioned_table_present_but_empty_baseline_fails(
+def test_check_prod_row_counts_voter_present_but_empty_baseline_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A partitioned table's TableInspection exists but carries no per-state counts: the baseline
-    # entry is unusable, so this must fail (distinct from "absent entirely", which skips).
+    # Voter's TableInspection exists but carries no per-state counts: the REQUIRED Voter baseline is
+    # unusable, so this must fail closed (distinct from "absent entirely" for an optional table).
     inspect = SimpleNamespace(
         status="complete",
         tables=[SimpleNamespace(table="Voter", per_state_row_counts={}, total_row_count=0)],
@@ -603,3 +617,28 @@ def test_check_prod_row_counts_partitioned_table_present_but_empty_baseline_fail
     checks = step._check_prod_row_counts(_CFG, "20260609", {"Voter": {"TX": 100}})
     assert checks[0].passed is False
     assert "error" in checks[0].details
+
+
+def test_check_prod_row_counts_non_voter_partitioned_empty_baseline_skips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # DistrictVoter is a partitioned serving table new to the loader; a current prod cluster may
+    # carry it with no usable per-state baseline. Unlike Voter, this must SKIP (not fail closed) —
+    # there's no magnitude baseline to assume, and failing would wedge the gate for a legit new table.
+    inspect = SimpleNamespace(
+        status="complete",
+        tables=[
+            SimpleNamespace(table="Voter", per_state_row_counts={"TX": 100}, total_row_count=100),
+            SimpleNamespace(table="DistrictVoter", per_state_row_counts={}, total_row_count=0),
+        ],
+    )
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: inspect)
+    checks = step._check_prod_row_counts(
+        _CFG, "20260609", {"Voter": {"TX": 100}, "DistrictVoter": {"TX": 100}}
+    )
+    dv = next(c for c in checks if c.name == "prod_row_counts_within_tolerance:DistrictVoter")
+    assert dv.passed is True
+    assert "skipped" in dv.details
+    # Voter with a real baseline still evaluated normally (fail-closed path untouched).
+    voter = next(c for c in checks if c.name == "prod_row_counts_within_tolerance:Voter")
+    assert voter.passed is True

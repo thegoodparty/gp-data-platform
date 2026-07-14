@@ -42,7 +42,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.schema_spec import is_partitioned
+from loader.people_api.schema.schema_spec import is_partitioned, partition_column
 from loader.people_api.schema.snapshot import load_target_schema
 from loader.people_api.schema.table_ddl import (
     extract_column_names,
@@ -153,11 +153,15 @@ def _count_state_rows(conn: psycopg.Connection, table: str, state: str) -> int:
     """Row count for a unit: whole-table when `state == ""` (flat table), else state-filtered.
 
     `table` comes from the unload manifest's known table names (TABLE_SPECS), not user
-    input, so the f-string is safe — same rationale as inspect_prod._inspect_table.
+    input, so the f-string is safe — same rationale as inspect_prod._inspect_table. A non-empty
+    `state` implies a partitioned table, so `partition_column(table)` is its real LIST-partition
+    column (Voter->"State", DistrictVoter->"state") — never a hardcoded "State".
     """
     with conn.cursor() as cur:
         if state:
-            sql = f'SELECT count(*) FROM public."{table}" WHERE "State" = %s'
+            pcol = partition_column(table)
+            assert pcol is not None  # a non-empty state unit only exists for a partitioned table
+            sql = f'SELECT count(*) FROM public."{table}" WHERE "{pcol}" = %s'
             cur.execute(sql, (state,))  # ty: ignore[invalid-argument-type]
         else:
             cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
@@ -169,7 +173,9 @@ def _delete_state(conn: psycopg.Connection, table: str, state: str) -> None:
     """Delete a unit's rows: whole-table when `state == ""` (flat table), else state-filtered."""
     with conn.cursor() as cur:
         if state:
-            sql = f'DELETE FROM public."{table}" WHERE "State" = %s'
+            pcol = partition_column(table)
+            assert pcol is not None  # a non-empty state unit only exists for a partitioned table
+            sql = f'DELETE FROM public."{table}" WHERE "{pcol}" = %s'
             cur.execute(sql, (state,))  # ty: ignore[invalid-argument-type]
         else:
             cur.execute(f'DELETE FROM public."{table}"')  # ty: ignore[no-matching-overload]

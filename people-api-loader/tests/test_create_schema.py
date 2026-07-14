@@ -15,7 +15,7 @@ from tests._fakes import FakeConn, executed_sql, fake_connect
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
 _DUMP = (
     'CREATE TABLE public."Voter" ("id" uuid NOT NULL, "State" text NOT NULL);\n'
-    'CREATE TABLE public."DistrictVoter" ("district_id" uuid NOT NULL, "voter_id" uuid NOT NULL, "State" text NOT NULL);\n'
+    'CREATE TABLE public."DistrictVoter" ("district_id" uuid NOT NULL, "voter_id" uuid NOT NULL, "state" text NOT NULL);\n'
     'CREATE TABLE public."District" ("id" uuid NOT NULL, "state" text NOT NULL);\n'
     'CREATE TABLE public."DistrictStats" ("district_id" uuid NOT NULL, "buckets" jsonb);\n'
 )
@@ -64,8 +64,9 @@ def test_creates_partitioned_and_flat(monkeypatch: pytest.MonkeyPatch) -> None:
     assert any(
         'CREATE TABLE IF NOT EXISTS public."Voter" (' in s and 'PARTITION BY LIST ("State")' in s for s in sql
     )
+    # DistrictVoter partitions on lowercase "state" (its mart's column), NOT capital "State".
     assert any(
-        'CREATE TABLE IF NOT EXISTS public."DistrictVoter" (' in s and 'PARTITION BY LIST ("State")' in s
+        'CREATE TABLE IF NOT EXISTS public."DistrictVoter" (' in s and 'PARTITION BY LIST ("state")' in s
         for s in sql
     )
     assert any(
@@ -79,6 +80,21 @@ def test_creates_partitioned_and_flat(monkeypatch: pytest.MonkeyPatch) -> None:
     # manifest lists every table + Voter/DistrictVoter children
     assert {"Voter", "DistrictVoter", "District", "DistrictStats"} <= set(manifest.tables_created)
     assert "Voter_TX" in manifest.tables_created and "DistrictVoter_TX" in manifest.tables_created
+
+
+def test_partition_column_casing_is_spec_driven_per_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The LIST-partition column is spec-driven, not a hardcoded capital "State": only the Voter mart
+    # emits "State"; DistrictVoter's mart emits lowercase "state". Emitting the wrong casing yields a
+    # Postgres "column ... named in partition key does not exist" error on a real run.
+    conn = FakeConn()
+    _patch(monkeypatch, conn)
+    step.run(_CFG, "20260609")
+    sql = executed_sql(conn)
+    voter_parent = next(s for s in sql if 'CREATE TABLE IF NOT EXISTS public."Voter" (' in s)
+    dv_parent = next(s for s in sql if 'CREATE TABLE IF NOT EXISTS public."DistrictVoter" (' in s)
+    assert 'PARTITION BY LIST ("State")' in voter_parent
+    assert 'PARTITION BY LIST ("state")' in dv_parent
+    assert 'PARTITION BY LIST ("State")' not in dv_parent  # must NOT reuse Voter's capital column
 
 
 def test_skips_when_complete(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,13 +121,13 @@ def test_build_partitioned_ddl_shape() -> None:
 
 def test_build_partitioned_ddl_parametrizes_table_and_column() -> None:
     parent, children = step.build_partitioned_ddl(
-        'CREATE TABLE public."DistrictVoter" ("voter_id" uuid NOT NULL, "State" text NOT NULL);',
+        'CREATE TABLE public."DistrictVoter" ("voter_id" uuid NOT NULL, "state" text NOT NULL);',
         "DistrictVoter",
-        "State",
+        "state",
         ["TX"],
     )
     assert 'CREATE TABLE IF NOT EXISTS public."DistrictVoter"' in parent
-    assert parent.rstrip().endswith('PARTITION BY LIST ("State");')
+    assert parent.rstrip().endswith('PARTITION BY LIST ("state");')
     assert children == [
         'CREATE TABLE IF NOT EXISTS public."DistrictVoter_TX" PARTITION OF public."DistrictVoter" FOR VALUES IN (\'TX\');'
     ]

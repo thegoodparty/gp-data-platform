@@ -42,7 +42,7 @@ from loader.people_api.manifests import (
     read_manifest,
     write_manifest,
 )
-from loader.people_api.schema.schema_spec import is_partitioned
+from loader.people_api.schema.schema_spec import is_partitioned, partition_column
 
 log = get_logger(__name__)
 
@@ -51,10 +51,17 @@ _ROW_COUNT_TOLERANCE = 0.10
 
 
 def _new_counts_by_state(cfg: LoaderConfig, run_date: str, table: str) -> dict[str, int]:
-    """Per-state row counts for `table` on the new cluster (partitioned tables only)."""
+    """Per-state row counts for `table` on the new cluster (partitioned tables only).
+
+    Groups by the table's real LIST-partition column (spec-driven): Voter->"State",
+    DistrictVoter->"state". Callers only invoke this for partitioned tables, so `partition_column`
+    is never None.
+    """
+    pcol = partition_column(table)
+    assert pcol is not None  # only called for partitioned tables (see _count_gate_check)
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
         cur.execute(  # ty: ignore[no-matching-overload]
-            f'SELECT "State", count(*) FROM public."{table}" GROUP BY "State"'
+            f'SELECT "{pcol}", count(*) FROM public."{table}" GROUP BY "{pcol}"'
         )
         # Drop a NULL-State group (the partition key is NOT NULL, so this is defensive,
         # matching inspect_prod): a None key would break JSON-keyed manifest output.
@@ -179,14 +186,30 @@ def _check_prod_row_counts(
         # guarantees a dict iff the table is partitioned, so this is equivalent by construction.
         if isinstance(actual, dict):
             if not insp.per_state_row_counts:
-                log.error("validate.prod_baseline_missing", reason=f"no {table} per-state baseline")
-                checks.append(
-                    ValidationCheck(
-                        name=name,
-                        passed=False,
-                        details={"error": f"inspect manifest has no {table} per-state baseline"},
+                if table == "Voter":
+                    # Voter is REQUIRED: an empty per-state baseline is a fault -> fail closed.
+                    log.error("validate.prod_baseline_missing", reason="no Voter per-state baseline")
+                    checks.append(
+                        ValidationCheck(
+                            name=name,
+                            passed=False,
+                            details={"error": "inspect manifest has no Voter per-state baseline"},
+                        )
                     )
-                )
+                else:
+                    # A non-Voter partitioned serving table (e.g. DistrictVoter) new to the loader:
+                    # a current prod cluster may carry it with no usable per-state baseline. There's
+                    # no magnitude baseline to assume, so SKIP rather than fail closed (mirrors the
+                    # optional-table-absent skip above) — failing would wedge the gate for a legit
+                    # new table. The unload gate already covers this table's load integrity.
+                    log.warning("validate.prod_baseline_empty", table=table)
+                    checks.append(
+                        ValidationCheck(
+                            name=name,
+                            passed=True,
+                            details={"skipped": f"{table} present but has no per-state prod baseline"},
+                        )
+                    )
                 continue
             # Don't flag states new to the cluster but absent from the prod snapshot — that's a
             # legitimate geographic expansion, not drift (the unload gate already covers integrity).
