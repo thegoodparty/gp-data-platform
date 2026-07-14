@@ -262,6 +262,11 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     unload = read_manifest(cfg, run_date, "unload", UnloadManifest)
     if unload is None or unload.status != "complete":
         raise RuntimeError("Step 7 requires a completed unload manifest (per-state baseline).")
+    # This step still validates only Voter; select its per-table unload record for the count gate.
+    # (Task 7 generalizes validate to iterate all unload.tables.)
+    voter_unload = next((t for t in unload.tables if t.table == "Voter"), None)
+    if voter_unload is None:
+        raise RuntimeError("unload manifest has no Voter table")
 
     started = datetime.now(UTC)
     log.info("validate.start")
@@ -275,7 +280,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
         # Query the new cluster's per-state Voter counts once; both count gates reuse it.
         new_counts = _new_voter_counts_by_state(cfg, run_date)
         checks: list[ValidationCheck] = [
-            _compare_counts("row_counts_match_databricks", new_counts, unload.per_state_row_counts),
+            _compare_counts("row_counts_match_databricks", new_counts, voter_unload.row_counts),
             _check_prod_row_counts(cfg, run_date, new_counts),
             _check_schema_diff(cfg, run_date),
             _check_indexes(cfg, run_date),

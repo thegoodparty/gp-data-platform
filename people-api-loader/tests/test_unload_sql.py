@@ -36,3 +36,29 @@ def test_unload_statement_shape() -> None:
 def test_count_by_state_statement() -> None:
     sql = unload_sql.count_by_state_statement("cat.dbt.m_people_api__voter")
     assert sql == ("SELECT `State` AS state, count(*) AS n FROM cat.dbt.m_people_api__voter GROUP BY `State`")
+
+
+def test_flat_unload_has_no_state_where() -> None:
+    sql = unload_sql.unload_statement_flat(
+        mart_fqn="cat.s.m", select_exprs=["`a`", "`b`"], s3_dir="s3://x/District/data/"
+    )
+    assert "WHERE" not in sql
+    assert "INSERT OVERWRITE DIRECTORY 's3://x/District/data/'" in sql
+
+
+def test_flat_count_statement() -> None:
+    assert unload_sql.count_all_statement("cat.s.m") == "SELECT count(*) AS n FROM cat.s.m"
+
+
+def test_select_exprs_transform_renames_buckets() -> None:
+    # DistrictStats: rename two struct fields inside buckets on the way out, to_json'd.
+    exprs = unload_sql.select_exprs(
+        ["district_id", "buckets"],
+        extra_columns=set(),
+        transforms={"buckets": unload_sql.BUCKETS_TO_JSON_EXPR},
+    )
+    assert exprs[0] == "`district_id`"
+    assert "to_json" in exprs[1].lower()
+    assert "presenceOfChildren" in exprs[1]
+    assert "estimatedIncomeRange" in exprs[1]
+    assert exprs[1].endswith("AS `buckets`")

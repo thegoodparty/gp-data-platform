@@ -27,7 +27,9 @@ _OPTS = "(FORMAT csv, DELIMITER E'\\t', NULL '', QUOTE '\"', ESCAPE '\"', ENCODI
 
 
 def _unload(files, counts):
-    return SimpleNamespace(status="complete", files=files, per_state_row_counts=counts)
+    # New per-table manifest shape: copy selects the Voter UnloadTable (row_counts + files).
+    voter = SimpleNamespace(table="Voter", files=files, row_counts=counts)
+    return SimpleNamespace(status="complete", tables=[voter])
 
 
 # A realistic mix of target types: text columns (which legitimately hold empty

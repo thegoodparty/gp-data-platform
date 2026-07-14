@@ -21,16 +21,26 @@ from __future__ import annotations
 _CSV_OPTIONS = "'sep' = '\\t', 'header' = 'false', 'nullValue' = '', 'quote' = '\"', 'escape' = '\"'"
 
 
-def select_exprs(ddl_columns: list[str], extra_columns: set[str]) -> list[str]:
+def select_exprs(
+    ddl_columns: list[str],
+    extra_columns: set[str],
+    transforms: dict[str, str] | None = None,
+) -> list[str]:
     """Backtick-quoted SELECT expressions in DDL order.
 
-    Prisma-only extras (columns the mart lacks) are emitted as `CAST(NULL AS STRING)`, not a bare
-    `NULL`: bare NULL is Spark's VOID type and the CSV writer rejects it. The value is always NULL,
-    so STRING is a safe placeholder for the CSV round-trip into the real (typed) target column.
+    `transforms` maps a column name to a full SQL expression that REPLACES the plain
+    `` `col` `` projection (the expression must alias itself `` AS `col` ``); used for the
+    DistrictStats buckets struct-field rename. Prisma-only extras (columns the mart lacks) are
+    emitted as `CAST(NULL AS STRING)`, not a bare `NULL`: bare NULL is Spark's VOID type and the
+    CSV writer rejects it. The value is always NULL, so STRING is a safe placeholder for the CSV
+    round-trip into the real (typed) target column.
     """
+    transforms = transforms or {}
     out: list[str] = []
     for col in ddl_columns:
-        if col in extra_columns:
+        if col in transforms:
+            out.append(transforms[col])
+        elif col in extra_columns:
             out.append(f"CAST(NULL AS STRING) AS `{col}`")
         else:
             out.append(f"`{col}`")
@@ -48,5 +58,36 @@ def unload_statement(*, mart_fqn: str, select_exprs: list[str], state: str, s3_d
     )
 
 
+def unload_statement_flat(*, mart_fqn: str, select_exprs: list[str], s3_dir: str) -> str:
+    """Unload a flat (non-partitioned) table's whole mart in one file set — no `WHERE State`."""
+    cols = ", ".join(select_exprs)
+    return (
+        f"INSERT OVERWRITE DIRECTORY '{s3_dir}'\n"
+        f"USING csv OPTIONS ({_CSV_OPTIONS})\n"
+        f"SELECT {cols}\n"
+        f"FROM {mart_fqn}"
+    )
+
+
 def count_by_state_statement(mart_fqn: str) -> str:
     return f"SELECT `State` AS state, count(*) AS n FROM {mart_fqn} GROUP BY `State`"
+
+
+def count_all_statement(mart_fqn: str) -> str:
+    return f"SELECT count(*) AS n FROM {mart_fqn}"
+
+
+# DistrictStats buckets: the active SQL mart (m_people_api__districtstats.sql) emits a `buckets`
+# struct with fields `age`, `homeowner`, `education`, `presenceofchildren`, `estimatedincomerange`
+# (all lowercased, no underscores). The app expects two of those keys in camelCase. Rebuild the
+# struct with the two renamed and to_json it for the jsonb serving column. This mirrors the legacy
+# DAG's _BUCKET_KEY_MAP and is deleted once the camelCase `_py` districtstats mart is enabled.
+BUCKETS_TO_JSON_EXPR = (
+    "to_json(named_struct("
+    "'age', `buckets`.`age`, "
+    "'homeowner', `buckets`.`homeowner`, "
+    "'education', `buckets`.`education`, "
+    "'presenceOfChildren', `buckets`.`presenceofchildren`, "
+    "'estimatedIncomeRange', `buckets`.`estimatedincomerange`"
+    ")) AS `buckets`"
+)

@@ -238,6 +238,11 @@ def run(
     unload = read_manifest(cfg, run_date, "unload", UnloadManifest)
     if unload is None or unload.status != "complete":
         raise RuntimeError("Step 4 requires a completed unload manifest.")
+    # This step still loads only Voter; select its per-table unload record. (Task 5 generalizes
+    # copy to iterate all unload.tables.)
+    voter_unload = next((t for t in unload.tables if t.table == _TARGET_TABLE), None)
+    if voter_unload is None:
+        raise RuntimeError("unload manifest has no Voter table")
 
     # Explicit column list (DDL order) so COPY maps by a pinned contract, not raw
     # position — see module docstring. Quote every name uniformly; "id" == id in PG.
@@ -265,7 +270,7 @@ def run(
     )
 
     files_by_state: dict[str, list[str]] = {}
-    for f in unload.files:
+    for f in voter_unload.files:
         if f.size_bytes == 0:
             continue
         files_by_state.setdefault(f.state, []).append(f.s3_key)
@@ -286,17 +291,17 @@ def run(
             cfg=cfg,
             run_date=run_date,
             state=state,
-            expected_rows=unload.per_state_row_counts.get(state, 0),
+            expected_rows=voter_unload.row_counts.get(state, 0),
             s3_keys=files_by_state.get(state, []),
             parallelism=parallelism,
             column_list=column_list,
             options=options,
         )
-        for state in sorted(states_to_load, key=lambda s: -unload.per_state_row_counts.get(s, 0))
+        for state in sorted(states_to_load, key=lambda s: -voter_unload.row_counts.get(s, 0))
     ]
 
     covered = {r.state for r in results}
-    expected_states = {s for s, count in unload.per_state_row_counts.items() if count > 0}
+    expected_states = {s for s, count in voter_unload.row_counts.items() if count > 0}
     all_loaded = covered >= expected_states
 
     manifest = CopyManifest(

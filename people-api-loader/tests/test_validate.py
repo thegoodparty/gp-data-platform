@@ -45,7 +45,9 @@ def test_new_voter_counts_by_state(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
-    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    unload = SimpleNamespace(
+        status="complete", tables=[SimpleNamespace(table="Voter", row_counts={"TX": 100})]
+    )
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
@@ -73,7 +75,9 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
-    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    unload = SimpleNamespace(
+        status="complete", tables=[SimpleNamespace(table="Voter", row_counts={"TX": 100})]
+    )
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
@@ -220,7 +224,9 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
     # only on 'complete', so a retry must re-execute every check and rewrite the manifest.
     # Pins the contract documented in run() (write 'failed', not 'complete', on a failure).
     captured: dict = {}
-    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    unload = SimpleNamespace(
+        status="complete", tables=[SimpleNamespace(table="Voter", row_counts={"TX": 100})]
+    )
     failed = SimpleNamespace(status="failed")
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: failed if name == "validate" else unload
@@ -290,7 +296,9 @@ def test_run_writes_failed_manifest_when_new_cluster_unreachable(monkeypatch: py
     # A naked pre-check failure must still leave a `failed` manifest (retryable), not
     # propagate out of run() with nothing written.
     captured: dict = {}
-    unload = SimpleNamespace(status="complete", per_state_row_counts={"TX": 100})
+    unload = SimpleNamespace(
+        status="complete", tables=[SimpleNamespace(table="Voter", row_counts={"TX": 100})]
+    )
     monkeypatch.setattr(
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
