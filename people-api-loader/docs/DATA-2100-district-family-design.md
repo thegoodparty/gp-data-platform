@@ -45,7 +45,7 @@ the two artifacts.
 The serving cluster enforces **no foreign keys** (`FOREIGN_KEYS = []`), so the loader creates none —
 this removes the parent-before-child ordering that would otherwise couple District → DistrictVoter.
 
-## Design decisions
+## Design decisions (implemented)
 
 ### 1. Partitioned-vs-flat is driven by `TableSpec.partition_by`
 
@@ -133,6 +133,16 @@ string; Databricks mart introspection also needs the deployment credentials):
 
 Running `extract-serving-structure` also serves as the **live DistrictStats existence re-verify** the
 serving snapshot could not settle locally.
+
+## District family cutover runbook (deployment-side)
+
+After code lands and passes CI, run these steps in order once on the target deployment to bootstrap the four-table serving schema and trigger the first end-to-end run:
+
+1. **Deploy the loader** (`@main` commit or tag) so the CLI has all four table specs.
+2. **Emit DDL:** Run `loader emit-ddl` and commit the regenerated `schema/data/target_schema.sql`. Requires Databricks access to introspect the four marts.
+3. **Extract serving structure:** Run `loader extract-serving-structure` against the prod serving cluster and commit the regenerated `schema/_serving_seed.py`. This captures real District/DistrictVoter indexes from prod and confirms DistrictStats' live state. DistrictStats PK still comes from its spec (decision 3), not the seed.
+4. **Trigger a full load:** Queue a `load_people_api` run on the target deployment with a past logical date (not future, not null). Monitor via the Airflow web UI or API until all steps complete.
+5. **Validate:** Confirm all four tables green in the `validate` step output. The validate step now checks per-table schema/index diffs with `:<table>` suffixes (e.g. `schema_diff_clean:Voter`, `schema_diff_clean:DistrictVoter`, etc.), so any dashboards or alerts keyed on the old bare check names must be updated.
 
 ## Legacy retirement (after the new path validates end-to-end)
 

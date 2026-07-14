@@ -1,7 +1,9 @@
 # People API loader DAG (`load_people_api`)
 
-Design and operational reference for the DAG that refreshes the People API voter database
-(`public."Voter"`) on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks.
+Design and operational reference for the DAG that refreshes the People API serving database
+on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks. The loader builds
+four tables: `Voter` and `DistrictVoter` (partitioned by State), and `District` and
+`DistrictStats` (flat).
 
 Ticket: DATA-1913 (DAG orchestration), epic DATA-1640 (People API data-loading revamp). This
 document reflects the implementation on branch `feat/DATA-1913-loader-dag` / PR #536.
@@ -32,11 +34,11 @@ inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> c
 | `dbt_test_voter_gate` | Run the DATA-1906 voter tests in dbt Cloud (`DbtCloudRunJobOperator`, `steps_override=["dbt test --select m_people_api__voter"]`). Runs locally-in-dbt-Cloud because dbt cannot run on the image's Python 3.14. Always runs (no manifest). |
 | `unload` | Export the voter marts per state to S3 (Databricks Statement Execution API, SQL warehouse only). |
 | `provision` | Create a fresh Aurora cluster + writer on the **copy-phase** instance class, empty cluster parameter groups, connection string to SSM. Reuses the shared S3 gateway VPC endpoint. |
-| `create_schema` | Apply the `CREATE TABLE public."Voter"` partitioned parent + 51 per-state `Voter_<ST>` LIST partitions from the committed snapshot. |
-| `copy` | Parallel server-side `aws_s3.table_import_from_s3` per file into the partitioned parent; rows route to partitions by `"State"`. Idempotent per state (count / DELETE-WHERE-State + reload). |
-| `build_indexes` | Scale the writer up to the **index-phase** class, then add the PK + the LALVOTERID unique + all plain indexes per partition, then `ANALYZE`. See below. |
+| `create_schema` | Apply CREATE TABLE statements from the committed snapshot for all four tables: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
+| `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
+| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `ANALYZE` all tables. See below. |
 | `resize` | Flip the writer to Serverless v2 with the prod ACU range, swap in the serve parameter group, bump backup retention, enable deletion protection. |
-| `validate` | Per-state row counts vs the `inspect_prod` baseline within +/-10%, plus structural checks. Failure halts the DAG. |
+| `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Failure halts the DAG. |
 | `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`resize`. On any post-provision failure it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
 
 ## Connectivity: bastion
@@ -71,20 +73,17 @@ wall-clock you can tolerate; do not upsize past what actually fills. Storage is 
 
 ## Index build design
 
-The table is LIST-partitioned by `"State"` (51 children). `CREATE INDEX` on the partitioned parent
-recurses through every partition serially inside one statement, so plain indexes are built
-**per partition** instead: `CREATE INDEX ... ON ONLY` the parent (instant) + one child index per
-partition as independent `(index, partition)` work units, then `ALTER INDEX ... ATTACH PARTITION`.
-The PK `(id, "State")` and the single `("LALVOTERID", "State")` unique stay parent-level builds.
+The partitioned tables (`Voter` and `DistrictVoter`) are LIST-partitioned by `"State"` (51 children each). `CREATE INDEX` on the partitioned parent recurses through every partition serially inside one statement, so plain indexes are built **per partition** instead: `CREATE INDEX ... ON ONLY` the parent (instant) + one child index per partition as independent `(index, partition)` work units, then `ALTER INDEX ... ATTACH PARTITION`. PKs and uniques stay parent-level builds. Flat tables (`District` and `DistrictStats`) have all indexes built at the parent level.
 
 Two things make this fast and cheap:
 
 1. **Largest-partition-first scheduling.** Postgres grants each `CREATE INDEX` its parallel workers
    at statement start, first-come, against the shared pool. With naive `(index, state)` ordering the
-   giant partitions (CA ~4.7M blocks, TX/FL/NY) launched mid-flood and were starved to ~1 worker for
-   hours while tiny partitions grabbed 5-8. `_order_children_largest_first` sorts units by
-   `pg_relation_size(partition)` descending so the giants launch first into an open pool and grab
-   their full worker allotment; the thousands of near-empty partitions backfill.
+   giant partitions (CA ~4.7M blocks, TX/FL/NY in Voter; similar distribution in DistrictVoter)
+   launched mid-flood and were starved to ~1 worker for hours while tiny partitions grabbed 5-8.
+   `_order_children_largest_first` sorts units by `pg_relation_size(partition)` descending so the
+   giants launch first into an open pool and grab their full worker allotment; the thousands of
+   near-empty partitions backfill. This scheduling applies across all partitioned-table units.
 2. **Filling the box.** Aurora defaults `max_parallel_workers` to about vCPU/2 (96 on the 192-vCPU
    box), which capped the build at ~125 active backends with ~67 cores idle. The build session sets
    `max_parallel_workers = 176` and `max_parallel_maintenance_workers = 16` (both user-context GUCs;
