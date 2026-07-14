@@ -2,33 +2,6 @@ version: 2
 
 models:
 
-  - name: write__election_api_db
-    description: >
-      This model writes data to the election api database.
-    config:
-      meta:
-        dbt_environment: "{{ env_var('DBT_ENVIRONMENT') }}"
-        election_db_host: "{{ env_var('DBT_ELECTION_DB_HOST') }}"
-        election_db_port: "{{ env_var('DBT_ELECTION_DB_PORT') }}"
-        election_db_name: "{{ env_var('DBT_ELECTION_DB_NAME') }}"
-        election_db_schema: "{{ env_var('DBT_ELECTION_DB_SCHEMA') }}"
-        election_db_user: "{{ env_var('DBT_ELECTION_DB_USER') }}"
-        staging_schema: "{{ env_var('DBT_STAGING_SCHEMA') }}"
-        owner: "Data Engineering Team"
-        contains_pii: true
-    columns:
-      - name: id
-        description: "Unique identifier for the loading job"
-        tests:
-          - not_null
-          - unique
-      - name: table_name
-        description: "The name of the table"
-        tests:
-            - not_null
-      - name: number_of_rows
-        description: "The number of rows in the table that's been loaded"
-
   - name: write__l2_databricks_to_gp_api
     description: >
       This model writes data from Databricks to the voter db in gp-api.

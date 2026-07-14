@@ -165,81 +165,90 @@ def apply_ddl(conn, statements: Sequence[str]) -> None:
         cur.close()
 
 
-def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
-    """Atomic rename-swap: stage `_new` -> `public.<table>`, old -> `_old`.
+def _archive_live_statements(spec: TableSyncSpec) -> list[str]:
+    """DDL to rename the live table (and its pk/indexes/fkeys) aside to `_old`.
 
-    All indexes/constraints listed on `spec` are renamed to/from canonical
-    Prisma names so the post-swap shape matches the migration exactly. Safe
-    on first run when `public.<table>` doesn't yet exist (skip the rename-old
-    branch), and self-healing when a prior run crashed between this
-    transaction committing and `drop_old_table` completing: the leftover
-    `<table>_old` is dropped inside the same transaction before the renames.
+    Only valid when `public.<table>` exists — callers guard on existence.
     """
+    statements = [
+        f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" RENAME TO "{spec.old_table}"',
+        f'ALTER INDEX "{spec.target_schema}"."{spec.pk_name}" '
+        f'RENAME TO "{spec.archive_name(spec.pk_name)}"',
+    ]
+    for idx in spec.indexes:
+        statements.append(f'ALTER INDEX "{spec.target_schema}"."{idx}" RENAME TO "{spec.archive_name(idx)}"')
+    for fk in spec.fkeys:
+        statements.append(
+            f'ALTER TABLE "{spec.target_schema}"."{spec.old_table}" '
+            f'RENAME CONSTRAINT "{fk}" TO "{spec.archive_name(fk)}"'
+        )
+    return statements
+
+
+def _promote_new_statements(spec: TableSyncSpec) -> list[str]:
+    """DDL to move `staging.<table>_new` into the target schema and rename it
+    (and its pk/indexes/fkeys) to the canonical Prisma names."""
+    statements = [
+        f'ALTER TABLE "{spec.staging_schema}"."{spec.new_table}" SET SCHEMA "{spec.target_schema}"',
+        f'ALTER TABLE "{spec.target_schema}"."{spec.new_table}" RENAME TO "{spec.target_table}"',
+        f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(spec.pk_name)}" '
+        f'RENAME TO "{spec.pk_name}"',
+    ]
+    for idx in spec.indexes:
+        statements.append(f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(idx)}" RENAME TO "{idx}"')
+    for fk in spec.fkeys:
+        statements.append(
+            f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" '
+            f'RENAME CONSTRAINT "{spec.stage_name(fk)}" TO "{fk}"'
+        )
+    return statements
+
+
+def swap_graph_into_target(conn, specs: Sequence[TableSyncSpec]) -> None:
+    """Atomic rename-swap of an entire interdependent table set in ONE txn.
+
+    `specs` MUST be in dependency order (parents before children). Each spec's
+    `_new` table must already carry FK constraints referencing its SIBLING
+    `_new` tables in the staging schema (not the live parents), so after every
+    table is promoted the FK OIDs resolve to the new live parents. Because the
+    whole set is renamed in one transaction, readers see either the entire prior
+    graph or the entire new graph, never a mix.
+
+    Safe when a live target does not yet exist (that table skips its archive
+    branch). Self-healing: a full `_old` set left by a crash in the
+    swap->drop_old_graph window is pre-dropped here, children-first, inside the
+    same transaction — a mid-swap failure rolls the pre-drop back with the
+    renames, so a crashed run never wedges the next one.
+    """
+    specs = list(specs)
     cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
-            (spec.target_schema, spec.target_table),
-        )
-        target_exists = cur.fetchone() is not None
+        exists: dict[str, bool] = {}
+        for spec in specs:
+            cur.execute(
+                "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+                (spec.target_schema, spec.target_table),
+            )
+            exists[spec.target_table] = cur.fetchone() is not None
 
         statements: list[str] = []
-        # A `<table>_old` left behind by a run that died in the swap->drop_old
-        # window would collide with every rename below (table name and the
-        # `_old`-suffixed index/constraint names), failing each subsequent run
-        # until someone dropped it by hand — and five consecutive failed runs
-        # auto-pause the DAG. Pre-drop it in this transaction: DDL is
-        # transactional, so a mid-swap failure rolls the drop back with the
-        # renames, and a clean run drops nothing that drop_old_table wouldn't.
-        statements.append(f'DROP TABLE IF EXISTS "{spec.target_schema}"."{spec.old_table}"')
-        if target_exists:
-            statements.append(
-                f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" ' f'RENAME TO "{spec.old_table}"'
-            )
-            statements.append(
-                f'ALTER INDEX "{spec.target_schema}"."{spec.pk_name}" '
-                f'RENAME TO "{spec.archive_name(spec.pk_name)}"'
-            )
-            for idx in spec.indexes:
-                statements.append(
-                    f'ALTER INDEX "{spec.target_schema}"."{idx}" ' f'RENAME TO "{spec.archive_name(idx)}"'
-                )
-            for fk in spec.fkeys:
-                statements.append(
-                    f'ALTER TABLE "{spec.target_schema}"."{spec.old_table}" '
-                    f'RENAME CONSTRAINT "{fk}" '
-                    f'TO "{spec.archive_name(fk)}"'
-                )
-
-        statements.append(
-            f'ALTER TABLE "{spec.staging_schema}"."{spec.new_table}" ' f'SET SCHEMA "{spec.target_schema}"'
-        )
-        statements.append(
-            f'ALTER TABLE "{spec.target_schema}"."{spec.new_table}" ' f'RENAME TO "{spec.target_table}"'
-        )
-        statements.append(
-            f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(spec.pk_name)}" '
-            f'RENAME TO "{spec.pk_name}"'
-        )
-        for idx in spec.indexes:
-            statements.append(
-                f'ALTER INDEX "{spec.target_schema}"."{spec.stage_name(idx)}" ' f'RENAME TO "{idx}"'
-            )
-        for fk in spec.fkeys:
-            statements.append(
-                f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" '
-                f'RENAME CONSTRAINT "{spec.stage_name(fk)}" '
-                f'TO "{fk}"'
-            )
+        # 1. Pre-drop any leftover `_old`, CHILDREN FIRST (reverse dep order) so a
+        #    child_old's archived FK never blocks dropping its parent_old.
+        for spec in reversed(specs):
+            statements.append(f'DROP TABLE IF EXISTS "{spec.target_schema}"."{spec.old_table}"')
+        # 2. Archive each live table aside to `_old` (skip tables not yet live).
+        for spec in specs:
+            if exists[spec.target_table]:
+                statements.extend(_archive_live_statements(spec))
+        # 3. Promote every `_new` to its canonical name. Renames are OID-preserving,
+        #    so sibling-referencing FKs follow their parent into the live schema.
+        for spec in specs:
+            statements.extend(_promote_new_statements(spec))
 
         for stmt in statements:
             cur.execute(stmt)
         conn.commit()
-        logger.info(
-            "Swap complete for %s (target_existed=%s)",
-            spec.target_table,
-            target_exists,
-        )
+        logger.info("Graph swap complete for %d tables", len(specs))
     except Exception:
         conn.rollback()
         raise
@@ -247,12 +256,26 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
         cur.close()
 
 
-def drop_old_table(conn, spec: TableSyncSpec) -> None:
-    """DROP TABLE IF EXISTS `public.<table>_old`. Run after swap commits."""
+def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
+    """Atomic rename-swap of a single table. Thin wrapper over
+    `swap_graph_into_target` so the one-table lifecycle and its crash-recovery
+    guarantees are identical to the graph case."""
+    swap_graph_into_target(conn, [spec])
+
+
+def drop_old_graph(conn, specs: Sequence[TableSyncSpec]) -> None:
+    """DROP the archived `_old` set, CHILDREN FIRST. Idempotent (`IF EXISTS`)."""
+    specs = list(specs)
     cur = conn.cursor()
     try:
-        cur.execute(f'DROP TABLE IF EXISTS "{spec.target_schema}"."{spec.old_table}"')
+        for spec in reversed(specs):
+            cur.execute(f'DROP TABLE IF EXISTS "{spec.target_schema}"."{spec.old_table}"')
         conn.commit()
-        logger.info("Dropped %s.%s if it existed", spec.target_schema, spec.old_table)
+        logger.info("Dropped `_old` for %d tables if they existed", len(specs))
     finally:
         cur.close()
+
+
+def drop_old_table(conn, spec: TableSyncSpec) -> None:
+    """DROP TABLE IF EXISTS `public.<table>_old`. Run after swap commits."""
+    drop_old_graph(conn, [spec])

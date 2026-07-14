@@ -6,6 +6,7 @@ explicitly. Mocks airflow/databricks/etc. so the file collects without the
 Astro runtime installed.
 """
 
+import re
 import sys
 from datetime import datetime
 from unittest.mock import MagicMock
@@ -32,12 +33,19 @@ for _mod in _STUBS:
     sys.modules[_mod] = MagicMock()
 
 from dags.sync_election_api import (  # noqa: E402
+    CANDIDACY_COLUMNS,
     DTI_COLUMNS,
     EOS_COLUMNS,
+    OFFICEHOLDER_COLUMNS,
+    ORDERED_SPECS,
+    PERSON_COLUMNS,
+    PIPELINES,
+    POSITION_COLUMNS,
     PT_COLUMNS,
     ZTP_SOURCE_COLUMNS,
     ZTP_TARGET_COLUMNS,
     _pt_quality_gate,
+    _ratio_gate,
     _ztp_transform_row,
 )
 
@@ -215,3 +223,90 @@ def test_pt_quality_gate_refuses_null_keys():
     """
     with pytest.raises(ValueError, match="NULL"):
         _pt_quality_gate(loaded_count=800_000, dup_keys=0, prior_key_count=800_000, null_keys=1)
+
+
+# ---------------------------------------------------------------------------
+# Whole-graph migration: column pins, ratio gate, FK-sibling + topo guards
+# ---------------------------------------------------------------------------
+
+
+def test_candidacy_columns_carry_person_id():
+    """Candidacy sync must write BOTH the retained gp_candidate_id text column
+    and the new person_id FK (same canonical value)."""
+    assert "gp_candidate_id" in CANDIDACY_COLUMNS
+    assert "person_id" in CANDIDACY_COLUMNS
+    assert "race_id" in CANDIDACY_COLUMNS
+
+
+def test_position_columns_carry_salary():
+    assert "salary" in POSITION_COLUMNS
+
+
+def test_person_columns_pinned():
+    """id/updated_at/slug are NOT NULL with no DB default and MUST be inserted."""
+    for required in ("id", "updated_at", "slug"):
+        assert required in PERSON_COLUMNS
+    # jsonb columns are populated from the mart's to_json output.
+    assert "degrees" in PERSON_COLUMNS
+    assert "experiences" in PERSON_COLUMNS
+
+
+def test_office_holder_columns_pinned():
+    """person_id is a required FK; must be in the insert column set."""
+    assert "id" in OFFICEHOLDER_COLUMNS
+    assert "person_id" in OFFICEHOLDER_COLUMNS
+    assert "position_id" in OFFICEHOLDER_COLUMNS
+
+
+def test_ratio_gate_refuses_coverage_collapse():
+    with pytest.raises(ValueError, match="refusing to swap"):
+        _ratio_gate(loaded_count=40, prior_count=100, cold_floor=10, table="Person")
+
+
+def test_ratio_gate_boundary_passes():
+    _ratio_gate(loaded_count=50, prior_count=100, cold_floor=10, table="Person")
+
+
+def test_ratio_gate_cold_start_floor():
+    with pytest.raises(ValueError, match="cold-start"):
+        _ratio_gate(loaded_count=5, prior_count=0, cold_floor=10, table="Person")
+    _ratio_gate(loaded_count=10, prior_count=0, cold_floor=10, table="Person")
+
+
+def _referenced_new_tables(fk_statements):
+    """Extract the `<Table>_new` names each FK statement references."""
+    refs = []
+    for stmt in fk_statements:
+        m = re.search(r'REFERENCES "staging"\."([^"]+)" \(id\)', stmt)
+        if m:
+            refs.append(m.group(1))
+    return refs
+
+
+def test_fk_ddl_references_staging_siblings_never_public():
+    """THE core-bug guard: every FK must reference the sibling `staging`.`_new`
+    parent, never the live `public` parent (which the swap renames aside)."""
+    for p in PIPELINES:
+        if p.fk_ddl is None:
+            continue
+        stmts = p.fk_ddl()
+        assert any("FOREIGN KEY" in s for s in stmts), p.spec.target_table
+        for stmt in stmts:
+            if "REFERENCES" in stmt:
+                assert 'REFERENCES "staging".' in stmt, f"{p.spec.target_table}: {stmt}"
+                assert '"public".' not in stmt, f"{p.spec.target_table}: {stmt}"
+
+
+def test_ordered_specs_are_topologically_sorted():
+    """Every table a pipeline FK-references must appear at-or-before it in
+    ORDERED_SPECS (self-references allowed), so the parents-first swap and
+    children-first drop are dependency-safe."""
+    order = {spec.target_table: i for i, spec in enumerate(ORDERED_SPECS)}
+
+    for i, p in enumerate(PIPELINES):
+        assert order[p.spec.target_table] == i  # PIPELINES and ORDERED_SPECS aligned
+        if p.fk_ddl is None:
+            continue
+        for ref_new in _referenced_new_tables(p.fk_ddl()):
+            parent = re.sub(r"_new$", "", ref_new)
+            assert order[parent] <= i, f"{p.spec.target_table} references later table {parent}"

@@ -28,7 +28,9 @@ from include.custom_functions.election_api_utils import (
     TableSyncSpec,
     apply_ddl,
     create_staging_table,
+    drop_old_graph,
     drop_old_table,
+    swap_graph_into_target,
     swap_staging_into_target,
 )
 
@@ -57,6 +59,8 @@ class FakePostgres:
         self._durable = self._copy_state()
         self._crash_countdown: int | None = None
         self.crash_fired = False
+        # Ordered log of every executed statement (for asserting swap ordering).
+        self.recording: list[str] = []
 
     # -- setup / inspection -------------------------------------------------
 
@@ -111,6 +115,7 @@ class FakePostgres:
                 raise RuntimeError("simulated crash")
 
         stmt = " ".join(sql.split())
+        self.recording.append(stmt)
 
         if stmt == "SELECT 1 FROM pg_tables WHERE schemaname = %s AND tablename = %s":
             schema, table = params
@@ -497,3 +502,165 @@ def test_drop_old_is_idempotent():
     drop_old_table(pg.connect(), SPEC)  # second drop: IF EXISTS no-op
 
     _assert_canonical_shape(pg, SPEC)
+
+
+# ---------------------------------------------------------------------------
+# Whole-graph swap (swap_graph_into_target / drop_old_graph)
+# ---------------------------------------------------------------------------
+
+# A minimal parent/child graph in dependency order (parents first).
+_PARENT = TableSyncSpec(target_table="Person", indexes=("Person_slug_idx",))
+_CHILD = TableSyncSpec(
+    target_table="OfficeHolder",
+    indexes=("OfficeHolder_person_id_idx", "OfficeHolder_position_id_idx"),
+    fkeys=("OfficeHolder_person_id_fkey", "OfficeHolder_position_id_fkey"),
+)
+_GRAPH = [_PARENT, _CHILD]  # dependency order
+
+
+def _graph_stage_ddl(spec, fkeys_ref):
+    """Stage DDL for one table: PK + indexes + FKs referencing the SIBLING
+    `_new` parent (fkeys_ref maps fk name -> parent spec)."""
+    sn, nt = spec.staging_schema, spec.new_table
+    stmts = [f'ALTER TABLE "{sn}"."{nt}" ADD CONSTRAINT "{spec.stage_name(spec.pk_name)}" PRIMARY KEY (id)']
+    for idx in spec.indexes:
+        stmts.append(f'CREATE INDEX "{spec.stage_name(idx)}" ON "{sn}"."{nt}" (c)')
+    for fk in spec.fkeys:
+        parent = fkeys_ref[fk]
+        stmts.append(
+            f'ALTER TABLE "{sn}"."{nt}" ADD CONSTRAINT "{spec.stage_name(fk)}" '
+            f'FOREIGN KEY (c) REFERENCES "{parent.staging_schema}"."{parent.new_table}" (id)'
+        )
+    return stmts
+
+
+_FKEYS_REF = {
+    "OfficeHolder_person_id_fkey": _PARENT,
+    "OfficeHolder_position_id_fkey": _PARENT,
+}
+
+
+def _run_graph_cycle(pg, specs, skip_drop_old=False):
+    conn = pg.connect()
+    for spec in specs:
+        create_staging_table(conn, spec)
+        apply_ddl(conn, _graph_stage_ddl(spec, _FKEYS_REF))
+    swap_graph_into_target(conn, specs)
+    if not skip_drop_old:
+        drop_old_graph(conn, specs)
+
+
+def _table_index_names(pg, spec):
+    """Indexes OWNED by one table (index_names() is schema-scoped, so it can't
+    be used to assert per-table shape once the schema holds many tables)."""
+    return {
+        idx for (_s, idx), owner in pg.indexes.items() if owner == (spec.target_schema, spec.target_table)
+    }
+
+
+def _assert_canonical_graph(pg, spec):
+    """Per-table post-swap invariant, safe when many tables share `public`."""
+    assert pg.has_table(spec.target_schema, spec.target_table)
+    assert not pg.has_table(spec.target_schema, spec.old_table)
+    assert not pg.has_table(spec.staging_schema, spec.new_table)
+    assert pg.constraints(spec.target_schema, spec.target_table) == {spec.pk_name, *spec.fkeys}
+    assert _table_index_names(pg, spec) == {spec.pk_name, *spec.indexes}
+
+
+def test_graph_swap_leaves_canonical_shape_for_all_tables():
+    pg = FakePostgres()
+    for spec in _GRAPH:
+        _seed_live(pg, spec)
+
+    _run_graph_cycle(pg, _GRAPH)
+
+    for spec in _GRAPH:
+        _assert_canonical_graph(pg, spec)
+
+
+def test_graph_swap_self_heals_full_leftover_old_set():
+    """A full `_old` set (crash between swap commit and drop_old_graph) is
+    cleared inside the next run's swap transaction, children-first."""
+    pg = FakePostgres()
+    for spec in _GRAPH:
+        _seed_live(pg, spec)
+
+    _run_graph_cycle(pg, _GRAPH, skip_drop_old=True)
+    for spec in _GRAPH:
+        assert pg.has_table(spec.target_schema, spec.old_table)
+
+    _run_graph_cycle(pg, _GRAPH)  # next run heals
+
+    for spec in _GRAPH:
+        _assert_canonical_graph(pg, spec)
+
+
+def test_graph_swap_predrops_and_drops_old_children_first():
+    """The `_old` pre-drop (inside swap) and drop_old_graph both run in reverse
+    dependency order, so a child_old's archived FK never blocks dropping its
+    parent_old."""
+    pg = FakePostgres()
+    for spec in _GRAPH:
+        _seed_live(pg, spec)
+    # Prime a full leftover `_old` set so the swap's pre-drop phase emits DROPs.
+    _run_graph_cycle(pg, _GRAPH, skip_drop_old=True)
+
+    pg.recording.clear()
+    _run_graph_cycle(pg, _GRAPH)
+
+    def _drop_order(record):
+        order = []
+        for stmt in record:
+            m = re.fullmatch(r'DROP TABLE IF EXISTS "[^"]+"\."([^"]+)"', stmt)
+            if m and m.group(1).endswith("_old"):
+                order.append(m.group(1))
+        return order
+
+    dropped = _drop_order(pg.recording)
+    # Both the in-swap pre-drop and drop_old_graph list children before parents.
+    assert dropped, "expected _old DROP statements to be emitted"
+    child_old, parent_old = _CHILD.old_table, _PARENT.old_table
+    for i in range(0, len(dropped), 2):
+        assert dropped[i] == child_old
+        assert dropped[i + 1] == parent_old
+
+
+def test_graph_swap_archives_and_promotes_parents_first():
+    """Within the single swap transaction, parents are archived and promoted
+    before children (the order of ORDERED_SPECS)."""
+    pg = FakePostgres()
+    for spec in _GRAPH:
+        _seed_live(pg, spec)
+    for spec in _GRAPH:
+        create_staging_table(pg.connect(), spec)
+        apply_ddl(pg.connect(), _graph_stage_ddl(spec, _FKEYS_REF))
+
+    pg.recording.clear()
+    swap_graph_into_target(pg.connect(), _GRAPH)
+
+    # Parent's promote (SET SCHEMA of Person_new) precedes the child's.
+    promote_person = pg.recording.index(
+        f'ALTER TABLE "{_PARENT.staging_schema}"."{_PARENT.new_table}" SET SCHEMA "{_PARENT.target_schema}"'
+    )
+    promote_officeholder = pg.recording.index(
+        f'ALTER TABLE "{_CHILD.staging_schema}"."{_CHILD.new_table}" SET SCHEMA "{_CHILD.target_schema}"'
+    )
+    assert promote_person < promote_officeholder
+
+
+def test_graph_swap_cold_start_skips_missing_live_tables():
+    """Cold start: no live tables yet. The swap's per-spec existence probe skips
+    the archive branch and the graph still promotes the whole staged set. (Stage
+    the `_new` tables directly, since create_staging_table LIKE-clones a live
+    table that doesn't exist yet on a true cold start.)"""
+    pg = FakePostgres()
+    conn = pg.connect()
+    for spec in _GRAPH:
+        pg.seed_table(spec.staging_schema, spec.new_table)
+        apply_ddl(conn, _graph_stage_ddl(spec, _FKEYS_REF))
+
+    swap_graph_into_target(conn, _GRAPH)
+    drop_old_graph(conn, _GRAPH)
+
+    for spec in _GRAPH:
+        _assert_canonical_graph(pg, spec)

@@ -61,6 +61,10 @@ with suppress_logging("airflow"):
     # .dags is the in-memory parse result; .get_dag() would query the metastore (no DB in CI).
     _LOADER_DAG = DagBag(dag_folder=_LOADER_DAG_FILE, include_examples=False).dags.get("load_people_api")
 
+_SYNC_DAG_FILE = str(Path(__file__).resolve().parents[2] / "dags" / "sync_election_api.py")
+with suppress_logging("airflow"):
+    _SYNC_DAG = DagBag(dag_folder=_SYNC_DAG_FILE, include_examples=False).dags.get("sync_election_api")
+
 
 @pytest.mark.parametrize("rel_path,rv", _IMPORT_ERRORS, ids=[x[0] for x in _IMPORT_ERRORS])
 def test_file_imports(rel_path, rv):
@@ -96,6 +100,41 @@ def test_load_people_api_sequence():
     assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("unload").upstream_list}
     assert "dbt_test_voter_gate" in {t.task_id for t in _LOADER_DAG.get_task("provision").upstream_list}
     assert "resize" in {t.task_id for t in _LOADER_DAG.get_task("validate").upstream_list}
+
+
+def _recursive_upstream_ids(task):
+    """All transitive upstream task_ids of a task."""
+    seen, stack = set(), list(task.upstream_list)
+    while stack:
+        t = stack.pop()
+        if t.task_id in seen:
+            continue
+        seen.add(t.task_id)
+        stack.extend(t.upstream_list)
+    return seen
+
+
+def test_sync_election_api_swap_barriers():
+    """The whole-graph swap must gate correctly: every build_fks waits for the
+    all-indexes barrier; the single swap_all runs after all quality gates; the
+    old-drop runs after the swap."""
+    assert _SYNC_DAG is not None, f"sync_election_api failed to load from {_SYNC_DAG_FILE}"
+    tasks = {t.task_id: t for t in _SYNC_DAG.tasks}
+
+    # Exactly one swap task (the atomicity barrier) and one drop task.
+    assert "swap_all" in tasks
+    assert "drop_all_old" in tasks
+
+    # Every build_fks task is downstream of the all_indexes_built barrier.
+    fk_tasks = [tid for tid in tasks if tid.endswith(".build_fks") or tid == "build_fks"]
+    assert fk_tasks, "expected per-table build_fks tasks"
+    for tid in fk_tasks:
+        assert "all_indexes_built" in _recursive_upstream_ids(tasks[tid]), tid
+
+    # swap_all runs after every quality gate (via all_quality_passed), and
+    # drop_all_old runs after swap_all.
+    assert "all_quality_passed" in _recursive_upstream_ids(tasks["swap_all"])
+    assert "swap_all" in _recursive_upstream_ids(tasks["drop_all_old"])
 
 
 def test_load_people_api_scale_down_on_failure():

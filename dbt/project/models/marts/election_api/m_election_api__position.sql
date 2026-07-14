@@ -2,6 +2,7 @@
     config(
         materialized="incremental",
         unique_key="id",
+        on_schema_change="append_new_columns",
         auto_liquid_cluster=true,
     )
 }}
@@ -171,8 +172,14 @@ select
     all_positions.created_at,
     all_positions.updated_at,
     icp.icp_office_win as is_win_icp,
-    icp.icp_office_serve as is_serve_icp
+    icp.icp_office_serve as is_serve_icp,
+    -- Free-text office compensation (BallotReady api_position.salary); powers the
+    -- profile "About Office" salary row for sitting EOs with no active candidacy.
+    br_position.salary
 from all_positions
 left join
     {{ ref("int__icp_offices") }} as icp
     on all_positions.br_database_id = icp.br_database_position_id
+left join
+    {{ ref("stg_airbyte_source__ballotready_api_position") }} as br_position
+    on all_positions.br_database_id = br_position.database_id
