@@ -1,4 +1,4 @@
-"""create-schema: extracts CREATE TABLE Voter, installs extensions, applies partitioned DDL."""
+"""create-schema: extracts CREATE TABLE for all four tables, installs extensions, applies DDL."""
 
 from __future__ import annotations
 
@@ -8,13 +8,16 @@ from typing import cast
 import pytest
 
 from loader.people_api.config import LoaderConfig
+from loader.people_api.schema.states import STATES
 from loader.people_api.steps import create_schema as step
 from tests._fakes import FakeConn, executed_sql, fake_connect
 
 _CFG = cast(LoaderConfig, SimpleNamespace(s3_bucket="b"))
 _DUMP = (
     'CREATE TABLE public."Voter" ("id" uuid NOT NULL, "State" text NOT NULL);\n'
-    'CREATE INDEX "Voter_State_idx" ON public."Voter" USING btree ("State");\n'
+    'CREATE TABLE public."DistrictVoter" ("district_id" uuid NOT NULL, "voter_id" uuid NOT NULL, "State" text NOT NULL);\n'
+    'CREATE TABLE public."District" ("id" uuid NOT NULL, "state" text NOT NULL);\n'
+    'CREATE TABLE public."DistrictStats" ("district_id" uuid NOT NULL, "buckets" jsonb);\n'
 )
 
 
@@ -48,7 +51,34 @@ def test_applies_partitioned_table_and_extensions(monkeypatch: pytest.MonkeyPatc
     assert manifest.status == "complete"
     assert "Voter" in manifest.tables_created
     assert "Voter_TX" in manifest.tables_created
-    assert len(manifest.tables_created) == 52
+    # Voter + its 51 state children + DistrictVoter + its 51 state children + District + DistrictStats
+    assert len(manifest.tables_created) == 2 * (1 + len(STATES)) + 2
+
+
+def test_creates_partitioned_and_flat(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = FakeConn()
+    _patch(monkeypatch, conn)
+    manifest = step.run(_CFG, "20260609")
+    sql = executed_sql(conn)
+    # Voter + DistrictVoter partitioned
+    assert any(
+        'CREATE TABLE IF NOT EXISTS public."Voter" (' in s and 'PARTITION BY LIST ("State")' in s for s in sql
+    )
+    assert any(
+        'CREATE TABLE IF NOT EXISTS public."DistrictVoter" (' in s and 'PARTITION BY LIST ("State")' in s
+        for s in sql
+    )
+    assert any(
+        'public."DistrictVoter_TX" PARTITION OF public."DistrictVoter" FOR VALUES IN (\'TX\')' in s
+        for s in sql
+    )
+    # District + DistrictStats flat: plain create, NO partitioning
+    assert any('CREATE TABLE IF NOT EXISTS public."District" (' in s for s in sql)
+    assert any('CREATE TABLE IF NOT EXISTS public."DistrictStats" (' in s for s in sql)
+    assert not any('public."District" ' in s and "PARTITION BY" in s for s in sql)
+    # manifest lists every table + Voter/DistrictVoter children
+    assert {"Voter", "DistrictVoter", "District", "DistrictStats"} <= set(manifest.tables_created)
+    assert "Voter_TX" in manifest.tables_created and "DistrictVoter_TX" in manifest.tables_created
 
 
 def test_skips_when_complete(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,6 +92,7 @@ def test_build_partitioned_ddl_shape() -> None:
     parent, children = step.build_partitioned_ddl(
         'CREATE TABLE public."Voter" ("id" uuid NOT NULL, "State" text NOT NULL);',
         "Voter",
+        "State",
         ["TX", "CA"],
     )
     assert 'CREATE TABLE IF NOT EXISTS public."Voter"' in parent
@@ -69,4 +100,18 @@ def test_build_partitioned_ddl_shape() -> None:
     assert children == [
         'CREATE TABLE IF NOT EXISTS public."Voter_TX" PARTITION OF public."Voter" FOR VALUES IN (\'TX\');',
         'CREATE TABLE IF NOT EXISTS public."Voter_CA" PARTITION OF public."Voter" FOR VALUES IN (\'CA\');',
+    ]
+
+
+def test_build_partitioned_ddl_parametrizes_table_and_column() -> None:
+    parent, children = step.build_partitioned_ddl(
+        'CREATE TABLE public."DistrictVoter" ("voter_id" uuid NOT NULL, "State" text NOT NULL);',
+        "DistrictVoter",
+        "State",
+        ["TX"],
+    )
+    assert 'CREATE TABLE IF NOT EXISTS public."DistrictVoter"' in parent
+    assert parent.rstrip().endswith('PARTITION BY LIST ("State");')
+    assert children == [
+        'CREATE TABLE IF NOT EXISTS public."DistrictVoter_TX" PARTITION OF public."DistrictVoter" FOR VALUES IN (\'TX\');'
     ]
