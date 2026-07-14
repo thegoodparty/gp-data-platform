@@ -772,9 +772,14 @@ models:
       gp_candidate_id, so the API can join a Person to its Candidacies and
       OfficeHolders. Scoped to people with a candidacy or an office term and
       at least one name part (the API slug column is NOT NULL).
-      BallotReady-rich profile fields (bio, nickname, links, degrees,
-      experiences) attach via the person group's unambiguous br_person_id and
-      stay null for GP-native people.
+      BallotReady-rich profile fields attach via the person group's
+      unambiguous br_person_id: first from int__ballotready_person (which is
+      fetched candidacy-first, so it misses officials with no BR candidacy —
+      ~44% of this mart), then falling back to the office_holders_v3 feed for
+      name parts and links. bio_text, headshot_url, degrees, and experiences
+      exist only on the API person object and stay null for office-only
+      people until int__ballotready_person also fetches office-holder ids.
+      All BR fields stay null for GP-native people.
     columns:
       - name: id
         description: "Canonical person UUID (gp_person_id / gp_candidate_id)"
