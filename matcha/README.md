@@ -45,6 +45,9 @@ uv run python -m scripts.cli match --entity-type elected_official --input input.
 uv run python -m scripts.cli match --entity-type election_stage --input input.csv
 ```
 
+Set `MATCHA_DUCKDB_MEMORY_LIMIT` (e.g. `12GB`) to cap DuckDB's memory for
+local runs; unset, DuckDB defaults to 80% of RAM.
+
 ### Docker (pre-built image)
 
 Authenticate Docker with GHCR using the GitHub CLI:
@@ -93,26 +96,33 @@ export DATABRICKS_CLIENT_SECRET=<service-principal-secret>
 uv run python -m scripts.cli match \
   --entity-type candidacy_stage \
   --input goodparty_data_catalog.dbt.int__er_prematch_candidacy_stages \
-  --output-cluster-table goodparty_data_catalog.dbt.er_clustered_candidacies \
-  --output-pairwise-table goodparty_data_catalog.dbt.er_pairwise_predictions \
+  --output-cluster-table goodparty_data_catalog.er_source.clustered_candidacy_stages_YYYYMMDD \
+  --output-pairwise-table goodparty_data_catalog.er_source.pairwise_candidacy_stages_YYYYMMDD \
   --overwrite
 
 # Elected officials
 uv run python -m scripts.cli match \
   --entity-type elected_official \
   --input goodparty_data_catalog.dbt.int__er_prematch_elected_officials \
-  --output-cluster-table goodparty_data_catalog.er_source.er_clustered_elected_officials \
-  --output-pairwise-table goodparty_data_catalog.er_source.er_pairwise_elected_officials \
+  --output-cluster-table goodparty_data_catalog.er_source.clustered_elected_officials_YYYYMMDD \
+  --output-pairwise-table goodparty_data_catalog.er_source.pairwise_elected_officials_YYYYMMDD \
   --overwrite
 
 # Election stages
 uv run python -m scripts.cli match \
   --entity-type election_stage \
   --input goodparty_data_catalog.dbt.int__er_prematch_election_stages \
-  --output-cluster-table goodparty_data_catalog.er_source.er_clustered_election_stages \
-  --output-pairwise-table goodparty_data_catalog.er_source.er_pairwise_election_stages \
+  --output-cluster-table goodparty_data_catalog.er_source.clustered_election_stages_YYYYMMDD \
+  --output-pairwise-table goodparty_data_catalog.er_source.pairwise_election_stages_YYYYMMDD \
   --overwrite
 ```
+
+dbt reads the live tables `er_source.clustered_<entity>` / `er_source.pairwise_<entity>`
+(see `dbt/project/models/staging/er_source/`). Deliver to a dated table first (as
+above), validate it, then swap it into the live name keeping a backup. Never point
+`--overwrite` at a live table: the upload is `CREATE OR REPLACE TABLE` followed by
+`COPY INTO`, so a mid-upload failure leaves the live table empty or partial while
+every downstream dbt model reads it.
 
 ## CLI reference
 

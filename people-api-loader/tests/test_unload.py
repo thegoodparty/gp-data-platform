@@ -70,7 +70,9 @@ def test_unload_builds_per_state_sql_and_manifest(monkeypatch: pytest.MonkeyPatc
     manifest = step.run(_CFG, "20260622")
     inserts = [s for s in submitted if "INSERT OVERWRITE DIRECTORY" in s]
     assert len(inserts) == 2
-    assert any("state=FL/" in s and "NULL AS `Mailing_HHGender_Description`" in s for s in inserts)
+    assert any(
+        "state=FL/" in s and "CAST(NULL AS STRING) AS `Mailing_HHGender_Description`" in s for s in inserts
+    )
     assert manifest.status == "complete"
     assert manifest.columns == ["id", "State", "Mailing_HHGender_Description"]
     assert manifest.column_types_pg == {"id": "UUID", "State": "TEXT", "Mailing_HHGender_Description": "TEXT"}
@@ -122,6 +124,24 @@ def test_unload_rejects_unknown_state(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="known state"):
         step.run(_CFG, "20260622", state_filter="ZZ")
     assert submitted == []
+
+
+def test_unload_tolerates_none_result_on_count_statement(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A statement response with no `result` attached (e.g. an empty/None result envelope) must
+    # not raise AttributeError on `.result.data_array` — only the row counts stay empty.
+    submitted: list[str] = []
+    _patch(monkeypatch, submitted)
+
+    def _run_statement(cfg: object, sql: str, **kw: object) -> object:
+        submitted.append(sql)
+        return SimpleNamespace(result=None)
+
+    monkeypatch.setattr(step, "run_statement", _run_statement)
+
+    manifest = step.run(_CFG, "20260622")
+
+    assert manifest.status == "complete"
+    assert manifest.per_state_row_counts == {}
 
 
 def test_unload_skips_completed_manifest(monkeypatch: pytest.MonkeyPatch) -> None:

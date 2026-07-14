@@ -56,8 +56,8 @@ def _provision(monkeypatch: pytest.MonkeyPatch) -> LoaderConfig:
         "LOADER_VPC_ID": vpc_id,
         "LOADER_DB_SUBNET_GROUP": "loader-subnets",
         "LOADER_SECURITY_GROUP_ID": sg_id,
-        "LOADER_PROD_DB_USER": "people_admin",
-        "LOADER_PROD_DB_NAME": "people_prod",
+        "LOADER_DB_USER": "people_admin",
+        "LOADER_DB_NAME": "people_prod",
         "LOADER_KMS_KEY_ARN": kms_arn,
         "LOADER_S3_IMPORT_ROLE_ARN": "arn:aws:iam::123456789012:role/rds-s3-import",
     }.items():

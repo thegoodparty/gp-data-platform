@@ -187,40 +187,6 @@ ISSUE_UPSERT_QUERY = """
         parent_id = EXCLUDED.parent_id
 """
 
-PROJECTED_TURNOUT_UPSERT_QUERY = """
-    INSERT INTO {db_schema}."Projected_Turnout" (
-        id,
-        created_at,
-        updated_at,
-        election_year,
-        election_code,
-        projected_turnout,
-        inference_at,
-        model_version,
-        district_id
-    )
-    SELECT
-        id::uuid,
-        created_at,
-        updated_at,
-        election_year,
-        election_code::\"ElectionCode\",
-        projected_turnout,
-        inference_at,
-        model_version,
-        district_id::uuid
-    from {staging_schema}."Projected_Turnout"
-    ON CONFLICT (id) DO UPDATE SET
-        created_at = EXCLUDED.created_at,
-        updated_at = EXCLUDED.updated_at,
-        election_year = EXCLUDED.election_year,
-        election_code = EXCLUDED.election_code,
-        projected_turnout = EXCLUDED.projected_turnout,
-        inference_at = EXCLUDED.inference_at,
-        model_version = EXCLUDED.model_version,
-        district_id = EXCLUDED.district_id
-    """
-
 PLACE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Place" (
         id,
@@ -568,7 +534,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
     district_df: DataFrame = dbt.ref("m_election_api__district")
     position_df: DataFrame = dbt.ref("m_election_api__position")
-    projected_turnout_df: DataFrame = dbt.ref("m_election_api__projected_turnout")
 
     # keep races from a 2-month post-election grace period through ~2 years out;
     # the lower bound matches the m_election_api__race window exactly (keep them
@@ -598,7 +563,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 "Race",
                 "Stance",
                 "District",
-                "Projected_Turnout",
             ],
             [
                 candidacy_df,
@@ -607,9 +571,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
                 race_df,
                 stance_df,
                 district_df,
-                projected_turnout_df,
             ],
-            strict=False,
+            strict=True,
         )
         for table, df in to_load:
             query = f'SELECT MAX(updated_at) AS max_updated_at FROM {db_schema}."{table}"'
@@ -640,8 +603,11 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   Candidacy -> Race
     #   Issue (self-ref)
     #   Stance -> Issue, Candidacy
-    #   ProjectedTurnout -> District
     # so referenced parents must load before their children.
+    # Projected_Turnout is NOT written here: this writer upserts and never
+    # deletes, so superseded rows would linger. It is delivered by the
+    # sync_election_api Airflow DAG's atomic table swap instead (PR #585,
+    # DATA-2015); tests/test_write__election_api_db.py pins its absence.
     table_load_counts: dict[str, int] = {}
     for table_name, df, upsert_query in zip(
         [
@@ -652,7 +618,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             "Candidacy",
             "Issue",
             "Stance",
-            "Projected_Turnout",
         ],
         [
             place_df,
@@ -662,7 +627,6 @@ def model(dbt, session: SparkSession) -> DataFrame:
             candidacy_df,
             issue_df,
             stance_df,
-            projected_turnout_df,
         ],
         [
             PLACE_UPSERT_QUERY,
@@ -672,9 +636,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
             CANDIDACY_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
-            PROJECTED_TURNOUT_UPSERT_QUERY,
         ],
-        strict=False,
+        strict=True,
     ):
         table_load_counts[table_name] = _load_data_to_postgres(
             df=df,

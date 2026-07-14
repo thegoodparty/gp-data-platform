@@ -73,3 +73,6 @@ analytics/runbook/CALIBRATION_*.md
 # Entity resolution local data and results
 entity_resolution/data/
 entity_resolution/results/*.csv
+
+# Claude Code scheduled-tasks lock — machine/session-local runtime state, never tracked.
+.claude/scheduled_tasks.lock

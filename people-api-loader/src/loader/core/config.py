@@ -21,6 +21,11 @@ class BaseLoaderConfig:
     aws_profile: str | None
     account_id: str
     s3_bucket: str
+    # Optional cross-account role to assume for all AWS calls. When set, the loader assumes it
+    # (with the external id, if given) on top of the ambient credential chain. Left unset, it uses
+    # the ambient chain directly. Populated per consumer from env in the subclass from_env().
+    assume_role_arn: str | None = None
+    assume_role_external_id: str | None = None
     _tags: dict[str, str] = field(default_factory=dict)
 
     @property

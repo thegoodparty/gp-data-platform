@@ -12,7 +12,9 @@ Each pipeline:
 5. Atomic rename swap: `public."<Target>"` → `public."<Target>_old"`,
    `staging."<Target>_new"` → `public."<Target>"`. All indexes/constraints
    are renamed to/from canonical Prisma names so the post-swap shape matches
-   the migration exactly.
+   the migration exactly. Any `<Target>_old` leftover from a run that crashed
+   before step 6 is dropped first, inside the same transaction, so a crashed
+   run never wedges subsequent ones.
 6. Drops `public."<Target>_old"`.
 
 Index/constraint names follow Prisma's convention (`<Table>_<col>_idx`,
@@ -169,7 +171,9 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
     All indexes/constraints listed on `spec` are renamed to/from canonical
     Prisma names so the post-swap shape matches the migration exactly. Safe
     on first run when `public.<table>` doesn't yet exist (skip the rename-old
-    branch).
+    branch), and self-healing when a prior run crashed between this
+    transaction committing and `drop_old_table` completing: the leftover
+    `<table>_old` is dropped inside the same transaction before the renames.
     """
     cur = conn.cursor()
     try:
@@ -180,6 +184,14 @@ def swap_staging_into_target(conn, spec: TableSyncSpec) -> None:
         target_exists = cur.fetchone() is not None
 
         statements: list[str] = []
+        # A `<table>_old` left behind by a run that died in the swap->drop_old
+        # window would collide with every rename below (table name and the
+        # `_old`-suffixed index/constraint names), failing each subsequent run
+        # until someone dropped it by hand — and five consecutive failed runs
+        # auto-pause the DAG. Pre-drop it in this transaction: DDL is
+        # transactional, so a mid-swap failure rolls the drop back with the
+        # renames, and a clean run drops nothing that drop_old_table wouldn't.
+        statements.append(f'DROP TABLE IF EXISTS "{spec.target_schema}"."{spec.old_table}"')
         if target_exists:
             statements.append(
                 f'ALTER TABLE "{spec.target_schema}"."{spec.target_table}" ' f'RENAME TO "{spec.old_table}"'

@@ -15,6 +15,7 @@ stream they're computed from.
 - IF the question asks for a governed metric's definition (Active, Activated, Onboarded, etc.) → [canonical_metrics.md](canonical_metrics.md); the caveats are below.
 - IF the analysis spans the **2026-05-07 onboarding cutover** → use version-agnostic anchors (see Onboarding flow versions); do NOT use `is_onboarded` / `has_completed_onboarding_flow`.
 - IF you need to classify raw `event_type` values into product families → use the `int__amplitude_event_catalog` model / `amplitude_event_family` macro (taxonomy below).
+- IF you need when an event was added/retired **in code**, its lifecycle status, or its supersession lineage → the omni event-lifecycle assets; see [sources.md](sources.md) ("Event-lifecycle assets"). The catalog's `first_seen_date` is data-observed, not code-truth.
 - IF the question is about acquisition channel / UTM → see Channel / UTM below.
 - IF the question is about self-reported win/loss from the Did-You-Win modal → that's an outcome; see [outcomes.md](outcomes.md).
 
@@ -30,7 +31,7 @@ caveats and deprecations the one-line registry definitions don't carry.
 - **`is_post_amplitude_registration`** (`user_created_at >= 2023-12-10`, the documented Amplitude tracking start) is **too loose** for engagement analyses — Win-product event instrumentation actually started ~2025-05-28.
 - **`has_completed_onboarding_flow`** (`onboarding_completed_at IS NOT NULL`, event `onboarding_complete`) and **`is_onboarded`** (US user, dashboard viewed within 14d of *Amplitude registration*) are both **⚠ NEW-FLOW-BLIND** across the 2026-05-07 cutover. Deprecated as cohort filters — use the canonical **Onboarded** metric instead.
 - **`is_active_candidate_7d/_30d/_90d`** are computed against `current_date`; recompute against an anchor date for retrospective analyses.
-- **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). Do not conflate with the colloquial "activated."
+- **`is_activated`** is a lifetime flag (true if the user *ever* sent an outreach campaign) — anchor it before the election cutoff (`first_campaign_sent_at <= election_date`, or `<= month-end`) for forward/recent cohorts so post-election sends don't leak (mechanism in the point-in-time caveat below). **Activation lands late:** ~59% of ever-activated users send their first campaign >14 days after signup (verified 2026-06-11, 705/1,201), so activation cannot share the 14-day-of-signup window used for the dashboard-view / pledge milestones — anchor it point-in-time to the period end instead. Do not conflate with the colloquial "activated."
 - **Onboarding completed (pledge)** is version-agnostic across both eras but first-seen 2025-09, so it under-counts pre-2025-09 cohorts.
 
 ### Terminology
@@ -111,7 +112,7 @@ UTM lives only in the `user_properties` JSON on `stg_airbyte_source__amplitude_a
 
 The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity` (per-month aggregates).
 
-Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`. Connect via the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query`, authenticates via the `~/.databrickscfg` profile). The reusable build-once-slice-many helper is `analytics/lib/win_analysis.py` (see the process skill's `methodology.md`).
+Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`. Connect via the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query`, authenticates via the `~/.databrickscfg` profile). The reusable build-once-slice-many helper is `analytics/lib/win_analysis.py` (see [methodology_defaults.md](methodology_defaults.md)).
 
 ## Cross-references
 

@@ -28,7 +28,14 @@ from urllib.parse import quote
 
 from botocore.exceptions import ClientError
 
-from loader.core.aws import ec2, get_ssm_parameter, ignore_client_errors, put_ssm_parameter, rds
+from loader.core.aws import (
+    ec2,
+    get_ssm_parameter,
+    ignore_client_errors,
+    put_ssm_parameter,
+    rds,
+    retry_after_settle,
+)
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
 from loader.people_api.db import connect_new
@@ -86,25 +93,43 @@ def _attach_s3_import_role(client: object, cluster_id: str, role_arn: str) -> No
     already-attached check — so a caller lacking PassRole gets `AccessDenied` (not
     `DBClusterRoleAlreadyExists`) when the role is already attached, which `ignore_client_errors`
     can't swallow. Describing first (a read, no PassRole) lets a re-run continue when an admin
-    pre-attached the role, the path PLAN_LOADER.md documents for a loader without PassRole.
+    pre-attached the role, the documented path for a loader without PassRole.
 
     Only an `ACTIVE` association is treated as done; a `PENDING`/`INVALID` role (e.g. from an
     interrupted prior run) still gets a (re)attach so s3 imports aren't silently left broken.
     The add is wrapped so a present-but-not-yet-ACTIVE role racing to ACTIVE doesn't hard-fail
     on `DBClusterRoleAlreadyExists`; `AccessDenied` (no PassRole) still surfaces.
+
+    The add is ALSO wrapped in `retry_after_settle` for `InvalidDBClusterStateFault`: the
+    on-failure `scale_down` guard (trigger_rule=one_failed) can issue its own `modify_db_cluster`
+    while `provision` is still running (e.g. a fast `unload` failure), briefly putting the
+    cluster in `modifying` — which would otherwise make this add spuriously fail provision
+    instead of just retrying once the cluster settles (mirrors resize/scale_down's handling of
+    the same fault).
     """
     resp = client.describe_db_clusters(DBClusterIdentifier=cluster_id)  # ty: ignore[unresolved-attribute]
     attached = resp["DBClusters"][0].get("AssociatedRoles", [])
     if any(r.get("RoleArn") == role_arn and r.get("Status") == "ACTIVE" for r in attached):
         log.info("provision.role_already_attached", cluster=cluster_id, role=role_arn)
         return
-    with ignore_client_errors("DBClusterRoleAlreadyExists"):
-        client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
-            DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
-        )
-        log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
-        return
-    log.info("provision.role_attach_already_exists", cluster=cluster_id, role=role_arn)
+
+    def _add() -> None:
+        with ignore_client_errors("DBClusterRoleAlreadyExists"):
+            client.add_role_to_db_cluster(  # ty: ignore[unresolved-attribute]
+                DBClusterIdentifier=cluster_id, RoleArn=role_arn, FeatureName="s3Import"
+            )
+            log.info("provision.role_attached", cluster=cluster_id, role=role_arn)
+            return
+        log.info("provision.role_attach_already_exists", cluster=cluster_id, role=role_arn)
+
+    waiter = client.get_waiter("db_cluster_available")  # ty: ignore[unresolved-attribute]
+    retry_after_settle(
+        _add,
+        fault_code="InvalidDBClusterStateFault",
+        settle=lambda: waiter.wait(
+            DBClusterIdentifier=cluster_id, WaiterConfig={"Delay": 30, "MaxAttempts": 40}
+        ),
+    )
 
 
 def _find_s3_vpc_endpoint(client: object, region: str, vpc_id: str) -> str:
@@ -134,6 +159,21 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             "provision.skip", reason="manifest already complete", uri=manifest_uri(cfg, run_date, "provision")
         )
         return existing
+
+    # Fail fast (with the env-var names) if any provision-only infra value is unset, rather than
+    # surfacing them one at a time as opaque AWS errors (e.g. "MasterUsername must not be blank").
+    required = {
+        "LOADER_DB_USER": cfg.db_user,
+        "LOADER_DB_NAME": cfg.db_name,
+        "LOADER_DB_SUBNET_GROUP": cfg.db_subnet_group,
+        "LOADER_SECURITY_GROUP_ID": cfg.security_group_id,
+        "LOADER_KMS_KEY_ARN": cfg.kms_key_arn,
+        "LOADER_VPC_ID": cfg.vpc_id,
+        "LOADER_S3_IMPORT_ROLE_ARN": cfg.s3_import_role_arn,
+    }
+    missing = sorted(name for name, value in required.items() if not value)
+    if missing:
+        raise RuntimeError(f"provision requires these env vars, which are unset/blank: {', '.join(missing)}")
 
     cluster_id = cfg.new_cluster_id(run_date)
     instance_id = cfg.new_writer_instance_id(run_date)
@@ -166,9 +206,9 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
             EngineVersion=cfg.engine_version,
             DBSubnetGroupName=cfg.db_subnet_group,
             VpcSecurityGroupIds=[cfg.security_group_id],
-            MasterUsername=cfg.prod_db_user,
+            MasterUsername=cfg.db_user,
             MasterUserPassword=password,
-            DatabaseName=cfg.prod_db_name,
+            DatabaseName=cfg.db_name,
             StorageEncrypted=True,
             KmsKeyId=cfg.kms_key_arn,
             DBClusterParameterGroupName=load_pg,
@@ -186,8 +226,8 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
         # (plaintext fallback) and the cluster's default param group does not set rds.force_ssl.
         endpoint = created["DBCluster"]["Endpoint"]
         conninfo = (
-            f"postgresql://{cfg.prod_db_user}:{quote(password, safe='')}"
-            f"@{endpoint}:{cfg.prod_db_port}/{cfg.prod_db_name}?sslmode=require"
+            f"postgresql://{cfg.db_user}:{quote(password, safe='')}"
+            f"@{endpoint}:{cfg.db_port}/{cfg.db_name}?sslmode=require"
         )
         try:
             put_ssm_parameter(cfg, conn_param, conninfo)
@@ -245,12 +285,17 @@ def run(cfg: LoaderConfig, run_date: str) -> ProvisionManifest:
     else:
         log.info("provision.instance_exists", instance=instance_id)
 
-    _attach_s3_import_role(rds_client, cluster_id, cfg.s3_import_role_arn)
-
     # "Available" via the API, then prove the DB actually accepts connections.
     rds_client.get_waiter("db_instance_available").wait(
         DBInstanceIdentifier=instance_id, WaiterConfig={"Delay": 30, "MaxAttempts": 80}
     )
+
+    # Attach the s3-import role only AFTER the cluster is available. add_role_to_db_cluster is
+    # rejected while the cluster is still `creating` (InvalidDBClusterStateFault), so attaching
+    # right after create failed attempt 1 on every fresh cluster and leaned on the DAG's retry to
+    # recover (~5 min wasted, and broken outright if retries were ever 0). The instance-available
+    # waiter implies the cluster is available.
+    _attach_s3_import_role(rds_client, cluster_id, cfg.s3_import_role_arn)
     try:
         with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
             cur.execute("SELECT 1")
