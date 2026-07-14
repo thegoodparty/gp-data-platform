@@ -104,7 +104,7 @@ def run(
             count_resp = run_statement(
                 cfg, unload_sql.count_by_state_statement(mart_fqn), warehouse_id=cfg.databricks_warehouse_id
             )
-            for row in count_resp.result.data_array or []:
+            for row in (getattr(count_resp, "result", None) and count_resp.result.data_array) or []:
                 per_state_row_counts[row[0]] = int(row[1])
         s3_client = s3(cfg)  # built once, reused across states
         for state in states:

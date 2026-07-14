@@ -3404,10 +3404,11 @@ models:
       Minted gp_candidacy_id per clustered candidacy-stage record. One row per
       candidacy-stage unique_id. The id is the salted-hash of the cluster
       member earliest by first_seen_at (ties: source_name, source_id), shared by
-      all members, so it is stable under cluster churn. Clusters are single-date
-      (stage grain), so consuming provider models roll this up to candidacy grain
-      (min over their candidacy grouping); records in no cluster mint from
-      themselves via the provider self-mint fallback.
+      all members, so it is stable under cluster churn. Clusters are
+      single-stage (election dates may differ within matcha's 10-day window),
+      so consuming provider models roll this up to candidacy grain (min over
+      their candidacy grouping); records in no cluster mint from themselves via
+      the provider self-mint fallback.
     columns:
       - name: unique_id
         description: Primary key. source_name || '|' || source_id (stage grain).

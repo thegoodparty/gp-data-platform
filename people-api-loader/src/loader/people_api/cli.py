@@ -17,6 +17,7 @@ from rich.table import Table
 from loader.core.cli import RunDateArg, setup_environment
 from loader.core.log import get_logger
 from loader.people_api.config import LoaderConfig, require_run_date
+from loader.people_api.steps.build_indexes import _DEFAULT_BUILDERS
 
 app = typer.Typer(
     help="GoodParty voter-DB refresh pipeline.",
@@ -153,7 +154,7 @@ def build_indexes(
     parallelism: Annotated[
         int,
         typer.Option("--parallelism", help="Concurrent CREATE INDEX builds (peak memory scales with this)."),
-    ] = 32,
+    ] = _DEFAULT_BUILDERS,
 ) -> None:
     """Step 5 — PKs, non-unique indexes, FKs, ANALYZE."""
     from loader.people_api.steps import build_indexes as step
@@ -166,6 +167,15 @@ def build_indexes(
 def resize(run_date: RunDateArg) -> None:
     """Step 6 — swap writer to db.serverless + serve-tuned params."""
     from loader.people_api.steps import resize as step
+
+    cfg = _setup(run_date)
+    step.run(cfg, run_date)
+
+
+@app.command(name="scale-down")
+def scale_down(run_date: RunDateArg) -> None:
+    """Failure cost guard — flip the writer to db.serverless (keeps the cluster + data)."""
+    from loader.people_api.steps import scale_down as step
 
     cfg = _setup(run_date)
     step.run(cfg, run_date)

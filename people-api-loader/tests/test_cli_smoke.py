@@ -49,3 +49,13 @@ def test_status_help_renders() -> None:
     result = runner.invoke(app, ["status", "--help"])
     assert result.exit_code == 0, result.output
     assert "--date" in _plain(result.output)
+
+
+def test_build_indexes_parallelism_defaults_to_module_constant() -> None:
+    # The CLI default must track build_indexes._DEFAULT_BUILDERS (128, tuned for the index box)
+    # rather than a stale hardcoded literal — see the 32-vs-128 under-parallelization finding.
+    from loader.people_api.steps.build_indexes import _DEFAULT_BUILDERS
+
+    result = runner.invoke(app, ["build-indexes", "--help"])
+    assert result.exit_code == 0, result.output
+    assert f"[default: {_DEFAULT_BUILDERS}]" in _plain(result.output)

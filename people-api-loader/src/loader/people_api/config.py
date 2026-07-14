@@ -19,8 +19,21 @@ from datetime import datetime
 
 from loader.core.config import BaseLoaderConfig
 
+
+def _env(key: str, default: str = "") -> str:
+    """Read an env var with surrounding whitespace stripped.
+
+    Values pasted into the Astro env-var UI commonly carry a trailing newline; unstripped it
+    reaches AWS as a control character (e.g. `CreateDBCluster` rejects "control characters").
+    Not used for the bastion private key, whose surrounding whitespace can be significant.
+    """
+    return os.environ.get(key, default).strip()
+
+
 DEFAULT_AWS_REGION = "us-west-2"
-DEFAULT_S3_BUCKET = "gp-voter-loader"
+# The loader S3 bucket is real infrastructure and this repo is public, so it is NOT hardcoded.
+# It must come from LOADER_S3_BUCKET; from_env() hard-fails if unset. Empty = placeholder.
+DEFAULT_S3_BUCKET = ""
 
 # Connection strings live in SSM Parameter Store as SecureStrings, keyed by env
 # (LOADER_ENV, dev/qa/prod). The Present cluster is `{CONN_PARAM_PREFIX}-{env}`; each
@@ -36,22 +49,29 @@ CONN_PARAM_PREFIX = "people-db-connection-string"
 # provision is still a stub). Empty placeholders are the out-of-the-box default.
 _PLACEHOLDER = ""
 DEFAULT_PROD_CLUSTER_ID = _PLACEHOLDER
-DEFAULT_PROD_DB_NAME = _PLACEHOLDER
-DEFAULT_PROD_DB_USER = _PLACEHOLDER
-DEFAULT_PROD_DB_PORT = 5432
+DEFAULT_DB_NAME = _PLACEHOLDER
+DEFAULT_DB_USER = _PLACEHOLDER
+DEFAULT_DB_PORT = 5432
 DEFAULT_VPC_ID = _PLACEHOLDER
 DEFAULT_DB_SUBNET_GROUP = _PLACEHOLDER
 DEFAULT_SECURITY_GROUP_ID = _PLACEHOLDER
 DEFAULT_KMS_KEY_ARN = _PLACEHOLDER
 DEFAULT_AWS_ACCOUNT_ID = _PLACEHOLDER
-# Durable rds-s3-import role (created once by platform/DATA-1856, not per run). provision
+# Durable rds-s3-import role (created once by platform IaC, not per run). provision
 # references and attaches it via PassRole; it does not create it.
 DEFAULT_S3_IMPORT_ROLE_ARN = _PLACEHOLDER
 
 
-# Load-phase instance. Prod is serverless, but we use provisioned for load
-# (see PLAN_LOADER.md "Provisioned-vs-Serverless"). Resize step flips this.
-DEFAULT_LOAD_INSTANCE_CLASS = "db.r7g.16xlarge"
+# Load-phase instance sizing. Prod serving is serverless; load uses provisioned (see the
+# loader DAG spec, airflow/astro/docs/people_api_loader.md). We use TWO classes:
+# provision/create_schema/copy run on the smaller `load_instance_class` (copy is I/O/WAL-bound,
+# not CPU-bound), and build_indexes scales the writer UP to `index_instance_class` (build_indexes
+# is cleanly CPU-bound and scales with vCPU — see steps/build_indexes.py). resize then flips
+# the writer to serverless. Override per-env with LOADER_LOAD_INSTANCE_CLASS /
+# LOADER_INDEX_INSTANCE_CLASS; keep _DEFAULT_BUILDERS in build_indexes.py in step with the
+# index box's vCPU.
+DEFAULT_LOAD_INSTANCE_CLASS = "db.r8g.16xlarge"
+DEFAULT_INDEX_INSTANCE_CLASS = "db.r8g.48xlarge"
 DEFAULT_SERVE_MIN_ACU = 0.5
 DEFAULT_SERVE_MAX_ACU = 128.0
 DEFAULT_ENGINE_VERSION = "16.8"
@@ -87,12 +107,17 @@ class LoaderConfig(BaseLoaderConfig):
     db_env: str
     # SSM Parameter Store name holding the Present-cluster connection string (SecureString).
     db_conn_param: str
+    # Optional server-side statement_timeout (ms) applied to each Postgres session; 0 disables it.
+    # A runaway query then fails loudly instead of running unbounded (see db.py).
+    db_statement_timeout_ms: int
 
-    # Prod (inspected / validated against)
+    # The Present/serving cluster inspected + validated against.
     prod_cluster_id: str
-    prod_db_name: str
-    prod_db_user: str
-    prod_db_port: int
+    # DB identity for the provisioned cluster's master user/db (matches the serving cluster so the
+    # API connects the same way), plus the port used in its connection string.
+    db_name: str
+    db_user: str
+    db_port: int
 
     # VPC / security
     vpc_id: str
@@ -101,9 +126,18 @@ class LoaderConfig(BaseLoaderConfig):
     kms_key_arn: str
     s3_import_role_arn: str
 
+    # Bastion (SSH) for reaching Postgres from outside the VPC (Astro worker).
+    # Empty host = connect directly (local/VPN runs).
+    bastion_host: str
+    bastion_port: int
+    bastion_user: str
+    bastion_private_key: str
+    bastion_private_key_passphrase: str
+
     # New cluster defaults
     engine_version: str
     load_instance_class: str
+    index_instance_class: str
     serve_min_acu: float
     serve_max_acu: float
 
@@ -124,62 +158,96 @@ class LoaderConfig(BaseLoaderConfig):
         # to `ResourceTag/Environment = dev`, so every resource the loader
         # creates MUST carry `Environment=dev`. At cutover the ops team can
         # re-tag to `Environment=prod` to match the serving-cluster convention.
+        # `managedBy=dataplatform` matches the platform IAM convention: the RDS
+        # create policies condition on `RequestTag/managedBy=dataplatform`, so
+        # loader-created RDS resources must carry it to be authorized.
         tags = {
             "Project": os.environ.get("LOADER_TAG_PROJECT", "gp-api"),
             "Environment": os.environ.get("LOADER_TAG_ENVIRONMENT", "dev"),
+            "managedBy": os.environ.get("LOADER_TAG_MANAGED_BY", "dataplatform"),
         }
 
         # Present-cluster connection comes from an SSM SecureString (connect_prod fetches it);
         # the param name is people-db-connection-string-{LOADER_ENV} unless fully overridden.
-        env = os.environ.get("LOADER_ENV", DEFAULT_DB_ENV)
-        db_conn_param = os.environ.get("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
+        env = _env("LOADER_ENV", DEFAULT_DB_ENV)
+        db_conn_param = _env("LOADER_DB_CONN_PARAM", f"{CONN_PARAM_PREFIX}-{env}")
+        # Loader output bucket is used from the first step (inspect) onward. It is real infra, not
+        # committed to this public repo, so require it explicitly — a clear failure here beats an
+        # opaque S3 AccessDenied/NoSuchBucket later (e.g. against a stale default bucket).
+        s3_bucket = _env("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET)
+        if not s3_bucket:
+            raise RuntimeError(
+                "LOADER_S3_BUCKET is not set. The loader's S3 bucket is real infrastructure and is "
+                "not committed to this public repo; set LOADER_S3_BUCKET (e.g. on the Astro "
+                "deployment) to the loader bucket."
+            )
         # Infra identifiers (provision-only; provision is a stub) come from LOADER_* env vars,
         # else empty placeholders — nothing infra-identifying is committed to this public repo.
-        mart_schema = os.environ.get("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
+        mart_schema = _env("LOADER_MART_CATALOG_SCHEMA", DEFAULT_MART_CATALOG_SCHEMA)
         mart_fqns = {pg: f"{mart_schema}.{model}" for pg, model in _MART_MODELS.items()}
         return cls(
-            aws_region=os.environ.get("AWS_REGION", DEFAULT_AWS_REGION),
+            aws_region=_env("AWS_REGION", DEFAULT_AWS_REGION),
             aws_profile=os.environ.get("AWS_PROFILE"),
-            account_id=os.environ.get("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
-            s3_bucket=os.environ.get("LOADER_S3_BUCKET", DEFAULT_S3_BUCKET),
-            databricks_warehouse_id=os.environ.get("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
+            # Cross-account RDS-admin role assumed for all AWS calls (the Astro worker's identity
+            # lives in a different account). Unset for local runs whose ambient creds already have
+            # access. ExternalId is required by the role's trust policy when present.
+            assume_role_arn=(os.environ.get("AWS_PEOPLE_API_RDS_ROLE_ARN") or "").strip() or None,
+            assume_role_external_id=(os.environ.get("AWS_PEOPLE_API_RDS_EXTERNAL_ID") or "").strip() or None,
+            account_id=_env("LOADER_AWS_ACCOUNT_ID", DEFAULT_AWS_ACCOUNT_ID),
+            s3_bucket=s3_bucket,
+            databricks_warehouse_id=_env("LOADER_DATABRICKS_WAREHOUSE_ID", ""),
             db_env=env,
             db_conn_param=db_conn_param,
-            prod_cluster_id=os.environ.get("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
-            prod_db_name=os.environ.get("LOADER_PROD_DB_NAME", DEFAULT_PROD_DB_NAME),
-            prod_db_user=os.environ.get("LOADER_PROD_DB_USER", DEFAULT_PROD_DB_USER),
-            prod_db_port=int(os.environ.get("LOADER_PROD_DB_PORT", DEFAULT_PROD_DB_PORT)),
-            vpc_id=os.environ.get("LOADER_VPC_ID", DEFAULT_VPC_ID),
-            db_subnet_group=os.environ.get("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
-            security_group_id=os.environ.get("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
-            kms_key_arn=os.environ.get("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
-            s3_import_role_arn=os.environ.get("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
-            engine_version=os.environ.get("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
-            load_instance_class=os.environ.get("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
+            db_statement_timeout_ms=int(os.environ.get("LOADER_DB_STATEMENT_TIMEOUT_MS", "0")),
+            prod_cluster_id=_env("LOADER_PROD_CLUSTER_ID", DEFAULT_PROD_CLUSTER_ID),
+            db_name=_env("LOADER_DB_NAME", DEFAULT_DB_NAME),
+            db_user=_env("LOADER_DB_USER", DEFAULT_DB_USER),
+            db_port=int(os.environ.get("LOADER_DB_PORT", DEFAULT_DB_PORT)),
+            vpc_id=_env("LOADER_VPC_ID", DEFAULT_VPC_ID),
+            db_subnet_group=_env("LOADER_DB_SUBNET_GROUP", DEFAULT_DB_SUBNET_GROUP),
+            security_group_id=_env("LOADER_SECURITY_GROUP_ID", DEFAULT_SECURITY_GROUP_ID),
+            kms_key_arn=_env("LOADER_KMS_KEY_ARN", DEFAULT_KMS_KEY_ARN),
+            s3_import_role_arn=_env("LOADER_S3_IMPORT_ROLE_ARN", DEFAULT_S3_IMPORT_ROLE_ARN),
+            bastion_host=_env("LOADER_BASTION_HOST", ""),
+            bastion_port=int(os.environ.get("LOADER_BASTION_PORT", "22")),
+            bastion_user=_env("LOADER_BASTION_USER", ""),
+            bastion_private_key=os.environ.get("LOADER_BASTION_PRIVATE_KEY", ""),
+            bastion_private_key_passphrase=os.environ.get("LOADER_BASTION_KEY_PASSPHRASE", ""),
+            engine_version=_env("LOADER_ENGINE_VERSION", DEFAULT_ENGINE_VERSION),
+            load_instance_class=_env("LOADER_LOAD_INSTANCE_CLASS", DEFAULT_LOAD_INSTANCE_CLASS),
+            index_instance_class=_env("LOADER_INDEX_INSTANCE_CLASS", DEFAULT_INDEX_INSTANCE_CLASS),
             serve_min_acu=float(os.environ.get("LOADER_SERVE_MIN_ACU", DEFAULT_SERVE_MIN_ACU)),
             serve_max_acu=float(os.environ.get("LOADER_SERVE_MAX_ACU", DEFAULT_SERVE_MAX_ACU)),
             mart_fqns=mart_fqns,
             _tags=tags,
         )
 
+    @property
+    def bastion_enabled(self) -> bool:
+        return bool(self.bastion_host)
+
     def export_prefix(self, run_date: str) -> str:
         return f"voter_export_{run_date}"
 
+    # Dated identifiers are env-scoped (gp-people-db-{date}-{env}[-role]). Dev and prod provision
+    # into the same AWS account and `provision` is idempotent by name, so an un-scoped name would
+    # let a same-date run in the other env adopt this env's cluster — cross-env contamination, not
+    # just a clash. The conn param (below) has always been env-scoped; these mirror it.
     def new_cluster_id(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}"
+        return f"gp-people-db-{run_date}-{self.db_env}"
 
     def new_writer_instance_id(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}-writer"
+        return f"{self.new_cluster_id(run_date)}-writer"
 
     def new_conn_param(self, run_date: str) -> str:
         """SSM SecureString name for the provisioned cluster's connection string."""
         return f"{CONN_PARAM_PREFIX}-{self.db_env}-{run_date}"
 
     def new_load_param_group(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}-load"
+        return f"{self.new_cluster_id(run_date)}-load"
 
     def new_serve_param_group(self, run_date: str) -> str:
-        return f"gp-people-db-{run_date}-serve"
+        return f"{self.new_cluster_id(run_date)}-serve"
 
 
 def require_run_date(run_date: str) -> str:

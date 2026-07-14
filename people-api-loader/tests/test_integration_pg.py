@@ -152,15 +152,12 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
 
     # 3. build-indexes: the composite PK (id, State) and unique (LALVOTERID, State) must apply
     #    on the partitioned table — this is the partition-key-in-constraint requirement that
-    #    only a real PG enforces.
-    fc = fake_connect(pg_conn)  # ty: ignore[invalid-argument-type]
-    monkeypatch.setattr(build_indexes, "connect_new", fc)
+    #    only a real PG enforces. The builder helpers now take a live connection directly.
     build_indexes._add_primary_key(
-        _CFG, "20260609", PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
+        pg_conn, PrimaryKey(table="Voter", constraint="Voter_pkey", columns=["id", "State"])
     )
     build_indexes._create_index(
-        _CFG,
-        "20260609",
+        pg_conn,
         IndexDef(
             table="Voter",
             name="Voter_LALVOTERID_key",
@@ -195,6 +192,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
         copy_s3._acquire_state_lock(cur, "TX")
 
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
+    fc = fake_connect(pg_conn)
     monkeypatch.setattr(validate, "connect_new", fc)
     counts = validate._new_voter_counts_by_state(_CFG, "20260609")
     assert counts == {"TX": 5, "CA": 4}  # TX=5, CA=4 (3 + the cross-state row added in 3b)

@@ -265,9 +265,10 @@ cluster mints from itself (single-member semantics).
     from the person group's earliest member (person grain). `gp_candidate_id` is
     kept as an alias of `gp_person_id`.
 *   `gp_candidacy_id` — minted in `int__civics_minted_candidacy_ids` from the
-    candidacy-stage cluster's earliest member. Clusters are single-date (stage
-    grain), so the candidacy-grain id is the min minted id over the candidacy's
-    stages; co-clustered candidacies converge because they share clusters.
+    candidacy-stage cluster's earliest member. Clusters are single-stage
+    (election dates may differ within matcha's 10-day window), so the
+    candidacy-grain id is the min minted id over the candidacy's stages;
+    co-clustered candidacies converge because they share clusters.
 *   `gp_election_stage_id` — minted in `int__civics_minted_election_stage_ids`
     from the election-stage cluster's earliest member (already stage grain).
 
