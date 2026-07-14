@@ -166,6 +166,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
             columns=["LALVOTERID"],
             where=None,
         ),
+        partition_key="State",  # Voter is partitioned -> unique is (LALVOTERID, State)
     )
     with pg_conn.cursor() as cur:
         pk = _scalar(
