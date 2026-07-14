@@ -37,33 +37,37 @@ CANDIDACY_UPSERT_QUERY = """
         email,
         website_url,
         is_incumbent,
-        race_id
+        race_id,
+        person_id
     )
     SELECT
-        id::uuid,
-        created_at,
-        updated_at,
-        br_database_id,
-        slug,
-        first_name,
-        last_name,
-        party,
-        place_name,
-        state,
-        image,
-        about,
-        urls,
-        election_frequency,
-        salary,
-        normalized_position_name,
-        position_name,
-        position_description,
-        gp_candidate_id::uuid,
-        email,
-        website_url,
-        is_incumbent,
-        race_id::uuid
-    FROM {staging_schema}."Candidacy"
+        stg.id::uuid,
+        stg.created_at,
+        stg.updated_at,
+        stg.br_database_id,
+        stg.slug,
+        stg.first_name,
+        stg.last_name,
+        stg.party,
+        stg.place_name,
+        stg.state,
+        stg.image,
+        stg.about,
+        stg.urls,
+        stg.election_frequency,
+        stg.salary,
+        stg.normalized_position_name,
+        stg.position_name,
+        stg.position_description,
+        stg.gp_candidate_id::uuid,
+        stg.email,
+        stg.website_url,
+        stg.is_incumbent,
+        stg.race_id::uuid,
+        person.id
+    FROM {staging_schema}."Candidacy" AS stg
+    LEFT JOIN {db_schema}."Person" AS person
+        ON person.id = stg.gp_candidate_id::uuid
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
@@ -86,7 +90,8 @@ CANDIDACY_UPSERT_QUERY = """
         email = EXCLUDED.email,
         website_url = EXCLUDED.website_url,
         is_incumbent = EXCLUDED.is_incumbent,
-        race_id = EXCLUDED.race_id
+        race_id = EXCLUDED.race_id,
+        person_id = EXCLUDED.person_id
 """
 
 DISTRICT_UPSERT_QUERY = """
@@ -133,7 +138,8 @@ POSITION_UPSERT_QUERY = """
         level,
         district_id,
         is_win_icp,
-        is_serve_icp
+        is_serve_icp,
+        salary
     )
     SELECT
         id::uuid,
@@ -144,7 +150,8 @@ POSITION_UPSERT_QUERY = """
         level::\"PositionLevel\",
         district_id::uuid,
         is_win_icp,
-        is_serve_icp
+        is_serve_icp,
+        salary
     FROM {staging_schema}."Position"
     ON CONFLICT (id) DO UPDATE SET
         br_database_id = EXCLUDED.br_database_id,
@@ -154,7 +161,8 @@ POSITION_UPSERT_QUERY = """
         level = EXCLUDED.level,
         district_id = EXCLUDED.district_id,
         is_win_icp = EXCLUDED.is_win_icp,
-        is_serve_icp = EXCLUDED.is_serve_icp
+        is_serve_icp = EXCLUDED.is_serve_icp,
+        salary = EXCLUDED.salary
 """
 ISSUE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Issue" (
@@ -665,6 +673,26 @@ def model(dbt, session: SparkSession) -> DataFrame:
     # now drop the candidacy's that have no race or it's now null
     _execute_sql_query(
         f'DELETE FROM {db_schema}."Candidacy" WHERE race_id not in (select id from {db_schema}."Race") or race_id is null',
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # Heal person links: the upsert only touches rows the incremental filter
+    # selects, and its guarded join can only link people already synced to
+    # "Person" (delivered separately by the sync_election_api Airflow DAG).
+    # Backfill any candidacy whose person has since arrived.
+    _execute_sql_query(
+        f"""
+        UPDATE {db_schema}."Candidacy" AS c
+        SET person_id = c.gp_candidate_id::uuid
+        FROM {db_schema}."Person" AS p
+        WHERE c.person_id IS NULL
+          AND c.gp_candidate_id IS NOT NULL
+          AND p.id = c.gp_candidate_id::uuid
+        """,
         db_host,
         db_port,
         db_user,
