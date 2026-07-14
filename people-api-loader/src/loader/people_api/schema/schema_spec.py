@@ -20,13 +20,19 @@ class TableSpec:
     # App/Prisma-managed columns that exist in the serving table but not the mart, appended
     # as (name, pg_type, nullable). The mart is the source for everything else.
     extra_columns: list[tuple[str, str, bool]] = field(default_factory=list)
+    # PK for tables the serving snapshot cannot describe (e.g. DistrictStats is not yet a serving
+    # Postgres table, so _serving_seed has no entry). For serving tables this stays None and the
+    # seed is authoritative. NEVER hand-edit _serving_seed.py; this is the escape hatch.
+    primary_key: PrimaryKey | None = None
 
 
-# Scope: the loader bulk-loads only Voter. District/DistrictVoter are small, Prisma-defined,
-# and built by the dbt write path (write__people_api_db.py); DistrictStats isn't a serving
-# Postgres table at all. So generation is Voter-only. The single Prisma-layer column the mart
-# omits is Mailing_HHGender_Description (a REMOVED_COLUMNS NULL placeholder);
-# `id` is the mart's salted-uuid string, stored as UUID in Postgres.
+# The loader bulk-loads the full serving set onto the fresh cluster: Voter and DistrictVoter are
+# LIST-partitioned by "State" (large, per-partition parallel index builds); District and
+# DistrictStats are flat. Columns/types come from the marts (mart_introspect); this module owns the
+# Postgres-side decisions. DistrictStats is not yet a serving table, so its PK is carried here, not
+# in the generated _serving_seed. Serving enforces no FKs, so none are created. Voter's single
+# Prisma-only column the mart omits is Mailing_HHGender_Description; `id` is the mart's salted-uuid
+# string stored as UUID.
 TABLE_SPECS: dict[str, TableSpec] = {
     "Voter": TableSpec(
         pg_table="Voter",
@@ -34,12 +40,38 @@ TABLE_SPECS: dict[str, TableSpec] = {
         type_overrides={"id": "UUID"},
         extra_columns=[("Mailing_HHGender_Description", "TEXT", True)],
     ),
+    "District": TableSpec(
+        pg_table="District",
+        partition_by=None,
+    ),
+    "DistrictStats": TableSpec(
+        pg_table="DistrictStats",
+        partition_by=None,
+        type_overrides={"buckets": "jsonb"},
+        primary_key=PrimaryKey(
+            table="DistrictStats", constraint="DistrictStats_pkey", columns=["district_id"]
+        ),
+    ),
+    "DistrictVoter": TableSpec(
+        pg_table="DistrictVoter",
+        partition_by="State",
+    ),
 }
+
+
+def is_partitioned(table: str) -> bool:
+    return TABLE_SPECS[table].partition_by is not None
+
+
+def partition_column(table: str) -> str | None:
+    return TABLE_SPECS[table].partition_by
 
 
 def primary_key_for(table: str) -> PrimaryKey | None:
     matches = [p for p in seed.PRIMARY_KEYS if p.table == table]
-    return matches[0] if matches else None
+    if matches:
+        return matches[0]
+    return TABLE_SPECS[table].primary_key if table in TABLE_SPECS else None
 
 
 def indexes_for(table: str) -> list[IndexDef]:
