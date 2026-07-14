@@ -93,8 +93,11 @@ with
             c.twitter_handle,
             c.facebook_url,
             c.instagram_handle,
-            -- TS form's BR race id; fallback leg of the emitted br_race_id.
+            -- TS form values: BR-race-id fallback leg, zip, and the legacy
+            -- form-time stage label for `Election Type`.
             ts_int.br_race_id as br_race_id_ts,
+            ts_int.postal_code as postal_code_ts,
+            ts_int.election_type as election_type_ts,
             br_int.br_candidacy_id,
             br_int.br_race_id as br_race_id_br,
             e.population,
@@ -190,8 +193,9 @@ select
     coalesce(cast(b.birth_date as string), '') as `Birth Date`,
     coalesce(b.street_address, '') as `Street Address`,
     coalesce(b.state, '') as `State/Region`,
-    -- blank since the TS fuzzy pipeline removal: no civics-side zip yet
-    '' as postal_code,
+    coalesce(
+        right(concat('00000', cast(b.postal_code_ts as varchar(10))), 5), ''
+    ) as postal_code,
     coalesce(b.district, '') as `District`,
     coalesce(b.city, '') as `City`,
     b.population as `population`,
@@ -206,7 +210,8 @@ select
     coalesce(cast(b.primary_election_date as string), '') as `Primary Election Date`,
     coalesce(cast(b.general_election_date as string), '') as `General Election Date`,
     coalesce(cast(b.election_date as string), '') as `Election Date`,
-    coalesce(initcap(b.election_stage), '') as `Election Type`,
+    -- TS form value where present (legacy semantics); date-derived stage otherwise.
+    coalesce(b.election_type_ts, initcap(b.election_stage), '') as `Election Type`,
     case
         when b.is_uncontested
         then 'Uncontested'

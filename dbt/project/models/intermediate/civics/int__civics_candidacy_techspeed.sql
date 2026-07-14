@@ -202,9 +202,13 @@ with
             source.br_general_runoff_election_date as general_runoff_election_date,
 
             source.br_position_database_id,
-            -- TS form's BR race id, surfaced for the HubSpot feed's br_race_id
-            -- fallback (fed by the fuzzy passthrough before its removal).
+            -- TS form's BR race id, zip, and stage label, surfaced for the
+            -- HubSpot feed (fed by the fuzzy passthrough before its removal).
             source.br_race_id,
+            source.postal_code,
+            case
+                when is_primary then 'Primary' when not is_primary then 'General'
+            end as election_type,
 
             -- Always null since the TS-trained scorer's removal; the broad score
             -- lives on candidacy_scored (int__civics_viability_scoring).
