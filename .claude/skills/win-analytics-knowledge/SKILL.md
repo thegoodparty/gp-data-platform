@@ -1,6 +1,6 @@
 ---
 name: win-analytics-knowledge
-description: Resolve Win-product data concepts to their governed metric, table, column, and definition before writing any query. Use for any Win-product data question — engagement, activation, outcomes/win-rate, viability, segmentation, Amplitude events, joins, PMF/satisfaction — to find the one correct source and avoid concept-to-entity ambiguity. A thin router over the canonical metrics registry and per-domain reference docs; it narrows the search space, it does not run analyses (that is the win-analytics-process skill).
+description: Use when a Win-product data concept — engagement, activation, outcomes/win rate, viability, segmentation, Amplitude events, joins, PMF/satisfaction — needs to resolve to its governed metric, table, column, or definition before a query is written. Not for running analyses (that is the win-analytics-process skill).
 ---
 
 # Win analytics knowledge

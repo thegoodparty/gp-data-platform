@@ -6,7 +6,8 @@ After a substantive analysis run, write findings that pass the promotion test (b
 dated calibration log at `analytics/runbook/CALIBRATION_<YYYY-MM-DD>.md`, then handle each finding
 per its track (below). This is a **required closing step** of every substantive analysis (see the
 verification protocol in [methodology.md](methodology.md)): either produce the log and process it,
-or explicitly record that no calibration was needed. **"No calibration needed" is the expected,
+or explicitly record that no calibration was needed — and in both cases end with the ledger
+read-back (below). **"No calibration needed" is the expected,
 healthy outcome of most runs** — a finding is the exception, not a deliverable, and a run that
 produces none has not underperformed. What's required is the closing step itself; it's what makes
 the process self-correct rather than relying on someone remembering.
@@ -84,6 +85,22 @@ file) for:
 for data-state-tagged items), it becomes eligible for the next calibration batch as a real
 proposal — still subject to the promotion test and the approval gate. Mark promoted lines with
 the PR reference rather than deleting them.
+
+## The ledger read-back (required close of every run)
+
+An append is verified by reading the file back, not by having intended to write it. The closing
+summary of every substantive run must contain a **read-back block**:
+
+1. Re-read `analytics/runbook/CANDIDATES.md` after all appends are done.
+2. Paste the rows added this run into the closing summary, verbatim — or the single line
+   `Ledger read-back: no rows appended this run.`
+3. State whether Track 2 was ON (process-design mode) or OFF; if OFF and any Track 2 candidates
+   surfaced, they must appear as parked `process` rows in the read-back — a Track 2 candidate
+   mentioned in the summary but absent from the read-back is a bug in the run, not a judgment call.
+
+A closing summary without a read-back block is incomplete; do not end the run on it. (This check
+exists because the failure happened: candidates were parked in personal calibration logs and never
+reached the ledger, silently defeating the recurrence-counting that promotion depends on.)
 
 ## Branch / PR convention for approved edits
 
