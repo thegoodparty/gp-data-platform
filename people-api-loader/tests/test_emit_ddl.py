@@ -77,19 +77,6 @@ def test_renders_all_four_tables(monkeypatch) -> None:
         ],
     }
 
-    def fake_introspect(fqn: str) -> list[MartColumn]:
-        for pg, model in {
-            "Voter": "voter",
-            "District": "district",
-            "DistrictStats": "districtstats",
-            "DistrictVoter": "districtvoter",
-        }.items():
-            if fqn.endswith(model):
-                return marts[pg]
-        raise AssertionError(f"Unknown FQN: {fqn}")
-
-    monkeypatch.setattr(emit_ddl, "introspect_mart", fake_introspect)
-
     cfg = SimpleNamespace(
         mart_fqns={
             "Voter": "cat.schema.m_people_api__voter",
@@ -98,6 +85,18 @@ def test_renders_all_four_tables(monkeypatch) -> None:
             "DistrictVoter": "cat.schema.m_people_api__districtvoter",
         }
     )
+
+    # Exact-match dispatch keyed on cfg.mart_fqns values to avoid suffix collision
+    # (e.g., "districtvoter".endswith("voter") would incorrectly match Voter)
+    fqn_to_pg = {v: k for k, v in cfg.mart_fqns.items()}
+
+    def fake_introspect(fqn: str) -> list[MartColumn]:
+        if fqn not in fqn_to_pg:
+            raise AssertionError(f"Unknown FQN: {fqn}")
+        return marts[fqn_to_pg[fqn]]
+
+    monkeypatch.setattr(emit_ddl, "introspect_mart", fake_introspect)
+
     sql = emit_ddl.render_target_schema(cfg)  # type: ignore
     assert 'CREATE TABLE public."Voter" (' in sql
     assert 'CREATE TABLE public."District" (' in sql
@@ -105,3 +104,5 @@ def test_renders_all_four_tables(monkeypatch) -> None:
     assert 'CREATE TABLE public."DistrictVoter" (' in sql
     # buckets override -> jsonb (case as written in schema_spec)
     assert '"buckets" jsonb' in sql
+    # DistrictVoter-specific column to catch dispatch/rendering regression
+    assert '"voter_id" TEXT NOT NULL' in sql
