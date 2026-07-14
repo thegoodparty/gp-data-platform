@@ -22,6 +22,7 @@ import hashlib
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 
@@ -39,7 +40,13 @@ from loader.people_api.manifests import (
     write_manifest,
 )
 from loader.people_api.schema.index_specs import IndexDef, PrimaryKey
-from loader.people_api.schema.schema_spec import indexes_for, primary_key_for
+from loader.people_api.schema.schema_spec import (
+    TABLE_SPECS,
+    indexes_for,
+    is_partitioned,
+    partition_column,
+    primary_key_for,
+)
 from loader.people_api.schema.states import STATES
 
 log = get_logger(__name__)
@@ -52,7 +59,6 @@ log = get_logger(__name__)
 # vCPU count. 128 targets the ~192-vCPU db.r8g.48xlarge index instance. maintenance_work_mem is kept
 # modest (below) so builders * mem stays well under RAM; lower --parallelism for a smaller instance.
 _DEFAULT_BUILDERS = 128
-_TARGET_TABLE = "Voter"
 
 # A worker that loses its connection mid-build reconnects through the shared tunnel and retries the
 # (idempotent) item, rather than failing the whole step on the first transient drop. Bounds a brief
@@ -114,7 +120,13 @@ def _add_primary_key(conn: psycopg.Connection, pk: PrimaryKey) -> None:
         log.info("indexes.pk_added", table=pk.table, constraint=pk.constraint)
 
 
-def _create_index(conn: psycopg.Connection, idx: IndexDef) -> None:
+def _create_index(conn: psycopg.Connection, idx: IndexDef, *, partition_key: str | None) -> None:
+    """Build one PK-adjacent unique index at the parent level.
+
+    `partition_key` is the LIST-partition column ("State") for a partitioned table, appended to the
+    unique so uniqueness is enforceable on the partitioned relation; `None` for a flat table, whose
+    unique is built on its real columns with nothing appended.
+    """
     if idx.unique:
         # We rebuild a unique index from its parsed columns (to append the partition
         # key), requoting each as an identifier. Empty columns would silently emit a
@@ -133,9 +145,9 @@ def _create_index(conn: psycopg.Connection, idx: IndexDef) -> None:
                 f"column(s) {expr_cols} would produce invalid DDL when requoted with the "
                 "partition key — this index needs manual handling"
             )
-        # dict.fromkeys dedupes in case a future dump's unique already includes "State".
-        # NOTE (cutover): appending "State" turns Voter_LALVOTERID_key into
-        # UNIQUE("LALVOTERID", "State"). The dbt write models upsert with
+        # dict.fromkeys dedupes in case a future dump's unique already includes the partition key.
+        # NOTE (cutover): for a partitioned table, appending the partition key turns
+        # Voter_LALVOTERID_key into UNIQUE("LALVOTERID", "State"). The dbt write models upsert with
         # ON CONFLICT ("LALVOTERID") against the single-column constraint, so at cutover
         # they must change to ON CONFLICT ("LALVOTERID", "State") to match this index:
         #   dbt/project/models/write/write__l2_databricks_to_gp_api.py:774
@@ -143,7 +155,13 @@ def _create_index(conn: psycopg.Connection, idx: IndexDef) -> None:
         # Do NOT land those edits before the partitioned schema is the serving DB — the
         # current DB still has the single-column unique and the composite target would
         # break live upserts. See the PR body's cutover note.
-        cols = ", ".join(f'"{c}"' for c in dict.fromkeys([*idx.columns, "State"]))
+        # SIBLING NOTE (cutover): DistrictVoter is the same DATA-1855 divergence. Its PK
+        # (district_id, voter_id) becomes (district_id, voter_id, "State") on this partitioned
+        # table, so the dbt DistrictVoter write path's ON CONFLICT must move to the composite key
+        # at cutover, not before — for the same reason the current DB carries the narrower key.
+        # A flat table (partition_key is None) appends nothing and keeps its real columns.
+        keyed = [*idx.columns, partition_key] if partition_key is not None else list(idx.columns)
+        cols = ", ".join(f'"{c}"' for c in dict.fromkeys(keyed))
         # Preserve a partial-index predicate so we don't rebuild a broader unique than prod.
         where_clause = f" WHERE {idx.where}" if idx.where else ""
         sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols}){where_clause}'
@@ -166,24 +184,35 @@ def _child_index_name(index_name: str, state: str) -> str:
     return f"ix_{hashlib.md5(index_name.encode()).hexdigest()[:12]}_{state}"
 
 
-def _plain_parent_only_sql(idx: IndexDef) -> str:
+def _plain_parent_only_sql(idx: IndexDef, table: str) -> str:
     """`CREATE INDEX ... ON ONLY <parent>` — the empty parent index (instant, no partition data)."""
     sql = _rewrite_index_sql(idx.sql).rstrip().rstrip(";")
-    return sql.replace(f'ON public."{_TARGET_TABLE}"', f'ON ONLY public."{_TARGET_TABLE}"', 1)
+    return sql.replace(f'ON public."{table}"', f'ON ONLY public."{table}"', 1)
 
 
-def _plain_child_sql(idx: IndexDef, state: str) -> tuple[str, str]:
+def _plain_child_sql(idx: IndexDef, table: str, state: str) -> tuple[str, str]:
     """(child_index_name, `CREATE INDEX ... ON <partition>`) preserving method/expr/opclass/WHERE."""
     child = _child_index_name(idx.name, state)
     sql = _rewrite_index_sql(idx.sql).rstrip().rstrip(";")
     sql = sql.replace(f'"{idx.name}"', f'"{child}"', 1)
-    sql = sql.replace(f'ON public."{_TARGET_TABLE}"', f'ON public."{_TARGET_TABLE}_{state}"', 1)
+    sql = sql.replace(f'ON public."{table}"', f'ON public."{table}_{state}"', 1)
     return child, sql
 
 
 def _create_plain_parent_only(conn: psycopg.Connection, idx: IndexDef) -> None:
     with conn.cursor() as cur:
-        cur.execute(_plain_parent_only_sql(idx))  # ty: ignore[no-matching-overload]
+        cur.execute(_plain_parent_only_sql(idx, idx.table))  # ty: ignore[no-matching-overload]
+
+
+def _create_plain_flat(conn: psycopg.Connection, idx: IndexDef) -> None:
+    """Build a plain index DIRECTLY on a flat (non-partitioned) table.
+
+    No `ON ONLY`/child/attach machinery: a flat table has no partitions, so the index is a single
+    build on the table itself (re-issued verbatim, made idempotent by `_rewrite_index_sql`).
+    """
+    with conn.cursor() as cur:
+        cur.execute(_rewrite_index_sql(idx.sql))  # ty: ignore[no-matching-overload]
+        log.info("indexes.built_flat", table=idx.table, name=idx.name)
 
 
 def _build_and_attach_child(conn: psycopg.Connection, item: tuple[IndexDef, str]) -> None:
@@ -193,7 +222,7 @@ def _build_and_attach_child(conn: psycopg.Connection, item: tuple[IndexDef, str]
     partial-rerun (child built + attached before a crash) skips the re-attach rather than erroring.
     """
     idx, state = item
-    child, child_sql = _plain_child_sql(idx, state)
+    child, child_sql = _plain_child_sql(idx, idx.table, state)
     with conn.cursor() as cur:
         cur.execute(child_sql)  # ty: ignore[no-matching-overload]
         cur.execute(
@@ -207,22 +236,25 @@ def _build_and_attach_child(conn: psycopg.Connection, item: tuple[IndexDef, str]
         log.info("indexes.child_built", name=idx.name, state=state, child=child)
 
 
-def _partition_sizes(cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None) -> dict[str, int]:
-    """Return {state: on-disk bytes} for each public."Voter_<state>" leaf partition.
+def _partition_sizes(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None
+) -> dict[str, int]:
+    """Return {state: on-disk bytes} for each public."<table>_<state>" leaf partition.
 
     One catalog query, used to schedule the largest partitions first. relkind='r' excludes the
-    partitioned parent (relkind='p'), so only leaf partitions are returned.
+    partitioned parent (relkind='p'), so only leaf partitions are returned. The LIKE is anchored on
+    `<table>_`, so a query for "Voter" never matches "DistrictVoter_*" (which starts differently).
     """
     sql = (
         "SELECT c.relname, pg_relation_size(c.oid) "
         "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-        r"WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname LIKE 'Voter\_%'"
+        rf"WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname LIKE '{table}\_%'"
     )
     sizes: dict[str, int] = {}
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
-        cur.execute(sql)
+        cur.execute(sql)  # ty: ignore[no-matching-overload]
         for relname, size in cur.fetchall():
-            sizes[relname.removeprefix("Voter_")] = size
+            sizes[relname.removeprefix(f"{table}_")] = size
     return sizes
 
 
@@ -239,10 +271,10 @@ def _order_children_largest_first(
     return sorted(units, key=lambda u: partition_bytes.get(u[1], 0), reverse=True)
 
 
-def _analyze(cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None) -> None:
+def _analyze(cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None) -> None:
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
-        cur.execute('ANALYZE public."Voter"')
-        log.info("indexes.analyzed", table=_TARGET_TABLE)
+        cur.execute(f'ANALYZE public."{table}"')  # ty: ignore[no-matching-overload]
+        log.info("indexes.analyzed", table=table)
 
 
 def _l2type_coverage(
@@ -329,18 +361,6 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     # smaller load box. No-op on a re-run where the box is already scaled.
     _ensure_instance_class(cfg, run_date)
 
-    pk = primary_key_for(_TARGET_TABLE)
-    pks = [pk] if pk is not None else []
-    idxs = indexes_for(_TARGET_TABLE)
-    log.info("indexes.parsed", primary_keys=len(pks), indexes=len(idxs))
-
-    # Partition key "State" must be part of every PK/unique on the partitioned table.
-    # dict.fromkeys dedupes in case a future dump's PK already includes "State".
-    pks = [
-        PrimaryKey(table=p.table, constraint=p.constraint, columns=list(dict.fromkeys([*p.columns, "State"])))
-        for p in pks
-    ]
-
     def _build_in_parallel(fn: Callable[..., None], items: list) -> None:
         """Run `fn(conn, item)` over items with a fixed pool of PERSISTENT connections.
 
@@ -405,33 +425,86 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
         if errors:
             raise errors[0]
 
-    unique_idxs = [i for i in idxs if i.unique]
-    plain_idxs = [i for i in idxs if not i.unique]
+    # Manifest aggregates across every table (Voter first, TABLE_SPECS order).
+    all_index_specs: list[IndexSpec] = []
+    constraints_added: list[str] = []
+    analyzed_tables: list[str] = []
 
-    # One bastion tunnel for the whole step; every connection below multiplexes through it (see
-    # _build_in_parallel). `fwd` is None when no bastion is configured (direct connections).
+    # One bastion tunnel for the WHOLE step (all tables); every connection below multiplexes through
+    # it (see _build_in_parallel). `fwd` is None when no bastion is configured (direct connections).
     with open_new_tunnel(cfg, run_date) as fwd:
-        # 1. Primary key(s) and the unique index: parent-level builds (few; fast/one-off).
-        _build_in_parallel(_add_primary_key, pks)
-        _build_in_parallel(_create_index, unique_idxs)
+        for table in TABLE_SPECS:  # dict preserves insertion order (Voter first) -> stable
+            partitioned = is_partitioned(table)
+            pcol = partition_column(table)  # the LIST-partition column ("State") or None (flat)
 
-        # 2. Plain indexes PER PARTITION (the bulk, and the whole bottleneck): first the empty
-        #    parent indexes (ON ONLY, instant), then the child index on each partition as an
-        #    independent (index, partition) unit across the pool, attached to its parent. Fine-
-        #    grained scheduling keeps every builder on useful small work instead of a serial
-        #    51-partition walk per index.
-        _build_in_parallel(_create_plain_parent_only, plain_idxs)
-        # Schedule the biggest partitions first so each CREATE INDEX launches into an open worker
-        # pool and grabs its full worker request (see _order_children_largest_first); avoids the
-        # ~1-worker starvation of the CA/TX/FL giants when they launch mid-flood.
-        sizes = _partition_sizes(cfg, run_date, forward=fwd)
-        children = _order_children_largest_first([(i, s) for i in plain_idxs for s in STATES], sizes)
-        _build_in_parallel(_build_and_attach_child, children)
+            pk = primary_key_for(table)
+            pks: list[PrimaryKey] = []
+            if pk is not None:
+                cols = list(pk.columns)
+                if partitioned:
+                    # Partition key must be part of every PK/unique on the partitioned table (a PG
+                    # requirement). dict.fromkeys dedupes in case a dump's PK already includes it.
+                    assert pcol is not None  # is_partitioned guarantees a partition column
+                    cols = list(dict.fromkeys([*cols, pcol]))
+                pks = [PrimaryKey(table=pk.table, constraint=pk.constraint, columns=cols)]
 
-        # 3. ANALYZE.
-        _analyze(cfg, run_date, forward=fwd)
+            idxs = indexes_for(table)
+            unique_idxs = [i for i in idxs if i.unique]
+            plain_idxs = [i for i in idxs if not i.unique]
+            log.info(
+                "indexes.parsed",
+                table=table,
+                primary_keys=len(pks),
+                indexes=len(idxs),
+                partitioned=partitioned,
+            )
 
-        # 4. l2Type coverage.
+            # 1. Primary key(s) and the unique index(es): parent-level builds (few; fast/one-off).
+            #    Flat tables pass partition_key=None (no State append); partitioned pass the column.
+            _build_in_parallel(_add_primary_key, pks)
+            _build_in_parallel(partial(_create_index, partition_key=pcol), unique_idxs)
+
+            if partitioned:
+                # 2. Plain indexes PER PARTITION (the bulk, and the whole bottleneck): first the empty
+                #    parent indexes (ON ONLY, instant), then the child index on each partition as an
+                #    independent (index, partition) unit across the pool, attached to its parent.
+                #    Fine-grained scheduling keeps every builder on useful small work instead of a
+                #    serial 51-partition walk per index.
+                _build_in_parallel(_create_plain_parent_only, plain_idxs)
+                # Schedule the biggest partitions first so each CREATE INDEX launches into an open
+                # worker pool and grabs its full worker request (see _order_children_largest_first);
+                # avoids the ~1-worker starvation of the CA/TX/FL giants when they launch mid-flood.
+                sizes = _partition_sizes(cfg, run_date, table, forward=fwd)
+                children = _order_children_largest_first([(i, s) for i in plain_idxs for s in STATES], sizes)
+                _build_in_parallel(_build_and_attach_child, children)
+            else:
+                # 2. Flat table: plain indexes build directly on the table (no partitions to walk).
+                _build_in_parallel(_create_plain_flat, plain_idxs)
+
+            # 3. ANALYZE this table.
+            _analyze(cfg, run_date, table, forward=fwd)
+
+            analyzed_tables.append(table)
+            constraints_added.extend(p.constraint for p in pks)
+            all_index_specs.extend(
+                IndexSpec(
+                    table=i.table,
+                    index_name=i.name,
+                    # A partitioned table's unique index carries the partition key (as built above);
+                    # flat tables and plain indexes keep their parsed columns verbatim.
+                    columns=(
+                        list(dict.fromkeys([*i.columns, pcol]))
+                        if (i.unique and partitioned and pcol is not None)
+                        else i.columns
+                    ),
+                    unique=i.unique,
+                    where=i.where,
+                )
+                for i in idxs
+            )
+
+        # 4. l2Type coverage — Voter-only (queries the Voter table's columns vs prod org_districts);
+        #    run once, not per table.
         missing = _l2type_coverage(cfg, run_date, forward=fwd)
     if missing is None:
         log.warning("indexes.l2type.skipped", reason="org_districts unreachable")
@@ -445,21 +518,11 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
         status="complete",
         started_at=started,
         finished_at=datetime.now(UTC),
-        indexes=[
-            IndexSpec(
-                table=i.table,
-                index_name=i.name,
-                # Unique indexes get the partition key appended (deduped, as built above).
-                columns=list(dict.fromkeys([*i.columns, "State"])) if i.unique else i.columns,
-                unique=i.unique,
-                where=i.where,
-            )
-            for i in idxs
-        ],
-        constraints_added=[p.constraint for p in pks],
-        analyzed_tables=[_TARGET_TABLE],
+        indexes=all_index_specs,
+        constraints_added=constraints_added,
+        analyzed_tables=analyzed_tables,
         l2type_coverage_missing=missing,
     )
     uri = write_manifest(cfg, manifest)
-    log.info("indexes.complete", uri=uri, indexes=len(idxs), pks=len(pks))
+    log.info("indexes.complete", uri=uri, indexes=len(all_index_specs), pks=len(constraints_added))
     return manifest
