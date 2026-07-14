@@ -1,25 +1,27 @@
 ---
 name: win-analytics-process
-description: The senior-analyst workflow for running a Win-product analysis — clarify and scope the question, find the right sources via the win-analytics-knowledge skill, build the working set once and slice it, then route through the adversarial reviewers and close with a calibration pass. Use when planning, executing, or reviewing a Win analysis (framer, executor, or reviewer). Carries the reusable analysis patterns, the brief contract, and the pipeline topology.
+description: Use when planning, executing, reviewing, or calibrating a product analysis, or when asked a product data question that should become one (currently Win-only; the entry runbook routes by product). For the data facts themselves, use the product's knowledge skill (win-analytics-knowledge).
 ---
 
 # Win analytics process
 
-How a Win-product analysis is run, from a fuzzy question to a reviewed result. For the data
-facts themselves (which table, which metric, which join), use the **win-analytics-knowledge**
-skill — this skill is about *how to work*, not *what is true about the data*.
+How a product analysis is run, from a fuzzy question to a reviewed result. For the data
+facts themselves (which table, which metric, which join), use the product's knowledge skill
+(**win-analytics-knowledge**) — this skill is about *how to work*, not *what is true about
+the data*.
 
 ## The senior-analyst loop
 
-1. **Clarify and scope (framing).** Sharpen the question to a one-sentence hypothesis with a decision attached, and resolve scoping forks before writing any code. Run the framing routine in [`references/framing.md`](references/framing.md) in your own context (ask the user, iterate); see [`references/methodology.md`](references/methodology.md) for the scoping checklist, resolved defaults, and cohort selection. Framing ends at the human-approval gate; no execution code until the brief is approved.
-2. **Find sources.** Resolve every concept through the **win-analytics-knowledge** skill so each maps to its one governed metric/table. Verify named tables/columns/events against the live catalog — docs drift.
-3. **Produce the brief.** The output of the framing step (step 1) is a structured brief — not a separate invocation; the format is the framing→execution contract in [`references/brief-schema.md`](references/brief-schema.md).
-4. **Execute.** Build the working set once with `analytics/lib/win_analysis.py`, then slice every cut from it in pandas (build-once-slice-many; see `methodology.md`). Anchor features point-in-time so post-anchor activity doesn't leak. Note the helper's `onboarded` column is the new-flow-blind `onboarding_complete` flag, **not** the canonical Onboarded cohort — see the column caveat in `methodology.md` before using it.
-5. **Review.** Route the executed analysis through the adversarial reviewers — `product-data-scientist` (methodology + interpretation) and `product-manager` (usefulness). Keep the reviewers on the strong model.
-6. **Close the loop.** Run the calibration pass ([`references/calibration.md`](references/calibration.md)): findings that pass the promotion test go to the file that owns them, observations below that bar are appended to the shared `analytics/runbook/CANDIDATES.md` ledger, or you record that none were needed (the expected outcome of most runs). Required closing step. Pruning happens via **consolidation mode** — a manually fired mode of this skill, detailed in the same doc.
+An index, not the specification: each step's operational detail lives in its reference doc,
+and the stage/actor/gate topology lives in [`references/pipeline.md`](references/pipeline.md),
+the single description of the pipeline flow.
 
-The ordered stages, who does what, and what artifact passes between them are in
-[`references/pipeline.md`](references/pipeline.md) — the single description of the pipeline flow.
+1. **Clarify and scope (framing).** Run the framing routine ([`references/framing.md`](references/framing.md)) in your own context — it converses with the user. No execution code until the human approves the framing.
+2. **Find sources.** Resolve every concept through the knowledge skill, and verify named tables/columns/events against the live catalog — docs drift.
+3. **Produce the brief.** The framing output is a structured brief per [`references/brief-schema.md`](references/brief-schema.md), the framing→execution contract.
+4. **Execute.** Build the working set once, then slice every cut from it in pandas — defaults, cohort tables, and the working-set column caveats are in [`references/methodology.md`](references/methodology.md).
+5. **Review.** After the results checkpoint, route the executed analysis through the two adversarial reviewer agents; the gate and dispatch rules are in `pipeline.md`.
+6. **Close the loop.** Run the calibration pass ([`references/calibration.md`](references/calibration.md)), ending with the candidates-ledger read-back it requires. Pruning happens via **consolidation mode**, detailed in the same doc.
 
 ## Reusable analysis patterns
 
@@ -37,4 +39,4 @@ Common work that should not be reinvented each run:
 - [`references/pipeline.md`](references/pipeline.md) — stages, agents, handoff contracts (descriptive, not active).
 - [`references/methodology.md`](references/methodology.md) — scoping, default cohorts, query patterns, verification protocol, source pointers.
 - [`references/brief-schema.md`](references/brief-schema.md) — the analysis-brief YAML contract + amend-vs-reframe rule.
-- [`references/calibration.md`](references/calibration.md) — the calibration-log convention, the candidates ledger, consolidation mode, and the over-calibration / bloat cautions.
+- [`references/calibration.md`](references/calibration.md) — the calibration-log convention, the candidates ledger, the ledger read-back, consolidation mode, and the over-calibration / bloat cautions.

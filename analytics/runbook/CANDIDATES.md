@@ -19,3 +19,5 @@ step of the win-analytics-process skill
 
 | date | track | tag | observation | run ref | status |
 |---|---|---|---|---|---|
+| 2026-06-11 | process | universal | analytics env lacks declared Databricks deps: `analytics/pyproject.toml` declares only pandas, but `databricks_conn.run_query` needs `databricks-sql-connector` + `databricks-sdk`, so every DB run requires `uv run --with ...`. Candidate: add a runtime dependency group. | diagnostics baseline arms 2026-06-11 (reps 1-2 + express-framing) | parked (Track 2 OFF) |
+| 2026-06-11 | process | data-state | `analytics/diagnostics/baseline_question.md` base numbers drifted: reproduced denominators +12-16/month (~0.15%) above the answer key, consistent with live-table drift or a day-boundary convention. Candidate: refresh the recorded base or pin the boundary explicitly. | diagnostics baseline arms 2026-06-11 (reps 1-2 + express-framing) | parked (Track 2 OFF) |
