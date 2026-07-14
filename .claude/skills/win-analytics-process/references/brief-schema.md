@@ -129,4 +129,4 @@ Decision rule: if population/eligibility/target/comparison are unchanged and you
 ## Cross-references
 
 - [pipeline.md](pipeline.md) — the stages this brief flows through.
-- [methodology.md](methodology.md) — scoping, default cohorts, and the build-once-slice-many pattern.
+- [methodology.md](methodology.md) — scoping and the build-once-slice-many pattern; the product's default cohorts are in the product knowledge skill's `methodology_defaults.md`.

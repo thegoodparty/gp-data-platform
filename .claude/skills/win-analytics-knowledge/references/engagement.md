@@ -111,7 +111,7 @@ UTM lives only in the `user_properties` JSON on `stg_airbyte_source__amplitude_a
 
 The pattern: read raw events from `stg_airbyte_source__amplitude_api_events`, filter to the relevant family + window, aggregate to `user_id × time bucket` or `user_id × funnel step`. Mirror the structure of `int__amplitude_user_milestones` (user-grain milestones) or `int__amplitude_win_activity` (per-month aggregates).
 
-Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`. Connect via the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query`, authenticates via the `~/.databrickscfg` profile). The reusable build-once-slice-many helper is `analytics/lib/win_analysis.py` (see the process skill's `methodology.md`).
+Reusable Python pull-script template at `analytics/projects/win_outcomes_scout/notebooks/_pull_amplitude_universe.py`. Connect via the profile-auth helper `analytics/lib/databricks_conn.py` (`run_query`, authenticates via the `~/.databrickscfg` profile). The reusable build-once-slice-many helper is `analytics/lib/win_analysis.py` (see [methodology_defaults.md](methodology_defaults.md)).
 
 ## Cross-references
 

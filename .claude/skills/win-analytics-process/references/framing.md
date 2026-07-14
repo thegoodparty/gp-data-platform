@@ -99,4 +99,4 @@ For the final brief: follow the structured format documented in [brief-schema.md
 
 - [brief-schema.md](brief-schema.md) — the brief format this routine produces.
 - [pipeline.md](pipeline.md) — where framing sits in the flow.
-- [methodology.md](methodology.md) — scoping checklist, default cohorts, verification protocol.
+- [methodology.md](methodology.md) — scoping checklist, verification protocol; the product's default cohorts and scoping decisions are in the product knowledge skill's `methodology_defaults.md`.

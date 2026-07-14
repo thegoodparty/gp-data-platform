@@ -21,6 +21,21 @@ doc documents the flow; a human (or the process skill stepping through it) drive
 | 3 | **Review (methodology + interpretation)** | `product-data-scientist` | the executed notebook, read against the brief | a methodology review + an interpretation of results | Read-only and advisory. Surfaces leakage / survivorship / calibration concerns and interprets effect sizes. Does not edit code or open PRs. |
 | + | **Review (usefulness)** | `product-manager` | the plan or the deliverable | a framing / actionability review | Read-only and advisory. Asks whether this answers the team's real question and whether names/segments/thresholds match how consumers think. Invoked proactively at plan checkpoints and pre-PR — a checkpoint, not a strict sequence position. |
 
+## Reviewer dispatch template
+
+Build each reviewer's invocation prompt from this template — and nothing more:
+
+- **Artifacts by path:** the brief YAML and the executed notebook/script (plus any figures directory). The reviewer reads these on the merits.
+- **Product context:** the product, its knowledge skill, the decision cadence, and the intended audience/consumer of the deliverable.
+- **Docs to load:** the reviewer doc pointers from the product knowledge skill's `methodology_defaults.md` (which names the two or three docs each reviewer needs, per role).
+- **The ask:** review per your role (methodology + interpretation, or usefulness + actionability).
+
+**The dispatch must not lead the witness.** Do not summarize the analysis's conclusions, characterize the result's quality ("clean", "strong", "confirms X"), or include the orchestrator's interpretation. The orchestrator that produced the analysis writes this prompt; anything beyond paths, product context, and doc pointers contaminates a review whose value is its fresh context.
+
+**Model note.** The reviewers inherit the session model (their frontmatter deliberately carries no pin — intent recorded 2026-07: "strong model" was the goal and a literal pin lags model generations). Run substantive reviews in a session on a strong model tier.
+
+**On reviewer conflict:** when the two reviews disagree, present both to the user verbatim — do not arbitrate, average, or synthesize away the disagreement. The two lenses (rigor, usefulness) are allowed to pull in different directions; picking a winner is the human's call.
+
 ## Artifacts and where they land
 
 - **Brief:** YAML, format in [brief-schema.md](brief-schema.md). For ad-hoc work it lands at `analytics/ad_hoc/<YYYY-MM-DD>_<brief_id>_brief.yaml`; for scout projects, alongside the project notebook. The brief is durable — it travels with the executed notebook so the framing is retrievable later.
