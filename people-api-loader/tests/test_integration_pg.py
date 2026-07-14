@@ -189,7 +189,7 @@ def test_partitioned_lifecycle(pg_conn: psycopg.Connection, monkeypatch: pytest.
     # 4. advisory lock: the exact SQL the loader runs must resolve to a valid overload.
     #    Without the ::int4 cast this raises UndefinedFunction against real PG.
     with pg_conn.cursor() as cur:
-        copy_s3._acquire_state_lock(cur, "TX")
+        copy_s3._acquire_unit_lock(cur, "Voter", "TX")
 
     # 5. validate: the per-state GROUP BY count runs against the real partitioned table.
     fc = fake_connect(pg_conn)
