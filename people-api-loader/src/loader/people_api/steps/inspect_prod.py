@@ -78,9 +78,8 @@ def _inspect_table(cur: psycopg.Cursor, table: str) -> TableInspection:
     assert pcol is not None  # is_partitioned guarantees a partition column
     has_updated = _has_column(cur, table, "updated_at")
     cols = "count(*), max(updated_at)" if has_updated else "count(*)"
-    cur.execute(
-        f'SELECT "{pcol}", {cols} FROM public."{table}" GROUP BY "{pcol}"'
-    )  # ty: ignore[no-matching-overload]
+    sql = f'SELECT "{pcol}", {cols} FROM public."{table}" GROUP BY "{pcol}"'
+    cur.execute(sql)  # ty: ignore[no-matching-overload]
 
     total = 0
     per_state: dict[str, int] = {}
