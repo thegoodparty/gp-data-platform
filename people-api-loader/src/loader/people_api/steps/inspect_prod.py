@@ -67,15 +67,22 @@ def _inspect_table(cur: psycopg.Cursor, table: str) -> TableInspection:
     freshness (max(updated_at), when that column exists), AND the total row count — summed over
     every group, *including* a NULL-partition group, so the total still equals the full-table count.
     This avoids a separate count(*) scan (these tables are large; each extra full scan is
-    expensive). A flat table (District, DistrictStats) falls back to a plain count(*).
+    expensive). A flat table (District, DistrictStats) or a table not in the loader's specs (e.g. a
+    test fixture) falls back to a plain count(*).
     """
     # Table names are from a fixed constant tuple (not user input); f-strings are safe here.
-    if not schema_spec.is_partitioned(table):
+    # The partition column comes from the spec (per-table casing: Voter->"State", DistrictVoter->
+    # "state"), and only for a table the loader knows and partitions. An unknown table (not in
+    # TABLE_SPECS) or a flat one gets a plain count(*).
+    pcol = (
+        schema_spec.partition_column(table)
+        if table in schema_spec.TABLE_SPECS and schema_spec.is_partitioned(table)
+        else None
+    )
+    if pcol is None:
         cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
         return TableInspection(table=table, total_row_count=_scalar_int(cur))
 
-    pcol = schema_spec.partition_column(table)
-    assert pcol is not None  # is_partitioned guarantees a partition column
     has_updated = _has_column(cur, table, "updated_at")
     cols = "count(*), max(updated_at)" if has_updated else "count(*)"
     sql = f'SELECT "{pcol}", {cols} FROM public."{table}" GROUP BY "{pcol}"'
