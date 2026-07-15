@@ -1,7 +1,36 @@
 version: 2
 updates:
   - package-ecosystem: "pip"
-    directory: "/"
+    directory: "/dbt"
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 2
+      semver-patch-days: 2
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  - package-ecosystem: "pip"
+    directory: "/airflow"
     versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
@@ -59,7 +88,123 @@ updates:
           - "major"
 
   - package-ecosystem: "pip"
-    directory: "/dbt"
+    directory: "/analytics"
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 2
+      semver-patch-days: 2
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  - package-ecosystem: "pip"
+    directory: "/matcha"
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 2
+      semver-patch-days: 2
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  - package-ecosystem: "pip"
+    directory: "/people-api-loader"
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 2
+      semver-patch-days: 2
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  - package-ecosystem: "pip"
+    directory: "/apps/genie-tools"
+    versioning-strategy: increase-if-necessary
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "18:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "security"
+    cooldown:
+      semver-major-days: 14
+      semver-minor-days: 2
+      semver-patch-days: 2
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  - package-ecosystem: "pip"
+    directory: "/apps/genie-slack-bot"
     versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
