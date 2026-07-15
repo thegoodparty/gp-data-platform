@@ -38,12 +38,13 @@ held constant and the arms stay comparable.
   (MIN `user_created_at`), `is_latest_version AND NOT is_demo`. The bound removes
   corrupt far-future dates (e.g. year 20021) that would otherwise read as
   perpetually upcoming — see win-analytics-knowledge `gotchas.md`. Reproducible
-  base: Jan 9,877 / Feb 10,690 / Mar 11,207 / Apr 11,259 / May 10,853. The filter
-  drops past-election candidates whose candidacy is over. Month-end cutoffs in
-  these numbers use the midnight reading — `user_created_at <= DATE month_end`,
-  which excludes activity later on the last calendar day; the full-last-day
-  reading adds ~6–40 users/month (measured 2026-07-15, DATA-2114). State the
-  chosen reading in the brief's `observation_window.boundary_semantics`.)
+  base: Jan 9,880 / Feb 10,710 / Mar 11,241 / Apr 11,286 / May 10,880 (as of
+  2026-07-15, DATA-2114 re-baseline, midnight reading). The filter drops
+  past-election candidates whose candidacy is over. Month-end cutoffs in these
+  numbers use the midnight reading — `user_created_at <= DATE month_end`, which
+  excludes activity later on the last calendar day; the full-last-day reading
+  adds ~6–40 users/month (measured 2026-07-15, DATA-2114). State the chosen
+  reading in the brief's `observation_window.boundary_semantics`.)
 - **"activated users":** the governed activation definition. (resolved: anchored
   point-in-time via `first_campaign_sent_at <= month-end`, NOT the lifetime
   `is_activated` flag, so post-month activations don't leak into earlier months.)
