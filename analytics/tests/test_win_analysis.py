@@ -95,3 +95,32 @@ def test_build_working_set_keeps_zero_event_user():
 def test_build_working_set_rejects_bad_params(kwargs):
     with pytest.raises(ValueError):
         wa.build_win_working_set(_stub(pd.DataFrame()), COHORTS, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "anchor",
+    [
+        "election_date; DROP TABLE users",
+        "election_date' OR '1'='1",
+        "election_date -- comment",
+        "election_date /* c */",
+    ],
+)
+def test_build_working_set_rejects_suspicious_anchor(anchor):
+    cohorts = {"c": {"filter": "TRUE", "anchor": anchor}}
+    with pytest.raises(ValueError):
+        wa.build_win_working_set(_stub(pd.DataFrame()), cohorts)
+
+
+def test_build_working_set_allows_expression_anchor_and_escapes_label():
+    captured = []
+
+    def run(sql):
+        captured.append(sql)
+        return pd.DataFrame({"user_id": [1], "cohort": ["x"], "core_distinct_types": [0]})
+
+    cohorts = {"O'Brien cohort": COHORTS["c"]}
+    wa.build_win_working_set(run, cohorts)
+    sql = captured[0]
+    assert "MIN(CAST(general_election_date AS DATE)) AS anchor" in sql
+    assert "'O''Brien cohort' AS cohort" in sql

@@ -40,6 +40,7 @@ EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_catalog"
 DEFAULT_DRIFT_CUTOFF = "2026-01-01"
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ANCHOR_FORBIDDEN = re.compile(r"[;'\"]|--|/\*")
 
 # Slicing dimensions available on users_win_candidacy with no join
 # (win-analytics-knowledge skill's references/segmentation.md).
@@ -57,6 +58,11 @@ def _require_date(label: str, value: str) -> None:
     """Validate a YYYY-MM-DD date string before it is interpolated into SQL."""
     if not _DATE_RE.fullmatch(value):
         raise ValueError(f"{label} must be YYYY-MM-DD, got: {value!r}")
+
+
+def _sql_quote(s: str) -> str:
+    """Escape a trusted constant for a single-quoted SQL literal."""
+    return s.replace("'", "''")
 
 
 def _win_event_types_sql(drift_cutoff: str) -> str:
@@ -150,8 +156,11 @@ def build_win_working_set(
         expressions (they are WHERE/SELECT fragments and cannot be parameterized), so
         they must come from trusted, analyst-controlled code only -- never from
         external or user-supplied input. ``event_floor`` and ``drift_cutoff`` are
-        date-validated, ``slice_dims`` are validated as plain SQL identifiers, and
-        ``preelection_days`` must be a positive integer.
+        date-validated, ``slice_dims`` are validated as plain SQL identifiers,
+        ``preelection_days`` must be a positive integer, cohort labels are
+        escaped for the SQL literal, and ``anchor`` passes a tripwire rejecting
+        quotes, ``;``, and comment tokens (expressions like ``MIN(CAST(...))``
+        stay legal).
     """
     _require_date("event_floor", event_floor)
     if preelection_days <= 0:
@@ -164,8 +173,13 @@ def build_win_working_set(
 
     cohort_selects = []
     for label, spec in cohorts.items():
+        # Tripwire, not a grammar (mirrors serve_analysis): anchors are trusted
+        # expressions (MIN(CAST(...)) is legal) but never legitimately need
+        # quotes, statement separators, or comment tokens.
+        if _ANCHOR_FORBIDDEN.search(spec["anchor"]):
+            raise ValueError(f"anchor must not contain quotes, ';', or comment tokens: {spec['anchor']!r}")
         cohort_selects.append(
-            f"""  SELECT user_id, '{label}' AS cohort, {spec['anchor']} AS anchor{dim_cols}
+            f"""  SELECT user_id, '{_sql_quote(label)}' AS cohort, {spec['anchor']} AS anchor{dim_cols}
   FROM {USERS_WIN_CANDIDACY}
   WHERE is_latest_version AND NOT is_demo AND ({spec['filter']})
   GROUP BY user_id"""
