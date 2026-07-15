@@ -25,7 +25,7 @@ A question is ready to hand off when you can answer all of these without hedging
 - **Eligibility window:** how long must an entity have been observable to be included? (E.g., "must have had access to the feature for ≥4 weeks before the election.")
 - **Target / outcome:** the precise definition, including how censoring and absorbing states are handled.
 - **Comparison:** what's the counterfactual or comparison group? Is this a treatment-vs-control framing, a correlation, or a descriptive cut?
-- **Observation window:** the date range, anchored to a meaningful reference point (election date, signup date, feature launch).
+- **Observation window:** the date range, anchored to a meaningful reference point (election date, signup date, feature launch). Nail down **boundary semantics** for every cutoff: is each comparison against a date or a timestamp column, and is each end inclusive or exclusive? (A bare date compared to a timestamp reads as midnight and silently drops the rest of that day.) This settles the brief's `observation_window.boundary_semantics` field.
 - **Cohorts to break out by:** dimensions for stratification (position type, signup source, geography, cycle).
 - **Expected sample size:** rough order of magnitude, and whether it's enough to detect the effect of interest.
 - **What would falsify the hypothesis:** what result would make the user update their belief?
@@ -62,7 +62,7 @@ Before producing the final brief, verify the following against the actual codeba
 
 **Data existence.** For every model/table the brief references, confirm it exists by querying the **live catalog** — `SELECT 1 FROM <catalog>.<schema>.<table> LIMIT 1`, or `SELECT table_schema, table_name FROM <catalog>.information_schema.tables WHERE table_name = '<name>'`, or `SHOW TABLES IN <catalog>.<schema>`. Do NOT infer existence (or absence) from `dbt/project/target/` compiled artifacts or from the reference docs — both drift. A table can exist in prod that a doc calls "in development," and a `target/` reference can survive after the model is gone. The catalog is ground truth.
 
-**Coverage window.** For the engagement/outcome source tables, query `MIN/MAX` of the relevant time column to confirm the coverage window matches the brief's assumed eligibility window. If they don't match, reconcile before finalizing. Document the actual coverage in the brief's `data_provenance` field.
+**Coverage window.** For the engagement/outcome source tables, query `MIN/MAX` of the relevant time column to confirm the coverage window matches the brief's assumed eligibility window. If they don't match, reconcile before finalizing. Document the actual coverage in the brief's `data_provenance` field. While there, note whether each cutoff column is date- or timestamp-typed — that fact feeds the brief's `observation_window.boundary_semantics`.
 
 **Metric semantics.** Before locking in any engagement or activity metric:
 1. List the *exact event types* the source aggregates (read the model SQL — `WHERE event_type IN (...)`).
