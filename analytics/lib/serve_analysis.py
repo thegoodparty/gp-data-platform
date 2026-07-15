@@ -74,6 +74,9 @@ SERVE_SURFACE_PATH_PREFIXES = (
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _ANCHOR_FORBIDDEN = re.compile(r"[;'\"]|--|/\*")
+# Filters legitimately contain quoted literals (eo_activated_at >= DATE'...'),
+# so their tripwire only bans statement separators and comment tokens.
+_FILTER_FORBIDDEN = re.compile(r";|--|/\*")
 
 
 def _require_date(label: str, value: str) -> None:
@@ -165,8 +168,10 @@ def build_serve_working_set(
         SQL expressions, so they must come from trusted, analyst-controlled code
         only -- never from external or user-supplied input. ``event_floor`` is
         date-validated, ``slice_dims`` are validated as plain SQL identifiers,
-        and ``anchor`` passes a tripwire rejecting quotes, ``;``, and comment
-        tokens (expressions like ``COALESCE(...)`` stay legal).
+        ``anchor`` passes a tripwire rejecting quotes, ``;``, and comment
+        tokens (expressions like ``COALESCE(...)`` stay legal), and ``filter``
+        passes a looser tripwire rejecting ``;`` and comment tokens (quoted
+        literals stay legal -- a filter cannot be parameterized).
     """
     _require_date("event_floor", event_floor)
     for dim in slice_dims:
@@ -182,6 +187,8 @@ def build_serve_working_set(
         # legitimately need quotes, statement separators, or comment tokens.
         if _ANCHOR_FORBIDDEN.search(anchor):
             raise ValueError(f"anchor must not contain quotes, ';', or comment tokens: {anchor!r}")
+        if _FILTER_FORBIDDEN.search(spec["filter"]):
+            raise ValueError(f"filter must not contain ';' or comment tokens: {spec['filter']!r}")
         cohort_selects.append(
             f"""  SELECT user_id, '{_sql_quote(label)}' AS cohort, {anchor} AS anchor{dim_cols}
   FROM {USERS_SERVE_BASE}

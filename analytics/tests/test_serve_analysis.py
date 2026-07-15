@@ -93,6 +93,25 @@ def test_working_set_rejects_suspicious_anchor(anchor):
         sa.build_serve_working_set(_stub(pd.DataFrame()), cohorts)
 
 
+@pytest.mark.parametrize(
+    "filt",
+    ["TRUE; DROP TABLE users", "TRUE -- comment", "TRUE /* c */"],
+)
+def test_working_set_rejects_suspicious_filter(filt):
+    cohorts = {"c": {"filter": filt}}
+    with pytest.raises(ValueError):
+        sa.build_serve_working_set(_stub(pd.DataFrame()), cohorts)
+
+
+def test_working_set_allows_quoted_literals_in_filter():
+    # Filters legitimately carry quoted literals; the tripwire must not ban them.
+    captured = []
+    df_in = pd.DataFrame({"user_id": [1], "cohort": ["c"], "engaged_distinct_types": [0]})
+    cohorts = {"c": {"filter": "eo_activated_at >= DATE'2026-05-01'"}}
+    sa.build_serve_working_set(_capture(df_in, captured), cohorts)
+    assert "DATE'2026-05-01'" in captured[0]
+
+
 def test_working_set_allows_expression_anchor():
     captured = []
     df_in = pd.DataFrame({"user_id": [1], "cohort": ["c"], "engaged_distinct_types": [0]})

@@ -112,6 +112,34 @@ def test_build_working_set_rejects_suspicious_anchor(anchor):
         wa.build_win_working_set(_stub(pd.DataFrame()), cohorts)
 
 
+def test_build_working_set_missing_anchor_raises_value_error():
+    cohorts = {"c": {"filter": "TRUE"}}
+    with pytest.raises(ValueError, match="anchor"):
+        wa.build_win_working_set(_stub(pd.DataFrame()), cohorts)
+
+
+@pytest.mark.parametrize(
+    "filt",
+    ["TRUE; DROP TABLE users", "TRUE -- comment", "TRUE /* c */"],
+)
+def test_build_working_set_rejects_suspicious_filter(filt):
+    cohorts = {"c": {"filter": filt, "anchor": COHORTS["c"]["anchor"]}}
+    with pytest.raises(ValueError):
+        wa.build_win_working_set(_stub(pd.DataFrame()), cohorts)
+
+
+def test_build_working_set_allows_quoted_literals_in_filter():
+    # Filters legitimately carry quoted literals; the tripwire must not ban them.
+    captured = []
+
+    def run(sql):
+        captured.append(sql)
+        return pd.DataFrame({"user_id": [1], "cohort": ["c"], "core_distinct_types": [0]})
+
+    wa.build_win_working_set(run, COHORTS)  # campaign_state = 'WY'
+    assert "campaign_state = 'WY'" in captured[0]
+
+
 def test_build_working_set_allows_expression_anchor_and_escapes_label():
     captured = []
 
