@@ -38,8 +38,9 @@ An event counts as broad Serve engagement when **all** of these hold:
      `/dashboard/contacts%`, `/dashboard/chief-of-staff%`, `/dashboard/outreach%`,
      `/dashboard/community%`, `/serve%`, `/polls%`.
 5. Standard hygiene: event-level email not `@goodparty.org`, and the event's
-   `(user_id, session_id)` is not impersonation-tainted (the session contains a `Viewed` on
-   `/impersonate` or `/admin%`).
+   `(user_id, session_id)` is not impersonation-tainted (the session contains **any event**
+   carrying path `/impersonate` or `/admin%` — not just a `Viewed`; see
+   [gotchas.md](gotchas.md)).
 
 The committed predicate is `serve_engagement_predicate()` /
 `build_serve_working_set()` in `analytics/lib/serve_analysis.py` — use the lib, don't

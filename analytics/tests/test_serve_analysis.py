@@ -42,6 +42,12 @@ def test_predicate_respects_alias():
     assert "e.event_type" not in pred.replace("ev.event_type", "")
 
 
+def test_predicate_path_expr_override():
+    pred = sa.serve_engagement_predicate("e", path_expr="e.path")
+    assert "e.path LIKE '/dashboard/polls%'" in pred
+    assert "event_properties" not in pred
+
+
 def test_working_set_sql_applies_structural_exclusions():
     captured = []
     df_in = pd.DataFrame({"user_id": [1], "cohort": ["eo"], "engaged_distinct_types": [0]})
@@ -54,6 +60,11 @@ def test_working_set_sql_applies_structural_exclusions():
     assert "@goodparty.org" in sql
     assert "is_serve_user" in sql
     assert "eo_activated_at AS anchor" in sql
+    # The engagement predicate must run against the slim ev CTE's extracted
+    # `path` column; the raw event_properties extraction exists only inside ev
+    # itself (as the `AS path` projection), never in a LIKE test.
+    assert "e.path LIKE '/dashboard/polls%'" in sql
+    assert "event_properties:path::string LIKE" not in sql
 
 
 def test_working_set_custom_anchor_overrides_default():

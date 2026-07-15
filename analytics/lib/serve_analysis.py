@@ -91,7 +91,7 @@ def _prefix_like_any(col: str, prefixes: tuple[str, ...]) -> str:
     return " OR ".join(f"{col} LIKE '{_sql_quote(p)}%'" for p in prefixes)
 
 
-def serve_engagement_predicate(events_alias: str = "e") -> str:
+def serve_engagement_predicate(events_alias: str = "e", path_expr: str | None = None) -> str:
     """Return the SQL predicate for a broad-Serve-engagement event.
 
     Covers the surface test only (family / prefix / path): the caller owns the
@@ -103,9 +103,13 @@ def serve_engagement_predicate(events_alias: str = "e") -> str:
 
     Args:
         events_alias: alias of the events table in the calling query.
+        path_expr: SQL expression yielding the event's page path. Defaults to
+            extracting it from ``event_properties`` on the aliased raw events
+            table; pass a plain column (e.g. ``"e.path"``) when the calling
+            query has already extracted the path.
     """
     a = events_alias
-    path = f"{a}.event_properties:path::string"
+    path = path_expr or f"{a}.event_properties:path::string"
     return (
         f"({a}.event_type IN (SELECT event_type FROM {EVENT_TAXONOMY} WHERE family = 'serve')\n"
         f"   OR {_prefix_like_any(f'{a}.event_type', SERVE_EVENT_PREFIXES)}\n"
@@ -211,7 +215,7 @@ engaged AS (
   LEFT JOIN tainted t
     ON t.user_id = e.user_id AND t.session_id = e.session_id
   WHERE t.session_id IS NULL
-    AND {serve_engagement_predicate("e")}
+    AND {serve_engagement_predicate("e", path_expr="e.path")}
   GROUP BY co.user_id, co.cohort
 )
 SELECT co.*,
