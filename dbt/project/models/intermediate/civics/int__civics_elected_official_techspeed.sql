@@ -34,7 +34,7 @@ with
                 then true
                 else false
             end as is_judicial,
-            -- candidate_office: TS-native approach (matches int__techspeed_candidates)
+            -- candidate_office: TS-native approach
             initcap(trim(office_normalized)) as candidate_office,
             initcap(trim(level)) as office_level_derived,
             -- TS-native case normalization map (covers all 34 source variants)
