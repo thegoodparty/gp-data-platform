@@ -1575,6 +1575,13 @@ models:
           pattern. False, never null, when event_type is null.
         data_tests:
           - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_win and is_serve)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_win or not is_recurrent"
 
   - name: amplitude_event_catalog
     description: >
