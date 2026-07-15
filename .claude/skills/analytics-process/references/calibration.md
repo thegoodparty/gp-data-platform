@@ -83,8 +83,11 @@ file) for:
 
 **Promotion:** when essentially the same observation has appeared in **2 separate runs** (**3**
 for data-state-tagged items), it becomes eligible for the next calibration batch as a real
-proposal — still subject to the promotion test and the approval gate. Mark promoted lines with
-the PR reference rather than deleting them.
+proposal — still subject to the promotion test and the approval gate. The higher data-state bar
+exists to force confirmation before acting; a directed verification that confirms and explains
+the observation (a targeted experiment or decomposition query, not another passive sighting)
+substitutes for the third run. Mark promoted lines with the PR reference rather than deleting
+them.
 
 ## The ledger read-back (required close of every run)
 
