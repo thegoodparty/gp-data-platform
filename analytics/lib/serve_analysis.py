@@ -3,20 +3,22 @@
 Implements the **broad Serve engagement** definition (serve-analytics-knowledge
 skill's references/methodology_defaults.md, decided DATA-2115 / built DATA-2116):
 an event counts when it is in-session (``session_id != -1``), fired at or after
-the user's ``eo_activated_at``, on a Serve surface (2025 ``family = 'serve'``
-events, the 2026 event generation by prefix, or a ``Viewed`` on a Serve-surface
-path), under the standard hygiene filter (non-internal email, impersonation-
-tainted sessions excluded).
+the user's ``eo_activated_at``, on a Serve surface (a ``family = 'serve'`` event
+in ``int__amplitude_event_catalog``, or a ``Viewed`` on a Serve-surface path),
+under the standard hygiene filter (non-internal email, impersonation-tainted
+sessions excluded).
 
-Two Serve-specific mechanics differ from ``win_analysis``:
+The 2026 Serve generation (Briefing Assistant, Org Switcher, Community Issues)
+is classified as ``family = 'serve'`` by the catalog, so ``family = 'serve'``
+alone covers both the 2025 and 2026 generations; no event-name prefix list is
+needed here.
 
-- The 2026 Serve event generation (Briefing Assistant, Community Issues, Org
-  Switcher) is not classified by ``int__amplitude_event_catalog`` (falls to
-  family ``other``), so classification here is family + prefix + path rather
-  than taxonomy-only.
-- Several new events are server-emitted dispatches (100% ``session_id = -1``),
-  and staff impersonation sessions carry the EO's ``user_id`` with no property
-  marker — both are excluded structurally, not by event name.
+One Serve-specific mechanic differs from ``win_analysis``: several Serve events
+are server-emitted dispatches (100% ``session_id = -1``), and staff impersonation
+sessions carry the EO's ``user_id`` with no property marker. Both are excluded
+structurally (the in-session condition and the impersonation-taint join), not by
+event name — so ``family = 'serve'`` counting these events as Serve is correct;
+the working set drops them via session, not classification.
 
 This module is connection-agnostic: callers inject a ``run_query(sql) -> DataFrame``
 callable. The repo-standard one is ``databricks_conn.run_query`` (profile auth via
@@ -35,7 +37,6 @@ __all__ = [
     "EVENTS_TABLE",
     "USERS_SERVE_BASE",
     "EVENT_TAXONOMY",
-    "SERVE_EVENT_PREFIXES",
     "SERVE_SURFACE_PATH_PREFIXES",
     "serve_engagement_predicate",
     "build_serve_working_set",
@@ -48,15 +49,6 @@ __all__ = [
 EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events"
 USERS_SERVE_BASE = "goodparty_data_catalog.mart_analytics.users_serve_base"
 EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_catalog"
-
-# The 2026 Serve event generation, instrumented 2026-05/06 (dated via the omni
-# provenance CSV). Unclassified by the taxonomy macro as of 2026-07 — extend
-# this tuple when omni ships a new Serve event family the taxonomy still lacks.
-SERVE_EVENT_PREFIXES = (
-    "Briefing Assistant -",
-    "Community Issues -",
-    "Org Switcher -",
-)
 
 # Serve product surfaces for path-anchored `Viewed` engagement. Shared-surface
 # interaction events under Win names are deliberately NOT counted (attribution
@@ -98,7 +90,7 @@ def _prefix_like_any(col: str, prefixes: tuple[str, ...]) -> str:
 def serve_engagement_predicate(events_alias: str = "e", path_expr: str | None = None) -> str:
     """Return the SQL predicate for a broad-Serve-engagement event.
 
-    Covers the surface test only (family / prefix / path): the caller owns the
+    Covers the surface test only (family / path): the caller owns the
     population, time-scope (``event_time >= eo_activated_at``), in-session, and
     hygiene conditions — ``build_serve_working_set`` applies all of them; use it
     unless you are building a custom query. The family test is an IN-subquery,
@@ -116,7 +108,6 @@ def serve_engagement_predicate(events_alias: str = "e", path_expr: str | None = 
     path = path_expr or f"{a}.event_properties:path::string"
     return (
         f"({a}.event_type IN (SELECT event_type FROM {EVENT_TAXONOMY} WHERE family = 'serve')\n"
-        f"   OR {_prefix_like_any(f'{a}.event_type', SERVE_EVENT_PREFIXES)}\n"
         f"   OR ({a}.event_type = 'Viewed' AND ({_prefix_like_any(path, SERVE_SURFACE_PATH_PREFIXES)})))"
     )
 
