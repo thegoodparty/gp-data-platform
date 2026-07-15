@@ -73,6 +73,7 @@ SERVE_SURFACE_PATH_PREFIXES = (
 )
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ANCHOR_FORBIDDEN = re.compile(r"[;'\"]|--|/\*")
 
 
 def _require_date(label: str, value: str) -> None:
@@ -163,7 +164,9 @@ def build_serve_working_set(
         ``cohorts[*]["filter"]`` and ``["anchor"]`` are interpolated verbatim as
         SQL expressions, so they must come from trusted, analyst-controlled code
         only -- never from external or user-supplied input. ``event_floor`` is
-        date-validated and ``slice_dims`` are validated as plain SQL identifiers.
+        date-validated, ``slice_dims`` are validated as plain SQL identifiers,
+        and ``anchor`` passes a tripwire rejecting quotes, ``;``, and comment
+        tokens (expressions like ``COALESCE(...)`` stay legal).
     """
     _require_date("event_floor", event_floor)
     for dim in slice_dims:
@@ -174,6 +177,11 @@ def build_serve_working_set(
     cohort_selects = []
     for label, spec in cohorts.items():
         anchor = spec.get("anchor", "eo_activated_at")
+        # Tripwire, not a grammar: anchors are trusted expressions (see
+        # Security note) and may be COALESCE(...)/CAST(...), but they never
+        # legitimately need quotes, statement separators, or comment tokens.
+        if _ANCHOR_FORBIDDEN.search(anchor):
+            raise ValueError(f"anchor must not contain quotes, ';', or comment tokens: {anchor!r}")
         cohort_selects.append(
             f"""  SELECT user_id, '{_sql_quote(label)}' AS cohort, {anchor} AS anchor{dim_cols}
   FROM {USERS_SERVE_BASE}
@@ -195,11 +203,17 @@ ev AS (
          OR e.user_properties:email::string IS NULL)
 ),
 -- Impersonation taint: any session that touched /impersonate or /admin under
--- this user_id is staff-driven (gotchas.md; no property marker exists).
+-- this user_id is staff-driven (gotchas.md; no property marker exists). Scanned
+-- from the raw table with a 30-day lookback before event_floor so a session
+-- that straddles the floor still carries its taint (session_id is the
+-- session-start epoch; real sessions span hours, not weeks).
 tainted AS (
-  SELECT DISTINCT user_id, session_id
-  FROM ev
-  WHERE path = '/impersonate' OR path LIKE '/admin%'
+  SELECT DISTINCT try_cast(user_id AS bigint) AS user_id, session_id
+  FROM {EVENTS_TABLE}
+  WHERE (event_properties:path::string = '/impersonate'
+         OR event_properties:path::string LIKE '/admin%')
+    AND event_time >= DATE'{event_floor}' - INTERVAL 30 DAYS
+    AND try_cast(user_id AS bigint) IS NOT NULL
 ),
 engaged AS (
   SELECT co.user_id, co.cohort,

@@ -61,10 +61,44 @@ def test_working_set_sql_applies_structural_exclusions():
     assert "is_serve_user" in sql
     assert "eo_activated_at AS anchor" in sql
     # The engagement predicate must run against the slim ev CTE's extracted
-    # `path` column; the raw event_properties extraction exists only inside ev
-    # itself (as the `AS path` projection), never in a LIKE test.
+    # `path` column (the raw event_properties extraction appears only in ev's
+    # projection and in the tainted CTE, which reads the raw table directly).
     assert "e.path LIKE '/dashboard/polls%'" in sql
-    assert "event_properties:path::string LIKE" not in sql
+    assert "event_properties:path::string LIKE '/dashboard" not in sql
+
+
+def test_working_set_taint_scan_ignores_event_floor():
+    captured = []
+    df_in = pd.DataFrame({"user_id": [1], "cohort": ["eo"], "engaged_distinct_types": [0]})
+    sa.build_serve_working_set(_capture(df_in, captured), COHORTS, event_floor="2026-05-01")
+    sql = captured[0]
+    # The tainted CTE must scan the raw events table with a lookback before the
+    # floor, so a session straddling event_floor still carries its taint.
+    assert "INTERVAL 30 DAYS" in sql
+    assert sql.count(sa.EVENTS_TABLE) == 2  # ev CTE + tainted CTE
+
+
+@pytest.mark.parametrize(
+    "anchor",
+    [
+        "eo_activated_at; DROP TABLE users",
+        "eo_activated_at' OR '1'='1",
+        "eo_activated_at -- comment",
+        "eo_activated_at /* c */",
+    ],
+)
+def test_working_set_rejects_suspicious_anchor(anchor):
+    cohorts = {"c": {"filter": "TRUE", "anchor": anchor}}
+    with pytest.raises(ValueError):
+        sa.build_serve_working_set(_stub(pd.DataFrame()), cohorts)
+
+
+def test_working_set_allows_expression_anchor():
+    captured = []
+    df_in = pd.DataFrame({"user_id": [1], "cohort": ["c"], "engaged_distinct_types": [0]})
+    cohorts = {"c": {"filter": "TRUE", "anchor": "COALESCE(eo_activated_at, registered_at)"}}
+    sa.build_serve_working_set(_capture(df_in, captured), cohorts)
+    assert "COALESCE(eo_activated_at, registered_at) AS anchor" in captured[0]
 
 
 def test_working_set_custom_anchor_overrides_default():
