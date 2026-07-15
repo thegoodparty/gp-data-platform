@@ -843,34 +843,37 @@ models:
       - name: user_id
         description: Foreign key to user table - the user who owns this campaign
         data_tests:
-          # warn, not error: one pre-existing campaign has null user_* fields
-          # (a known data-quality gap in `campaigns`, present in prod). It only
-          # blocks on a full-refresh rebuild of this downstream model; the real
-          # fix belongs in `campaigns`, not here.
+          # Orphaned user_* rows (user deleted in product) propagate from
+          # `campaigns`. Match the source not_null threshold (#546): warn on
+          # any, error above 20. Fix belongs in `campaigns`.
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_email
         description: User's email address (lowercased)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_first_name
         description: User's first name (title case)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_last_name
         description: User's last name (title case)
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: user_phone
         description: User's phone number
@@ -883,7 +886,8 @@ models:
         data_tests:
           - not_null:
               config:
-                severity: warn
+                warn_if: ">0"
+                error_if: ">20"
 
       - name: campaign_created_at
         description: Timestamp when this campaign was created
@@ -1014,7 +1018,9 @@ models:
 
       - name: candidacy_result
         description: >
-          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          The candidacy's final outcome (passed through from civics.candidacy):
+          'Won' = won the seat, 'Lost' = eliminated, 'Runoff' = in a runoff,
+          NULL = outcome not yet determined. Values: Won, Lost, Runoff, Withdrew,
           Not on Ballot, Cannot Determine.
         data_tests:
           - accepted_values:
@@ -1134,7 +1140,9 @@ models:
 
       - name: candidacy_result
         description: >
-          Overall result of the candidacy. Values: Won, Lost, Runoff, Withdrew,
+          The candidacy's final outcome (passed through from civics.candidacy):
+          'Won' = won the seat, 'Lost' = eliminated, 'Runoff' = in a runoff,
+          NULL = outcome not yet determined. Values: Won, Lost, Runoff, Withdrew,
           Not on Ballot, Cannot Determine.
         data_tests:
           - accepted_values:
@@ -1398,8 +1406,33 @@ models:
         data_tests: [not_null]
       - name: win_activated_user_hs_flag
         data_tests: [not_null]
-      - name: has_won_general_election
-        data_tests: [not_null]
+      - name: has_won_election
+        description: >
+          Whether the contact won the seat in any of their candidacies (won the
+          race's final stage, including decisive single-stage primaries). Derived
+          from civics.candidacy.candidacy_result (bare 'Won'), OR-merged across
+          the candidate-identity link (gp_candidate_id, which covers BR-sourced
+          candidacies) and the product-user link (prod_db_user_id). Three-valued:
+          TRUE = won at least one seat; FALSE = a candidate whose candidacies are
+          all decided without a win; NULL = no decided outcome yet (pending /
+          Cannot Determine) or not a candidate. NULL is deliberately not "lost";
+          use has_candidacy to tell a pending candidate from a non-candidate.
+          Renamed from has_won_general_election, which only counted general-cycle
+          wins.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+
+      - name: has_candidacy
+        description: >
+          Whether the contact is a candidate at all — has at least one candidacy,
+          via the candidate identity (gp_candidate_id, incl. BR-sourced) or the
+          product user (prod_db_user_id). Distinguishes a real candidacy from a
+          non-candidate sales contact, which has_won_election's NULL alone cannot
+          (most prospects are candidates). Non-null boolean.
+        data_tests:
+          - not_null
       - name: gp_user_id
         description: Resolved product-DB user_id via candidate.prod_db_user_id.
         data_tests:
