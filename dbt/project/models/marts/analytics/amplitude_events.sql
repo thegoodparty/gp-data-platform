@@ -14,6 +14,7 @@ select
     *,
     {{ amplitude_event_family("event_type") }} as family,
     family like 'win_%' as is_win,
+    family = 'serve' as is_serve,
     -- null-safe: IN-list yields null (not false) on a null event_type
     coalesce({{ amplitude_event_is_recurrent("event_type") }}, false) as is_recurrent
 from {{ ref("stg_airbyte_source__amplitude_api_events") }}

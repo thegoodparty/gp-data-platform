@@ -10,7 +10,8 @@
         and the win-analytics-knowledge skill's references/engagement.md.
 
         Win families are prefixed `win_`; the is_win flag downstream is derived
-        as `family like 'win_%'`. Anything unmatched falls through to 'other'
+        as `family like 'win_%'`. Serve is a single flat family, so is_serve is
+        derived as `family = 'serve'`. Anything unmatched falls through to 'other'
         so unclassified events surface for triage rather than silently dropping.
 
         Args:
@@ -24,6 +25,10 @@
         when
             {{ event_type_col }} like 'Onboarding -%'
             or {{ event_type_col }} like 'Onboarding:%'
+            -- 'Onboarding V2 -%' is the 2026-06 onboarding redesign (candidate
+            -- steps: ballot status, office, votes-needed, voter insights); the
+            -- 'V2' means it misses the 'Onboarding -%' pattern above.
+            or {{ event_type_col }} like 'Onboarding V2 -%'
             or {{ event_type_col }}
             in ('onboarding_complete', 'Invalid Party', 'Sign Up Clicked')
         then 'win_onboarding'
@@ -84,6 +89,15 @@
             or {{ event_type_col }} like 'Polls -%'
             or {{ event_type_col }} like 'Polls:%'
             or {{ event_type_col }} like 'Payment -%'
+            -- 2026-05/06 Serve generation. Briefing Assistant and Org Switcher
+            -- are live; Community Issues has no events in the stream yet, so its
+            -- pattern is speculative and classifies nothing until it ships.
+            -- Briefing Assistant includes server-emitted events (Agenda Created,
+            -- session_id = -1): family = serve is correct, but engagement
+            -- filtering of those stays with the consumer, not the family bucket.
+            or {{ event_type_col }} like 'Briefing Assistant -%'
+            or {{ event_type_col }} like 'Community Issues -%'
+            or {{ event_type_col }} like 'Org Switcher -%'
         then 'serve'
         when
             {{ event_type_col }} like 'Sign In:%'
