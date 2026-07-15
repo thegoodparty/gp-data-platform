@@ -1521,8 +1521,8 @@ models:
     description: >
       Exposure of stg_airbyte_source__amplitude_api_events into
       mart_analytics (Sigma reads marts only), enriched with the governed
-      event taxonomy: family, is_win, and is_recurrent derive from the
-      amplitude_event_taxonomy macros so BI consumers never re-derive
+      event taxonomy: family, is_win, is_serve, and is_recurrent derive from
+      the amplitude_event_taxonomy macros so BI consumers never re-derive
       serve/win classification from event_type strings. Passthrough columns
       are documented at the upstream staging model; the event_type-grain
       catalog (volume, recency, Govern metadata) is
@@ -1556,6 +1556,17 @@ models:
         data_tests:
           - not_null
 
+      - name: is_serve
+        description: >
+          True for Serve-product events (family = 'serve'). Serve is a single
+          flat family, hence the equality check rather than a prefix like
+          is_win. Superset of Serve user actions: some Serve events are
+          server-emitted (session_id = -1), so engagement filtering stays with
+          the consumer. Event-level filter only — user-level "Serve active"
+          questions belong on users_serve_base, not on raw event counts.
+        data_tests:
+          - not_null
+
       - name: is_recurrent
         description: >
           True for recurrent-activity events (vs one-off lifecycle
@@ -1564,6 +1575,13 @@ models:
           pattern. False, never null, when event_type is null.
         data_tests:
           - not_null
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_win and is_serve)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "is_win or not is_recurrent"
 
   - name: amplitude_event_catalog
     description: >
