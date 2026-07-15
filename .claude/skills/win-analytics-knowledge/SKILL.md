@@ -1,6 +1,6 @@
 ---
 name: win-analytics-knowledge
-description: Use when a Win-product data concept — engagement, activation, outcomes/win rate, viability, segmentation, Amplitude events, joins, PMF/satisfaction — needs to resolve to its governed metric, table, column, or definition before a query is written. Not for running analyses (that is the win-analytics-process skill).
+description: Use when a Win-product data concept — engagement, activation, outcomes/win rate, viability, segmentation, Amplitude events, joins, PMF/satisfaction — needs to resolve to its governed metric, table, column, or definition before a query is written. Not for running analyses (that is the analytics-process skill).
 ---
 
 # Win analytics knowledge
@@ -8,7 +8,7 @@ description: Use when a Win-product data concept — engagement, activation, out
 A router for the data facts behind Win-product analyses. Its job is to take a concept
 ("engagement," "a win," "viability") and narrow it to the **one** governed definition and the
 single doc that owns the detail — before any SQL is written. It does not execute analyses; for
-the analyst workflow and patterns, see the **win-analytics-process** skill.
+the analyst workflow and patterns, see the **analytics-process** skill.
 
 ## How to resolve a concept
 
@@ -22,7 +22,7 @@ the analyst workflow and patterns, see the **win-analytics-process** skill.
 |---|---|---|
 | What a metric *means* / its governed definition | [`references/canonical_metrics.md`](references/canonical_metrics.md) | invent a new definition for a concept that has a row |
 | Which table to start from, the data domains, the civics mart structure | [`references/sources.md`](references/sources.md) | |
-| When an event was added/retired in code, its lifecycle status, what superseded it | the omni event-lifecycle assets — see [`references/sources.md`](references/sources.md) | infer an event's existence era from data-observed first-seen dates |
+| When an event was added/retired in code, its lifecycle status, what superseded it | the omni event-lifecycle assets — [`event-lifecycle-assets.md`](../analytics-process/references/event-lifecycle-assets.md) (process skill; cross-product) | infer an event's existence era from data-observed first-seen dates |
 | IDs, join keys, join recipes (user→outcome, survey 2-hop, viability) | [`references/joins.md`](references/joins.md) | join `hs_contact_id` to `users_win_candidacy.hubspot_id` (company id) |
 | Win/loss outcome, vote share, self-reported outcome, PMF / satisfaction | [`references/outcomes.md`](references/outcomes.md) | use `candidacy_result` for binary win/loss |
 | Engagement / activation metrics, the Amplitude event landscape, onboarding flow versions, UTM | [`references/engagement.md`](references/engagement.md) | use `is_onboarded` / `has_completed_onboarding_flow` across the 2026-05-07 cutover |

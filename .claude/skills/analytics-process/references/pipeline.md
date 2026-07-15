@@ -1,6 +1,6 @@
 # Pipeline topology
 
-Part of the **win-analytics-process** skill. The single source of truth for the analytics
+Part of the **analytics-process** skill. The single source of truth for the analytics
 pipeline's stages and handoff contracts. Agents reference this doc instead of describing the
 flow themselves.
 

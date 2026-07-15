@@ -1,10 +1,10 @@
-"""Link checker for the win-analytics skill doc graph (DATA-2113).
+"""Link checker for the analytics skill doc graph (DATA-2113).
 
 The process/knowledge skills follow a one-fact-one-home rule, so the docs lean on
 relative markdown links (including fragile cross-skill paths) instead of restating
 facts. A renamed or moved reference doc breaks those links silently. This test walks
-every markdown file in the win-analytics skills plus the reviewer agents and asserts
-each relative markdown link resolves to an existing file.
+every markdown file in the analytics process/knowledge skills plus the reviewer
+agents and asserts each relative markdown link resolves to an existing file.
 """
 
 import re
@@ -13,7 +13,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DOC_GLOBS = [
-    ".claude/skills/win-analytics-*/**/*.md",
+    ".claude/skills/analytics-process/**/*.md",
+    ".claude/skills/*-analytics-knowledge/**/*.md",
     ".claude/agents/product-*.md",
 ]
 
@@ -40,8 +41,9 @@ def _relative_md_targets(text: str):
 def test_doc_files_found():
     files = _doc_files()
     assert files, "no skill docs matched - the glob or repo layout changed"
-    assert any("win-analytics-process" in str(f) for f in files)
+    assert any("analytics-process" in str(f) for f in files)
     assert any("win-analytics-knowledge" in str(f) for f in files)
+    assert any("serve-analytics-knowledge" in str(f) for f in files)
 
 
 def test_relative_markdown_links_resolve():

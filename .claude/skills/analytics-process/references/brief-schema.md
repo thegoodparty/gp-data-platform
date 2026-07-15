@@ -1,6 +1,6 @@
 # Analysis brief schema
 
-Part of the **win-analytics-process** skill. The framing→execution handoff contract.
+Part of the **analytics-process** skill. The framing→execution handoff contract.
 
 When the framing routine (see [framing.md](framing.md)) finishes shaping a question, it produces a
 structured analysis brief. This brief is the handoff artifact to the executor (Claude Code, or

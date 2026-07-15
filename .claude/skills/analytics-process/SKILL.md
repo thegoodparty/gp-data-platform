@@ -1,14 +1,14 @@
 ---
-name: win-analytics-process
-description: Use when planning, executing, reviewing, or calibrating a product analysis, or when asked a product data question that should become one (currently Win-only; the entry runbook routes by product). For the data facts themselves, use the product's knowledge skill (win-analytics-knowledge).
+name: analytics-process
+description: Use when planning, executing, reviewing, or calibrating a product analysis, or when asked a product data question that should become one (the entry runbook routes by product — Win and Serve today). For the data facts themselves, use the product's knowledge skill (win-analytics-knowledge or serve-analytics-knowledge).
 ---
 
-# Win analytics process
+# Analytics process
 
 How a product analysis is run, from a fuzzy question to a reviewed result. For the data
 facts themselves (which table, which metric, which join), use the product's knowledge skill
-(**win-analytics-knowledge**) — this skill is about *how to work*, not *what is true about
-the data*.
+(**win-analytics-knowledge**, **serve-analytics-knowledge**) — this skill is about *how to
+work*, not *what is true about the data*.
 
 ## The senior-analyst loop
 
@@ -40,3 +40,4 @@ Common work that should not be reinvented each run:
 - [`references/methodology.md`](references/methodology.md) — product-agnostic discipline: scoping checklist, folder patterns, query patterns, binning, verification protocol. Product defaults (scoping decisions, cohorts, working-set builder) live in the product knowledge skill's `methodology_defaults.md`.
 - [`references/brief-schema.md`](references/brief-schema.md) — the analysis-brief YAML contract + amend-vs-reframe rule.
 - [`references/calibration.md`](references/calibration.md) — the calibration-log convention, the candidates ledger, the ledger read-back, consolidation mode, and the over-calibration / bloat cautions.
+- [`references/event-lifecycle-assets.md`](references/event-lifecycle-assets.md) — the omni event-lifecycle assets (provenance CSV, health log, gp-meta): cross-product source material consumed by the framing version-continuity check and every product's knowledge skill.

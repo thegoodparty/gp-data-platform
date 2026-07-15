@@ -1,6 +1,6 @@
 # Methodology
 
-Part of the **win-analytics-process** skill. Scoping + verifying an analysis. This doc owns
+Part of the **analytics-process** skill. Scoping + verifying an analysis. This doc owns
 the product-agnostic discipline; the *product's* defaults — resolved scoping decisions,
 default cohorts, and the working-set builder — live in the product knowledge skill's
 `methodology_defaults.md` (Win: [methodology_defaults.md](../../win-analytics-knowledge/references/methodology_defaults.md)).
