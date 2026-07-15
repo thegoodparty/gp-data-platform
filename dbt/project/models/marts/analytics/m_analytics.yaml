@@ -1484,6 +1484,23 @@ models:
                 to: ref('stg_airbyte_source__hubspot_api_contacts')
                 field: id
 
+  - name: amplitude_api_events
+    description: >
+      Passthrough exposure of stg_airbyte_source__amplitude_api_events into
+      mart_analytics so consumers read the mart, not the staging layer. View
+      materialization, no transformations — the raw Amplitude event stream
+      without the taxonomy-derived family / is_win / is_recurrent columns
+      (those live on amplitude_events). Columns documented at the upstream
+      staging model.
+
+      Source: stg_airbyte_source__amplitude_api_events.
+    columns:
+      - name: uuid
+        description: Unique identifier for the event (primary key).
+        data_tests:
+          - not_null
+          - unique
+
   - name: amplitude_events
     description: >
       Exposure of stg_airbyte_source__amplitude_api_events into
