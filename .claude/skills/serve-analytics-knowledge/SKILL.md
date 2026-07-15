@@ -27,7 +27,7 @@ addition through the calibration pass.
 |---|---|---|
 | What a metric *means* / its governed definition | [`references/canonical_metrics.md`](references/canonical_metrics.md) | invent a new definition for a concept that has a row |
 | Which table to start from, the Serve data domains, the event landscape | [`references/sources.md`](references/sources.md) | |
-| When an event was added/retired in code, its lifecycle status, what superseded it | the omni event-lifecycle assets — see the pointer in [`references/sources.md`](references/sources.md) | infer an event's existence era from data-observed first-seen dates |
+| When an event was added/retired in code, its lifecycle status, what superseded it | the omni event-lifecycle assets — [`event-lifecycle-assets.md`](../analytics-process/references/event-lifecycle-assets.md) (process skill; cross-product) | infer an event's existence era from data-observed first-seen dates |
 | Engagement / activity measurement, the broad-engagement family, the MAU collapse | [`references/methodology_defaults.md`](references/methodology_defaults.md) | headline any poll-anchored series without its collapse caveat |
 | Slicing dimensions (office, level, state, funnel stage) | [`references/segmentation.md`](references/segmentation.md) | assume office/level/state segmentation exists (pending officeholder ingestion) |
 | Serve's analysis defaults (resolved scoping, default cohorts, the working-set builder, reviewer doc pointers) | [`references/methodology_defaults.md`](references/methodology_defaults.md) | count server-emitted events (`session_id = -1`) as engagement |

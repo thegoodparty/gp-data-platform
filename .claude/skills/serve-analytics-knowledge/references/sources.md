@@ -62,11 +62,11 @@ open dbt follow-up — until it lands, the lib's prefix list is the working clas
 
 For when an event was added or retired in code, its current lifecycle status, or what
 superseded it, use the **omni event-lifecycle assets** (provenance CSV, event-health log,
-gp-meta metadata). These are shared across products; the full description — what each asset
-answers, freshness contracts, and the stay-in-omni design constraint — lives in the Win
-knowledge skill's [sources.md § Event-lifecycle assets](../../win-analytics-knowledge/references/sources.md)
-(single home; a product-neutral location is a future refactor). They are the tool that dated
-the two Serve event generations above.
+gp-meta metadata). They are cross-product and live with the process skill:
+[event-lifecycle-assets.md](../../analytics-process/references/event-lifecycle-assets.md)
+owns the full description — what each asset answers, freshness contracts, and the
+stay-in-omni design constraint. They are the tool that dated the two Serve event
+generations above.
 
 ## Cross-references
 
