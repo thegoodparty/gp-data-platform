@@ -37,9 +37,8 @@ from pyspark.sql.functions import (
 def _resolve_latest_version(modelname: str) -> str:
     """Latest registered version of an MLflow model in model_predictions.
 
-    Mirrors the sibling int__techspeed_viability_scoring.py, but sorts versions
-    NUMERICALLY: MLflow's ModelVersion.version is a string, so the sibling's
-    max(..., key=lambda x: x.version) picks the wrong version once a model
+    Sorts versions NUMERICALLY: MLflow's ModelVersion.version is a string, so a
+    naive max(..., key=lambda x: x.version) picks the wrong version once a model
     reaches v10 ("9" > "10" lexicographically) -- viabilitywithopponentdata is
     already at v5. No @prod alias is used: these models load by latest version
     because setting @prod needs apply_tag, which is gated by design.

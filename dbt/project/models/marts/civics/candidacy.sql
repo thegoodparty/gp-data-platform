@@ -144,8 +144,9 @@ with
                 br.br_position_database_id,
                 ts.br_position_database_id
             ) as br_position_database_id,
-            -- BR doesn't compute viability_score (always NULL upstream); TS's
-            -- MLflow score fills it in via int__civics_candidacy_techspeed.
+            -- No 2026+ provider computes viability (TS's MLflow gap-filler was
+            -- removed with the fuzzy-dedupe pipeline); only 2025-archive rows
+            -- carry values. The broad score lives on candidacy_scored.
             -- win_number / win_number_model remain BR-only.
             coalesce(br.viability_score, ts.viability_score) as viability_score,
             br.win_number,

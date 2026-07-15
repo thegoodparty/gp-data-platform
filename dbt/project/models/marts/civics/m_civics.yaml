@@ -415,7 +415,7 @@ models:
           is_open_seat
         BR-only:
           hubspot_company_ids, win_number, win_number_model
-        TS-derived (BR/DDHQ/gp_api don't compute viability):
+        2025-archive only (no 2026+ provider computes viability):
           viability_score, score_viability_automated
 
       created_at semantics: gp_api's created_at reflects "campaign registered
@@ -687,13 +687,10 @@ models:
           INTERNAL (DATA-1938): the legacy/base viability value. The sales- and
           Win-facing BROAD viability lives on candidacy_scored -- read it there,
           not here. This column stays because candidacy_scored coalesces it in as
-          a gap-filler for rows the new civics scorer cannot score.
-          Numeric viability rating (0..5) from the TechSpeed-trained
-          MLflow model (int__techspeed_viability_scoring.viability_rating_2_0).
-          Populated for TS-sourced candidacies via join in
-          int__civics_candidacy_techspeed. NULL for non-TS rows that have
-          no upstream score and for the small fraction of TS rows the
-          MLflow model skips due to incomplete features.
+          a gap-filler where the civics scorer could not score.
+          Numeric viability rating (0..5). Since the TechSpeed fuzzy-dedupe
+          pipeline removal, only 2025-archive rows carry a value (archived
+          HubSpot properties); all 2026+ provider rows are NULL.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:
@@ -704,10 +701,10 @@ models:
         description: >
           INTERNAL (DATA-1938): read the broad label on candidacy_scored, not
           here (see viability_score above).
-          String category derived from viability_score by the MLflow model.
-          Values: "No Chance" (score < 1), "Unlikely to Win" (1..2),
-          "Has a Chance" (2..3), "Likely to Win" (3..4), "Frontrunner"
-          (4..5). NULL where viability_score is NULL.
+          String category paired with viability_score. Values: "No Chance"
+          (score < 1), "Unlikely to Win" (1..2), "Has a Chance" (2..3),
+          "Likely to Win" (3..4), "Frontrunner" (4..5). NULL where
+          viability_score is NULL (all 2026+ provider rows).
         data_tests:
           - accepted_values:
               arguments:
@@ -781,9 +778,9 @@ models:
       the same order (see the candidacy model for their docs). viability_score
       and score_viability_automated are overridden as a unit -- the new civics
       scorer (int__civics_viability_scoring) wins where it scored the row, the
-      old candidacy value gap-fills the rest so coverage never regresses. The
-      scorer reads candidacy + election as leaves, so this downstream layer is
-      acyclic.
+      old candidacy value gap-fills the rest (2025-archive rows only since the
+      TechSpeed fuzzy-dedupe removal). The scorer reads candidacy + election as
+      leaves, so this downstream layer is acyclic.
     columns:
       - name: gp_candidacy_id
         description: Primary key - inherited from candidacy (one row per candidacy).
@@ -795,7 +792,8 @@ models:
         description: >
           Numeric viability rating (0..5): the broad civics score
           (int__civics_viability_scoring.viability_rating_2_0) where available,
-          else the prior candidacy value. NULL only where neither could score.
+          else the prior candidacy value (2025-archive rows only since the
+          TechSpeed fuzzy-dedupe removal). NULL only where neither could score.
         data_tests:
           - dbt_utils.accepted_range:
               arguments:

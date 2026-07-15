@@ -69,6 +69,7 @@ with
             cy.party_affiliation,
             cy.is_partisan,
             cy.is_open_seat,
+            cy.is_incumbent,
             cy.is_win_icp,
             cy.is_serve_icp,
             cy.is_win_supersize_icp,
@@ -92,11 +93,11 @@ with
             c.twitter_handle,
             c.facebook_url,
             c.instagram_handle,
-            -- the existing 5-part TechSpeed code; internal-only join key to the
-            -- TS-passthrough
-            -- table (aliased to free `candidate_code` for the emitted 4-part
-            -- match-back key).
-            ts_int.candidate_code as candidate_code_ts,
+            -- TS form values: BR-race-id fallback leg, zip, and the legacy
+            -- form-time stage label for `Election Type`.
+            ts_int.br_race_id as br_race_id_ts,
+            ts_int.postal_code as postal_code_ts,
+            ts_int.election_type as election_type_ts,
             br_int.br_candidacy_id,
             br_int.br_race_id as br_race_id_br,
             e.population,
@@ -104,7 +105,17 @@ with
             e.district,
             e.filing_deadline,
             e.seats_available,
-            e.election_date
+            e.election_date,
+            e.is_uncontested,
+            e.number_of_opponents,
+            -- nearest-upcoming stage, needed by both `Election Type` and the
+            -- appended election_stage (select-list lateral refs can't look ahead).
+            case
+                when cy.primary_election_date >= current_date()
+                then 'primary'
+                when cy.general_election_date >= current_date()
+                then 'general'
+            end as election_stage
         from {{ ref("candidacy_scored") }} as cy
         join {{ ref("candidate") }} as c on cy.gp_candidate_id = c.gp_candidate_id
         left join {{ ref("election") }} as e on cy.gp_election_id = e.gp_election_id
@@ -163,7 +174,13 @@ select
     coalesce(b.candidate_id_source, '') as `Candidate ID Source`,
     coalesce(b.first_name, '') as `First Name`,
     coalesce(b.last_name, '') as `Last Name`,
-    coalesce(f.candidate_type, '') as `Candidate Type`,
+    case
+        when b.is_incumbent
+        then 'Incumbent'
+        when not b.is_incumbent
+        then 'Challenger'
+        else ''
+    end as `Candidate Type`,
     coalesce(b.party_affiliation, '') as `Party Affiliation`,
     coalesce(b.email, '') as `Email`,
     coalesce(b.phone_number, '') as `Phone Number`,
@@ -177,7 +194,7 @@ select
     coalesce(b.street_address, '') as `Street Address`,
     coalesce(b.state, '') as `State/Region`,
     coalesce(
-        right(concat('00000', cast(f.postal_code as varchar(10))), 5), ''
+        right(concat('00000', cast(b.postal_code_ts as varchar(10))), 5), ''
     ) as postal_code,
     coalesce(b.district, '') as `District`,
     coalesce(b.city, '') as `City`,
@@ -188,14 +205,25 @@ select
     coalesce(b.office_level, '') as `Office Level`,
     coalesce(cast(b.filing_deadline as string), '') as `Filing Deadline`,
     coalesce(
-        cast(b.br_race_id_br as string), cast(f.br_race_id as string), ''
+        cast(b.br_race_id_br as string), cast(b.br_race_id_ts as string), ''
     ) as br_race_id,
     coalesce(cast(b.primary_election_date as string), '') as `Primary Election Date`,
     coalesce(cast(b.general_election_date as string), '') as `General Election Date`,
     coalesce(cast(b.election_date as string), '') as `Election Date`,
-    coalesce(f.election_type, '') as `Election Type`,
-    coalesce(f.uncontested, '') as `Uncontested`,
-    f.number_of_candidates as `Number of Candidates`,
+    -- TS form value where present (legacy semantics); date-derived stage otherwise.
+    coalesce(b.election_type_ts, initcap(b.election_stage), '') as `Election Type`,
+    case
+        when b.is_uncontested
+        then 'Uncontested'
+        when not b.is_uncontested
+        then 'Contested'
+        else ''
+    end as `Uncontested`,
+    -- election carries number_of_opponents as string (DDHQ null-cast widens the
+    -- coalesce); round-trip through int keeps this column string-typed as before.
+    cast(
+        try_cast(b.number_of_opponents as int) + 1 as string
+    ) as `Number of Candidates`,
     b.seats_available as `Number of Seats Available`,
     case
         when b.is_open_seat then 'Yes' when not b.is_open_seat then 'No' else ''
@@ -217,14 +245,11 @@ select
     'Self-Filer Lead' as `Type`,
     '{{ env_var("DBT_CIVICS_HUBSPOT_CONTACT_OWNER", "") }}' as `Contact Owner`,
     '{{ env_var("DBT_CIVICS_HUBSPOT_OWNER_NAME", "") }}' as `Owner Name`,
-    f._ab_source_file_url as _ab_source_file_url,
-    f.uploaded as uploaded,
-    f._airbyte_extracted_at as _airbyte_extracted_at,
     current_timestamp() as added_to_mart_at,
     -- Viability comes from candidacy_scored (the broad civics viability source of
-    -- truth). Its civics scorer is canonical and gap-fills with the prior
-    -- candidacy value, so coverage never regresses and this feed inherits the broad
-    -- scorer's higher fill. Scale is unchanged (0 to 5), so accepted_range still holds.
+    -- truth). Its civics scorer is canonical; the prior-value gap-fill is
+    -- 2025-archive-only since the TechSpeed fuzzy-dedupe removal. Scale is
+    -- unchanged (0 to 5), so accepted_range still holds.
     b.viability_score as viability_rating_2_0,
     b.score_viability_automated as score_viability_automated,
     coalesce(
@@ -273,14 +298,6 @@ select
             b.primary_election_date
         )
     ) as election_year,
-    case
-        when b.primary_election_date >= current_date()
-        then 'primary'
-        when b.general_election_date >= current_date()
-        then 'general'
-    end as election_stage,
+    b.election_stage,
     greatest(b.created_at, b.updated_at) as last_activity_at
 from civics_base as b
-left join
-    {{ ref("int__techspeed_candidates_fuzzy_deduped") }} as f
-    on b.candidate_code_ts = f.techspeed_candidate_code

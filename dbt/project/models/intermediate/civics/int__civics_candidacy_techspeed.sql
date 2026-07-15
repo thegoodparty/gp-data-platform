@@ -124,11 +124,6 @@ with
         group by 1
     ),
 
-    viability_scoring as (
-        select techspeed_candidate_code, viability_rating_2_0, score_viability_automated
-        from {{ ref("int__techspeed_viability_scoring") }}
-    ),
-
     candidacies as (
         -- gp_election_id uses WINDOW propagation so all raw rows of the same
         -- election adopt BR's canonical if ANY candidacy of that election was
@@ -207,9 +202,18 @@ with
             source.br_general_runoff_election_date as general_runoff_election_date,
 
             source.br_position_database_id,
+            -- TS form's BR race id, zip, and stage label, surfaced for the
+            -- HubSpot feed (fed by the fuzzy passthrough before its removal).
+            source.br_race_id,
+            source.postal_code,
+            case
+                when is_primary then 'Primary' when not is_primary then 'General'
+            end as election_type,
 
-            vs.viability_rating_2_0 as viability_score,
-            vs.score_viability_automated,
+            -- Always null since the TS-trained scorer's removal; the broad score
+            -- lives on candidacy_scored (int__civics_viability_scoring).
+            cast(null as float) as viability_score,
+            cast(null as string) as score_viability_automated,
             cast(null as int) as win_number,
             cast(null as string) as win_number_model,
 
@@ -223,9 +227,6 @@ with
         left join
             ts_person as tp
             on source.techspeed_candidate_code = tp.ts_source_candidate_id
-        left join
-            viability_scoring as vs
-            on source.techspeed_candidate_code = vs.techspeed_candidate_code
         where
             source.techspeed_candidate_code is not null
             -- After the source CTE's BR fallback substitution, this passes
