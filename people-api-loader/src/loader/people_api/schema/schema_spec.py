@@ -55,11 +55,19 @@ TABLE_SPECS: dict[str, TableSpec] = {
     "District": TableSpec(
         pg_table="District",
         partition_by=None,
+        # id is the salted-uuid string in the mart; Prisma types it @db.Uuid, so store UUID.
+        type_overrides={"id": "UUID"},
     ),
     "DistrictStats": TableSpec(
         pg_table="DistrictStats",
         partition_by=None,
-        type_overrides={"buckets": "jsonb"},
+        # buckets: mart struct -> jsonb. total_constituents columns: the mart emits them as bigint,
+        # but Prisma types them Int, so store INTEGER to match the serving contract.
+        type_overrides={
+            "buckets": "jsonb",
+            "total_constituents": "INTEGER",
+            "total_constituents_with_cell_phone": "INTEGER",
+        },
         primary_key=PrimaryKey(
             table="DistrictStats", constraint="DistrictStats_pkey", columns=["district_id"]
         ),
