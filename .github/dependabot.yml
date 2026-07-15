@@ -1,8 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/dbt"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -29,9 +28,8 @@ updates:
         update-types:
           - "major"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/airflow"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -87,9 +85,8 @@ updates:
         update-types:
           - "major"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/analytics"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -116,9 +113,8 @@ updates:
         update-types:
           - "major"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/matcha"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -145,9 +141,8 @@ updates:
         update-types:
           - "major"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/people-api-loader"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -174,9 +169,8 @@ updates:
         update-types:
           - "major"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/apps/genie-tools"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -203,9 +197,8 @@ updates:
         update-types:
           - "major"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/apps/genie-slack-bot"
-    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
       day: "sunday"
