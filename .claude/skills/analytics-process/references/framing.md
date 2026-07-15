@@ -85,7 +85,10 @@ Before producing the final brief, verify the following against the actual codeba
 5. Before finalizing the brief, settle two execution parameters with the user:
    a. **Deliverable format.** Ask whether they want a notebook, a Python script, or both. Record the answer in the brief's `execution_notes.preferred_format`. Do not silently substitute a different format at execution time; if the chosen format proves unworkable, return here rather than improvising.
    b. **Save location.** Auto-classify and state your pick for the user to override: a single one-off question, one notebook, no reusable inventory goes to `analytics/ad_hoc/`; multi-week work with reusable inventory that will be revisited goes to `analytics/projects/<name>/` (see the decision rule in [methodology.md](methodology.md)). If the target directory does not exist in the repo, do NOT silently create it: ask the user to confirm creating it first.
-6. Once approved, produce the final brief in the format specified in [brief-schema.md](brief-schema.md).
+6. Once approved, state the remaining path and where the run will pause — e.g. "From here:
+   execute → results checkpoint (I stop for you there) → two-reviewer check → calibration close
+   with ledger read-back." The roadmap sets the time expectation before the clock starts. Then
+   produce the final brief in the format specified in [brief-schema.md](brief-schema.md).
 
 Do not produce the final brief until the user has explicitly approved the framing. The brief is the handoff artifact; producing it prematurely defeats the purpose of this stage.
 
