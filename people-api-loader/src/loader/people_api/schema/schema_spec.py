@@ -24,18 +24,27 @@ class TableSpec:
     # Postgres table, so _serving_seed has no entry). For serving tables this stays None and the
     # seed is authoritative. NEVER hand-edit _serving_seed.py; this is the escape hatch.
     primary_key: PrimaryKey | None = None
+    # Mart column name -> serving column name, for a mart that is NOT the serving shape (e.g. the
+    # DistrictVoter mart is a denormalized intermediate with extra `type`/`name` columns and a
+    # lowercase `state`, while the Prisma serving table has only 5 columns with a capital "State").
+    # When NON-EMPTY it is the AUTHORITATIVE column set: only mart columns whose name is a KEY are
+    # kept (others dropped), each rendered/projected under its VALUE (serving name). When empty
+    # (Voter/District/DistrictStats — their marts already match serving) columns pass through
+    # unchanged. `type_overrides` keys are always MART column names.
+    mart_column_map: dict[str, str] = field(default_factory=dict)
 
 
 # The loader bulk-loads the full serving set onto the fresh cluster: Voter and DistrictVoter are
-# LIST-partitioned (large, per-partition parallel index builds); District and DistrictStats are
-# flat. The partition column is per-table: only the Voter mart emits capital "State"; the District
-# family (DistrictVoter here) uses lowercase "state" (its mart's column and the serving/app
-# convention), so a hardcoded "State" would break DistrictVoter's partition DDL. Columns/types come
-# from the marts (mart_introspect); this module owns the
-# Postgres-side decisions. DistrictStats is not yet a serving table, so its PK is carried here, not
-# in the generated _serving_seed. Serving enforces no FKs, so none are created. Voter's single
-# Prisma-only column the mart omits is Mailing_HHGender_Description; `id` is the mart's salted-uuid
-# string stored as UUID.
+# LIST-partitioned by the serving "State" column (large, per-partition parallel index builds);
+# District and DistrictStats are flat. Columns/types come from the marts (mart_introspect); this
+# module owns the Postgres-side decisions. Most marts already match the Prisma serving shape, but
+# the DistrictVoter mart is a denormalized intermediate (extra `type`/`name` columns, lowercase
+# `state`) so its `mart_column_map` projects it to the 5-column Prisma serving shape and renames
+# `state` -> "State" (matching the Prisma `@map("State")`); its serving partition column is "State"
+# like Voter. DistrictStats is not yet a serving table, so its PK is carried here, not in the
+# generated _serving_seed. Serving enforces no FKs, so none are created. Voter's single Prisma-only
+# column the mart omits is Mailing_HHGender_Description; `id` is the mart's salted-uuid string
+# stored as UUID.
 TABLE_SPECS: dict[str, TableSpec] = {
     "Voter": TableSpec(
         pg_table="Voter",
@@ -55,9 +64,28 @@ TABLE_SPECS: dict[str, TableSpec] = {
             table="DistrictStats", constraint="DistrictStats_pkey", columns=["district_id"]
         ),
     ),
+    # The DistrictVoter mart (voter_id, district_id, type, name, state, created_at, updated_at, all
+    # strings) is NOT the serving shape. Prisma serving is (district_id, voter_id, created_at,
+    # updated_at, "State") with UUID ids + a capital "State". mart_column_map selects the 5 serving
+    # columns (dropping type/name) and renames mart `state` -> "State"; type_overrides (keyed by
+    # MART name) set the UUID/timestamp/text types. Partition by the serving "State", like Voter.
     "DistrictVoter": TableSpec(
         pg_table="DistrictVoter",
-        partition_by="state",  # lowercase: the DistrictVoter mart emits "state", not Voter's "State"
+        partition_by="State",
+        type_overrides={
+            "district_id": "UUID",
+            "voter_id": "UUID",
+            "created_at": "TIMESTAMPTZ",
+            "updated_at": "TIMESTAMPTZ",
+            "state": "TEXT",
+        },
+        mart_column_map={
+            "district_id": "district_id",
+            "voter_id": "voter_id",
+            "created_at": "created_at",
+            "updated_at": "updated_at",
+            "state": "State",
+        },
     ),
 }
 

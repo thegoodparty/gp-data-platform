@@ -26,9 +26,11 @@ _DDL = (
     '    "buckets" JSONB\n'
     ");\n"
     'CREATE TABLE public."DistrictVoter" (\n'
-    '    "id" UUID NOT NULL,\n'
-    '    "State" TEXT NOT NULL,\n'
-    '    "district_id" UUID\n'
+    '    "district_id" UUID NOT NULL,\n'
+    '    "voter_id" UUID NOT NULL,\n'
+    '    "created_at" TIMESTAMPTZ NOT NULL,\n'
+    '    "updated_at" TIMESTAMPTZ NOT NULL,\n'
+    '    "State" TEXT NOT NULL\n'
     ");"
 )
 
@@ -132,6 +134,17 @@ def test_unload_builds_all_tables_partitioned_and_flat(monkeypatch: pytest.Monke
     assert "to_json" in ds_sql
     assert "presenceOfChildren" in ds_sql and "estimatedIncomeRange" in ds_sql
     assert _table(manifest, "DistrictStats").row_counts == {"": 5}
+
+    # Partitioned DistrictVoter: mart `state` projected AS serving "State"; WHERE/GROUP BY on the
+    # mart's lowercase `state`; the denormalized-only mart columns (type/name) are never selected.
+    dv = _table(manifest, "DistrictVoter")
+    assert dv.partition_by == "State"
+    assert dv.columns == ["district_id", "voter_id", "created_at", "updated_at", "State"]
+    assert dv.row_counts == {"FL": 3, "CA": 2}
+    dv_sql = [s for s in inserts if "/DistrictVoter/state=" in s]
+    assert len(dv_sql) == 2
+    assert all("`state` AS `State`" in s and "WHERE `state` = " in s for s in dv_sql)
+    assert all("`type`" not in s and "`name`" not in s for s in dv_sql)
 
 
 def test_unload_state_filter_touches_only_partitioned_states(monkeypatch: pytest.MonkeyPatch) -> None:

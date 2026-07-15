@@ -24,6 +24,34 @@ def test_render_applies_types_and_overrides_and_quotes() -> None:
     )
 
 
+def test_render_districtvoter_projects_and_renames_to_serving_shape() -> None:
+    # The mart is denormalized (extra type/name, lowercase state); mart_column_map keeps only the
+    # 5 serving columns and renames mart `state` -> "State".
+    from loader.people_api.schema.schema_spec import TABLE_SPECS
+
+    mart_cols = [
+        MartColumn(name="voter_id", spark_type="string", nullable=False),
+        MartColumn(name="district_id", spark_type="string", nullable=False),
+        MartColumn(name="type", spark_type="string", nullable=False),
+        MartColumn(name="name", spark_type="string", nullable=False),
+        MartColumn(name="state", spark_type="string", nullable=False),
+        MartColumn(name="created_at", spark_type="string", nullable=False),
+        MartColumn(name="updated_at", spark_type="string", nullable=False),
+    ]
+    ddl = render_create_table(TABLE_SPECS["DistrictVoter"], mart_cols)
+    assert ddl == (
+        'CREATE TABLE public."DistrictVoter" (\n'
+        '    "voter_id" UUID NOT NULL,\n'
+        '    "district_id" UUID NOT NULL,\n'
+        '    "State" TEXT NOT NULL,\n'
+        '    "created_at" TIMESTAMPTZ NOT NULL,\n'
+        '    "updated_at" TIMESTAMPTZ NOT NULL\n'
+        ");"
+    )
+    # denormalized-only mart columns are dropped, and lowercase "state" never appears
+    assert '"type"' not in ddl and '"name"' not in ddl and '"state"' not in ddl
+
+
 def test_render_appends_prisma_extra_columns() -> None:
     cols = [MartColumn(name="id", spark_type="string", nullable=False)]
     spec = TableSpec(
@@ -105,4 +133,4 @@ def test_renders_all_four_tables(monkeypatch) -> None:
     # buckets override -> jsonb (case as written in schema_spec)
     assert '"buckets" jsonb' in sql
     # DistrictVoter-specific column to catch dispatch/rendering regression
-    assert '"voter_id" TEXT NOT NULL' in sql
+    assert '"voter_id" UUID NOT NULL' in sql

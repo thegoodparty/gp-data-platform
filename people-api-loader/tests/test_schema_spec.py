@@ -14,11 +14,36 @@ def test_partition_flags() -> None:
     assert ss.is_partitioned("DistrictVoter") is True
     assert ss.is_partitioned("District") is False
     assert ss.is_partitioned("DistrictStats") is False
-    # Only the Voter mart emits capital "State"; the District family (incl. DistrictVoter)
-    # is lowercase "state" — the partition column is spec-driven per table.
+    # Both partitioned tables use the serving "State" column (DistrictVoter's mart `state` is
+    # renamed to "State" via mart_column_map — see test_districtvoter_spec).
     assert ss.partition_column("Voter") == "State"
-    assert ss.partition_column("DistrictVoter") == "state"
+    assert ss.partition_column("DistrictVoter") == "State"
     assert ss.partition_column("District") is None
+
+
+def test_districtvoter_spec() -> None:
+    # The DistrictVoter mart is denormalized; mart_column_map projects it to the 5-column Prisma
+    # serving shape and renames mart `state` -> serving "State".
+    spec = ss.TABLE_SPECS["DistrictVoter"]
+    assert spec.partition_by == "State"
+    assert spec.mart_column_map == {
+        "district_id": "district_id",
+        "voter_id": "voter_id",
+        "created_at": "created_at",
+        "updated_at": "updated_at",
+        "state": "State",
+    }
+    assert spec.type_overrides == {
+        "district_id": "UUID",
+        "voter_id": "UUID",
+        "created_at": "TIMESTAMPTZ",
+        "updated_at": "TIMESTAMPTZ",
+        "state": "TEXT",
+    }
+    # The other tables' marts already match serving -> no column map.
+    assert ss.TABLE_SPECS["Voter"].mart_column_map == {}
+    assert ss.TABLE_SPECS["District"].mart_column_map == {}
+    assert ss.TABLE_SPECS["DistrictStats"].mart_column_map == {}
 
 
 def test_districtstats_spec() -> None:

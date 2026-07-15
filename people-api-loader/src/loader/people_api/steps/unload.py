@@ -102,19 +102,33 @@ def run(
         create_sql = create_tables[table]
         ddl_columns = extract_column_names(create_sql)
         extras = {name for name, _type, _nullable in spec.extra_columns}
+        # The DistrictVoter mart's columns differ from its serving names (mart `state` -> serving
+        # "State"); build the serving->mart renames (identity pairs dropped) so the SELECT projects
+        # `state` AS `State`. Empty for the other tables (their marts already match serving).
+        pg_to_mart = {pg: mart for mart, pg in spec.mart_column_map.items()}
+        renames = {pg: mart for pg, mart in pg_to_mart.items() if pg != mart}
         # DistrictStats' buckets struct is rewritten to camelCase + to_json'd on the way out.
         transforms = {"buckets": unload_sql.BUCKETS_TO_JSON_EXPR} if table == "DistrictStats" else None
-        exprs = unload_sql.select_exprs(ddl_columns, extras, transforms=transforms)
+        exprs = unload_sql.select_exprs(ddl_columns, extras, transforms=transforms, renames=renames)
         column_types_pg = extract_column_types(create_sql)
 
         row_counts: dict[str, int] = {}
         files: list[UnloadFile] = []
 
         if is_partitioned(table):
+            # The unload reads the MART, so filter/group by the mart's partition column name
+            # (DistrictVoter: mart `state`; Voter: `State`), not the serving name.
+            serving_partition_col = spec.partition_by
+            assert serving_partition_col is not None  # is_partitioned guarantees it
+            mart_partition_col = pg_to_mart.get(serving_partition_col, serving_partition_col)
             for state in states:
                 s3_dir = f"s3://{cfg.s3_bucket}/{_table_prefix(prefix, table, state)}"
                 sql = unload_sql.unload_statement(
-                    mart_fqn=mart_fqn, select_exprs=exprs, state=state, s3_dir=s3_dir
+                    mart_fqn=mart_fqn,
+                    select_exprs=exprs,
+                    state=state,
+                    s3_dir=s3_dir,
+                    partition_col=mart_partition_col,
                 )
                 if skip_submit:
                     log.info("unload.sql_preview", table=table, state=state, sql=sql)
@@ -127,7 +141,7 @@ def run(
                 if state_filter is None:
                     count_resp = run_statement(
                         cfg,
-                        unload_sql.count_by_state_statement(mart_fqn),
+                        unload_sql.count_by_state_statement(mart_fqn, mart_partition_col),
                         warehouse_id=cfg.databricks_warehouse_id,
                     )
                     for row in (getattr(count_resp, "result", None) and count_resp.result.data_array) or []:

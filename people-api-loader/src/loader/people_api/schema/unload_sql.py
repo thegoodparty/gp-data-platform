@@ -25,21 +25,26 @@ def select_exprs(
     ddl_columns: list[str],
     extra_columns: set[str],
     transforms: dict[str, str] | None = None,
+    renames: dict[str, str] | None = None,
 ) -> list[str]:
-    """Backtick-quoted SELECT expressions in DDL order.
+    """Backtick-quoted SELECT expressions in DDL (serving-column) order.
 
-    `transforms` maps a column name to a full SQL expression that REPLACES the plain
-    `` `col` `` projection (the expression must alias itself `` AS `col` ``); used for the
-    DistrictStats buckets struct-field rename. Prisma-only extras (columns the mart lacks) are
-    emitted as `CAST(NULL AS STRING)`, not a bare `NULL`: bare NULL is Spark's VOID type and the
-    CSV writer rejects it. The value is always NULL, so STRING is a safe placeholder for the CSV
-    round-trip into the real (typed) target column.
+    `transforms` maps a serving column name to a full SQL expression that REPLACES the plain
+    projection (the expression must alias itself `` AS `col` ``); used for the DistrictStats buckets
+    struct-field rename. `renames` maps a serving column name to its DIFFERENT mart column name,
+    emitting `` `mart` AS `serving` `` (used for DistrictVoter's mart `state` -> serving "State").
+    Prisma-only extras (columns the mart lacks) are emitted as `CAST(NULL AS STRING)`, not a bare
+    `NULL`: bare NULL is Spark's VOID type and the CSV writer rejects it. The value is always NULL,
+    so STRING is a safe placeholder for the CSV round-trip into the real (typed) target column.
     """
     transforms = transforms or {}
+    renames = renames or {}
     out: list[str] = []
     for col in ddl_columns:
         if col in transforms:
             out.append(transforms[col])
+        elif col in renames:
+            out.append(f"`{renames[col]}` AS `{col}`")
         elif col in extra_columns:
             out.append(f"CAST(NULL AS STRING) AS `{col}`")
         else:
@@ -47,14 +52,16 @@ def select_exprs(
     return out
 
 
-def unload_statement(*, mart_fqn: str, select_exprs: list[str], state: str, s3_dir: str) -> str:
+def unload_statement(
+    *, mart_fqn: str, select_exprs: list[str], state: str, s3_dir: str, partition_col: str = "State"
+) -> str:
     cols = ", ".join(select_exprs)
     return (
         f"INSERT OVERWRITE DIRECTORY '{s3_dir}'\n"
         f"USING csv OPTIONS ({_CSV_OPTIONS})\n"
         f"SELECT {cols}\n"
         f"FROM {mart_fqn}\n"
-        f"WHERE `State` = '{state}'"
+        f"WHERE `{partition_col}` = '{state}'"
     )
 
 
@@ -69,8 +76,8 @@ def unload_statement_flat(*, mart_fqn: str, select_exprs: list[str], s3_dir: str
     )
 
 
-def count_by_state_statement(mart_fqn: str) -> str:
-    return f"SELECT `State` AS state, count(*) AS n FROM {mart_fqn} GROUP BY `State`"
+def count_by_state_statement(mart_fqn: str, partition_col: str = "State") -> str:
+    return f"SELECT `{partition_col}` AS state, count(*) AS n FROM {mart_fqn} GROUP BY `{partition_col}`"
 
 
 def count_all_statement(mart_fqn: str) -> str:

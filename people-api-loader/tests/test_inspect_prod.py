@@ -21,7 +21,8 @@ def test_inspect_table_with_state_and_snapshot() -> None:
     dt = datetime(2026, 6, 1, 12, 0, 0)
     conn = (
         FakeConn()
-        # Voter is_partitioned -> group by its spec column "State"; no runtime "State"-column probe.
+        # Voter is_partitioned -> probe the serving "State" column, then group by it.
+        .queue_result((1,))  # has "State" column (partition-column probe)
         .queue_result((1,))  # has "updated_at"
         .queue_result([("TX", 60, dt), ("CA", 40, dt)])  # per-state count + max in one scan
     )
@@ -40,6 +41,7 @@ def test_inspect_table_total_includes_null_state_rows() -> None:
     # state), so total != sum(per_state) when NULL-state rows exist.
     conn = (
         FakeConn()
+        .queue_result((1,))  # has "State" column (partition-column probe)
         .queue_result(None)  # has "updated_at" -> no
         .queue_result([("TX", 60), ("CA", 40), (None, 5)])  # a NULL-State group of 5
     )
@@ -56,6 +58,22 @@ def test_inspect_table_flat_table_is_total_only() -> None:
     assert ti.total_row_count == 7
     assert ti.per_state_row_counts == {}
     assert ti.per_state_snapshot_dates == {}
+
+
+def test_inspect_table_partitioned_but_serving_column_absent_falls_back_to_count() -> None:
+    # A partitioned-per-spec table whose SERVING copy lacks the partition column must degrade to a
+    # plain count(*), not error. (This is exactly the prod DistrictVoter/mismatch guard.)
+    conn = (
+        FakeConn()
+        .queue_result(None)  # partition-column probe -> column absent
+        .queue_result((9,))  # plain count(*)
+    )
+    ti = step._inspect_table(conn.cursor(), "Voter")  # ty: ignore[invalid-argument-type]
+    assert ti.total_row_count == 9
+    assert ti.per_state_row_counts == {}
+    # No GROUP BY was issued — inspect fell back to a plain count(*).
+    assert any(s.startswith("SELECT count(*)") for s in executed_sql(conn))
+    assert not any("GROUP BY" in s for s in executed_sql(conn))
 
 
 def test_run_writes_manifest_voter_first(monkeypatch: pytest.MonkeyPatch) -> None:

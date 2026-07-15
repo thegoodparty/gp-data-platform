@@ -114,7 +114,8 @@ def test_new_counts_by_state_queries_the_given_table(monkeypatch: pytest.MonkeyP
 
 
 def test_new_counts_by_state_uses_spec_partition_column(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Voter groups by capital "State"; DistrictVoter groups by lowercase "state" (its mart column).
+    # The GROUP BY column is read from the spec (partition_column). Both partitioned serving tables
+    # use "State" (DistrictVoter's mart `state` is renamed to "State" in the fresh cluster).
     voter_conn = FakeConn().queue_result([("TX", 1)])
     monkeypatch.setattr(step, "connect_new", fake_connect(voter_conn))
     step._new_counts_by_state(_CFG, "20260609", "Voter")
@@ -123,8 +124,7 @@ def test_new_counts_by_state_uses_spec_partition_column(monkeypatch: pytest.Monk
     dv_conn = FakeConn().queue_result([("TX", 1)])
     monkeypatch.setattr(step, "connect_new", fake_connect(dv_conn))
     step._new_counts_by_state(_CFG, "20260609", "DistrictVoter")
-    assert 'GROUP BY "state"' in dv_conn.executed[0][0]
-    assert 'GROUP BY "State"' not in dv_conn.executed[0][0]
+    assert 'GROUP BY "State"' in dv_conn.executed[0][0]
 
 
 def test_new_total_count(monkeypatch: pytest.MonkeyPatch) -> None:
