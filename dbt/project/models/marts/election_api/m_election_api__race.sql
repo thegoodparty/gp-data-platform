@@ -113,7 +113,8 @@ select
     -- '-ccd' strip on the position part preserves the previous derivation,
     -- which stripped it from the whole concatenated slug.
     -- Fall back to position_names when normalized_position_name is absent so
-    -- the race still gets a routable slug rather than a null.
+    -- the race still gets a routable slug rather than a null. position_names is
+    -- an array; element_at(.., 1) is its first entry (Databricks is 1-indexed).
     concat(
         tbl_place.slug,
         '/',
