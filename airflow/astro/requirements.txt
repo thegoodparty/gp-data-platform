@@ -11,12 +11,12 @@ sshtunnel>=0.4.0,<1.0.0
 
 # People-API loader CLI — installed from this monorepo's subdirectory so the
 # `loader` console script is on PATH for the load_people_api DAG's BashOperators.
-# Pinned to @main: survives feature-branch deletion post-merge and co-versions the loader with the
-# DAG on main. NOTE: until this PR merges, @main is the PRE-merge loader (astro-dev runs stale until
-# then). At cutover, pin to an immutable tag/SHA for prod determinism.
-# cache-bust: bump this token whenever the loader source changes so the image reinstalls (the
-# install layer is keyed on this file; an unchanged file = a stale loader). bust=2026-07-13.1
-people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@main#subdirectory=people-api-loader
+# Pinned to the DATA-2100 feature branch DURING REVIEW so astro-dev runs THIS PR's loader (not the
+# stale @main loader). BEFORE MERGE: repin to @main (or the merge-commit SHA / an immutable tag) so
+# the loader co-versions with the DAG on main and survives branch deletion. See PR #607.
+# cache-bust: bump this token whenever the loader source or this pin changes so the image reinstalls
+# (the install layer is keyed on this file; an unchanged file = a stale loader). bust=2026-07-15.1
+people-api-loader @ git+https://github.com/thegoodparty/gp-data-platform.git@feat/DATA-2100-district-family#subdirectory=people-api-loader
 # The voter-data gate runs in dbt Cloud (DbtCloudRunJobOperator) rather than locally — dbt cannot
 # run on the image's Python 3.14, and the full monorepo project needs ~24 parse-time env vars. This
 # provider ships the operator + the dbt_cloud connection type.
