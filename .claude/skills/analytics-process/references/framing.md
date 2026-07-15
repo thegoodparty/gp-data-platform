@@ -38,6 +38,7 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 - Is the question causal, correlational, or descriptive? Is the user treating it as one when it's actually another?
 - Is the outcome variable downstream of the "treatment" in a way that creates selection (e.g., "do users who send a message win more" — sending a message may be a proxy for being an engaged candidate, not a cause of winning)?
 - Is there a clear decision attached, or is this fishing?
+- Does the chosen outcome metric actually move the falsification statement? If the falsification is framed on one construct (e.g. "do users return across months") but the metric measures another (e.g. within-month active days), the brief is internally inconsistent — a falsifying result is unreachable by construction. State the metric and the falsification side by side and confirm the metric can move the falsification, before any query. This is a paper check, not a data check: it costs nothing here and is the cheapest place to catch a construct-validity error.
 
 **Population and eligibility:**
 - Are demo accounts, internal users, test data, and out-of-scope cohorts filtered?

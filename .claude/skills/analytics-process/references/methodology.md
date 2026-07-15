@@ -101,7 +101,7 @@ When binning a continuous engagement or outcome metric:
 
 - Prefer pre-registered bins in the brief, with anchors tied to interpretable thresholds (e.g., funnel-stage boundaries: 0 active weeks = didn't return, 1-3 = light user, etc.).
 - If bins are chosen after viewing the distribution, document this explicitly in the notebook and report sensitivity to bin choice.
-- Always report Wilson 95% CIs alongside point estimates so readers can distinguish real differences from sampling noise.
+- Report Wilson 95% CIs where they inform the read — when a bin is small enough to be over-read (see the N<30 flag below) or when a difference between bins or periods is being claimed — so readers can distinguish real differences from sampling noise. Skip them on large-N descriptive cuts where the interval is trivially tight and adds only clutter; when in doubt, include them.
 - Flag any bin with N<30 as small-sample.
 
 ## Verification protocol
