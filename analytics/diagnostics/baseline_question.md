@@ -39,7 +39,11 @@ held constant and the arms stay comparable.
   corrupt far-future dates (e.g. year 20021) that would otherwise read as
   perpetually upcoming — see win-analytics-knowledge `gotchas.md`. Reproducible
   base: Jan 9,877 / Feb 10,690 / Mar 11,207 / Apr 11,259 / May 10,853. The filter
-  drops past-election candidates whose candidacy is over.)
+  drops past-election candidates whose candidacy is over. Month-end cutoffs in
+  these numbers use the midnight reading — `user_created_at <= DATE month_end`,
+  which excludes activity later on the last calendar day; the full-last-day
+  reading adds ~6–40 users/month (measured 2026-07-15, DATA-2114). State the
+  chosen reading in the brief's `observation_window.boundary_semantics`.)
 - **"activated users":** the governed activation definition. (resolved: anchored
   point-in-time via `first_campaign_sent_at <= month-end`, NOT the lifetime
   `is_activated` flag, so post-month activations don't leak into earlier months.)
@@ -51,6 +55,15 @@ held constant and the arms stay comparable.
 - **"viewed dashboard":** the dashboard-view event. (resolved: the raw event
   `Dashboard - Candidate Dashboard Viewed` fired within 14 days of signup, with
   `event_time <= month-end`.)
+
+## Grading tolerance
+
+The mart is live and not snapshotted, so the recorded base numbers drift as
+election dates and campaign versions churn (~0.1–0.3% observed on 2026-06-11
+and 2026-07-15). Grade a rep against the answer key within ~0.5% on the
+denominator before investigating; a matched-semantics rerun that lands inside
+that band is a pass. When re-baselining, record the as-of date next to the new
+numbers.
 
 ## Runnable arms
 

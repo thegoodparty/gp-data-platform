@@ -78,6 +78,13 @@ observation_window:
     Date or rule for window end.
   anchored_to: |
     The reference event the window is relative to.
+  boundary_semantics: |
+    Explicit inclusivity for every time cutoff in the brief, stated against
+    timestamp columns — e.g. "month-end = strictly before the first instant of
+    the following month"; "within 14 days of signup = inclusive both ends, no
+    pre-signup events". A bare date compared to a timestamp reads as midnight
+    and silently drops the rest of the last day; two defensible readings of
+    "as of month-end" produce different counts.
 
 cohorts:
   - dimension: e.g., position_type
