@@ -1532,6 +1532,38 @@ models:
         data_tests:
           - not_null
 
+  - name: amplitude_event_catalog
+    description: >
+      Passthrough exposure of int__amplitude_event_catalog into mart_analytics
+      so governance consumers read the mart, not the intermediate layer. View
+      materialization, no transformations. The event_type-grain catalog: firing
+      volume, recency, and Govern metadata, with family / is_win from the
+      amplitude_event_taxonomy macros. Columns documented at the upstream int
+      model.
+
+      Source: int__amplitude_event_catalog.
+    columns:
+      - name: event_type
+        description: Amplitude event name (grain of this model).
+        data_tests:
+          - not_null
+          - unique
+
+  - name: amplitude_taxonomy_event_type
+    description: >
+      Passthrough exposure of stg_airbyte_source__amplitude_taxonomy_event_type
+      into mart_analytics so governance consumers read the mart, not the staging
+      layer. View materialization, no transformations. The Amplitude Govern
+      declared event universe (~434 events, all active), synced from Amplitude
+      via Airbyte. Columns documented at the upstream staging model.
+
+      Source: stg_airbyte_source__amplitude_taxonomy_event_type.
+    columns:
+      - name: event_type
+        description: Amplitude event name from the Govern taxonomy.
+        data_tests:
+          - not_null
+
   - name: hubspot_contacts
     description: >
       Passthrough exposure of stg_airbyte_source__hubspot_api_contacts
