@@ -33,7 +33,7 @@ Common work that should not be reinvented each run:
 - **Funnel analysis.** Aggregate the raw event stream to `user_id × funnel step`; report "engaged beyond account creation" (≥2 distinct events) alongside raw any-evidence. Event families come from the knowledge skill's `engagement.md`.
 - **Rate decomposition.** Don't pool heterogeneous funnel stages — name the cohort (onboarded / activated / full registered) so a rate isn't dominated by never-active registrants. See the default-cohorts table in the product knowledge skill's `methodology_defaults.md`.
 - **Retention / reverse-retention curves.** Pair any closed-cohort curve with an open fixed-denominator view, then split open into new vs returning. The closed curve decays by construction; the open/returning view answers whether the base is more engaged. Full mechanism in the knowledge skill's `gotchas.md`.
-- **Wilson intervals + binning.** Report Wilson 95% CIs alongside point estimates; flag N<30 bins; pre-register bins in the brief. See `methodology.md`.
+- **Wilson intervals + binning.** Report Wilson 95% CIs where they inform the read (small N, or a claimed difference) rather than on every cut; flag N<30 bins; pre-register bins in the brief. See `methodology.md`.
 
 ## Reference docs
 
