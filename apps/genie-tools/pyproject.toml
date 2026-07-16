@@ -12,7 +12,7 @@ dependencies = [
 genie-tools = "genie_tools.cli:main"
 
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-dir]
