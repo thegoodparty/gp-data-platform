@@ -411,6 +411,15 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
     # One bastion tunnel for the whole step; every connection below multiplexes through it (see
     # _build_in_parallel). `fwd` is None when no bastion is configured (direct connections).
     with open_new_tunnel(cfg, run_date) as fwd:
+        # pg_trgm backs the gin_trgm_ops seed entries. create_schema installs it
+        # too, but the steps guard via independent manifests and must each be
+        # self-sufficient: a build_indexes run against a cluster whose
+        # create_schema predates the trigram entries must not fail the child
+        # builds on a missing operator class. Inside the tunnel: build_indexes
+        # reaches the cluster through the bastion, unlike create_schema.
+        with connect_new(cfg, run_date, forward=fwd) as conn, conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+
         # 1. Primary key(s) and the unique index: parent-level builds (few; fast/one-off).
         _build_in_parallel(_add_primary_key, pks)
         _build_in_parallel(_create_index, unique_idxs)

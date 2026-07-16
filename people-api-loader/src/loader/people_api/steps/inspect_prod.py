@@ -75,9 +75,7 @@ def _inspect_table(cur: psycopg.Cursor, table: str) -> TableInspection:
 
     has_updated = _has_column(cur, table, "updated_at")
     cols = "count(*), max(updated_at)" if has_updated else "count(*)"
-    cur.execute(
-        f'SELECT "State", {cols} FROM public."{table}" GROUP BY "State"'
-    )  # ty: ignore[no-matching-overload]
+    cur.execute(f'SELECT "State", {cols} FROM public."{table}" GROUP BY "State"')  # ty: ignore[no-matching-overload]
 
     total = 0
     per_state: dict[str, int] = {}
