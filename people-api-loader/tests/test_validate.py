@@ -208,6 +208,8 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "_check_indexes", lambda *a: bad)
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
     manifest = step.run(_CFG, "20260609")
     assert isinstance(manifest, ValidateManifest)
     assert manifest.all_passed is False
@@ -231,7 +233,14 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "_compare_counts", lambda *a: ok)
     monkeypatch.setattr(step, "_compare_total", lambda *a: ok)
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
-    for name in ("_check_schema_diff", "_check_indexes", "_check_sample_queries", "_check_l2type_coverage"):
+    for name in (
+        "_check_schema_diff",
+        "_check_indexes",
+        "_check_indexes_valid",
+        "_check_districtstats_buckets",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
         monkeypatch.setattr(step, name, lambda *a: ok)
     manifest = step.run(_CFG, "20260609")
     assert manifest.all_passed is True
@@ -262,6 +271,8 @@ def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(step, "_check_indexes", lambda *a: ok)
     monkeypatch.setattr(step, "_check_sample_queries", lambda *a: ok)
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
     manifest = step.run(_CFG, "20260609")
     names = {c.name for c in manifest.checks}
     assert "row_counts_match_databricks:Voter" in names
@@ -293,6 +304,8 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
         step, "_check_schema_diff", lambda cfg, rd, table: (schema_tables.append(table), ok)[1]
     )
     monkeypatch.setattr(step, "_check_indexes", lambda cfg, rd, table: (index_tables.append(table), ok)[1])
+    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
     step.run(_CFG, "20260609")
     assert schema_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert index_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
@@ -438,6 +451,86 @@ def test_check_indexes_table_absent_from_prod_passes_trivially(monkeypatch: pyte
     assert check.passed is True
 
 
+# --- _check_indexes_valid (new-cluster index health) ---
+
+
+def test_check_indexes_valid_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([])))
+    check = step._check_indexes_valid(_CFG, "20260609", "Voter")
+    assert check.name == "indexes_valid:Voter"
+    assert check.passed is True
+    assert check.details["invalid_indexes"] == []
+
+
+def test_check_indexes_valid_fails_on_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A partition child that never attached leaves the parent index present-but-INVALID; the
+    # name-only index_constraint_diff misses it, so this check must catch it.
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Voter_Age_Int_idx",)])))
+    check = step._check_indexes_valid(_CFG, "20260609", "Voter")
+    assert check.passed is False
+    assert "Voter_Age_Int_idx" in check.details["invalid_indexes"]
+
+
+# --- _check_districtstats_buckets (rename-shim sanity) ---
+
+_GOOD_BUCKETS = {
+    "age": [],
+    "homeowner": [],
+    "education": [],
+    "presenceOfChildren": [],
+    "estimatedIncomeRange": [],
+}
+
+
+def test_check_districtstats_buckets_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = (
+        FakeConn()
+        .queue_result(('public."DistrictStats"',))  # to_regclass
+        .queue_result((0, 100))  # (null_buckets, total)
+        .queue_result((_GOOD_BUCKETS,))  # sample buckets (psycopg3 decodes jsonb -> dict)
+    )
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_districtstats_buckets(_CFG, "20260609")
+    assert check.passed is True
+    assert check.details["null_buckets"] == 0
+
+
+def test_check_districtstats_buckets_missing_camelcase_keys_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # snake_case leftover means the rename shim regressed -> camelCase keys missing -> fail.
+    snake = {
+        "age": [],
+        "homeowner": [],
+        "education": [],
+        "presence_of_children": [],
+        "estimated_income_range": [],
+    }
+    conn = FakeConn().queue_result(('public."DistrictStats"',)).queue_result((0, 100)).queue_result((snake,))
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_districtstats_buckets(_CFG, "20260609")
+    assert check.passed is False
+    assert "presenceOfChildren" in check.details["missing_keys"]
+
+
+def test_check_districtstats_buckets_null_rows_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = (
+        FakeConn()
+        .queue_result(('public."DistrictStats"',))
+        .queue_result((5, 100))  # 5 rows with NULL buckets
+        .queue_result((_GOOD_BUCKETS,))
+    )
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_districtstats_buckets(_CFG, "20260609")
+    assert check.passed is False
+    assert check.details["null_buckets"] == 5
+
+
+def test_check_districtstats_buckets_absent_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result((None,))))
+    check = step._check_districtstats_buckets(_CFG, "20260609")
+    assert check.passed is True
+    assert check.details.get("skipped") == "DistrictStats absent"
+
+
 # --- _check_sample_queries (Voter-only) ---
 
 
@@ -503,7 +596,14 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(step, "_compare_counts", lambda *a: ok)
     monkeypatch.setattr(step, "_compare_total", lambda *a: ok)
     monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
-    for name in ("_check_schema_diff", "_check_indexes", "_check_sample_queries", "_check_l2type_coverage"):
+    for name in (
+        "_check_schema_diff",
+        "_check_indexes",
+        "_check_indexes_valid",
+        "_check_districtstats_buckets",
+        "_check_sample_queries",
+        "_check_l2type_coverage",
+    ):
         monkeypatch.setattr(step, name, lambda *a: ok)
     manifest = step.run(_CFG, "20260609")
     assert "m" in captured, "checks must re-run (manifest written), not skip"

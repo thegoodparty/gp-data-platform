@@ -347,6 +347,74 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     )
 
 
+def _check_indexes_valid(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCheck:
+    """Every index on the table is VALID on the new cluster (not just present by name).
+
+    build_indexes builds each plain index `ON ONLY` the parent, then builds + ATTACHes a child per
+    partition; the parent's partitioned index (and the partitioned PK/unique) only flips
+    `indisvalid=true` once EVERY child is attached. An incomplete attach leaves the index
+    present-but-INVALID — so `index_constraint_diff_clean`, which lists `pg_indexes` by name, still
+    passes — yet the planner won't use it and a partitioned unique won't enforce uniqueness. Fail on
+    any invalid index. New cluster only (this is about the fresh build's health, not a prod diff).
+    """
+    name = f"indexes_valid:{table}"
+    query = (
+        "SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+        "WHERE i.indrelid = %s::regclass AND NOT i.indisvalid ORDER BY c.relname"
+    )
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        cur.execute(query, (f'public."{table}"',))  # ty: ignore[no-matching-overload]
+        invalid = [r[0] for r in cur.fetchall()]
+    return ValidationCheck(name=name, passed=not invalid, details={"invalid_indexes": invalid[:20]})
+
+
+# The camelCase top-level keys the app expects in DistrictStats.buckets (the unload's named_struct
+# rename shim produces these from the mart's snake/lowercase struct fields; see unload_sql).
+_EXPECTED_BUCKET_KEYS = frozenset(
+    {"age", "homeowner", "education", "presenceOfChildren", "estimatedIncomeRange"}
+)
+
+
+def _check_districtstats_buckets(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+    """DistrictStats.buckets survived the mart->jsonb rename shim: non-null, and a sample row carries
+    the expected camelCase top-level keys.
+
+    `buckets` is nullable and built by the unload's `named_struct(...)`/`to_json` rename (mart's
+    lowercase struct -> app camelCase). If that transform regresses it loads all-NULL or wrong-keyed
+    jsonb and EVERY other check still passes (counts match, schema matches, indexes valid). This is
+    the one column with a silent-failure mode, so guard it directly. Skips cleanly if DistrictStats
+    isn't present or is empty (the count gate covers emptiness).
+    """
+    name = "districtstats_buckets_shape"
+    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('public.\"DistrictStats\"')")
+        row = cur.fetchone()
+        if row is None or row[0] is None:
+            return ValidationCheck(name=name, passed=True, details={"skipped": "DistrictStats absent"})
+        cur.execute(  # ty: ignore[no-matching-overload]
+            'SELECT count(*) FILTER (WHERE buckets IS NULL), count(*) FROM public."DistrictStats"'
+        )
+        counts = cur.fetchone()
+        null_buckets, total = (int(counts[0]), int(counts[1])) if counts else (0, 0)
+        if total == 0:
+            return ValidationCheck(name=name, passed=True, details={"skipped": "DistrictStats empty"})
+        cur.execute('SELECT buckets FROM public."DistrictStats" WHERE buckets IS NOT NULL LIMIT 1')
+        sample = cur.fetchone()
+    # psycopg3 decodes jsonb to a dict; fall back to {} defensively.
+    sample_keys = set((sample[0] or {}).keys()) if sample and sample[0] is not None else set()
+    missing_keys = sorted(_EXPECTED_BUCKET_KEYS - sample_keys)
+    return ValidationCheck(
+        name=name,
+        passed=null_buckets == 0 and not missing_keys,
+        details={
+            "null_buckets": null_buckets,
+            "total": total,
+            "sample_keys": sorted(sample_keys),
+            "missing_keys": missing_keys,
+        },
+    )
+
+
 def _to_markdown(manifest: ValidateManifest) -> str:
     lines: list[str] = [
         f"# Voter-DB Refresh Validation — {manifest.run_date}",
@@ -405,6 +473,8 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
             *_check_prod_row_counts(cfg, run_date, new_counts),
             *[_check_schema_diff(cfg, run_date, t.table) for t in unload.tables],
             *[_check_indexes(cfg, run_date, t.table) for t in unload.tables],
+            *[_check_indexes_valid(cfg, run_date, t.table) for t in unload.tables],
+            _check_districtstats_buckets(cfg, run_date),
             _check_sample_queries(cfg, run_date),
             _check_l2type_coverage(cfg, run_date),
         ]
