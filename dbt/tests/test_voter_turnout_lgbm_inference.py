@@ -14,12 +14,14 @@ from dbt.project.models.intermediate.l2.int__voter_turnout_lgbm_inference import
     _SLUG_ELECTION_CODE,
     _assert_consistent_model_family,
     _build_district_membership_sql,
+    _build_district_projection_sql,
     _build_precinct_features_sql,
     _detect_election_cols,
     _op_years,
     _opp_view_sql,
     _parse_state_allowlist,
     _predict_precinct,
+    _read_interval_params_tag,
     _read_model_family_tag,
     _select_cat_map_path,
     _year_to_model_slugs,
@@ -258,3 +260,81 @@ def test_read_model_family_tag_returns_value():
 def test_read_model_family_tag_raises_when_missing_or_empty(tags):
     with pytest.raises(ValueError):
         _read_model_family_tag(tags, "some.model.name")
+
+
+# ── Prediction intervals: params tag reader + projection SQL builder ──────────
+def test_read_interval_params_tag_returns_parsed_dict():
+    tags = {
+        "prediction_interval_params": '{"bias":-0.0007,"q25":-0.013,"q75":0.012,"q841":0.025,"q95":0.071}'
+    }
+    params = _read_interval_params_tag(tags, "some.model.name")
+    assert params["bias"] == -0.0007
+    assert params["q25"] == -0.013
+    assert params["q95"] == 0.071
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        None,
+        {},
+        {"model_family": "x"},  # unrelated tag only
+        {"prediction_interval_params": ""},  # empty
+        {"prediction_interval_params": "not json"},  # malformed
+        {"prediction_interval_params": '{"bias":0.0,"q25":-0.01}'},  # missing q95
+        {"prediction_interval_params": '{"bias":0.0,"q95":0.05}'},  # missing q25
+    ],
+)
+def test_read_interval_params_tag_raises_when_missing_malformed_or_incomplete(tags):
+    with pytest.raises(ValueError):
+        _read_interval_params_tag(tags, "some.model.name")
+
+
+_INTERVAL_PARAMS = {
+    "midterm": {"bias": -0.00066, "q25": -0.01307, "q75": 0.01246, "q841": 0.02501, "q95": 0.07087},
+    "even_year_primary": {"bias": 0.00845, "q25": -0.03699, "q75": 0.00737, "q841": 0.03438, "q95": 0.12761},
+}
+
+
+def test_projection_sql_carries_model_slug_and_district_voters():
+    sql = _build_district_projection_sql(_INTERVAL_PARAMS)
+    # model_slug must reach the GROUP BY so params can be joined per slug; district_voters
+    # is the denominator the bound rate is multiplied back by.
+    assert "SUM(p.n_voters)" in sql
+    assert "AS district_voters" in sql
+    assert "m.district_type, m.district_name, p.model_slug, p.model_family" in sql
+    # ballots_projected value is unchanged (round of the p_hat-weighted sum).
+    assert "ROUND(a.projected_raw)" in sql
+    assert "AS ballots_projected" in sql
+
+
+def test_projection_sql_emits_lower_and_upper_bound_columns():
+    sql = _build_district_projection_sql(_INTERVAL_PARAMS)
+    assert "AS ballots_projected_lower" in sql
+    assert "AS ballots_projected_upper" in sql
+    # bound formula: pred_rate + bias + q * sqrt(p*(1-p)), clipped to [0,1], * district_voters
+    assert "ip.q_lower * SQRT(a.pred_rate * (1 - a.pred_rate))" in sql
+    assert "ip.q_upper * SQRT(a.pred_rate * (1 - a.pred_rate))" in sql
+    assert "* a.district_voters" in sql
+    assert "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug" in sql
+
+
+def test_projection_sql_embeds_lower_upper_params_per_slug():
+    sql = _build_district_projection_sql(_INTERVAL_PARAMS)
+    # VALUES rows carry (slug, bias, q25 as lower, q95 as upper) — NOT q75/q841.
+    assert "'midterm', -0.00066, -0.01307, 0.07087" in sql
+    assert "'even_year_primary', 0.00845, -0.03699, 0.12761" in sql
+    assert "AS t(model_slug, bias, q_lower, q_upper)" in sql
+    # q75 / q841 are stored in the tag but must not leak into the two-bound SQL.
+    assert "0.01246" not in sql
+    assert "0.03438" not in sql
+
+
+def test_projection_sql_without_params_emits_null_bounds():
+    sql = _build_district_projection_sql({})
+    # No params -> NULL bound columns and no join, but ballots_projected still produced.
+    assert "CAST(NULL AS DOUBLE)" in sql
+    assert "AS ballots_projected_lower" in sql
+    assert "AS ballots_projected_upper" in sql
+    assert "_interval_params" not in sql
+    assert "ROUND(a.projected_raw)" in sql
