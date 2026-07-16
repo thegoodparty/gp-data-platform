@@ -247,14 +247,23 @@ def _check_schema_diff(cfg: LoaderConfig, run_date: str, table: str) -> Validati
         new_cols = _columns(conn, table)
     missing_from_new = prod_cols - new_cols
     extra_in_new = new_cols - prod_cols
+    # The loader partitions some tables by "State", so the new cluster has that partition column.
+    # If prod's copy of a partitioned table doesn't have it yet, that lone extra is the INTENDED
+    # partitioning divergence (the fresh table matches the newer Prisma; current serving is behind —
+    # the same divergence tracked for the DATA-1855 cutover), not schema drift. Don't fail on it;
+    # any OTHER column difference still fails.
+    pcol = partition_column(table) if is_partitioned(table) else None
+    allowed_extra = {pcol} if pcol and pcol not in prod_cols else set()
+    unexpected_extra = extra_in_new - allowed_extra
     return ValidationCheck(
         name=name,
-        passed=not missing_from_new and not extra_in_new,
+        passed=not missing_from_new and not unexpected_extra,
         details={
             "prod_cols": len(prod_cols),
             "new_cols": len(new_cols),
             "missing_from_new": sorted(missing_from_new)[:20],
             "extra_in_new": sorted(extra_in_new)[:20],
+            "allowed_partition_extra": sorted(allowed_extra),
         },
     )
 

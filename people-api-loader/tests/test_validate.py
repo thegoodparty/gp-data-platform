@@ -347,6 +347,30 @@ def test_check_schema_diff_prod_unreachable_fails(monkeypatch: pytest.MonkeyPatc
     assert check.passed is False and "error_reading_prod" in check.details
 
 
+def test_check_schema_diff_partition_col_extra_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # DistrictVoter is partitioned by "State"; the current serving copy lacks that column, so the
+    # fresh cluster's "State" is the intended partitioning divergence, not drift -> pass.
+    prod = [("district_id",), ("voter_id",), ("created_at",), ("updated_at",)]
+    new = [*prod, ("State",)]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_diff(_CFG, "20260609", "DistrictVoter")
+    assert check.passed is True
+    assert check.details["extra_in_new"] == ["State"]
+    assert check.details["allowed_partition_extra"] == ["State"]
+
+
+def test_check_schema_diff_non_partition_extra_still_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Only the partition column is a free pass; any other extra column still fails.
+    prod = [("district_id",), ("voter_id",), ("created_at",), ("updated_at",)]
+    new = [*prod, ("State",), ("bogus",)]
+    monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result(prod)))
+    monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result(new)))
+    check = step._check_schema_diff(_CFG, "20260609", "DistrictVoter")
+    assert check.passed is False
+    assert "bogus" in check.details["extra_in_new"]
+
+
 def test_check_schema_diff_different_table_uses_that_table(monkeypatch: pytest.MonkeyPatch) -> None:
     prod_conn = FakeConn().queue_result([("a",), ("b",)])
     monkeypatch.setattr(step, "connect_prod", fake_connect(prod_conn))
