@@ -518,3 +518,66 @@ seeds:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "is_local or is_regional or is_state or is_federal"
+
+  - name: election_calendar
+    description: >
+      Reference snapshot of what election type a (state, election_date) pair
+      is. Backs election-api's determineElectionCode (DATA-2015) as ONE of two
+      inputs -- see m_election_api__election_calendar for how this seed and
+      int__election_calendar_primary_ballotready combine.
+      General rows are computed from the fixed Tuesday-after-first-Monday-in-
+      November rule (never changes) and are authoritative as-is -- there is no
+      live General model, this seed IS the source of truth for General. They
+      cover every even year the live Primary model can emit; when BallotReady
+      starts publishing the next even cycle, the
+      assert_election_calendar_general_covers_primary_years test fails loudly
+      until that year's General rows are added here, and
+      assert_election_calendar_general_dates_follow_federal_rule recomputes
+      the rule so a typo cannot ship.
+      Primary rows here are a snapshot only -- a fallback used solely for a
+      (state, year) the live BallotReady model doesn't resolve for some
+      reason.
+      For every (state, year) the live model DOES resolve, its current output
+      wins over whatever is frozen here, even if this seed has a row for that
+      exact key already: BallotReady is treated as authoritative for Primary,
+      full stop, so a corrected date there always overrides a stale snapshot.
+      This is true even for rows sourced from L2 ground truth (source=l2) --
+      deliberately not protected from being superseded, to keep the design to
+      one code path instead of two.
+      No LocalOrMunicipal/ConsolidatedGeneral rows: any (state, date) with no
+      match in the combined output is LocalOrMunicipal by definition
+      (ConsolidatedGeneral was a placeholder for 4 odd-year states pending a
+      dedicated odd-year model that was never built, and repeated an
+      identical projection year over year -- removed rather than carried
+      forward).
+    columns:
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+      - name: election_date
+        description: The calendar date this row classifies
+        data_tests:
+          - not_null
+      - name: election_code
+        description: General (computed) or Primary (from L2 or BallotReady) -- no other values
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary"]
+      - name: source
+        description: How this row's date was determined -- computed (General only), l2, or ballotready
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["computed", "l2", "ballotready"]
+      - name: source_note
+        description: Human-readable detail on how this row's date was determined (documentation only, not used downstream)
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - election_date

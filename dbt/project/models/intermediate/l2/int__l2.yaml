@@ -463,3 +463,36 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "length(trim(district_name)) > 0"
+
+  - name: int__election_calendar_primary_ballotready
+    description: >
+      Live-recomputed per (state, election_year) Primary date, informed by
+      BallotReady's scheduled-election data (DATA-2015) and treated as
+      authoritative for Primary in m_election_api__election_calendar --
+      recomputes every run, so an edit to BallotReady's election table flows
+      through automatically. Even years only. See the model file's header
+      comment for the full rule (max-race-count winner, Wisconsin exception,
+      Presidential fallback, the Louisiana general-day collision guard) and
+      its validation writeup.
+    columns:
+      - name: state
+        description: State postal code
+        data_tests:
+          - not_null
+      - name: election_date
+        description: The Primary date for this state/year, per BallotReady
+        data_tests:
+          - not_null
+      - name: election_code
+        description: Always 'Primary' -- this model only ever emits Primary rows
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Primary"]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - election_date

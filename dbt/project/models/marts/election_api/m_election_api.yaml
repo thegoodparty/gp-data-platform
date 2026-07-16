@@ -745,3 +745,57 @@ models:
           name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
+
+  - name: m_election_api__election_calendar
+    description: >
+      Per (state, election_date) election-type lookup, delivered to Postgres
+      via the sync_election_api DAG's atomic swap (see m_election_api__projected_turnout
+      for the same delivery pattern and why upsert-by-id was rejected).
+      General rows come from the election_calendar seed unconditionally.
+      Primary rows come from int__election_calendar_primary_ballotready
+      (recomputed live from BallotReady every run) with the election_calendar
+      seed's own Primary rows used only as a fallback for a (state, year) the
+      live model doesn't resolve -- BallotReady is authoritative for Primary
+      whenever it has an answer, even overriding an L2-sourced seed row for
+      the same key.
+    columns:
+      - name: id
+        description: "UUID of the election calendar row"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: state
+        description: State postal code
+        tests:
+          - not_null
+          # 50 states + DC. An unexpected BallotReady territory or state-name
+          # variant should fail loudly here, not quietly serve calendar rows.
+          - accepted_values:
+              arguments:
+                values:
+                  ["AK", "AL", "AR", "AZ", "CA", "CO", "CT", "DC", "DE", "FL",
+                   "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA",
+                   "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE",
+                   "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI",
+                   "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV",
+                   "WY"]
+      - name: election_date
+        description: The calendar date this row classifies
+        tests:
+          - not_null
+      - name: election_code
+        description: What type of election this date is for this state (General or Primary only -- no match means LocalOrMunicipal)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["General", "Primary"]
+    tests:
+      # API invariant: election-api's determineElectionCode does a single findUnique
+      # on (state, election_date), so there must be exactly one row per key.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - state
+              - election_date
