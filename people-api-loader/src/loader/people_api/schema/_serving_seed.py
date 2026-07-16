@@ -2139,6 +2139,52 @@ INDEXES: list[IndexDef] = [
         columns=["Weed_District"],
         where=None,
     ),
+    # Hand-added (omni ENG-10684, 2026-07-16), not pg_catalog-extracted: the CRM
+    # typeahead's trigram substring search and the name-search/ordering indexes
+    # that previously existed only as people-api prisma migrations (which do not
+    # run against loader-built clusters). The lower() expressions must match the
+    # SQL people-api emits (lower("FirstName")/lower("LastName")) exactly or the
+    # planner will not use them. pg_trgm is installed by create_schema.
+    IndexDef(
+        table="Voter",
+        name="Voter_firstname_lower_idx",
+        sql='CREATE INDEX "Voter_firstname_lower_idx" ON public."Voter" USING btree (lower("FirstName"));',
+        unique=False,
+        columns=['lower("FirstName")'],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_firstname_lower_trgm_idx",
+        sql='CREATE INDEX "Voter_firstname_lower_trgm_idx" ON public."Voter" USING gin (lower("FirstName") gin_trgm_ops);',
+        unique=False,
+        columns=['lower("FirstName")'],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_last_first_id_idx",
+        sql='CREATE INDEX "Voter_last_first_id_idx" ON public."Voter" USING btree ("LastName", "FirstName", "id");',
+        unique=False,
+        columns=["LastName", "FirstName", "id"],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_lastname_lower_idx",
+        sql='CREATE INDEX "Voter_lastname_lower_idx" ON public."Voter" USING btree (lower("LastName"));',
+        unique=False,
+        columns=['lower("LastName")'],
+        where=None,
+    ),
+    IndexDef(
+        table="Voter",
+        name="Voter_lastname_lower_trgm_idx",
+        sql='CREATE INDEX "Voter_lastname_lower_trgm_idx" ON public."Voter" USING gin (lower("LastName") gin_trgm_ops);',
+        unique=False,
+        columns=['lower("LastName")'],
+        where=None,
+    ),
 ]
 
 FOREIGN_KEYS: list[ForeignKey] = []

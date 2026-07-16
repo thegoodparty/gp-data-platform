@@ -84,6 +84,10 @@ def run(cfg: LoaderConfig, run_date: str) -> SchemaManifest:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE")
             cur.execute("CREATE EXTENSION IF NOT EXISTS aws_commons")
+            # Trusted extension (no superuser needed on RDS); required before
+            # build_indexes re-issues the gin_trgm_ops name indexes from the seed
+            # (omni ENG-10684 — CRM typeahead substring search).
+            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         with conn.cursor() as cur:
             cur.execute(parent)  # ty: ignore[no-matching-overload]
         for child_stmt in child_stmts:
