@@ -319,6 +319,47 @@ def _check_sample_queries(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     )
 
 
+# Selective point-lookups on Voter's PK / unique. These MUST plan as index scans: equality on a
+# unique/PK column is estimated at ~1 row regardless of whether the value exists or how large a
+# partition is, so this is deterministic, not selectivity-flaky (unlike the count(*) sample queries,
+# which the planner legitimately seq-scans for low-selectivity predicates). No partition-key filter,
+# so it fans across partitions as an Append of Index Scans — robust to any single partition's size.
+_INDEX_USAGE_QUERIES: tuple[tuple[str, str], ...] = (
+    ("id_lookup", 'SELECT 1 FROM public."Voter" WHERE "id" = \'00000000-0000-0000-0000-000000000000\'::uuid'),
+    ("lalvoterid_lookup", 'SELECT 1 FROM public."Voter" WHERE "LALVOTERID" = \'__validate_probe__\''),
+)
+_INDEX_SCAN_NODES = ("Index Scan", "Index Only Scan", "Bitmap Index Scan")
+
+
+def _check_index_usage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+    """EXPLAIN selective Voter point-lookups and confirm the planner serves them via an index.
+
+    Beyond 'the index exists' (index_constraint_diff) and 'the index is valid' (indexes_valid), this
+    is the performance gate: it proves the fresh cluster's indexes are actually PLANNED — i.e.
+    ANALYZE ran and the planner has usable stats. A regression (missing ANALYZE, unusable index)
+    shows up as a Seq Scan. EXPLAIN only (no execution), so it's cheap. New cluster only.
+    """
+    results: dict[str, str] = {}
+    failures: dict[str, str] = {}
+    with connect_new(cfg, run_date) as conn:
+        for label, sql in _INDEX_USAGE_QUERIES:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"EXPLAIN {sql}")  # ty: ignore[no-matching-overload]
+                    plan = "\n".join(r[0] for r in cur.fetchall())
+            except Exception as e:  # broad by design: capture the failure as a check result
+                failures[label] = str(e)
+                continue
+            uses_index = any(node in plan for node in _INDEX_SCAN_NODES)
+            if uses_index and "Seq Scan" not in plan:
+                results[label] = "index"
+            else:
+                failures[label] = (plan.splitlines() or ["(no plan)"])[0]
+    return ValidationCheck(
+        name="index_usage", passed=not failures, details={"pass": results, "fail": failures}
+    )
+
+
 def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     try:
         with connect_prod(cfg) as prod_conn, prod_conn.cursor() as cur:
@@ -363,7 +404,7 @@ def _check_indexes_valid(cfg: LoaderConfig, run_date: str, table: str) -> Valida
         "WHERE i.indrelid = %s::regclass AND NOT i.indisvalid ORDER BY c.relname"
     )
     with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
-        cur.execute(query, (f'public."{table}"',))  # ty: ignore[no-matching-overload]
+        cur.execute(query, (f'public."{table}"',))
         invalid = [r[0] for r in cur.fetchall()]
     return ValidationCheck(name=name, passed=not invalid, details={"invalid_indexes": invalid[:20]})
 
@@ -391,9 +432,7 @@ def _check_districtstats_buckets(cfg: LoaderConfig, run_date: str) -> Validation
         row = cur.fetchone()
         if row is None or row[0] is None:
             return ValidationCheck(name=name, passed=True, details={"skipped": "DistrictStats absent"})
-        cur.execute(  # ty: ignore[no-matching-overload]
-            'SELECT count(*) FILTER (WHERE buckets IS NULL), count(*) FROM public."DistrictStats"'
-        )
+        cur.execute('SELECT count(*) FILTER (WHERE buckets IS NULL), count(*) FROM public."DistrictStats"')
         counts = cur.fetchone()
         null_buckets, total = (int(counts[0]), int(counts[1])) if counts else (0, 0)
         if total == 0:
@@ -476,6 +515,7 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
             *[_check_indexes_valid(cfg, run_date, t.table) for t in unload.tables],
             _check_districtstats_buckets(cfg, run_date),
             _check_sample_queries(cfg, run_date),
+            _check_index_usage(cfg, run_date),
             _check_l2type_coverage(cfg, run_date),
         ]
     except Exception as e:  # broad by design: persist a failed manifest, then re-raise

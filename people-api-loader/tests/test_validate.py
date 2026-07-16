@@ -210,6 +210,7 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
     monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
     monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_index_usage", lambda *a: ok)
     manifest = step.run(_CFG, "20260609")
     assert isinstance(manifest, ValidateManifest)
     assert manifest.all_passed is False
@@ -238,6 +239,7 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
         "_check_indexes",
         "_check_indexes_valid",
         "_check_districtstats_buckets",
+        "_check_index_usage",
         "_check_sample_queries",
         "_check_l2type_coverage",
     ):
@@ -273,6 +275,7 @@ def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
     monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
     monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_index_usage", lambda *a: ok)
     manifest = step.run(_CFG, "20260609")
     names = {c.name for c in manifest.checks}
     assert "row_counts_match_databricks:Voter" in names
@@ -306,6 +309,7 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
     monkeypatch.setattr(step, "_check_indexes", lambda cfg, rd, table: (index_tables.append(table), ok)[1])
     monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
     monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_index_usage", lambda *a: ok)
     step.run(_CFG, "20260609")
     assert schema_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert index_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
@@ -531,6 +535,29 @@ def test_check_districtstats_buckets_absent_skips(monkeypatch: pytest.MonkeyPatc
     assert check.details.get("skipped") == "DistrictStats absent"
 
 
+# --- _check_index_usage (EXPLAIN: planner serves lookups via an index) ---
+
+
+def test_check_index_usage_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    idx_plan = [("Append",), ('  ->  Index Scan using "Voter_pkey_TX" on "Voter_TX"',)]
+    conn = FakeConn().queue_result(idx_plan).queue_result(idx_plan)  # one per lookup query
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_index_usage(_CFG, "20260609")
+    assert check.name == "index_usage"
+    assert check.passed is True
+    assert set(check.details["pass"]) == {"id_lookup", "lalvoterid_lookup"}
+
+
+def test_check_index_usage_seqscan_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    idx_plan = [("Append",), ('  ->  Index Scan using x on "Voter_TX"',)]
+    seq_plan = [('Seq Scan on "Voter_TX"',)]  # a seq scan means the index wasn't planned
+    conn = FakeConn().queue_result(idx_plan).queue_result(seq_plan)
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_index_usage(_CFG, "20260609")
+    assert check.passed is False
+    assert "lalvoterid_lookup" in check.details["fail"]
+
+
 # --- _check_sample_queries (Voter-only) ---
 
 
@@ -601,6 +628,7 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
         "_check_indexes",
         "_check_indexes_valid",
         "_check_districtstats_buckets",
+        "_check_index_usage",
         "_check_sample_queries",
         "_check_l2type_coverage",
     ):
