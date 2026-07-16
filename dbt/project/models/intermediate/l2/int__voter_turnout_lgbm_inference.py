@@ -447,18 +447,21 @@ def _build_district_projection_sql(interval_params):
     """Pure: final district-level projection SQL, including p25 (lower) / p95 (upper)
     prediction-interval bounds.
 
-    interval_params maps model_slug -> {bias, q25, q95, ...}. Bounds are the
+    interval_params maps model_slug -> {q25, q95, ...}. Bounds are the
     variance-stabilised residual model fit per slug in the turnout_prediction_intervals
-    notebook. For each district we take the model's implied predicted rate,
+    notebook (raw-standardized residual quantiles, no constant bias term). For each
+    district we take the model's implied predicted rate,
     pred_rate = ballots_projected / district_voters, and apply
 
-        bound_rate  = clip(pred_rate + bias + q * sqrt(pred_rate*(1-pred_rate)), 0, 1)
+        bound_rate  = clip(pred_rate + q * sqrt(pred_rate*(1-pred_rate)), 0, 1)
         bound_votes = round(bound_rate * district_voters)
 
-    with q = q25 for the lower bound and q = q95 for the upper. The residual model was
-    fit on eligible-weighted rates; inference uses the registered-voter denominator
-    (district_voters = SUM(n_voters), no eligibility gate) on the deliberate assumption
-    that today's L2 is the eligible-if-held-today universe (research decision).
+    with q = q25 for the lower bound and q = q95 for the upper. q25 < 0 < q95 for every
+    model, so the point (q=0) always lies within [lower, upper] and both bounds collapse
+    toward the point as pred_rate -> 0/1. The residual model was fit on eligible-weighted
+    rates; inference uses the registered-voter denominator (district_voters =
+    SUM(n_voters), no eligibility gate) on the deliberate assumption that today's L2 is
+    the eligible-if-held-today universe (research decision).
 
     A LEFT JOIN to the params means a slug with no params yields NULL bounds rather than
     dropping the ballots_projected row. Model routing guarantees (election_year,
@@ -466,22 +469,21 @@ def _build_district_projection_sql(interval_params):
     change ballots_projected or the natural-key grain."""
     if interval_params:
         values = ",\n                ".join(
-            f"('{slug}', {p['bias']!r}, {p['q25']!r}, {p['q95']!r})"
-            for slug, p in sorted(interval_params.items())
+            f"('{slug}', {p['q25']!r}, {p['q95']!r})" for slug, p in sorted(interval_params.items())
         )
         params_cte = f"""_interval_params AS (
             SELECT * FROM (VALUES
                 {values}
-            ) AS t(model_slug, bias, q_lower, q_upper)
+            ) AS t(model_slug, q_lower, q_upper)
         ),
         """
         join_sql = "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug"
         lower_expr = (
-            "ROUND(LEAST(GREATEST(a.pred_rate + ip.bias + ip.q_lower * "
+            "ROUND(LEAST(GREATEST(a.pred_rate + ip.q_lower * "
             "SQRT(a.pred_rate * (1 - a.pred_rate)), 0), 1) * a.district_voters)"
         )
         upper_expr = (
-            "ROUND(LEAST(GREATEST(a.pred_rate + ip.bias + ip.q_upper * "
+            "ROUND(LEAST(GREATEST(a.pred_rate + ip.q_upper * "
             "SQRT(a.pred_rate * (1 - a.pred_rate)), 0), 1) * a.district_voters)"
         )
     else:
@@ -644,8 +646,8 @@ def _read_model_family_tag(registered_model_tags, registered_model_name):
 
 
 def _read_interval_params_tag(model_version_tags, registered_model_name):
-    """Read the per-slug prediction-interval params (bias + empirical residual quantiles)
-    from the @production model-VERSION tag set at promotion.
+    """Read the per-slug prediction-interval params (empirical residual quantiles) from
+    the @production model-VERSION tag set at promotion.
 
     Stored as a JSON version tag (not a registered-model tag) so the params stay locked to
     the exact booster they were fit against — a retrain must re-fit and re-tag. A missing
@@ -664,7 +666,7 @@ def _read_interval_params_tag(model_version_tags, registered_model_name):
         raise ValueError(
             f"prediction_interval_params on {registered_model_name} is not valid JSON: {raw!r}"
         ) from e
-    missing = {"bias", "q25", "q95"} - set(params)
+    missing = {"q25", "q95"} - set(params)
     if missing:
         raise ValueError(
             f"prediction_interval_params on {registered_model_name} is missing keys "

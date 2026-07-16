@@ -264,13 +264,10 @@ def test_read_model_family_tag_raises_when_missing_or_empty(tags):
 
 # ── Prediction intervals: params tag reader + projection SQL builder ──────────
 def test_read_interval_params_tag_returns_parsed_dict():
-    tags = {
-        "prediction_interval_params": '{"bias":-0.0007,"q25":-0.013,"q75":0.012,"q841":0.025,"q95":0.071}'
-    }
+    tags = {"prediction_interval_params": '{"q25":-0.0144,"q75":0.0111,"q841":0.0236,"q95":0.0695}'}
     params = _read_interval_params_tag(tags, "some.model.name")
-    assert params["bias"] == -0.0007
-    assert params["q25"] == -0.013
-    assert params["q95"] == 0.071
+    assert params["q25"] == -0.0144
+    assert params["q95"] == 0.0695
 
 
 @pytest.mark.parametrize(
@@ -281,8 +278,8 @@ def test_read_interval_params_tag_returns_parsed_dict():
         {"model_family": "x"},  # unrelated tag only
         {"prediction_interval_params": ""},  # empty
         {"prediction_interval_params": "not json"},  # malformed
-        {"prediction_interval_params": '{"bias":0.0,"q25":-0.01}'},  # missing q95
-        {"prediction_interval_params": '{"bias":0.0,"q95":0.05}'},  # missing q25
+        {"prediction_interval_params": '{"q25":-0.01}'},  # missing q95
+        {"prediction_interval_params": '{"q95":0.05}'},  # missing q25
     ],
 )
 def test_read_interval_params_tag_raises_when_missing_malformed_or_incomplete(tags):
@@ -291,8 +288,8 @@ def test_read_interval_params_tag_raises_when_missing_malformed_or_incomplete(ta
 
 
 _INTERVAL_PARAMS = {
-    "midterm": {"bias": -0.00066, "q25": -0.01307, "q75": 0.01246, "q841": 0.02501, "q95": 0.07087},
-    "even_year_primary": {"bias": 0.00845, "q25": -0.03699, "q75": 0.00737, "q841": 0.03438, "q95": 0.12761},
+    "midterm": {"q25": -0.01444, "q75": 0.01107, "q841": 0.02357, "q95": 0.06949},
+    "even_year_primary": {"q25": -0.0138, "q75": 0.02892, "q841": 0.05517, "q95": 0.15031},
 }
 
 
@@ -312,22 +309,24 @@ def test_projection_sql_emits_lower_and_upper_bound_columns():
     sql = _build_district_projection_sql(_INTERVAL_PARAMS)
     assert "AS ballots_projected_lower" in sql
     assert "AS ballots_projected_upper" in sql
-    # bound formula: pred_rate + bias + q * sqrt(p*(1-p)), clipped to [0,1], * district_voters
+    # bound formula: pred_rate + q * sqrt(p*(1-p)), clipped to [0,1], * district_voters.
+    # No constant bias term (raw-standardized residual quantiles).
     assert "ip.q_lower * SQRT(a.pred_rate * (1 - a.pred_rate))" in sql
     assert "ip.q_upper * SQRT(a.pred_rate * (1 - a.pred_rate))" in sql
     assert "* a.district_voters" in sql
+    assert "ip.bias" not in sql
     assert "LEFT JOIN _interval_params ip ON a.model_slug = ip.model_slug" in sql
 
 
 def test_projection_sql_embeds_lower_upper_params_per_slug():
     sql = _build_district_projection_sql(_INTERVAL_PARAMS)
-    # VALUES rows carry (slug, bias, q25 as lower, q95 as upper) — NOT q75/q841.
-    assert "'midterm', -0.00066, -0.01307, 0.07087" in sql
-    assert "'even_year_primary', 0.00845, -0.03699, 0.12761" in sql
-    assert "AS t(model_slug, bias, q_lower, q_upper)" in sql
+    # VALUES rows carry (slug, q25 as lower, q95 as upper) — NOT q75/q841, and no bias.
+    assert "'midterm', -0.01444, 0.06949" in sql
+    assert "'even_year_primary', -0.0138, 0.15031" in sql
+    assert "AS t(model_slug, q_lower, q_upper)" in sql
     # q75 / q841 are stored in the tag but must not leak into the two-bound SQL.
-    assert "0.01246" not in sql
-    assert "0.03438" not in sql
+    assert "0.01107" not in sql
+    assert "0.05517" not in sql
 
 
 def test_projection_sql_without_params_emits_null_bounds():
