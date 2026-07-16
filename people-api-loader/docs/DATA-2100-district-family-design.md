@@ -174,5 +174,20 @@ touched.
   wrong for a small table (just slightly more objects).
 - **Cutover coupling (DATA-1855).** The DistrictVoter composite-PK divergence and the dbt `ON CONFLICT`
   change must land together at cutover, not piecemeal.
+- **Serving replica is `public`, not the Prisma `green` schema (verified 2026-07-16).** The people-api
+  Prisma models declare all four tables `@@schema("green")` (OLTP), where `green.District` carries the
+  `@@unique([type, name, state])`. The loader targets `public` — the data-platform serving replica —
+  exactly as Voter has always been served. `extract-serving-structure` and every step scope to
+  `nspname='public'`, so the seed mirrors `public` (no drift confirmed against prod: Voter 266 indexes /
+  1 unique, `public` District/DistrictVoter pkeys only). The loader does NOT reproduce green's OLTP
+  constraints, and should not — prod's `public` District genuinely has pkey only. **Forward (DATA-1855):**
+  whether the `public` District serving replica should gain the composite unique / DistrictVoter secondary
+  indexes is a cutover decision, driven only by whether the serving read path does
+  `ON CONFLICT (type, name, state)` upserts or needs those indexes for query performance.
+- **Regenerate `_serving_seed.py` close to cutover, not now.** It already matches prod's `public` today,
+  so a regen is a no-op until prod drifts (most plausibly the DATA-1855 work adding District structure to
+  `public`). Run `extract-serving-structure` where the loader has prod access (the worker's airflow SP, or
+  a role that can read the SSM connection string) — an engineer SSO identity is explicitly denied that
+  parameter — then diff-review before committing.
 - **Instance sizing.** Adding DistrictVoter (potentially larger than Voter) to the index build may
   change the `db.r8g.48xlarge` / `_DEFAULT_BUILDERS=128` assumptions; watch the first full run.
