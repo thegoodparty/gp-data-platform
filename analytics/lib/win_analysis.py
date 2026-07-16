@@ -27,7 +27,7 @@ import pandas as pd
 # ``mart_analytics`` for marts; the legacy ``dbt_staging`` schema is being retired)
 # rather than resolved via dbt
 # ``ref()``: this module runs outside dbt (notebooks / ad-hoc), where ``ref()`` can
-# resolve to stale dev artifacts (win-analytics-process skill's references/methodology.md).
+# resolve to stale dev artifacts (analytics-process skill's references/methodology.md).
 # Repoint these for a dev/test catalog.
 EVENTS_TABLE = "goodparty_data_catalog.dbt.stg_airbyte_source__amplitude_api_events"
 USERS_WIN_CANDIDACY = "goodparty_data_catalog.mart_analytics.users_win_candidacy"
@@ -40,6 +40,10 @@ EVENT_TAXONOMY = "goodparty_data_catalog.dbt.int__amplitude_event_catalog"
 DEFAULT_DRIFT_CUTOFF = "2026-01-01"
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ANCHOR_FORBIDDEN = re.compile(r"[;'\"]|--|/\*")
+# Filters legitimately contain quoted literals (campaign_state = 'WY'), so their
+# tripwire only bans statement separators and comment tokens.
+_FILTER_FORBIDDEN = re.compile(r";|--|/\*")
 
 # Slicing dimensions available on users_win_candidacy with no join
 # (win-analytics-knowledge skill's references/segmentation.md).
@@ -57,6 +61,11 @@ def _require_date(label: str, value: str) -> None:
     """Validate a YYYY-MM-DD date string before it is interpolated into SQL."""
     if not _DATE_RE.fullmatch(value):
         raise ValueError(f"{label} must be YYYY-MM-DD, got: {value!r}")
+
+
+def _sql_quote(s: str) -> str:
+    """Escape a trusted constant for a single-quoted SQL literal."""
+    return s.replace("'", "''")
 
 
 def _win_event_types_sql(drift_cutoff: str) -> str:
@@ -118,7 +127,7 @@ def build_win_working_set(
 ) -> pd.DataFrame:
     """Build one consolidated per-user cohort x engagement working set, slice it in pandas.
 
-    This is the "build once, slice many" pattern (win-analytics-process skill's
+    This is the "build once, slice many" pattern (analytics-process skill's
     references/methodology.md). All funnel
     steps are derived point-in-time from the raw event stream (events strictly
     before each user's election anchor), so onboarding/activation are anchored
@@ -150,8 +159,13 @@ def build_win_working_set(
         expressions (they are WHERE/SELECT fragments and cannot be parameterized), so
         they must come from trusted, analyst-controlled code only -- never from
         external or user-supplied input. ``event_floor`` and ``drift_cutoff`` are
-        date-validated, ``slice_dims`` are validated as plain SQL identifiers, and
-        ``preelection_days`` must be a positive integer.
+        date-validated, ``slice_dims`` are validated as plain SQL identifiers,
+        ``preelection_days`` must be a positive integer, cohort labels are
+        escaped for the SQL literal, ``anchor`` passes a tripwire rejecting
+        quotes, ``;``, and comment tokens (expressions like ``MIN(CAST(...))``
+        stay legal), and ``filter`` passes a looser tripwire rejecting ``;``
+        and comment tokens (quoted literals stay legal -- a filter cannot be
+        parameterized).
     """
     _require_date("event_floor", event_floor)
     if preelection_days <= 0:
@@ -164,8 +178,19 @@ def build_win_working_set(
 
     cohort_selects = []
     for label, spec in cohorts.items():
+        # Tripwires, not a grammar (mirrors serve_analysis): anchors are trusted
+        # expressions (MIN(CAST(...)) is legal) but never legitimately need
+        # quotes, statement separators, or comment tokens; filters need quoted
+        # literals but never separators/comments.
+        anchor = spec.get("anchor")
+        if not anchor:
+            raise ValueError(f"cohort {label!r} must define an 'anchor' expression")
+        if _ANCHOR_FORBIDDEN.search(anchor):
+            raise ValueError(f"anchor must not contain quotes, ';', or comment tokens: {anchor!r}")
+        if _FILTER_FORBIDDEN.search(spec["filter"]):
+            raise ValueError(f"filter must not contain ';' or comment tokens: {spec['filter']!r}")
         cohort_selects.append(
-            f"""  SELECT user_id, '{label}' AS cohort, {spec['anchor']} AS anchor{dim_cols}
+            f"""  SELECT user_id, '{_sql_quote(label)}' AS cohort, {anchor} AS anchor{dim_cols}
   FROM {USERS_WIN_CANDIDACY}
   WHERE is_latest_version AND NOT is_demo AND ({spec['filter']})
   GROUP BY user_id"""

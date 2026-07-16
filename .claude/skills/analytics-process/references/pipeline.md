@@ -1,6 +1,6 @@
 # Pipeline topology
 
-Part of the **win-analytics-process** skill. The single source of truth for the analytics
+Part of the **analytics-process** skill. The single source of truth for the analytics
 pipeline's stages and handoff contracts. Agents reference this doc instead of describing the
 flow themselves.
 
@@ -20,6 +20,52 @@ doc documents the flow; a human (or the process skill stepping through it) drive
 | G | **Results checkpoint** | Orchestrator → human (hard gate) | the executed notebook + robustness checks | a human go / no-go | **Hard stop after execution.** Present results and robustness checks; do **not** dispatch any reviewer until the human approves. The human may redirect scope here, which is cheaper than a wasted review cycle. A clean result or an eager requester does not waive the gate. |
 | 3 | **Review (methodology + interpretation)** | `product-data-scientist` | the executed notebook, read against the brief | a methodology review + an interpretation of results | Read-only and advisory. Surfaces leakage / survivorship / calibration concerns and interprets effect sizes. Does not edit code or open PRs. |
 | + | **Review (usefulness)** | `product-manager` | the plan or the deliverable | a framing / actionability review | Read-only and advisory. Asks whether this answers the team's real question and whether names/segments/thresholds match how consumers think. Invoked proactively at plan checkpoints and pre-PR — a checkpoint, not a strict sequence position. |
+
+## Legibility: stage banners and gate receipts
+
+The pipeline's robustness is invisible unless narrated: from the user's seat, unannounced
+stages read as delay. Two always-on conventions keep the chat transcript legible; each is one
+line, near-zero cost.
+
+**Stage banner.** At every transition into a step of the senior-analyst loop (the skill's
+6-step numbering), open with one line:
+
+`Analytics process — step N of 6 (<name>). Why: <one clause>.`
+
+Use the stock why-clauses below rather than improvising new ones each run:
+
+| Step | Name | Why-clause |
+|---|---|---|
+| 1 | Frame | sharpen the question before any code, so we answer the right thing once |
+| 2 | Find sources | resolve every concept to its governed definition — docs drift, the catalog is ground truth |
+| 3 | Brief | freeze the framing as a spec so execution can't quietly reinterpret it |
+| 4 | Execute | build the working set once so every cut is a free re-slice |
+| 5 | Review | two independent reviewers check methodology and usefulness before results are trusted |
+| 6 | Close | route what we learned back into the docs so the next run starts smarter |
+
+**Gate receipts.** When a checkpoint clears, say so explicitly instead of silently moving on —
+one line naming the gate and the evidence: `Gate cleared: <gate> — <evidence>.` Receipts anchor
+at **framing approval** (what was settled), the **results checkpoint** (the user's go),
+**review** (how many reviewers, verdicts in one clause), and the **calibration close** (ledger
+read-back done, or nothing appended).
+
+**Success test:** a first-time reader of the transcript alone can say which step each message
+belongs to and name the gates that cleared.
+
+## Reviewer dispatch template
+
+Build each reviewer's invocation prompt from this template — and nothing more:
+
+- **Artifacts by path:** the brief YAML and the executed notebook/script (plus any figures directory). The reviewer reads these on the merits.
+- **Product context:** the product, its knowledge skill, the decision cadence, and the intended audience/consumer of the deliverable.
+- **Docs to load:** the reviewer doc pointers from the product knowledge skill's `methodology_defaults.md` (which names the two or three docs each reviewer needs, per role).
+- **The ask:** review per your role (methodology + interpretation, or usefulness + actionability).
+
+**The dispatch must not lead the witness.** Do not summarize the analysis's conclusions, characterize the result's quality ("clean", "strong", "confirms X"), or include the orchestrator's interpretation. The orchestrator that produced the analysis writes this prompt; anything beyond paths, product context, and doc pointers contaminates a review whose value is its fresh context.
+
+**Model note.** The reviewers inherit the session model (their frontmatter deliberately carries no pin — intent recorded 2026-07: "strong model" was the goal and a literal pin lags model generations). Run substantive reviews in a session on a strong model tier.
+
+**On reviewer conflict:** when the two reviews disagree, present both to the user verbatim — do not arbitrate, average, or synthesize away the disagreement. The two lenses (rigor, usefulness) are allowed to pull in different directions; picking a winner is the human's call.
 
 ## Artifacts and where they land
 

@@ -469,6 +469,27 @@ models:
           surfaces one for the matched BR race (TS form data does not capture
           runoffs).
 
+      - name: br_race_id
+        description: >
+          BallotReady race id as supplied on the TechSpeed form row (stage-level
+          BR identifier; the gp_candidacy_id dedup keeps the latest form row's
+          value). Surfaced for the HubSpot feed's br_race_id fallback since the
+          fuzzy-pipeline removal.
+
+      - name: postal_code
+        description: >
+          Candidate zip as supplied on the TechSpeed form row (the
+          gp_candidacy_id dedup keeps the latest form row's value). Surfaced for
+          the HubSpot feed's postal_code since the fuzzy-pipeline removal; no
+          other provider carries candidate-level zip.
+
+      - name: election_type
+        description: >
+          Stage label ('Primary'/'General') derived from the TechSpeed form's
+          is_primary flag, preserving the legacy feed semantics (what election
+          the row was researched for, not which stage is upcoming). Surfaced for
+          the HubSpot feed's Election Type since the fuzzy-pipeline removal.
+
       - name: br_position_database_id
         description: >
           BallotReady position id, recovered from the BR election_stage row

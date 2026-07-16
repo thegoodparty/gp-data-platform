@@ -46,7 +46,14 @@ from datetime import datetime
 from pathlib import Path
 
 STAGES = ["framing", "execution", "review", "calibration"]
-SKILL_NAMES = {"win-analytics-process", "win-analytics-knowledge"}
+# Includes pre-rename names so transcripts recorded before the
+# win-analytics-process -> analytics-process rename (2026-07) still profile.
+SKILL_NAMES = {
+    "analytics-process",
+    "win-analytics-process",
+    "win-analytics-knowledge",
+    "serve-analytics-knowledge",
+}
 REVIEWER_TYPES = {"product-data-scientist", "product-manager"}
 
 
@@ -285,7 +292,8 @@ _PROCESS_OWNING_BASENAMES = {"product-data-scientist.md", "product-manager.md", 
 
 def _is_process_owning(path: str) -> bool:
     return (
-        "/win-analytics-process/" in path
+        "/analytics-process/" in path
+        or "/win-analytics-process/" in path  # pre-rename transcripts (2026-07)
         or "/analytics/lib/" in path
         or "/analytics/runbook/" in path
         or os.path.basename(path) in _PROCESS_OWNING_BASENAMES

@@ -1,6 +1,6 @@
 # Analysis brief schema
 
-Part of the **win-analytics-process** skill. The framing→execution handoff contract.
+Part of the **analytics-process** skill. The framing→execution handoff contract.
 
 When the framing routine (see [framing.md](framing.md)) finishes shaping a question, it produces a
 structured analysis brief. This brief is the handoff artifact to the executor (Claude Code, or
@@ -78,6 +78,13 @@ observation_window:
     Date or rule for window end.
   anchored_to: |
     The reference event the window is relative to.
+  boundary_semantics: |
+    Explicit inclusivity for every time cutoff in the brief, stated against
+    timestamp columns — e.g. "month-end = strictly before the first instant of
+    the following month"; "within 14 days of signup = inclusive both ends, no
+    pre-signup events". A bare date compared to a timestamp reads as midnight
+    and silently drops the rest of the last day; two defensible readings of
+    "as of month-end" produce different counts.
 
 cohorts:
   - dimension: e.g., position_type
@@ -129,4 +136,4 @@ Decision rule: if population/eligibility/target/comparison are unchanged and you
 ## Cross-references
 
 - [pipeline.md](pipeline.md) — the stages this brief flows through.
-- [methodology.md](methodology.md) — scoping, default cohorts, and the build-once-slice-many pattern.
+- [methodology.md](methodology.md) — scoping and the build-once-slice-many pattern; the product's default cohorts are in the product knowledge skill's `methodology_defaults.md`.

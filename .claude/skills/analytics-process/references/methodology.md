@@ -1,32 +1,19 @@
 # Methodology
 
-Part of the **win-analytics-process** skill. Scoping + verifying an analysis.
+Part of the **analytics-process** skill. Scoping + verifying an analysis. This doc owns
+the product-agnostic discipline; the *product's* defaults — resolved scoping decisions,
+default cohorts, and the working-set builder — live in the product knowledge skill's
+`methodology_defaults.md` (Win: [methodology_defaults.md](../../win-analytics-knowledge/references/methodology_defaults.md)).
+Load both: the checklist below tells you *what to settle*; the defaults doc tells you the
+product's settled answers.
 
-## Resolved scoping decisions (DATA-1935, 2026-05-27)
+## Product defaults (pointer)
 
-These apply by default to Win-product analyses. Document deviations in your project's `SESSION_NOTES.md`.
+Before scoping, open the product's `methodology_defaults.md` for:
 
-| Decision | Default |
-|---|---|
-| Unit of analysis | Candidacy (`gp_candidacy_id`) |
-| Outcome variable | `latest_stage_reached + latest_stage_result` from `mart_civics.candidacy` (NOT `general_election_result`) |
-| Cycle window | `general_election_date BETWEEN '2025-05-01' AND '2026-12-31'` (adjust per project) |
-| Engagement window | Same as candidacy window unless analysis specifically wants trailing features |
-| Baseline | All registered Win users; engagement-zero is a valid predictor value (not an exclusion) |
-| ICP gating | `icp_office_win` is a slicing dimension, not a filter |
-
-## Default cohorts by analysis type
-
-Different analyses call for different cohorts. The full Win-product registered population includes registered-but-never-active candidates, pre-instrumentation registrants, CRM-sync candidates who never logged in, and other heterogeneous funnel stages. Pooling them produces misleading correlations — for example, raw engagement-vs-win-rate looks *inverse* (more engagement → lower win rate) because the 0-engagement bin is dominated by candidates who never used the product at all, not by candidates who tried-and-failed to engage.
-
-| Analysis type | Default cohort | Source flag |
-|---|---|---|
-| Engagement vs outcome | Onboarded cohort | **onboarding dashboard viewed** = dashboard view within 14d of `user_created_at`, recomputed from the raw event (NOT the new-flow-blind `has_completed_onboarding_flow` / `is_onboarded` flags — see the knowledge skill's [engagement.md](../../win-analytics-knowledge/references/engagement.md) and [gotchas.md](../../win-analytics-knowledge/references/gotchas.md)) |
-| Outreach intensity vs outcome | Activated cohort (sent ≥1 outreach) | `is_activated = TRUE` |
-| Funnel / dropoff analyses | Full registered population | `users_win_candidacy` filtered to `is_latest_version AND NOT is_demo` |
-| Active candidates OKR reporting | Active candidates (trailing 30d) | `is_active_candidate_30d = TRUE` (or recompute anchored to a target date) |
-
-Always name the cohort in the analysis title and headline so consumers know which population is being characterized. "Among onboarded Win candidates..." not "Among Win candidates..."
+- the resolved scoping decisions (unit of analysis, outcome variable, windows, baseline);
+- the default cohort per analysis type — always name the cohort in the analysis title and headline so consumers know which population is being characterized;
+- the working-set builder and its column caveats.
 
 ## Scoping checklist for a new analysis
 
@@ -81,9 +68,7 @@ When unsure, default to `ad_hoc/`: promoting an ad-hoc analysis into a project l
 
 ## Reusable building blocks — build the working set once, slice it
 
-Don't rebuild cohort + engagement logic from scratch each analysis. The committed package `analytics/lib/win_analysis.py` holds the canonical Win event-family allowlist (`win_event_predicate`), a `build_win_working_set(run_query, cohorts, ...)` that returns one consolidated per-user `cohort × engagement` DataFrame carrying the standard slicing dimensions from the knowledge skill's [segmentation.md](../../win-analytics-knowledge/references/segmentation.md), and `wilson`. **Default executor step:** build that one working set first, then slice every cut from it in pandas (codifies the build-once-slice-many rule). Carrying the slice dimensions up front makes re-cuts (e.g. ICP vs not) free — see the amend path in [brief-schema.md](brief-schema.md). The event classification is sourced from `int__amplitude_event_catalog` (see the knowledge skill's [engagement.md](../../win-analytics-knowledge/references/engagement.md) — no separate hand-maintained allowlist to keep in sync).
-
-> **Column caveat — don't use the helper's `onboarded` column as the Onboarded cohort.** `build_win_working_set`'s `onboarded` column keys on `onboarding_complete`, which is the **new-flow-blind** flag (FALSE for every post-2026-05-07 user). It is **not** the canonical **Onboarded** cohort from the default-cohorts table above (dashboard view within 14 days of account creation). For that cohort, recompute the 14-day dashboard-view logic — the helper's `dash_viewed` is dashboard-view-*ever* within the pre-anchor window, not the 14-day-of-creation window — and for cross-cutover onboarding *completion* use `Onboarding - Candidate Pledge Completed`. Same new-flow-blindness documented in the knowledge skill's [engagement.md](../../win-analytics-knowledge/references/engagement.md) and [gotchas.md](../../win-analytics-knowledge/references/gotchas.md), and in the lib's own README.
+Don't rebuild cohort + engagement logic from scratch each analysis. **Default executor step:** build the product's consolidated per-user working set once with its committed builder, then slice every cut from it in pandas (the build-once-slice-many rule). Carrying the slice dimensions up front makes re-cuts free — see the amend path in [brief-schema.md](brief-schema.md). The builder, its allowlist source, and its column caveats are product facts: see the product's `methodology_defaults.md` (Win: `analytics/lib/win_analysis.py`, documented there) before using any of its columns as a canonical cohort.
 
 ## Notebook sync workflow
 
@@ -116,7 +101,7 @@ When binning a continuous engagement or outcome metric:
 
 - Prefer pre-registered bins in the brief, with anchors tied to interpretable thresholds (e.g., funnel-stage boundaries: 0 active weeks = didn't return, 1-3 = light user, etc.).
 - If bins are chosen after viewing the distribution, document this explicitly in the notebook and report sensitivity to bin choice.
-- Always report Wilson 95% CIs alongside point estimates so readers can distinguish real differences from sampling noise.
+- Report Wilson 95% CIs where they inform the read — when a bin is small enough to be over-read (see the N<30 flag below) or when a difference between bins or periods is being claimed — so readers can distinguish real differences from sampling noise. Skip them on large-N descriptive cuts where the interval is trivially tight and adds only clutter; when in doubt, include them.
 - Flag any bin with N<30 as small-sample.
 
 ## Verification protocol
@@ -131,14 +116,7 @@ A scout / analysis is "done" when:
 
 ## Source pointers & references
 
-**Project scouts that contributed insights:**
-- **`analytics/projects/win_outcomes_scout/INVENTORY.md`** (DATA-1935) — Win product × electoral outcomes data scout. Seeded most of the knowledge-skill content, especially `outcomes.md` through `viability.md`. Source 7 in the inventory carries the full HubSpot survey detail (per-survey submission counts, response distribution by ICP/Win bucket, the verified Option 1/2 mapping evidence).
-- **`analytics/projects/win_churn/`** (DATA-1924) — Win churn modeling. Engagement-as-outcome counterpart. Source for some of the multi-cycle and pre-2023-12-10 gotchas.
-
-**Authoritative dbt model docs:**
-- `dbt/project/models/marts/civics/m_civics.yaml` — column descriptions for candidacy / candidate / candidacy_stage / election / election_stage.
-- `dbt/project/models/marts/analytics/m_analytics.yaml` — for the analytics mart.
-- `dbt/project/models/intermediate/amplitude/int__amplitude.yaml` — Amplitude intermediate columns + tests.
+Product-specific source pointers (contributing project scouts, authoritative dbt model docs) live in the product's `methodology_defaults.md`.
 
 **Conventions:**
 - `CLAUDE.md` (repo root) — multi-venv reality + don't-disable-pre-commit rules.

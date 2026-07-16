@@ -1,7 +1,7 @@
 # analytics/lib
 
-Committed, reusable building blocks for Win-product analyses, so ad-hoc notebooks
-stop rebuilding the same cohort and engagement logic from scratch each run.
+Committed, reusable building blocks for product analyses (Win and Serve), so ad-hoc
+notebooks stop rebuilding the same cohort and engagement logic from scratch each run.
 
 ## Why this exists
 
@@ -10,7 +10,7 @@ retyped in every analysis. That is a token cost, a time cost, and a transcriptio
 risk. This package holds one copy. The event classification is now sourced from the dbt
 model `int__amplitude_event_catalog` (DATA-1945) so there is a single source of truth
 shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
-`references/engagement.md` for the family taxonomy and the win-analytics-process skill's
+`references/engagement.md` for the family taxonomy and the analytics-process skill's
 `references/methodology.md` for the build-once-slice-many pattern.
 
 ## What's here
@@ -28,6 +28,20 @@ shared by the dbt models and notebooks. See the win-analytics-knowledge skill's
   win-analytics-knowledge skill's `references/segmentation.md` so re-cuts (e.g. ICP vs not) need no new query. Win events are tagged via
   a LEFT JOIN to the taxonomy.
 - `wilson(k, n)` — Wilson 95% score interval.
+
+`serve_analysis.py` (DATA-2116):
+- `serve_engagement_predicate()` — the broad-Serve-engagement surface test as a SQL
+  predicate (2025 `family = 'serve'` events + the 2026 event generation by prefix +
+  `Viewed` on Serve-surface paths). Surface test only: population, post-activation
+  time-scope, in-session, and hygiene conditions are the caller's job — prefer the
+  builder below, which applies all of them.
+- `build_serve_working_set(run_query, cohorts, ...)` — one per-user
+  `cohort x engagement` DataFrame of broad Serve engagement: in-session
+  (`session_id != -1`, excludes server-emitted dispatches), scoped to
+  `event_time >= eo_activated_at` (default anchor), impersonation-tainted sessions
+  and `@goodparty.org` excluded. Definition and caveats: the
+  serve-analytics-knowledge skill's `references/methodology_defaults.md`.
+- `wilson` is re-exported from `win_analysis` (one implementation).
 
 ## Usage from a notebook
 

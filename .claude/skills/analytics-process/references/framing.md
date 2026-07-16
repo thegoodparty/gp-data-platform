@@ -1,6 +1,6 @@
 # Framing routine
 
-Part of the **win-analytics-process** skill. Step 1 of the senior-analyst loop. The orchestrator runs this routine **in its own context** (not as a sub-agent) so it can ask the user clarifying questions and iterate to an approved brief.
+Part of the **analytics-process** skill. Step 1 of the senior-analyst loop. The orchestrator runs this routine **in its own context** (not as a sub-agent) so it can ask the user clarifying questions and iterate to an approved brief.
 
 **The approval gate is hard.** Do not write any analysis code while framing. Framing ends only when the user explicitly approves the framing; the approved brief is the spec the execution step then follows. Framing and execution are two ordered steps, never one blended activity.
 
@@ -25,7 +25,7 @@ A question is ready to hand off when you can answer all of these without hedging
 - **Eligibility window:** how long must an entity have been observable to be included? (E.g., "must have had access to the feature for ≥4 weeks before the election.")
 - **Target / outcome:** the precise definition, including how censoring and absorbing states are handled.
 - **Comparison:** what's the counterfactual or comparison group? Is this a treatment-vs-control framing, a correlation, or a descriptive cut?
-- **Observation window:** the date range, anchored to a meaningful reference point (election date, signup date, feature launch).
+- **Observation window:** the date range, anchored to a meaningful reference point (election date, signup date, feature launch). Nail down **boundary semantics** for every cutoff: is each comparison against a date or a timestamp column, and is each end inclusive or exclusive? (A bare date compared to a timestamp reads as midnight and silently drops the rest of that day.) This settles the brief's `observation_window.boundary_semantics` field.
 - **Cohorts to break out by:** dimensions for stratification (position type, signup source, geography, cycle).
 - **Expected sample size:** rough order of magnitude, and whether it's enough to detect the effect of interest.
 - **What would falsify the hypothesis:** what result would make the user update their belief?
@@ -38,6 +38,7 @@ If any of these are unanswerable with the data on hand, say so before agreeing t
 - Is the question causal, correlational, or descriptive? Is the user treating it as one when it's actually another?
 - Is the outcome variable downstream of the "treatment" in a way that creates selection (e.g., "do users who send a message win more" — sending a message may be a proxy for being an engaged candidate, not a cause of winning)?
 - Is there a clear decision attached, or is this fishing?
+- Does the chosen outcome metric actually move the falsification statement? If the falsification is framed on one construct (e.g. "do users return across months") but the metric measures another (e.g. within-month active days), the brief is internally inconsistent — a falsifying result is unreachable by construction. State the metric and the falsification side by side and confirm the metric can move the falsification, before any query. This is a paper check, not a data check: it costs nothing here and is the cheapest place to catch a construct-validity error.
 
 **Population and eligibility:**
 - Are demo accounts, internal users, test data, and out-of-scope cohorts filtered?
@@ -62,7 +63,7 @@ Before producing the final brief, verify the following against the actual codeba
 
 **Data existence.** For every model/table the brief references, confirm it exists by querying the **live catalog** — `SELECT 1 FROM <catalog>.<schema>.<table> LIMIT 1`, or `SELECT table_schema, table_name FROM <catalog>.information_schema.tables WHERE table_name = '<name>'`, or `SHOW TABLES IN <catalog>.<schema>`. Do NOT infer existence (or absence) from `dbt/project/target/` compiled artifacts or from the reference docs — both drift. A table can exist in prod that a doc calls "in development," and a `target/` reference can survive after the model is gone. The catalog is ground truth.
 
-**Coverage window.** For the engagement/outcome source tables, query `MIN/MAX` of the relevant time column to confirm the coverage window matches the brief's assumed eligibility window. If they don't match, reconcile before finalizing. Document the actual coverage in the brief's `data_provenance` field.
+**Coverage window.** For every source table whose columns feed a time cutoff in the brief — engagement/outcome tables, target metric tables, and population anchor tables — query `MIN/MAX` of the relevant time column to confirm the coverage window matches the brief's assumed eligibility window. If they don't match, reconcile before finalizing. Document the actual coverage in the brief's `data_provenance` field. While there, note whether each cutoff column is date- or timestamp-typed — that fact feeds the brief's `observation_window.boundary_semantics`.
 
 **Metric semantics.** Before locking in any engagement or activity metric:
 1. List the *exact event types* the source aggregates (read the model SQL — `WHERE event_type IN (...)`).
@@ -70,7 +71,7 @@ Before producing the final brief, verify the following against the actual codeba
 3. Cross-check against the cohort's event-family distribution from `stg_airbyte_source__amplitude_api_events`. The event taxonomy lives in the win-analytics-knowledge skill's `engagement.md`.
 4. If the modeled aggregation covers a narrow slice of the event universe and the decision needs broader engagement, name the gap and either pick a broader metric or document the narrowness in `known_concerns`.
 
-**Version continuity across product changes.** If the analysis window spans a known product/flow change (e.g. the onboarding-flow rebuild), don't assume funnel events are stable. Check the **first-seen/last-seen** dates of the entry and terminal events across the change, not just existence — events get renamed or retired. Pick a *version-agnostic* event for any cross-era metric, anchor top-of-funnel on a product-DB fact (account creation) when entry events change, and flag milestone flags that may be blind to the new version. The specific cutover dates, retired events, and new-flow-blind flags are in the win-analytics-knowledge skill's `engagement.md` ("Onboarding flow versions"), with the worked example.
+**Version continuity across product changes.** If the analysis window spans a known product/flow change (e.g. the onboarding-flow rebuild), don't assume funnel events are stable. Check the **first-seen/last-seen** dates of the entry and terminal events across the change, not just existence — events get renamed or retired. The tools for this check are the **omni event-lifecycle assets** (code-truth instrumented/retired dates, current lifecycle status, supersession lineage) — see [event-lifecycle-assets.md](event-lifecycle-assets.md); data-observed first-seen dates conflate non-existence with low volume. Pick a *version-agnostic* event for any cross-era metric, anchor top-of-funnel on a product-DB fact (account creation) when entry events change, and flag milestone flags that may be blind to the new version. The specific cutover dates, retired events, and new-flow-blind flags are in the win-analytics-knowledge skill's `engagement.md` ("Onboarding flow versions"), with the worked example.
 
 **Canonical metric enumeration.** Before defining a *new* engagement metric, list the team's existing canonical metrics from the win-analytics-knowledge skill's `canonical_metrics.md`. Explain why a new one is needed instead of using or extending these.
 
@@ -85,7 +86,10 @@ Before producing the final brief, verify the following against the actual codeba
 5. Before finalizing the brief, settle two execution parameters with the user:
    a. **Deliverable format.** Ask whether they want a notebook, a Python script, or both. Record the answer in the brief's `execution_notes.preferred_format`. Do not silently substitute a different format at execution time; if the chosen format proves unworkable, return here rather than improvising.
    b. **Save location.** Auto-classify and state your pick for the user to override: a single one-off question, one notebook, no reusable inventory goes to `analytics/ad_hoc/`; multi-week work with reusable inventory that will be revisited goes to `analytics/projects/<name>/` (see the decision rule in [methodology.md](methodology.md)). If the target directory does not exist in the repo, do NOT silently create it: ask the user to confirm creating it first.
-6. Once approved, produce the final brief in the format specified in [brief-schema.md](brief-schema.md).
+6. Once approved, state the remaining path and where the run will pause — e.g. "From here:
+   execute → results checkpoint (I stop for you there) → two-reviewer check → calibration close
+   with ledger read-back." The roadmap sets the time expectation before the clock starts. Then
+   produce the final brief in the format specified in [brief-schema.md](brief-schema.md).
 
 Do not produce the final brief until the user has explicitly approved the framing. The brief is the handoff artifact; producing it prematurely defeats the purpose of this stage.
 
@@ -99,4 +103,4 @@ For the final brief: follow the structured format documented in [brief-schema.md
 
 - [brief-schema.md](brief-schema.md) — the brief format this routine produces.
 - [pipeline.md](pipeline.md) — where framing sits in the flow.
-- [methodology.md](methodology.md) — scoping checklist, default cohorts, verification protocol.
+- [methodology.md](methodology.md) — scoping checklist, verification protocol; the product's default cohorts and scoping decisions are in the product knowledge skill's `methodology_defaults.md`.

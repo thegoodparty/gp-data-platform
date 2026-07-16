@@ -16,6 +16,7 @@ Part of the **win-analytics-knowledge** skill. Where Win-product data lives and 
 - IF the question is about self-reported PMF / satisfaction → HubSpot surveys; see [outcomes.md](outcomes.md).
 - IF the question needs voter counts / demographics → L2, **district-grain only by default** (voter-grain is PII-adjacent; see [gotchas.md](gotchas.md)).
 - IF you need ID/join recipes between these → see [joins.md](joins.md).
+- IF you need when an event was added or retired in code, its current lifecycle status, or what event superseded it → the omni event-lifecycle assets, below.
 
 ## Data domains
 
@@ -52,6 +53,15 @@ The `candidacy` mart is itself built as a UNION ALL of two structurally differen
 - **2026+ FOJ** (a four-way full outer join over BR / TS / DDHQ / gp_api providers, from `int__civics_candidacy_{ballotready,techspeed,ddhq,gp_api}`)
 
 Field availability differs across these halves — see [gotchas.md](gotchas.md).
+
+## Event-lifecycle assets (omni repo)
+
+For when an event was added or retired in code, its current lifecycle status, or what
+superseded it, use the omni event-lifecycle assets (provenance CSV, event-health log, gp-meta
+metadata). They are cross-product and live with the process skill:
+[event-lifecycle-assets.md](../../analytics-process/references/event-lifecycle-assets.md)
+owns the full description — what each asset answers, freshness contracts, and the stay-in-omni
+design constraint. Do not infer an event's existence era from data-observed first-seen dates.
 
 ## Cross-references
 
