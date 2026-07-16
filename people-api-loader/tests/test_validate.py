@@ -565,6 +565,19 @@ def test_check_districtstats_buckets_absent_skips(monkeypatch: pytest.MonkeyPatc
     assert check.details.get("skipped") == "DistrictStats absent"
 
 
+def test_check_districtstats_buckets_empty_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Table exists but has no rows yet: there's nothing to sample, so skip rather than fail.
+    conn = (
+        FakeConn()
+        .queue_result(('public."DistrictStats"',))  # to_regclass -> present
+        .queue_result((0, 0))  # (null_buckets, total) -> total 0
+    )
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_districtstats_buckets(_CFG, "20260609")
+    assert check.passed is True
+    assert check.details.get("skipped") == "DistrictStats empty"
+
+
 # --- _check_index_usage (EXPLAIN: planner serves lookups via an index) ---
 
 
@@ -604,6 +617,15 @@ def test_check_index_usage_mixed_append_passes(monkeypatch: pytest.MonkeyPatch) 
     assert set(check.details["pass"]) == {"id_lookup", "lalvoterid_lookup"}
 
 
+def test_check_index_usage_query_error_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
+    # If EXPLAIN itself errors (malformed SQL, dropped connection) the gate records the failure
+    # per query and fails closed, rather than crashing the step.
+    monkeypatch.setattr(step, "connect_new", lambda *a, **k: _RaisingConn())
+    check = step._check_index_usage(_CFG, "20260609")
+    assert check.passed is False
+    assert set(check.details["fail"]) == {"id_lookup", "lalvoterid_lookup"}
+
+
 # --- _check_sample_queries (Voter-only) ---
 
 
@@ -629,7 +651,9 @@ def test_check_sample_queries_failure_recorded(monkeypatch: pytest.MonkeyPatch) 
 def test_check_l2type_coverage_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "connect_prod", fake_connect(FakeConn().queue_result([("Type_A",)])))
     monkeypatch.setattr(step, "connect_new", fake_connect(FakeConn().queue_result([("Type_A",)])))
-    assert step._check_l2type_coverage(_CFG, "20260609").passed is True
+    check = step._check_l2type_coverage(_CFG, "20260609")
+    assert check.passed is True
+    assert check.details["missing_columns"] == []
 
 
 def test_check_l2type_coverage_missing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -763,18 +787,25 @@ def test_check_prod_row_counts_allows_new_state(monkeypatch: pytest.MonkeyPatch)
     assert checks[0].passed is True
 
 
-def test_check_prod_row_counts_flat_table_compares_total(monkeypatch: pytest.MonkeyPatch) -> None:
-    # District is flat -> compares the new total against inspect's total_row_count, not per-state.
-    inspect = SimpleNamespace(
+def _flat_district_inspect() -> SimpleNamespace:
+    # District is flat -> the gate compares the new total against inspect's total_row_count.
+    return SimpleNamespace(
         status="complete",
         tables=[SimpleNamespace(table="District", per_state_row_counts={}, total_row_count=100)],
     )
-    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: inspect)
+
+
+def test_check_prod_row_counts_flat_within_tolerance_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: _flat_district_inspect())
     checks = step._check_prod_row_counts(_CFG, "20260609", {"District": 105})
     assert checks[0].name == "prod_row_counts_within_tolerance:District"
     assert checks[0].passed is True
-    fail = step._check_prod_row_counts(_CFG, "20260609", {"District": 10})
-    assert fail[0].passed is False
+
+
+def test_check_prod_row_counts_flat_outside_tolerance_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: _flat_district_inspect())
+    checks = step._check_prod_row_counts(_CFG, "20260609", {"District": 10})  # 10 vs 100 -> outside ±10%
+    assert checks[0].passed is False
 
 
 def test_check_prod_row_counts_flat_empty_baseline_skips(monkeypatch: pytest.MonkeyPatch) -> None:
