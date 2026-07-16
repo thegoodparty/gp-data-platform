@@ -527,17 +527,35 @@ def test_check_districtstats_buckets_missing_camelcase_keys_fails(monkeypatch: p
     assert "presenceOfChildren" in check.details["missing_keys"]
 
 
-def test_check_districtstats_buckets_null_rows_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_districtstats_buckets_null_rows_allowed_with_valid_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # buckets is nullable: a stray NULL district must NOT block a load whose non-null rows are
+    # well-formed. The null count is reported for visibility but doesn't fail the gate.
     conn = (
         FakeConn()
         .queue_result(('public."DistrictStats"',))
-        .queue_result((5, 100))  # 5 rows with NULL buckets
+        .queue_result((5, 100))  # 5 rows with NULL buckets, 95 populated
         .queue_result((_GOOD_BUCKETS,))
     )
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     check = step._check_districtstats_buckets(_CFG, "20260609")
-    assert check.passed is False
+    assert check.passed is True
     assert check.details["null_buckets"] == 5
+
+
+def test_check_districtstats_buckets_all_null_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The rename shim regressed to all-NULL: no non-null sample exists, so the key check fails.
+    conn = (
+        FakeConn()
+        .queue_result(('public."DistrictStats"',))
+        .queue_result((100, 100))  # every row NULL
+        .queue_result(None)  # `... WHERE buckets IS NOT NULL LIMIT 1` returns no row
+    )
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_districtstats_buckets(_CFG, "20260609")
+    assert check.passed is False
+    assert set(check.details["missing_keys"]) == set(step._EXPECTED_BUCKET_KEYS)
 
 
 def test_check_districtstats_buckets_absent_skips(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -562,12 +580,28 @@ def test_check_index_usage_pass(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_check_index_usage_seqscan_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     idx_plan = [("Append",), ('  ->  Index Scan using x on "Voter_TX"',)]
-    seq_plan = [('Seq Scan on "Voter_TX"',)]  # a seq scan means the index wasn't planned
+    seq_plan = [('Seq Scan on "Voter_TX"',)]  # NO index-scan node at all -> real regression
     conn = FakeConn().queue_result(idx_plan).queue_result(seq_plan)
     monkeypatch.setattr(step, "connect_new", fake_connect(conn))
     check = step._check_index_usage(_CFG, "20260609")
     assert check.passed is False
     assert "lalvoterid_lookup" in check.details["fail"]
+
+
+def test_check_index_usage_mixed_append_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A no-partition-key lookup Appends over all partitions; the planner may Seq-Scan a tiny leaf
+    # while index-scanning the rest. An index scan is PRESENT, so the gate must pass (not false-fail
+    # on the lone Seq Scan node).
+    mixed = [
+        ("Append",),
+        ('  ->  Index Scan using "Voter_pkey_CA" on "Voter_CA"',),
+        ('  ->  Seq Scan on "Voter_DC"',),  # tiny partition, cheaper to seq-scan
+    ]
+    conn = FakeConn().queue_result(mixed).queue_result(mixed)
+    monkeypatch.setattr(step, "connect_new", fake_connect(conn))
+    check = step._check_index_usage(_CFG, "20260609")
+    assert check.passed is True
+    assert set(check.details["pass"]) == {"id_lookup", "lalvoterid_lookup"}
 
 
 # --- _check_sample_queries (Voter-only) ---
@@ -741,6 +775,24 @@ def test_check_prod_row_counts_flat_table_compares_total(monkeypatch: pytest.Mon
     assert checks[0].passed is True
     fail = step._check_prod_row_counts(_CFG, "20260609", {"District": 10})
     assert fail[0].passed is False
+
+
+def test_check_prod_row_counts_flat_empty_baseline_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A flat serving table present but EMPTY (total_row_count == 0) has no magnitude baseline;
+    # comparing a faithful new load (N>0) against 0 would false-fail, so skip (mirrors the
+    # partitioned empty-baseline skip). Flat tables are always optional (District/DistrictStats).
+    inspect = SimpleNamespace(
+        status="complete",
+        tables=[
+            SimpleNamespace(table="Voter", per_state_row_counts={"TX": 100}, total_row_count=100),
+            SimpleNamespace(table="District", per_state_row_counts={}, total_row_count=0),
+        ],
+    )
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: inspect)
+    checks = step._check_prod_row_counts(_CFG, "20260609", {"District": 5000})
+    district = next(c for c in checks if c.name == "prod_row_counts_within_tolerance:District")
+    assert district.passed is True
+    assert "skipped" in district.details
 
 
 def test_check_prod_row_counts_skips_table_not_in_prod_baseline(monkeypatch: pytest.MonkeyPatch) -> None:

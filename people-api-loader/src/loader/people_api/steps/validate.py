@@ -220,6 +220,19 @@ def _check_prod_row_counts(
             # Don't flag states new to the cluster but absent from the prod snapshot — that's a
             # legitimate geographic expansion, not drift (the unload gate already covers integrity).
             checks.append(_compare_counts(name, actual, insp.per_state_row_counts, flag_unexpected=False))
+        elif insp.total_row_count == 0:
+            # Flat serving table present but empty (0 rows) — no magnitude baseline to assume. SKIP
+            # rather than compare a faithful load against 0 (which _within_tolerance(N>0, 0) would
+            # fail). Flat tables are always optional (District/DistrictStats; Voter/DistrictVoter are
+            # partitioned), so this mirrors the partitioned empty-baseline skip above.
+            log.warning("validate.prod_baseline_empty", table=table)
+            checks.append(
+                ValidationCheck(
+                    name=name,
+                    passed=True,
+                    details={"skipped": f"{table} present but has an empty (0-row) prod baseline"},
+                )
+            )
         else:
             checks.append(_compare_total(name, actual, insp.total_row_count))
     return checks
@@ -329,11 +342,14 @@ def _check_sample_queries(
     )
 
 
-# Selective point-lookups on Voter's PK / unique. These MUST plan as index scans: equality on a
-# unique/PK column is estimated at ~1 row regardless of whether the value exists or how large a
-# partition is, so this is deterministic, not selectivity-flaky (unlike the count(*) sample queries,
-# which the planner legitimately seq-scans for low-selectivity predicates). No partition-key filter,
-# so it fans across partitions as an Append of Index Scans — robust to any single partition's size.
+# Selective point-lookups on Voter's PK / unique. Equality on a unique/PK column is estimated at
+# ~1 row regardless of whether the value exists, so the planner uses the index — deterministic, not
+# selectivity-flaky (unlike the count(*) sample queries, which the planner legitimately seq-scans
+# for low-selectivity predicates). With no partition-key filter the plan is an Append over all
+# partitions, so we assert an index scan is PRESENT (the index is analyzed + usable) rather than
+# "no Seq Scan anywhere": the planner may legitimately seq-scan a tiny leaf partition that's cheaper
+# to scan than to index, and that lone node must not fail the gate. A real regression (no ANALYZE /
+# unusable index) yields NO index-scan node at all.
 _INDEX_USAGE_QUERIES: tuple[tuple[str, str], ...] = (
     ("id_lookup", 'SELECT 1 FROM public."Voter" WHERE "id" = \'00000000-0000-0000-0000-000000000000\'::uuid'),
     ("lalvoterid_lookup", 'SELECT 1 FROM public."Voter" WHERE "LALVOTERID" = \'__validate_probe__\''),
@@ -363,7 +379,7 @@ def _check_index_usage(
                 failures[label] = str(e)
                 continue
             uses_index = any(node in plan for node in _INDEX_SCAN_NODES)
-            if uses_index and "Seq Scan" not in plan:
+            if uses_index:
                 results[label] = "index"
             else:
                 failures[label] = (plan.splitlines() or ["(no plan)"])[0]
@@ -439,8 +455,10 @@ def _check_districtstats_buckets(
     `buckets` is nullable and built by the unload's `named_struct(...)`/`to_json` rename (mart's
     lowercase struct -> app camelCase). If that transform regresses it loads all-NULL or wrong-keyed
     jsonb and EVERY other check still passes (counts match, schema matches, indexes valid). This is
-    the one column with a silent-failure mode, so guard it directly. Skips cleanly if DistrictStats
-    isn't present or is empty (the count gate covers emptiness).
+    the one column with a silent-failure mode, so guard it directly: fail if there's no non-null
+    sample at all (all-NULL) or the sample lacks the expected camelCase keys. We do NOT require zero
+    NULLs — the column is nullable, so a stray NULL district must not block a faithful load; the
+    NULL count is reported for visibility. Skips cleanly if DistrictStats is absent or empty.
     """
     name = "districtstats_buckets_shape"
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
@@ -460,7 +478,9 @@ def _check_districtstats_buckets(
     missing_keys = sorted(_EXPECTED_BUCKET_KEYS - sample_keys)
     return ValidationCheck(
         name=name,
-        passed=null_buckets == 0 and not missing_keys,
+        # `missing_keys` is non-empty when there's no non-null sample (all-NULL) or the sample is
+        # wrong-keyed — the two rename-shim regressions. A stray NULL alone (nullable column) is fine.
+        passed=not missing_keys,
         details={
             "null_buckets": null_buckets,
             "total": total,
