@@ -158,7 +158,7 @@ def run(
             # --state run leaves flat tables untouched (and its manifest is never persisted).
             if state_filter is None:
                 s3_dir = f"s3://{cfg.s3_bucket}/{_table_prefix(prefix, table, None)}"
-                sql = unload_sql.unload_statement_flat(mart_fqn=mart_fqn, select_exprs=exprs, s3_dir=s3_dir)
+                sql = unload_sql.unload_statement(mart_fqn=mart_fqn, select_exprs=exprs, s3_dir=s3_dir)
                 if skip_submit:
                     log.info("unload.sql_preview", table=table, state="", sql=sql)
                 else:

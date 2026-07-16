@@ -53,26 +53,22 @@ def select_exprs(
 
 
 def unload_statement(
-    *, mart_fqn: str, select_exprs: list[str], state: str, s3_dir: str, partition_col: str = "State"
+    *,
+    mart_fqn: str,
+    select_exprs: list[str],
+    s3_dir: str,
+    partition_col: str = "State",
+    state: str | None = None,
 ) -> str:
+    """Unload a mart to S3 as CSV. With `state` given, filters to that state on `partition_col`
+    (partitioned tables); with `state=None`, unloads the whole mart in one file set (flat tables)."""
     cols = ", ".join(select_exprs)
+    where = f"\nWHERE `{partition_col}` = '{state}'" if state is not None else ""
     return (
         f"INSERT OVERWRITE DIRECTORY '{s3_dir}'\n"
         f"USING csv OPTIONS ({_CSV_OPTIONS})\n"
         f"SELECT {cols}\n"
-        f"FROM {mart_fqn}\n"
-        f"WHERE `{partition_col}` = '{state}'"
-    )
-
-
-def unload_statement_flat(*, mart_fqn: str, select_exprs: list[str], s3_dir: str) -> str:
-    """Unload a flat (non-partitioned) table's whole mart in one file set — no `WHERE State`."""
-    cols = ", ".join(select_exprs)
-    return (
-        f"INSERT OVERWRITE DIRECTORY '{s3_dir}'\n"
-        f"USING csv OPTIONS ({_CSV_OPTIONS})\n"
-        f"SELECT {cols}\n"
-        f"FROM {mart_fqn}"
+        f"FROM {mart_fqn}{where}"
     )
 
 
@@ -97,4 +93,9 @@ BUCKETS_TO_JSON_EXPR = (
     "'presenceOfChildren', `buckets`.`presenceofchildren`, "
     "'estimatedIncomeRange', `buckets`.`estimatedincomerange`"
     ")) AS `buckets`"
+)
+# The top-level keys BUCKETS_TO_JSON_EXPR emits — the single source validate reuses to check the
+# loaded jsonb. Keep in sync with the named_struct above (this expr hardcodes the same key strings).
+BUCKETS_OUTPUT_KEYS = frozenset(
+    {"age", "homeowner", "education", "presenceOfChildren", "estimatedIncomeRange"}
 )

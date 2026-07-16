@@ -65,7 +65,8 @@ def test_count_by_state_statement() -> None:
 
 
 def test_flat_unload_has_no_state_where() -> None:
-    sql = unload_sql.unload_statement_flat(
+    # No `state` -> flat form: whole mart, no WHERE.
+    sql = unload_sql.unload_statement(
         mart_fqn="cat.s.m", select_exprs=["`a`", "`b`"], s3_dir="s3://x/District/data/"
     )
     assert "WHERE" not in sql

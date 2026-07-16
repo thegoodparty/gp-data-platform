@@ -120,6 +120,14 @@ def _add_primary_key(conn: psycopg.Connection, pk: PrimaryKey) -> None:
         log.info("indexes.pk_added", table=pk.table, constraint=pk.constraint)
 
 
+def _partition_keyed_columns(columns: list[str], pcol: str) -> list[str]:
+    """`columns` plus the partition key, order-preserving and deduped — the composite key a
+    LIST-partitioned table's PK/unique requires. Single source of the rule so the DDL actually
+    built and the columns recorded in the manifest can't drift apart.
+    """
+    return list(dict.fromkeys([*columns, pcol]))
+
+
 def _create_index(conn: psycopg.Connection, idx: IndexDef, *, partition_key: str | None) -> None:
     """Build one PK-adjacent unique index at the parent level.
 
@@ -156,13 +164,16 @@ def _create_index(conn: psycopg.Connection, idx: IndexDef, *, partition_key: str
         # current DB still has the single-column unique and the composite target would
         # break live upserts. See the PR body's cutover note.
         # SIBLING NOTE (cutover): DistrictVoter is the same DATA-1855 divergence. Its PK
-        # (district_id, voter_id) becomes (district_id, voter_id, "state") on this partitioned
-        # table (DistrictVoter's partition column is lowercase "state", not Voter's "State"), so
-        # the dbt DistrictVoter write path's ON CONFLICT must move to the composite key
+        # (district_id, voter_id) becomes (district_id, voter_id, "State") on this partitioned
+        # table, so the dbt DistrictVoter write path's ON CONFLICT must move to the composite key
         # at cutover, not before — for the same reason the current DB carries the narrower key.
         # A flat table (partition_key is None) appends nothing and keeps its real columns.
-        keyed = [*idx.columns, partition_key] if partition_key is not None else list(idx.columns)
-        cols = ", ".join(f'"{c}"' for c in dict.fromkeys(keyed))
+        keyed = (
+            _partition_keyed_columns(idx.columns, partition_key)
+            if partition_key is not None
+            else list(idx.columns)
+        )
+        cols = ", ".join(f'"{c}"' for c in keyed)
         # Preserve a partial-index predicate so we don't rebuild a broader unique than prod.
         where_clause = f" WHERE {idx.where}" if idx.where else ""
         sql = f'CREATE UNIQUE INDEX IF NOT EXISTS "{idx.name}" ON public."{idx.table}" ({cols}){where_clause}'
@@ -444,9 +455,9 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
                 cols = list(pk.columns)
                 if partitioned:
                     # Partition key must be part of every PK/unique on the partitioned table (a PG
-                    # requirement). dict.fromkeys dedupes in case a dump's PK already includes it.
+                    # requirement); _partition_keyed_columns dedupes if the PK already includes it.
                     assert pcol is not None  # is_partitioned guarantees a partition column
-                    cols = list(dict.fromkeys([*cols, pcol]))
+                    cols = _partition_keyed_columns(cols, pcol)
                 pks = [PrimaryKey(table=pk.table, constraint=pk.constraint, columns=cols)]
 
             idxs = indexes_for(table)
@@ -494,7 +505,7 @@ def run(cfg: LoaderConfig, run_date: str, *, parallelism: int = _DEFAULT_BUILDER
                     # A partitioned table's unique index carries the partition key (as built above);
                     # flat tables and plain indexes keep their parsed columns verbatim.
                     columns=(
-                        list(dict.fromkeys([*i.columns, pcol]))
+                        _partition_keyed_columns(i.columns, pcol)
                         if (i.unique and partitioned and pcol is not None)
                         else i.columns
                     ),

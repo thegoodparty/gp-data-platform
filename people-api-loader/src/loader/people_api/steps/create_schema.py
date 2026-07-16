@@ -43,9 +43,7 @@ def build_partitioned_ddl(
     if not parent.endswith(");"):
         raise RuntimeError("unexpected CREATE TABLE shape; cannot add PARTITION BY")
     parent = parent[:-1].rstrip() + f' PARTITION BY LIST ("{partition_col}");'
-    parent = parent.replace(
-        f'CREATE TABLE public."{table}"', f'CREATE TABLE IF NOT EXISTS public."{table}"', 1
-    )
+    parent = _flat_ddl(parent, table)  # reuse the CREATE TABLE -> CREATE TABLE IF NOT EXISTS rewrite
     children = [
         f'CREATE TABLE IF NOT EXISTS public."{table}_{s}" PARTITION OF public."{table}" '
         f"FOR VALUES IN ('{s}');"

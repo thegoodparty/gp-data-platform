@@ -151,7 +151,7 @@ def test_new_total_count_no_row_returns_zero(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_count_gate_check_partitioned_uses_per_state_compare(monkeypatch: pytest.MonkeyPatch) -> None:
     # DistrictVoter is partitioned (TABLE_SPECS) -> the per-state gate, not a flat total.
-    monkeypatch.setattr(step, "_new_counts_by_state", lambda cfg, rd, table: {"TX": 100})
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda cfg, rd, table, **k: {"TX": 100})
     unload_table = _unload_table("DistrictVoter", {"TX": 100})
     check, actual = step._count_gate_check(_CFG, "20260609", unload_table)
     assert check.name == "row_counts_match_databricks:DistrictVoter"
@@ -162,7 +162,7 @@ def test_count_gate_check_partitioned_uses_per_state_compare(monkeypatch: pytest
 
 def test_count_gate_check_flat_uses_total_compare(monkeypatch: pytest.MonkeyPatch) -> None:
     # District is flat (TABLE_SPECS) -> a single whole-table total, not per-state.
-    monkeypatch.setattr(step, "_new_total_count", lambda cfg, rd, table: 48)
+    monkeypatch.setattr(step, "_new_total_count", lambda cfg, rd, table, **k: 48)
     unload_table = _unload_table("District", {"": 50})
     check, actual = step._count_gate_check(_CFG, "20260609", unload_table)
     assert check.name == "row_counts_match_databricks:District"
@@ -172,14 +172,14 @@ def test_count_gate_check_flat_uses_total_compare(monkeypatch: pytest.MonkeyPatc
 
 
 def test_count_gate_check_flat_outside_tolerance_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(step, "_new_total_count", lambda cfg, rd, table: 10)
+    monkeypatch.setattr(step, "_new_total_count", lambda cfg, rd, table, **k: 10)
     unload_table = _unload_table("District", {"": 50})
     check, _ = step._count_gate_check(_CFG, "20260609", unload_table)
     assert check.passed is False
 
 
 def test_count_gate_check_voter_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(step, "_new_counts_by_state", lambda cfg, rd, table: {"TX": 100})
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda cfg, rd, table, **k: {"TX": 100})
     unload_table = _unload_table("Voter", {"TX": 100})
     check, actual = step._count_gate_check(_CFG, "20260609", unload_table)
     assert check.name == "row_counts_match_databricks:Voter"
@@ -194,23 +194,24 @@ def test_run_aggregates_and_writes_markdown(monkeypatch: pytest.MonkeyPatch) -> 
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
     monkeypatch.setattr(
         step, "put_artifact", lambda cfg, rd, sub, body: captured.setdefault("md", body) or "uri"
     )
     ok = step.ValidationCheck(name="x", passed=True, details={})
     bad = step.ValidationCheck(name="y", passed=False, details={})
-    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a: {})
-    monkeypatch.setattr(step, "_new_total_count", lambda *a: 0)
-    monkeypatch.setattr(step, "_compare_counts", lambda *a: ok)
-    monkeypatch.setattr(step, "_compare_total", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
-    monkeypatch.setattr(step, "_check_schema_diff", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_indexes", lambda *a: bad)
-    monkeypatch.setattr(step, "_check_sample_queries", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_index_usage", lambda *a: ok)
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
+    monkeypatch.setattr(step, "_check_schema_diff", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_indexes", lambda *a, **k: bad)
+    monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_index_usage", lambda *a, **k: ok)
     manifest = step.run(_CFG, "20260609")
     assert isinstance(manifest, ValidateManifest)
     assert manifest.all_passed is False
@@ -227,13 +228,14 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
     monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
     ok = step.ValidationCheck(name="x", passed=True, details={})
-    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a: {})
-    monkeypatch.setattr(step, "_new_total_count", lambda *a: 0)
-    monkeypatch.setattr(step, "_compare_counts", lambda *a: ok)
-    monkeypatch.setattr(step, "_compare_total", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     for name in (
         "_check_schema_diff",
         "_check_indexes",
@@ -243,7 +245,7 @@ def test_run_passes_writes_complete_status(monkeypatch: pytest.MonkeyPatch) -> N
         "_check_sample_queries",
         "_check_l2type_coverage",
     ):
-        monkeypatch.setattr(step, name, lambda *a: ok)
+        monkeypatch.setattr(step, name, lambda *a, **k: ok)
     manifest = step.run(_CFG, "20260609")
     assert manifest.all_passed is True
     assert manifest.status == "complete"
@@ -258,24 +260,27 @@ def test_run_count_gate_runs_for_every_unload_table(monkeypatch: pytest.MonkeyPa
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
     monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
     per_state_calls: list[str] = []
     total_calls: list[str] = []
     monkeypatch.setattr(
         step,
         "_new_counts_by_state",
-        lambda cfg, rd, table: (per_state_calls.append(table), {"TX": 100})[1],
+        lambda cfg, rd, table, **k: (per_state_calls.append(table), {"TX": 100})[1],
     )
-    monkeypatch.setattr(step, "_new_total_count", lambda cfg, rd, table: (total_calls.append(table), 50)[1])
+    monkeypatch.setattr(
+        step, "_new_total_count", lambda cfg, rd, table, **k: (total_calls.append(table), 50)[1]
+    )
     ok = step.ValidationCheck(name="x", passed=True, details={})
-    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
-    monkeypatch.setattr(step, "_check_schema_diff", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_indexes", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_sample_queries", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_index_usage", lambda *a: ok)
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
+    monkeypatch.setattr(step, "_check_schema_diff", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_indexes", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_index_usage", lambda *a, **k: ok)
     manifest = step.run(_CFG, "20260609")
     names = {c.name for c in manifest.checks}
     assert "row_counts_match_databricks:Voter" in names
@@ -292,24 +297,27 @@ def test_run_schema_and_index_checks_run_for_every_unload_table(monkeypatch: pyt
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
     monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
     ok = step.ValidationCheck(name="x", passed=True, details={})
-    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a: {})
-    monkeypatch.setattr(step, "_new_total_count", lambda *a: 0)
-    monkeypatch.setattr(step, "_compare_counts", lambda *a: ok)
-    monkeypatch.setattr(step, "_compare_total", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
-    monkeypatch.setattr(step, "_check_sample_queries", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a: ok)
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
+    monkeypatch.setattr(step, "_check_sample_queries", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_l2type_coverage", lambda *a, **k: ok)
     schema_tables: list[str] = []
     index_tables: list[str] = []
     monkeypatch.setattr(
-        step, "_check_schema_diff", lambda cfg, rd, table: (schema_tables.append(table), ok)[1]
+        step, "_check_schema_diff", lambda cfg, rd, table, **k: (schema_tables.append(table), ok)[1]
     )
-    monkeypatch.setattr(step, "_check_indexes", lambda cfg, rd, table: (index_tables.append(table), ok)[1])
-    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_index_usage", lambda *a: ok)
+    monkeypatch.setattr(
+        step, "_check_indexes", lambda cfg, rd, table, **k: (index_tables.append(table), ok)[1]
+    )
+    monkeypatch.setattr(step, "_check_indexes_valid", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_districtstats_buckets", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_index_usage", lambda *a, **k: ok)
     step.run(_CFG, "20260609")
     assert schema_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
     assert index_tables == ["Voter", "District", "DistrictStats", "DistrictVoter"]
@@ -616,13 +624,14 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
         step, "read_manifest", lambda cfg, rd, name, model: failed if name == "validate" else unload
     )
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
     monkeypatch.setattr(step, "put_artifact", lambda cfg, rd, sub, body: "uri")
     ok = step.ValidationCheck(name="x", passed=True, details={})
-    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a: {})
-    monkeypatch.setattr(step, "_new_total_count", lambda *a: 0)
-    monkeypatch.setattr(step, "_compare_counts", lambda *a: ok)
-    monkeypatch.setattr(step, "_compare_total", lambda *a: ok)
-    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a: [ok])
+    monkeypatch.setattr(step, "_new_counts_by_state", lambda *a, **k: {})
+    monkeypatch.setattr(step, "_new_total_count", lambda *a, **k: 0)
+    monkeypatch.setattr(step, "_compare_counts", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_compare_total", lambda *a, **k: ok)
+    monkeypatch.setattr(step, "_check_prod_row_counts", lambda *a, **k: [ok])
     for name in (
         "_check_schema_diff",
         "_check_indexes",
@@ -632,7 +641,7 @@ def test_run_failed_manifest_reruns_checks(monkeypatch: pytest.MonkeyPatch) -> N
         "_check_sample_queries",
         "_check_l2type_coverage",
     ):
-        monkeypatch.setattr(step, name, lambda *a: ok)
+        monkeypatch.setattr(step, name, lambda *a, **k: ok)
     manifest = step.run(_CFG, "20260609")
     assert "m" in captured, "checks must re-run (manifest written), not skip"
     assert manifest.status == "complete"
@@ -647,8 +656,9 @@ def test_run_writes_failed_manifest_when_new_cluster_unreachable(monkeypatch: py
         step, "read_manifest", lambda cfg, rd, name, model: None if name == "validate" else unload
     )
     monkeypatch.setattr(step, "write_manifest", lambda cfg, m: captured.setdefault("m", m) or "uri")
+    monkeypatch.setattr(step, "open_new_tunnel", fake_connect(None))
 
-    def _boom_counts(*a: object) -> dict:
+    def _boom_counts(*a: object, **k: object) -> dict:
         raise RuntimeError("new cluster unreachable")
 
     monkeypatch.setattr(step, "_new_counts_by_state", _boom_counts)

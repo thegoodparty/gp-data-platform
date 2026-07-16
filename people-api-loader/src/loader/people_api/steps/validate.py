@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 
 from loader.core.log import bind, get_logger
 from loader.people_api.config import LoaderConfig
-from loader.people_api.db import connect_new, connect_prod
+from loader.people_api.db import connect_new, connect_prod, open_new_tunnel
 from loader.people_api.manifests import (
     InspectManifest,
     UnloadManifest,
@@ -43,6 +43,7 @@ from loader.people_api.manifests import (
     write_manifest,
 )
 from loader.people_api.schema.schema_spec import is_partitioned, partition_column
+from loader.people_api.schema.unload_sql import BUCKETS_OUTPUT_KEYS
 
 log = get_logger(__name__)
 
@@ -50,16 +51,23 @@ log = get_logger(__name__)
 _ROW_COUNT_TOLERANCE = 0.10
 
 
-def _new_counts_by_state(cfg: LoaderConfig, run_date: str, table: str) -> dict[str, int]:
+def _within_tolerance(actual: int, expected: int) -> bool:
+    """`actual` within ±_ROW_COUNT_TOLERANCE of `expected` — the shared count-gate band."""
+    return expected * (1 - _ROW_COUNT_TOLERANCE) <= actual <= expected * (1 + _ROW_COUNT_TOLERANCE)
+
+
+def _new_counts_by_state(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> dict[str, int]:
     """Per-state row counts for `table` on the new cluster (partitioned tables only).
 
-    Groups by the table's real LIST-partition column (spec-driven): Voter->"State",
-    DistrictVoter->"state". Callers only invoke this for partitioned tables, so `partition_column`
-    is never None.
+    Groups by the table's real LIST-partition column (spec-driven; both Voter and DistrictVoter
+    use "State"). Callers only invoke this for partitioned tables, so `partition_column` is never
+    None.
     """
     pcol = partition_column(table)
     assert pcol is not None  # only called for partitioned tables (see _count_gate_check)
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute(  # ty: ignore[no-matching-overload]
             f'SELECT "{pcol}", count(*) FROM public."{table}" GROUP BY "{pcol}"'
         )
@@ -68,9 +76,11 @@ def _new_counts_by_state(cfg: LoaderConfig, run_date: str, table: str) -> dict[s
         return {row[0]: int(row[1]) for row in cur.fetchall() if row[0] is not None}
 
 
-def _new_total_count(cfg: LoaderConfig, run_date: str, table: str) -> int:
+def _new_total_count(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> int:
     """Whole-table row count for `table` on the new cluster (flat tables only)."""
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
         row = cur.fetchone()
         return int(row[0]) if row is not None else 0
@@ -89,9 +99,7 @@ def _compare_counts(
     mismatches: dict[str, dict[str, int]] = {}
     for state, expected_count in expected.items():
         actual = actual_by_state.get(state, 0)
-        low = expected_count * (1 - _ROW_COUNT_TOLERANCE)
-        high = expected_count * (1 + _ROW_COUNT_TOLERANCE)
-        if not (low <= actual <= high):
+        if not _within_tolerance(actual, expected_count):
             mismatches[state] = {"expected": expected_count, "actual": actual}
     if flag_unexpected:
         for state, actual_count in actual_by_state.items():
@@ -111,17 +119,15 @@ def _compare_counts(
 
 def _compare_total(name: str, actual: int, expected: int) -> ValidationCheck:
     """Build a ±tolerance whole-table count check (flat tables: District, DistrictStats)."""
-    low = expected * (1 - _ROW_COUNT_TOLERANCE)
-    high = expected * (1 + _ROW_COUNT_TOLERANCE)
     return ValidationCheck(
         name=name,
-        passed=low <= actual <= high,
+        passed=_within_tolerance(actual, expected),
         details={"expected": expected, "actual": actual, "tolerance": _ROW_COUNT_TOLERANCE},
     )
 
 
 def _count_gate_check(
-    cfg: LoaderConfig, run_date: str, unload_table: UnloadTable
+    cfg: LoaderConfig, run_date: str, unload_table: UnloadTable, *, forward: tuple[str, int] | None = None
 ) -> tuple[ValidationCheck, dict[str, int] | int]:
     """One table's unload-integrity gate: per-state ±10% (partitioned) or whole-table ±10% (flat).
 
@@ -130,9 +136,9 @@ def _count_gate_check(
     """
     name = f"row_counts_match_databricks:{unload_table.table}"
     if is_partitioned(unload_table.table):
-        actual = _new_counts_by_state(cfg, run_date, unload_table.table)
+        actual = _new_counts_by_state(cfg, run_date, unload_table.table, forward=forward)
         return _compare_counts(name, actual, unload_table.row_counts), actual
-    actual_total = _new_total_count(cfg, run_date, unload_table.table)
+    actual_total = _new_total_count(cfg, run_date, unload_table.table, forward=forward)
     return _compare_total(name, actual_total, unload_table.row_counts.get("", 0)), actual_total
 
 
@@ -228,7 +234,9 @@ def _columns(conn, table: str) -> set[str]:
         return {r[0] for r in cur.fetchall()}
 
 
-def _check_schema_diff(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCheck:
+def _check_schema_diff(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     name = f"schema_diff_clean:{table}"
     try:
         with connect_prod(cfg) as prod_conn:
@@ -243,7 +251,7 @@ def _check_schema_diff(cfg: LoaderConfig, run_date: str, table: str) -> Validati
         # skip rather than report every column on the new cluster as "extra" and fail forever.
         log.warning("validate.schema_diff.skip", table=table, reason="table absent from prod")
         return ValidationCheck(name=name, passed=True, details={"skipped": "table absent from prod"})
-    with connect_new(cfg, run_date) as conn:
+    with connect_new(cfg, run_date, forward=forward) as conn:
         new_cols = _columns(conn, table)
     missing_from_new = prod_cols - new_cols
     extra_in_new = new_cols - prod_cols
@@ -268,7 +276,9 @@ def _check_schema_diff(cfg: LoaderConfig, run_date: str, table: str) -> Validati
     )
 
 
-def _check_indexes(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCheck:
+def _check_indexes(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     name = f"index_constraint_diff_clean:{table}"
     query = (
         "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND "
@@ -281,7 +291,7 @@ def _check_indexes(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCh
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
         log.error("validate.prod_unreachable", check=name, error=str(e))
         return ValidationCheck(name=name, passed=False, details={"error_reading_prod": str(e)})
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute(query)  # ty: ignore[no-matching-overload]
         new_idx = {r[0] for r in cur.fetchall()}
     missing = sorted(prod_idx - new_idx)
@@ -302,10 +312,12 @@ _SAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
 )
 
 
-def _check_sample_queries(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+def _check_sample_queries(
+    cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     results: dict[str, str] = {}
     failures: dict[str, str] = {}
-    with connect_new(cfg, run_date) as conn:
+    with connect_new(cfg, run_date, forward=forward) as conn:
         for label, sql in _SAMPLE_QUERIES:
             try:
                 with conn.cursor() as cur:
@@ -331,7 +343,9 @@ _INDEX_USAGE_QUERIES: tuple[tuple[str, str], ...] = (
 _INDEX_SCAN_NODES = ("Index Scan", "Index Only Scan", "Bitmap Index Scan")
 
 
-def _check_index_usage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+def _check_index_usage(
+    cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     """EXPLAIN selective Voter point-lookups and confirm the planner serves them via an index.
 
     Beyond 'the index exists' (index_constraint_diff) and 'the index is valid' (indexes_valid), this
@@ -341,7 +355,7 @@ def _check_index_usage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     """
     results: dict[str, str] = {}
     failures: dict[str, str] = {}
-    with connect_new(cfg, run_date) as conn:
+    with connect_new(cfg, run_date, forward=forward) as conn:
         for label, sql in _INDEX_USAGE_QUERIES:
             try:
                 with conn.cursor() as cur:
@@ -360,7 +374,9 @@ def _check_index_usage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     )
 
 
-def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+def _check_l2type_coverage(
+    cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     try:
         with connect_prod(cfg) as prod_conn, prod_conn.cursor() as cur:
             cur.execute('SELECT DISTINCT "l2Type" FROM public.org_districts WHERE "l2Type" IS NOT NULL')
@@ -378,7 +394,7 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
             passed=True,
             details={"skipped": "org_districts unreachable", "error": str(e)},
         )
-    with connect_new(cfg, run_date) as conn:
+    with connect_new(cfg, run_date, forward=forward) as conn:
         new_cols = _columns(conn, "Voter")
     missing = sorted(v for v in distinct_l2types if v not in new_cols)
     return ValidationCheck(
@@ -388,7 +404,9 @@ def _check_l2type_coverage(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
     )
 
 
-def _check_indexes_valid(cfg: LoaderConfig, run_date: str, table: str) -> ValidationCheck:
+def _check_indexes_valid(
+    cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     """Every index on the table is VALID on the new cluster (not just present by name).
 
     build_indexes builds each plain index `ON ONLY` the parent, then builds + ATTACHes a child per
@@ -403,20 +421,20 @@ def _check_indexes_valid(cfg: LoaderConfig, run_date: str, table: str) -> Valida
         "SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
         "WHERE i.indrelid = %s::regclass AND NOT i.indisvalid ORDER BY c.relname"
     )
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute(query, (f'public."{table}"',))
         invalid = [r[0] for r in cur.fetchall()]
     return ValidationCheck(name=name, passed=not invalid, details={"invalid_indexes": invalid[:20]})
 
 
-# The camelCase top-level keys the app expects in DistrictStats.buckets (the unload's named_struct
-# rename shim produces these from the mart's snake/lowercase struct fields; see unload_sql).
-_EXPECTED_BUCKET_KEYS = frozenset(
-    {"age", "homeowner", "education", "presenceOfChildren", "estimatedIncomeRange"}
-)
+# The camelCase top-level keys the app expects in DistrictStats.buckets — reuse the single
+# definition from the unload shim that produces them, so the two can't drift.
+_EXPECTED_BUCKET_KEYS = BUCKETS_OUTPUT_KEYS
 
 
-def _check_districtstats_buckets(cfg: LoaderConfig, run_date: str) -> ValidationCheck:
+def _check_districtstats_buckets(
+    cfg: LoaderConfig, run_date: str, *, forward: tuple[str, int] | None = None
+) -> ValidationCheck:
     """DistrictStats.buckets survived the mart->jsonb rename shim: non-null, and a sample row carries
     the expected camelCase top-level keys.
 
@@ -427,7 +445,7 @@ def _check_districtstats_buckets(cfg: LoaderConfig, run_date: str) -> Validation
     isn't present or is empty (the count gate covers emptiness).
     """
     name = "districtstats_buckets_shape"
-    with connect_new(cfg, run_date) as conn, conn.cursor() as cur:
+    with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
         cur.execute("SELECT to_regclass('public.\"DistrictStats\"')")
         row = cur.fetchone()
         if row is None or row[0] is None:
@@ -499,25 +517,30 @@ def run(cfg: LoaderConfig, run_date: str) -> ValidateManifest:
     # written. The per-check functions capture their own expected failures; this catches
     # everything else.
     try:
-        # Query the new cluster's counts once per table; both count gates reuse them.
-        count_checks: list[ValidationCheck] = []
-        new_counts: dict[str, dict[str, int] | int] = {}
-        for t in unload.tables:
-            check, actual = _count_gate_check(cfg, run_date, t)
-            count_checks.append(check)
-            new_counts[t.table] = actual
+        # One shared bastion tunnel for every new-cluster query below (mirrors build_indexes): each
+        # connect_new multiplexes through `fwd`, so the whole step makes one SSH handshake instead of
+        # one per check x per table. `fwd` is None with no bastion (direct/local). connect_prod is
+        # left per-call (few, and there's no shared prod-tunnel helper).
+        with open_new_tunnel(cfg, run_date) as fwd:
+            # Query the new cluster's counts once per table; both count gates reuse them.
+            count_checks: list[ValidationCheck] = []
+            new_counts: dict[str, dict[str, int] | int] = {}
+            for t in unload.tables:
+                check, actual = _count_gate_check(cfg, run_date, t, forward=fwd)
+                count_checks.append(check)
+                new_counts[t.table] = actual
 
-        checks: list[ValidationCheck] = [
-            *count_checks,
-            *_check_prod_row_counts(cfg, run_date, new_counts),
-            *[_check_schema_diff(cfg, run_date, t.table) for t in unload.tables],
-            *[_check_indexes(cfg, run_date, t.table) for t in unload.tables],
-            *[_check_indexes_valid(cfg, run_date, t.table) for t in unload.tables],
-            _check_districtstats_buckets(cfg, run_date),
-            _check_sample_queries(cfg, run_date),
-            _check_index_usage(cfg, run_date),
-            _check_l2type_coverage(cfg, run_date),
-        ]
+            checks: list[ValidationCheck] = [
+                *count_checks,
+                *_check_prod_row_counts(cfg, run_date, new_counts),
+                *[_check_schema_diff(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
+                *[_check_indexes(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
+                *[_check_indexes_valid(cfg, run_date, t.table, forward=fwd) for t in unload.tables],
+                _check_districtstats_buckets(cfg, run_date, forward=fwd),
+                _check_sample_queries(cfg, run_date, forward=fwd),
+                _check_index_usage(cfg, run_date, forward=fwd),
+                _check_l2type_coverage(cfg, run_date, forward=fwd),
+            ]
     except Exception as e:  # broad by design: persist a failed manifest, then re-raise
         log.error("validate.errored", error=str(e))
         errored = ValidateManifest(

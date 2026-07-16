@@ -149,36 +149,37 @@ def _acquire_unit_lock(cur: psycopg.Cursor, table: str, state: str) -> None:
     cur.execute("SELECT pg_advisory_lock(%s::int4, hashtext(%s))", (_COPY_LOCK_NAMESPACE, f"{table}:{state}"))
 
 
-def _count_state_rows(conn: psycopg.Connection, table: str, state: str) -> int:
-    """Row count for a unit: whole-table when `state == ""` (flat table), else state-filtered.
+def _unit_where(table: str, state: str) -> tuple[str, tuple[str, ...]]:
+    """WHERE fragment (+ params) selecting a copy unit's rows: empty for a flat unit (state == ""),
+    else `WHERE "<partition col>" = %s`.
 
-    `table` comes from the unload manifest's known table names (TABLE_SPECS), not user
-    input, so the f-string is safe — same rationale as inspect_prod._inspect_table. A non-empty
-    `state` implies a partitioned table, so `partition_column(table)` is its real LIST-partition
-    column (Voter->"State", DistrictVoter->"state") — never a hardcoded "State".
+    A non-empty `state` implies a partitioned table, so `partition_column(table)` is its real
+    LIST-partition column (Voter/DistrictVoter both "State") — never a hardcoded literal. `table`
+    comes from the unload manifest's known TABLE_SPECS names, so the f-string is safe.
     """
+    if not state:
+        return "", ()
+    pcol = partition_column(table)
+    assert pcol is not None  # a non-empty state unit only exists for a partitioned table
+    return f' WHERE "{pcol}" = %s', (state,)
+
+
+def _count_state_rows(conn: psycopg.Connection, table: str, state: str) -> int:
+    """Row count for a unit: whole-table when `state == ""` (flat table), else state-filtered."""
+    where, params = _unit_where(table, state)
+    sql = f'SELECT count(*) FROM public."{table}"{where}'
     with conn.cursor() as cur:
-        if state:
-            pcol = partition_column(table)
-            assert pcol is not None  # a non-empty state unit only exists for a partitioned table
-            sql = f'SELECT count(*) FROM public."{table}" WHERE "{pcol}" = %s'
-            cur.execute(sql, (state,))  # ty: ignore[invalid-argument-type]
-        else:
-            cur.execute(f'SELECT count(*) FROM public."{table}"')  # ty: ignore[no-matching-overload]
+        cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
         row = cur.fetchone()
         return int(row[0]) if row else 0
 
 
 def _delete_state(conn: psycopg.Connection, table: str, state: str) -> None:
     """Delete a unit's rows: whole-table when `state == ""` (flat table), else state-filtered."""
+    where, params = _unit_where(table, state)
+    sql = f'DELETE FROM public."{table}"{where}'
     with conn.cursor() as cur:
-        if state:
-            pcol = partition_column(table)
-            assert pcol is not None  # a non-empty state unit only exists for a partitioned table
-            sql = f'DELETE FROM public."{table}" WHERE "{pcol}" = %s'
-            cur.execute(sql, (state,))  # ty: ignore[invalid-argument-type]
-        else:
-            cur.execute(f'DELETE FROM public."{table}"')  # ty: ignore[no-matching-overload]
+        cur.execute(sql, params)  # ty: ignore[invalid-argument-type]
 
 
 def _load_unit(
