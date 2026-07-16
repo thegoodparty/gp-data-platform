@@ -144,8 +144,19 @@ def run(
                         unload_sql.count_by_state_statement(mart_fqn, mart_partition_col),
                         warehouse_id=cfg.databricks_warehouse_id,
                     )
+                    # The GROUP BY counts every distinct partition value, but only `state in STATES`
+                    # is ever unloaded/loaded (see the per-state loop above). Keep the baseline in
+                    # step with what's loadable: drop NULL and out-of-STATES groups (a NULL key would
+                    # also break the str-keyed manifest; a stray code would fail copy's completeness
+                    # gate). Log the drop so a dirty mart is visible rather than silently ignored.
+                    dropped: dict[Any, int] = {}
                     for row in (getattr(count_resp, "result", None) and count_resp.result.data_array) or []:
-                        row_counts[row[0]] = int(row[1])
+                        if row[0] in STATES:
+                            row_counts[row[0]] = int(row[1])
+                        else:
+                            dropped[row[0]] = int(row[1])
+                    if dropped:
+                        log.warning("unload.count_dropped_non_state_groups", table=table, groups=dropped)
                 assert s3_client is not None
                 for state in states:
                     files.extend(

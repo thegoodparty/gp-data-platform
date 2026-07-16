@@ -229,7 +229,8 @@ def _columns(conn, table: str) -> set[str]:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT column_name FROM information_schema.columns "
-            f"WHERE table_schema='public' AND table_name='{table}'"
+            "WHERE table_schema='public' AND table_name=%s",
+            (table,),
         )
         return {r[0] for r in cur.fetchall()}
 
@@ -280,19 +281,16 @@ def _check_indexes(
     cfg: LoaderConfig, run_date: str, table: str, *, forward: tuple[str, int] | None = None
 ) -> ValidationCheck:
     name = f"index_constraint_diff_clean:{table}"
-    query = (
-        "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND "
-        f"tablename='{table}' ORDER BY indexname"
-    )
+    query = "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename=%s ORDER BY indexname"
     try:
         with connect_prod(cfg) as prod_conn, prod_conn.cursor() as cur:
-            cur.execute(query)  # ty: ignore[no-matching-overload]
+            cur.execute(query, (table,))
             prod_idx = {r[0] for r in cur.fetchall()}
     except Exception as e:  # broad by design: prod may be unreachable; record as a failed check
         log.error("validate.prod_unreachable", check=name, error=str(e))
         return ValidationCheck(name=name, passed=False, details={"error_reading_prod": str(e)})
     with connect_new(cfg, run_date, forward=forward) as conn, conn.cursor() as cur:
-        cur.execute(query)  # ty: ignore[no-matching-overload]
+        cur.execute(query, (table,))
         new_idx = {r[0] for r in cur.fetchall()}
     missing = sorted(prod_idx - new_idx)
     return ValidationCheck(

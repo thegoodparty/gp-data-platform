@@ -147,6 +147,30 @@ def test_unload_builds_all_tables_partitioned_and_flat(monkeypatch: pytest.Monke
     assert all("`type`" not in s and "`name`" not in s for s in dv_sql)
 
 
+def test_unload_count_drops_null_and_out_of_states_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The per-state count GROUP BYs every distinct partition value, but only `state in STATES` is
+    # unloaded/loaded. A dirty mart with a NULL group (which would break the str-keyed manifest) or
+    # an out-of-STATES code like "PR" (which would fail copy's completeness gate) must be dropped
+    # from row_counts, not carried into the baseline.
+    submitted: list[str] = []
+    _patch(monkeypatch, submitted)
+
+    def _run_statement(cfg: object, sql: str, **kw: object) -> object:
+        submitted.append(sql)
+        if "GROUP BY" in sql:  # NULL + out-of-STATES "PR" alongside the two real states
+            return SimpleNamespace(
+                result=SimpleNamespace(data_array=[["FL", "3"], ["CA", "2"], [None, "7"], ["PR", "4"]])
+            )
+        if sql.startswith("SELECT count(*)"):
+            return SimpleNamespace(result=SimpleNamespace(data_array=[["5"]]))
+        return SimpleNamespace(result=None)
+
+    monkeypatch.setattr(step, "run_statement", _run_statement)
+    manifest = step.run(_CFG, "20260622")  # must not raise (a None key would fail pydantic)
+    for name in ("Voter", "DistrictVoter"):
+        assert _table(manifest, name).row_counts == {"FL": 3, "CA": 2}
+
+
 def test_unload_state_filter_touches_only_partitioned_states(monkeypatch: pytest.MonkeyPatch) -> None:
     submitted: list[str] = []
     _patch(monkeypatch, submitted)

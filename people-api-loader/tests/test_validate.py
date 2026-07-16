@@ -403,7 +403,9 @@ def test_check_schema_diff_different_table_uses_that_table(monkeypatch: pytest.M
     check = step._check_schema_diff(_CFG, "20260609", "District")
     assert check.name == "schema_diff_clean:District"
     assert check.passed is True
-    assert "table_name='District'" in prod_conn.executed[0][0]
+    # table name is bound, not interpolated (parameterized query)
+    assert "table_name=%s" in prod_conn.executed[0][0]
+    assert prod_conn.executed[0][1] == ("District",)
 
 
 def test_check_schema_diff_skips_table_absent_from_prod(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -451,7 +453,9 @@ def test_check_indexes_different_table_uses_that_table(monkeypatch: pytest.Monke
     check = step._check_indexes(_CFG, "20260609", "DistrictVoter")
     assert check.name == "index_constraint_diff_clean:DistrictVoter"
     assert check.passed is True
-    assert "tablename='DistrictVoter'" in prod_conn.executed[0][0]
+    # table name is bound, not interpolated (parameterized query)
+    assert "tablename=%s" in prod_conn.executed[0][0]
+    assert prod_conn.executed[0][1] == ("DistrictVoter",)
 
 
 def test_check_indexes_table_absent_from_prod_passes_trivially(monkeypatch: pytest.MonkeyPatch) -> None:

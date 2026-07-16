@@ -36,11 +36,14 @@ def extract_create_tables(sql: str) -> dict[str, str]:
 _COLUMN_LINE_RE = re.compile(r'^\s*(?:"(?P<quoted>[^"]+)"|(?P<bare>[a-z_][a-zA-Z0-9_]*))\s')
 
 # A quoted column line capturing its PG type, for the emit-ddl-generated DDL (every column
-# quoted, simple uppercase PG types: UUID/TEXT/INTEGER/NUMERIC(p,s)/...). Constraint lines and
-# bare columns are not matched.
-# The type class includes a comma so a precision/scale type (NUMERIC(12,2)) is captured whole;
-# the non-greedy `*?` + anchored tail still stops at the line-terminating comma, not the inner one.
-_COLUMN_TYPE_RE = re.compile(r'^\s*"(?P<name>[^"]+)"\s+(?P<type>[A-Z][A-Z0-9 (),]*?)(?:\s+NOT NULL)?,?\s*$')
+# quoted, PG types like UUID/TEXT/INTEGER/NUMERIC(p,s)/... and lowercase ones like jsonb from a
+# type_override). Constraint lines and bare columns are not matched.
+# The type class is case-insensitive (a type_override such as buckets->jsonb emits lowercase) and
+# includes a comma so a precision/scale type (NUMERIC(12,2)) is captured whole; the non-greedy `*?`
+# + anchored tail still stops at the line-terminating comma, not the inner one.
+_COLUMN_TYPE_RE = re.compile(
+    r'^\s*"(?P<name>[^"]+)"\s+(?P<type>[A-Za-z][A-Za-z0-9 (),]*?)(?:\s+NOT NULL)?,?\s*$'
+)
 
 
 def _table_body(create_table_sql: str) -> str:
