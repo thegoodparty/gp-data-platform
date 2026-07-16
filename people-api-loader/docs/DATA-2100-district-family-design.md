@@ -184,10 +184,21 @@ touched.
   whether the `public` District serving replica should gain the composite unique / DistrictVoter secondary
   indexes is a cutover decision, driven only by whether the serving read path does
   `ON CONFLICT (type, name, state)` upserts or needs those indexes for query performance.
-- **Regenerate `_serving_seed.py` close to cutover, not now.** It already matches prod's `public` today,
-  so a regen is a no-op until prod drifts (most plausibly the DATA-1855 work adding District structure to
-  `public`). Run `extract-serving-structure` where the loader has prod access (the worker's airflow SP, or
-  a role that can read the SSM connection string) — an engineer SSO identity is explicitly denied that
-  parameter — then diff-review before committing.
+- **Regenerate `_serving_seed.py` close to cutover, not now.** Verified byte-identical to prod's `public`
+  on 2026-07-16 (real extraction, not just counts), so a regen is a no-op until prod drifts — most
+  plausibly the DATA-1855 work adding District structure to `public`. Two ways to run it, depending on who
+  is running it:
+  - **Automated / on the Astro worker:** `loader extract-serving-structure`. The airflow SP identity is
+    allowed the `people-db-connection-string-{env}` SSM param and reaches the DB via the bastion, so the
+    normal command works as-is.
+  - **A local engineer on VPN:** the `EngineerAccess` SSO identity is *explicitly denied* that SSM param,
+    so the SSM path fails — but on VPN you have direct network reach to the cluster. Run the same three
+    extractors (`serving_structure.extract_primary_keys/indexes/foreign_keys`) + `render_seed_module`
+    against a direct DSN instead (set `PROD_DSN` / the `PG*` libpq vars; keep the password off the command
+    line). This bypasses SSM entirely.
+
+  Either way the raw writer output is unformatted (single quotes, an extra blank line), so run
+  `ruff format` on the file, then `git diff` to review before committing — an empty post-format diff means
+  no drift.
 - **Instance sizing.** Adding DistrictVoter (potentially larger than Voter) to the index build may
   change the `db.r8g.48xlarge` / `_DEFAULT_BUILDERS=128` assumptions; watch the first full run.
