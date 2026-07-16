@@ -26,11 +26,12 @@ def _capture(df, captured):
     return run
 
 
-def test_predicate_covers_all_three_surface_tests():
+def test_predicate_covers_family_and_path_surface_tests():
     pred = sa.serve_engagement_predicate()
+    # Both Serve generations resolve through family = 'serve' in the catalog;
+    # no event-name prefix list (the 2026 prefixes are classified upstream now).
     assert "family = 'serve'" in pred
-    for prefix in sa.SERVE_EVENT_PREFIXES:
-        assert f"'{prefix}%'" in pred
+    assert "Briefing Assistant" not in pred
     assert "'Viewed'" in pred
     for path in sa.SERVE_SURFACE_PATH_PREFIXES:
         assert f"'{path}%'" in pred

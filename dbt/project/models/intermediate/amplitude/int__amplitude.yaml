@@ -531,6 +531,15 @@ models:
         data_tests:
           - not_null
 
+      - name: is_serve
+        description: >
+          True for Serve-product events (family = 'serve'). Serve is a single
+          flat family, hence the equality check rather than a prefix like is_win.
+          Superset of Serve user actions: some Serve events are server-emitted
+          (session_id = -1), so engagement filtering stays with the consumer.
+        data_tests:
+          - not_null
+
       - name: is_recurrent
         description: >
           True for recurrent-activity events (vs one-off lifecycle milestones).
@@ -604,3 +613,6 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "is_win or not is_recurrent"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_win and is_serve)"

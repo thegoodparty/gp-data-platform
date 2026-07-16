@@ -30,10 +30,10 @@ An event counts as broad Serve engagement when **all** of these hold:
    (`Agenda Created`, `Dispatch Skipped`, …) are 100% out-of-session and are the product
    acting, not the user — see [gotchas.md](gotchas.md).
 4. The event is on a Serve surface, meaning any of:
-   - taxonomy `family = 'serve'` (the 2025 generation: Serve Onboarding, Polls, Payment);
-   - event_type prefix `Briefing Assistant -` / `Community Issues -` / `Org Switcher -`
-     (the 2026 generation, unclassified in the taxonomy — see
-     [sources.md](sources.md) § The Serve event landscape);
+   - taxonomy `family = 'serve'` — covers both the 2025 generation (Serve Onboarding,
+     Polls, Payment) and the 2026 generation (Briefing Assistant, Org Switcher, Community
+     Issues), which the taxonomy classifies as of DATA-2119; see
+     [sources.md](sources.md) § The Serve event landscape;
    - a `Viewed` on a Serve-surface path: `/dashboard/polls%`, `/dashboard/briefings%`,
      `/dashboard/contacts%`, `/dashboard/chief-of-staff%`, `/dashboard/outreach%`,
      `/dashboard/community%`, `/serve%`, `/polls%`.

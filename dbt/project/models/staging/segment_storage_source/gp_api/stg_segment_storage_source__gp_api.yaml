@@ -89,3 +89,31 @@ models:
         description: Timestamp when Segment received the event
         data_tests:
           - not_null
+
+  - name: stg_segment_storage_source__gp_api_voter_outreach_10dlc_compliance_pin_submitted
+    description: Segment event fired when a user submits their 10DLC compliance PIN
+    columns:
+      - name: id
+        description: Unique identifier for the event
+        data_tests:
+          - not_null
+          - unique
+      - name: event
+        description: Name of the tracked event, always voter_outreach_10dlc_compliance_pin_submitted
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["voter_outreach_10dlc_compliance_pin_submitted"]
+      - name: user_id
+        description: Segment user ID associated with the event
+        data_tests:
+          - not_null
+      - name: timestamp
+        description: Timestamp when the event occurred
+        data_tests:
+          - not_null
+      - name: received_at
+        description: Timestamp when Segment received the event
+        data_tests:
+          - not_null

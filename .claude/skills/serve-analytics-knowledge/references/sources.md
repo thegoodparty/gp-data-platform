@@ -38,25 +38,26 @@ For most Serve analyses, start with one of these:
 
 ## The Serve event landscape (two generations)
 
-Serve's Amplitude events come in two generations, and the warehouse taxonomy only knows the
-first (verified 2026-07-14):
+Serve's Amplitude events come in two generations. As of DATA-2119 the taxonomy classifies both
+as `family = 'serve'` (verified 2026-07-15):
 
 | Generation | Event families | Taxonomy classification |
 |---|---|---|
 | 2025 original | `Serve Onboarding -%`, `Poll -%` / `Polls -%` / `Polls:%`, `Payment -%` | `family = 'serve'` in `dbt.int__amplitude_event_catalog` |
-| 2026-05/06 new | `Briefing Assistant -%` (instrumented 2026-05-28), `Community Issues -%` (2026-06-19), `Org Switcher -%` (2026-06-15), plus a new wave of `Serve Onboarding` steps (2026-06) | **falls through to `family = 'other'`** — the `amplitude_event_family` macro predates them |
+| 2026-05/06 new | `Briefing Assistant -%` (2026-05-28), `Org Switcher -%` (2026-06-15), `Community Issues -%` (2026-06-19, not yet flowing to the warehouse) | `family = 'serve'` (added in DATA-2119; `Community Issues -%` classifies automatically once its events land) |
 
-Two consequences:
+**Not Serve:** the 2026-06 `Onboarding V2 -%` events read like a "new Serve onboarding wave" but are
+the **Win** onboarding redesign (steps: Ballot Status, Office, Party Designation, Votes Needed,
+Voter Insights), classified `win_onboarding`. Do not count them as Serve.
 
-1. Any Serve event work that relies on `family = 'serve'` **misses the new generation** —
-   use the event-prefix list in `analytics/lib/serve_analysis.py`, which covers both.
-2. Several new-generation events are **server-emitted, not user actions** (`Agenda Created`,
-   `Agenda Not Created`, `Dispatch Skipped`, `Initial Issues Generated`, `High Priority
-   Trending Issue Created` — 100% `session_id = -1`, verified 2026-07-14). Counting them as
-   engagement counts the product's own dispatches. See [gotchas.md](gotchas.md).
+Two things to know:
 
-Extending `amplitude_event_family` with the new Serve prefixes (and an `is_serve` flag) is an
-open dbt follow-up — until it lands, the lib's prefix list is the working classification.
+1. `family = 'serve'` now covers both generations, so `analytics/lib/serve_analysis.py` sources
+   Serve membership from the catalog (`family = 'serve'`) with no event-name prefix list.
+2. Several new-generation events are **server-emitted, not user actions** (`Briefing Assistant -
+   Agenda Created`, `Agenda Not Created`, `Agenda Submitted` — 100% `session_id = -1`, verified
+   2026-07-15). They are correctly `family = 'serve'`, but engagement must exclude them via the
+   in-session condition (`session_id != -1`), not by family. See [gotchas.md](gotchas.md).
 
 ## Event-lifecycle assets (omni repo)
 

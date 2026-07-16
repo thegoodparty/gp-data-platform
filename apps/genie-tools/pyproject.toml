@@ -5,14 +5,14 @@ description = "Export-only Databricks Genie config utilities"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "databricks-sdk>=0.30.0,<1.0.0",
+    "databricks-sdk>=0.120.0,<1.0.0",
 ]
 
 [project.scripts]
 genie-tools = "genie_tools.cli:main"
 
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-dir]
@@ -23,8 +23,8 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8",
-    "mypy>=1.15",
+    "pytest>=9.1.1",
+    "mypy>=2.3.0",
 ]
 
 [tool.ruff]
