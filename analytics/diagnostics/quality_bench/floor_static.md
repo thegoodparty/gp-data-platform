@@ -42,3 +42,7 @@ Answer inline in your final message. End the final message with:
     ```
 
 Number names: use the exact metric names the question asks for, snake_cased.
+YAML values that contain a colon followed by a space (e.g. a parenthetical
+like "breakdown: 149 x, 726 y") MUST be double-quoted, or the block fails to
+parse as YAML and the whole answer is graded as missing. When in doubt, quote
+the value.

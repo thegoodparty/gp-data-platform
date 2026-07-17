@@ -1,0 +1,12 @@
+id: q00_smoke
+as_of: "2026-07-17"
+numbers:
+  - name: dbt_table_count
+    value: 875
+    tolerance_pct: 5.0
+required_resolutions: {}
+mandatory_sources: []
+severity1_patterns: []
+required_assumptions: []
+intent_card: |
+  Harness smoke test only. Any arm should get this right.

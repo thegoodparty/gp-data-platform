@@ -1,0 +1,7 @@
+questions:
+  - id: q00_smoke
+    product: win
+    trap: none
+    split: calibration
+    prompt_file: q00_smoke.md
+    key_file: q00_smoke_key.yaml
