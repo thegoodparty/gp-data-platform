@@ -1,0 +1,22 @@
+# Answer key schema (grader-side only)
+
+One YAML per question in this directory, named `<question_id>_key.yaml`.
+NEVER copied into run arms; prep_arms deletes quality_bench from every run worktree.
+
+Fields (see bank.py for the authoritative loader):
+
+- `id`: question id, matches manifest.
+- `as_of`: date the numbers were pinned (re-baseline convention, design §5).
+- `numbers`: list of `{name, value, tolerance_pct}` — headline numbers a correct
+  answer must report, graded within tolerance_pct percent.
+- `required_resolutions`: map of scoping fork -> the resolution a correct answer
+  must use (e.g. `denominator: cumulative_registered_upcoming_election`).
+- `mandatory_sources`: list of `{id, pattern, description}`; `pattern` is a regex
+  searched against the raw run transcript (adherence check, design §7 layer 1).
+- `severity1_patterns`: regex tripwires for known confidently-wrong claims
+  (cheap layer; the judge also grades confident-wrongness semantically).
+- `required_assumptions`: fork names that must appear in the answer's
+  assumptions ledger.
+- `intent_card`: 3-4 lines of asker intent (purpose, audience, fork answers).
+  Unused in pass 1; pre-authored ground truth for the framing bench (design §12).
+  Jot it during the gold-run key review while context is fresh.
