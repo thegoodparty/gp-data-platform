@@ -46,6 +46,17 @@ models:
               config:
                 warn_if: ">10"
                 error_if: ">1000"
+      - name: person_id
+        description: >
+          Typed FK to the election-api Person spine; identical to
+          gp_candidate_id (the canonical gp_person_id). Every non-null value is
+          guaranteed to exist in m_election_api__person, which unions the
+          candidacy and office_holder person ids as its coverage set.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
@@ -269,6 +280,11 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: salary
+        description: >
+          Free-text office compensation (BallotReady api_position.salary).
+          Position-scoped so sitting elected officials with no active candidacy
+          still surface a salary. Nullable; BR values include ranges/notes.
 
   - name: m_election_api__projected_turnout
     description: Turnout projections data load from model predictions
@@ -745,3 +761,64 @@ models:
           name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
+
+  - name: m_election_api__person
+    description: >
+      election-api Person spine — one row per canonical gp_person_id, keyed on
+      the person id itself. Full coverage: the referenced-persons CTE unions the
+      person ids of m_election_api__candidacy and m_election_api__office_holder,
+      so every Candidacy.person_id and OfficeHolder.person_id FK resolves. Civics
+      `people` is the coverage backbone (name/email/phone/state for every person);
+      int__ballotready_person supplies BallotReady-granularity profile fields
+      (bio, headshot, typed social links, degrees/experiences JSON, name parts).
+    columns:
+      - name: id
+        description: "Canonical person UUID (gp_person_id = gp_candidate_id)."
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: br_person_id
+        description: "BallotReady Person databaseId; null for GP-native people."
+      - name: slug
+        description: >
+          slugify(first-last). Cosmetic, non-unique: the /people URL
+          disambiguates on the trailing id, and full-name collisions are routine.
+      - name: degrees
+        description: "BallotReady degrees[] serialized to JSON for the Person.degrees JSONB column."
+      - name: experiences
+        description: "BallotReady experiences[] serialized to JSON for the Person.experiences JSONB column."
+      - name: state
+        description: "Two-letter state, from the civics people mart (int__ballotready_person carries none)."
+
+  - name: m_election_api__office_holder
+    description: >
+      election-api OfficeHolder spine — one row per BallotReady office-holder
+      term, sourced from the civics elected_official_terms mart. person_id is
+      required (API FK to Person, ON DELETE CASCADE), so vacancy terms with no
+      resolved person are dropped. position_id is a nullable FK resolved through
+      m_election_api__position on the BallotReady position id.
+    columns:
+      - name: id
+        description: "Term UUID (gp_elected_official_term_id)."
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: person_id
+        description: "Canonical person UUID; required FK to the Person spine."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
+      - name: position_id
+        description: "Election-api Position UUID; nullable FK (null when the BR position did not match)."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__position')
+                field: id
+      - name: br_office_holder_id
+        description: "BallotReady office_holder databaseId for this term."

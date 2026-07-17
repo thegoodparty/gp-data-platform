@@ -158,9 +158,9 @@ left join
     on tbl_race.br_database_id = filing_overrides.br_database_id
 where
     -- 2-month grace period keeps recently-passed races serveable (the campaign
-    -- plan reads races after election day). Keep the lower bound in sync with
-    -- the race filter in write__election_api_db.py, which otherwise re-narrows
-    -- this window
+    -- plan reads races after election day). This mart is the sole source of the
+    -- election-api race window now (the sync_election_api swap DAG loads it
+    -- verbatim), so this filter defines what the API serves.
     tbl_race.election_date
     between current_date() - interval '2 months' and current_date() + interval '2 years'
     -- Race -> Position -> District -> ProjectedTurnout is the chain the API

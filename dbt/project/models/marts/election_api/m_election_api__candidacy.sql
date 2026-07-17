@@ -217,6 +217,8 @@ select
     position_name,
     position_description,
     gp_candidate_id,
+    -- Typed FK to the election-api Person spine (= gp_candidate_id / gp_person_id).
+    gp_candidate_id as person_id,
     email,
     website_url,
     is_incumbent,
