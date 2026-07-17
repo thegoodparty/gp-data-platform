@@ -41,6 +41,7 @@ __all__ = [
     "TableInspection",
     "UnloadFile",
     "UnloadManifest",
+    "UnloadTable",
     "ValidateManifest",
     "ValidationCheck",
     "load_artifact_json",
@@ -71,19 +72,27 @@ class InspectManifest(ManifestBase):
 
 
 class UnloadFile(BaseModel):
-    state: str
+    table: str
+    state: str  # "" for a flat (non-partitioned) table's single unit
     s3_key: str
     size_bytes: int
     row_count: int
 
 
-class UnloadManifest(ManifestBase):
-    step: Literal["unload"] = "unload"
+class UnloadTable(BaseModel):
+    table: str
     databricks_table: str
+    partition_by: str | None
     columns: list[str]
     column_types_pg: dict[str, str]
-    per_state_row_counts: dict[str, int]
-    files: list[UnloadFile]
+    # {state: n} for a partitioned table; {"": total} for a flat table.
+    row_counts: dict[str, int] = Field(default_factory=dict)
+    files: list[UnloadFile] = Field(default_factory=list)
+
+
+class UnloadManifest(ManifestBase):
+    step: Literal["unload"] = "unload"
+    tables: list[UnloadTable]
 
 
 class ProvisionManifest(ManifestBase):

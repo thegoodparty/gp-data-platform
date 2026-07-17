@@ -1,10 +1,13 @@
 # People API loader DAG (`load_people_api`)
 
-Design and operational reference for the DAG that refreshes the People API voter database
-(`public."Voter"`) on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks.
+Design and operational reference for the DAG that refreshes the People API serving database
+on a fresh Aurora Postgres cluster from the L2 voter marts in Databricks. The loader builds
+four tables: `Voter` and `DistrictVoter` (partitioned by State), and `District` and
+`DistrictStats` (flat).
 
-Ticket: DATA-1913 (DAG orchestration), epic DATA-1640 (People API data-loading revamp). This
-document reflects the implementation on branch `feat/DATA-1913-loader-dag` / PR #536.
+Tickets: DATA-1913 (DAG orchestration) and DATA-2100 (District family), epic DATA-1640 (People API
+data-loading revamp). Latest work is on the active feature branch (currently
+`feat/DATA-2100-district-family` / PR #607); this doc is updated there and merges to `main`.
 
 ## What it does
 
@@ -19,6 +22,18 @@ The DAG is a thin sequencer. All parallelism lives inside the loader; each Airfl
 independently runnable and re-entrant for a given run date: a step short-circuits if its manifest
 already exists.
 
+## Serving schema (`public`, not the Prisma `green` schema)
+
+The loader builds every table into the `public` schema — the data-platform serving replica — not the
+Prisma `green` OLTP schema. The people-api Prisma models declare all four tables `@@schema("green")`,
+and prod's `green.District` carries a `@@unique([type, name, state])` that the loader does **not**
+reproduce. `extract-serving-structure` and every step scope to `nspname='public'`, so
+`_serving_seed.py` mirrors the `public` replica (verified byte-identical to prod on 2026-07-16, so it
+is not a wrong-schema bug — Voter has always been served the same way). Whether the `public` District
+replica should gain that composite unique / DistrictVoter's secondary indexes is a DATA-1855 cutover
+decision — it only matters if the serving read path does `ON CONFLICT (type, name, state)` upserts —
+not part of this loader.
+
 ## Step sequence
 
 ```
@@ -32,11 +47,11 @@ inspect_prod -> dbt_test_voter_gate -> unload -> provision -> create_schema -> c
 | `dbt_test_voter_gate` | Run the DATA-1906 voter tests in dbt Cloud (`DbtCloudRunJobOperator`, `steps_override=["dbt test --select m_people_api__voter"]`). Runs locally-in-dbt-Cloud because dbt cannot run on the image's Python 3.14. Always runs (no manifest). |
 | `unload` | Export the voter marts per state to S3 (Databricks Statement Execution API, SQL warehouse only). |
 | `provision` | Create a fresh Aurora cluster + writer on the **copy-phase** instance class, empty cluster parameter groups, connection string to SSM. Reuses the shared S3 gateway VPC endpoint. |
-| `create_schema` | Apply the `CREATE TABLE public."Voter"` partitioned parent + 51 per-state `Voter_<ST>` LIST partitions from the committed snapshot. |
-| `copy` | Parallel server-side `aws_s3.table_import_from_s3` per file into the partitioned parent; rows route to partitions by `"State"`. Idempotent per state (count / DELETE-WHERE-State + reload). |
-| `build_indexes` | Scale the writer up to the **index-phase** class, then add the PK + the LALVOTERID unique + all plain indexes per partition, then `ANALYZE`. See below. |
+| `create_schema` | Apply CREATE TABLE statements from the committed snapshot for all four tables: `Voter` and `DistrictVoter` (partitioned by State with per-state LIST children) and `District` and `DistrictStats` (flat). |
+| `copy` | Parallel server-side `aws_s3.table_import_from_s3`: for partitioned tables (Voter, DistrictVoter), per-state per-file copy with rows routed to partitions by `"State"`; for flat tables (District, DistrictStats), whole-table copy. Idempotent per state/table (count / DELETE + reload). |
+| `build_indexes` | Scale the writer up to the **index-phase** class, then add primary keys and indexes for all four tables: for partitioned tables (Voter, DistrictVoter) build per-partition indexes and attach to parent; for flat tables (District, DistrictStats) build parent-level indexes. Then `ANALYZE` all tables. See below. |
 | `resize` | Flip the writer to Serverless v2 with the prod ACU range, swap in the serve parameter group, bump backup retention, enable deletion protection. |
-| `validate` | Per-state row counts vs the `inspect_prod` baseline within +/-10%, plus structural checks. Failure halts the DAG. |
+| `validate` | Row counts vs the `inspect_prod` baseline (per-state for partitioned tables within +/-10%, whole-table for flat tables), plus per-table schema/index structural checks (with `:<table>` suffix in check names). Failure halts the DAG. |
 | `scale_down_on_failure` | Not in the happy path — a `trigger_rule=one_failed` branch off `provision`→`resize`. On any post-provision failure it runs `loader scale-down`, flipping the writer to `db.serverless` to stop provisioned-instance cost. Skipped on a successful run. See "Failure cost guard" below. |
 
 ## Connectivity: bastion
@@ -71,20 +86,17 @@ wall-clock you can tolerate; do not upsize past what actually fills. Storage is 
 
 ## Index build design
 
-The table is LIST-partitioned by `"State"` (51 children). `CREATE INDEX` on the partitioned parent
-recurses through every partition serially inside one statement, so plain indexes are built
-**per partition** instead: `CREATE INDEX ... ON ONLY` the parent (instant) + one child index per
-partition as independent `(index, partition)` work units, then `ALTER INDEX ... ATTACH PARTITION`.
-The PK `(id, "State")` and the single `("LALVOTERID", "State")` unique stay parent-level builds.
+The partitioned tables (`Voter` and `DistrictVoter`) are LIST-partitioned by `"State"` (51 children each). `CREATE INDEX` on the partitioned parent recurses through every partition serially inside one statement, so plain indexes are built **per partition** instead: `CREATE INDEX ... ON ONLY` the parent (instant) + one child index per partition as independent `(index, partition)` work units, then `ALTER INDEX ... ATTACH PARTITION`. PKs and uniques stay parent-level builds. Flat tables (`District` and `DistrictStats`) have all indexes built at the parent level.
 
 Two things make this fast and cheap:
 
 1. **Largest-partition-first scheduling.** Postgres grants each `CREATE INDEX` its parallel workers
    at statement start, first-come, against the shared pool. With naive `(index, state)` ordering the
-   giant partitions (CA ~4.7M blocks, TX/FL/NY) launched mid-flood and were starved to ~1 worker for
-   hours while tiny partitions grabbed 5-8. `_order_children_largest_first` sorts units by
-   `pg_relation_size(partition)` descending so the giants launch first into an open pool and grab
-   their full worker allotment; the thousands of near-empty partitions backfill.
+   giant partitions (CA ~4.7M blocks, TX/FL/NY in Voter; similar distribution in DistrictVoter)
+   launched mid-flood and were starved to ~1 worker for hours while tiny partitions grabbed 5-8.
+   `_order_children_largest_first` sorts units by `pg_relation_size(partition)` descending so the
+   giants launch first into an open pool and grab their full worker allotment; the thousands of
+   near-empty partitions backfill. This scheduling applies across all partitioned-table units.
 2. **Filling the box.** Aurora defaults `max_parallel_workers` to about vCPU/2 (96 on the 192-vCPU
    box), which capped the build at ~125 active backends with ~67 cores idle. The build session sets
    `max_parallel_workers = 176` and `max_parallel_maintenance_workers = 16` (both user-context GUCs;
@@ -116,6 +128,34 @@ so the failed run's cluster and loaded data survive for resume/forensics and sta
 `teardown`. It is skipped on a fully successful run (where `resize` already made the writer
 serverless). Limit: it fires on an organic failure or a task marked failed, but not if the whole DAG
 run is hard-deleted — that still needs a manual `loader teardown`/`scale-down`.
+
+## Validation
+
+The `validate` step runs a battery of gates against the freshly loaded cluster and fails the step —
+blocking cutover — if any gate fails (each check is a named `ValidationCheck` with a `passed` flag
+and details, persisted in the step manifest). Gates run per table (`Voter`, `DistrictVoter`,
+`District`, `DistrictStats`) except where noted:
+
+- **`row_counts_match_databricks:<table>`** — new-cluster row count matches the Databricks mart
+  source (per state for the partitioned tables).
+- **`prod_row_counts_within_tolerance:<table>`** — new-cluster count is within ±10% of the current
+  prod baseline (per state; falls back to a whole-table total when prod has no per-state breakdown,
+  so a wildly different count still fails closed; a 0-row or absent baseline skips rather than
+  failing a legitimate new table).
+- **`schema_diff_clean:<table>`** — columns match prod + the committed target schema (intended
+  divergences, e.g. a fresh cluster's partition column, are allowed).
+- **`index_constraint_diff_clean:<table>`** — the index/constraint set matches prod by name.
+- **`indexes_valid:<table>`** — every index is VALID, catching a partitioned parent whose child
+  indexes did not all attach (present by name but unusable).
+- **`districtstats_buckets_shape`** (DistrictStats) — the `buckets` jsonb survived the mart→camelCase
+  rename: a non-null sample carries the expected top-level keys.
+- **`sample_queries_pass`**, **`index_usage`**, **`l2Type_coverage`** (Voter) — representative
+  queries run; point-lookups are served via an index (EXPLAIN shows an index-scan node); the L2
+  `l2Type` columns are all present.
+
+Environmental gates that cannot run (e.g. `org_districts` unreachable for `l2Type_coverage`, or an
+empty prod baseline) skip *visibly* rather than fail closed, so a transient dependency can't wedge
+the pipeline. A check that raises unexpectedly still leaves a `failed` manifest behind for a retry.
 
 ## Configuration
 
@@ -158,13 +198,19 @@ come from SSM SecureStrings, never an env-var password.
 
 ## Before merge
 
-- [ ] Repin the loader install in `astro/requirements.txt` from `@feat/DATA-1913-loader-dag` to the
-  squash-merge SHA (or a tag). It intentionally tracks the branch during review so pushes deploy;
-  freeze it only at merge.
+- [ ] Repin the loader install in `astro/requirements.txt` from the active feature branch to `@main`
+  (or the merge-commit SHA / a tag). It tracks the current branch during review so pushes deploy to
+  astro-dev; freeze it only at merge. (Done for PR #607 — pinned to `@main`.)
 - [ ] Gate the merge on cutover readiness (DATA-1855). Merging swaps the canonical `load_people_api`
   dag_id to the new train-deployment loader, and the partitioned schema diverges from the current
   single-column Prisma model (the dbt write models' `ON CONFLICT` must move to
   `("LALVOTERID", "State")` at cutover, not before).
+- [ ] Regenerate `_serving_seed.py` against current prod at cutover (verified byte-identical today, so
+  a no-op unless prod drifts — e.g. the DATA-1855 work adding District structure to `public`). Run
+  `extract-serving-structure` where the loader has prod access: the airflow SP on the worker
+  (SSM-allowed + bastion), or a local engineer on VPN via a direct DSN (the `EngineerAccess` SSO
+  identity is explicitly denied the SSM connection-string param). Then `ruff format` the file and
+  `git diff` — an empty diff means no drift.
 
 ## References
 

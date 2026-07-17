@@ -21,32 +21,81 @@ from __future__ import annotations
 _CSV_OPTIONS = "'sep' = '\\t', 'header' = 'false', 'nullValue' = '', 'quote' = '\"', 'escape' = '\"'"
 
 
-def select_exprs(ddl_columns: list[str], extra_columns: set[str]) -> list[str]:
-    """Backtick-quoted SELECT expressions in DDL order.
+def select_exprs(
+    ddl_columns: list[str],
+    extra_columns: set[str],
+    transforms: dict[str, str] | None = None,
+    renames: dict[str, str] | None = None,
+) -> list[str]:
+    """Backtick-quoted SELECT expressions in DDL (serving-column) order.
 
+    `transforms` maps a serving column name to a full SQL expression that REPLACES the plain
+    projection (the expression must alias itself `` AS `col` ``); used for the DistrictStats buckets
+    struct-field rename. `renames` maps a serving column name to its DIFFERENT mart column name,
+    emitting `` `mart` AS `serving` `` (used for DistrictVoter's mart `state` -> serving "State").
     Prisma-only extras (columns the mart lacks) are emitted as `CAST(NULL AS STRING)`, not a bare
     `NULL`: bare NULL is Spark's VOID type and the CSV writer rejects it. The value is always NULL,
     so STRING is a safe placeholder for the CSV round-trip into the real (typed) target column.
     """
+    transforms = transforms or {}
+    renames = renames or {}
     out: list[str] = []
     for col in ddl_columns:
-        if col in extra_columns:
+        if col in transforms:
+            out.append(transforms[col])
+        elif col in renames:
+            out.append(f"`{renames[col]}` AS `{col}`")
+        elif col in extra_columns:
             out.append(f"CAST(NULL AS STRING) AS `{col}`")
         else:
             out.append(f"`{col}`")
     return out
 
 
-def unload_statement(*, mart_fqn: str, select_exprs: list[str], state: str, s3_dir: str) -> str:
+def unload_statement(
+    *,
+    mart_fqn: str,
+    select_exprs: list[str],
+    s3_dir: str,
+    partition_col: str = "State",
+    state: str | None = None,
+) -> str:
+    """Unload a mart to S3 as CSV. With `state` given, filters to that state on `partition_col`
+    (partitioned tables); with `state=None`, unloads the whole mart in one file set (flat tables)."""
     cols = ", ".join(select_exprs)
+    where = f"\nWHERE `{partition_col}` = '{state}'" if state is not None else ""
     return (
         f"INSERT OVERWRITE DIRECTORY '{s3_dir}'\n"
         f"USING csv OPTIONS ({_CSV_OPTIONS})\n"
         f"SELECT {cols}\n"
-        f"FROM {mart_fqn}\n"
-        f"WHERE `State` = '{state}'"
+        f"FROM {mart_fqn}{where}"
     )
 
 
-def count_by_state_statement(mart_fqn: str) -> str:
-    return f"SELECT `State` AS state, count(*) AS n FROM {mart_fqn} GROUP BY `State`"
+def count_by_state_statement(mart_fqn: str, partition_col: str = "State") -> str:
+    return f"SELECT `{partition_col}` AS state, count(*) AS n FROM {mart_fqn} GROUP BY `{partition_col}`"
+
+
+def count_all_statement(mart_fqn: str) -> str:
+    return f"SELECT count(*) AS n FROM {mart_fqn}"
+
+
+# DistrictStats buckets: the active SQL mart (m_people_api__districtstats.sql) emits a `buckets`
+# struct with fields `age`, `homeowner`, `education`, `presenceofchildren`, `estimatedincomerange`
+# (all lowercased, no underscores). The app expects two of those keys in camelCase. Rebuild the
+# struct with the two renamed and to_json it for the jsonb serving column. This mirrors the legacy
+# DAG's _BUCKET_KEY_MAP and is deleted once the camelCase `_py` districtstats mart is enabled.
+BUCKETS_TO_JSON_EXPR = (
+    "to_json(named_struct("
+    "'age', `buckets`.`age`, "
+    "'homeowner', `buckets`.`homeowner`, "
+    "'education', `buckets`.`education`, "
+    "'presenceOfChildren', `buckets`.`presenceofchildren`, "
+    "'estimatedIncomeRange', `buckets`.`estimatedincomerange`"
+    ")) AS `buckets`"
+)
+# The top-level keys BUCKETS_TO_JSON_EXPR emits — the single source validate reuses to check the
+# loaded jsonb. Keep in sync with the named_struct above (this expr hardcodes the same key strings).
+BUCKETS_OUTPUT_KEYS = frozenset(
+    {"age", "homeowner", "education", "presenceOfChildren", "estimatedIncomeRange"}
+)
