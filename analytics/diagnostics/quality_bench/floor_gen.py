@@ -15,6 +15,7 @@ INVENTORY_SQL = """
 select table_name, comment
 from goodparty_data_catalog.information_schema.tables
 where table_schema = 'dbt'
+  and not endswith(table_name, '__dbt_tmp')
 order by table_name
 """
 
@@ -25,7 +26,11 @@ def build_inventory_md(run_query: RunQuery) -> str:
     df = run_query(INVENTORY_SQL)
     lines = ["| table | description |", "|---|---|"]
     for _, row in df.iterrows():
-        comment = row["comment"] if isinstance(row["comment"], str) and row["comment"] else "(no description)"
+        if isinstance(row["comment"], str) and row["comment"]:
+            # Collapse whitespace runs (incl. newlines) to single spaces and escape pipes
+            comment = " ".join(str(row["comment"]).split()).replace("|", "\\|")
+        else:
+            comment = "(no description)"
         lines.append(f"| {row['table_name']} | {comment} |")
     return "\n".join(lines)
 
