@@ -59,7 +59,10 @@ figures are an allocation, not a metered per-query charge. State that.
 - **View-test antipattern (usual top driver):** a test on a `view`-materialized
   model re-executes the whole view query. Rank top nodes; if expensive nodes are
   `test` rows whose model is a view, materialize that model as a **table**
-  (in `dbt_project.yml` directory config, per `dbt/project/CLAUDE.md`).
+  (in `dbt_project.yml` directory config, per `dbt/project/CLAUDE.md`). If the
+  mart emits pretty/spaced column names (e.g. a reverse-ETL contract like
+  `First Name`), a Delta table rejects them (`DELTA_INVALID_CHARACTERS`) — add
+  `+tblproperties: {delta.columnMapping.mode: "name"}` to keep the names.
 - **Frequency is a multiplier:** the dbt Cloud models-built meter = models/run ×
   runs. A job of N models run 6×/day bills 6N. Incremental materialization cuts
   Databricks compute but **not** the models-built count.
