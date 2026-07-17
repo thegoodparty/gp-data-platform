@@ -20,9 +20,10 @@ class TableSpec:
     # App/Prisma-managed columns that exist in the serving table but not the mart, appended
     # as (name, pg_type, nullable). The mart is the source for everything else.
     extra_columns: list[tuple[str, str, bool]] = field(default_factory=list)
-    # PK for tables the serving snapshot cannot describe (e.g. DistrictStats is not yet a serving
-    # Postgres table, so _serving_seed has no entry). For serving tables this stays None and the
-    # seed is authoritative. NEVER hand-edit _serving_seed.py; this is the escape hatch.
+    # PK for tables the serving snapshot cannot describe (e.g. DistrictStats is not in the `public`
+    # serving replica the seed is extracted from; it lives in the Prisma `green` schema, so
+    # _serving_seed has no entry). For serving tables this stays None and the seed is authoritative.
+    # NEVER hand-edit _serving_seed.py; this is the escape hatch.
     primary_key: PrimaryKey | None = None
     # Mart column name -> serving column name, for a mart that is NOT the serving shape (e.g. the
     # DistrictVoter mart is a denormalized intermediate with extra `type`/`name` columns and a
@@ -41,8 +42,9 @@ class TableSpec:
 # the DistrictVoter mart is a denormalized intermediate (extra `type`/`name` columns, lowercase
 # `state`) so its `mart_column_map` projects it to the 5-column Prisma serving shape and renames
 # `state` -> "State" (matching the Prisma `@map("State")`); its serving partition column is "State"
-# like Voter. DistrictStats is not yet a serving table, so its PK is carried here, not in the
-# generated _serving_seed. Serving enforces no FKs, so none are created. Voter's single Prisma-only
+# like Voter. DistrictStats is not in the `public` serving replica (it lives in the Prisma `green`
+# schema), so its PK is carried here, not in the generated _serving_seed. Serving enforces no FKs,
+# so none are created. Voter's single Prisma-only
 # column the mart omits is Mailing_HHGender_Description; `id` is the mart's salted-uuid string
 # stored as UUID.
 TABLE_SPECS: dict[str, TableSpec] = {
