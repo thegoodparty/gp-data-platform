@@ -73,3 +73,21 @@ def check_numbers(block: dict | None, key: Key) -> list[CheckResult]:
             )
         )
     return out
+
+
+def check_sources(transcript_text: str, key: Key) -> list[CheckResult]:
+    out = []
+    for src in key.mandatory_sources:
+        found = re.search(src.pattern, transcript_text, re.IGNORECASE) is not None
+        out.append(CheckResult(src.id, "source", found, src.description))
+    return out
+
+
+def check_severity1(answer_text: str, key: Key) -> list[CheckResult]:
+    out = []
+    for i, pattern in enumerate(key.severity1_patterns):
+        matched = re.search(pattern, answer_text, re.IGNORECASE) is not None
+        out.append(
+            CheckResult(f"severity1_{i}", "severity1", not matched, f"tripwire {pattern!r} matched={matched}")
+        )
+    return out

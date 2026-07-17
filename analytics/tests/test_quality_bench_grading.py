@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 
 from quality_bench import grading
-from quality_bench.bank import Key, NumberSpec
+from quality_bench.bank import Key, NumberSpec, SourceCheck
 
 ANSWER = """Here is the analysis.
 
@@ -138,3 +138,25 @@ results:
     results = grading.check_numbers(block, key)
     assert results[0].passed is False  # diff_pct = inf
     assert "inf" in results[0].detail
+
+
+def test_check_sources_pass_and_fail():
+    key = make_key(
+        mandatory_sources=[
+            SourceCheck("provenance_csv", r"instrumentation_data/.*provenance", "provenance CSV")
+        ]
+    )
+    hit = "ran: Read /omni/instrumentation_data/amplitude_provenance.csv"
+    results = grading.check_sources(hit, key)
+    assert results[0].passed is True
+    results = grading.check_sources("never opened it", key)
+    assert results[0].passed is False
+
+
+def test_check_severity1_match_fails():
+    key = make_key(severity1_patterns=[r"win users are a subset of serve"])
+    bad = "Note that all Win users are a subset of Serve users, so..."
+    results = grading.check_severity1(bad, key)
+    assert results[0].passed is False
+    ok = grading.check_severity1("Win and Serve overlap partially.", key)
+    assert ok[0].passed is True
