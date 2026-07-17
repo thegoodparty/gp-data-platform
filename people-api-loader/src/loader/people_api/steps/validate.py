@@ -202,18 +202,28 @@ def _check_prod_row_counts(
                             details={"error": "inspect manifest has no Voter per-state baseline"},
                         )
                     )
+                elif insp.total_row_count > 0:
+                    # A non-Voter partitioned serving table (e.g. DistrictVoter) whose prod copy lacks
+                    # the partition column, so inspect_prod degraded to count(*): no per-state
+                    # breakdown, but a real total baseline (the DATA-1855 cutover state). We can't do
+                    # the expansion-tolerant per-state compare, so fall back to a whole-table magnitude
+                    # gate — sum the new cluster's per-state counts and compare to prod's total, same
+                    # ±tolerance as a flat table, so a wildly different count fails closed. (Shares the
+                    # flat-table caveat: a >tolerance geographic expansion would trip it too.)
+                    log.warning(
+                        "validate.prod_baseline_total_only", table=table, prod_total=insp.total_row_count
+                    )
+                    checks.append(_compare_total(name, sum(actual.values()), insp.total_row_count))
                 else:
-                    # A non-Voter partitioned serving table (e.g. DistrictVoter) new to the loader:
-                    # a current prod cluster may carry it with no usable per-state baseline. There's
-                    # no magnitude baseline to assume, so SKIP rather than fail closed (mirrors the
-                    # optional-table-absent skip above) — failing would wedge the gate for a legit
-                    # new table. The unload gate already covers this table's load integrity.
+                    # Present but with an empty (0-row) prod baseline: no magnitude to assume, so SKIP
+                    # rather than fail closed (mirrors the flat empty-baseline skip below). The unload
+                    # gate already covers this table's load integrity.
                     log.warning("validate.prod_baseline_empty", table=table)
                     checks.append(
                         ValidationCheck(
                             name=name,
                             passed=True,
-                            details={"skipped": f"{table} present but has no per-state prod baseline"},
+                            details={"skipped": f"{table} present but has an empty (0-row) prod baseline"},
                         )
                     )
                 continue

@@ -891,3 +891,41 @@ def test_check_prod_row_counts_non_voter_partitioned_empty_baseline_skips(
     # Voter with a real baseline still evaluated normally (fail-closed path untouched).
     voter = next(c for c in checks if c.name == "prod_row_counts_within_tolerance:Voter")
     assert voter.passed is True
+
+
+def _dv_total_only_inspect() -> SimpleNamespace:
+    # DistrictVoter present with a total but NO per-state breakdown (prod copy lacks the partition
+    # column -> inspect degraded to count(*)); Voter carries a normal baseline alongside it.
+    return SimpleNamespace(
+        status="complete",
+        tables=[
+            SimpleNamespace(table="Voter", per_state_row_counts={"TX": 100}, total_row_count=100),
+            SimpleNamespace(table="DistrictVoter", per_state_row_counts={}, total_row_count=1000),
+        ],
+    )
+
+
+def test_check_prod_row_counts_partitioned_total_only_within_tolerance_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No per-state baseline but a real total: fall back to summing the new per-state counts and
+    # comparing to prod's total. 1050 vs 1000 is within ±10% -> pass.
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: _dv_total_only_inspect())
+    checks = step._check_prod_row_counts(
+        _CFG, "20260609", {"Voter": {"TX": 100}, "DistrictVoter": {"TX": 600, "CA": 450}}
+    )
+    dv = next(c for c in checks if c.name == "prod_row_counts_within_tolerance:DistrictVoter")
+    assert dv.passed is True
+    assert "skipped" not in dv.details
+
+
+def test_check_prod_row_counts_partitioned_total_only_wildly_different_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A wildly different total (100 vs prod's 1000) fails closed rather than skipping silently.
+    monkeypatch.setattr(step, "read_manifest", lambda cfg, rd, name, model: _dv_total_only_inspect())
+    checks = step._check_prod_row_counts(
+        _CFG, "20260609", {"Voter": {"TX": 100}, "DistrictVoter": {"TX": 100}}
+    )
+    dv = next(c for c in checks if c.name == "prod_row_counts_within_tolerance:DistrictVoter")
+    assert dv.passed is False
