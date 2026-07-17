@@ -4,6 +4,7 @@ owns the judged layer)."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import dataclass
@@ -91,3 +92,40 @@ def check_severity1(answer_text: str, key: Key) -> list[CheckResult]:
             CheckResult(f"severity1_{i}", "severity1", not matched, f"tripwire {pattern!r} matched={matched}")
         )
     return out
+
+
+def _resolutions(block: dict) -> dict[str, str]:
+    out = {}
+    for a in block.get("results", {}).get("assumptions", []) or []:
+        if isinstance(a, dict) and "fork" in a:
+            out[str(a["fork"])] = str(a.get("resolution", ""))
+    return out
+
+
+def cell_consistency(blocks: list[dict | None], key: Key) -> dict:
+    parsed = [b for b in blocks if b]
+    spreads: dict[str, float] = {}
+    tol = {n.name: n.tolerance_pct for n in key.numbers}
+    for name in tol:
+        vals = []
+        for b in parsed:
+            v = b.get("results", {}).get("numbers", {}).get(name)
+            with contextlib.suppress(TypeError, ValueError):
+                vals.append(float(v))
+        if len(vals) >= 2:
+            mean = sum(vals) / len(vals)
+            spreads[name] = (max(vals) - min(vals)) / abs(mean) * 100 if mean else float("inf")
+    forks = set(key.required_resolutions)
+    agreement = {}
+    for fork in forks:
+        seen = {_resolutions(b).get(fork) for b in parsed}
+        agreement[fork] = len(seen) == 1 and None not in seen
+    numbers_ok = all(spreads.get(n, float("inf")) <= t for n, t in tol.items()) if parsed else False
+    return {
+        "n_reps": len(blocks),
+        "n_parsed": len(parsed),
+        "number_spread_pct": spreads,
+        "max_spread_pct": max(spreads.values(), default=float("inf") if not parsed else 0.0),
+        "resolution_agreement": agreement,
+        "consistent": bool(parsed) and numbers_ok and all(agreement.values()),
+    }

@@ -160,3 +160,34 @@ def test_check_severity1_match_fails():
     assert results[0].passed is False
     ok = grading.check_severity1("Win and Serve overlap partially.", key)
     assert ok[0].passed is True
+
+
+def block(total: float, resolution: str = "cumulative") -> dict:
+    return {
+        "results": {
+            "numbers": {"total_users_jan": total},
+            "assumptions": [{"fork": "denominator", "resolution": resolution, "verified": True}],
+        }
+    }
+
+
+def test_cell_consistency_tight_cell():
+    key = make_key(required_resolutions={"denominator": "cumulative"})
+    cell = grading.cell_consistency([block(9880), block(9885), block(9878)], key)
+    assert cell["consistent"] is True
+    assert cell["max_spread_pct"] < 0.5
+    assert cell["resolution_agreement"]["denominator"] is True
+
+
+def test_cell_consistency_definition_disagreement():
+    key = make_key(required_resolutions={"denominator": "cumulative"})
+    cell = grading.cell_consistency([block(9880, "cumulative"), block(5000, "monthly_active")], key)
+    assert cell["consistent"] is False
+    assert cell["resolution_agreement"]["denominator"] is False
+
+
+def test_cell_consistency_handles_unparsed_reps():
+    key = make_key()
+    cell = grading.cell_consistency([block(9880), None, block(9881)], key)
+    assert cell["n_reps"] == 3
+    assert cell["n_parsed"] == 2
