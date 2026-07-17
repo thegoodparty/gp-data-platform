@@ -15,6 +15,8 @@ Fields (see bank.py for the authoritative loader):
   searched against the raw run transcript (adherence check, design §7 layer 1).
 - `severity1_patterns`: regex tripwires for known confidently-wrong claims
   (cheap layer; the judge also grades confident-wrongness semantically).
+  Check ids are index-based (`severity1_0`, `severity1_1`, ...), so reordering
+  the patterns shifts the ids reported for a given tripwire.
 - `required_assumptions`: fork names that must appear in the answer's
   assumptions ledger.
 - `intent_card`: 3-4 lines of asker intent (purpose, audience, fork answers).

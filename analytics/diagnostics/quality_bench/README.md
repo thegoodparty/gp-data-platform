@@ -11,12 +11,30 @@ bloat is hurting. Design: `analytics/planning/2026-07-16-quality-benchmark-desig
 2. `cd analytics && uv sync`.
 3. `claude` CLI on PATH.
 
+## Pre-first-batch checklist
+
+Two live probes to run once before the first real batch — cheap, and they catch
+the two failure modes the unit tests can't:
+
+1. **Judge path.** Run `grade.py --judge` on the smoke batch and confirm the
+   report shows `Judged: X/X` (no `judge FAILED` lines). This exercises the
+   judge's `--tools ""` invocation end to end; if it fails, the judged layer
+   silently drops on every real batch.
+2. **Full-arm headless tools.** Do one full-arm headless run with a prompt that
+   engages the analytics-process skill (e.g. a real product question), and
+   confirm the transcript shows the `Skill`/`Agent` tools firing rather than a
+   permission denial. Headless `claude -p` only allows what
+   `.claude/settings.local.json` lists, so if either is denied, add it to
+   `SETTINGS_JSON` in `prep_arms.py` and re-prep the arms.
+
 ## Arm ref
 
-`prep_arms.py` builds the `full` and `knowledge` arms as git worktrees checked
-out from `--ref` (default `main`). Until this branch (`data-2143-quality-bench`)
-merges, `main` lacks the Databricks deps it added, so worktrees cut from `main`
-can't query the warehouse — pass `--ref data-2143-quality-bench` explicitly:
+`prep_arms.py` builds the `full` and `knowledge` arms as `git archive` exports
+of `--ref` (default `main`) — plain directories with no `.git`, so the deleted
+answer keys can't be recovered from history. Until this branch
+(`data-2143-quality-bench`) merges, `main` lacks the Databricks deps it added,
+so arms cut from `main` can't query the warehouse — pass
+`--ref data-2143-quality-bench` explicitly:
 
     uv run python diagnostics/quality_bench/prep_arms.py --ref data-2143-quality-bench
 

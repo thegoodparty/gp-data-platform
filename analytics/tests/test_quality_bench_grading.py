@@ -1,7 +1,3 @@
-import json
-import tempfile
-from pathlib import Path
-
 from quality_bench import grading
 from quality_bench.bank import Key, NumberSpec, SourceCheck
 
@@ -27,20 +23,6 @@ def make_key(**kw) -> Key:
     )
     defaults.update(kw)
     return Key(**defaults)
-
-
-def write_transcript(tmp_path: Path, texts: list[str]) -> Path:
-    p = tmp_path / "session.jsonl"
-    lines = []
-    for t in texts:
-        lines.append(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}}))
-    p.write_text("\n".join(lines))
-    return p
-
-
-def test_final_answer_text_takes_last_assistant_message(tmp_path):
-    p = write_transcript(tmp_path, ["first", "second"])
-    assert grading.final_answer_text(p) == "second"
 
 
 def test_parse_results_block():
@@ -106,24 +88,6 @@ results:
     block = grading.parse_results_block(answer)
     assert block is not None
     assert block["results"]["numbers"]["total_users_jan"] == 9885
-
-
-def test_final_answer_text_empty_and_malformed():
-    """Empty file and malformed JSON lines."""
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        # Empty file
-        p = tmp_path / "empty.jsonl"
-        p.write_text("")
-        assert grading.final_answer_text(p) == ""
-
-        # Malformed JSON + valid assistant message
-        p = tmp_path / "mixed.jsonl"
-        p.write_text(
-            "not valid json\n"
-            + json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "valid"}]}})
-        )
-        assert grading.final_answer_text(p) == "valid"
 
 
 def test_check_numbers_zero_key_value():

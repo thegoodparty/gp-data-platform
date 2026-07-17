@@ -7,6 +7,7 @@ grading.py regardless of judge output."""
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 from pathlib import Path
 
@@ -27,14 +28,20 @@ except ImportError:  # bare `python grade.py`: diagnostics/ isn't on sys.path ye
 
 def grade_run(run_state: dict, key: Key) -> dict:
     run_id = run_state["run_id"]
-    # Question ids are constrained (manifest convention) not to contain "__",
-    # so splitting on it to recover question_id/arm/rep is unambiguous.
+    # question_id/arm/rep are recovered by splitting run_id on "__". bank.load_manifest
+    # rejects question ids containing "__", so this split is unambiguous.
     question_id, arm, rep = run_id.split("__")
     answer = Path(run_state["answer_file"]).read_text() if run_state.get("answer_file") else ""
-    transcript = Path(run_state["transcript_file"]).read_text() if run_state.get("transcript_file") else ""
+    transcript_file = run_state.get("transcript_file")
+    transcript = Path(transcript_file).read_text() if transcript_file else ""
+    transcript_ok = bool(transcript_file) and bool(transcript.strip())
     block = grading.parse_results_block(answer)
     numbers = grading.check_numbers(block, key)
     sources = grading.check_sources(transcript, key)
+    if key.mandatory_sources and not transcript_ok:
+        # Sources already fail (empty transcript never matches), but say why so a
+        # missing/empty transcript isn't mistaken for a genuine adherence miss.
+        sources = [dataclasses.replace(c, detail="transcript missing") for c in sources]
     sev1 = grading.check_severity1(answer, key)
     return {
         "run_id": run_id,
@@ -42,6 +49,7 @@ def grade_run(run_state: dict, key: Key) -> dict:
         "arm": arm,
         "rep": int(rep.lstrip("r")),
         "results_block_ok": block is not None,
+        "transcript_ok": transcript_ok,
         "numbers_pass": all(c.passed for c in numbers),
         "sources_pass": all(c.passed for c in sources),
         "severity1_tripped": any(not c.passed for c in sev1),
@@ -104,6 +112,7 @@ def main() -> None:
     keys = {q.id: load_key(here / "keys" / q.key_file) for q in questions}
 
     rows, blocks = [], {}
+    judge_eligible = judge_ok = 0
     for run_id, run_state in state["runs"].items():
         if not run_state.get("ok"):
             continue
@@ -111,20 +120,47 @@ def main() -> None:
         row = grade_run(run_state, keys[qid])
         blocks.setdefault((row["question_id"], row["arm"]), []).append(row.pop("_block"))
         if args.judge:
+            judge_eligible += 1
             answer = Path(run_state["answer_file"]).read_text()
             j = judge_mod.judge_answer(keys[qid], answer, args.model)
             if j:
+                judge_ok += 1
                 row.update({f"judge_{k}": v for k, v in j["scores"].items()})
                 row["judge_severity1_found"] = bool(j["severity1_found"])
+            else:
+                print(f"{run_id}: judge FAILED")
         rows.append(row)
 
     df = pd.DataFrame(rows).sort_values("run_id")
     df.to_csv(batch_dir / "scores.csv", index=False)
 
+    # Coverage denominator = every question with ANY recorded run, not only the
+    # ok ones. A question whose runs all failed must still count against rule 1,
+    # otherwise a silent drop would inflate the pass rate.
+    qids_in_state = {rid.split("__")[0] for rid in state["runs"]}
+    denom_questions = [q for q in questions if q.id in qids_in_state]
     cells = {ck: grading.cell_consistency(bs, keys[ck[0]]) for ck, bs in blocks.items()}
-    verdicts = evaluate_verdicts(df, cells, [q for q in questions if q.id in set(df.question_id)])
+    verdicts = evaluate_verdicts(df, cells, denom_questions)
 
+    graded = len(rows)
+    recorded = len(state["runs"])
     lines = [f"# Quality bench report — batch {args.batch}", ""]
+    lines.append(
+        f"Coverage: graded {graded} of {recorded} recorded runs; "
+        f"questions in rule-1 denominator: {len(denom_questions)}"
+    )
+    if args.judge:
+        lines.append(f"Judged: {judge_ok}/{judge_eligible}")
+    if graded < recorded:
+        graded_ids = {r["run_id"] for r in rows}
+        missing_by_arm: dict[str, int] = {}
+        for rid in state["runs"]:
+            if rid not in graded_ids:
+                missing_by_arm[rid.split("__")[1]] = missing_by_arm.get(rid.split("__")[1], 0) + 1
+        lines.append(
+            "Missing runs by arm: " + ", ".join(f"{arm}={n}" for arm, n in sorted(missing_by_arm.items()))
+        )
+    lines.append("")
     for k, v in verdicts.items():
         lines.append(f"- **{k}**: {v}")
     lines += ["", "## Cells (question x arm consistency)", ""]

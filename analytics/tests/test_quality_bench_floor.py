@@ -38,6 +38,33 @@ def test_build_inventory_md_sanitizes_comments():
     assert len(content_lines) == 1, "Comment with newline should not span multiple rows"
 
 
+def fake_run_query_verbose(sql: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "table_name": ["multi_sentence", "long_single"],
+            "comment": [
+                "Win activation mart. Joins campaigns to sessions and derives the "
+                "activated flag using the governed 3-era logic; do not reuse.",
+                "A" * 400,
+            ],
+        }
+    )
+
+
+def test_build_inventory_md_truncates_to_first_sentence_and_caps_length():
+    md = floor_gen.build_inventory_md(fake_run_query_verbose)
+    ms_line = next(line for line in md.split("\n") if "multi_sentence" in line)
+    # Only the first sentence survives; the curated remainder is dropped.
+    assert "Win activation mart" in ms_line
+    assert "governed 3-era logic" not in ms_line
+    assert ms_line.rstrip().endswith("…|") or "…" in ms_line
+    # The 400-char single "sentence" is capped at 150 chars (+ ellipsis).
+    ls_line = next(line for line in md.split("\n") if "long_single" in line)
+    a_run = ls_line.count("A")
+    assert a_run == 150, f"expected 150 A's, got {a_run}"
+    assert "…" in ls_line
+
+
 def test_build_floor_fills_inventory_only():
     floor = floor_gen.build_floor(STATIC_DIR / "floor_static.md", fake_run_query)
     assert "users_win_base" in floor

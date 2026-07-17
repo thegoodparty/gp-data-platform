@@ -5,12 +5,11 @@ owns the judged layer)."""
 from __future__ import annotations
 
 import contextlib
-import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 import yaml
+
 from quality_bench.bank import Key
 
 YAML_FENCE = re.compile(r"```ya?ml\n(.*?)```", re.DOTALL)
@@ -22,24 +21,6 @@ class CheckResult:
     kind: str  # results_block | number | source | severity1
     passed: bool
     detail: str
-
-
-def final_answer_text(transcript_path: Path) -> str:
-    """Last assistant text message in a Claude Code JSONL transcript."""
-    last = ""
-    for line in transcript_path.read_text().splitlines():
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if row.get("type") != "assistant":
-            continue
-        for part in row.get("message", {}).get("content", []):
-            if part.get("type") == "text" and part.get("text"):
-                last = part["text"]
-    return last
 
 
 def parse_results_block(answer_text: str) -> dict | None:

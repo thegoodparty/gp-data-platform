@@ -59,6 +59,10 @@ def load_manifest(path: Path) -> list[Question]:
     questions = []
     for row in raw["questions"]:
         q = Question(**row)
+        if "__" in q.id:
+            # run_ids are "<question_id>__<arm>__r<rep>"; grade.py recovers the
+            # parts by splitting on "__", so a "__" in a question id is ambiguous.
+            raise ValueError(f"{q.id!r}: question id must not contain '__'")
         if q.product not in PRODUCTS:
             raise ValueError(f"{q.id}: bad product {q.product!r}")
         if q.trap not in TRAPS:

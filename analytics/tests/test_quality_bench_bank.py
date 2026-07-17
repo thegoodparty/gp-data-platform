@@ -51,6 +51,13 @@ def test_load_manifest_rejects_bad_split(tmp_path: Path):
         bank.load_manifest(p)
 
 
+def test_load_manifest_rejects_double_underscore_id(tmp_path: Path):
+    p = tmp_path / "manifest.yaml"
+    p.write_text(MANIFEST.replace("id: q01", "id: q01__x"))
+    with pytest.raises(ValueError, match="__"):
+        bank.load_manifest(p)
+
+
 def test_load_key(tmp_path: Path):
     p = tmp_path / "q01_key.yaml"
     p.write_text(KEY)

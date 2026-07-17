@@ -29,6 +29,15 @@ def build_inventory_md(run_query: RunQuery) -> str:
         if isinstance(row["comment"], str) and row["comment"]:
             # Collapse whitespace runs (incl. newlines) to single spaces and escape pipes
             comment = " ".join(str(row["comment"]).split()).replace("|", "\\|")
+            # Mechanical truncation: the floor states WHAT exists, not what it
+            # means — keep only the first sentence and cap length so richer
+            # curated prose (a treatment) never leaks in via a comment.
+            first_sentence = comment.split(". ")[0]
+            cut = first_sentence != comment
+            if len(first_sentence) > 150:
+                first_sentence = first_sentence[:150]
+                cut = True
+            comment = first_sentence + ("…" if cut else "")
         else:
             comment = "(no description)"
         lines.append(f"| {row['table_name']} | {comment} |")

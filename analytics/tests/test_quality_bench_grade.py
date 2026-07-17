@@ -56,3 +56,19 @@ def test_rule3_flags_bloat_when_knowledge_matches_full():
     df = pd.DataFrame(rows_for(QIDS, "full", True) + rows_for(QIDS, "knowledge", True))
     v = grade.evaluate_verdicts(df, cells(["full", "knowledge"]), QUESTIONS)
     assert v["rule3_bloat_signal"] is True
+
+
+def test_question_with_zero_ok_runs_still_counts_in_denominator():
+    """A question absent from the graded df must still count against rule 1's
+    8-question denominator, not be silently dropped."""
+    # 7 of 8 questions present and passing; q08 has no ok runs at all.
+    df_7 = pd.DataFrame(rows_for(QIDS[:7], "full", True))
+    v7 = grade.evaluate_verdicts(df_7, cells(["full"]), QUESTIONS)
+    assert v7["rule1_trustworthy"] is True  # 7/8 satisfies "≥ N-1"
+    assert "7/8" in v7["rule1_detail"]
+
+    # Two questions missing (6/8) → rule 1 must fail, not pass on a shrunk denom.
+    df_6 = pd.DataFrame(rows_for(QIDS[:6], "full", True))
+    v6 = grade.evaluate_verdicts(df_6, cells(["full"]), QUESTIONS)
+    assert v6["rule1_trustworthy"] is False
+    assert "6/8" in v6["rule1_detail"]

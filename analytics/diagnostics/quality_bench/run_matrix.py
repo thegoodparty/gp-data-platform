@@ -1,7 +1,8 @@
 """Launch the question x arm x rep matrix as headless `claude -p` runs.
 
-Each run: fresh session, cwd = the arm dir, prompt = the question verbatim.
-State (results/<batch>/state.json) makes reruns resume instead of repeat.
+Each run: fresh session, cwd = a per-run copy of the arm dir (runs/<run_id>),
+prompt = the question verbatim. State (results/<batch>/state.json) makes reruns
+resume instead of repeat.
 """
 
 from __future__ import annotations
@@ -54,8 +55,23 @@ def transcript_path(arm_dir: Path, session_id: str) -> Path:
     return Path.home() / ".claude" / "projects" / munged / f"{session_id}.jsonl"
 
 
-def launch_run(spec: RunSpec, model: str, timeout_s: int, batch_dir: Path, runner=subprocess.run) -> dict:
+def launch_run(
+    spec: RunSpec,
+    model: str,
+    timeout_s: int,
+    batch_dir: Path,
+    keep_run_dir: bool = False,
+    runner=subprocess.run,
+) -> dict:
     batch_dir.mkdir(parents=True, exist_ok=True)
+    # Per-run isolation: copy the arm into runs/<run_id> and run there. A fresh
+    # cwd per run means no cross-rep leakage (one rep can't mutate the arm the
+    # next rep sees) and a fresh per-path auto-memory. uv re-creates the venv
+    # from cache on the first `uv run` in the copy, so the copy stays cheap.
+    run_dir = spec.arm_dir.parent / "runs" / spec.run_id
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    shutil.copytree(spec.arm_dir, run_dir, ignore=shutil.ignore_patterns(".venv", "__pycache__"))
     out: dict = {
         "run_id": spec.run_id,
         "ok": False,
@@ -75,29 +91,35 @@ def launch_run(spec: RunSpec, model: str, timeout_s: int, batch_dir: Path, runne
         "acceptEdits",
     ]
     try:
-        proc = runner(cmd, cwd=spec.arm_dir, capture_output=True, text=True, timeout=timeout_s)
-    except (subprocess.TimeoutExpired, OSError) as e:
-        out["error"] = f"{type(e).__name__}: {e}"
+        try:
+            proc = runner(cmd, cwd=run_dir, capture_output=True, text=True, timeout=timeout_s)
+        except (subprocess.TimeoutExpired, OSError) as e:
+            out["error"] = f"{type(e).__name__}: {e}"
+            return out
+        if proc.returncode != 0:
+            out["error"] = (proc.stderr or proc.stdout or "")[-2000:]
+            return out
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            out["error"] = f"unparseable CLI output: {proc.stdout[-500:]}"
+            return out
+        session_id = payload.get("session_id", "")
+        answer = payload.get("result", "")
+        answer_file = batch_dir / f"{spec.run_id}.answer.md"
+        answer_file.write_text(answer)
+        out.update(ok=True, session_id=session_id, answer_file=str(answer_file))
+        src = transcript_path(run_dir, session_id)
+        if src.exists():
+            dst = batch_dir / f"{spec.run_id}.transcript.jsonl"
+            shutil.copy(src, dst)
+            out["transcript_file"] = str(dst)
         return out
-    if proc.returncode != 0:
-        out["error"] = (proc.stderr or proc.stdout or "")[-2000:]
-        return out
-    try:
-        payload = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        out["error"] = f"unparseable CLI output: {proc.stdout[-500:]}"
-        return out
-    session_id = payload.get("session_id", "")
-    answer = payload.get("result", "")
-    answer_file = batch_dir / f"{spec.run_id}.answer.md"
-    answer_file.write_text(answer)
-    out.update(ok=True, session_id=session_id, answer_file=str(answer_file))
-    src = transcript_path(spec.arm_dir, session_id)
-    if src.exists():
-        dst = batch_dir / f"{spec.run_id}.transcript.jsonl"
-        shutil.copy(src, dst)
-        out["transcript_file"] = str(dst)
-    return out
+    finally:
+        if keep_run_dir:
+            out["run_dir"] = str(run_dir)
+        else:
+            shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def main() -> None:
@@ -111,6 +133,11 @@ def main() -> None:
     parser.add_argument("--questions", nargs="*", default=None)
     parser.add_argument(
         "--arms-root", type=Path, default=Path.home() / ".cache" / "gp_quality_bench" / "arms"
+    )
+    parser.add_argument(
+        "--keep-run-dirs",
+        action="store_true",
+        help="keep the per-run copy of each arm (runs/<run_id>) instead of deleting it after the run",
     )
     args = parser.parse_args()
 
@@ -133,7 +160,10 @@ def main() -> None:
     print(f"{len(runs)} total runs, {len(todo)} to do (resume skips {len(runs) - len(todo)})")
 
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
-        futures = {pool.submit(launch_run, r, args.model, args.timeout, batch_dir): r for r in todo}
+        futures = {
+            pool.submit(launch_run, r, args.model, args.timeout, batch_dir, args.keep_run_dirs): r
+            for r in todo
+        }
         for fut in as_completed(futures):
             try:
                 result = fut.result()

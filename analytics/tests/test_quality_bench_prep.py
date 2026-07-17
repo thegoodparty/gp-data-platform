@@ -39,6 +39,9 @@ def fake_repo(tmp_path: Path) -> Path:
 def test_full_arm_excludes_quality_bench_keeps_skills(fake_repo, tmp_path):
     arm = prep_arms.prep_arm("full", fake_repo, tmp_path / "arms", FLOOR, sync=False)
     assert not (arm / "analytics" / "diagnostics" / "quality_bench").exists()
+    # git-archive export, not a worktree: no .git, so the deleted keys are not
+    # recoverable from history.
+    assert not (arm / ".git").exists()
     assert (arm / ".claude" / "skills" / "analytics-process").exists()
     assert "{{LIB_PATH}}" not in (arm / "CLAUDE.md").read_text()
     assert "analytics/lib" in (arm / "CLAUDE.md").read_text()

@@ -2,17 +2,22 @@
 """Build the three arm environments (design §6).
 
 Contamination rules enforced here:
-- quality_bench/ (keys, questions, harness) is deleted from every run worktree.
-- Worktrees live at fresh paths, so project-keyed auto-memory does not attach.
+- quality_bench/ (keys, questions, harness) is deleted from every run arm.
+- full/knowledge arms are `git archive` exports, not worktrees: the arm is a
+  plain directory with no .git and no history, so the answer keys are not
+  recoverable from git even though quality_bench was deleted from the checkout.
+- Arms live at fresh paths, so project-keyed auto-memory does not attach.
 - bare is a plain scratch dir: floor only, no repo content, no skills.
 """
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 
 try:
@@ -28,7 +33,19 @@ KNOWLEDGE_SKILLS = ["win-analytics-knowledge", "serve-analytics-knowledge"]
 SETTINGS_JSON = {
     "permissions": {
         "defaultMode": "acceptEdits",
-        "allow": ["Bash(*)", "Read(*)", "Write(*)", "Edit(*)", "Glob(*)", "Grep(*)"],
+        "allow": [
+            "Bash(*)",
+            "Read(*)",
+            "Write(*)",
+            "Edit(*)",
+            "Glob(*)",
+            "Grep(*)",
+            "Skill",
+            "Task",
+            "Agent",
+            "ToolSearch",
+            "TodoWrite",
+        ],
         "deny": ["WebFetch", "WebSearch"],
     }
 }
@@ -55,25 +72,28 @@ def _write_settings(arm_dir: Path) -> None:
     (d / "settings.local.json").write_text(json.dumps(SETTINGS_JSON, indent=2))
 
 
-def _worktree(repo_root: Path, dest: Path, ref: str) -> None:
+def _export(repo_root: Path, dest: Path, ref: str) -> None:
+    """Export the repo at `ref` into `dest` as a plain directory (no .git).
+
+    `git archive` streams a tar of the tracked tree at `ref`; extracting it gives
+    the arm the repo content without any git history, so the deleted answer keys
+    stay unrecoverable. Any leftover dir (e.g. a crashed prior run) is cleared
+    first via rmtree.
+    """
     if dest.exists():
-        subprocess.run(["git", "worktree", "remove", "--force", str(dest)], cwd=repo_root, check=False)
-        if dest.exists():
-            # Leftover non-worktree dir (e.g. from a crashed prior run): the remove
-            # above only succeeds for registered worktrees, so clear it by hand and
-            # let git forget any stale registration before re-adding.
-            shutil.rmtree(dest, ignore_errors=True)
-            subprocess.run(["git", "worktree", "prune"], cwd=repo_root, check=False)
-    dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(dest)
     proc = subprocess.run(
-        ["git", "worktree", "add", "--force", str(dest), ref],
+        ["git", "archive", ref],
         cwd=repo_root,
         check=False,
         capture_output=True,
-        text=True,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"git worktree add failed for {dest}: {proc.stderr.strip()}")
+        stderr = proc.stderr.decode(errors="replace").strip()
+        raise RuntimeError(f"git archive failed for {ref} in {repo_root}: {stderr}")
+    dest.mkdir(parents=True)
+    with tarfile.open(fileobj=io.BytesIO(proc.stdout)) as tar:
+        tar.extractall(dest, filter="data")
 
 
 def prep_arm(
@@ -96,7 +116,7 @@ def prep_arm(
             subprocess.run(["uv", "sync"], cwd=env, check=True)
         return dest
 
-    _worktree(repo_root, dest, ref)
+    _export(repo_root, dest, ref)
     shutil.rmtree(dest / "analytics" / "diagnostics" / "quality_bench", ignore_errors=True)
     claude_md = dest / "CLAUDE.md"
     existing = claude_md.read_text() if claude_md.exists() else ""
