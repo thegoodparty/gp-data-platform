@@ -46,6 +46,18 @@ models:
               config:
                 warn_if: ">10"
                 error_if: ">1000"
+          # The election-api Candidacy.person_id FK is populated from this
+          # column via a guarded join against the Person table, so misses only
+          # cost link coverage. A few no-name people are excluded from the
+          # person mart by design (20 known).
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
+              config:
+                severity: warn
+                warn_if: ">0"
+                error_if: ">1000"
       - name: email
         description: >
           Candidate email, sourced from int__civics_candidate_ballotready
@@ -269,6 +281,12 @@ models:
           - accepted_values:
               arguments:
                 values: [true, false]
+      - name: salary
+        description: >
+          Office compensation from the BallotReady API position feed. Free
+          text (values include ranges and notes), mirroring Candidacy.salary.
+          Powers the profile About Office salary row for sitting officials
+          with no active candidacy.
 
   - name: m_election_api__projected_turnout
     description: Turnout projections data load from model predictions
@@ -745,3 +763,112 @@ models:
           name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
+
+  - name: m_election_api__person
+    description: >
+      Person spine for the election-api Person table, backing the public
+      /people/<slug>-<id> profile pages. One row per canonical person; id is
+      gp_person_id, the same id space m_election_api__candidacy publishes as
+      gp_candidate_id, so the API can join a Person to its Candidacies and
+      OfficeHolders. Scoped to people with a candidacy or an office term and
+      at least one name part (the API slug column is NOT NULL).
+      BallotReady-rich profile fields attach via the person group's
+      unambiguous br_person_id: first from int__ballotready_person (which is
+      fetched candidacy-first, so it misses officials with no BR candidacy —
+      ~44% of this mart), then falling back to the office_holders_v3 feed for
+      name parts and links. bio_text, headshot_url, degrees, and experiences
+      exist only on the API person object and stay null for office-only
+      people until int__ballotready_person also fetches office-holder ids.
+      All BR fields stay null for GP-native people.
+    columns:
+      - name: id
+        description: "Canonical person UUID (gp_person_id / gp_candidate_id)"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: br_person_id
+        description: >
+          BallotReady Person databaseId (br_candidate_id), populated only when
+          the person group carries exactly one BallotReady id. Null for
+          GP-native people and ambiguous groups.
+        tests:
+          - unique
+      - name: slug
+        description: >
+          slugify(first_name-last_name). Cosmetic URL prefix; NOT unique —
+          the API disambiguates on the trailing person UUID.
+        tests:
+          - not_null
+      - name: degrees
+        description: >
+          BallotReady degrees as a JSON string
+          ([{degree, major, school, gradYear}]); the Airflow loader ships it
+          into a JSONB column. Null when BallotReady has none.
+      - name: experiences
+        description: >
+          BallotReady experiences as a JSON string
+          ([{title, organization, start, end, type}]). Null when BallotReady
+          has none.
+
+  - name: m_election_api__office_holder
+    description: >
+      Office terms for the election-api OfficeHolder table (the elected
+      official spine behind public profiles). One row per BallotReady
+      office-holder term; id is gp_elected_official_term_id. person_id is NOT
+      NULL in the API, so the mart inner-joins m_election_api__person —
+      vacancies and no-name people drop here rather than failing the FK at
+      load. position_id resolves the BR position to the election-api Position
+      UUID where the position mart covers it.
+    columns:
+      - name: id
+        description: "Term UUID (gp_elected_official_term_id)"
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: br_office_holder_id
+        description: "BallotReady office_holder databaseId"
+        tests:
+          - not_null
+          - unique
+      - name: person_id
+        description: "Canonical person UUID; FK to m_election_api__person.id"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
+      - name: position_id
+        description: >
+          election-api Position UUID via the BR position databaseId. Null when
+          the position mart doesn't cover the office (~0.2%).
+        tests:
+          - relationships:
+              arguments:
+                to: ref('m_election_api__position')
+                field: id
+      - name: party_names
+        description: >
+          BallotReady party names as a JSON string (["Republican"]); the
+          Airflow loader ships it into a text[] column. Null when the feed
+          carries none.
+      - name: is_current
+        description: >
+          Whether the term window contains today (null-tolerant on open
+          ends). Null when both term dates are unknown.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [true, false]
+      - name: next_election_date
+        description: >
+          Earliest upcoming election_stage election_date on the same BR
+          position. Powers "Next election" in the profile About Office
+          section.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "end_at >= start_at"
+          name: office_holder_term_dates_ordered
