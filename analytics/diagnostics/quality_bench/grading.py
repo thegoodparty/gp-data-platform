@@ -48,7 +48,7 @@ def parse_results_block(answer_text: str) -> dict | None:
             parsed = yaml.safe_load(match)
         except yaml.YAMLError:
             continue
-        if isinstance(parsed, dict) and "results" in parsed:
+        if isinstance(parsed, dict) and isinstance(parsed.get("results"), dict):
             return parsed
     return None
 

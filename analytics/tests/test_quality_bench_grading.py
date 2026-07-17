@@ -1,4 +1,5 @@
 import json
+import tempfile
 from pathlib import Path
 
 from quality_bench import grading
@@ -72,3 +73,68 @@ def test_check_numbers_missing_number_fails():
     results = grading.check_numbers(block, key)
     assert results[0].passed is False
     assert "missing" in results[0].detail
+
+
+def test_parse_results_block_rejects_non_dict_results():
+    """Non-dict results: value should parse to None, not crash."""
+    answer = """```yaml
+results: not_a_dict
+```"""
+    block = grading.parse_results_block(answer)
+    assert block is None
+    # Verify check_numbers doesn't crash on None
+    results = grading.check_numbers(block, make_key())
+    assert len(results) == 1
+    assert results[0].passed is False
+
+
+def test_parse_results_block_takes_last_fence():
+    """Two fences; last one wins. Also covers yml spelling."""
+    answer = """```yaml
+results:
+  numbers:
+    total_users_jan: 1111
+```
+
+Some text.
+
+```yml
+results:
+  numbers:
+    total_users_jan: 9885
+```"""
+    block = grading.parse_results_block(answer)
+    assert block is not None
+    assert block["results"]["numbers"]["total_users_jan"] == 9885
+
+
+def test_final_answer_text_empty_and_malformed():
+    """Empty file and malformed JSON lines."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        # Empty file
+        p = tmp_path / "empty.jsonl"
+        p.write_text("")
+        assert grading.final_answer_text(p) == ""
+
+        # Malformed JSON + valid assistant message
+        p = tmp_path / "mixed.jsonl"
+        p.write_text(
+            "not valid json\n"
+            + json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "valid"}]}})
+        )
+        assert grading.final_answer_text(p) == "valid"
+
+
+def test_check_numbers_zero_key_value():
+    """Zero spec.value should not cause ZeroDivisionError."""
+    key = make_key(numbers=[NumberSpec("x", 0.0, 0.5)])
+    answer = """```yaml
+results:
+  numbers:
+    x: 5
+```"""
+    block = grading.parse_results_block(answer)
+    results = grading.check_numbers(block, key)
+    assert results[0].passed is False  # diff_pct = inf
+    assert "inf" in results[0].detail
