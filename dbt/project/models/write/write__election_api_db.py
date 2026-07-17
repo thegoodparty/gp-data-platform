@@ -37,7 +37,8 @@ CANDIDACY_UPSERT_QUERY = """
         email,
         website_url,
         is_incumbent,
-        race_id
+        race_id,
+        person_id
     )
     SELECT
         id::uuid,
@@ -62,7 +63,9 @@ CANDIDACY_UPSERT_QUERY = """
         email,
         website_url,
         is_incumbent,
-        race_id::uuid
+        race_id::uuid,
+        -- guarded PK lookup: null when the person is not (yet) synced
+        (SELECT p.id FROM {db_schema}."Person" AS p WHERE p.id = gp_candidate_id::uuid)
     FROM {staging_schema}."Candidacy"
     ON CONFLICT (id) DO UPDATE SET
         created_at = EXCLUDED.created_at,
@@ -86,7 +89,8 @@ CANDIDACY_UPSERT_QUERY = """
         email = EXCLUDED.email,
         website_url = EXCLUDED.website_url,
         is_incumbent = EXCLUDED.is_incumbent,
-        race_id = EXCLUDED.race_id
+        race_id = EXCLUDED.race_id,
+        person_id = EXCLUDED.person_id
 """
 
 DISTRICT_UPSERT_QUERY = """
@@ -133,7 +137,8 @@ POSITION_UPSERT_QUERY = """
         level,
         district_id,
         is_win_icp,
-        is_serve_icp
+        is_serve_icp,
+        salary
     )
     SELECT
         id::uuid,
@@ -144,7 +149,8 @@ POSITION_UPSERT_QUERY = """
         level::\"PositionLevel\",
         district_id::uuid,
         is_win_icp,
-        is_serve_icp
+        is_serve_icp,
+        salary
     FROM {staging_schema}."Position"
     ON CONFLICT (id) DO UPDATE SET
         br_database_id = EXCLUDED.br_database_id,
@@ -154,8 +160,195 @@ POSITION_UPSERT_QUERY = """
         level = EXCLUDED.level,
         district_id = EXCLUDED.district_id,
         is_win_icp = EXCLUDED.is_win_icp,
-        is_serve_icp = EXCLUDED.is_serve_icp
+        is_serve_icp = EXCLUDED.is_serve_icp,
+        salary = EXCLUDED.salary
 """
+PERSON_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."Person" (
+        id,
+        created_at,
+        updated_at,
+        br_person_id,
+        slug,
+        first_name,
+        middle_name,
+        last_name,
+        nickname,
+        suffix,
+        full_name,
+        bio_text,
+        headshot_url,
+        website_url,
+        linkedin_url,
+        facebook_url,
+        twitter_url,
+        instagram_url,
+        email,
+        phone,
+        degrees,
+        experiences,
+        state
+    )
+    SELECT
+        id::uuid,
+        now(),
+        now(),
+        br_person_id,
+        slug,
+        first_name,
+        middle_name,
+        last_name,
+        nickname,
+        suffix,
+        full_name,
+        bio_text,
+        headshot_url,
+        website_url,
+        linkedin_url,
+        facebook_url,
+        twitter_url,
+        instagram_url,
+        email,
+        phone,
+        degrees::jsonb,
+        experiences::jsonb,
+        state
+    FROM {staging_schema}."Person"
+    ON CONFLICT (id) DO UPDATE SET
+        updated_at = now(),
+        br_person_id = EXCLUDED.br_person_id,
+        slug = EXCLUDED.slug,
+        first_name = EXCLUDED.first_name,
+        middle_name = EXCLUDED.middle_name,
+        last_name = EXCLUDED.last_name,
+        nickname = EXCLUDED.nickname,
+        suffix = EXCLUDED.suffix,
+        full_name = EXCLUDED.full_name,
+        bio_text = EXCLUDED.bio_text,
+        headshot_url = EXCLUDED.headshot_url,
+        website_url = EXCLUDED.website_url,
+        linkedin_url = EXCLUDED.linkedin_url,
+        facebook_url = EXCLUDED.facebook_url,
+        twitter_url = EXCLUDED.twitter_url,
+        instagram_url = EXCLUDED.instagram_url,
+        email = EXCLUDED.email,
+        phone = EXCLUDED.phone,
+        degrees = EXCLUDED.degrees,
+        experiences = EXCLUDED.experiences,
+        state = EXCLUDED.state
+"""
+
+OFFICEHOLDER_UPSERT_QUERY = """
+    INSERT INTO {db_schema}."OfficeHolder" (
+        id,
+        created_at,
+        updated_at,
+        br_office_holder_id,
+        position_name,
+        normalized_position_name,
+        office_title,
+        party_names,
+        start_at,
+        end_at,
+        term_date_specificity,
+        is_current,
+        is_appointed,
+        is_vacant,
+        number_of_seats,
+        next_election_date,
+        mailing_address_line_1,
+        mailing_address_line_2,
+        mailing_city,
+        mailing_state,
+        mailing_zip,
+        office_phone,
+        office_email,
+        website_url,
+        linkedin_url,
+        facebook_url,
+        twitter_url,
+        instagram_url,
+        sub_area_name,
+        sub_area_value,
+        state,
+        geo_id,
+        mtfcc,
+        person_id,
+        position_id
+    )
+    SELECT
+        id::uuid,
+        now(),
+        now(),
+        br_office_holder_id,
+        position_name,
+        normalized_position_name,
+        office_title,
+        party_names,
+        start_at,
+        end_at,
+        term_date_specificity,
+        is_current,
+        is_appointed,
+        is_vacant,
+        number_of_seats,
+        next_election_date,
+        mailing_address_line_1,
+        mailing_address_line_2,
+        mailing_city,
+        mailing_state,
+        mailing_zip,
+        office_phone,
+        office_email,
+        website_url,
+        linkedin_url,
+        facebook_url,
+        twitter_url,
+        instagram_url,
+        sub_area_name,
+        sub_area_value,
+        state,
+        geo_id,
+        mtfcc,
+        person_id::uuid,
+        position_id::uuid
+    FROM {staging_schema}."OfficeHolder"
+    ON CONFLICT (id) DO UPDATE SET
+        updated_at = now(),
+        br_office_holder_id = EXCLUDED.br_office_holder_id,
+        position_name = EXCLUDED.position_name,
+        normalized_position_name = EXCLUDED.normalized_position_name,
+        office_title = EXCLUDED.office_title,
+        party_names = EXCLUDED.party_names,
+        start_at = EXCLUDED.start_at,
+        end_at = EXCLUDED.end_at,
+        term_date_specificity = EXCLUDED.term_date_specificity,
+        is_current = EXCLUDED.is_current,
+        is_appointed = EXCLUDED.is_appointed,
+        is_vacant = EXCLUDED.is_vacant,
+        number_of_seats = EXCLUDED.number_of_seats,
+        next_election_date = EXCLUDED.next_election_date,
+        mailing_address_line_1 = EXCLUDED.mailing_address_line_1,
+        mailing_address_line_2 = EXCLUDED.mailing_address_line_2,
+        mailing_city = EXCLUDED.mailing_city,
+        mailing_state = EXCLUDED.mailing_state,
+        mailing_zip = EXCLUDED.mailing_zip,
+        office_phone = EXCLUDED.office_phone,
+        office_email = EXCLUDED.office_email,
+        website_url = EXCLUDED.website_url,
+        linkedin_url = EXCLUDED.linkedin_url,
+        facebook_url = EXCLUDED.facebook_url,
+        twitter_url = EXCLUDED.twitter_url,
+        instagram_url = EXCLUDED.instagram_url,
+        sub_area_name = EXCLUDED.sub_area_name,
+        sub_area_value = EXCLUDED.sub_area_value,
+        state = EXCLUDED.state,
+        geo_id = EXCLUDED.geo_id,
+        mtfcc = EXCLUDED.mtfcc,
+        person_id = EXCLUDED.person_id,
+        position_id = EXCLUDED.position_id
+"""
+
 ISSUE_UPSERT_QUERY = """
     INSERT INTO {db_schema}."Issue" (
         id,
@@ -534,6 +727,8 @@ def model(dbt, session: SparkSession) -> DataFrame:
     stance_df: DataFrame = dbt.ref("m_election_api__stance")
     district_df: DataFrame = dbt.ref("m_election_api__district")
     position_df: DataFrame = dbt.ref("m_election_api__position")
+    person_df: DataFrame = dbt.ref("m_election_api__person")
+    officeholder_df: DataFrame = dbt.ref("m_election_api__office_holder")
 
     # keep races from a 2-month post-election grace period through ~2 years out;
     # the lower bound matches the m_election_api__race window exactly (keep them
@@ -599,11 +794,16 @@ def model(dbt, session: SparkSession) -> DataFrame:
     #   Place (self-ref)
     #   District -> (none)
     #   Position -> District, Place
+    #   Person -> (none)
     #   Race -> Place, Position
-    #   Candidacy -> Race
+    #   Candidacy -> Race, Person
+    #   OfficeHolder -> Person, Position
     #   Issue (self-ref)
     #   Stance -> Issue, Candidacy
     # so referenced parents must load before their children.
+    # Person and OfficeHolder carry no source updated_at, so they are fully
+    # re-upserted every run (never incremental-filtered); the stale-OfficeHolder
+    # delete below relies on their staging tables holding the complete mart.
     # Projected_Turnout is NOT written here: this writer upserts and never
     # deletes, so superseded rows would linger. It is delivered by the
     # sync_election_api Airflow DAG's atomic table swap instead (PR #585,
@@ -614,8 +814,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             "Place",
             "District",
             "Position",
+            "Person",
             "Race",
             "Candidacy",
+            "OfficeHolder",
             "Issue",
             "Stance",
         ],
@@ -623,8 +825,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             place_df,
             district_df,
             position_df,
+            person_df,
             race_df,
             candidacy_df,
+            officeholder_df,
             issue_df,
             stance_df,
         ],
@@ -632,8 +836,10 @@ def model(dbt, session: SparkSession) -> DataFrame:
             PLACE_UPSERT_QUERY,
             DISTRICT_UPSERT_QUERY,
             POSITION_UPSERT_QUERY,
+            PERSON_UPSERT_QUERY,
             RACE_UPSERT_QUERY,
             CANDIDACY_UPSERT_QUERY,
+            OFFICEHOLDER_UPSERT_QUERY,
             ISSUE_UPSERT_QUERY,
             STANCE_UPSERT_QUERY,
         ],
@@ -671,6 +877,47 @@ def model(dbt, session: SparkSession) -> DataFrame:
         db_pw,
         db_name,
     )
+
+    # The guarded lookup can only link people already present at upsert time;
+    # backfill any candidacy whose person has since arrived.
+    _execute_sql_query(
+        f"""
+        UPDATE {db_schema}."Candidacy" AS c
+        SET person_id = c.gp_candidate_id::uuid
+        FROM {db_schema}."Person" AS p
+        WHERE c.person_id IS NULL
+          AND p.id = c.gp_candidate_id::uuid
+        """,
+        db_host,
+        db_port,
+        db_user,
+        db_pw,
+        db_name,
+    )
+
+    # Drop OfficeHolder rows no longer in staging (never incremental-filtered,
+    # so staging holds the complete mart; nothing references OfficeHolder).
+    # The count floor keeps a collapsed mart from wiping the table.
+    if table_load_counts["OfficeHolder"] > 100_000:
+        _execute_sql_query(
+            f"""
+            DELETE FROM {db_schema}."OfficeHolder" AS oh
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {staging_schema}."OfficeHolder" AS stg
+                WHERE stg.id::uuid = oh.id
+            )
+            """,
+            db_host,
+            db_port,
+            db_user,
+            db_pw,
+            db_name,
+        )
+    else:
+        logging.warning(
+            "Skipping stale OfficeHolder delete: staged only %d rows",
+            table_load_counts["OfficeHolder"],
+        )
 
     data = []
     for table_name, count in table_load_counts.items():

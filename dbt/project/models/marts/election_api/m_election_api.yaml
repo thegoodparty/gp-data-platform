@@ -745,3 +745,57 @@ models:
           name: eos_support_never_exceeds_total_constituents
           config:
             severity: warn
+
+  - name: m_election_api__person
+    description: >
+      Person records for public /people profiles (election-api "Person" table).
+      One row per canonical person (id = gp_person_id, the same id space
+      Candidacy.gp_candidate_id publishes), scoped to people with a candidacy
+      or office term and at least one name part. BallotReady-rich fields
+      (bio, headshot, links, degrees, experiences) come from
+      int__ballotready_person, which is fetched candidacy-first, so elected
+      officials with no BR candidacy carry only the fallback fields from the
+      office_holders_v3 feed (a known follow-up). Stale ids are not deleted
+      from the API (accepted gap).
+    columns:
+      - name: id
+        description: "Canonical person UUID (gp_person_id). Primary key."
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: slug
+        description: >
+          slugify(first_name-last_name). Cosmetic URL prefix; NOT NULL but not
+          unique in the API (the trailing UUID disambiguates).
+        tests:
+          - not_null
+      - name: br_person_id
+        description: "BallotReady person databaseId; null for GP-native people."
+
+  - name: m_election_api__office_holder
+    description: >
+      Office terms for public /people profiles (election-api "OfficeHolder"
+      table). One row per BallotReady office-holder term (id =
+      gp_elected_official_term_id). Inner-joins m_election_api__person because
+      person_id is a required FK in the API; vacancies and no-name people drop
+      here rather than failing the load.
+    columns:
+      - name: id
+        description: "Term-grain canonical UUID (gp_elected_official_term_id). Primary key."
+        tests:
+          - not_null
+          - unique
+          - is_uuid
+      - name: person_id
+        description: "Canonical person UUID. Required FK to m_election_api__person."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('m_election_api__person')
+                field: id
+      - name: position_id
+        description: >
+          Election API position UUID. Nullable FK to m_election_api__position
+          (selected off the joined position mart, so referential by construction).
